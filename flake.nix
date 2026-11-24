@@ -330,6 +330,7 @@
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
+        house-report = ./modules/house-report/darwin.nix;
         linux-builder = ./modules/linux-builder/darwin.nix;
         local-name = ./modules/local-name/darwin.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
@@ -393,6 +394,7 @@
         hardening = ./modules/hardening/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        house-report = ./modules/house-report/nixos.nix;
         idevicerestore = ./modules/idevicerestore/nixos.nix;
         idle-sleep = ./modules/idle-sleep/nixos.nix;
         inlyne = ./modules/inlyne/nixos.nix;
@@ -402,6 +404,7 @@
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
         kmscon = ./modules/kmscon/nixos.nix;
+        lag-watch = ./modules/lag-watch/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         last-seconds = ./modules/last-seconds/nixos.nix;
         libvirt = ./modules/libvirt/nixos.nix;
@@ -414,6 +417,7 @@
         mic-mute-light = ./modules/mic-mute-light/nixos.nix;
         mpv = ./modules/mpv/nixos.nix;
         mx-brio = ./modules/mx-brio/nixos.nix;
+        mx-brio-seat = ./modules/mx-brio-seat/nixos.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
         sd-switch = ./modules/sd-switch/nixos.nix;
@@ -574,6 +578,13 @@
       # exempt = [ ... ]; }` is a check that fails on a link or a backticked
       # path from one of its top folders that names nothing.
       lib.docsNameWhatExists = pkgs: pkgs.callPackage ./tests/repository/docs-name-what-exists.nix { };
+
+      # How a repository built on core holds its code comments to naming only
+      # what exists, as core does: `core.lib.commentsNameWhatExists pkgs { src
+      # = ./.; waiting = [ ... ]; }` is a check that fails on a comment naming
+      # a path from one of its top folders that names nothing, but those it
+      # waits with, each `file path`, and on a line listed more often than found.
+      lib.commentsNameWhatExists = pkgs: pkgs.callPackage ./tests/rules/comments-name-what-exists.nix { };
 
       # How a repository built on core holds every folder to saying what it
       # holds, as core does: `core.lib.everyFolderSaysWhatItHolds pkgs { src =

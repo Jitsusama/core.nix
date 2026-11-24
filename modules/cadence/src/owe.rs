@@ -1,7 +1,10 @@
 //! `cadence owe`: a dated must a quest files in the loop's ledger itself,
 //! such as a known exposure and the date it closes by, so the loop's axes
 //! read it beside cadence's own findings. No day's read finds one, so
-//! `cadence day` never closes it; its owner does, with `--done`. Past its
+//! `cadence day` never closes it; its owner does, with `--done`. The owner
+//! of a finding of cadence's own says what fixed it the same way, with the
+//! change or why it's expected after its key, and it closes once its
+//! figure is back two days, never on its figure alone. Past its
 //! date the orchestrator hears of it once, as of any finding, and its
 //! owner, who filed it, is told nothing. On 12 November the security
 //! owner asked for a way to file its plan's musts this way.
@@ -25,11 +28,12 @@ pub struct Owed {
     pub kind: String,
 }
 
-/// What `cadence owe` was asked: to file a must, or to close one.
+/// What `cadence owe` was asked: to file a must, or to close one, or a
+/// finding with what fixed it.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Asked {
     Owe(Owed),
-    Done(String),
+    Done { key: String, fix: Option<String> },
 }
 
 /// Reads what was asked, its due read as a time in `zone`. A must is
@@ -37,10 +41,16 @@ pub enum Asked {
 pub fn parse(mut args: impl Iterator<Item = String>, zone: &TimeZone) -> Result<Asked, String> {
     let key = args.next().ok_or("it needs a key")?;
     if key == "--done" {
-        return args
-            .next()
-            .map(Asked::Done)
-            .ok_or_else(|| "--done needs a key".to_owned());
+        let key = args.next().ok_or("--done needs a key")?;
+        let fix: Vec<String> = args.collect();
+        if let Some(flag) = fix.iter().find(|word| word.starts_with("--")) {
+            return Err(format!(
+                "--done takes no {flag}: what follows its key is the fix"
+            ));
+        }
+        let fix = fix.join(" ");
+        let fix = (!fix.trim().is_empty()).then_some(fix);
+        return Ok(Asked::Done { key, fix });
     }
     let (mut axis, mut owner, mut due, mut says) = (None, None, None, None);
     let mut kind = "must".to_owned();
@@ -79,7 +89,12 @@ fn due_at(when: &str, zone: &TimeZone) -> Result<i64, String> {
 pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
     let fell_when = format!("its owner's `cadence owe --done {}`", owed.key);
     let evidence = format!("filed by {} with `cadence owe`", owed.owner);
-    if let Some(entry) = ledger.iter_mut().find(|e| e.open && e.key == owed.key) {
+    // A finding of cadence's own under the key stays as it is, so a must
+    // filed over it can't close it without its owner's word of the fix.
+    if let Some(entry) = ledger
+        .iter_mut()
+        .find(|e| e.open && e.key == owed.key && e.kind.is_some())
+    {
         entry.late = entry.late && entry.due == owed.due;
         entry.axis = owed.axis;
         entry.owner = Some(owed.owner);
@@ -111,18 +126,54 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         reopened: 0,
         hub: None,
         put_to: Vec::new(),
+        back: None,
+        fixed: None,
     });
 }
 
 /// Closes the open must filed as `key`, saying whether there was one. A
-/// finding of cadence's own isn't closed by hand: it closes once its
-/// figure is back.
+/// finding of cadence's own isn't closed this way: its owner says what
+/// fixed it (`findings::fixed`), and it closes once its figure is back.
 pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
     ledger
         .iter_mut()
         .find(|e| e.open && e.kind.is_some() && e.key == key)
         .map(|entry| entry.open = false)
         .is_some()
+}
+
+/// Closes the must filed as `key`, or says the finding filed as `key` was
+/// fixed by `fix`, saying which; a finding with no fix said is refused,
+/// since its figure gone quiet shows no fix.
+fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>) -> Result<String, Failure> {
+    if settle(ledger, key) {
+        return Ok(match fix {
+            Some(fix) => format!("cadence: {key} is done, by {fix}"),
+            None => format!("cadence: {key} is done"),
+        });
+    }
+    let unfiled = || {
+        Failure::new(
+            Exit::NotFound,
+            format!("no open must or finding is filed as {key}"),
+        )
+    };
+    let Some(fix) = fix else {
+        if ledger.iter().any(|e| e.open && e.key == key) {
+            return Err(wrongly(
+                "owe",
+                format!("{key} is a finding, so it needs what fixed it after its key"),
+            ));
+        }
+        return Err(unfiled());
+    };
+    match findings::fixed(ledger, key, fix) {
+        Some(true) => Ok(format!("cadence: {key} is closed, fixed by {fix}")),
+        Some(false) => Ok(format!(
+            "cadence: {key} is fixed by {fix}, closing once its figure is back two days"
+        )),
+        None => Err(unfiled()),
+    }
 }
 
 /// Runs `cadence owe` on the ledger in cadence's folder at `now`, once
@@ -132,6 +183,10 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
     let asked = parse(args, &zone).map_err(|why| wrongly("owe", why))?;
     let (_, _, folder) = folders().map_err(failed)?;
     let kept_at = folder.join("findings.jsonl");
+    let _held = findings::lock(&kept_at).map_err(|err| {
+        Failure::new(Exit::Failed, format!("locking {}", kept_at.display()))
+            .because(err.to_string())
+    })?;
     let mut ledger = findings::read(&kept_at);
     let said = match asked {
         Asked::Owe(owed) => {
@@ -142,16 +197,7 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
             owe(&mut ledger, owed, &date, now);
             format!("cadence: {key} is owed, open until `cadence owe --done {key}`")
         }
-        Asked::Done(key) => {
-            if !settle(&mut ledger, &key) {
-                return Err(Failure::new(
-                    Exit::NotFound,
-                    format!("no open must is filed as {key}"),
-                )
-                .because("a finding of cadence's own closes once its figure is back"));
-            }
-            format!("cadence: {key} is done")
-        }
+        Asked::Done { key, fix } => done(&mut ledger, &key, fix.as_deref())?,
     };
     findings::keep(&kept_at, &ledger).map_err(|err| {
         Failure::new(Exit::Failed, format!("keeping {}", kept_at.display()))
@@ -224,8 +270,19 @@ mod tests {
         );
         assert_eq!(
             asked(&["--done", "security:s2"]),
-            Ok(Asked::Done("security:s2".to_owned())),
+            Ok(Asked::Done {
+                key: "security:s2".to_owned(),
+                fix: None,
+            }),
             "--done wasn't read as closing the key"
+        );
+        assert_eq!(
+            asked(&["--done", "crashes:tec", "core #6000", "and", "core #6001"]),
+            Ok(Asked::Done {
+                key: "crashes:tec".to_owned(),
+                fix: Some("core #6000 and core #6001".to_owned()),
+            }),
+            "--done didn't read what fixed it after the key"
         );
     }
 
@@ -273,6 +330,39 @@ mod tests {
         assert!(
             !settle(&mut ledger, "crashes:tec") && ledger[0].open,
             "a finding of cadence's own was closed by hand"
+        );
+        let unsaid = done(&mut ledger, "crashes:tec", None).map_err(|f| f.exit);
+        assert_eq!(
+            unsaid,
+            Err(Exit::Usage),
+            "a finding closed with no fix said"
+        );
+        let waits = "cadence: crashes:tec is fixed by core #6000, closing once its figure is back \
+                     two days";
+        let said = done(&mut ledger, "crashes:tec", Some("core #6000")).map_err(|f| f.exit);
+        assert_eq!(
+            said,
+            Ok(waits.to_owned()),
+            "a fix said wasn't kept, waiting on its figure"
+        );
+        let nowhere = done(&mut ledger, "crashes:nothing", Some("core #6000"));
+        assert_eq!(
+            nowhere.map_err(|f| f.exit),
+            Err(Exit::NotFound),
+            "a key filed nowhere took a fix"
+        );
+        ledger[0].fixed = None;
+        owe(&mut ledger, owed("crashes:tec", DUE), "d1", DAY);
+        let over = done(&mut ledger, "crashes:tec", None).map_err(|f| f.exit);
+        assert_eq!(
+            (over, ledger[0].open, ledger[0].kind.as_deref()),
+            (Ok("cadence: crashes:tec is done".to_owned()), true, None),
+            "a must filed over a finding's key closed the finding with no fix said"
+        );
+        assert_eq!(
+            asked(&["--done", "crashes:tec", "core #6000", "--axis"]),
+            Err("--done takes no --axis: what follows its key is the fix".to_owned()),
+            "a flag after the key was taken as the fix"
         );
     }
 

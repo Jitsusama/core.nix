@@ -3,14 +3,15 @@
 Here the desktop locks and asks: the lock screen and what lets it go, polkit's prompt and the
 askpass.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it: unlocked, the shell running, nothing of its
 own still open, so any test runs alone.
 """
 
 from __future__ import annotations
 
+import shlex
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
 # Where lock-screen and the shell say whether the screens are locked.
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
-# The file that makes the lock's next password check stall (tests/desktop.nix).
+# The file that makes the lock's next password check stall (tests/desktop/desktop.nix).
 STALLS = "/run/lock-stalls/once"
 
 
@@ -238,6 +239,22 @@ def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop
     desktop.shoot("polkit")
     machine.send_chars(f"{desktop.values['secret']}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
+    # The journal says how each ask ended, and whether niri gave the prompt the keys, so an ask
+    # that fails on Joel's machine, where reports are off, is read rather than guessed. The
+    # ask's end is heard through the real flow, so none here ends without saying how.
+    # The keys go as the prompt is put away, which isn't a loss, so the line ends at when it had
+    # them.
+    ended = (
+        "polkit: org.freedesktop.systemd1.manage-units answered after .*;"
+        " it had the keys [0-9]* ms in$"
+    )
+    unsaid = "ended without saying how"
+    journal = "journalctl --user -u quickshell -o cat"
+    machine.wait_until_succeeds(
+        desktop.in_session(f"{journal} | grep -q {shlex.quote(ended)}"),
+        timeout=timedelta(seconds=30),
+    )
+    machine.succeed(desktop.in_session(f"! {journal} | grep -q {shlex.quote(unsaid)}"))
 
 
 def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:

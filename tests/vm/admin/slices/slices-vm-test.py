@@ -25,12 +25,13 @@ JOBS = f"{ACCOUNT}/jobs.slice"
 TIMED = f"{JOBS}/jobs-timed.slice"
 WORK = f"{JOBS}/jobs-work.slice"
 MIB = 2**20
-# The memory shares the module keeps for apps, hard and soft, for agents' sessions beside
-# them, soft, and for every slice above both, one of each, the soft one covering all three.
+# The memory shares the module keeps for apps, hard and a larger soft one, for agents' sessions
+# beside them, soft, and for every slice above both, one of each, the soft one covering all three.
 APPS_SHARE = 0.13
+APPS_SOFT_SHARE = 0.20
 AGENTS_SHARE = 0.10
 ABOVE_SHARE = 0.24
-ABOVE_SOFT_SHARE = 0.31
+ABOVE_SOFT_SHARE = 0.38
 SESSION_FLOOR = 4608 * MIB
 # The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself, and
 # what jobs-sorter's hard floors on at most three windows' pi or conversation claim.
@@ -248,7 +249,7 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     for path, share in [(f"{ACCOUNT}/app.slice", APPS_SHARE)] + [(p, ABOVE_SHARE) for p in above]:
         assert abs(account.floor(path) - total * share) <= MIB, path
     for path, share in [
-        (f"{ACCOUNT}/app.slice", APPS_SHARE),
+        (f"{ACCOUNT}/app.slice", APPS_SOFT_SHARE),
         (f"{ACCOUNT}/agents.slice", AGENTS_SHARE),
     ] + [(p, ABOVE_SOFT_SHARE) for p in above]:
         assert abs(account.soft_floor(path) - total * share) <= MIB, path

@@ -14,6 +14,7 @@ use crate::config::{Config, FeedConfig};
 use crate::feed::{self, Pace};
 use crate::findings::{Finding, Severity};
 use crate::history::History;
+use crate::ingest::Walks;
 use crate::interface::Hub;
 use crate::notices::{self, Buses, Desk};
 use crate::picture::Picture;
@@ -23,8 +24,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// What wakes the loop.
@@ -32,6 +33,9 @@ enum Wake {
     Line(String, String),
     Ended(String),
     Moved,
+    /// The folders the watch heard written in, `/` when it may have missed
+    /// some.
+    Touched(Vec<PathBuf>),
     Asked(String, Sender<String>),
     Tick,
 }
@@ -169,92 +173,269 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
     Ok(file)
 }
 
-/// Tells the loop whenever pi's logs change: inotify on the sessions
-/// directory and each directory in it, adding one as it appears, and on
-/// each directory an agent's log or another machine's is in.
+/// The watch's inotify instance and the folder each of its watches
+/// follows, shared so a pass watches the folders it found as it finds
+/// them, not when the watch next hears something.
 #[cfg(target_os = "linux")]
-fn watch(config: Config, wake: Sender<Wake>) {
-    use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
-    std::thread::spawn(move || {
-        let sessions = config.sessions.clone();
-        // Each machine's logs are watched as this machine's are, a new
-        // project folder at once, so its first log is read as it lands
-        // rather than on the next quiet pass. Its folder is made here so
-        // there is one to watch before anything is brought.
-        let roots: Vec<PathBuf> = std::iter::once(sessions.clone())
-            .chain(config.machines.iter().map(|machine| {
-                // Unmade, it's found by the passes as it appears, a little
-                // later than a watch would.
-                let _ = std::fs::create_dir_all(&machine.sessions);
-                machine.sessions.clone()
-            }))
-            .collect();
-        let Ok(fd) = inotify::init(CreateFlags::CLOEXEC) else {
-            return poll(&config, &wake);
-        };
-        let flags = WatchFlags::MODIFY
-            | WatchFlags::CREATE
-            | WatchFlags::MOVED_TO
-            | WatchFlags::CLOSE_WRITE;
-        let mut watched: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
-        let mut looked: Option<Instant> = None;
-        // A directory counts as watched only once inotify has it. The
-        // agents' patterns and other machines' logs are followed again at
-        // most once a pass, since pi's own logs change many times a minute.
-        let add = |watched: &mut std::collections::HashSet<PathBuf>,
-                   looked: &mut Option<Instant>| {
-            let mut paths: Vec<PathBuf> = roots
-                .iter()
-                .flat_map(|root| {
-                    std::iter::once(root.clone()).chain(
-                        std::fs::read_dir(root)
-                            .into_iter()
-                            .flatten()
-                            .flatten()
-                            .map(|entry| entry.path())
-                            .filter(|path| path.is_dir()),
-                    )
-                })
-                .collect();
-            if looked.is_none_or(|at| at.elapsed() >= BUSY) {
-                *looked = Some(Instant::now());
-                paths.extend(crate::ingest::followed_directories(&config));
-            }
-            for path in paths {
-                if !watched.contains(&path) && inotify::add_watch(&fd, &path, flags).is_ok() {
-                    watched.insert(path);
-                }
-            }
-        };
-        add(&mut watched, &mut looked);
-        // No sessions directory yet, as before pi's first run: polling
-        // notices it appear.
-        if !watched.contains(&sessions) {
-            return poll(&config, &wake);
+struct Watches {
+    fd: std::os::fd::OwnedFd,
+    watched: Mutex<std::collections::HashMap<i32, PathBuf>>,
+    /// Whether the watch still reads what it's told, so a watch fallen
+    /// back to polling takes no more folders nothing will hear.
+    heard: std::sync::atomic::AtomicBool,
+    /// Whether a watch the kernel refused has been said, so the journal
+    /// hears it once rather than each pass.
+    refusal_said: std::sync::atomic::AtomicBool,
+}
+
+#[cfg(target_os = "linux")]
+impl Watches {
+    fn new(fd: std::os::fd::OwnedFd) -> Watches {
+        Watches {
+            fd,
+            watched: Mutex::default(),
+            heard: std::sync::atomic::AtomicBool::new(true),
+            refusal_said: std::sync::atomic::AtomicBool::new(false),
         }
-        let mut buffer = [0u8; 8192];
-        loop {
-            match rustix::io::read(&fd, &mut buffer) {
-                Ok(_) => {
-                    add(&mut watched, &mut looked);
-                    if wake.send(Wake::Moved).is_err() {
-                        return;
-                    }
+    }
+
+    /// What each watch listens for.
+    fn flags() -> rustix::fs::inotify::WatchFlags {
+        use rustix::fs::inotify::WatchFlags;
+        WatchFlags::MODIFY | WatchFlags::CREATE | WatchFlags::MOVED_TO | WatchFlags::CLOSE_WRITE
+    }
+
+    /// Watches each of `paths` not yet watched, handing back those the
+    /// kernel refused, which no write there will wake. A folder counts as
+    /// watched only once inotify has it. The likeliest refusal is the
+    /// account's watches spent, which other programs share, so it's said
+    /// once; a folder gone since the pass found it isn't a refusal worth
+    /// saying.
+    fn follow(&self, paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+        use std::sync::atomic::Ordering;
+        // Asked under the lock, so a pass racing `give_up` either adds
+        // its watches before they're handed back or adds none.
+        let mut watched = self.held();
+        if !self.heard.load(Ordering::Relaxed) {
+            return Vec::new();
+        }
+        let known: std::collections::HashSet<PathBuf> = watched.values().cloned().collect();
+        let mut refused = Vec::new();
+        for path in paths.into_iter().filter(|path| !known.contains(path)) {
+            match rustix::fs::inotify::add_watch(&self.fd, &path, Watches::flags()) {
+                Ok(watch) => {
+                    watched.insert(watch, path);
                 }
-                Err(rustix::io::Errno::INTR) => {}
-                Err(_) => return poll(&config, &wake),
+                Err(error) => {
+                    if error != rustix::io::Errno::NOENT
+                        && !self.refusal_said.swap(true, Ordering::Relaxed)
+                    {
+                        eprintln!(
+                            "the watch can't follow {}: {error}; folders like it are walked \
+                             each pass instead",
+                            path.display()
+                        );
+                    }
+                    refused.push(path);
+                }
+            }
+        }
+        refused
+    }
+
+    /// Watches every folder followed afresh, after an overflow may have
+    /// dropped the word that one went. The kernel hands a folder still
+    /// watched its own number back, so nothing heard meanwhile is lost,
+    /// and one made again by its name gets a new number; one gone is let
+    /// go. The lock is held throughout, so no event is looked up halfway.
+    fn renew(&self) {
+        let mut watched = self.held();
+        let paths: Vec<PathBuf> = watched.drain().map(|(_, path)| path).collect();
+        for path in paths {
+            if let Ok(watch) = rustix::fs::inotify::add_watch(&self.fd, &path, Watches::flags()) {
+                watched.insert(watch, path);
+            }
+        }
+    }
+
+    /// Stops taking folders, as the watch falls back to polling, and
+    /// hands the kernel back the watches it held, which the account's
+    /// other programs draw on too.
+    fn give_up(&self) {
+        self.heard
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        for (watch, _) in self.held().drain() {
+            // A watch the kernel already dropped, as its folder went, is
+            // refused here, and there's nothing left to hand back.
+            let _ = rustix::fs::inotify::remove_watch(&self.fd, watch);
+        }
+    }
+
+    /// Whether `path` is watched.
+    fn follows(&self, path: &Path) -> bool {
+        self.held().values().any(|watched| watched == path)
+    }
+
+    /// The watches by number, whole though a thread panicked holding them.
+    fn held(&self) -> std::sync::MutexGuard<'_, std::collections::HashMap<i32, PathBuf>> {
+        self.watched
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// Where inotify can't be had there is nothing to share.
+#[cfg(not(target_os = "linux"))]
+struct Watches;
+
+#[cfg(not(target_os = "linux"))]
+impl Watches {
+    fn follow(&self, _paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+        Vec::new()
+    }
+}
+
+/// Tells the loop whenever pi's logs change, and in which folders:
+/// inotify on the sessions directory and each directory in it, adding one
+/// as it appears, and on the folders each pass follows through the
+/// `Watches` handed back, where an agent's log or another machine's is.
+#[cfg(target_os = "linux")]
+fn watch(config: Config, wake: Sender<Wake>) -> Option<Arc<Watches>> {
+    use rustix::fs::inotify::{self, CreateFlags};
+    // Each machine's logs are watched as this machine's are, a new project
+    // folder at once, so its first log is read as it lands rather than on
+    // the next quiet pass. Its folder is made here so there is one to
+    // watch before anything is brought, and this machine's too, as before
+    // pi's first run, rather than polling until the daemon is restarted.
+    // One that can't be made is said with why, and the daemon polls.
+    if let Err(error) = private_folder(&config.sessions) {
+        eprintln!(
+            "pi's sessions folder {} can't be made: {error}",
+            config.sessions.display()
+        );
+        std::thread::spawn(move || poll(&config, &wake));
+        return None;
+    }
+    let roots: Vec<PathBuf> = std::iter::once(config.sessions.clone())
+        .chain(config.machines.iter().map(|machine| {
+            // Unmade, it's found by the passes as it appears, a little
+            // later than a watch would.
+            let _ = private_folder(&machine.sessions);
+            machine.sessions.clone()
+        }))
+        .collect();
+    let watches = match inotify::init(CreateFlags::CLOEXEC) {
+        Ok(fd) => Some(Watches::new(fd)),
+        Err(error) => {
+            eprintln!("inotify can't be had: {error}");
+            None
+        }
+    };
+    if let Some(watches) = &watches {
+        watches.follow(projects(&roots));
+    }
+    // A sessions folder that couldn't be watched: polling notices its
+    // logs, and the passes are handed no watch to feed.
+    let Some(watches) = watches.filter(|watches| watches.follows(&config.sessions)) else {
+        std::thread::spawn(move || poll(&config, &wake));
+        return None;
+    };
+    let watches = Arc::new(watches);
+    let shared = Arc::clone(&watches);
+    std::thread::spawn(move || {
+        let mut buffer = [std::mem::MaybeUninit::<u8>::uninit(); 8192];
+        let mut events = inotify::Reader::new(&shared.fd, &mut buffer);
+        loop {
+            let Some(touched) = written_in(&mut events, &shared) else {
+                shared.give_up();
+                return poll(&config, &wake);
+            };
+            shared.follow(projects(&roots));
+            if wake.send(Wake::Touched(touched)).is_err() {
+                return;
             }
         }
     });
+    Some(watches)
+}
+
+/// Makes `path` and each folder missing above it readable by this account
+/// alone, as pi's own folder is kept, since a log can hold a token; one
+/// already there is left as it is.
+#[cfg(target_os = "linux")]
+fn private_folder(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+}
+
+/// The roots and each project folder in them, looked at again after each
+/// batch heard, so a new project's first log is read at once.
+#[cfg(target_os = "linux")]
+fn projects(roots: &[PathBuf]) -> Vec<PathBuf> {
+    roots
+        .iter()
+        .flat_map(|root| {
+            std::iter::once(root.clone()).chain(
+                std::fs::read_dir(root)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir()),
+            )
+        })
+        .collect()
+}
+
+/// What the watch has heard since it last asked: each watched folder
+/// written in, `/` where it may have missed some. A watch the kernel
+/// dropped, as its folder went, is forgotten, so the folder made again by
+/// that name is watched afresh once a pass finds it, and an overflow
+/// renews them all. None once it can't read.
+#[cfg(target_os = "linux")]
+fn written_in<Fd: std::os::fd::AsFd>(
+    events: &mut rustix::fs::inotify::Reader<'_, Fd>,
+    watches: &Watches,
+) -> Option<Vec<PathBuf>> {
+    use rustix::fs::inotify::ReadFlags;
+    let mut touched = Vec::new();
+    loop {
+        match events.next() {
+            Ok(event) if event.events().contains(ReadFlags::QUEUE_OVERFLOW) => {
+                eprintln!("the watch missed what was written; walking every folder again");
+                watches.renew();
+                touched.push(PathBuf::from("/"));
+            }
+            Ok(event) if event.events().contains(ReadFlags::IGNORED) => {
+                touched.extend(watches.held().remove(&event.wd()));
+            }
+            Ok(event) => touched.extend(watches.held().get(&event.wd()).cloned()),
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(_) => return None,
+        }
+        if events.is_buffer_empty() {
+            break;
+        }
+    }
+    touched.sort();
+    touched.dedup();
+    Some(touched)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn watch(config: Config, wake: Sender<Wake>) {
+fn watch(config: Config, wake: Sender<Wake>) -> Option<Arc<Watches>> {
     std::thread::spawn(move || poll(&config, &wake));
+    None
 }
 
-/// Where inotify can't be had: the logs' newest change, every five seconds.
+/// Where inotify can't be had: the logs' newest change, every five
+/// seconds. Each look is a whole walk, as every pass was before settled
+/// folders, so it's said once in the journal.
 fn poll(config: &Config, wake: &Sender<Wake>) {
+    eprintln!("no watch on pi's logs; walking every folder each five seconds instead");
     let newest = || {
         crate::ingest::found(config)
             .iter()
@@ -363,12 +544,40 @@ pub fn harness(history: &History, config: &Config) {
 
 /// Reads what pi's logs added, all of it, a slice at a time.
 pub fn catch_up(history: &History, config: &Config) -> Result<(), String> {
+    catch_up_kept(history, config, &mut Walks::default()).map(|_| ())
+}
+
+/// Reads what pi's logs added, as `catch_up`, going into no folder
+/// `walks` has settled, then settling what's gone quiet. Answers the
+/// logs the last walk found.
+fn catch_up_kept(
+    history: &History,
+    config: &Config,
+    walks: &mut Walks,
+) -> Result<Vec<crate::ingest::Found>, String> {
     loop {
-        let logs = crate::ingest::found(config);
+        let logs = crate::ingest::found_kept(config, walks);
         let pass = crate::ingest::scan(history, &logs, crate::ingest::Reading::of(config))?;
         if !pass.behind {
-            return Ok(());
+            walks.settle(history, std::time::SystemTime::now());
+            return Ok(logs);
         }
+    }
+}
+
+/// Reads what pi's logs added and tells the watch where they are. A
+/// folder the watch can't follow leaves its run unsettled, walked each
+/// pass as before, since nothing would say a log was made there.
+fn read_logs(history: &History, config: &Config, walks: &mut Walks, watches: Option<&Watches>) {
+    match catch_up_kept(history, config, walks) {
+        Ok(logs) => {
+            if let Some(watches) = watches {
+                for folder in watches.follow(crate::ingest::followed_directories(config, &logs)) {
+                    walks.touched(&folder);
+                }
+            }
+        }
+        Err(error) => eprintln!("reading pi's logs: {error}"),
     }
 }
 
@@ -706,14 +915,13 @@ pub fn run(config: &Config) -> Result<(), String> {
     let hub = hub(config)?;
     hub.doing(doer(config, wake.clone()));
     listen(&config.socket(), wake.clone(), Arc::clone(&hub))?;
-    watch(config.clone(), wake.clone());
+    let watches = watch(config.clone(), wake.clone());
     tick(wake.clone());
     harness(&history, config);
     // A log that can't be read is said and passed over, never a reason to
     // stop: the loop tries again each pass.
-    if let Err(error) = catch_up(&history, config) {
-        eprintln!("reading pi's logs: {error}");
-    }
+    let mut walks = Walks::default();
+    read_logs(&history, config, &mut walks, watches.as_deref());
     let mut writer = Writer::new();
     let mut desk = Buses::default();
     let mut kept = crate::picture::Kept::default();
@@ -737,15 +945,7 @@ pub fn run(config: &Config) -> Result<(), String> {
     loop {
         let now = time::now();
         pace = repace(&history, &mut feeds, pace, now);
-        for feed in &mut feeds {
-            if feed.child.is_none() && Instant::now() >= feed.next {
-                // Without it, a feed carries on from where it says it read.
-                let kept = feed::kept_line(&history, &feed.config.name)
-                    .map_err(|error| eprintln!("feed {}: {error}", feed.config.name))
-                    .ok();
-                feed.start(&wake, pace, kept);
-            }
-        }
+        start_due(&history, &mut feeds, &wake, pace);
         if last_harness.elapsed() >= HARNESS {
             harness(&history, config);
             last_harness = Instant::now();
@@ -756,9 +956,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             || last_pass.elapsed() >= IDLE
             || (!refresh.waiting.is_empty() && answered);
         if due {
-            if let Err(error) = catch_up(&history, config) {
-                eprintln!("reading pi's logs: {error}");
-            }
+            read_logs(&history, config, &mut walks, watches.as_deref());
             match pass(
                 &history,
                 config,
@@ -798,12 +996,32 @@ pub fn run(config: &Config) -> Result<(), String> {
         let stored_at = time::now();
         let began = history.begin().is_ok();
         for wake in arrived {
-            if take(wake, &history, &mut feeds, &mut refresh, stored_at) {
+            if take(
+                wake,
+                &history,
+                &mut feeds,
+                &mut refresh,
+                &mut walks,
+                stored_at,
+            ) {
                 dirty = true;
             }
         }
         if began && let Err(error) = history.commit() {
             eprintln!("keeping what the feeds said: {error}");
+        }
+    }
+}
+
+/// Starts each feed that isn't running and is due to.
+fn start_due(history: &History, feeds: &mut [Feed], wake: &Sender<Wake>, pace: Pace) {
+    for feed in feeds {
+        if feed.child.is_none() && Instant::now() >= feed.next {
+            // Without it, a feed carries on from where it says it read.
+            let kept = feed::kept_line(history, &feed.config.name)
+                .map_err(|error| eprintln!("feed {}: {error}", feed.config.name))
+                .ok();
+            feed.start(wake, pace, kept);
         }
     }
 }
@@ -906,6 +1124,7 @@ fn take(
     history: &History,
     feeds: &mut [Feed],
     refresh: &mut Refresh,
+    walks: &mut Walks,
     stored_at: f64,
 ) -> bool {
     match wake {
@@ -934,7 +1153,17 @@ fn take(
             }
             false
         }
-        Wake::Moved => true,
+        // Polling can't say where, and walks every folder itself anyway.
+        Wake::Moved => {
+            walks.touched(Path::new("/"));
+            true
+        }
+        Wake::Touched(folders) => {
+            for folder in &folders {
+                walks.touched(folder);
+            }
+            true
+        }
         Wake::Asked(what, reply) => {
             match what.as_str() {
                 "refresh" => {
@@ -965,6 +1194,287 @@ fn take(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The watch says which folder it heard written in, and forgets a
+    // folder gone, so one made again by that name is watched afresh.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_watch_says_where_it_heard_and_forgets_a_folder_gone() {
+        use rustix::fs::inotify::{self, CreateFlags};
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("session");
+        std::fs::create_dir(&folder).unwrap();
+        let watches =
+            Watches::new(inotify::init(CreateFlags::CLOEXEC | CreateFlags::NONBLOCK).unwrap());
+        watches.follow([folder.clone()]);
+        assert!(watches.follows(&folder), "the folder wasn't watched");
+        std::fs::write(folder.join("2026_a.jsonl"), "{}\n").unwrap();
+        let mut buffer = [std::mem::MaybeUninit::<u8>::uninit(); 8192];
+        let mut events = inotify::Reader::new(&watches.fd, &mut buffer);
+        assert_eq!(
+            written_in(&mut events, &watches),
+            Some(vec![folder.clone()])
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
+        // The kernel's word that the watch went comes once the folder is
+        // freed, so it's waited for a little.
+        for _ in 0..100 {
+            if !watches.follows(&folder) {
+                break;
+            }
+            let _ = written_in(&mut events, &watches);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!watches.follows(&folder), "a folder gone is still watched");
+        std::fs::create_dir(&folder).unwrap();
+        watches.follow([folder.clone()]);
+        assert!(
+            watches.follows(&folder),
+            "a folder made again isn't watched"
+        );
+        std::fs::write(folder.join("2026_b.jsonl"), "{}\n").unwrap();
+        assert_eq!(
+            heard_all(&mut events, &watches),
+            [folder],
+            "the new watch wasn't heard"
+        );
+    }
+
+    /// Everything the watch has heard until there's nothing left to read.
+    #[cfg(target_os = "linux")]
+    fn heard_all<Fd: std::os::fd::AsFd>(
+        events: &mut rustix::fs::inotify::Reader<'_, Fd>,
+        watches: &Watches,
+    ) -> Vec<PathBuf> {
+        let mut all = Vec::new();
+        while let Some(touched) = written_in(events, watches) {
+            all.extend(touched);
+        }
+        all.sort();
+        all.dedup();
+        all
+    }
+
+    // An overflow says it may have missed anything, and the watches it
+    // renews still hear.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_overflow_walks_every_folder_and_keeps_the_watches() {
+        use rustix::fs::inotify::{self, CreateFlags};
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("session");
+        std::fs::create_dir(&folder).unwrap();
+        let watches =
+            Watches::new(inotify::init(CreateFlags::CLOEXEC | CreateFlags::NONBLOCK).unwrap());
+        watches.follow([folder.clone()]);
+        let queued: usize = std::fs::read_to_string("/proc/sys/fs/inotify/max_queued_events")
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // Each file made is two events, its making and its closing.
+        for number in 0..=queued / 2 {
+            std::fs::File::create(folder.join(number.to_string())).unwrap();
+        }
+        let mut buffer = [std::mem::MaybeUninit::<u8>::uninit(); 8192];
+        let mut events = inotify::Reader::new(&watches.fd, &mut buffer);
+        let heard = heard_all(&mut events, &watches);
+        assert!(
+            heard.contains(&PathBuf::from("/")),
+            "no overflow was said: {heard:?}"
+        );
+        assert!(watches.follows(&folder), "the overflow lost the watch");
+        std::fs::write(folder.join("late"), "").unwrap();
+        assert_eq!(
+            heard_all(&mut events, &watches),
+            [folder],
+            "the renewed watch wasn't heard"
+        );
+    }
+
+    // A folder gone and made again by its name while its word went
+    // unread is watched again once the watches are renewed.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn renewing_watches_a_folder_made_again() {
+        use rustix::fs::inotify::{self, CreateFlags};
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("session");
+        std::fs::create_dir(&folder).unwrap();
+        let watches =
+            Watches::new(inotify::init(CreateFlags::CLOEXEC | CreateFlags::NONBLOCK).unwrap());
+        watches.follow([folder.clone()]);
+        std::fs::remove_dir(&folder).unwrap();
+        std::fs::create_dir(&folder).unwrap();
+        watches.renew();
+        let mut buffer = [std::mem::MaybeUninit::<u8>::uninit(); 8192];
+        let mut events = inotify::Reader::new(&watches.fd, &mut buffer);
+        // The old watch's word that it went is read first, so what's
+        // heard after can only come through the renewed one.
+        heard_all(&mut events, &watches);
+        std::fs::write(folder.join("2026_a.jsonl"), "{}\n").unwrap();
+        assert_eq!(
+            heard_all(&mut events, &watches),
+            std::slice::from_ref(&folder),
+            "the folder made again wasn't heard"
+        );
+        assert!(
+            watches.follows(&folder),
+            "the folder made again isn't watched"
+        );
+    }
+
+    // A pass hands the watch the folders it found, with no event needed.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_pass_hands_the_watch_its_folders() {
+        use rustix::fs::inotify::{self, CreateFlags};
+        let dir = tempfile::tempdir().unwrap();
+        let session = dir.path().join("runs/r1/reviewers/a/session");
+        std::fs::create_dir_all(&session).unwrap();
+        let header =
+            r#"{"type":"session","id":"s1","timestamp":"2026-10-14T10:00:00Z","cwd":"/x"}"#;
+        std::fs::write(session.join("2026_a.jsonl"), format!("{header}\n")).unwrap();
+        let root = dir.path().display();
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": format!("{root}/none"), "runs": "/r", "registry": "/g",
+            "quests": "/q", "state": "/t",
+            "agents": [{"pattern": format!("{root}/runs/*/reviewers/*/session/*.jsonl"),
+                "kind": "review"}],
+        }))
+        .unwrap();
+        let watches =
+            Watches::new(inotify::init(CreateFlags::CLOEXEC | CreateFlags::NONBLOCK).unwrap());
+        read_logs(
+            &History::memory(),
+            &config,
+            &mut Walks::default(),
+            Some(&watches),
+        );
+        assert!(watches.follows(&session), "the pass's folder isn't watched");
+        let held: Vec<i32> = watches.held().keys().copied().collect();
+        watches.give_up();
+        for watch in held {
+            assert!(
+                inotify::remove_watch(&watches.fd, watch).is_err(),
+                "a watch given up wasn't handed back"
+            );
+        }
+        watches.follow([dir.path().to_path_buf()]);
+        assert!(
+            !watches.follows(dir.path()),
+            "a watch given up took a folder"
+        );
+    }
+
+    // A poll's change can't say where, so it walks every settled folder
+    // again; a heard one walks only the folder it was heard in.
+    #[test]
+    fn a_poll_s_change_unsettles_every_folder_and_a_heard_one_its_own() {
+        let history = History::memory();
+        let mut refresh = Refresh {
+            waiting: Vec::new(),
+            owed: Vec::new(),
+            until: Instant::now(),
+        };
+        let pattern = "/r/*/s/*.jsonl";
+        let mut walks = Walks::settled_at(pattern, &["/r/a", "/r/b"]);
+        let heard = Wake::Touched(vec![PathBuf::from("/r/b/s")]);
+        assert!(
+            take(heard, &history, &mut [], &mut refresh, &mut walks, 0.0),
+            "a heard write didn't mark the logs"
+        );
+        assert_eq!(
+            walks.settled_tops(),
+            [PathBuf::from("/r/a")],
+            "a heard write didn't unsettle its own run alone"
+        );
+        let overflow = Wake::Touched(vec![PathBuf::from("/")]);
+        take(overflow, &history, &mut [], &mut refresh, &mut walks, 0.0);
+        assert!(
+            walks.settled_tops().is_empty(),
+            "an overflow left a run settled"
+        );
+        let mut walks = Walks::settled_at(pattern, &["/r/a", "/r/b"]);
+        assert!(
+            take(
+                Wake::Moved,
+                &history,
+                &mut [],
+                &mut refresh,
+                &mut walks,
+                0.0
+            ),
+            "a poll's change didn't mark the logs"
+        );
+        assert!(
+            walks.settled_tops().is_empty(),
+            "a poll's change left a run settled"
+        );
+    }
+
+    // A folder the kernel won't watch is handed back, for the pass to
+    // leave its run unsettled; one it takes isn't.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_folder_the_kernel_refuses_is_handed_back() {
+        use rustix::fs::inotify::{self, CreateFlags};
+        let dir = tempfile::tempdir().unwrap();
+        let watches =
+            Watches::new(inotify::init(CreateFlags::CLOEXEC | CreateFlags::NONBLOCK).unwrap());
+        // A name past the kernel's 255 bytes is refused whoever runs it.
+        let refused = dir.path().join("n".repeat(300));
+        assert_eq!(
+            watches.follow([refused.clone()]),
+            [refused],
+            "a refusal wasn't handed back"
+        );
+        assert!(
+            watches.follow([dir.path().to_path_buf()]).is_empty(),
+            "a watch taken was handed back"
+        );
+    }
+
+    // A sessions folder not yet made is made and watched; one that can't
+    // be made leaves the daemon polling, with no watch for its passes to
+    // feed.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_sessions_folder_is_made_or_polled_with_no_watch() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let config = |sessions: PathBuf| -> Config {
+            serde_json::from_value(serde_json::json!({
+                "sessions": sessions, "runs": "/r", "registry": "/g",
+                "quests": "/q", "state": "/t",
+            }))
+            .unwrap()
+        };
+        // A folder can't be made under a file.
+        let file = dir.path().join("file");
+        std::fs::write(&file, "").unwrap();
+        let (wake, _heard) = mpsc::channel();
+        assert!(
+            watch(config(file.join("sessions")), wake).is_none(),
+            "a watch nobody reads was handed back"
+        );
+        let sessions = dir.path().join("agent/sessions");
+        let (wake, _heard) = mpsc::channel();
+        assert!(
+            watch(config(sessions.clone()), wake).is_some(),
+            "a sessions folder not yet made wasn't made and watched"
+        );
+        // A log can hold a token, so pi's folders are this account's alone.
+        for folder in [&sessions, &dir.path().join("agent")] {
+            let mode = std::fs::metadata(folder).unwrap().permissions().mode() & 0o777;
+            assert_eq!(
+                mode,
+                0o700,
+                "{} was made readable by others",
+                folder.display()
+            );
+        }
+    }
 
     fn found(key: &str, detector: &str) -> Finding {
         Finding {

@@ -27,6 +27,12 @@ use std::time::{Duration, Instant, SystemTime};
 /// connection's now.
 const SILENT_MS: u64 = 10_000;
 
+/// How old, in ms, the last second stepped on may be for what its link
+/// carried down to count now (`Follow::carried`): a second is drained once
+/// the next begins and stepped on within a second after, so a fresh one is
+/// two to three seconds old, and one older says nothing of the line now.
+pub const CARRIED_MS: u64 = 5_000;
+
 /// What the controller last heard of its link's second, and what it made
 /// of it: what a trace needs to say why a rate held where it did.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -64,9 +70,9 @@ pub struct Heard {
     /// second's limit and delay are to be judged as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trial: Option<Tuning>,
-    /// The ceiling the upload is held under, a trial's or its network's,
-    /// in kbit/s, while one holds it: the rate a trace sets apart as the
-    /// ceiling's, not the controller's.
+    /// The ceiling the upload is held under, a trial's, its network's or
+    /// its house's, in kbit/s, while one holds it: the rate a trace sets
+    /// apart as the ceiling's, not the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<f64>,
     /// What each of the VPN's tins sent up over the last second, in
@@ -75,7 +81,7 @@ pub struct Heard {
     /// controller heard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up_tins_kbit: Option<crate::qdisc::Tins>,
-    /// Why the upload holds where it does, in one sentence (src/why.rs).
+    /// Why the upload holds where it does, in a sentence or two (src/why.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
 }
@@ -113,6 +119,18 @@ fn ended(tuning: Tuning, age: Result<Duration, std::time::SystemTimeError>) -> T
 /// network to remember.
 const UNKNOWN: &str = "unknown";
 
+/// What the last second said of a link's download (`Follow::carried`): the
+/// link and the stay's network it was read on, what it carried in kbit/s,
+/// and whether the controller's hold of it said the line was full then
+/// (`oneway::Way::judged_full`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Carried<'a> {
+    pub link: &'a str,
+    pub network: &'a str,
+    pub kbit: f64,
+    pub cut: bool,
+}
+
 /// What the recorder's lines have said: the link it records, and the
 /// controller stepped on each second they finished.
 pub struct Follow {
@@ -130,6 +148,8 @@ pub struct Follow {
     /// seconds since 1970, for the trace (src/trace.rs).
     last: Option<crate::replay::Second>,
     last_at: Option<u64>,
+    /// The link that second was read on, none since a new stay began.
+    last_link: Option<String>,
     /// The network of the stay.
     network: String,
     /// When the shaper started, in ms since 1970: what was recorded before
@@ -141,6 +161,10 @@ pub struct Follow {
     anchors: Anchors,
     /// Each network's ceiling, which a stay on it is held under.
     ceilings: Ceilings,
+    /// What each network's house leaves this machine now, which a stay on
+    /// it is held under as under a trial's ceiling: it says nothing of the
+    /// line, only of what another machine on it sends (src/house.rs).
+    houses: Ceilings,
 }
 
 impl Follow {
@@ -155,11 +179,13 @@ impl Follow {
             vpn_ms: None,
             last: None,
             last_at: None,
+            last_link: None,
             network: UNKNOWN.into(),
             from_ms: 0,
             trial: None,
             anchors: Anchors::new(),
             ceilings: Ceilings::new(),
+            houses: Ceilings::new(),
         }
     }
 
@@ -171,17 +197,27 @@ impl Follow {
         self.controller.up.tune(self.tuning());
     }
 
-    /// How the stay's upload is tuned: by the trial, under the lower of its
-    /// ceiling and the network's, so a trial may try under a network's
-    /// ceiling but never past it.
+    /// Holds each network's upload under what its house leaves, from now.
+    pub fn house(&mut self, houses: Ceilings) {
+        self.houses = houses;
+        self.controller.up.tune(self.tuning());
+    }
+
+    /// How the stay's upload is tuned: by the trial, under the lowest of
+    /// its ceiling, the network's and the house's, so a trial may try
+    /// under a network's ceiling but never past it. The controller holds
+    /// its own rate under the house's as under a trial's, the steady one
+    /// main gives it (`house::Steady`, which says what that trades), and
+    /// climbs back gently once the house lets go.
     fn tuning(&self) -> Tuning {
         let tuning = self.trial.unwrap_or_default();
-        let network = self.ceilings.get(&self.network).copied();
+        let lowest = [
+            tuning.most_kbit,
+            self.ceilings.get(&self.network).copied(),
+            self.houses.get(&self.network).copied(),
+        ];
         Tuning {
-            most_kbit: match (tuning.most_kbit, network) {
-                (Some(trial), Some(network)) => Some(trial.min(network)),
-                (trial, network) => trial.or(network),
-            },
+            most_kbit: lowest.into_iter().flatten().reduce(f64::min),
             ..tuning
         }
     }
@@ -229,6 +265,7 @@ impl Follow {
                 // hold of the line the network's ceiling leaves, and whose
                 // plateau reads the trial's hold.
                 self.network.clone_from(network);
+                self.last_link = None;
                 self.controller.ceil(self.ceilings.get(network).copied());
                 self.controller.up.tune(self.tuning());
                 self.controller.anchor(self.anchors.get(network).copied());
@@ -268,7 +305,32 @@ impl Follow {
                 .began_s()
                 .map(|began| began + crate::rate::whole(second.t_s));
             self.last = Some(second);
+            self.last_link.clone_from(&self.link);
         }
+    }
+
+    /// The link the last second stepped on was read on, and what it
+    /// carried down then in kbit/s, while that second began within
+    /// `CARRIED_MS` of a moment in ms since 1970 and in this stay: a
+    /// recorder gone silent, or a move to another link or network, says
+    /// nothing of what the link carries now (download hold round 1's F1).
+    /// A second stamped more than a second after the moment, more than its
+    /// stamp's rounding to a whole second, is of a clock since stepped
+    /// back, so it says nothing of now either (download hold round 2's
+    /// F25).
+    pub fn carried(&self, at_ms: u64) -> Option<Carried<'_>> {
+        let link = self.last_link.as_deref()?;
+        let began_ms = self.last_at?.saturating_mul(1_000);
+        if began_ms.saturating_add(CARRIED_MS) < at_ms || began_ms > at_ms.saturating_add(1_000) {
+            return None;
+        }
+        let last = self.last.as_ref()?;
+        Some(Carried {
+            link,
+            network: &self.network,
+            kbit: last.down_kbit,
+            cut: self.controller.down.judged_full(last.t_s, last.down_kbit),
+        })
     }
 
     /// The link the controller holds, and what it last heard of it and
@@ -343,7 +405,7 @@ impl Follow {
         } else {
             self.rates
         };
-        // A ceiling, a trial's or the network's, still holds what nothing
+        // A ceiling, a trial's, the network's or its house's, still holds what nothing
         // else does: a recorder gone silent, or a stay not yet stepped on.
         let most = self.tuning().most_kbit.map(crate::rate::whole);
         let up = rates
@@ -403,9 +465,20 @@ impl Live {
         self.follow.ceil(ceilings);
     }
 
+    /// Holds each network's upload under what its house leaves, from now.
+    pub fn house(&mut self, houses: Ceilings) {
+        self.follow.house(houses);
+    }
+
     /// The link the controller holds, and what it last heard of it.
     pub fn heard(&self) -> Option<(&str, Heard)> {
         self.follow.heard()
+    }
+
+    /// The link the recorder follows and what it carried down in its last
+    /// second, while that second is fresh at `now` (`Follow::carried`).
+    pub fn carried(&self, now: SystemTime) -> Option<Carried<'_>> {
+        self.follow.carried(ms(now))
     }
 
     /// What the controller's judgement says of the rates now (`Follow::why`).
@@ -417,7 +490,9 @@ impl Live {
     /// stepped on, once it has stepped on one.
     pub fn traced(&self) -> Option<crate::trace::Line> {
         let (link, heard) = self.follow.heard()?;
-        Some(crate::trace::Line::of(self.follow.last_at?, link, &heard))
+        let second = crate::trace::Line::of(self.follow.last_at?, link, &heard);
+        // The shares are main's to say, as it put them on the link's queues.
+        Some(second.because(self.follow.controller.why_kind()))
     }
 
     /// Probes through the VPN riding the link, or none, and takes what it
@@ -540,6 +615,116 @@ mod tests {
     }
 
     #[test]
+    fn a_traced_second_says_the_controllers_reason_and_leaves_the_shares_to_main() {
+        let folder = std::env::temp_dir().join(format!("shaper-traced-{}", std::process::id()));
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started);
+        assert!(
+            live.traced().is_none(),
+            "a second was traced before the controller stepped on one"
+        );
+        live.follow = followed(&queued());
+        let second = live.traced().expect("a second once the controller stepped");
+        assert_eq!(
+            second.link, "wlan0",
+            "the second traced isn't the recorder's link's"
+        );
+        // The reason marks a line whose link_wait_ms leaves agents' lane
+        // out (src/trace.rs), so every line this build writes carries one.
+        // It's named here, not read from the controller, so a trace that
+        // took another reason, or none, fails (traces round 3's F4). The
+        // samples hear only the download, so the upload is unmeasured.
+        assert_eq!(
+            second.why.as_deref(),
+            Some(live.follow.controller.why_kind()),
+            "the traced reason isn't the controller's"
+        );
+        assert_eq!(
+            second.why.as_deref(),
+            Some("unmeasured"),
+            "an upload nothing was heard of traced another reason"
+        );
+        assert_eq!(
+            (second.vpn_share, second.agents_share),
+            (None, None),
+            "the shares were said before main put them on the link's queues"
+        );
+    }
+
+    #[test]
+    fn what_a_link_carried_counts_only_while_its_second_is_fresh_and_of_this_stay() {
+        let mut follow = followed(&queued());
+        let began = follow
+            .last_at
+            .expect("a second stepped on")
+            .saturating_mul(1_000);
+        let carried = follow
+            .carried(began)
+            .expect("a fresh second carried nothing");
+        assert_eq!(carried.link, "wlan0", "the second carried isn't its link's");
+        assert_eq!(
+            carried.network, "home",
+            "the second carried isn't its stay's"
+        );
+        assert!(
+            carried.kbit > 100_000.0,
+            "a 200 Mbit/s download carried {} kbit/s",
+            carried.kbit
+        );
+        // Its queue stood, so the controller cut under what it carries.
+        assert!(carried.cut, "a download filling its cut wasn't judged full");
+        assert!(
+            follow.carried(began + CARRIED_MS).is_some(),
+            "a second as old as allowed carried nothing"
+        );
+        assert!(
+            follow.carried(began + CARRIED_MS + 1).is_none(),
+            "a stale second was carried"
+        );
+        assert!(
+            follow.carried(began - 1_000).is_some(),
+            "a second a whole second ahead, as its stamp rounds, carried nothing"
+        );
+        assert!(
+            follow.carried(began - 1_001).is_none(),
+            "a second from after a clock stepped back was carried"
+        );
+        follow.take(&parse(&pool(NOV3 + 6_100, Some("elsewhere"))).expect("a sample"));
+        assert!(
+            follow.carried(began).is_none(),
+            "a second from before a new stay was carried in it"
+        );
+    }
+
+    // A download gone quiet under its cut, the cut still held, isn't said
+    // full once the cut is a few seconds old: the seam the room reads, so
+    // going back to "the controller holds" fails here (shaper holds round
+    // 3's F8).
+    #[test]
+    fn a_cut_held_over_a_download_gone_quiet_doesn_t_say_the_line_is_full() {
+        let mut lines = queued();
+        let filled = 2_500_000 * 60;
+        for i in 60..140_u64 {
+            lines.push(stamp(NOV3 + 100 * (i + 1), 10.0, filled + 2_500 * (i - 59)));
+        }
+        let follow = followed(&lines);
+        let now = follow
+            .last_at
+            .expect("a second stepped on")
+            .saturating_mul(1_000);
+        let carried = follow.carried(now).expect("a fresh second carried nothing");
+        assert!(
+            follow.controller.down.limit().is_some(),
+            "the cut wasn't held eight quiet seconds on"
+        );
+        assert!(
+            !carried.cut,
+            "a download gone quiet under a cut eight seconds old was judged full: {} kbit/s",
+            carried.kbit
+        );
+    }
+
+    #[test]
     fn a_queue_standing_on_the_recorders_link_is_cut_live() {
         let follow = followed(&queued());
         let (link, rates) = follow.now(NOV3 + 6_000).expect("a link");
@@ -646,6 +831,38 @@ mod tests {
             follow.controller.up.tuning(),
             Tuning::default(),
             "nor any after"
+        );
+    }
+
+    // What the house leaves holds the controller's own rate on that network
+    // alone, under its ceiling, and is heard as the ceiling, so a trace sets
+    // those seconds apart; once the house lets go, the network's holds.
+    #[test]
+    fn the_house_s_hold_reaches_the_controller_as_a_ceiling() {
+        let mut follow = waiting();
+        follow.ceil(Ceilings::from([("home".to_string(), 9_500.0)]));
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        follow.house(Ceilings::from([("home".to_string(), 5_000.0)]));
+        assert_eq!(follow.controller.up.limit(), Some(5_000), "the house's");
+        let ceiling = |follow: &Follow| follow.heard().and_then(|(_, heard)| heard.ceiling);
+        assert_eq!(ceiling(&follow), Some(5_000.0), "heard as the ceiling");
+        follow.house(Ceilings::from([("home".to_string(), 12_000.0)]));
+        assert_eq!(ceiling(&follow), Some(9_500.0), "the lower, home's");
+        follow.house(Ceilings::from([("hotel".to_string(), 5_000.0)]));
+        assert_eq!(ceiling(&follow), Some(9_500.0), "another network's house");
+        follow.house(Ceilings::new());
+        assert_eq!(ceiling(&follow), Some(9_500.0), "a house let go");
+        assert_eq!(
+            follow.controller.up.tuning().most_kbit,
+            Some(9_500.0),
+            "the controller held under home's again"
+        );
+        assert_eq!(
+            follow.controller.up.limit(),
+            Some(5_000),
+            "and left where the house held it, not jumped to the ceiling"
         );
     }
 

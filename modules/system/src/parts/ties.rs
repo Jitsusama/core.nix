@@ -29,7 +29,19 @@ pub fn ties(
     repos: Option<&Value>,
 ) -> Value {
     let name = said.get("name").and_then(Value::as_str).unwrap_or("");
+    // Whether the node reaches it, so a view can set one out of reach
+    // apart rather than read its words, and when it was last heard, said
+    // only then: a machine in reach is measured every reading, and saying
+    // that would tell every watch of it again each time.
+    let reached = said.get("state").and_then(Value::as_str) != Some("unreachable");
+    let heard = if reached {
+        Value::Null
+    } else {
+        said.get("measured_at").cloned().unwrap_or(Value::Null)
+    };
     json!({
+        "reached": reached,
+        "heard_at": heard,
         "cells": sessions.map(cells),
         "network": net.map(|net| places(name, net)),
         "code": repos.and_then(|repos| code(name, repos)),
@@ -334,6 +346,40 @@ mod tests {
             bare["figures"]["disk"],
             Value::Null,
             "what the node didn't say is said as unknown"
+        );
+    }
+
+    #[test]
+    fn a_machine_out_of_reach_says_so_and_when_it_was_last_heard() {
+        let mut here = laptop();
+        here["measured_at"] = json!("2026-11-23T22:45:09Z");
+        let ties = ties(&here, None, None, None);
+        assert_eq!(ties["reached"], json!(true));
+        assert_eq!(
+            ties["heard_at"],
+            Value::Null,
+            "one in reach is measured every reading, so when isn't said"
+        );
+        let away = super::ties(
+            &json!({"name": "spare", "state": "unreachable",
+                    "measured_at": "2026-11-23T19:02:00Z"}),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(away["reached"], json!(false));
+        assert_eq!(away["heard_at"], json!("2026-11-23T19:02:00Z"));
+        let never = super::ties(
+            &json!({"name": "spare", "state": "unreachable"}),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(never["reached"], json!(false));
+        assert_eq!(
+            never["heard_at"],
+            Value::Null,
+            "one never heard has no time to say"
         );
     }
 

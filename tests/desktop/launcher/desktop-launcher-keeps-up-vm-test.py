@@ -12,8 +12,8 @@ are said rather than held. Why a source's rows are wanted is proven in Qt's own 
 modules/quickshell/tests/pacing.qml. First, with the launcher shut, Joel's 113 sessions moving
 their steps and turning between working and listening cost the shell no sorting until it opens;
 which changes those are is proven in modules/quickshell/tests/pi-source.qml.
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
 """
 
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 # Joel's scales.
 JOELS_SCALES = ("2", "1.5")
 # Where the stand-in keyboard is told what to press, and says when it did
-# (desktop/stand-ins/keyboard.py).
+# (tests/desktop/stand-ins/keyboard.py).
 KEYBOARD = "/run/keyboard"
 SAID = "/run/keyboard.log"
 # An arrow held down, as niri repeats it: 30 a second.

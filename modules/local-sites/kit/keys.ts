@@ -8,7 +8,8 @@
 // which head.css reads: a phone has no keys, so the line saying how to move
 // waits there until something shows a keyboard is at hand. A phone's own
 // keyboard types only into a field, and Android's says no key at all
-// ("Unidentified"), so neither marks it.
+// ("Unidentified"), so neither marks it, and nor do the buttons on a
+// phone's side or a remote's (the volume, back).
 
 /**
  * What a page does for a key, by its `KeyboardEvent.key`. Returning `false`
@@ -62,12 +63,30 @@ function typing(target: Element): boolean {
   return target.closest(TYPED) !== null;
 }
 
-/** Keys a phone's own keyboard says while it composes, which show no keyboard at hand. */
-const COMPOSED: ReadonlySet<string> = new Set(["Unidentified", "Process", "Dead"]);
+/**
+ * Keys that show no keyboard at hand: what a phone's own keyboard says
+ * while it composes, and the buttons on a phone's side or a remote. A real
+ * keyboard's dead accent key isn't one: it shows a keyboard as much as any
+ * other key, so it marks the page on its own press.
+ */
+const KEYLESS: ReadonlySet<string> = new Set([
+  "Unidentified",
+  "Process",
+  "AudioVolumeUp",
+  "AudioVolumeDown",
+  "AudioVolumeMute",
+  "GoBack",
+  "BrowserBack",
+  "BrowserForward",
+  "MediaPlayPause",
+  "MediaTrackNext",
+  "MediaTrackPrevious",
+  "Power",
+]);
 
 /** Whether `key`, pressed where `typed` says, shows a keyboard is at hand. */
 function showsKeys(key: string, typed: boolean): boolean {
-  return !(typed || COMPOSED.has(key));
+  return !(typed || KEYLESS.has(key));
 }
 
 /** The element `event` was pressed at, or the page's body when it names none. */
@@ -75,21 +94,28 @@ function pressedAt(event: KeyboardEvent): Element {
   return event.target instanceof Element ? event.target : document.body;
 }
 
-/** Marks the page's root data-keyed when `event` shows a keyboard is at hand. */
+/**
+ * Marks the page's root data-keyed when `event` shows a keyboard is at
+ * hand, once: a held j repeats thirty times a second, and each write would
+ * wake whatever watches the root.
+ */
 function markKeyed(event: KeyboardEvent): void {
-  if (showsKeys(event.key, typing(pressedAt(event)))) {
-    document.documentElement.dataset["keyed"] = "";
+  const root = document.documentElement;
+  if (!("keyed" in root.dataset) && showsKeys(event.key, typing(pressedAt(event)))) {
+    root.dataset["keyed"] = "";
   }
 }
 
 /**
  * Marks the page keyed at its first key, for a page that answers its keys
  * its own way rather than through `listen`, which does this itself. Returns
- * how to stop.
+ * how to stop; each call listens apart, so one caller stopping leaves
+ * another's watch in place.
  */
 function watchForKeys(): () => void {
-  addEventListener("keydown", markKeyed);
-  return () => removeEventListener("keydown", markKeyed);
+  const watch = (event: KeyboardEvent): void => markKeyed(event);
+  addEventListener("keydown", watch);
+  return () => removeEventListener("keydown", watch);
 }
 
 /** Whether `target` is a control whose own keys come before the page's. */
@@ -156,4 +182,4 @@ function listen(listening: Listening): () => void {
 }
 
 export type { Action, Actions, Chosen, Listening, Press };
-export { chosen, hasOwnKeys, listen, showsKeys, toggle, watchForKeys };
+export { chosen, HELP_KEYS, hasOwnKeys, listen, showsKeys, toggle, watchForKeys };

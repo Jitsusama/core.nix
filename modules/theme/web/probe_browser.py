@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 def browser() -> Iterator[Browser]:
     """One headless Chromium for every case."""
     with sync_playwright() as playwright:
-        opened = playwright.chromium.launch()
+        # The build sandbox's /dev/shm is small, and a tab that outgrows it
+        # crashes mid-load, so the browser keeps that memory in a temporary
+        # file instead, as the live pages' tests do (live_page.py).
+        opened = playwright.chromium.launch(args=["--disable-dev-shm-usage"])
         yield opened
         opened.close()

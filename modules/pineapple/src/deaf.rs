@@ -1,6 +1,7 @@
 //! Whether the safe word's Slack reader can hear Slack, said to Joel where
-//! Slack isn't needed. Once [`ROUNDS`] rounds in a row read nothing for a
-//! reason he can fix (Slack refused the sign-in, or none can be read), it
+//! Slack isn't needed. Once [`ROUNDS`] rounds in a row read nothing, or
+//! only one of its two searches, for a reason he can fix or should know
+//! of (Slack refused the sign-in, none can be read, or an answer), it
 //! writes a file of what waits on him, which For You shows as a row and
 //! says as a notice (the shell's WaitingOnYou.qml); a round that reads
 //! Slack again takes it away. Its phone alert goes through Slack, so that
@@ -11,15 +12,27 @@
 //! spent, counts neither way: nothing there is Joel's to do, and the
 //! journal says it. An answer that came but can't be read counts as
 //! deaf, though no sign-in mends it: its cause lasts (a gateway's
-//! wording changed, or a message among the newest is shaped like its
-//! markup), so read as nothing it would look like a quiet Slack.
+//! wording changed, its answer cut short past what can be asked again,
+//! or a message among the newest shaped like its markup), so read as
+//! nothing it would look like a quiet Slack. One search of the two that
+//! can't be read is told by name, while the other's messages are still
+//! judged: a cause only one search meets would otherwise keep both deaf
+//! for as long as it lasts. One both searches meet still keeps both
+//! deaf.
+//!
+//! A search a gateway's answers leave a gap in is read on past it once
+//! Joel's row says so ([`crate::ears::Through`]), and that span is never
+//! read. So it's said first in a row of its own ([`missed`]), kept a week
+//! in a file the reader's stop leaves, until Joel says he has looked. A
+//! reader in shadow keeps both rows in its own folder, which For You never
+//! reads, so they're its record until it writes where For You reads.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-/// How many rounds in a row read nothing before Joel is told: one is a
+/// How many rounds in a row are deaf before Joel is told: one is a
 /// blip a sign-in renewed mid-round makes, two at the reader's 30 seconds
 /// is a minute of stops unheard.
 pub const ROUNDS: u32 = 2;
@@ -28,7 +41,7 @@ pub const ROUNDS: u32 = 2;
 /// crate's own list, so this reader counts the words slack-unreads does.
 pub use slack_people::refuses_the_sign_in;
 
-/// Why a round read nothing that Joel can fix.
+/// Why a round read nothing, or only one search, that Joel should know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Deafness {
     /// Slack refused the sign-in.
@@ -38,6 +51,19 @@ pub enum Deafness {
     NoSignIn,
     /// Slack answered in words that can't be read.
     Unreadable,
+    /// One search's answer can't be read, so only the other's messages
+    /// are judged.
+    Unread(Search),
+}
+
+/// Each of a round's two searches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Search {
+    /// For "pineapple", which finds a stop however it's addressed.
+    Phrase,
+    /// For Joel's tag, which finds someone asking him to stop his agents
+    /// without the phrase.
+    Tag,
 }
 
 /// What a round of the reader came to, as far as hearing goes.
@@ -45,7 +71,7 @@ pub enum Deafness {
 pub enum Round {
     /// Both searches answered.
     Heard,
-    /// Nothing was read, for a reason Joel can fix.
+    /// Nothing was read, or one search wasn't, for a reason Joel can fix.
     Deaf(Deafness),
     /// Slack couldn't be asked: counted neither way.
     Unasked,
@@ -62,10 +88,40 @@ pub enum Change {
     Keep,
 }
 
+/// How one search has fared, round by round: whether it's deaf, as
+/// settled once a state has held [`ROUNDS`] rounds in a row, so a blip
+/// either way leaves it as it was.
+#[derive(Clone, Copy, Debug, Default)]
+struct Fared {
+    deaf: bool,
+    last: bool,
+    run: u32,
+}
+
+impl Fared {
+    fn round(&mut self, deaf: bool) {
+        self.run = if self.last == deaf {
+            self.run.saturating_add(1)
+        } else {
+            1
+        };
+        self.last = deaf;
+        if self.run >= ROUNDS {
+            self.deaf = deaf;
+        }
+    }
+}
+
 /// The rounds read nothing in a row, and whether Joel was told, and why.
 #[derive(Debug)]
 pub struct Deaf {
     rounds: u32,
+    /// The last round's why, and how many rounds in a row gave it.
+    held: Option<(Deafness, u32)>,
+    /// Each search on its own, so one deaf every round is told whatever
+    /// its partner does.
+    phrase: Fared,
+    tag: Fared,
     told: Option<Deafness>,
     /// When this time of not hearing was first told, in milliseconds,
     /// which names its row, so each time is a row For You hasn't seen.
@@ -88,6 +144,9 @@ impl Deaf {
     pub fn new() -> Deaf {
         Deaf {
             rounds: 0,
+            held: None,
+            phrase: Fared::default(),
+            tag: Fared::default(),
             told: None,
             since: None,
             left: true,
@@ -110,13 +169,39 @@ impl Deaf {
         }
     }
 
+    /// Whether the row standing tells Joel that `search` can't be read,
+    /// written rather than only meant.
+    #[must_use]
+    pub fn tells(&self, search: Search) -> bool {
+        self.told
+            .is_some_and(|told| told == Deafness::Unreadable || told == Deafness::Unread(search))
+    }
+
+    /// What the searches' own settled states say, when neither sign-in
+    /// cause decides the round.
+    fn settled(&self) -> Option<Deafness> {
+        match (self.phrase.deaf, self.tag.deaf) {
+            (true, true) => Some(Deafness::Unreadable),
+            (true, false) => Some(Deafness::Unread(Search::Phrase)),
+            (false, true) => Some(Deafness::Unread(Search::Tag)),
+            (false, false) => None,
+        }
+    }
+
     /// What `round`, at `at` in milliseconds, changes. Joel is told once
-    /// [`ROUNDS`] in a row read nothing, again only when why changes, and
-    /// untold once a round reads Slack.
+    /// [`ROUNDS`] in a row are deaf, and again only when what's deaf has
+    /// held as many in its new shape, so a blip is no row of its own, and
+    /// untold once a round reads Slack whole. Each search is counted on
+    /// its own, so one deaf every round is told even while its partner
+    /// flickers. A change of why starts a time of its own, so it isn't
+    /// hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
         match round {
             Round::Heard => {
                 self.rounds = 0;
+                self.held = None;
+                self.phrase = Fared::default();
+                self.tag = Fared::default();
                 self.since = None;
                 let left = std::mem::take(&mut self.left);
                 if self.told.take().is_some() || left {
@@ -127,8 +212,38 @@ impl Deaf {
             }
             Round::Deaf(why) => {
                 self.rounds = self.rounds.saturating_add(1);
-                if self.rounds < ROUNDS || self.told == Some(why) {
+                let held = match self.held {
+                    Some((last, held)) if last == why => held.saturating_add(1),
+                    _ => 1,
+                };
+                self.held = Some((why, held));
+                // A sign-in's cause reads neither search, so each counts
+                // as heard of nothing it says.
+                let whole = matches!(why, Deafness::Refused | Deafness::NoSignIn);
+                let covers =
+                    |search| why == Deafness::Unreadable || why == Deafness::Unread(search);
+                self.phrase.round(!whole && covers(Search::Phrase));
+                self.tag.round(!whole && covers(Search::Tag));
+                let lasting = if whole {
+                    (held >= ROUNDS).then_some(why)
+                } else {
+                    self.settled()
+                };
+                let tell = match self.told {
+                    None => (self.rounds >= ROUNDS).then(|| lasting.unwrap_or(why)),
+                    Some(told) => lasting.filter(|lasting| *lasting != told),
+                };
+                let Some(why) = tell else {
                     return Change::Keep;
+                };
+                let changed = self.told.is_some();
+                // For You keeps a row Joel marked done gone by name, and
+                // a sign-in's signal marks one done whether it mended it
+                // or not. So a row told for another why, narrower, wider
+                // or other, is a time of its own. A row whose writing
+                // failed isn't told, so it's written again as itself.
+                if changed {
+                    self.since = None;
                 }
                 self.told = Some(why);
                 self.left = false;
@@ -153,15 +268,24 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         "Sign in to Slack in the browser it opens",
         "Or type /slack-auth in a pi session",
     ];
-    let (said, steps, done): (&str, Vec<&str>, Value) = match why {
+    const UNHEARD: &str = "so a stop said in Slack isn't heard; one said elsewhere still is";
+    const READ_JOURNAL: &str =
+        "Ask an agent to read the reader's journal, which says what it couldn't read";
+    let title = match why {
+        Deafness::Unread(_) => "The Safe Word Can't Hear Part of Slack",
+        _ => "The Safe Word Can't Hear Slack",
+    };
+    let (said, steps, done): (String, Vec<&str>, Value) = match why {
         Deafness::Refused => (
-            "Slack refused the safe word's sign-in",
+            format!("Slack refused the safe word's sign-in, {UNHEARD}"),
             SIGN_IN.to_vec(),
             json!({"signal": "signin:slack"}),
         ),
         Deafness::NoSignIn => (
-            "The safe word has no Slack sign-in it can read, signed out or with the keyring \
-             locked",
+            format!(
+                "The safe word has no Slack sign-in it can read, signed out or with the \
+                 keyring locked, {UNHEARD}"
+            ),
             ["Unlock your keyring if it asks"]
                 .into_iter()
                 .chain(SIGN_IN)
@@ -170,8 +294,22 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         ),
         // No sign-in mends it, so only Joel's word marks it done.
         Deafness::Unreadable => (
-            "Slack's answers to the safe word can't be read",
-            vec!["Ask an agent to read the reader's journal, which says what it couldn't read"],
+            format!("Slack's answers to the safe word can't be read, {UNHEARD}"),
+            vec![READ_JOURNAL],
+            json!({"by": "person"}),
+        ),
+        Deafness::Unread(Search::Phrase) => (
+            "The safe word's search of Slack for pineapple can't be read, so a stop that \
+             doesn't tag you isn't heard; one that tags you still is"
+                .to_owned(),
+            vec![READ_JOURNAL],
+            json!({"by": "person"}),
+        ),
+        Deafness::Unread(Search::Tag) => (
+            "The safe word's search of Slack for your tag can't be read, so a stop that tags \
+             you without saying pineapple isn't heard; one saying it still is"
+                .to_owned(),
+            vec![READ_JOURNAL],
             json!({"by": "person"}),
         ),
     };
@@ -181,10 +319,8 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         "quest": "pineapple",
         "items": [{
             "id": format!("pineapple-slack-deaf-{since}"),
-            "title": "The Safe Word Can't Hear Slack",
-            "why": format!(
-                "{said}, so a stop said in Slack isn't heard; one said elsewhere still is"
-            ),
+            "title": title,
+            "why": said,
             "raisedAt": slack_people::messages::iso(since),
             "minutes": 1,
             "ready": true,
@@ -244,4 +380,135 @@ pub fn make(file: &Path, change: &Change) -> std::io::Result<()> {
         },
         Change::Keep => Ok(()),
     }
+}
+
+/// How long a row saying what was never read is kept after the span it
+/// names ends, in milliseconds: a week, long past when Joel would look for
+/// a stop said then.
+const MISSED_FOR: u64 = 7 * 24 * 60 * 60 * 1000;
+
+/// What names each row saying what was never read.
+const MISSED: &str = "pineapple-slack-missed-";
+
+/// The row saying what `search` read on past is never read, from `from`
+/// to `to`, each in milliseconds since 1970 or unknown, as Joel reads it
+/// when it's raised, `at`: as minutes before then, so no zone is named.
+/// No round reads that span, so only Joel's word marks it done, and it's
+/// named for its search and the span, an unknown start as 0 and end as
+/// `at`, so each span is a row of its own, the same however often it's
+/// written.
+#[must_use]
+pub fn missed(search: Search, from: Option<u64>, to: Option<u64>, at: u64) -> Value {
+    let ago = |then: u64| at.saturating_sub(then);
+    let span = match (
+        from.map(|from| ago(from).div_ceil(60_000)),
+        to.map(|to| ago(to) / 60_000),
+    ) {
+        (Some(from), Some(to)) if to > 0 && to < from => {
+            format!("from {from} to {} before this was raised", minutes(to))
+        }
+        (Some(from), _) => format!("in the {} before this was raised", minutes(from)),
+        (None, _) => "before this was raised, since when it last read can't be told".to_owned(),
+    };
+    let (name, unheard, step) = match search {
+        Search::Phrase => (
+            "phrase",
+            "said pineapple in Slack without tagging you",
+            "Search Slack for pineapple, for a stop said then",
+        ),
+        Search::Tag => (
+            "tag",
+            "tagged you in Slack without saying pineapple",
+            "Look in Slack's Activity for a stop that mentioned you then",
+        ),
+    };
+    json!({
+        "id": format!("{MISSED}{name}-{}-{}", from.unwrap_or(0), to.unwrap_or(at)),
+        "title": "The Safe Word Missed Part of Slack",
+        "why": format!(
+            "The safe word never read what {unheard} {span}, as more was said than it could \
+             read, so a stop said then wasn't heard"
+        ),
+        "raisedAt": slack_people::messages::iso(at),
+        "minutes": 2,
+        "ready": true,
+        "doneWhen": {"by": "person"},
+        "steps": [step],
+    })
+}
+
+fn minutes(count: u64) -> String {
+    if count == 1 {
+        "1 minute".to_owned()
+    } else {
+        format!("{count} minutes")
+    }
+}
+
+/// Adds `row`, raised `at` in milliseconds, to the rows in `file` saying
+/// what was never read, in place of one naming the same span, or the same
+/// known start for its search, as a gap read on again after its round was
+/// thrown away ends later, keeping those whose span ended in the
+/// [`MISSED_FOR`] before. It's a file of its own, which the reader's stop
+/// doesn't take away as it does the row saying it can't hear, since what
+/// it says stays true once the reader hears again or restarts. One not
+/// there holds no row; one that can't be read, or holds no rows, is left
+/// as it is, so no row it holds is lost.
+///
+/// # Errors
+///
+/// Why it couldn't be read or written.
+pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
+    let unread = |why: String| std::io::Error::new(std::io::ErrorKind::InvalidData, why);
+    let kept = match std::fs::read(file) {
+        Ok(read) => {
+            let kept: Value = serde_json::from_slice(&read)
+                .map_err(|error| unread(format!("it holds no rows it can read: {error}")))?;
+            if !kept["items"].is_array() {
+                return Err(unread("it holds no rows".to_owned()));
+            }
+            Some(kept)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let recent = |row: &Value| {
+        row["id"]
+            .as_str()
+            .and_then(|id| id.strip_prefix(MISSED))
+            .and_then(|named| named.rsplit('-').next())
+            .and_then(|raised| raised.parse::<u64>().ok())
+            .is_some_and(|raised| raised.saturating_add(MISSED_FOR) >= at)
+    };
+    // What names the row up to where its span ends, when its start is
+    // known: a row naming it again is the same gap.
+    let id = row["id"].as_str().unwrap_or_default().to_owned();
+    let begun = id
+        .rsplit_once('-')
+        .map(|(begun, _)| format!("{begun}-"))
+        .filter(|begun| !begun.ends_with("-0-"));
+    let same = |kept: &Value| {
+        kept["id"].as_str().is_some_and(|kept| {
+            kept == id
+                || begun
+                    .as_deref()
+                    .is_some_and(|begun| kept.starts_with(begun))
+        })
+    };
+    let mut rows: Vec<Value> = kept
+        .as_ref()
+        .and_then(|kept| kept["items"].as_array())
+        .into_iter()
+        .flatten()
+        .filter(|kept| recent(kept) && !same(kept))
+        .cloned()
+        .collect();
+    rows.push(row);
+    let file_of = json!({
+        "v": 2,
+        "updated": slack_people::messages::iso(at),
+        "quest": "pineapple",
+        "items": rows,
+    });
+    make(file, &Change::Tell(file_of))
 }

@@ -97,7 +97,7 @@ in
   # An opening draws home as the closed launcher kept it, each row as it stood,
   # then fills it in where its rows stand with nothing flashing; and keys typed
   # as it opens all land, and each way into a copy left before a share is let
-  # go as it's pressed (tests/opening-on-niri-test.py); and chords said by
+  # go as it's pressed (modules/quickshell/tests/opening-on-niri-test.py); and chords said by
   # launcher-say as the shell restarts open it once it listens, and open it at
   # once all through a handover (../shell-hands-over.sh). Its `lab` times each
   # chord's opening, the one way every launcher change quotes (docs/testing.md's
@@ -116,7 +116,7 @@ in
     in
     (launcherOnNiri {
       name = "the-launcher-opens-on-what-it-kept-on-niri";
-      tests = ../../../tests/opening-on-niri-test.py;
+      tests = ../tests/opening-on-niri-test.py;
       inherit given;
       # The portal's ask what to open a file with, as the account's shell
       # holds it (../../open-with/home.nix), asked by a case.
@@ -160,6 +160,27 @@ in
           };
         };
       });
+
+  # With reports off, an ask from outside (a link, a catalogue run or a
+  # terminal's do) says the words it was given by kind and how many letters,
+  # and the shell's own failure by its error's name, since a page or a source
+  # wrote them (modules/quickshell/tests/asked-from-outside-on-niri-test.py).
+  the-launcher-says-asks-from-outside-by-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-asks-from-outside-by-kind-on-niri";
+    tests = ../tests/asked-from-outside-on-niri-test.py;
+    shell.reports = lib.mkForce false;
+  };
+
+  # With reports off, a lagging key's line says an arrow whole and a step by
+  # its arrow and its row's letters, as each of keyTimed's callers in
+  # Launcher.qml says its key is, a key listed without an answer and the
+  # answer late count its letters, and a program's lagging drawer says its
+  # row's kind, not its id (modules/quickshell/tests/lagging-keys-on-niri-test.py).
+  the-launcher-says-a-lagging-keys-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-a-lagging-keys-kind-on-niri";
+    tests = ../tests/lagging-keys-on-niri-test.py;
+    shell.reports = lib.mkForce false;
+  };
 
   # Each of Super+E's groups has its emoji centred on its name as niri shows
   # the launcher, at 1.5 and 2 (modules/quickshell/tests/emoji-marks-on-niri-test.py).
@@ -591,9 +612,9 @@ in
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
-  # launcher/Collector.js, launcher/Flash.js, launcher/Pacing.js,
-  # launcher/Presented.js, launcher/Spots.js, launcher/Thread.js and
-  # launcher/Wanted.js to it in Qt's own engine.
+  # launcher/ChangesPresented.js, launcher/Collector.js, launcher/Flash.js,
+  # launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
+  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -602,6 +623,7 @@ in
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../tests/pacing.qml} pacing.qml
+      cp ${../launcher/ChangesPresented.js} ChangesPresented.js
       cp ${../launcher/Collector.js} Collector.js
       cp ${../launcher/Flash.js} Flash.js
       cp ${../launcher/Makings.js} Makings.js
@@ -665,20 +687,32 @@ in
   # before it, so a close costs the same however many are kept: it turned all
   # 1,339 of Joel's into text, 39 ms a close at a load of 66 (2026-11-10). The
   # shell starting carries the old list into lines and lets the oldest go
-  # (modules/quickshell/tests/trials-kept.qml, through Quickshell).
+  # (modules/quickshell/tests/trials-kept.qml, through Quickshell). With
+  # reports off, a slow key's line says how many letters were typed and a
+  # slow step's keeps its arrow, so neither names the row
+  # (modules/quickshell/tests/trials-kept-heard.sh).
   the-launcher-keeps-its-trials-one-by-one =
     # procps gives the case pkill, to end the pipe as a full disk would.
     pkgs.runCommandLocal "the-launcher-keeps-its-trials-one-by-one"
-      { nativeBuildInputs = [ pkgs.procps ]; }
+      {
+        nativeBuildInputs = [ pkgs.procps ];
+        LANG = "C.UTF-8";
+        QT_QPA_PLATFORM = "offscreen";
+        FONTCONFIG_FILE = noFonts;
+      }
       ''
-        export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-        export XDG_RUNTIME_DIR=$TMPDIR/runtime FONTCONFIG_FILE=${noFonts}
+        export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_RUNTIME_DIR=$TMPDIR/runtime
         mkdir -m 700 launcher $XDG_RUNTIME_DIR
-        ${copied [ "Trials.qml" ]}
+        ${copied [
+          "Options.qml"
+          "Trials.qml"
+        ]}
         cp ${../tests/trials-kept.qml} shell.qml
         cp ${../../../tests/lib/Expect.js} Expect.js
         ${shellFolderLint}
-        timeout 60 ${qs} -p shell.qml
+        set -o pipefail
+        timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+        ${pkgs.lib.getExe pkgs.bash} ${../tests/trials-kept-heard.sh} said
         touch $out
       '';
 

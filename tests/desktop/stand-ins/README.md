@@ -1,7 +1,7 @@
 # The Desktop Test's Stand-Ins
 
 What the desktop test's machine runs in place of something a VM can't have:
-a daemon, a program, a server, a device or a page. [`../../desktop.nix`][desktop]
+a daemon, a program, a server, a device or a page. [`../desktop.nix`][desktop]
 names each where it puts it on the machine, and some shell checks and the
 screens test borrow one. Every file opens with what it stands in for.
 Those other tests share are in [`../../stand-ins/`][shared]; the few that
@@ -19,7 +19,7 @@ shell checks and the screens test borrow stay here, as the desktop's own.
 | `people-*.qml`, `people-*.sh`                              | People sources, and what the daemon runs                |
 | [`search-ends.qml`][search-ends]                           | a launcher source that ends each search at the top      |
 
-[desktop]: ../../desktop.nix
+[desktop]: ../desktop.nix
 [shared]: ../../stand-ins/README.md
 [virsh]: stand-in-virsh.sh
 [time]: stand-in-time.conf

@@ -245,6 +245,7 @@
       ${copied [
         "Daemon.qml"
         "Files.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Applications.qml"
         "launcher/PastNotices.qml"

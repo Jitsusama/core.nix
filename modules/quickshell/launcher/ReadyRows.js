@@ -271,14 +271,17 @@ function stampOf(keys, held, key) {
     return JSON.stringify([held[key], drawer].concat(parts));
 }
 
-// The drawer a row serves: its own, or, where it names one by key, the
-// drawer the record beside it holds, `{ key: "drawer:<place>:<id>", kind:
-// "drawer", drawer }`, so a drawer served apart changes without its row.
-// Null where there's none, or none yet.
-function drawerServed(row, held) {
+// The drawer a row serves: its own; where it names one by key, the record beside it's, `{ key:
+// "drawer:<place>:<id>", kind: "drawer", drawer }`, so one served apart changes without its
+// row; or, where it says only `drawer: true`, the one its place makes of it as it's drawn,
+// `made(row)`, as Emoji's is (EmojiDrawer.js). Null where there's none, or none yet.
+function drawerServed(row, held, made) {
     const drawer = row?.drawer;
     if (typeof drawer === "string") {
         return held?.[drawer]?.drawer ?? null;
+    }
+    if (drawer === true) {
+        return typeof made === "function" ? made(row) ?? null : null;
     }
     return drawer ?? null;
 }

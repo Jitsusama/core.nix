@@ -48,7 +48,6 @@
   "modules/dictation/src/daemon.rs" = 2;
   "modules/dictation/src/mel.rs" = 2;
   "modules/dictation/src/openvino.rs" = 6;
-  "modules/dictation/src/parakeet.rs" = 2;
   "modules/dictation/src/picture.rs" = 9;
   "modules/dictation/src/service_tests.rs" = 11;
   "modules/dictation/src/vocab.rs" = 3;
@@ -171,9 +170,8 @@
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
-  "modules/nix-offload/offload/src/decide.rs" = 13;
+  "modules/nix-offload/offload/src/decide.rs" = 12;
   "modules/nix-offload/offload/src/held.rs" = 3;
-  "modules/nix-offload/offload/src/machines.rs" = 5;
   "modules/nix-offload/offload/src/main.rs" = 14;
   "modules/nix-offload/offload/src/passed.rs" = 2;
   "modules/nix-offload/offload/src/progress.rs" = 2;

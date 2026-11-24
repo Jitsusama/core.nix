@@ -19,6 +19,7 @@
 }:
 let
   openvino-genai = callPackage ./openvino-genai.nix { };
+  parakeet = callPackage ./parakeet.nix { };
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -60,6 +61,11 @@ rustPlatform.buildRustPackage {
   # Whisper's and the summarizer's compiled models rather than paying
   # their NPU compile again.
   env.DICTATION_COMPILED_WITH = "${openvino} ${openvino-genai}";
+  # The tests split Parakeet's own vocabulary into words, since one written
+  # by hand once spaced words otherwise and hid that no take was split.
+  # It's named on the package, not in its check phase, so `nix develop` on
+  # the package reads it too.
+  env.PARAKEET_VOCAB = parakeet.vocab;
   passthru = { inherit openvino openvino-genai openvino-tokenizers; };
   meta = {
     description = "Dictation, call transcripts, screenshot text and noise-cancelled microphones";

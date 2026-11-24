@@ -1,10 +1,13 @@
 //! The Programs collection's rows, made ready for the shell (ready-rows.md,
-//! the ready-row form): every program Quickshell lists, the open ones first
-//! and then the rest, each A to Z as Order.js reads names, so a program
-//! moves only as it opens or closes (collection-order.md). Each says what
-//! it is and how many windows it has open, what Return does, and the
-//! window Return goes to, worked out here from the windows daemon's
-//! `window` records rather than by the shell at each step into Programs.
+//! the ready-row form): every program Quickshell lists, those with a window
+//! of Joel's own first and then the rest, each A to Z as Order.js reads
+//! names, so a program moves only as he opens or closes one
+//! (collection-order.md). An agent's window is counted but opens nothing
+//! of his: a list of things returned to moves by his own acts alone
+//! (RSCH-20261030-GB56HX). Each says what it is and how many windows it
+//! has open, what Return does, and the window Return goes to, worked out
+//! here from the windows daemon's `window` records rather than by the
+//! shell at each step into Programs.
 //! What the shell attaches to a row, its acts and its drawer, it makes
 //! by the row's `id` (launcher/Applications.qml).
 
@@ -68,7 +71,8 @@ pub fn opened<'a>(
 /// The rows in the order shown, each without its `order`, which Kept
 /// spaces: of every `program` record that's an application with a name,
 /// leaving out those saying `NoDisplay` unless `shown` names them, as
-/// another provider giving one acts does.
+/// another provider giving one acts does. Those with a window of Joel's
+/// own come first; one only agents have open waits with the closed ones.
 #[must_use]
 pub fn rows(programs: &[Value], opened: &BTreeMap<String, Opened>, shown: &[String]) -> Vec<Value> {
     let mut listed: Vec<(&Value, Option<&Opened>)> = programs
@@ -77,9 +81,9 @@ pub fn rows(programs: &[Value], opened: &BTreeMap<String, Opened>, shown: &[Stri
         .map(|program| (program, opened.get(text(&program["id"]))))
         .collect();
     listed.sort_by(|(one, one_open), (other, other_open)| {
-        other_open
+        his(*other_open)
             .is_some()
-            .cmp(&one_open.is_some())
+            .cmp(&his(*one_open).is_some())
             .then_with(|| by_name(text(&one["name"]), text(&other["name"])))
             .then_with(|| text(&one["id"]).cmp(text(&other["id"])))
     });
@@ -87,6 +91,12 @@ pub fn rows(programs: &[Value], opened: &BTreeMap<String, Opened>, shown: &[Stri
         .into_iter()
         .map(|(program, open)| row(program, open))
         .collect()
+}
+
+/// What a program has open of Joel's own, if any: an agent's windows alone
+/// open nothing of his, so give Return nothing to go to.
+fn his(open: Option<&Opened>) -> Option<&Opened> {
+    open.filter(|open| open.windows > 0)
 }
 
 /// Whether Quickshell lists this program among its applications, or the
@@ -127,8 +137,8 @@ fn row(program: &Value, open: Option<&Opened>) -> Value {
         "name": text(&program["name"]),
         "what": what,
         "count": count,
-        "verb": if open.is_some() { "go to" } else { "start" },
-        "window": open.and_then(|open| open.latest),
+        "verb": if his(open).is_some() { "go to" } else { "start" },
+        "window": his(open).and_then(|open| open.latest),
     })
 }
 
@@ -242,9 +252,32 @@ mod tests {
         let theirs = BTreeSet::from(["window:4".to_owned()]);
         let only = rows(&programs, &opened(&windows[..1], &theirs), &[]);
         assert_eq!(
-            (&only[0]["count"], &only[0]["window"]),
-            (&json!("terminal emulator \u{b7} 1 agents'"), &json!(4)),
-            "only an agent's open, it's counted and gone to: {only:?}"
+            (&only[0]["count"], &only[0]["verb"], &only[0]["window"]),
+            (
+                &json!("terminal emulator \u{b7} 1 agents'"),
+                &json!("start"),
+                &Value::Null
+            ),
+            "only an agent's open, it's counted but not his, so Return starts one: {only:?}"
+        );
+    }
+
+    #[test]
+    fn a_program_only_agents_have_open_waits_a_to_z_with_those_he_hasnt() {
+        let programs = [
+            program("zathura", "Zathura", "Document Viewer"),
+            program("kitty", "kitty", "Terminal emulator"),
+            program("chrome", "Google Chrome", "Web Browser"),
+            program("inkscape", "Inkscape", "Vector Graphics Editor"),
+        ];
+        let windows = [window(1, "zathura", 1), window(2, "kitty", 2)];
+        let agents = BTreeSet::from(["window:2".to_owned()]);
+        let made = rows(&programs, &opened(&windows, &agents), &[]);
+        let ids: Vec<&str> = made.iter().map(|row| row["id"].as_str().unwrap()).collect();
+        assert_eq!(
+            ids,
+            ["zathura", "chrome", "inkscape", "kitty"],
+            "an agent's window opens nothing of his, so moves nothing"
         );
     }
 

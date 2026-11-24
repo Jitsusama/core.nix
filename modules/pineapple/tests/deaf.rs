@@ -5,7 +5,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use pineapple::deaf::{
-    Change, Deaf, Deafness, ROUNDS, Round, Waiting, make, refuses_the_sign_in, waiting, waits,
+    Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
+    refuses_the_sign_in, waiting, waits,
 };
 
 const AT: u64 = 1_795_000_000_000;
@@ -26,18 +27,23 @@ fn joel_is_told_once_two_rounds_running_hear_nothing() {
         Change::Keep,
         "and once is enough"
     );
-    let changed = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 90_000);
+    let no_sign_in = Round::Deaf(Deafness::NoSignIn);
     assert_eq!(
-        changed,
-        Change::Tell(waits(Deafness::NoSignIn, AT + 30_000, AT + 90_000)),
-        "a new why is said, in the same row"
+        deaf.heard(no_sign_in, AT + 90_000),
+        Change::Keep,
+        "a new why for one round may be a blip"
     );
     assert_eq!(
-        deaf.heard(Round::Heard, AT + 120_000),
+        deaf.heard(no_sign_in, AT + 120_000),
+        Change::Tell(waits(Deafness::NoSignIn, AT + 120_000, AT + 120_000)),
+        "two of it are said as a row of its own, as a sign-in marks the old one done"
+    );
+    assert_eq!(
+        deaf.heard(Round::Heard, AT + 150_000),
         Change::Untell,
         "hearing again takes it away"
     );
-    assert_eq!(deaf.heard(Round::Heard, AT + 150_000), Change::Keep, "once");
+    assert_eq!(deaf.heard(Round::Heard, AT + 180_000), Change::Keep, "once");
 }
 
 #[test]
@@ -98,11 +104,12 @@ fn a_row_left_by_a_tell_that_failed_after_it_is_still_taken_away() {
     let told = deaf.heard(refused, AT + 30_000);
     assert!(matches!(told, Change::Tell(_)), "told: {told:?}");
     // Written; then a new why, whose rewrite fails.
-    let rewrite = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 60_000);
+    let _ = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 60_000);
+    let rewrite = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 90_000);
     assert!(matches!(rewrite, Change::Tell(_)), "retold: {rewrite:?}");
     deaf.failed(&rewrite);
     assert_eq!(
-        deaf.heard(Round::Heard, AT + 90_000),
+        deaf.heard(Round::Heard, AT + 120_000),
         Change::Untell,
         "the first row still stands, so hearing Slack takes it away"
     );
@@ -221,6 +228,20 @@ fn the_row_says_what_isnt_heard_and_how_to_fix_it() {
         ),
         "no sign-in mends it, so only Joel's word marks it done"
     );
+    for whole in [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable] {
+        let item = &waits(whole, AT, AT)["items"][0];
+        let why = item["why"].as_str().unwrap_or_default();
+        assert!(
+            why.ends_with("so a stop said in Slack isn't heard; one said elsewhere still is"),
+            "{whole:?} says what is still heard: {why}"
+        );
+        assert_eq!(item["title"], "The Safe Word Can't Hear Slack");
+    }
+    let half = &waits(Deafness::Unread(Search::Tag), AT, AT)["items"][0];
+    assert_eq!(
+        half["title"], "The Safe Word Can't Hear Part of Slack",
+        "one search deaf isn't said as all of Slack"
+    );
 }
 
 #[test]
@@ -233,6 +254,169 @@ fn answers_that_cant_be_read_two_rounds_running_are_told() {
         Change::Tell(waits(Deafness::Unreadable, AT + 30_000, AT + 30_000)),
         "two in a row are no quiet Slack"
     );
+}
+
+#[test]
+fn one_search_that_cant_be_read_is_told_by_name_and_as_it_changes() {
+    for (search, named, still) in [
+        (
+            Search::Phrase,
+            "for pineapple",
+            "one that tags you still is",
+        ),
+        (Search::Tag, "for your tag", "one saying it still is"),
+    ] {
+        let item = &waits(Deafness::Unread(search), AT, AT)["items"][0];
+        let why = item["why"].as_str().unwrap_or_default();
+        assert!(
+            why.contains(&format!("search of Slack {named} can't be read")) && why.ends_with(still),
+            "it says which search is deaf, and what's still heard: {why}"
+        );
+        assert_eq!(
+            item["raisedAt"],
+            slack_people::messages::iso(AT),
+            "and since when"
+        );
+        assert_eq!(item["doneWhen"], serde_json::json!({"by": "person"}));
+    }
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let both = Round::Deaf(Deafness::Unreadable);
+    assert_eq!(deaf.heard(tag, AT), Change::Keep, "one round is a blip");
+    assert_eq!(
+        deaf.heard(tag, AT + 30_000),
+        Change::Tell(waits(
+            Deafness::Unread(Search::Tag),
+            AT + 30_000,
+            AT + 30_000
+        )),
+        "two in a row are told"
+    );
+    assert_eq!(deaf.heard(tag, AT + 60_000), Change::Keep, "told once");
+    assert_eq!(
+        deaf.heard(both, AT + 90_000),
+        Change::Keep,
+        "a new why held once"
+    );
+    assert_eq!(
+        deaf.heard(both, AT + 120_000),
+        Change::Tell(waits(Deafness::Unreadable, AT + 120_000, AT + 120_000)),
+        "the other going deaf too is a row of its own, so one marked done can't hide it"
+    );
+    let _ = deaf.heard(tag, AT + 150_000);
+    assert_eq!(
+        deaf.heard(tag, AT + 180_000),
+        Change::Tell(waits(
+            Deafness::Unread(Search::Tag),
+            AT + 180_000,
+            AT + 180_000
+        )),
+        "one search coming back narrows it to a row of its own, so a whole row marked done \
+         can't hide it"
+    );
+    let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    let _ = deaf.heard(phrase, AT + 210_000);
+    assert_eq!(
+        deaf.heard(phrase, AT + 240_000),
+        Change::Tell(waits(
+            Deafness::Unread(Search::Phrase),
+            AT + 240_000,
+            AT + 240_000
+        )),
+        "the other search going deaf in its place is a row of its own"
+    );
+    assert_eq!(deaf.heard(Round::Heard, AT + 270_000), Change::Untell);
+}
+
+#[test]
+fn a_why_that_flips_each_round_is_no_row_of_its_own() {
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let both = Round::Deaf(Deafness::Unreadable);
+    let _ = deaf.heard(tag, AT);
+    assert!(
+        matches!(deaf.heard(tag, AT + 30_000), Change::Tell(_)),
+        "two of one why are told"
+    );
+    for round in 2..12 {
+        let why = if round % 2 == 0 { both } else { tag };
+        assert_eq!(
+            deaf.heard(why, AT + round * 30_000),
+            Change::Keep,
+            "a why held for a round at a time leaves the row as it was, so each flip \
+             isn't a notice: round {round}"
+        );
+    }
+}
+
+#[test]
+fn a_search_deaf_every_round_is_told_while_its_partner_flickers() {
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let _ = deaf.heard(tag, AT);
+    assert!(
+        matches!(deaf.heard(tag, AT + 30_000), Change::Tell(_)),
+        "two rounds with the tag's search deaf tell Joel"
+    );
+    assert!(
+        deaf.tells(Search::Tag) && !deaf.tells(Search::Phrase),
+        "the row says the tag's search can't be read, and only that"
+    );
+    // The phrase goes deaf for good, while the tag flickers back and forth.
+    let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    let both = Round::Deaf(Deafness::Unreadable);
+    assert_eq!(deaf.heard(phrase, AT + 60_000), Change::Keep, "held once");
+    assert_eq!(
+        deaf.heard(both, AT + 90_000),
+        Change::Tell(waits(Deafness::Unreadable, AT + 90_000, AT + 90_000)),
+        "the phrase deaf two rounds running is told, though no one why held twice"
+    );
+    assert!(deaf.tells(Search::Phrase), "and the row now says so");
+}
+
+#[test]
+fn a_row_that_failed_to_write_tells_nothing() {
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let _ = deaf.heard(tag, AT);
+    let told = deaf.heard(tag, AT + 30_000);
+    assert!(
+        matches!(told, Change::Tell(_)) && deaf.tells(Search::Tag),
+        "deaf two rounds, a row is to be written"
+    );
+    deaf.failed(&told);
+    assert!(
+        !deaf.tells(Search::Tag),
+        "a row that couldn't be written doesn't count as Joel told"
+    );
+}
+
+#[test]
+fn a_row_for_another_why_is_never_the_one_marked_done() {
+    let every = [
+        Deafness::Refused,
+        Deafness::NoSignIn,
+        Deafness::Unreadable,
+        Deafness::Unread(Search::Phrase),
+        Deafness::Unread(Search::Tag),
+    ];
+    for before in every {
+        for after in every.into_iter().filter(|after| *after != before) {
+            let mut deaf = Deaf::new();
+            deaf.heard(Round::Deaf(before), AT);
+            let Change::Tell(first) = deaf.heard(Round::Deaf(before), AT + 30_000) else {
+                panic!("two rounds of {before:?} are told");
+            };
+            deaf.heard(Round::Deaf(after), AT + 60_000);
+            let Change::Tell(then) = deaf.heard(Round::Deaf(after), AT + 90_000) else {
+                panic!("{after:?} after {before:?} is told");
+            };
+            assert_ne!(
+                first["items"][0]["id"], then["items"][0]["id"],
+                "{after:?} is named apart from the {before:?} row Joel may have marked done"
+            );
+        }
+    }
 }
 
 #[test]
@@ -290,4 +474,114 @@ fn the_row_goes_where_a_whole_name_says_and_a_part_name_is_said() {
             "{part:?} names nothing, and is kept to be said"
         );
     }
+}
+
+const MINUTE: u64 = 60_000;
+
+#[test]
+fn what_was_never_read_is_said_as_minutes_before_the_row() {
+    let tag = missed(
+        Search::Tag,
+        Some(AT - 41 * MINUTE + 1),
+        Some(AT - 13 * MINUTE),
+        AT,
+    );
+    assert_eq!(
+        tag["why"],
+        "The safe word never read what tagged you in Slack without saying pineapple from 41 to \
+         13 minutes before this was raised, as more was said than it could read, so a stop said \
+         then wasn't heard",
+        "a span begun part way into a minute is said from the whole one"
+    );
+    assert_eq!(
+        tag["id"],
+        format!(
+            "pineapple-slack-missed-tag-{}-{}",
+            AT - 41 * MINUTE + 1,
+            AT - 13 * MINUTE
+        ),
+        "named for its span, so written again it's the same row"
+    );
+    assert_eq!(
+        tag["doneWhen"],
+        serde_json::json!({"by": "person"}),
+        "no round reads it again, so only Joel says he has looked"
+    );
+    let phrase = missed(Search::Phrase, Some(AT - MINUTE), Some(AT - 10), AT);
+    assert_eq!(
+        phrase["why"],
+        "The safe word never read what said pineapple in Slack without tagging you in the 1 \
+         minute before this was raised, as more was said than it could read, so a stop said \
+         then wasn't heard",
+        "one ending this minute is said up to the row"
+    );
+    assert_eq!(
+        phrase["id"],
+        format!("pineapple-slack-missed-phrase-{}-{}", AT - MINUTE, AT - 10),
+        "each search's rows named apart"
+    );
+    assert!(
+        missed(Search::Tag, None, Some(AT - MINUTE), AT)["why"]
+            .as_str()
+            .is_some_and(|why| why.contains(
+                "before this was raised, since when it last read can't be told, as more"
+            )),
+        "and one with no last read it can tell is said with no minutes"
+    );
+}
+
+#[test]
+fn each_span_never_read_is_kept_a_week_beside_the_others() {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-file-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    std::fs::write(&file, "not JSON").expect("a file it can't read");
+    let week = 7 * 24 * 60 * MINUTE;
+    let row = |search, at| missed(search, Some(at - MINUTE), Some(at), at);
+    assert!(
+        keep_missed(&file, row(Search::Tag, AT), AT).is_err()
+            && std::fs::read_to_string(&file).is_ok_and(|kept| kept == "not JSON"),
+        "a file it can't read may hold rows, so it isn't written over"
+    );
+    std::fs::write(&file, r#"{"v":2}"#).expect("a file holding no rows it can read");
+    assert!(
+        keep_missed(&file, row(Search::Tag, AT), AT).is_err()
+            && std::fs::read_to_string(&file).is_ok_and(|kept| kept == r#"{"v":2}"#),
+        "nor is one that reads but holds no rows, as it may be a newer shape"
+    );
+    std::fs::remove_file(&file).expect("taken away");
+    let first = AT - week - 1;
+    keep_missed(&file, row(Search::Tag, first), first).expect("written where none was");
+    keep_missed(&file, row(Search::Phrase, AT - week), AT - week).expect("written");
+    let ending_sooner = missed(Search::Tag, Some(AT - MINUTE), Some(AT - 5), AT - 5);
+    keep_missed(&file, ending_sooner, AT - 5).expect("written");
+    keep_missed(&file, row(Search::Tag, AT), AT).expect("written in its place");
+    keep_missed(&file, row(Search::Tag, AT), AT).expect("written again");
+    let read: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).expect("read")).expect("JSON");
+    let ids: Vec<_> = read["items"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|row| row["id"].clone())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            format!(
+                "pineapple-slack-missed-phrase-{}-{}",
+                AT - week - MINUTE,
+                AT - week
+            ),
+            format!("pineapple-slack-missed-tag-{}-{AT}", AT - MINUTE),
+        ],
+        "one whose span ended a week ago stays, one older goes, and the newest joins them \
+         once, however often it's written, in place of one begun as it was"
+    );
+    assert_eq!(read["quest"], "pineapple", "in the shape For You reads");
+    let _ = std::fs::remove_dir_all(&folder);
 }

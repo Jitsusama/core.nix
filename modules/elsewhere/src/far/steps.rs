@@ -1,54 +1,328 @@
-//! The far line's two steps around the job: making its tree of the files
-//! that crossed, and leaving what its kind brings back to cross home.
+//! The far line's steps around the job: clearing what earlier runs left,
+//! watching its archives cross, waiting on them, making its tree of them,
+//! answering a stop, and leaving what its kind brings back to cross home.
 //!
-//! Each step writes what it finds to a file of its own beside the job's
-//! copy, and checks it, rather than piping one command into the next: a
+//! The two steps that find files write what each finds to a file of its
+//! own beside the job's copy, and check it, rather than piping one
+//! command into the next: a
 //! pipe's status is only its last command's in an sh with no pipefail, so
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
 
 use super::{
-    BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MARK, MOST_BYTES, MOST_FILES, TREE, quoted,
+    BACK, BROUGHT, CROSSES_AT, CROSSES_WITHIN, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES,
+    MOST_FILES, TREE, UNTAKEN, quoted,
 };
 use crate::settings::Kind;
 
+/// The far line's watch on the job's archives as they cross: `arrived`,
+/// once the list is whole and each archive on it is its listed size, with
+/// `waiting` naming what it still waits on; `grown`, how much has crossed
+/// so far, as `got`; and `tick`, the time in seconds as `now`.
+pub(super) fn crossing() -> String {
+    format!(
+        r#"arrived() {{
+  waiting='its list of them'
+  [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
+  while IFS="$tab" read -r size path; do
+    [ "$size" = {END} ] && return 0
+    case "/$path/" in //*|*/../*|*/./*) continue ;; esac
+    waiting=$path
+    [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
+  done < "$job/{LEFT}"
+  return 1
+}}
+# How much has crossed, list or not, as its names and kilobytes.
+grown() {{
+  kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
+  kb=${{kb%%[!0-9]*}}
+  got=$((${{kb:-0}} + ${{names:-0}}))
+}}
+# The time in seconds, or where a date can't say it, one more each pass;
+# what was counted before it first could, with this pass, carries over
+# to the last pass's time.
+tick() {{
+  t=$(date +%s 2>/dev/null)
+  case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
+    [ -n "$counting" ] && was=$((t - now - 1 + was)) counting=
+    now=$t ;; esac
+}}"#
+    )
+}
+
+/// The most of the far wait one pass may spend, in seconds, however far
+/// the clock moved over it: a pass takes a second and a look, so one
+/// longer is a clock stepping on or a machine waking from sleep, which
+/// spends nothing of a crossing. A pass that truly took longer, on a far
+/// machine too slow to look over a few archives in ten seconds, makes
+/// both waits longer, never shorter.
+pub(super) const A_PASS_SPENDS_AT_MOST: u64 = 10;
+
+/// The far line's wait for the job's archives, `bytes` in all, to cross,
+/// saying `untaken`, already quoted for the shell, and ending untaken if
+/// they stop crossing or cross too slowly; `crossing`'s steps and `say`
+/// come before it.
+pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
+    // No more than a share carries, which keeps the far sum in range.
+    let bytes = bytes.min(MOST_BYTES);
+    format!(
+        r#"# By the clock, since a pass over a large tree takes long itself: each
+# pass spends what the clock moved over it, never less than the second
+# it slept, as when the clock steps back or stands still, nor more than
+# {A_PASS_SPENDS_AT_MOST}s, as when it steps on or the machine slept. The wait
+# counts what was spent since more last crossed, as the near side waits;
+# a pass counts after its second, so passes are never short. However
+# steadily they cross, all that is spent is held to a ceiling: the wait,
+# and a second for each {CROSSES_AT} bytes left.
+bytes={bytes}
+most=$(({CROSSES_WITHIN} + bytes / {CROSSES_AT}))
+now=0 was=0 counting=yes; tick; grown
+was=$now had=$got quiet=0 spent=0
+until arrived; do
+  sleep 1
+  tick
+  grown
+  step=$((now - was)) was=$now
+  [ "$step" -lt 1 ] && step=1
+  [ "$step" -gt {A_PASS_SPENDS_AT_MOST} ] && step={A_PASS_SPENDS_AT_MOST}
+  quiet=$((quiet + step)) spent=$((spent + step))
+  [ "$got" -gt "$had" ] && quiet=0 had=$got
+  if [ "$quiet" -ge {CROSSES_WITHIN} ]; then
+    printf "elsewhere: the job's files didn't reach %s, none crossing for {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
+    say {untaken}
+    exit {UNTAKEN}
+  fi
+  if [ "$spent" -ge "$most" ] && ! arrived; then
+    printf "elsewhere: the job's files, %s bytes, didn't reach %s within %ss, still crossing too slowly, waiting on %s\n" "$bytes" "$(uname -n)" "$most" "$waiting" >&2
+    say {untaken}
+    exit {UNTAKEN}
+  fi
+done"#
+    )
+}
+
+/// The far line's answer to being stopped, `stopped`, and the traps that
+/// call it. Mycelium stops a run whose asker let go with a signal to its
+/// whole group, so the far line takes its copy, the files written beside
+/// it, the job's archives and whatever it had begun to bring back away,
+/// since no one waits for them, then dies by the same signal, so whatever
+/// waits on it sees it stopped rather than ended. The exit with the code a
+/// shell gives such a death, after it, is only a fallback: dash and bash 5
+/// die at the signal it sent itself, and bash 3.2, the Mac's sh, reaches
+/// the exit but still dies by that signal. A closed pipe is a let go
+/// too, as when the asker's end goes before its signal comes. A signal
+/// that comes while it clears is dropped, so the clearing runs once, and
+/// one ignored when the far line began is never trapped at all. The copy
+/// goes after the rest, and its run's file only once all of that went:
+/// mycelium kills a group still running a short grace after its signal,
+/// and a job's build can hold more files than go in that time, so a
+/// removal cut short or failed leaves the file that lets the next run
+/// here clear it. The copy, what lies beside it and its run's file go
+/// only once this line wrote that file, `mine`: before then, any there
+/// are another run's, of this job or of another job of the quest. What
+/// lies in the handover is cleared only once no link the job left stands
+/// at it or above it, as `unlinked` makes sure.
+pub(super) fn stopping() -> String {
+    format!(
+        r#"# True once neither the job's handover folder nor either folder above
+# it in the quest's scratch is a link, any one there cleared first: a job
+# may leave one, and whatever the far line writes or clears below goes
+# through it. Each is opened, top down from the scratch, once it's known
+# to be a folder of its own, since a job may close one so that nothing
+# below it, a link included, can be seen or cleared. False only when a
+# link stays, never for a folder that couldn't be opened, which fails what
+# follows in its own words.
+unlinked() {{
+  [ -L "${{job%/*/*/*}}" ] || chmod u+rwx "${{job%/*/*/*}}" 2>/dev/null
+  for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
+    [ ! -L "$at" ] || rm -f "$at" 2>/dev/null
+    [ ! -L "$at" ] || return 1
+    [ ! -d "$at" ] || chmod u+rwx "$at" 2>/dev/null
+  done
+  return 0
+}}
+stopped() {{
+  trap '' HUP INT PIPE TERM
+  cd "$HOME" && {{ ! unlinked || rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
+    {{ [ -z "$mine" ] || {{
+      rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
+    }}; }}
+  trap - "$1"
+  kill -s "$1" "$$"
+  exit "$2"
+}}
+trap 'stopped HUP 129' HUP
+trap 'stopped INT 130' INT
+trap 'stopped PIPE 141' PIPE
+trap 'stopped TERM 143' TERM"#
+    )
+}
+
+/// The far line's step clearing what earlier runs here left beside its
+/// copy, before it waits on its files, which cross meanwhile, and `here`,
+/// this machine and its process space, which each run writes down with
+/// its own number in its run's file before it makes its copy. A copy is
+/// cleared, with what lies beside it, only when its run's file names
+/// `here` and that run is known gone, as when a kill cut its stop short
+/// or came with no stop at all: never by its age, since a copy's folder
+/// stops changing once it's made however long its job runs, and never
+/// one whose run's file is missing or names another machine or space.
+/// A run is gone only when signalling it finds no such process; one it
+/// may not signal, as from inside a fence, is kept. Numbers are judged
+/// only where they name one process: on a Mac, which has one space of
+/// them, or on Linux once this run's space is known. Only a copy named
+/// as a job is, by digits and dashes, is taken, so no run's file can
+/// name what lies beside another's copy. It never removes through a
+/// link: it reads only a folder of copies that is no link, and only run
+/// files that are plain files, and find and rm take a link at a copy's
+/// name as itself alone. A folder a job closed to its owner, in its copy
+/// or beside it, is opened first, as the copy step opens one, so no such
+/// copy stays for good;
+/// one that still can't go is named once, never file by file, since
+/// each far line after it tries again, as an earlier run's. A run's file
+/// goes only once its copy did, and only its first bytes are read, with
+/// any NUL dropped byte by byte, so one a job filled can't hold the sweep
+/// or have a shell or a Mac's tr complain of it in the job's output.
+pub(super) fn sweeping() -> String {
+    format!(
+        r#"runs=${{work%/*}}
+ours=$(readlink /proc/self/ns/pid 2>/dev/null)
+here="$(uname -n) $ours"
+case $(uname -s) in
+  Darwin) judged=yes ;;
+  Linux) judged=${{ours:+yes}} ;;
+  *) judged='' ;;
+esac
+if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
+  for run in "$runs"/*{RUN}; do
+    [ -f "$run" ] && [ ! -L "$run" ] || continue
+    copy=${{run%{RUN}}}
+    case ${{copy##*/}} in ''|*[!0-9-]*) continue ;; esac
+    line=$(head -c 512 "$run" | LC_ALL=C tr -d '\000' | head -n 1)
+    set -f
+    set -- $line
+    set +f
+    [ $# -le 3 ] || continue
+    pid=${{1-}} machine=${{2-}} space=${{3-}}
+    [ "$machine $space" = "$here" ] || continue
+    case $pid in ''|*[!0-9]*) continue ;; esac
+    case $(LC_ALL=C kill -0 "$pid" 2>&1) in
+      *'No such process'*) ;;
+      *) continue ;;
+    esac
+    find "$copy.names" "$copy.back" "$copy.back".* "$copy" -type d \
+      ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
+    {{ rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
+      rm -f "$run"; }} 2>/dev/null ||
+      printf "elsewhere: couldn't clear %s, an earlier run's copy\n" "$copy" >&2
+  done
+fi"#
+    )
+}
+
+/// What follows a copy's name in its run's file, which says what machine
+/// and process space the run was in and its number there.
+pub(super) const RUN: &str = ".run";
+
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
-/// for this machine's, which another may not. A tree with no file in it
-/// may not cross at all, and is made empty.
+/// for this machine's, which another may not. Each name the list holds
+/// must be one of the archives the near side writes, `0.tar` and on, all
+/// checked before any is unpacked. A job with no file that travels sends
+/// none, and its tree is made empty.
+///
+/// The near side writes only files and folders, each named within the
+/// tree, so an archive naming a member from the root or through `..`
+/// came from no near side and is refused before it's unpacked. So is a
+/// tree holding anything else, a link of either kind, a pipe, a socket
+/// or a device, checked as each archive is unpacked, before the next,
+/// so no archive writes through what one before it made, and none takes
+/// away what one before it made before it's seen. Past that, the fence
+/// around the far line writes only the quest's scratch. A file under two
+/// names is found as one that isn't a folder yet has more than one link,
+/// not by its type, so this find reads apart from the bring-back step's.
+/// Each folder is made the far line's own to read, write and enter as it
+/// is unpacked, an unpacking that failed partway included, since an
+/// archive's folder modes are kept and one closed to its owner would
+/// leave its contents unchecked and its copy behind; one that still
+/// won't open fails the search after it, which can't read it. A file's
+/// mode stays as the near side sent it. Each archive's list of
+/// names is made new where nothing is, as the run's file is.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
-  while IFS="$tab" read -r size path; do
+  while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
-    case "/$path/" in
-      //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
+    case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
+    case $number in
+      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; return 1 ;;
     esac
   done < "$job/{LEFT}"
-  [ ! -d "$job/{TREE}" ] || cp -R "$job/{TREE}/." "$work/" || return 2
-  # Deepest first, so a folder's contents are named before it is, and
-  # shortest first within a folder, so target.elsewhere is target before
-  # target.elsewhere.elsewhere takes its name.
-  marks="$work.marks"
-  find "$work" -name '*{MARK}' > "$marks" &&
-    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' "$marks" > "$marks.by" &&
-    sort -t "$tab" -k1,1nr -k2,2n "$marks.by" > "$marks.in" &&
-    cut -f3- "$marks.in" > "$marks" || {{ rm -f "$marks" "$marks".*; return 2; }}
-  (
-    # A subshell of its own, so its exit ends only the loop in every sh.
-    while IFS= read -r name; do
-      to=${{name%{MARK}}}
-      case "${{to##*/}}" in
-        ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
+  while IFS="$tab" read -r size part; do
+    [ "$size" = {END} ] && break
+    rm -f "$work.names" && (set -C && tar -tf "$job/{TREE}/$part" > "$work.names") ||
+      return 2
+    while IFS= read -r member; do
+      case /$member/ in
+        //*|*/../*)
+          printf "elsewhere: the job's archive %s names %s, outside its tree\n" "$part" "$member" >&2
+          return 1 ;;
       esac
-      [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
-      mv "$name" "$to" || exit 2
-    done
-  ) < "$marks"
-  stripped=$?
-  rm -f "$marks" "$marks".*
-  return "$stripped"
+    done < "$work.names"
+    tar -xf "$job/{TREE}/$part" -C "$work"; unpacked=$?
+    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || return 2
+    [ "$unpacked" -eq 0 ] || return 2
+    odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
+      -o ! -type d -links +1) || return 2
+    [ -z "$odd" ] || {{
+      printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
+*}}" >&2
+      return 1
+    }}
+  done < "$job/{LEFT}"
 }}"#
+    )
+}
+
+/// The far line's step once the job ends, making the folder its copies
+/// cross in new. A link the job left at its handover folder, or at either
+/// folder above it in the quest's scratch, goes first, so neither the
+/// copies, their list nor the tree's removal is carried through it. Where
+/// one can't be cleared, nothing is written or cleared in the handover:
+/// only the copy goes. Otherwise the handover, the folders above it and
+/// those under its copies' folder are opened, so a job that closed them
+/// changes nothing, and whatever lies at its list's name goes, a folder
+/// the job made there included, so the list's own write never fails on it.
+/// `find` takes a link it meets as itself alone, as `-P` says, so
+/// nothing past the handover is opened.
+/// Where the folder still can't be made new, as on a disk gone wrong, the
+/// tree goes too, to free its room, and the list is only its cut, so the
+/// near side says at once that nothing came back, whatever list the job
+/// left there. Each refusal says which of the two it was.
+pub(super) fn handing() -> String {
+    format!(
+        r#"# Made fresh, so no copy is written through whatever sat at its number,
+# its folders opened first, as a job may close them: only once no link
+# stands, so nothing past the handover is opened.
+stuck="a link it left at its handover couldn't be cleared"
+if unlinked; then
+  find -P "$job/{BACK}" "$job/{BROUGHT}" -type d ! -perm -700 -exec chmod u+rwx {{}} \; \
+    2>/dev/null
+  stuck="its folder for copies or its list couldn't be made new"
+  rm -rf "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
+fi
+if [ -n "$stuck" ]; then
+  printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
+  cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
+    rm -f "$work{RUN}"
+  ! unlinked || {{
+    rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+    (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}") ||
+      printf "elsewhere: nor could it cut its list, so the near side waits it out\n" >&2
+  }}
+  exit "$code"
+fi
+"#
     )
 }
 
@@ -60,10 +334,15 @@ pub(super) fn copying() -> String {
 /// run doesn't pass as whole. The list gets its end only once every line
 /// of it was written, so a list cut short, as by a disk that filled, never
 /// reads as whole: it ends cut where that can be written, and otherwise
-/// the near side waits it out and says it didn't come.
+/// the near side waits it out and says it didn't come. The list, and the
+/// lists it's made from, are made new where nothing is, as the run's file
+/// is, so none is written through a link the job left at its name.
 pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
-        return format!("{}echo {END} > \"$job/{BROUGHT}\"\n", freed());
+        return format!(
+            "{}rm -f \"$job/{BROUGHT}\" && (set -C && echo {END} > \"$job/{BROUGHT}\")\n",
+            freed()
+        );
     }
     // Each once, so a path a kind names twice is never lost twice.
     let mut paths = Vec::new();
@@ -80,15 +359,22 @@ pub(super) fn bringing(kind: &Kind) -> String {
         // fails, on a compound command or a function as on a special
         // builtin: then only this step ends, never the far line, and the
         // list gets no end. `true` rather than `:` for the same reason.
+        // What can't be cleared, as a folder the job made at a list's
+        // name, is left for the list's own write to fail on, so each path
+        // is lost as when nowhere is left to list them.
         r#"names="$work.back" wrote=0
 (
+rm -f "$names" "$names".* "$job/{BROUGHT}" 2>/dev/null
+set -C
 lose() {{
   for path in {paths}; do
     [ -e "$path" ] || continue
     printf '%s\t%s\n' - "$path" || return 1
   done
 }}
-if true > "$names" && true > "$names.lost"; then
+# The sorted list's name is tried with the others, then left free for
+# sort's own write.
+if true > "$names" && true > "$names.lost" && true > "$names.in" && rm -f "$names.in"; then
 for path in {paths}; do
   [ -e "$path" ] || continue
   find "$path" -type l ! -path '*/.*' ! -name '.*' \
@@ -99,7 +385,8 @@ done
 # A file two of the paths hold crosses once, and counts once. One that
 # can't be sorted loses every path, each named once.
 LC_ALL=C sort -u "$names" > "$names.in" ||
-  {{ true > "$names.in" && lose > "$names.lost" || exit 1; }}
+  {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
+    exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
@@ -145,22 +432,23 @@ fi
 # Freed before the list ends, the job's copy and its tree with them, as
 # on a disk that filled, these are the room its end needs.
 rm -f "$names" "$names".*
-{freed}# Cut on a line of its own, so a line the full disk cut in half can't
-# hide it.
-if [ $wrote -ne 0 ]; then
+{freed}if [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 elif ! echo {END} >> "$job/{BROUGHT}"; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+  wrote=1
 fi
+# Cut on a line of its own, so a line the full disk cut in half can't
+# hide it, and never through a link that couldn't be cleared at its name.
+[ $wrote -eq 0 ] || [ -L "$job/{BROUGHT}" ] || printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 "#,
         freed = freed(),
     )
 }
 
 /// Frees the job's copy, with what it made, and the tree it was made
-/// from, once nothing is brought back out of them.
+/// from, once nothing is brought back out of them, and then its run's
+/// file, once they went.
 fn freed() -> String {
-    format!("cd \"$HOME\" && rm -rf \"$work\" \"$job/{TREE}\"\n")
+    format!("cd \"$HOME\" && rm -rf \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
 }

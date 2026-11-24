@@ -9,5 +9,6 @@
   "launcher/ForYou.js"
   "launcher/ForYouCells.js"
   "launcher/ForYouFilter.js"
+  "launcher/LookForm.js"
   "launcher/Looks.js"
 ]

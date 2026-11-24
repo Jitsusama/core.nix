@@ -16,7 +16,7 @@ a folder.
 
 | File                                             | Holds                                                            |
 | ------------------------------------------------ | ---------------------------------------------------------------- |
-| `cores-kept-from-their-owner.nix`, `-vm-test.py` | a crash's core kept from its owner, a node's removed six hours on |
+| `cores-kept-from-their-owner.nix`, `-vm-test.py` | a crash's core kept from its owner, a pi's or a node's removed six hours on |
 | `fenced-runs.nix`, `-vm-test.py`                 | an agent's run reaching no socket, secret or home past its fence |
 | `firmware-asks.nix`, `-vm-test.py`               | writing firmware asking an administrator, even at the seat       |
 | `libvirt.nix`, `-vm-test.py`                     | libvirt's daemon stopping at once while its udev thread waits    |

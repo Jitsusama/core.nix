@@ -1253,6 +1253,7 @@ it. Owners go by layer:
 | A password or one-time code copied                                     | the margin mark, until the clipboard clears it, since the launcher goes as it copies | Passwords' foot; Now |
 | A password reused or breached                                          | nothing, and nothing guessed, until Joel presses Check Every Password, which reads every password, so never on its own | Passwords › Needing Attention, counted, shown again after the vaults in its manager's program; each entry's Health in the warning's colour, "reused in 3 other entries", "seen in 1,204 breaches" |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
+| Another machine gone down while it holds work                          | a critical notice from Machines once it has read unreachable for ten minutes, waiting in For You until read, replaced by one saying it's back; nothing for a machine asleep with no work, one with a battery or power unread, or when none still reads ready and this one may be cut off | Machines, where one out of reach dims and says since when |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend, a part of Agents (Super+U); Now |
 | AI tokens running out                                                  | the margin mark, only while they run out within four hours at the last hour's rate, or are out; one notice, its words following the minutes in place, rising again only as the time left steps down | Now; AI Spend, a part of Agents |
@@ -1508,7 +1509,7 @@ works the same way everywhere.
   | Kind               | With nothing typed                            | Where                             |
   | ------------------ | --------------------------------------------- | --------------------------------- |
   | A fixed set        | the order it was designed in                  | home, a thing's parts, its acts   |
-  | Things returned to | open or favourite first, the last act, A to Z | Programs, People                  |
+  | Things returned to | open or favourite first, his last act, A to Z | Programs, People, Code            |
   | A stream           | newest first                                  | Recent, Notices, Clipboard, mail  |
   | Live states        | how each stands, then when it started         | Sessions, Windows, devices, Wi-Fi |
   | Amounts            | the worst first                               | Processor, Memory, Traffic, disks |
@@ -1516,7 +1517,10 @@ works the same way everywhere.
   | A search           | the same letters land on the same row         | everywhere typed                  |
 
   A to Z is only ever the last tie, or the order of many peers alike, as
-  a large folder's files.
+  a large folder's files. Open and last act are Joel's own: in the rows
+  the programs daemon serves, an agent's window opens no program of his,
+  and Code goes by the folder he was in last, as zoxide heard it, never
+  by git's last write.
 - **Under what it belongs to, a step in.** A session orchestrated by
   another sits right under it, its mark and its name a mark's column
   in, so its mark stands where the name above it starts, and two steps
@@ -1539,7 +1543,10 @@ works the same way everywhere.
   (Joel, 2026-11-20: "no clue how to see from that view that a thing is
   waiting"). An orchestration's row wears it while any session in it
   waits, and so does a session a step in while any under it waits, so
-  the map's shape gives way only then. For You keeps each session's own
+  the map's shape gives way only then. A want Joel put off keeps the
+  person with a clock on its own row, but in the session's own hue, and
+  lights nothing above it until its hour is up, since he chose to leave
+  it for now. For You keeps each session's own
   mark and hue, the warning's as its limit nears, since every row there
   waits and the person with a clock is a to-do's. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
@@ -1874,9 +1881,14 @@ works the same way everywhere.
   why: "Home-5G not disconnected · not connected", or "Home-5G not
   disconnected yet · no answer", the yet saying it may still come.
   The failure's mark and what didn't happen are in alert and the why
-  muted, and short of room the why gives way from its end. Going into
-  one lists its acts, led by Return's own, which there does it and
-  closes, so
+  muted, and short of room the why gives way from its end. A look's
+  answer is the one exception: it's said at the look's side until Joel
+  answers again or the look is settled, "Keep It not answered yet · no
+  answer", since he comes back to a look later rather than at the next
+  key. Its choices stay away while no word of it has come, so a second
+  can't follow one on its way; the node answering or going brings them
+  back, the yet saying where it may still come. Going into a row lists
+  its acts, led by Return's own, which there does it and closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"); a power profile's stays even there,
   since a pick lost to a closing launcher goes unseen (Joel, 8

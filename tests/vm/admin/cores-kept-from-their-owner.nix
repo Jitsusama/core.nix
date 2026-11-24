@@ -1,15 +1,16 @@
 # A crash's core is kept where only root reads it, while its owner, in
 # wheel as Joel's account is, still reads its stack trace in the journal,
-# and a node's is removed six hours on
-# (modules/coredump). An account aborts its own process, as any program
-# running as it could abort a pi host, and then can't open or dump the core
-# that holds what the process held. A program named node that only waits
-# stands in for a host, since the removal goes by the core's name; a copy of
-# sleep won't do, as coreutils names its process after the program it acts
-# as. Only a running
-# system has systemd-coredump, the journal and tmpfiles' modes, which is
-# why this is a VM test. The tests are cores-kept-from-their-owner-vm-test.py,
-# which pytest runs inside the driver (tests/lib/vm_pytest.py).
+# and a pi's or a node's is removed six hours on (modules/coredump). An
+# account aborts its own process, as any program running as it could
+# abort a pi, and then can't open or dump the core that holds what the
+# process held. Programs named pi and node that only wait stand in for a
+# plain pi and a pi host started before a switch, since the removal goes
+# by the core's name; a copy of sleep won't do, as coreutils names its
+# process after the program it acts as.
+# Only a running system has systemd-coredump, the journal and tmpfiles'
+# modes, which is why this is a VM test. The tests are
+# cores-kept-from-their-owner-vm-test.py, which pytest runs inside the
+# driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "cores-kept-from-their-owner";
@@ -17,6 +18,10 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   nodes.machine = {
     imports = [ self.nixosModules.coredump ];
     environment.systemPackages = [
+      (pkgs.writeCBin "pi" ''
+        #include <unistd.h>
+        int main(void) { sleep(600); return 0; }
+      '')
       (pkgs.writeCBin "node" ''
         #include <unistd.h>
         int main(void) { sleep(600); return 0; }

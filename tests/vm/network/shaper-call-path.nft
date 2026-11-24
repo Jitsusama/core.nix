@@ -1,0 +1,40 @@
+# Counts each call's own datagrams where a machine meets them, so a call's
+# loss is placed on its path: the server sends what comes down and hears
+# what goes up, the router passes both, and the client sends what goes up
+# and hears what comes down, after the shaper's IFB. No machine meets one
+# way twice, so one counter a call and way serves every machine. A call's
+# datagrams carry 1,200 bytes, a UDP length of 1,208, which leaves out its
+# handshakes, of 12.
+
+counter media_up { }
+counter media_down { }
+counter page_up { }
+counter page_down { }
+
+chain sent {
+	type filter hook output priority raw; policy accept;
+	udp dport 5301 udp length 1208 counter name "media_up"
+	udp dport 443 udp length 1208 counter name "page_up"
+	udp sport 5301 udp length 1208 counter name "media_down"
+	udp sport 443 udp length 1208 counter name "page_down"
+}
+
+chain passed {
+	# Ahead of the router's own queues on the way out, which only the next
+	# machine's count shows.
+	type filter hook forward priority raw; policy accept;
+	udp dport 5301 udp length 1208 counter name "media_up"
+	udp dport 443 udp length 1208 counter name "page_up"
+	udp sport 5301 udp length 1208 counter name "media_down"
+	udp sport 443 udp length 1208 counter name "page_down"
+}
+
+chain heard {
+	# Ahead of the input hook's filters, so a count says the datagram
+	# arrived, before the socket it goes to has room for it or not.
+	type filter hook input priority raw; policy accept;
+	udp dport 5301 udp length 1208 counter name "media_up"
+	udp dport 443 udp length 1208 counter name "page_up"
+	udp sport 5301 udp length 1208 counter name "media_down"
+	udp sport 443 udp length 1208 counter name "page_down"
+}

@@ -71,7 +71,7 @@ onLinux {
     pkgs.callPackage ./package.nix { }
   );
 
-  # On the account's real niri, nested in the sandbox (tests/nested-niri.sh),
+  # On the account's real niri, nested in the sandbox (tests/lib/nested-niri.sh),
   # the sandboxed display offers windows' protocols but none of the
   # privileged ones niri's own socket offers; a command bubblewrap fences
   # copies and pastes both selections through the door and its shims, is
@@ -112,7 +112,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           ${lib.getExe pkgs.bash} ${../tests/pi-fence-clipboard-on-niri.sh} \
             ${lib.getExe door} ${lib.getExe display} ${door}/share/pi-fence/bin logs
         touch $out

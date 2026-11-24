@@ -3,8 +3,8 @@
 Here the desktop captures: screenshots of the screen, a window or a region, recordings, and
 the camera's pictures and videos.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it: unlocked, the shell running, nothing of its
 own still open, so any test runs alone.
 

@@ -1,6 +1,6 @@
 """The margin's cat grows livelier the less Joel types, on niri, as its scale says.
 
-modules/quickshell/checks/margin.nix runs this through pytest in tests/nested-niri.sh, with the
+modules/quickshell/checks/margin.nix runs this through pytest in tests/lib/nested-niri.sh, with the
 account's whole shell, its cat counting Joel paused after 3 s with no keys and away after 8 s,
 and its scenes coming fifteen times sooner than its own rests, so each is seen in seconds.
 Which play comes at each level, how long each pose holds and where a wander goes are held in

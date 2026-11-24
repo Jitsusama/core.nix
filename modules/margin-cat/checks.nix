@@ -17,9 +17,10 @@ onLinux {
   # it rides and falls as the windows under it change, as
   # tests/margin-cat-rides.qml holds it, its way down a workspace as one
   # screen, as tests/margin-cat-one-screen.qml holds it, how it reads
-  # niri's layout, as tests/margin-cat-tiles.qml holds it, and the plays
-  # that move it, as tests/margin-cat-games.qml holds them, in Qt's own
-  # engine.
+  # niri's layout, as tests/margin-cat-tiles.qml holds it, how a walk says
+  # its frames were shown, as tests/margin-cat-shown.qml holds it, and the
+  # plays that move it, as tests/margin-cat-games.qml holds them, in Qt's
+  # own engine.
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -45,6 +46,7 @@ onLinux {
           ./tests/margin-cat-one-screen.qml
           ./tests/margin-cat-pets.qml
           ./tests/margin-cat-rides.qml
+          ./tests/margin-cat-shown.qml
           ./tests/margin-cat-tiles.qml
         ];
       };

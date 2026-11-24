@@ -3,8 +3,8 @@
 Here the shell shows what changes and goes again, the meters that answer the keys and a
 notice, and once nothing shows it draws nothing and barely wakes, behind the lock too.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it, so any test runs alone.
 """
 
@@ -345,7 +345,7 @@ QUIET_LOCKED = 10
 WAKEUPS_A_SECOND = 5
 # Whether the margin's cat last said it's asleep. Awake with no keys it plays every few seconds,
 # as it's meant to, so the shell at rest is watched once it has dozed off, which it does here
-# ten seconds after a key (tests/desktop.nix), and asleep it draws nothing until the next.
+# ten seconds after a key (tests/desktop/desktop.nix), and asleep it draws nothing until the next.
 CAT_ASLEEP = (
     "journalctl --user -u quickshell --no-pager -o cat | grep -a 'report\\[sits cat '"
     " | tail -n 1 | grep -qF '\"asleep\":true'"

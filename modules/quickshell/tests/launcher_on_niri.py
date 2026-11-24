@@ -1,7 +1,7 @@
 """The account's whole shell on a nested niri, for checks that type into the launcher.
 
 modules/quickshell/checks/helpers.nix's launcherOnNiri runs a file of tests
-through pytest inside tests/nested-niri.sh, in the build sandbox: the shell's
+through pytest inside tests/lib/nested-niri.sh, in the build sandbox: the shell's
 own QML on niri's real surfaces, typed at through wtype, in seconds rather than
 a machine booted for it. wtype's keys reach the surface holding the keyboard,
 the launcher's, but never niri's binds, so what a bind runs
@@ -14,6 +14,10 @@ MEANING. A case needing any of those stays in the desktop's VM tests
 (tests/desktop/); one that only types and reads the launcher comes here. The
 helpers keep desktop_session.Desktop's names, so a case moves between the two
 with few words changed: keys are pressed on the shell, since there's no machine.
+
+Long because it's the one fixture every launcher-on-niri check shares, the
+shell's start and the journal's reading among it, so a split would only send
+each check to two files for the same start.
 """
 
 from __future__ import annotations
@@ -28,6 +32,8 @@ import time
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -701,6 +707,38 @@ def placed(said: str) -> Json | None:
     return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
+def logged_since(shell: Shell, mark: int) -> str:
+    """Give what the shell's log says since the mark, whole lines only.
+
+    Its own lines, as a journal's are, which `said_since` leaves out for the reports alone.
+    """
+    with shell.log.open("rb") as log:
+        log.seek(mark)
+        written = log.read()
+    return written[: written.rfind(b"\n") + 1].decode(errors="replace")
+
+
+def notices_daemon() -> int:
+    """Give the notices daemon's process, started by modules/quickshell/tests/notices-beside.sh."""
+    for named in Path("/proc").glob("[0-9]*/comm"):
+        with contextlib.suppress(OSError):
+            if named.read_text().strip() == "notices":
+                return int(named.parent.name)
+    failed = "no notices daemon runs beside the shell"
+    raise AssertionError(failed)
+
+
+@contextlib.contextmanager
+def notices_stopped() -> Iterator[None]:
+    """Hold the notices daemon stopped while what's done inside it runs, so it answers late."""
+    daemon = notices_daemon()
+    os.kill(daemon, signal.SIGSTOP)
+    try:
+        yield
+    finally:
+        os.kill(daemon, signal.SIGCONT)
+
+
 def niri_pid(socket: str) -> int:
     """Give the pid of the niri listening at `socket`, which niri names niri.<display>.<pid>.sock.
 
@@ -763,3 +801,10 @@ def running() -> Iterator[Shell]:
         yield shell
     finally:
         shell.stop()
+
+
+@pytest.fixture(scope="module")
+def shell() -> Iterator[Shell]:
+    """Give the shell, started once for the cases of a file that names this its `shell`."""
+    with running() as started_once:
+        yield started_once

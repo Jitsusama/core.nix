@@ -1,8 +1,8 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
 //! was, a call's round trip through the VPN, the rates its controller
-//! asked of the upload and the download, and the ceiling, a trial's or its
-//! network's, the upload was held under.
+//! asked of the upload and the download, and the ceiling, a trial's, its
+//! network's or its house's, the upload was held under.
 //! A replay (src/replay.rs)
 //! puts these back into the recorded seconds, so a bite that came
 //! through our own queues or the VPN is replayed rather than passed as
@@ -44,7 +44,9 @@ pub struct Line {
     pub up: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub down: Option<u64>,
-    /// Whose the upload's queue was.
+    /// Whose the upload's queue was. A line written before 21 November has
+    /// no `agents_straight` in it, so a replay of such a day never takes
+    /// the path where agents yield.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ours: Option<Ours>,
     /// A call's round trip through the VPN, and the least it was taken to
@@ -56,11 +58,42 @@ pub struct Line {
     /// The plateau the upload holds under, in kbit/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plateau: Option<u64>,
-    /// The ceiling the upload was held under, a trial's or its network's,
-    /// in kbit/s, while one did: a rate held there is the ceiling's, not
-    /// the controller's.
+    /// The ceiling the upload was held under, a trial's, its network's or
+    /// its house's that second, in kbit/s, while one did: a rate held there
+    /// is the ceiling's, not the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<u64>,
+    /// What another machine on the line said it sent, and the most the
+    /// house's ceiling left this one, in kbit/s, while it said so lately
+    /// (src/house.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house_sent: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house_most: Option<u64>,
+    /// What the download was held to for a call that second, in kbit/s,
+    /// while one was (src/room.rs): a hold of the shaper's own, under the
+    /// line, apart from the controller's `down`, so a replay doesn't read
+    /// it as a cut the controller judged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<u64>,
+    /// The kind of reason the upload held where it did (`Why::kind`), and
+    /// the shares the VPN's own queue and agents' lane were held to on the
+    /// link, as main put them there, down to a hundredth, while under one:
+    /// holds that leave the upload's rate as it was, and that the journal
+    /// says only as they begin or end. A line with a `why` was written by a
+    /// shaper whose `link_wait_ms` leaves agents' lane out (src/oneway.rs);
+    /// a replay says how many seconds it fed from lines without one
+    /// (`counting_agents`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vpn_share: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agents_share: Option<f64>,
+    /// True where tc refused the split's last change, so the shares are
+    /// what main asked, not known to be what the classes hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_unsent: Option<bool>,
 }
 
 impl Line {
@@ -78,8 +111,57 @@ impl Line {
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
             plateau: heard.plateau.map(crate::rate::whole),
             ceiling: heard.ceiling.map(crate::rate::whole),
+            house_sent: None,
+            house_most: None,
+            room: None,
+            why: None,
+            vpn_share: None,
+            agents_share: None,
+            held_unsent: None,
         }
     }
+
+    /// This line, saying the controller's kind of reason (`Why::kind`).
+    pub fn because(self, why: &str) -> Line {
+        Line {
+            why: Some(why.to_owned()),
+            ..self
+        }
+    }
+
+    /// This line, saying the shares its link's queues were held to, those
+    /// under one, rounded down to a hundredth (`why::percent`), so a share
+    /// held under one never reads as one, and marked where the split they
+    /// came from wasn't sent.
+    pub fn held(self, held: Held) -> Line {
+        let under = |share: f64| (share < 1.0).then(|| crate::why::percent(share) / 100.0);
+        Line {
+            vpn_share: under(held.vpn),
+            agents_share: under(held.agents),
+            held_unsent: held.unsent.then_some(true),
+            ..self
+        }
+    }
+}
+
+/// The shares a link's queues were held to, as main put them there: the
+/// VPN's own queue's of its lane, and agents' lane's of its split, each one
+/// while it held nothing; and whether the split's last change failed, so
+/// the classes may hold another than these.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Held {
+    pub vpn: f64,
+    pub agents: f64,
+    pub unsent: bool,
+}
+
+impl Held {
+    /// Nothing held.
+    pub const WHOLE: Held = Held {
+        vpn: 1.0,
+        agents: 1.0,
+        unsent: false,
+    };
 }
 
 /// Writes a line for each recorded second the shaper steps on, once.
@@ -188,6 +270,27 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
                 .collect()
         })
         .collect()
+}
+
+/// How many of the `stays`' seconds took a wait of ours from a line with
+/// no `why`: one an older shaper wrote, whose `link_wait_ms` counted what
+/// agents' lane held too (src/oneway.rs). The two can't be told apart
+/// after the fact, so a replay through the rebuilt controller reads the
+/// VPN's hidden wait short there, and says how much of it did.
+#[must_use]
+pub fn counting_agents(stays: &[Stay], lines: &BTreeMap<u64, Line>) -> u64 {
+    let older = |at: u64| {
+        lines
+            .get(&at)
+            .is_some_and(|line| line.ours.is_some() && line.why.is_none())
+    };
+    let seconds = stays.iter().flat_map(|stay| {
+        let began = stay.began_ms / 1_000;
+        stay.seconds
+            .iter()
+            .map(move |s| began + crate::rate::whole(s.t_s))
+    });
+    seconds.filter(|&at| older(at)).map(|_| 1).sum()
 }
 
 /// Puts the trace's `lines` into `stays` as `merge` does, giving the
@@ -307,6 +410,65 @@ mod tests {
     }
 
     #[test]
+    fn a_line_says_why_it_held_and_the_holds_under_its_rate() {
+        let held = line(NOV16, Some(9_500), None).because("tunnel").held(Held {
+            vpn: 0.8149,
+            agents: 0.996,
+            ..Held::WHOLE
+        });
+        assert_eq!(held.why.as_deref(), Some("tunnel"), "the kind of reason");
+        assert_eq!(
+            held.vpn_share,
+            Some(0.81),
+            "the VPN's own queue's share, to a hundredth"
+        );
+        assert_eq!(
+            held.agents_share,
+            Some(0.99),
+            "agents' share, rounded down under one"
+        );
+        let edge = line(NOV16, None, None).held(Held {
+            vpn: 0.29,
+            agents: 1.0,
+            ..Held::WHOLE
+        });
+        assert_eq!(
+            edge.vpn_share,
+            Some(0.29),
+            "a share a double keeps a hair under its hundredth reads as that hundredth"
+        );
+        let free = line(NOV16, Some(9_500), None)
+            .because("clear")
+            .held(Held::WHOLE);
+        assert_eq!(
+            (free.vpn_share, free.agents_share),
+            (None, None),
+            "no share at one"
+        );
+        let written = serde_json::to_string(&free).expect("a line");
+        assert!(
+            written.contains(r#""why":"clear""#) && !written.contains("share"),
+            "wrote the reason alone: {written}"
+        );
+        assert_eq!(
+            held.held_unsent, None,
+            "shares from a split sent were marked unsent"
+        );
+        // A split tc refused leaves the shares what main asked, which the
+        // line says (traces round 2's F13).
+        let refused = line(NOV16, Some(9_500), None).held(Held {
+            vpn: 0.5,
+            agents: 1.0,
+            unsent: true,
+        });
+        let written = serde_json::to_string(&refused).expect("a line");
+        assert!(
+            written.contains(r#""held_unsent":true"#),
+            "shares from a split tc refused weren't marked: {written}"
+        );
+    }
+
+    #[test]
     fn a_trace_is_written_once_a_second_and_read_back() {
         let folder = std::env::temp_dir().join(format!("shaper-trace-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
@@ -316,7 +478,11 @@ mod tests {
             ..line(NOV16 + 5, Some(10_800), Some(87.0))
         });
         writer.write(&line(NOV16 + 5, Some(1), None));
-        writer.write(&line(NOV16 + 6, None, None));
+        writer.write(&line(NOV16 + 6, None, None).because("tunnel").held(Held {
+            vpn: 0.5,
+            agents: 1.0,
+            ..Held::WHOLE
+        }));
         let read = read(&folder).expect("the folder reads");
         let _ = fs::remove_dir_all(&folder);
         assert_eq!(
@@ -343,6 +509,15 @@ mod tests {
             (read[&(NOV16 + 5)].down, read[&(NOV16 + 6)].down),
             (Some(20_000), None),
             "the download's ask, and none: {read:?}"
+        );
+        assert_eq!(
+            (
+                read[&(NOV16 + 6)].why.as_deref(),
+                read[&(NOV16 + 6)].vpn_share,
+                read[&(NOV16 + 6)].agents_share
+            ),
+            (Some("tunnel"), Some(0.5), None),
+            "the reason and the shares under one read back: {read:?}"
         );
         let before: Line = serde_json::from_str(r#"{"at":1,"link":"wlan0","up":5000}"#)
             .expect("a line from before the download was traced reads");
@@ -390,6 +565,39 @@ mod tests {
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",
             s[3]
+        );
+    }
+
+    // A replay over days an older shaper traced feeds the rebuilt
+    // controller a wait that counted agents' lane, which it reads as
+    // ours, so it says how much did (traces round 2's F3, F14 and F19).
+    #[test]
+    fn a_stay_counts_the_seconds_whose_wait_an_older_shaper_wrote() {
+        let stays = vec![Stay {
+            network: "home".into(),
+            began_ms: NOV16 * 1_000,
+            seconds: (0..6).map(second).collect(),
+        }];
+        let lines = BTreeMap::from([
+            (NOV16 + 1, line(NOV16 + 1, Some(5_000), None)),
+            (NOV16 + 2, line(NOV16 + 2, Some(5_000), None)),
+            (
+                NOV16 + 3,
+                line(NOV16 + 3, Some(5_000), None).because("tunnel"),
+            ),
+            (
+                NOV16 + 4,
+                Line {
+                    ours: None,
+                    ..line(NOV16 + 4, Some(5_000), None)
+                },
+            ),
+            (NOV16 + 9, line(NOV16 + 9, Some(5_000), None)),
+        ]);
+        assert_eq!(
+            counting_agents(&stays, &lines),
+            2,
+            "only a stay's seconds with a wait and no reason are an older shaper's"
         );
     }
 

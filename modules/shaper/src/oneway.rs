@@ -120,12 +120,12 @@ const UNSEEN_FLOOR: f64 = 0.5;
 const STARTING_S: f64 = 30.0;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
-const CLIMB: f64 = 1.05;
+pub(crate) const CLIMB: f64 = 1.05;
 /// How fast a rate climbs, per second, far from any queue it has met:
 /// under this share of what got through when one last stood, or with none
 /// met yet. A remembered rate far under the connection is back in under
 /// ten seconds.
-const FAST_CLIMB: f64 = 1.25;
+pub(crate) const FAST_CLIMB: f64 = 1.25;
 const FAR: f64 = 0.5;
 /// How long where a queue last stood slows the climb: past it, as CUBIC
 /// does, the connection has likely moved since.
@@ -136,6 +136,14 @@ const PAST: f64 = 1.25;
 const DRIFT: f64 = 0.01;
 /// What share of its rate counts as full, and what as low.
 const FULL: f64 = 0.75;
+/// How lately a direction was cut for its hold still to say the line is
+/// full (`Way::judged_full`), in seconds: the seconds after a fed cut,
+/// when the download may back off under `FULL` of its new rate as its
+/// queue drains, before it fills the rate again, so a call starting then
+/// still holds the download that was cut (src/room.rs). It's counted
+/// from the second the recorder stepped on, not from when the room
+/// reads it (shaper holds round 3's F3).
+const CUT_LATELY_S: f64 = 5.0;
 /// How many of the connection's rates the base is the median of.
 const LEARNED: usize = 10;
 /// The gateway's jitter on Wi-Fi: its rises past this are the air's.
@@ -369,8 +377,13 @@ pub struct Ours {
     /// link's did.
     #[serde(default)]
     pub vpn_queued: bool,
-    /// How long the link's CAKE kept what it held, in ms: a wait of ours,
-    /// which the VPN's flow takes too before it reaches the router.
+    /// How long what the link's queues held ahead of the VPN's flow took
+    /// to leave, in ms: a wait of ours, which the VPN's flow takes before
+    /// it reaches the router. Agents' lane's bytes stand apart, but while
+    /// it holds or keeps sending any it sends them beside the VPN's turn
+    /// (`held::ahead_us` says how). A trace line with no `why` comes from a shaper
+    /// that counted what agents' lane held under its hold in it too, by
+    /// the build that wrote it, whatever its date (src/trace.rs).
     #[serde(default)]
     pub link_wait_ms: u64,
     pub waiting: bool,
@@ -467,6 +480,9 @@ pub struct Way {
     /// stay, and when; None until it first does.
     ceiling: Option<(f64, f64)>,
     last_cut: f64,
+    /// When it was last cut under what it carried, rather than halved
+    /// over a sliver: a queue this machine fed.
+    last_fed_cut: f64,
     last_at: Option<f64>,
     under_half_since: Option<f64>,
     /// How long the download has passed over seconds since it was last
@@ -532,6 +548,7 @@ impl Way {
             late_since: None,
             ceiling: None,
             last_cut: f64::NEG_INFINITY,
+            last_fed_cut: f64::NEG_INFINITY,
             last_at: None,
             under_half_since: None,
             passed_s: 0.0,
@@ -986,6 +1003,19 @@ impl Way {
         self.rate.is_finite().then(|| crate::rate::whole(self.rate))
     }
 
+    /// Whether this direction's hold says its line is full at `at`,
+    /// carrying `carried` in kbit/s: held, and cut under what it carried
+    /// within `CUT_LATELY_S`, or carrying `FULL` of the rate it's held to.
+    /// A hold kept on over a line gone quiet, as one with no base is for
+    /// `CEILING_S`, one climbing back over little, or one halved over a
+    /// sliver, where the queue is mostly another machine's or the air's,
+    /// says nothing of this machine filling the line (shaper holds round
+    /// 1's F3 and F18): halved, it carries under half its hold.
+    pub fn judged_full(&self, at: f64, carried: f64) -> bool {
+        self.rate.is_finite()
+            && (at - self.last_fed_cut <= CUT_LATELY_S || carried >= self.rate * FULL)
+    }
+
     /// What a trial's ceiling holds the upload to while the controller
     /// lets it go, which a trial still means to hold.
     fn let_go(&self) -> Option<u64> {
@@ -1240,6 +1270,7 @@ impl Way {
         let drain = 1.0 - (delay_ms / 1_000.0).min(0.5);
         self.rate = (carried.min(self.rate) * 0.9 * drain).max(LEAST_KBIT);
         self.last_cut = at;
+        self.last_fed_cut = at;
         self.ceiling = Some((carried, at));
     }
 
@@ -1506,6 +1537,11 @@ pub struct Controller {
     /// Why the upload holds where it does, and since when.
     why: Why,
     why_since: Option<f64>,
+    /// When the upload was last held in this stay, so one let go since
+    /// isn't said never to have met a queue, and is said let go as long
+    /// ago as it was, whatever reasons came between (follow-ups round 1's
+    /// F4 and F15). A stay starts with none, a recorder's restart's too.
+    held_at: Option<f64>,
     last_cut: LastCut,
     /// The hold on the VPN's own queue, for a wait inside its tunnel.
     tunnel: crate::tunnel::Hold,
@@ -1541,6 +1577,7 @@ impl Controller {
             guarded: 0,
             why: Why::Unmeasured,
             why_since: None,
+            held_at: None,
             last_cut: LastCut::default(),
             tunnel: crate::tunnel::Hold::default(),
             agents: crate::tunnel::Hold::default(),
@@ -1629,17 +1666,27 @@ impl Controller {
             .is_none_or(|anchor| carried >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD)
     }
 
-    /// Why the upload holds where it does, in one sentence.
+    /// Why the upload holds where it does, in a sentence or two (`why::say`).
     /// It names the upload's own rate, which letting go hands none of.
     pub fn why(&self) -> String {
         self.why_holding(self.up.limit())
+    }
+
+    /// The kind of the controller's reason, in a word (`Why::kind`).
+    pub fn why_kind(&self) -> &'static str {
+        self.why.kind()
     }
 
     /// The controller's reason, said of the upload held to `up`, for one
     /// that tells what it handed over beside it, so the two agree.
     pub fn why_holding(&self, up: Option<u64>) -> String {
         let at = self.last_at.unwrap_or(0.0);
-        let since = self.why_since.unwrap_or(at);
+        let since = if self.why == Why::LetGo {
+            self.held_at
+        } else {
+            self.why_since
+        };
+        let since = since.unwrap_or(at);
         // The guard's figure is the line's, under a network's ceiling; the
         // rate a clear line is named at is the one declared.
         let anchor = if self.why == Why::Guarded {
@@ -1858,6 +1905,9 @@ impl Controller {
         let waiting = seen.up_ours.is_some_and(|ours| ours.agents_straight);
         let why = self.reason(at, guarded, met, (heeded, waiting));
         self.judge(at, why);
+        if self.up.rate.is_finite() {
+            self.held_at = Some(at);
+        }
         Limits {
             up: self.up.limit(),
             down: self.down.limit(),
@@ -1991,7 +2041,11 @@ impl Controller {
             return Why::Ceiling;
         }
         if !up.rate.is_finite() {
-            return Why::Unmeasured;
+            return if self.held_at.is_some() {
+                Why::LetGo
+            } else {
+                Why::Unmeasured
+            };
         }
         // The VPN's own hold is named first: agents don't yield while it
         // works, so theirs is then only climbing back. A share climbing
@@ -2034,7 +2088,9 @@ impl Controller {
             Some(plateau) if !at_the_hold && up.rate <= plateau * up.tuning.hold + 1.0 => {
                 Why::Router { plateau }
             }
-            _ => Why::Clear,
+            _ => Why::Clear {
+                probing: up.probing_until.is_some(),
+            },
         }
     }
 
@@ -2449,6 +2505,53 @@ mod tests {
         assert_eq!(c.returns, 0, "the guard sent it back: {:?}", c.down.limit());
     }
 
+    // On 23 November the upload was held under the router's queue at 02:56
+    // and 02:58, let go when that ended, and then read as never having met
+    // a queue on the network at all.
+    #[test]
+    fn an_upload_let_go_after_a_hold_says_it_was_held() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.0, quiet(300.0, 300.0));
+        assert!(c.why().contains("yet"), "before any queue: {}", c.why());
+        let held = run(&mut c, 1.0, 3.2, queued_up(40.0, 12_000.0));
+        assert!(held.up.is_some(), "no cut under a standing queue: {held:?}");
+        let limits = run(&mut c, 3.2, 3.2 + CEILING_S + 5.0, quiet(300.0, 300.0));
+        assert_eq!(
+            limits.up, None,
+            "an idle spell kept a hold with no line learned"
+        );
+        assert!(
+            c.why().contains("since its last hold let go"),
+            "let go after a hold: {}",
+            c.why()
+        );
+        // A spell with no reflector answering, then a clear line: the hold
+        // let go as long ago as it did, not when the reason last changed.
+        let end = 3.2 + CEILING_S + 5.0;
+        run(&mut c, end, end + 20.0, |_| Seen::default());
+        run(&mut c, end + 20.0, end + 22.0, quiet(300.0, 300.0));
+        let why = c.why();
+        let ago: f64 = why
+            .split("let go, ")
+            .nth(1)
+            .and_then(|rest| rest.strip_suffix(" s ago."))
+            .and_then(|secs| secs.parse().ok())
+            .unwrap_or_else(|| panic!("no let-go time in: {why}"));
+        // The hold stood from the first cut, after 1 s, until CEILING_S
+        // past the last, by 3.2 s, and was let go by `end`: its last held
+        // second, not its first, dates the let-go (shaper holds round 1's
+        // F11), and within a minute the sentence says it in seconds.
+        let last_held = c.held_at.expect("a hold was never dated");
+        assert!(
+            (1.0 + CEILING_S - 1.0..=end).contains(&last_held),
+            "the hold's last held second was {last_held}"
+        );
+        assert!(
+            (end + 22.0 - ago - last_held).abs() < 1.5,
+            "a hold last held at {last_held} was said let go {ago} s ago"
+        );
+    }
+
     #[test]
     fn ten_minutes_after_giving_up_the_connection_is_shaped_again() {
         let mut c = Controller::new(Some(200_000.0), None);
@@ -2819,10 +2922,83 @@ mod tests {
     fn with_no_line_learned_a_cut_is_let_go_half_a_minute_on() {
         let mut c = Controller::new(None, None);
         run(&mut c, 0.0, 1.2, queued(40.0, 26_000.0));
+        assert!(
+            c.down.judged_full(1.2, 26_000.0),
+            "a download its queue cut wasn't judged full"
+        );
         let early = run(&mut c, 1.2, 30.0, quiet(300.0, 1_000.0));
         assert!(early.down.is_some(), "held until the line has likely moved");
+        // The cut held on over a quiet download says nothing of the line
+        // (follow-ups round 1's F12 and F23), so a call starting then
+        // isn't given room.
+        assert!(
+            !c.down.judged_full(30.0, 1_000.0),
+            "a cut kept over a quiet download was judged full"
+        );
         let limits = run(&mut c, 30.0, 32.0, quiet(300.0, 1_000.0));
         assert_eq!(limits.down, None, "unlimited until a queue stands");
+    }
+
+    // Each way a hold says its line is full, and where each stops
+    // (shaper holds round 1's F8, F3 and F18).
+    #[test]
+    fn a_hold_says_its_line_is_full_only_while_filled_or_lately_cut_under_what_it_carried() {
+        let mut way = Way::new(Some(100_000.0));
+        assert!(
+            !way.judged_full(0.0, 74_000.0),
+            "a hold carrying under FULL was full"
+        );
+        assert!(
+            way.judged_full(0.0, 75_000.0),
+            "a hold carrying FULL wasn't full"
+        );
+        way.cut(10.0, 40.0, 60_000.0, true);
+        let full = way.rate * FULL;
+        let after = 10.0 + CUT_LATELY_S;
+        assert!(
+            way.judged_full(after, 0.0),
+            "a cut CUT_LATELY_S ago wasn't full"
+        );
+        assert!(
+            !way.judged_full(after + 0.1, full - 1.0),
+            "a cut past CUT_LATELY_S, under FULL of its hold, was full"
+        );
+        assert!(
+            way.judged_full(after + 0.1, full),
+            "a download filling its hold past the cut's few seconds wasn't full"
+        );
+        // The constant is pinned in seconds, not by itself, from both
+        // sides: 6 s or more would stretch further the window a call's
+        // download is held for a cut over one gone quiet, and under 4 s
+        // would miss the seconds a cut download carries under its new rate
+        // (shaper holds round 2's F3 and F8, round 3's F2, F9 and F13).
+        // It bounds the constant, counted on the recorder's second: the
+        // room hears that second for up to CARRIED_MS after (src/live.rs),
+        // so it may see a cut a second or two longer, and as long again
+        // should the recorder stall (round 4's F5, F13 and F14).
+        assert!(
+            !way.judged_full(16.0, 0.0),
+            "a cut 6 s ago over a download gone quiet was still full"
+        );
+        assert!(
+            way.judged_full(14.0, 0.0),
+            "a cut 4 s ago no longer said the line was full"
+        );
+        let mut sliver = Way::new(Some(100_000.0));
+        sliver.cut(10.0, 40.0, 1_000.0, true);
+        assert!(sliver.rate < 100_000.0, "a cut over a sliver didn't halve");
+        assert!(
+            !sliver.judged_full(10.0, 1_000.0),
+            "a hold halved over a sliver, the queue another's, was full"
+        );
+        let free = Way {
+            last_fed_cut: 10.0,
+            ..Way::new(None)
+        };
+        assert!(
+            !free.judged_full(10.0, 1e6),
+            "a way held to nothing was full"
+        );
     }
 
     #[test]
@@ -5628,6 +5804,58 @@ mod tests {
         filling(&mut c, 30.0, &[]);
         assert!(c.why().starts_with("Upload "), "{}", c.why());
         assert!(c.why().contains("clear for"), "{}", c.why());
+    }
+
+    // On 23 November a probe's 12.5 Mb/s read as a hold above the 12.0
+    // line. The reason is chosen each step from the probe the controller
+    // stands in, so a probe says it looks for room, and the hold after
+    // it no longer does (voids round 2's F2, F7 and F14).
+    #[test]
+    fn a_controller_probing_past_its_hold_says_it_looks_for_room() {
+        let mut c = anchored(12_000.0);
+        let (mut at, mut looked, mut ended) = (0.0, false, None);
+        while at < 120.0 && ended.is_none() {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            if c.up.probing_until.is_some() {
+                looked |= c.why().contains("looking past its hold");
+            } else if looked {
+                ended = Some(at + 1.0);
+            }
+            at += 0.1;
+        }
+        assert!(looked, "no probe said it looked for room: {}", c.why());
+        let ended = ended.expect("the probe never ended");
+        while at < ended {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        assert!(
+            c.up.probing_until.is_none(),
+            "another probe began within a second"
+        );
+        assert!(
+            !c.why().contains("looking past"),
+            "the hold after a probe said it looked for room: {}",
+            c.why()
+        );
     }
 
     /// Steps an anchored controller for `seconds` whose agents fill the

@@ -51,7 +51,7 @@ needs another fails in its checks rather than on a machine.
 `core.lib.bareNixosModule` and `core.lib.bareDarwinModule` are the least
 machine of each class, with one account, `someone`, for the check to add the
 module to. They are for checks only, never a machine's base: they allow
-unfree packages and nobody logs in to the account. Their platform and state
+the unfree packages core names and nobody logs in to the account. Their platform and state
 versions are weaker than a checked module's own default, and so are the
 NixOS one's boot loader and disk and the Mac one's primary user.
 `core.lib.evaluates` is a check that a machine evaluates and no module
@@ -121,6 +121,16 @@ home-manager.users.jitsusama.jitsusama.niri.outputs."eDP-1" = [
   "scale 2"
   "position x=560 y=1440"
 ];
+```
+
+An unfree package is allowed only by name, so a machine that installs one of
+its own names it in its system configuration, even when its home
+configuration installs it, since home-manager uses the system's nixpkgs. The
+name is the one `lib.getName` gives, the package's `pname`, and the lists
+from every module join:
+
+```nix
+nixpkgs.config.allowUnfreePackages = [ "google-chrome" ];
 ```
 
 ## Applying It
@@ -356,6 +366,26 @@ docs-name-what-exists = core.lib.docsNameWhatExists pkgs {
 It fails on a relative link that resolves to nothing, and on a backticked
 path starting with one of the repository's own top folders that names
 nothing, read from the root or the doc's folder. Code blocks aren't read.
+
+Its code comments are held the same way, through another:
+
+```nix
+comments-name-what-exists = core.lib.commentsNameWhatExists pkgs {
+  src = ./.;
+  # Each mention of a path gone, as `file path`, once for each, until fixed.
+  waiting = [ ];
+};
+```
+
+It fails on a comment naming a path from one of the repository's top folders
+that names nothing while the folder under the top it names still stands, and
+on a waiting line listed more often than it's found, so the list only shrinks.
+It reads whole-line comments in the languages code-health's stale.rs knows:
+`//` lines in Rust, JavaScript, TypeScript, QML and C, `#` lines in Nix,
+shell, Python, TOML and YAML, block comments opening a line in Nix and the
+five that use `//`, and Python's docstrings, plain or with up to two of the
+r, b, f and u prefixes, where a statement starts (a module's top, or past
+a line ending with a colon); not markdown.
 
 Every folder says what it holds, as core's do, through another:
 

@@ -241,9 +241,11 @@ pub fn put_late(
     }
     let mut put = Vec::new();
     let mut lines = Vec::new();
+    // One back, its figure in, waits only on its owner's word of the fix,
+    // which it was asked for, so it goes to nobody else.
     for entry in ledger
         .iter_mut()
-        .filter(|e| e.open && !e.late && e.due < now)
+        .filter(|e| e.open && !e.late && e.due < now && e.back.is_none())
     {
         // A must its owner filed stays its owner's, so it's only ever late.
         let found = if entry.kind.is_none() {

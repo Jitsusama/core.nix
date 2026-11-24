@@ -21,10 +21,16 @@ interface Record extends Fields {
   readonly key: string;
 }
 
-/** What one answer moved: the keys it told, and the keys that went. */
+/**
+ * What one answer moved: the keys it told, the keys that went, and whether it
+ * told every record, as a watch's first answer does, rather than what changed.
+ * Only a whole answer makes the records held complete again after a line the
+ * page couldn't take, since that line may have been a change nothing repeats.
+ */
 interface Moved {
   readonly changed: readonly string[];
   readonly gone: readonly string[];
+  readonly whole: boolean;
 }
 
 /** What one answer moved, and how much of it wasn't a record. */
@@ -136,7 +142,7 @@ class Held {
         gone.push(key);
       }
     }
-    return { changed, gone, skipped };
+    return { changed, gone, whole: Array.isArray(records), skipped };
   }
 
   /** Takes `records` as every record, saying each, and those gone. */

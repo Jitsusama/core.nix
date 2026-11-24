@@ -4,7 +4,6 @@
 //! ever at the path. A run killed as it landed leaves its name behind,
 //! which the next landing in that folder sweeps.
 
-use super::MARK;
 use std::collections::HashSet;
 use std::ffi::c_int;
 use std::fs;
@@ -14,6 +13,10 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
+
+/// What a landing name starts with: hidden, so no share carries it and
+/// no near side gathers it.
+pub(super) const MARK: &str = ".elsewhere";
 
 /// The mode bits a file brought back may land with: its own read, write
 /// and run bits, but never setuid, setgid, sticky or a write for anyone,

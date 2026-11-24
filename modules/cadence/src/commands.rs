@@ -136,22 +136,35 @@ fn hour() -> Help {
 }
 
 fn owe() -> Help {
-    Help::new("owe", "files a dated must in the loop's ledger")
-        .example(
-            "cadence owe K --axis safety --owner A --due 2026-11-20T18:00 --says WORDS",
-            "files K, due then",
-        )
-        .example("cadence owe --done K", "closes K once it's met")
-        .argument("[key]", "the must's key")
-        .option("--axis AXIS", "the axis it reads beside")
-        .option("--owner ADDRESS", "who filed it, and closes it")
-        .option("--due WHEN", "when it's due, as 2026-11-20T18:00")
-        .option("--says WORDS", "what it says is owed")
-        .option("--kind KIND", "what it is; must by default")
-        .option("--done KEY", "the must to close")
-        .exit(Exit::Usage, "a key, flag or value missing or wrong")
-        .exit(Exit::NotFound, "no open must is filed as that key")
-        .exit(Exit::Failed, "the ledger couldn't be kept")
+    Help::new(
+        "owe",
+        "files a dated must in the loop's ledger, or says one is met",
+    )
+    .example(
+        "cadence owe K --axis safety --owner A --due 2026-11-20T18:00 --says WORDS",
+        "files K, due then",
+    )
+    .example("cadence owe --done K", "closes the must K once it's met")
+    .example(
+        "cadence owe --done K 'core #6000'",
+        "the finding K fixed by core #6000, closing once its figure is back",
+    )
+    .argument("[key]", "the must's key")
+    .option("--axis AXIS", "the axis it reads beside")
+    .option("--owner ADDRESS", "who filed it, and closes it")
+    .option("--due WHEN", "when it's due, as 2026-11-20T18:00")
+    .option("--says WORDS", "what it says is owed")
+    .option("--kind KIND", "what it is; must by default")
+    .option(
+        "--done KEY",
+        "the must to close, or the finding, followed by the change or why it's expected",
+    )
+    .exit(Exit::Usage, "a key, flag or value missing or wrong")
+    .exit(
+        Exit::NotFound,
+        "no open must or finding is filed as that key",
+    )
+    .exit(Exit::Failed, "the ledger couldn't be kept")
 }
 
 #[cfg(test)]

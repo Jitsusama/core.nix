@@ -169,7 +169,7 @@ A case goes in the first of these that can show it, cheapest first:
    niri's binds, a system service, screens coming and going or Joel coming
    back, and one path through each connection, never each case of it.
 
-The desktop's VM tests ([`tests/desktop.nix`][desktop]), one per area, each
+The desktop's VM tests ([`tests/desktop/desktop.nix`][desktop]), one per area, each
 named `vm-desktop-<area>`, start niri and the shell in a virtual machine and
 drive each surface by its keys. A case only a running machine shows gets a
 subtest in its area's file under `tests/desktop/`, and a helper two areas use
@@ -201,7 +201,7 @@ another.
 [home-folder]: home/
 [clipboard]: clipboard/
 [design]: ../../docs/design.md
-[desktop]: ../../tests/desktop.nix
+[desktop]: ../../tests/desktop/desktop.nix
 [home]: home.nix
 [record]: record-window/
 [whereabouts]: whereabouts/

@@ -1,5 +1,7 @@
 # The checks of slices, which checks.nix gathers with every other folder's;
-# its opening comment says what each kind of check proves.
+# its opening comment says what each kind of check proves. Long because each
+# check reads the same few machines it's given, the bare and graphical ones,
+# which a split would have to pass from file to file.
 {
   bareNixos,
   graphical,
@@ -12,6 +14,73 @@
   ...
 }:
 {
+  # A machine turns a disk's writeback throttle off, or sets its goal, by a
+  # unit per disk that a switch starts and the disk's arrival wants, and
+  # stopping it gives the kernel's goal back; one that names none has no
+  # such unit, and a name that isn't a disk's plain one, or a disk io.cost
+  # shares, is refused.
+  a-disks-writeback-throttle-is-the-machines =
+    let
+      sharing =
+        throttle: disks:
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          {
+            jitsusama.slices = {
+              writebackThrottle = throttle;
+              inherit disks;
+            };
+          }
+        ]).config;
+      machine = throttle: sharing throttle { };
+      measured.nvme0n1.model = lib.genAttrs [
+        "rbps"
+        "rseqiops"
+        "rrandiops"
+        "wbps"
+        "wseqiops"
+        "wrandiops"
+      ] (_: 1000);
+      two =
+        (machine {
+          nvme0n1 = 0;
+          vda = 75000;
+        }).systemd.services;
+      held =
+        disk: goal:
+        let
+          unit = two."disk-writeback-${disk}" or { };
+          service = unit.serviceConfig or { };
+        in
+        lib.hasSuffix "/writeback-goal ${disk} ${goal}" (service.ExecStart or "")
+        && lib.hasSuffix "/writeback-goal ${disk} kernel" (service.ExecStop or "")
+        && service.RemainAfterExit or false
+        # A condition would skip a name that reaches no throttle unseen, and
+        # the disk's leaving has to stop the unit so its return starts it.
+        && !(unit.unitConfig or { } ? ConditionPathExists)
+        && unit.unitConfig.StopPropagatedFrom or null == "dev-${disk}.device"
+        && lib.elem "dev-${disk}.device" (unit.wantedBy or [ ])
+        && lib.elem "multi-user.target" (unit.wantedBy or [ ]);
+      refusing = config: lib.any (a: !a.assertion) config.assertions;
+      refuses = throttle: refusing (machine throttle);
+      unnamed =
+        lib.filterAttrs (name: _: lib.hasPrefix "disk-writeback-" name)
+          (machine { }).systemd.services;
+    in
+    holds "a-disks-writeback-throttle-is-the-machines"
+      "A disk's writeback throttle isn't set as the machine names it, or is set unasked."
+      (
+        held "nvme0n1" "0"
+        && held "vda" "75000"
+        && unnamed == { }
+        && !(refuses { nvme0n1 = 0; })
+        && refuses { "nvme*" = 0; }
+        && refuses { "nvme0n1\", RUN+=\"x" = 0; }
+        && !(refusing (sharing { vda = 0; } measured))
+        && refusing (sharing { nvme0n1 = 0; } measured)
+      );
+
   # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
   # every slice above them is protected, so a floor one of them lacks is a
   # floor nobody has, and nothing says so. session.slice's and app.slice's
@@ -152,6 +221,58 @@
         && cores laptop == none
         && !delegated laptop
       );
+
+  # A unit the account's manager starts opens as many files as a login
+  # shell does. Left to systemd's soft 1024, a git fetch in a transient unit
+  # ran out in a repository of 265 packs and then called a sound object
+  # corrupt, though the same command worked in a shell. systemd reads a
+  # bare number as both limits and "soft:hard" as each, either of them a
+  # count or infinity. The hard limit has to stay at or above the 524288
+  # the manager itself holds, or every unit would lose what it may raise
+  # itself to, and the soft one has to match it. A count is written as
+  # plain decimal of at most 18 digits: a leading zero may read as octal
+  # or be refused, and a longer count would overflow Nix's integers and
+  # stop evaluation rather than fail the check. The check holds the rule
+  # itself to the settings it must take and refuse, so a looser rule
+  # fails here too.
+  a-unit-opens-as-many-files-as-a-shell =
+    let
+      fits =
+        said:
+        let
+          limit = "([1-9][0-9]{0,17}|infinity)";
+          parts = builtins.match "${limit}(:${limit})?" said;
+          soft = lib.elemAt parts 0;
+          hard = lib.elemAt parts 2;
+          ceiling = if hard == null then soft else hard;
+        in
+        parts != null && soft == ceiling && (ceiling == "infinity" || lib.toInt ceiling >= 524288);
+      takes = [
+        "524288:524288"
+        "524288"
+        "1048576:1048576"
+        "infinity"
+        "infinity:infinity"
+      ];
+      refuses = [
+        "65536"
+        "65536:65536"
+        "524287:524287"
+        "1024:524288"
+        "65536:524288"
+        "524288:infinity"
+        "infinity:524288"
+        "0524288:0524288"
+        "1000000000000000000000:1000000000000000000000"
+        ""
+        "abc"
+        "0"
+      ];
+      said = toString (graphical.config.systemd.user.settings.Manager.DefaultLimitNOFILE or "");
+    in
+    holds "a-unit-opens-as-many-files-as-a-shell"
+      "The account's units start with a soft open-files limit below their hard one, or a hard one below the manager's 524288, or the rule no longer takes and refuses what it should."
+      (fits said && lib.all fits takes && !(lib.any fits refuses));
 
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes
@@ -536,23 +657,6 @@
       "A VPN's service doesn't keep its memory: ${lib.concatStringsSep "; " broken}."
       (broken == [ ]);
 
-  # systemd-run, in front of a stand-in that says what it was given, adds
-  # --slice-inherit for an agent's --user call alone: not Joel's terminal
-  # or launcher, nor a call naming a slice, nor one to the system manager.
-  # One from agents' places in jobs.slice, jobs.service and the spawners'
-  # scopes, is given jobs-work.slice instead.
-  an-agents-run-stays-in-its-slice =
-    let
-      run = pkgs.callPackage ./systemd-run.nix {
-        real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
-        cgroup = "cgroup";
-      };
-    in
-    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { } ''
-      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run}
-      touch $out
-    '';
-
   # efficient-cores, on a stand-in sysfs, holds only the efficient cores'
   # ceiling, within each one's own range, frees it to each one's full clock,
   # waits behind another's lock, refuses words it doesn't take, and holds
@@ -565,6 +669,19 @@
         ${pkgs.bash}/bin/bash ${./efficient-cores-test.sh} ${
           lib.getExe (pkgs.callPackage ./efficient-cores.nix { })
         }
+        touch $out
+      '';
+
+  # writeback-goal and disk-order, on a stand-in sysfs, take each exit they
+  # say they take, give back what a disk's throttle had before its first
+  # goal, and stand the throttle down beside io.cost and up after it.
+  disk-throttles-come-back-as-they-were =
+    pkgs.runCommandLocal "disk-throttles-come-back-as-they-were" { }
+      ''
+        mkdir work && cd work
+        ${pkgs.bash}/bin/bash ${./disk-throttle-test.sh} \
+          ${lib.getExe (pkgs.callPackage ./writeback-goal.nix { })} \
+          ${lib.getExe (pkgs.callPackage ./disk-order.nix { })}
         touch $out
       '';
 
@@ -615,6 +732,127 @@
 }
 # What follows needs Linux to build or to run, so a Mac leaves it out.
 // onLinux {
+  # systemd-run, in front of a stand-in that says what it was given, adds
+  # --slice-inherit for an agent's --user call alone: not Joel's terminal
+  # or launcher, nor a call naming a slice, nor one to the system manager.
+  # One from agents' places, jobs.service and the spawners' scopes in
+  # jobs.slice and pi's host and conversation units in agents.slice, is
+  # given jobs-work.slice instead. Only systemd-run's own options are read,
+  # never the command's, bundled and shortened as its parser takes them, by
+  # a table the wrapper is built only once it holds to the options of the
+  # systemd it wraps, nixpkgs' here, and isn't built without: given another
+  # systemd, as a machine's own patched one, it holds the table to that one,
+  # and a hold over a systemd-run that can't list its options fails its
+  # build, saying so. Cross-built for aarch64 it holds the table to the
+  # builder's own systemd, built as the machine's is; with the machine's
+  # systemd patched, or of no version, it's built unheld and says so for
+  # the machine's warnings, never throwing, and such a machine warns of it.
+  # Cross-built from a Mac, whose nixpkgs has no systemd, it's unheld too.
+  # Those are read as evaluated, here on Linux, since nixpkgs for a Mac
+  # alone has no systemd to wrap.
+  an-agents-run-stays-in-its-slice =
+    let
+      cross = pkgs.pkgsCross.aarch64-multiplatform;
+      crossRun = cross.callPackage ./systemd-run.nix {
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      builders = builtins.unsafeDiscardStringContext (
+        lib.getExe' cross.buildPackages.systemd "systemd-run"
+      );
+      # The hold the wrapper's own build asks for, not the one it offers.
+      askedOf = crossRun.drvAttrs.holds.drvAttrs.buildCommand or "";
+      heldToBuilders = crossRun.held && lib.hasInfix builders askedOf;
+      patchedCross = cross.callPackage ./systemd-run.nix {
+        systemd = cross.systemd.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+        });
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      versionless = cross.callPackage ./systemd-run.nix {
+        systemd = pkgs.runCommandLocal "a-systemd" { } "mkdir $out";
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      # nixpkgs as a Mac cross-builds an aarch64 machine with, only evaluated.
+      fromAMac = import pkgs.path {
+        localSystem = "aarch64-darwin";
+        crossSystem = "aarch64-linux";
+      };
+      macRun = fromAMac.callPackage ./systemd-run.nix {
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      # A whole machine cross-built from a Mac stops in nixpkgs, on tools its
+      # initrd asks for, before any warning is read, so the machine that
+      # warns is an aarch64 one built here with its systemd patched.
+      patchedWarnings =
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          (
+            { pkgs, ... }:
+            {
+              nixpkgs.buildPlatform = "x86_64-linux";
+              nixpkgs.hostPlatform = "aarch64-linux";
+              systemd.package = pkgs.systemd.overrideAttrs (old: {
+                patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+              });
+            }
+          )
+        ]).config.warnings;
+      unheld = run: !run.held && noHold run && lib.hasInfix "isn't held" run.unheld;
+      # Neither asked for by the wrapper's build nor offered beside it.
+      noHold = run: !(run.drvAttrs ? holds) && !(run ? holds);
+      # A systemd-run that can't list its options, for the hold to refuse.
+      mute = pkgs.runCommandLocal "a-mute-systemd" { inherit (pkgs.systemd) version; } ''
+        mkdir -p $out/bin
+        printf '#!%s\nexit 1\n' ${pkgs.runtimeShell} >$out/bin/systemd-run
+        chmod +x $out/bin/systemd-run
+      '';
+      refused =
+        pkgs.testers.testBuildFailure
+          (pkgs.callPackage ./systemd-run.nix {
+            systemd = mute;
+            real = "/x";
+            cgroup = "cgroup";
+          }).holds;
+      run = pkgs.callPackage ./systemd-run.nix {
+        real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
+        cgroup = "cgroup";
+      };
+      patched = pkgs.runCommandLocal "a-patched-systemd" {
+        inherit (pkgs.systemd) version;
+      } "mkdir $out";
+      # A regex may not name a store path, so the stand-in's is matched as text.
+      patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
+      heldToPatched = lib.hasInfix patchedRun (
+        (pkgs.callPackage ./systemd-run.nix {
+          systemd = patched;
+          real = "/x";
+          cgroup = "cgroup";
+        }).drvAttrs.holds.drvAttrs.buildCommand or ""
+      );
+    in
+    assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
+    assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
+    assert lib.assertMsg heldToBuilders "a cross-built systemd-run isn't held to the builder's";
+    assert lib.assertMsg (unheld patchedCross) "a cross-built, patched systemd-run is held";
+    assert lib.assertMsg (
+      unheld versionless && lib.hasInfix "unknown version" versionless.unheld
+    ) "a cross-built systemd-run of no version isn't said unheld";
+    assert lib.assertMsg (unheld macRun) "a systemd-run cross-built from a Mac is held";
+    assert lib.assertMsg (lib.any (lib.hasInfix "isn't held") patchedWarnings)
+      "a machine whose systemd-run isn't held doesn't warn of it";
+    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      grep -q "can't list its options" ${refused}/testBuildFailure.log
+      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
+        ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
+        ${pkgs.systemd}/bin/systemd-run
+      touch $out
+    '';
+
   # The sorter's tests run as it builds: a busy process group moves after two
   # busy seconds and not one, the shell's group and pi's never move, a busy
   # process inside them moves alone, and a process first seen counts nothing.

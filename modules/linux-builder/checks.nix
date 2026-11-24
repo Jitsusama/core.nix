@@ -219,6 +219,34 @@ in
         && started { authorizedKeys = [ another ]; } != started narrowly
       );
 
+  # A changed guest's vzvm makes its network once and gives it to every boot:
+  # on 23 November the boot after an idle stop asked vmnet for a second on
+  # the subnet the first still held, was refused, and failed the build that
+  # woke it. The module's patches are applied in its order to the source the
+  # Mac builds, with no fuzz, so one that no longer applies fails here, not
+  # only on a Mac. That source is fetched the same for either system, so the
+  # Linux package's copy is the Mac's, which the check holds to rather than
+  # assumes. The test then wants a kept network handed back, past the macOS
+  # 26 guard, before vmnet is asked for another, the one made kept, a guest
+  # losing its attachment to stop the next boot reusing it and let it go, and
+  # one hardware address for every guest of a process. It compiles nothing,
+  # and whether vmnet takes the network again is what only a Mac shows.
+  linux-builder-reuses-its-network =
+    let
+      package = opened.virtualisation.vz.package;
+      patches = package.patches or [ ];
+      source = "${pkgs.vzvm.src}/${lib.removePrefix "source/" package.sourceRoot}";
+    in
+    assert lib.assertMsg (
+      package.src.outPath == pkgs.vzvm.src.outPath
+    ) "The Mac's vzvm is built from other source than Linux's, so this check reads the wrong one.";
+    pkgs.runCommandLocal "linux-builder-reuses-its-network" { } ''
+      $BASH ${./reuses-its-network-test.sh} ${source} ${
+        lib.concatMapStringsSep " " (patch: "${patch}") patches
+      }
+      touch $out
+    '';
+
   # A changed guest collects garbage once a sixth of its disk is free, back
   # to five twelfths, so a build has room: nixpkgs' 1 GiB and 3 GiB left a
   # 60 GiB store 90 to 93% full on 9 November, with builds failing for disk.

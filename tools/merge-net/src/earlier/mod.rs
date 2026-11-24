@@ -2,8 +2,10 @@
 //! has no run of its own: `ready` merges a rebased head on one, and
 //! `needs` reads what one named moved rather than evaluating again. Beside
 //! it, whether a review round read a head or an earlier commit of it
-//! (`same`), and what the harness's rounds say they read (`seen`).
+//! (`same`), what the harness's rounds say they read (`seen`), and which
+//! heads only pin repos those rounds already review (`pins`).
 
+mod pins;
 pub mod same;
 mod seen;
 

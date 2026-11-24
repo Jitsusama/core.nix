@@ -7,8 +7,12 @@
 # capture-only node by a rule of the test's own, as the kernel's uvcvideo and
 # udev give them to the real one, so the seat's camera watch takes it as it
 # took the Brio. A second loopback is any other camera, which keeps the seat's
-# access through it all. The tests are mx-brio-at-switch-vm-test.py, which pytest runs
-# inside the driver (tests/lib/vm_pytest.py).
+# access through it all. The machine is a seat's, as a graphical one is, so
+# a switch back to it gives the seat the Brio again with nobody replugging
+# it, its give-back gone from the sharing as ../../../modules/mx-brio's
+# checks pin. The tests are
+# mx-brio-at-switch-vm-test.py, which pytest runs inside the driver
+# (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
   card = "Stand-in Brio";
@@ -29,6 +33,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     in
     {
       imports = [
+        self.nixosModules.mx-brio-seat
         self.nixosModules.usb-camera-holders
         self.nixosModules.v4l2loopback
       ];

@@ -1,7 +1,7 @@
 """Every screen goes off from the launcher by niri's own power-off, on niri.
 
-modules/quickshell/checks/displays.nix runs this through pytest in tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts once a run. Turn Every Screen Off and :set noscreens each ask
+modules/quickshell/checks/displays.nix runs this through pytest in tests/lib/nested-niri.sh, with
+the shell launcher_on_niri.py starts once a run. Turn Every Screen Off and :set noscreens each ask
 niri to power its monitors off, which keeps every output connected and enabled, so a monitor's
 hub and network card stay powered (Joel, 2026-10-24: "is there a way to turn my external
 display off without shutting down its hub or network card or anything? i want the laptop to be

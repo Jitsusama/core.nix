@@ -9,8 +9,8 @@ said by stand-ins: a copy of the kernel's folder bound over it, and the stand-in
 area of its own, rather than more of looks, since the
 pyramid keeps a VM test to twenty subtests (docs/testing.md).
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
 """
 

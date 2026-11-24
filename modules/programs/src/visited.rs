@@ -1,6 +1,8 @@
 //! When zoxide last saw each folder, read from its own database as
 //! `visited:<database>` names it, for kitty's page in the launcher
-//! (modules/kitty/Kitty.qml): each folder still there, the one visited
+//! (modules/kitty/Kitty.qml), and for Code's order (`code_rows.rs`), since
+//! zoxide hears only the folders Joel's own shell goes into: each folder
+//! still there, the one visited
 //! last first, with when, in milliseconds. zoxide's `query` prints only a
 //! score, so its database is read here, as bincode lays it out: a
 //! version, read only at 3, zoxide's since 0.8, then how many folders,
@@ -11,13 +13,29 @@
 //! names it, and again as zoxide writes it while its key is watched, so
 //! nothing is read at rest.
 
+use std::collections::BTreeMap;
 use std::fs;
-use std::path::Path;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 /// The one version of zoxide's database this reads.
 const VERSION: u64 = 3;
+
+/// What was last said of each database that couldn't be read, by its
+/// path, so each trouble is told once in the log, not on every pass that
+/// meets it, however many databases kitty's page and Code read.
+static TOLD: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
+
+/// The same of each database a caller let go of past its deadline, kept
+/// apart from `TOLD`, since the read it let go of may still end, late,
+/// and reads the database through `visits_in`, which would say it read
+/// fine.
+static LATE: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
 
 /// The record a key names, or none for a key of another kind or a path
 /// that isn't whole.
@@ -26,9 +44,7 @@ pub fn record(key: &str) -> Option<Value> {
     let database = key
         .strip_prefix("visited:")
         .filter(|path| path.starts_with('/'))?;
-    let folders: Vec<Value> = fs::read(database)
-        .map(|bytes| visits(&bytes))
-        .unwrap_or_default()
+    let folders: Vec<Value> = visits_in(Path::new(database))
         .into_iter()
         .filter(|(path, _)| Path::new(path).is_dir())
         .map(|(path, at)| json!({"path": path, "at": at}))
@@ -36,6 +52,155 @@ pub fn record(key: &str) -> Option<Value> {
     Some(json!({
         "key": key, "kind": "visited", "database": database, "folders": folders,
     }))
+}
+
+/// Each folder in the database at `database` and when Joel was last in
+/// it, in milliseconds, the one visited last first; none where it can't
+/// be read, which is told in the log, as one of another version is,
+/// since either leaves nothing ordered by Joel's visits. One missing is
+/// told nothing: zoxide writes none until a folder is first visited.
+#[must_use]
+pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
+    let shown = database.display();
+    match fs::read(database) {
+        Ok(bytes) => {
+            let version = Bytes {
+                bytes: &bytes,
+                at: 0,
+            }
+            .number(4);
+            let other = version
+                .filter(|version| *version != VERSION)
+                .map(|version| {
+                    format!("zoxide's database at {shown} is version {version}, not {VERSION}")
+                });
+            tell(&TOLD, database, other);
+            visits(&bytes)
+        }
+        Err(why) if why.kind() == ErrorKind::NotFound => {
+            tell(&TOLD, database, None);
+            Vec::new()
+        }
+        Err(why) => {
+            let why = format!("zoxide's database at {shown} couldn't be read: {why}");
+            tell(&TOLD, database, Some(why));
+            Vec::new()
+        }
+    }
+}
+
+/// Says in the log that the database at `database` gave nothing back
+/// within `deadline`, whether its read was stuck or ended without an
+/// answer, once until `answered` says a read came back in time, so a
+/// caller that let its read go says why nothing is ordered; true when it
+/// said it.
+pub fn late(database: &Path, deadline: Duration) -> bool {
+    let why = format!(
+        "zoxide's database at {} gave nothing back within {} seconds",
+        database.display(),
+        deadline.as_secs()
+    );
+    tell(&LATE, database, Some(why))
+}
+
+/// Says a read of the database at `database` came back within its
+/// deadline, so its being late is told again should it be late again.
+pub fn answered(database: &Path) {
+    tell(&LATE, database, None);
+}
+
+/// Says `trouble` in the log once it differs from the last `told` of
+/// `database`, so a database left unreadable is told once, and again only
+/// once it changes; true when it said it.
+fn tell(told: &Mutex<BTreeMap<PathBuf, String>>, database: &Path, trouble: Option<String>) -> bool {
+    let mut told = told.lock().unwrap_or_else(PoisonError::into_inner);
+    if told.get(database) == trouble.as_ref() {
+        return false;
+    }
+    let Some(why) = trouble else {
+        told.remove(database);
+        return false;
+    };
+    eprintln!("{why}, so no visits order anything");
+    told.insert(database.to_owned(), why);
+    true
+}
+
+/// `visits` with each folder's links resolved, since zoxide keeps the path
+/// the shell named, links and all, and repos names a checkout by its real
+/// one: a folder that can't be resolved, as one gone, is kept as written.
+/// One `placed` says is already within a checkout or tree as written is
+/// kept as it is, so only the rest touch the disk. A folder on a mount
+/// that no longer answers stalls this, so a caller that mustn't stall runs
+/// it `within` a deadline.
+#[must_use]
+pub fn resolved(visits: Vec<(String, u64)>, placed: impl Fn(&str) -> bool) -> Vec<(String, u64)> {
+    visits
+        .into_iter()
+        .map(|(folder, at)| {
+            if placed(&folder) {
+                return (folder, at);
+            }
+            match fs::canonicalize(&folder) {
+                Ok(real) => (real.to_string_lossy().into_owned(), at),
+                Err(_) => (folder, at),
+            }
+        })
+        .collect()
+}
+
+/// What `work` answers, run on a thread of its own, or none when it
+/// hasn't answered within `deadline`, or when one run before it still
+/// hasn't, as `late` counts them. So a folder on a mount that no longer
+/// answers holds one thread, never its caller, and no further thread
+/// starts while it does.
+pub fn within<T: Send + 'static>(
+    deadline: Duration,
+    late: &Arc<AtomicUsize>,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Option<T> {
+    if late.load(Ordering::SeqCst) > 0 {
+        return None;
+    }
+    let (sent, answer) = mpsc::channel();
+    // Whichever of the work and its caller comes second, after the work
+    // has ended or the caller has stopped waiting, sees it set, so `late`
+    // is raised once for a run past its deadline and lowered once as it ends.
+    let ended = Arc::new(AtomicBool::new(false));
+    let ending = Ending {
+        late: Arc::clone(late),
+        ended: Arc::clone(&ended),
+    };
+    std::thread::spawn(move || {
+        // Dropped as the work ends, or as it panics, so `late` is lowered
+        // either way.
+        let _ending = ending;
+        let answered = work();
+        // A caller gone past its deadline no longer hears it.
+        let _ = sent.send(answered);
+    });
+    if let Ok(answered) = answer.recv_timeout(deadline) {
+        return Some(answered);
+    }
+    late.fetch_add(1, Ordering::SeqCst);
+    if ended.swap(true, Ordering::SeqCst) {
+        late.fetch_sub(1, Ordering::SeqCst);
+    }
+    None
+}
+
+/// The end of a run `within` its deadline, as its thread sees it.
+struct Ending {
+    late: Arc<AtomicUsize>,
+    ended: Arc<AtomicBool>,
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        if self.ended.swap(true, Ordering::SeqCst) {
+            self.late.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
 }
 
 /// A database's bytes, read from the front.
@@ -140,6 +305,149 @@ mod tests {
             "a database cut short didn't say what came before the cut"
         );
         assert!(visits(&[]).is_empty(), "no database said a folder");
+    }
+
+    #[test]
+    fn a_database_on_the_disk_is_read_and_one_missing_says_none() {
+        let folder = std::env::temp_dir().join(format!("visited-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let at = folder.join("db.zo");
+        fs::write(&at, database(3, &[("/s/a", 2)])).unwrap();
+        let read = visits_in(&at);
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            read,
+            [("/s/a".to_owned(), 2000)],
+            "the database on the disk wasn't read"
+        );
+        assert!(
+            visits_in(Path::new("/nowhere/db.zo")).is_empty(),
+            "a missing database said a folder"
+        );
+    }
+
+    #[test]
+    fn a_trouble_is_told_once_and_again_only_once_it_changes() {
+        let told = Mutex::new(BTreeMap::new());
+        let (code, kitty) = (Path::new("/code/db.zo"), Path::new("/kitty/db.zo"));
+        let unread = || Some("unread".to_owned());
+        let said = [
+            tell(&told, code, unread()),
+            tell(&told, kitty, None),
+            tell(&told, code, unread()),
+            tell(&told, code, Some("version 4".to_owned())),
+            tell(&told, code, None),
+            tell(&told, code, None),
+            tell(&told, code, unread()),
+        ];
+        assert_eq!(
+            said,
+            [true, false, false, true, false, false, true],
+            "a trouble wasn't told once per change of its own database"
+        );
+    }
+
+    #[test]
+    fn a_folder_reached_through_a_link_is_named_by_its_real_path() {
+        let folder = std::env::temp_dir().join(format!("resolved-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(folder.join("real/beta")).unwrap();
+        std::os::unix::fs::symlink(folder.join("real"), folder.join("linked")).unwrap();
+        let through = folder.join("linked/beta").to_string_lossy().into_owned();
+        let real = fs::canonicalize(folder.join("real/beta")).unwrap();
+        let placed = format!("{}/linked", folder.to_string_lossy());
+        let named = resolved(
+            vec![(through.clone(), 2), ("/nowhere/gone".to_owned(), 1)],
+            |_| false,
+        );
+        let kept = resolved(vec![(through.clone(), 2)], |seen| seen.starts_with(&placed));
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            named,
+            [
+                (real.to_string_lossy().into_owned(), 2),
+                ("/nowhere/gone".to_owned(), 1),
+            ],
+            "a folder through a link wasn't named by its real path, or one gone was lost"
+        );
+        assert_eq!(
+            kept,
+            [(through, 2)],
+            "a folder already within a place as written was resolved all the same"
+        );
+    }
+
+    #[test]
+    fn work_past_its_deadline_holds_its_own_thread_and_starts_no_other() {
+        let late = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            within(Duration::from_secs(30), &late, || 7),
+            Some(7),
+            "work that answered in time wasn't taken"
+        );
+        let (release, held) = mpsc::channel::<()>();
+        let stalled = within(Duration::from_millis(50), &late, move || {
+            let _ = held.recv();
+            7
+        });
+        assert_eq!(stalled, None, "work past its deadline held its caller");
+        assert_eq!(
+            within(Duration::from_secs(30), &late, || 9),
+            None,
+            "work started while an earlier run was still out"
+        );
+        release.send(()).unwrap();
+        for _ in 0..3000 {
+            if late.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+            // The released thread lowers `late` on its own time; a
+            // millisecond a look keeps this wait from spinning a core.
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            within(Duration::from_secs(30), &late, || 9),
+            Some(9),
+            "work once the late run ended wasn't started again"
+        );
+    }
+
+    #[test]
+    fn a_late_database_is_told_once_until_a_read_answers_in_time() {
+        let database = Path::new("/nowhere/late/db.zo");
+        let deadline = Duration::from_secs(2);
+        let told = [late(database, deadline), late(database, deadline)];
+        // Read as a read let go of past its deadline ends, finding it gone,
+        // which says nothing of the read its caller let go.
+        let read = visits_in(database);
+        assert!(read.is_empty(), "a database that isn't there named folders");
+        let after_a_late_read = late(database, deadline);
+        answered(database);
+        assert_eq!(
+            [
+                told[0],
+                told[1],
+                after_a_late_read,
+                late(database, deadline)
+            ],
+            [true, false, false, true],
+            "a database that didn't answer was told on every pass, again once a read \
+             let go of ended, or not again once a read answered in time"
+        );
+    }
+
+    #[test]
+    fn work_that_panics_leaves_the_next_run_free_to_start() {
+        let late = Arc::new(AtomicUsize::new(0));
+        let panicked = within(Duration::from_secs(30), &late, || -> u32 {
+            panic!("a resolving that panics, as a stand-in")
+        });
+        assert_eq!(panicked, None, "work that panicked didn't fall back");
+        assert_eq!(
+            within(Duration::from_secs(30), &late, || 9),
+            Some(9),
+            "work that panicked kept every later run from starting"
+        );
     }
 
     #[test]

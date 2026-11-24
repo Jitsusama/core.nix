@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2310 # fenced is a step, read in a condition to say which failed.
-# shellcheck disable=SC2154 # tests/nested-niri.sh sets XDG_RUNTIME_DIR and WAYLAND_DISPLAY.
+# shellcheck disable=SC2154 # tests/lib/nested-niri.sh sets XDG_RUNTIME_DIR and WAYLAND_DISPLAY.
 # The fence's clipboard door and sandboxed display on a real niri, nested in
-# the build sandbox (tests/nested-niri.sh runs this with WAYLAND_DISPLAY at
+# the build sandbox (tests/lib/nested-niri.sh runs this with WAYLAND_DISPLAY at
 # niri). The display's socket offers ordinary clients what they need and
 # none of the privileged protocols niri's own does; a command bubblewrap
 # fences copies and pastes both selections through the door and its shims,
@@ -192,7 +192,7 @@ inner=$1 filtered=$2 logs=$3
 env -u DBUS_SESSION_BUS_ADDRESS -u NIRI_SOCKET XDG_RUNTIME_DIR="$inner" \
   WAYLAND_DISPLAY="$filtered" niri -c "$logs/inner.kdl" > "$logs/inner.log" 2>&1 &
 # niri drawing in software takes some seconds to open its socket: up to a
-# minute, in tenths, as tests/nested-niri.sh gives the outer one.
+# minute, in tenths, as tests/lib/nested-niri.sh gives the outer one.
 for _ in $(seq 600); do
   [ -S "$inner/wayland-1" ] && break
   kill -0 $! 2> /dev/null || { echo 'the nested niri ended'; exit 1; }

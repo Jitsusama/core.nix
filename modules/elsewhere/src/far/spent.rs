@@ -164,7 +164,7 @@ fn spent(job: &Path, machine: &str, now: SystemTime) -> bool {
 mod tests {
     use super::{Cleared, SPENT, UNTOUCHED_A_DAY, clear, owned};
     use std::path::{Path, PathBuf};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, Instant, SystemTime};
 
     /// A quest's scratches of the test's own, its handover emptied, and
     /// removed once the test is done.
@@ -283,7 +283,17 @@ mod tests {
             "its run holds it"
         );
         drop(held);
-        assert_eq!(handover.clear(SystemTime::now()).gone, 1, "no run holds it");
+        // The lock outlives the close while any copy of its descriptor is
+        // open, as one a process forked in that instant holds until it
+        // starts its program, so the clearing is tried for a while, not
+        // once: it failed once in four full runs on a Mac.
+        let within = Instant::now() + Duration::from_secs(10);
+        let mut gone = handover.clear(SystemTime::now()).gone;
+        while gone == 0 && Instant::now() < within {
+            std::thread::sleep(Duration::from_millis(10));
+            gone = handover.clear(SystemTime::now()).gone;
+        }
+        assert_eq!(gone, 1, "no run holds it");
         assert!(!job.exists(), "its run gone, the job is cleared");
     }
 

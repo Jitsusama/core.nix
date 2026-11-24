@@ -1,4 +1,4 @@
-use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
+use super::{Left, SHARE_BYTES, SHARE_FILES, WAITS, far_line, far_run, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Brought, Missed, bring_back, landed};
 use std::io::ErrorKind;
 use std::path::Path;
@@ -12,6 +12,39 @@ const A_WAIT: u64 = 4;
 /// How long such a test's share takes over each step, well inside the
 /// wait, so only a wait that never restarts gives up on it.
 const HALF_A_WAIT: Duration = Duration::from_millis(1500);
+
+#[test]
+fn the_near_side_waits_for_each_file_at_its_listed_size() {
+    let (code, err, home) = far_run(Left::Whole, &[("x", "x")], "mkdir out && printf a > out/a");
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    let job = handover(&home);
+    // The far list says out/a is longer than the copy that crossed.
+    std::fs::write(job.join(BROUGHT), "5\tout/a\nend\n").unwrap();
+    let into = home.join("near");
+    let landed = bring_back(&job, &into, &["out".into()], 1);
+    assert!(
+        landed
+            .as_ref()
+            .is_err_and(|why| why.why().contains("didn't cross")),
+        "a copy short of its listed size was taken: {landed:?}"
+    );
+    assert!(!into.join("out/a").exists(), "a short copy landed");
+    // A link where the copy should be, to a file of the listed size, is
+    // no copy at all.
+    let secret = home.join("secret");
+    std::fs::write(&secret, "12345").unwrap();
+    std::fs::remove_file(job.join(BACK).join("0")).unwrap();
+    std::os::unix::fs::symlink(&secret, job.join(BACK).join("0")).unwrap();
+    let landed = bring_back(&job, &into, &["out".into()], 1);
+    assert!(
+        landed
+            .as_ref()
+            .is_err_and(|why| why.why().contains("didn't cross")),
+        "a link in the handover was followed: {landed:?}"
+    );
+    assert!(!into.join("out/a").exists(), "a linked file landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
 
 #[test]
 fn a_copy_longer_than_listed_never_lands() {
@@ -47,7 +80,7 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
     ];
     for (step, stand_ins) in cases {
         let (code, err, home) = far_line(
-            "1\tx\nend\n",
+            Left::Whole,
             &[("x", "x")],
             "mkdir out && printf a > out/a",
             &kind,
@@ -76,34 +109,40 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
 fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into(), "logs".into(), "gone".into()];
-    // A folder where the far line lists its names, so it can't.
-    let (code, err, home) = far_line(
-        "1\tx\nend\n",
-        &[("x", "x")],
-        "mkdir \"$PWD.back\" out logs && printf a > out/a",
-        &kind,
-        None,
-        &[],
-    );
-    assert!(
-        code == Some(0) && err.contains("couldn't list what to bring back"),
-        "the job didn't run, or the far line didn't say why it lost all ({code:?}): {err}"
-    );
-    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
-    assert!(
-        matches!(&landed, Err(Missed::Lost(why)) if why.starts_with("out, logs didn't come back")),
-        "names that couldn't be listed weren't each lost, or one never made was: {landed:?}"
-    );
-    assert!(
-        !home.join("near/out/a").exists(),
-        "a file landed though its names were never listed"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    // A folder where the far line lists its names, its losses or its
+    // names sorted, so it can't.
+    for list in [".back", ".back.lost", ".back.in"] {
+        let (code, err, home) = far_line(
+            Left::Whole,
+            &[("x", "x")],
+            &format!("mkdir \"$PWD{list}\" out logs && printf a > out/a"),
+            &kind,
+            None,
+            &[],
+        );
+        assert!(
+            code == Some(0) && err.contains("couldn't list what to bring back"),
+            "the job didn't run, or the far line didn't say why it lost all to a folder at \
+             {list} ({code:?}): {err}"
+        );
+        let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+        let lost = "out, logs didn't come back";
+        assert!(
+            matches!(&landed, Err(Missed::Lost(why)) if why.starts_with(lost)),
+            "names that couldn't be listed at {list} weren't each lost, or one never made was: \
+             {landed:?}"
+        );
+        assert!(
+            !home.join("near/out/a").exists(),
+            "a file landed though its names were never listed at {list}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 /// A stand-in for `step` that, run with arguments `when` matches, does
 /// `refusal` instead, and otherwise passes on to the real one.
-fn refusing<'a>(step: &'a str, when: &str, refusal: &str) -> (&'a str, String) {
+pub(super) fn refusing<'a>(step: &'a str, when: &str, refusal: &str) -> (&'a str, String) {
     (
         step,
         format!(
@@ -163,7 +202,7 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
             .map(|(step, text)| (*step, text.as_str()))
             .collect();
         let (code, err, home) = far_line(
-            "1\tx\nend\n",
+            Left::Whole,
             &[("x", "x")],
             "mkdir out && printf a > out/a",
             &kind,
@@ -208,7 +247,7 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
         ),
     );
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir out && printf a > out/a",
         &kind,
@@ -265,7 +304,7 @@ fn a_list_whose_end_can_t_be_written_is_said_and_ends_after_the_room_is_freed() 
     // fails.
     let rm = freeing_first(&format!("ln -sf /dev/full \"$job/{BROUGHT}\""));
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir out && printf a > out/a",
         &kind,
@@ -433,7 +472,7 @@ fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {
     let mut kind = kind("");
     kind.brings_back = (1..=8).map(|folder| format!("f{folder}")).collect();
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "for f in 1 2 3 4 5 6 7 8; do mkdir f$f; done && \
          printf '%300s' '' > f1/a && printf '%300s' '' > f2/b && \
@@ -700,7 +739,7 @@ fn a_file_two_brought_back_paths_both_hold_crosses_once() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into(), "out/a".into()];
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir out && printf x > out/a",
         &kind,

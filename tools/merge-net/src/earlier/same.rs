@@ -7,8 +7,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use super::seen;
-use crate::{candidates, git_at, patch_of, ready, short};
+use super::{pins, seen};
+use crate::{candidates, candidates_at, git_at, patch_of, ready, short};
 
 /// How a change from a base to a head, in a repo, is told from others.
 pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
@@ -26,21 +26,59 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// The rounds mirrored from other machines are asked only when this
 /// machine's read nothing for the head, so a mirror that's broken or slow
 /// never holds back a head reviewed here.
+///
+/// A head no round read that only pins newer commits of repos our rounds
+/// already review needs none of its own (`pins.rs`), and is told so, or
+/// why it needs one after all. It's asked after only once the rounds
+/// found nothing, for the same reason as the mirrors: its asks go to
+/// GitHub and Nix, which may be slow.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    let repo = Path::new(".");
-    here_or_mirrored(
-        seen::witnessed(&seen::rounds_folder())?,
+    read_in_repo(
+        Path::new("."),
+        (commit, main, files),
+        || seen::witnessed(&seen::rounds_folder()),
         || seen::mirrored(&seen::mirrors_folder()),
-        |rounds| {
+        &pins::Live,
+    )
+}
+
+/// [`read_by_a_round`] of `head`, its commit, main and files, in the repo
+/// at `repo`, with this machine's `rounds`, the `mirrors`, and `asks` to
+/// put a pin's questions to. Rounds that can't be read are taken as
+/// reading nothing, so a pin is still asked after, and a pin turned down
+/// is refused naming both why the rounds didn't do and why it doesn't.
+fn read_in_repo(
+    repo: &Path,
+    (commit, main, files): (&str, &str, &[String]),
+    rounds: impl FnOnce() -> Result<HashSet<seen::Read>, String>,
+    mirrors: impl FnOnce() -> seen::Mirrored,
+    asks: &impl pins::Asks,
+) -> Result<(), String> {
+    let read = rounds().and_then(|rounds| {
+        here_or_mirrored(rounds, mirrors, |rounds| {
             read_in(
                 commit,
                 rounds,
                 on_main_at(repo, main),
-                |witnessed| candidates(commit, main, files, witnessed).unwrap_or_default(),
+                |witnessed| candidates_at(repo, commit, main, files, witnessed).unwrap_or_default(),
                 |read| same_patch(repo, commit, main, read, read_patch_id),
             )
-        },
-    )
+        })
+    });
+    let Err(unread) = read else {
+        return Ok(());
+    };
+    match pins::ours_alone(repo, commit, main, asks) {
+        Some(pins::Pinned::Alone(said)) => {
+            eprintln!("merge-net: {said}");
+            Ok(())
+        }
+        Some(pins::Pinned::Declined(why)) => Err(format!(
+            "{unread}; {} moves only flake.lock, but {why}",
+            short(commit)
+        )),
+        None => Err(unread),
+    }
 }
 
 /// Whether `ask` finds the head read among this machine's `rounds`, or,
@@ -98,7 +136,15 @@ fn read_in(
         .collect();
     read.sort();
     if same(read).is_empty() {
-        Err(seen::unread(short(commit)))
+        // A range round that read the head itself, from a base that's no
+        // commit on main, is told apart from no round at all: asking the
+        // same range again reads from the same base.
+        let ranged = rounds.iter().any(|read| read.commit == commit);
+        Err(if ranged {
+            seen::read_from_no_base(short(commit))
+        } else {
+            seen::unread(short(commit))
+        })
     } else {
         Ok(())
     }
@@ -198,6 +244,160 @@ mod tests {
 
     use super::*;
     use crate::tests::{commit, git_in};
+
+    /// What the review gate says of `head` in `repo`, given the rounds of
+    /// `read` and no mirror, asking `asks` about a pin.
+    fn gated(
+        repo: &Path,
+        head: &str,
+        read: &[&str],
+        asks: &pins::tests::Fake,
+    ) -> Result<(), String> {
+        let rounds: HashSet<seen::Read> = read.iter().map(|one| round(one, None)).collect();
+        read_in_repo(
+            repo,
+            (head, "main", &[]),
+            || Ok(rounds),
+            || mirror(&[], &[], &[]),
+            asks,
+        )
+    }
+
+    /// What the review gate says of `head` in `repo`, given `rounds` here
+    /// and a mirror that read `mirrored`, asking `asks` about a pin.
+    fn gated_with(
+        repo: &Path,
+        head: &str,
+        rounds: Result<HashSet<seen::Read>, String>,
+        mirrored: &[&str],
+        asks: &pins::tests::Fake,
+    ) -> Result<(), String> {
+        read_in_repo(
+            repo,
+            (head, "main", &[]),
+            || rounds,
+            || mirror(mirrored, &["peer"], &[]),
+            asks,
+        )
+    }
+
+    /// A fake that finds no pull request for any commit.
+    fn unmerged() -> pins::tests::Fake {
+        let mut asks = pins::tests::Fake::vouching();
+        asks.pulls.clear();
+        asks
+    }
+
+    // A head only a mirror's round read passes on that round, asking
+    // GitHub nothing, whatever its pin would have been told.
+    #[test]
+    fn a_pin_a_mirrored_round_read_passes_asking_nothing() {
+        let (repo, head) = pins::tests::pinned_to_b("gate-mirrored", None);
+        let asks = unmerged();
+        assert_eq!(
+            gated_with(&repo, &head, Ok(HashSet::new()), &[&head], &asks),
+            Ok(()),
+            "a pin a mirrored round read was refused"
+        );
+        assert!(
+            asks.asked().is_empty(),
+            "a pin a mirrored round read was asked after"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // Rounds that can't be read leave a pin to be asked after: one vouched
+    // for passes, and one turned down is refused saying both reasons.
+    #[test]
+    fn a_pin_beside_rounds_that_cant_be_read_is_asked_after() {
+        let (repo, head) = pins::tests::pinned_to_b("gate-unread-rounds", None);
+        let broken = || Err("the rounds folder can't be read".to_owned());
+        assert_eq!(
+            gated_with(&repo, &head, broken(), &[], &pins::tests::Fake::vouching()),
+            Ok(()),
+            "a vouched pin was refused because the rounds couldn't be read"
+        );
+        let refused = gated_with(&repo, &head, broken(), &[], &unmerged());
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|why| why.contains("the rounds folder can't be read")
+                    && why.contains("moves only flake.lock, but no pull request")),
+            "a pin turned down beside unread rounds didn't say both why: {refused:?}"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // A pin the pass vouches for needs no round at all.
+    #[test]
+    fn a_pin_of_ours_passes_the_review_gate_without_a_round() {
+        let (repo, head) = pins::tests::pinned_to_b("gate", None);
+        assert_eq!(
+            gated(&repo, &head, &[], &pins::tests::Fake::vouching()),
+            Ok(()),
+            "a lock-only pin of a merged mycelium commit was refused at the review gate"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // The rounds are asked first, so a head a round read passes without
+    // GitHub or Nix asked, and only an unread one is asked about as a pin.
+    #[test]
+    fn a_pin_a_round_read_passes_asking_nothing_and_a_turned_down_one_is_refused() {
+        let (repo, head) = pins::tests::pinned_to_b("gate-declined", None);
+        let read = unmerged();
+        assert_eq!(
+            gated(&repo, &head, &[&head], &read),
+            Ok(()),
+            "a pin a round read was refused"
+        );
+        assert!(
+            read.asked.borrow().is_empty(),
+            "a pin a round read was asked after"
+        );
+        let refused = gated(&repo, &head, &[], &unmerged());
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|why| why.contains(&seen::unread(short(&head)))
+                    && why.contains("moves only flake.lock, but no pull request")),
+            "an unread pin turned down wasn't refused, saying why: {refused:?}"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+        let (repo, head) = pins::tests::pinned_to_b("gate-beside", Some("module.nix"));
+        assert_eq!(
+            gated(&repo, &head, &[], &pins::tests::Fake::vouching()),
+            Err(seen::unread(short(&head))),
+            "an unread head beside a pin wasn't refused as unread"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // A clean rebase of a pin a round read passes on that round, its
+    // candidates read from git in the pin's own repo, with GitHub and Nix
+    // asked nothing.
+    #[test]
+    fn a_rebase_of_a_pin_a_round_read_passes_asking_nothing() {
+        let (repo, read) = pins::tests::pinned_to_b("gate-rebased", None);
+        git_in(&repo, &["checkout", "-q", "main"]);
+        fs::write(repo.join("module.nix"), "{ y = 2; }").unwrap();
+        git_in(&repo, &["commit", "-qam", "main moves on"]);
+        git_in(&repo, &["checkout", "-q", "pin"]);
+        git_in(&repo, &["rebase", "-q", "main"]);
+        let rebased = git_in(&repo, &["rev-parse", "HEAD"]);
+        assert_ne!(rebased, read, "the rebase made no new commit");
+        let asks = unmerged();
+        assert_eq!(
+            gated(&repo, &rebased, &[&read], &asks),
+            Ok(()),
+            "a clean rebase of a pin a round read was refused"
+        );
+        assert!(
+            asks.asked().is_empty(),
+            "a rebase of a pin a round read was asked after"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
 
     fn round(commit: &str, from: Option<&str>) -> seen::Read {
         seen::Read {
@@ -370,6 +570,19 @@ mod tests {
             refused.contains("no review round of ours read"),
             "{refused}"
         );
+    }
+
+    // A head that only range rounds read, from a base off main or none at
+    // all, is refused saying so, since asking that range again reads from
+    // the same base; one no round read is refused as unread.
+    #[test]
+    fn a_head_read_only_from_no_base_is_told_apart_from_one_unread() {
+        let rounds = HashSet::from([round("ddd", Some("off")), round("ddd", Some(""))]);
+        let on_main = |base: &str| base == "main";
+        let refused = read_in("ddd", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
+        assert_eq!(refused, seen::read_from_no_base("ddd"));
+        let unread = read_in("ccc", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
+        assert_eq!(unread, seen::unread("ccc"));
     }
 
     // Each base is a git, and on 21 November the rounds held about 2,300,

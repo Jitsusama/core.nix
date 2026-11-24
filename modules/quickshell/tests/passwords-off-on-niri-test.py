@@ -1,6 +1,6 @@
 """The Passwords place while it's off, as Joel's is until agents are fenced off, on niri.
 
-modules/quickshell/checks/passwords.nix runs this through pytest inside tests/nested-niri.sh,
+modules/quickshell/checks/passwords.nix runs this through pytest inside tests/lib/nested-niri.sh,
 with the place off as the module leaves it, so no daemon is reached. Chrome is a stand-in
 found by its desktop entry, as 1Password's extension fills sign-ins in there. Home's
 Passwords row and the place's one row each have a drawer saying why it's off and what

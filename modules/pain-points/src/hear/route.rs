@@ -208,7 +208,9 @@ pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) 
         "Joel was hurt, as pain-points hear heard it in his sessions: by what he said, or a \
          turn that stalled him. For each: \
          write a red case that shows it, fix it, and answer with a fix time in hours \
-         (same day for a quick fix); if it isn't yours, send it to its owner.",
+         (same day for a quick fix); if it isn't yours, send it to its owner. It stays open \
+         until its fix runs here: once it lands, reply to this with \"merged at\" and the \
+         commit, or name its #entry beside them in your landing note.",
     );
     for (n, pain) in pains.iter().take(NAMED_AT_MOST).enumerate() {
         let mut parts = vec![line(n, pain, "", cells, offset_s)];
@@ -328,7 +330,12 @@ mod tests {
             routed_at: None,
             tries: 0,
             taken_by: None,
+            answered_at: None,
             closed_by: None,
+            closed_at: None,
+            thread: Vec::new(),
+            shared: false,
+            landed: Vec::new(),
         }
     }
 

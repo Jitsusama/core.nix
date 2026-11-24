@@ -26,6 +26,15 @@ let
     ];
     text = builtins.readFile ./swap-file-grows.sh;
   };
+  chunksGivenBack = pkgs.writeShellApplication {
+    name = "chunks-given-back";
+    runtimeInputs = [
+      pkgs.btrfs-progs
+      pkgs.coreutils
+      pkgs.gawk
+    ];
+    text = builtins.readFile ./chunks-given-back.sh;
+  };
   initrdSystemd = config.boot.initrd.systemd.package;
 
   # Where the initrd says, for each volume in its crypttab that a YubiKey
@@ -226,6 +235,39 @@ in
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${swapFileGrows}/bin/swap-file-grows /swap/swapfile ${cfg.swapSize}";
+    };
+  };
+
+  # Deletes leave data chunks part empty, and Btrfs never gives one back
+  # to metadata by itself, so a disk can be all chunks with a sixth of it
+  # free, and then fail writes as full (chunks-given-back.sh says how). It
+  # runs at night, so a balance's reads and writes never land on a call:
+  # the timer fires at 03:00, and the script itself balances only from
+  # 01:00 to 06:00, ending a step still running at 06:00, since a laptop
+  # asleep at 03:00 fires it on waking and a switch can fire it at any
+  # hour. Its own 06:00 bounds it; systemd's bound is the longest night,
+  # six hours from 01:00 when the clocks go back, and the minute a step
+  # is given to die, so it never fails a night the script would end well. Stopping it cancels
+  # the balance, as the kernel does for a balance whose process is dying. The weights put
+  # it behind other work wherever io.cost or the processor's shares hold;
+  # an NVMe disk's own scheduler honours no I/O class.
+  config.systemd.services.chunks-given-back = {
+    description = "Give Btrfs back room for its metadata";
+    restartIfChanged = false;
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${chunksGivenBack}/bin/chunks-given-back /";
+      TimeoutStartSec = "6h 5min";
+      Slice = "background.slice";
+      CPUWeight = 1;
+      IOWeight = 1;
+    };
+  };
+  config.systemd.timers.chunks-given-back = {
+    description = "Give Btrfs back room for its metadata each night";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* 03:00";
     };
   };
 

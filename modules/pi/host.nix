@@ -96,13 +96,102 @@ let
       ++ launch.words config host heapMb rest
     );
 
+  # A conversation's allocator tuning, for one in a unit of its own (so on
+  # Linux only): its realm's GLIBC_TUNABLES with glibc's trim threshold
+  # fixed at 128 KiB. A realm that names its own threshold, in
+  # GLIBC_TUNABLES or as MALLOC_TRIM_THRESHOLD_, gets nothing added, since
+  # which of two glibc reads last is not the realm's to choose.
+  #
+  # 128 KiB is where glibc starts, but it raises the threshold, and the
+  # size it maps apart, each time a big block is freed, up to 64 MB and 32
+  # MB, so a long conversation keeps what it once grew to. Fixing it gives
+  # freed heap back. In four runs of 150 prompts each way on 22 November, a
+  # conversation held 71 MB less resident and swapped on average (493 to
+  # 422 MB) and 113 MB less at the end (605 to 492 MB), for 0.2% more
+  # instructions.
+  #
+  # Who gets what, where the login is the systemd user manager's
+  # environment, which every user unit starts from:
+  #
+  # - A conversation in its own unit gets the above, and never the login's
+  #   GLIBC_TUNABLES or MALLOC_TRIM_THRESHOLD_: the realm's value or the
+  #   trim replaces each, and loginAllocator drops whichever neither sets.
+  #   glibc's other MALLOC_ variables, such as MALLOC_ARENA_MAX,
+  #   still come from the realm or the login.
+  # - Its commands and subagents inherit that environment without
+  #   GLIBC_TUNABLES, as a fixed trim would pin their mmap threshold too.
+  #   The harness keeps it from them from its pull request 2015 on, by
+  #   listing it in HOST_ONLY (host/service/program.ts), which no check
+  #   here reads; an older harness passes it on. So a trim threshold meant
+  #   for them goes in the realm as MALLOC_TRIM_THRESHOLD_, which also
+  #   replaces the trim added above, or in the command, and any other
+  #   tunable in the command.
+  # - The hosts get no trim: they keep the login's allocator variables,
+  #   each one the realm names replaced by the realm's. A conversation a
+  #   host holds in its own process, and that conversation's commands,
+  #   have the host's environment. So the conversation keeps glibc's
+  #   growing thresholds unless the realm or the login fixes one of the
+  #   four that stop the growth (the trim threshold, top pad, mmap
+  #   threshold or mmap count), and its commands get the login's
+  #   MALLOC_TRIM_THRESHOLD_ where the realm names none, and before pull
+  #   request 2015 the host's GLIBC_TUNABLES too.
+  trimmedTunables =
+    host:
+    let
+      trim = "glibc.malloc.trim_threshold=131072";
+      own = host.environment.GLIBC_TUNABLES or "";
+      named =
+        host.environment ? MALLOC_TRIM_THRESHOLD_ || lib.hasInfix "glibc.malloc.trim_threshold=" own;
+    in
+    lib.optionalAttrs (!named) {
+      GLIBC_TUNABLES = if own == "" then trim else "${own}:${trim}";
+    };
+
+  # The login's allocator variables a conversation's own unit drops: its
+  # GLIBC_TUNABLES and MALLOC_TRIM_THRESHOLD_, each unless the realm or the
+  # trim above sets it. So the threshold comes only from the realm and the
+  # trim, and no login value sits beside the added one with glibc's read
+  # order deciding between them. The conversation's commands inherit the
+  # drop. systemd applies UnsetEnvironment after every Environment=, so a
+  # name the realm or the trim sets stays off the list, or its own value
+  # would go too, and a name on it is dropped even when another module sets
+  # it on the unit.
+  #
+  # The cost: replacing or dropping the login's GLIBC_TUNABLES loses every
+  # tunable it names, not only the allocator's, so a conversation loses any
+  # hardening tunable the login sets. To keep one, name it in the realm's
+  # GLIBC_TUNABLES. That reaches the conversation's own process but not its
+  # commands, and replaces the login's whole GLIBC_TUNABLES in both of the
+  # realm's hosts, so a login tunable the hosts need is named there too.
+  loginAllocator =
+    host:
+    let
+      set = host.environment // trimmedTunables host;
+    in
+    lib.filter (name: !(set ? ${name})) [
+      "GLIBC_TUNABLES"
+      "MALLOC_TRIM_THRESHOLD_"
+    ];
+
+  # A realm's environment with each % doubled, as systemd reads a % in an
+  # Environment= entry as a specifier: a proxy's URL may hold %40, which
+  # systemd would otherwise refuse or expand rather than pass on. What this
+  # module adds itself, such as SSH_AUTH_SOCK's %t, is a specifier on
+  # purpose and is left as it is.
+  realmTakenAsWritten =
+    host:
+    let
+      doubled = lib.replaceStrings [ "%" ] [ "%%" ];
+    in
+    host // { environment = lib.mapAttrs (_: doubled) host.environment; };
+
   # The environment a host and a conversation's own process share, quoted,
   # as systemd splits an unquoted entry at its spaces; host-launch.nix says
   # what `many` and `own` are.
   environmentOf =
     realm: host: many: own:
     lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
-      launch.environment config realm host many (
+      launch.environment config realm (realmTakenAsWritten host) many (
         lib.optionalAttrs agentProxied {
           # A hosted conversation's commands run with the host's own
           # environment, so they reach the agents' SSH agent, as a fenced
@@ -202,13 +291,16 @@ let
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
           ExecStart = startOf host host.conversationHeapMb [ "--child" ];
-          Environment = environmentOf realm host false {
-            PI_HOST_CHILD_KEY = key;
-            PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
-            # The stop limit below, which it parks within.
-            PI_HOST_STOP_USEC = toString (conversationStopSeconds * 1000000);
-          };
-          UnsetEnvironment = unsetEnvironment;
+          Environment = environmentOf realm host false (
+            {
+              PI_HOST_CHILD_KEY = key;
+              PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
+              # The stop limit below, which it parks within.
+              PI_HOST_STOP_USEC = toString (conversationStopSeconds * 1000000);
+            }
+            // trimmedTunables (realmTakenAsWritten host)
+          );
+          UnsetEnvironment = unsetEnvironment ++ loginAllocator host;
           # Its host decides what comes after an ending: a crash's
           # conversation is resumed by the host in a new process, so systemd
           # never restarts one, and no watchdog kills one for a long turn.
@@ -224,10 +316,9 @@ let
           # killed, so one conversation's build can't take the memory every
           # other conversation runs in. A default, so a machine may move it.
           MemoryHigh = lib.mkDefault "12G";
-          # It keeps its core as its host does, and for the same native fault
-          # (LimitCORE on the host says why), which runs here once a
-          # conversation does.
-          LimitCORE = "infinity";
+          # It keeps no core, as its host keeps none (LimitCORE on the host
+          # says why).
+          LimitCORE = "0";
           Slice = "agents.slice";
         };
       };
@@ -307,33 +398,22 @@ let
         # minutes; the watchdog aborted it at 120 s and systemd waited 150 s
         # more before the kill, since an abort's timeout is the stop's
         # (TimeoutStopSec below) unless set apart. A node without the listener
-        # still aborts at once, and its core (LimitCORE below) is cut off by
-        # the kill 10 s on, which loses little: the host's hold watcher has
-        # written what held the loop by then. A crash's own core has longer,
-        # since the watchdog aborts only two minutes after the host's last
-        # word, at least a minute after it crashed: at 16 November's 70 MB/s
-        # that holds a core of about 5 GB, and a larger one is cut off, with
-        # no stack trace.
+        # still aborts at once, and systemd-coredump keeps no core of it
+        # (LimitCORE below), so the kill 10 s on loses nothing: the host's
+        # hold watcher has written what held the loop by then.
         TimeoutAbortSec = "10s";
-        # A host keeps its core, for now. At 07:41 on 18 November the
-        # background host died of a segmentation fault in native code, with
-        # its heap at a third of its limit, and kept no core, since this was
-        # 0; nothing else says where native code faults. systemd-coredump
-        # writes the host's stack trace to the journal from the core, which
-        # is under its 32 GB ProcessSizeMax, and keeps the core itself where
-        # only root reads it (modules/coredump), until the coredump module's
-        # timer removes it six hours on, since it holds every hosted
-        # conversation's keys and tokens. Writing it takes time: on 16
-        # November an out-of-memory abort streamed 12.5 GB for three minutes
-        # before the watchdog's kill, so a crash restarts the host that much
-        # later. The commands a host runs inherit the limit, as any command a
-        # plain pi in a terminal runs does, so their cores are kept too, up
-        # to the coredump module's MaxUse; the coredump module keeps them all
-        # in a folder only root enters. Back to 0, here and on each
-        # conversation's own unit, which keeps its core for the same fault,
-        # once the fault is found, or by 18:00 on Friday 20 November,
-        # whichever comes first.
-        LimitCORE = "infinity";
+        # A host keeps no core. A core holds every hosted conversation's keys
+        # and tokens, and writing one held a crashed host down for minutes:
+        # on 16 November an out-of-memory abort streamed 12.5 GB for three
+        # minutes before the watchdog's kill. The commands a host runs
+        # inherit the limit, and its hard limit is 0 too, so none can raise
+        # it. A native fault then leaves no stack trace in the journal either:
+        # it is hunted on the live process with /proc and perf, whose call
+        # graphs copy raw stack into perf.data, so that file holds the host's
+        # secrets too: nothing removes it, so whoever records one deletes it
+        # once read. A host started before a switch keeps its old limit until
+        # its next start.
+        LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only
         # refuse again, so it waits for a fix rather than retrying forever.
@@ -471,7 +551,43 @@ in
               LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which the
               host's unit clears since each could make its node run code:
               evaluation refuses a realm giving one, and a command that needs
-              one sets it itself.
+              one sets it itself. Each value is taken as written: a % in it
+              stays a %, never read as one of systemd's specifiers.
+
+              On Linux, each conversation in a unit of its own is given
+              GLIBC_TUNABLES with glibc.malloc.trim_threshold=131072 added
+              to the realm's own value, so it hands freed heap back. A realm
+              that names its own threshold, in GLIBC_TUNABLES or
+              MALLOC_TRIM_THRESHOLD_, keeps it alone; a large one, such as
+              4294967295, turns the trim off. Any fixed trim threshold also
+              fixes the size glibc maps apart, at 128 KiB unless
+              glibc.malloc.mmap_threshold or MALLOC_MMAP_THRESHOLD_ names
+              another.
+
+              Such a conversation never reads the login's GLIBC_TUNABLES or
+              MALLOC_TRIM_THRESHOLD_, where the login is the systemd user
+              manager's environment: each is replaced by the realm's value or
+              the trim, or dropped, even when set on its unit elsewhere. This
+              loses every tunable the login's GLIBC_TUNABLES names, a
+              hardening one included. To keep one, name it in the realm's
+              GLIBC_TUNABLES, which also replaces the login's whole
+              GLIBC_TUNABLES in both of the realm's hosts, so a login tunable
+              the hosts need is named there too. glibc's other MALLOC_
+              variables, such as MALLOC_ARENA_MAX, still come from the realm
+              or the login.
+
+              From the harness's pull request 2015 on, no hosted command gets
+              GLIBC_TUNABLES; one that needs a tunable sets it itself. The
+              commands of a conversation in its own unit get the rest of its
+              environment, the realm's MALLOC_TRIM_THRESHOLD_ among it.
+
+              The hosts get no trim: they keep the login's allocator
+              variables, each one the realm names replaced by the realm's. A
+              conversation a host holds in its own process, and that
+              conversation's commands, have the host's environment, so they
+              get the login's MALLOC_TRIM_THRESHOLD_ where the realm names
+              none. Before pull request 2015, those commands get the host's
+              GLIBC_TUNABLES too.
             '';
           };
         };

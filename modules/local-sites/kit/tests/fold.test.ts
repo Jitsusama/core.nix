@@ -68,8 +68,8 @@ it("open, every row held shows and nothing more is promised", () => {
 
 it("the button says how many more, of what kind, and how to fold them again", () => {
   assert.equal(foldSaid(13, false), "And 13 more");
-  assert.equal(foldSaid(13, false, "snapshot"), "And 13 more snapshots");
-  assert.equal(foldSaid(1, false, "snapshot"), "And 1 more snapshot");
+  assert.equal(foldSaid(13, false, "tree"), "And 13 more trees");
+  assert.equal(foldSaid(1, false, "tree"), "And 1 more tree");
   assert.equal(foldSaid(13, true), "Fold them away");
 });
 
@@ -79,6 +79,7 @@ function button(): FoldButton & { said: Record<string, string> } {
   return {
     type: "submit",
     hidden: false,
+    style: { display: "inline-flex" },
     textContent: null,
     said,
     setAttribute: (name, value) => {
@@ -107,5 +108,13 @@ it("a short list's button stays hidden, even opened by the page's key", () => {
     const shown = button();
     showFold(shown, folded({ rows: [1, 2, 3], open }));
     assert.equal(shown.hidden, true, `open: ${String(open)}`);
+    assert.equal(
+      shown.style.display,
+      "none",
+      `a page's display beat hidden, open: ${String(open)}`,
+    );
   }
+  const long = button();
+  showFold(long, folded({ rows, open: false }));
+  assert.equal(long.style.display, "", "a list with a fold left its button hidden by style");
 });

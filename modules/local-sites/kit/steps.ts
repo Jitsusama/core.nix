@@ -3,6 +3,8 @@
 // vim, the keys its head names made pressable, and where its keys answer. A
 // document steps through its parts and the home through its sites.
 
+import { HELP_KEYS } from "./keys.ts";
+
 /** How soon a second g must follow the first to go to the top, as in less and vim. */
 const TWICE_MS = 600;
 
@@ -49,6 +51,16 @@ function answersAt(target: Element): boolean {
  * doing `afterwards`, such as giving the keys back to the list they step.
  * Return or Space on one does its act alone: the press goes no further,
  * where the page's own Return would open what its cursor is on.
+ *
+ * Each but the keys that only open the list of keys is marked data-tap, as
+ * head.css reads to keep a key line showing on touch: a line whose only
+ * tappable key is `?` tells a phone nothing it can do. A page writes
+ * data-tap in its markup too, so the line is there at first paint rather
+ * than arriving with the script and pushing the switch down; a key it marks
+ * there that does nothing when tapped loses the mark here, so no finger is
+ * offered a dead target once the script runs. Until it runs, or where it
+ * never loads, a key marked there is a target that does nothing, so a page
+ * marks only the keys its own script always answers.
  */
 function pressable(
   selector: string,
@@ -57,12 +69,18 @@ function pressable(
 ): void {
   for (const kbd of document.querySelectorAll<HTMLElement>(selector)) {
     const tap = Object.hasOwn(taps, kbd.textContent) ? taps[kbd.textContent] : undefined;
+    if (!tap || HELP_KEYS.has(kbd.textContent)) {
+      Reflect.deleteProperty(kbd.dataset, "tap");
+    }
     if (tap) {
       const act = (): void => {
         tap();
         afterwards();
       };
       kbd.setAttribute("role", "button");
+      if (!HELP_KEYS.has(kbd.textContent)) {
+        kbd.dataset["tap"] = "";
+      }
       kbd.tabIndex = 0;
       kbd.addEventListener("click", act);
       kbd.addEventListener("keydown", (event) => {

@@ -1,6 +1,6 @@
 """Super+E's groups have their emoji centred on their names, as niri shows the launcher.
 
-modules/quickshell/checks/core.nix runs this through pytest in tests/nested-niri.sh, with the
+modules/quickshell/checks/core.nix runs this through pytest in tests/lib/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run and the clipboard's history serving Emoji's rows.
 The shell draws here through Qt's GPU path, on Mesa's software GL, as Joel's draws on its GPU.
 modules/quickshell/tests/emoji-marks.qml, which draws each mark anew and alone, stood each colour

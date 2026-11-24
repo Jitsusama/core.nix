@@ -13,6 +13,7 @@ test runs alone with `-k`. The tests need no value from Nix.
 from __future__ import annotations
 
 import datetime as dt
+import re
 import shlex
 from typing import TYPE_CHECKING
 
@@ -126,6 +127,10 @@ def host(booted: Host) -> Host:
 def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host) -> None:
     """A host that stays alive but stops pinging is killed by the watchdog and started again."""
     [first] = host.starts()
+    # The unit's limit, and not only a soft 0, which a process may raise: the hard limit is 0
+    # as well, so nothing the host runs can turn cores back on.
+    limits = host.run(f"cat /proc/{first}/limits")
+    assert re.search(r"^Max core file size\s+0\s+0\s", limits, re.MULTILINE), limits
     host.run(f"touch {FOLDER}/hang")
     host.until(f"test -e {FOLDER}/hung && test $(wc -l < {STARTS}) -gt 1")
     host.until(f"systemctl --user is-active {UNIT}")
@@ -133,12 +138,19 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
     assert "Failed with result 'watchdog'" in said, said
     # The watchdog's signal, which the harness's killed-host test sends its host too.
     assert "status=6/ABRT" in said, said
-    # The signal dumps a core, which the host's unlimited limit lets
-    # systemd-coredump keep, with the crash's stack trace in the journal.
+    # The host's limit of 0 keeps no core, which systemd-coredump says (coredump.c's own words).
+    # This wording isn't pinned by the tree, so a systemd that rewords it fails here, waiting.
     host.machine.wait_until_succeeds(
         "journalctl --no-pager -t systemd-coredump"
-        f" | grep -qF 'Process {first} (sleep) of user 1000 dumped core.'",
+        f" | grep -qF 'Resource limits disable core dumping for process {first} (sleep).'",
         timeout=COMING_BACK,
+    )
+    # And none is on disk: a kept core's name carries the process's pid between dots.
+    # The test asks for the folder first, so an empty listing says no core rather than
+    # no folder.
+    host.machine.succeed(
+        "test -d /var/lib/systemd/coredump"
+        f" && ! ls /var/lib/systemd/coredump | grep -qF '.{first}.'"
     )
     assert host.starts()[0] == first
     assert first not in host.starts()[1:]

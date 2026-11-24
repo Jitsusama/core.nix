@@ -18,9 +18,10 @@
 let
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
   # Daemon.qml, with the launcher stood in by the case itself and Wifi's card
-  # and the sign-in stood in here.
+  # and the sign-in stood in here. Where `heard` names a script, it reads
+  # what the shell said once the case has passed.
   wifiCase =
-    name: case:
+    name: case: heard:
     let
       # Kept in Nix because each only stands in for what Wireless.qml reads
       # of the card and the sign-in, a card on and nothing saved, joined to
@@ -47,6 +48,7 @@ let
       mkdir -p launcher runtime && chmod 700 runtime
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"
@@ -62,7 +64,16 @@ let
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      ${
+        if heard == null then
+          "timeout 60 ${qs} -p shell.qml"
+        else
+          ''
+            set -o pipefail
+            timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+            ${pkgs.lib.getExe pkgs.bash} ${heard} said
+          ''
+      }
       touch $out
     '';
 in
@@ -232,23 +243,44 @@ in
       '';
 
   # Wi-Fi joins a network by the acts wifid serves on its row, asking each word
-  # a join needs in the field before it's sent
-  # (modules/quickshell/tests/wifi-acts.qml), with the launcher's asking stood
-  # in.
-  wifi-asks-each-word-a-join-needs-first = wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml;
+  # a join needs in the field before it's sent, with the launcher's asking
+  # stood in, and no launcher line says a network's name, a password typed or
+  # wifid's words (modules/quickshell/tests/wifi-acts.qml, read by
+  # wifi-acts-heard.sh). How a refusal reads with reports off is
+  # the-launcher-keeps-a-daemons-words-out-of-its-journal's, and with them on
+  # the-launcher-paces-its-refreshes' (codeShown's cases in tests/pacing.qml,
+  # which a join's refused line is said by, whatever the reports setting).
+  wifi-asks-each-word-a-join-needs-first =
+    wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml
+      ../tests/wifi-acts-heard.sh;
+
+  # The launcher's journal says how many letters a daemon's refusal held, not
+  # its words, with reports off, in each line saying one: an act that shuts
+  # the launcher refused, one withheld, what an act asks besides refused,
+  # words typed in a row left unanswered, a search refused, a search's row not
+  # served yet and Wi-Fi's own act refused (modules/quickshell/tests/
+  # refusal-lines.qml, read by refusal-lines-heard.sh), since a daemon's words
+  # can name a row, as "couldn't join Harbour House" does.
+  the-launcher-keeps-a-daemons-words-out-of-its-journal =
+    wifiCase "the-launcher-keeps-a-daemons-words-out-of-its-journal" ../tests/refusal-lines.qml
+      ../tests/refusal-lines-heard.sh;
 
   # Wi-Fi's cards look for networks only while its rows are shown, Wi-Fi held or
   # a find showing a row of its, or a terminal's show walked in, and never with
   # the launcher open on another place
   # (modules/quickshell/tests/wifi-looks.qml), since each look takes the card
   # off its channel for seconds.
-  wifi-looks-only-while-its-rows-are-shown = wifiCase "wifi-looks-only-while-its-rows-are-shown" ../tests/wifi-looks.qml;
+  wifi-looks-only-while-its-rows-are-shown =
+    wifiCase "wifi-looks-only-while-its-rows-are-shown" ../tests/wifi-looks.qml
+      null;
 
   # Wi-Fi holds the network joined ahead while the launcher's open, so a
   # step onto Wi-Fi or into it finds its drawer held, and a change to that
   # drawer alone, nobody looking at it, tells the launcher nothing
   # (modules/quickshell/tests/wifi-ahead.qml).
-  wifi-holds-the-network-joined-ahead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml;
+  wifi-holds-the-network-joined-ahead =
+    wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml
+      null;
 
   # A network wanting a sign-in is told of once, and its notice taken back once
   # it stops wanting one, even a notice arriving only after that

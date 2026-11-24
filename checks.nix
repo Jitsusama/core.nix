@@ -169,103 +169,103 @@ let
   # The virtual machine tests. Each has to show something nothing cheaper can.
   vmTestsOn = pkgs: {
     # The desktop, in areas of a minute or two each on one machine
-    # (tests/desktop.nix).
-    vm-desktop-starts-clean = import ./tests/desktop.nix {
+    # (tests/desktop/desktop.nix).
+    vm-desktop-starts-clean = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "starts-clean";
     };
-    vm-desktop-shows-then-rests = import ./tests/desktop.nix {
+    vm-desktop-shows-then-rests = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "shows-then-rests";
     };
-    vm-desktop-launcher-goes-places = import ./tests/desktop.nix {
+    vm-desktop-launcher-goes-places = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-goes-places";
     };
-    vm-desktop-launcher-finds-sessions = import ./tests/desktop.nix {
+    vm-desktop-launcher-finds-sessions = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-finds-sessions";
     };
-    vm-desktop-moves-keep-their-window = import ./tests/desktop.nix {
+    vm-desktop-moves-keep-their-window = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "moves-keep-their-window";
     };
-    vm-desktop-reopens-under-orchestrators = import ./tests/desktop.nix {
+    vm-desktop-reopens-under-orchestrators = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "reopens-under-orchestrators";
     };
-    vm-desktop-launcher-waits-on-joel = import ./tests/desktop.nix {
+    vm-desktop-launcher-waits-on-joel = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-waits-on-joel";
     };
-    vm-desktop-launcher-holds-meetings = import ./tests/desktop.nix {
+    vm-desktop-launcher-holds-meetings = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-holds-meetings";
     };
-    vm-desktop-launcher-reads-mail = import ./tests/desktop.nix {
+    vm-desktop-launcher-reads-mail = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-reads-mail";
     };
-    vm-desktop-launcher-moves-windows = import ./tests/desktop.nix {
+    vm-desktop-launcher-moves-windows = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-moves-windows";
     };
-    vm-desktop-launcher-draws-still = import ./tests/desktop.nix {
+    vm-desktop-launcher-draws-still = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-draws-still";
     };
-    vm-desktop-launcher-answers = import ./tests/desktop.nix {
+    vm-desktop-launcher-answers = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-answers";
     };
-    vm-desktop-launcher-finds-by-name = import ./tests/desktop.nix {
+    vm-desktop-launcher-finds-by-name = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-finds-by-name";
     };
-    vm-desktop-keeps-copies = import ./tests/desktop.nix {
+    vm-desktop-keeps-copies = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "keeps-copies";
     };
-    vm-desktop-opens-files = import ./tests/desktop.nix {
+    vm-desktop-opens-files = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "opens-files";
     };
-    vm-desktop-opens-and-sets = import ./tests/desktop.nix {
+    vm-desktop-opens-and-sets = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "opens-and-sets";
     };
-    vm-desktop-says-what-happens = import ./tests/desktop.nix {
+    vm-desktop-says-what-happens = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "says-what-happens";
     };
-    vm-desktop-outlives-a-switch = import ./tests/desktop.nix {
+    vm-desktop-outlives-a-switch = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "outlives-a-switch";
     };
-    vm-desktop-minds-the-margin = import ./tests/desktop.nix {
+    vm-desktop-minds-the-margin = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "minds-the-margin";
     };
-    vm-desktop-takes-calls = import ./tests/desktop.nix {
+    vm-desktop-takes-calls = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "takes-calls";
     };
-    vm-desktop-captures = import ./tests/desktop.nix {
+    vm-desktop-captures = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "captures";
     };
-    vm-desktop-locks-and-asks = import ./tests/desktop.nix {
+    vm-desktop-locks-and-asks = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "locks-and-asks";
     };
-    vm-desktop-keeps-pace = import ./tests/desktop.nix {
+    vm-desktop-keeps-pace = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "keeps-pace";
     };
     # How the launcher keeps up with a held arrow while sessions and
     # people change, at Joel's scales, on a screen as large as the
     # laptop's.
-    vm-desktop-launcher-keeps-up = import ./tests/desktop.nix {
+    vm-desktop-launcher-keeps-up = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "launcher-keeps-up";
       screen = {
@@ -277,7 +277,7 @@ let
     # as large as the laptop's. Its rows, vi modes, plates and file picker
     # are areas of their own, so the five run side by side rather than one
     # taking half an hour.
-    vm-desktop-looks = import ./tests/desktop.nix {
+    vm-desktop-looks = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks";
       screen = {
@@ -285,7 +285,7 @@ let
         height = 1800;
       };
     };
-    vm-desktop-looks-rows = import ./tests/desktop.nix {
+    vm-desktop-looks-rows = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks-rows";
       screen = {
@@ -293,7 +293,7 @@ let
         height = 1800;
       };
     };
-    vm-desktop-looks-vi = import ./tests/desktop.nix {
+    vm-desktop-looks-vi = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks-vi";
       screen = {
@@ -301,7 +301,7 @@ let
         height = 1800;
       };
     };
-    vm-desktop-looks-plates = import ./tests/desktop.nix {
+    vm-desktop-looks-plates = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks-plates";
       screen = {
@@ -309,7 +309,7 @@ let
         height = 1800;
       };
     };
-    vm-desktop-looks-file-picker = import ./tests/desktop.nix {
+    vm-desktop-looks-file-picker = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks-file-picker";
       screen = {
@@ -320,7 +320,7 @@ let
     # How Machine's things look at Joel's scales, from the machine daemon,
     # and Machines, from the realm's node, on the same screen: an area of
     # its own, so the looks areas run side by side.
-    vm-desktop-looks-machine = import ./tests/desktop.nix {
+    vm-desktop-looks-machine = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks-machine";
       screen = {
@@ -330,7 +330,7 @@ let
     };
     # How Joel's programs' own pages look at his scales, each a subtest of
     # its own: an area of its own, so it runs beside the looks areas.
-    vm-desktop-looks-programs = import ./tests/desktop.nix {
+    vm-desktop-looks-programs = import ./tests/desktop/desktop.nix {
       inherit self pkgs;
       area = "looks-programs";
       screen = {
@@ -594,6 +594,7 @@ gather {
     ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
+    ./modules/house-report/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
@@ -625,6 +626,7 @@ gather {
     ./modules/model-relay/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mx-brio/checks.nix
+    ./modules/mx-brio-seat/checks.nix
     ./modules/mycelium/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
@@ -635,6 +637,7 @@ gather {
     ./modules/niri/checks.nix
     ./modules/nix-daemon/checks.nix
     ./modules/nix-offload/checks.nix
+    ./modules/nixpkgs/checks.nix
     ./modules/noise-cancelled/checks.nix
     ./modules/notices/checks.nix
     ./modules/onepassword/checks.nix
@@ -695,6 +698,7 @@ gather {
     ./modules/tcp/checks.nix
     ./modules/terminal-kit/checks.nix
     ./modules/theme/checks.nix
+    ./modules/theme/web/checks.nix
     ./modules/to-do/checks.nix
     ./modules/touchpad/checks.nix
     ./modules/treefmt/checks.nix

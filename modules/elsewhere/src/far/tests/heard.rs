@@ -1,22 +1,30 @@
-use super::{far_line, far_line_in, far_run, kind, said, work};
+use super::crossing::refusing;
+use super::{Left, far_line, far_line_in, far_run, handover, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
 use terminal_kit::Exit;
 
+/// A file listed that never crosses, its near side saying it sent enough
+/// that the ceiling, the wait and a second for each `SLOWEST` bytes, is
+/// three times the wait: only the wait from the last that crossed can end
+/// these tests in time, so one that never ended them fails rather than
+/// passing on the ceiling's second.
+const NEVER_CROSSING: Left<'static> = Left::Sized("3\tx\nend\n", 2 * super::WAITS * super::SLOWEST);
+
+/// What the far line says when the wait from the last that crossed ends
+/// it, never the ceiling.
+const NONE_CROSSING: &str = "none crossing for";
+
 #[test]
 fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
-    // A file the share is still writing is there, but short, until the
-    // share finishes it.
+    // An archive the share is still writing is there, but short, until
+    // the share finishes it.
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
-        &[("x", "x")],
+        Left::Short,
+        &[("x", "xyz")],
         "cat x > ../ran",
         &kind(""),
-        Some(&|tree| {
-            // A far line that didn't wait has taken the tree already,
-            // which the assertions below say better than this write.
-            let _ = std::fs::write(tree.join("x"), "xyz");
-        }),
+        None,
         &[],
     );
     assert_eq!(
@@ -33,7 +41,7 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
     );
     let _ = std::fs::remove_dir_all(&home);
     // One the share never finishes ends the wait with nothing run.
-    let (code, err, home) = far_run("3\tx\nend\n", &[("x", "x")], "touch ../ran");
+    let (code, err, home) = far_run(NEVER_CROSSING, &[("x", "x")], "touch ../ran");
     assert_eq!(
         code,
         Some(75),
@@ -55,6 +63,13 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
         "the wait, or the file it was for, went unsaid: {err}"
     );
     assert!(
+        err.contains(&format!(
+            "none crossing for {}s",
+            super::super::CROSSES_WITHIN
+        )),
+        "a wait with nothing crossing wasn't said to be one: {err}"
+    );
+    assert!(
         !work(&home).join("ran").exists(),
         "the job ran over a file still crossing"
     );
@@ -63,31 +78,45 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
 
 #[test]
 fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
-    // A wc that takes two seconds, as a pass over a large tree takes
-    // long, so a wait that counted its passes would last five times as
-    // long as its limit says.
+    // A wc that takes a second, as a pass over a large tree takes long,
+    // so a pass takes three and a wait that counted its passes would make
+    // as many as its limit has seconds. Each call is noted, so the passes
+    // are counted rather than timed, which a busy machine only lengthens.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
+        NEVER_CROSSING,
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
         None,
-        &[("wc", "PATH=${PATH#*:}\nsleep 2\nexec wc \"$@\"")],
+        &[(
+            "wc",
+            "PATH=${PATH#*:}\necho >> \"$HOME/wc\"\nsleep 1\nexec wc \"$@\"",
+        )],
     );
     let took = started.elapsed();
     assert!(
-        code == Some(75) && err.contains("didn't reach"),
+        code == Some(75) && err.contains(NONE_CROSSING),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
-    // Its limit, a last pass begun just inside it of two wc calls, one
-    // for the file and one for what has grown, and the second slept after
-    // them, and two for a busy machine. Counted passes, five seconds each,
-    // would take twenty-five.
-    let most = std::time::Duration::from_secs(super::WAITS + 2 + 2 + 1 + 2);
     assert!(
-        took >= std::time::Duration::from_secs(super::WAITS) && took < most,
-        "a {}s wait lasted {took:?}, so it gave up early or counts passes",
+        took >= std::time::Duration::from_secs(super::WAITS),
+        "a {}s wait lasted {took:?}, so it gave up early",
+        super::WAITS
+    );
+    // One call for what has grown before the passes, then each pass looks
+    // at the file and at what has grown, and the last ends once it has
+    // seen what has grown. A wait by the clock ends in two passes of
+    // three seconds, and a slower machine's in no more; one counting its
+    // passes makes five, where this fails.
+    let calls = std::fs::read_to_string(home.join("wc"))
+        .unwrap()
+        .lines()
+        .count();
+    let passes = calls / 2;
+    assert!(
+        passes < usize::try_from(super::WAITS).unwrap(),
+        "a {}s wait made {passes} passes of three seconds ({calls} calls), so it counts passes",
         super::WAITS
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -97,13 +126,22 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
 /// together past it.
 const A_GAP: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// What the near side says the files crossing a gap apart come to: as
+/// much as sets the ceiling, the wait and a second for each `SLOWEST`
+/// bytes, at three times the wait, past the second and three gaps the
+/// crossing takes, so the ceiling is chosen, not left to a list still to
+/// come.
+const GAP_SENT: u64 = 2 * super::WAITS * super::SLOWEST;
+
 /// Runs a far line over a tree that crosses in three steps a gap apart,
 /// the last well past the wait from its start but inside it from the one
 /// before, as a large tree crosses, with its list empty until all of it
-/// has crossed, so only what crossed can say the wait should go on.
+/// has crossed, so only what crossed can say the wait should go on. It
+/// answers whether the wait ended with all of it there, rather than
+/// giving up, and why: what crossed is no archive, so it goes no further.
 fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, String) {
     let (code, err, home) = far_line(
-        "",
+        Left::Sized("", GAP_SENT),
         &[],
         "touch ../ran",
         &kind(""),
@@ -118,9 +156,9 @@ fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, Strin
         }),
         &[],
     );
-    let ran = code == Some(0) && work(&home).join("ran").exists();
+    let arrived = code == Some(77) && err.contains("isn't one of its archives");
     let _ = std::fs::remove_dir_all(&home);
-    (ran, format!("({code:?}): {err}"))
+    (arrived, format!("({code:?}): {err}"))
 }
 
 #[test]
@@ -174,7 +212,7 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
     // ending at once.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
+        NEVER_CROSSING,
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -182,7 +220,7 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
         &[("date", "echo not a time")],
     );
     assert!(
-        code == Some(75) && err.contains("didn't reach") && err.contains("waiting on x"),
+        code == Some(75) && err.contains(NONE_CROSSING) && err.contains("waiting on x"),
         "a far date with no time ended the line unsaid ({code:?}): {err}"
     );
     assert!(
@@ -219,7 +257,7 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
              echo $((1000000 + {step} * n))"
         );
         let (code, err, home) = far_line(
-            "3\tx\nend\n",
+            NEVER_CROSSING,
             &[("x", "x")],
             "touch ../ran",
             &kind(""),
@@ -227,7 +265,7 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
             &[("date", date.as_str())],
         );
         assert!(
-            code == Some(75) && err.contains("didn't reach"),
+            code == Some(75) && err.contains(NONE_CROSSING),
             "a file that never crossed wasn't waited out ({code:?}): {err}"
         );
         let read = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
@@ -241,17 +279,152 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
 }
 
 #[test]
-fn a_far_clock_that_steps_back_restarts_the_wait() {
+fn a_far_clock_that_steps_back_or_stands_still_spends_the_second_a_pass_slept() {
     // Ten seconds back after its first reading, and on a second a pass
     // from there, so a wait that measured from before the step would read
-    // it sixteen times rather than seven. Counted by its readings, since
-    // this clock moves by them rather than by the time a busy machine took.
+    // it sixteen times, and one that spent nothing of the pass that
+    // stepped, seven, rather than six. Then one standing still for twenty
+    // readings before it jumps on, so a wait that spent nothing while it
+    // stood reads it twenty-three times, its jump spending the
+    // `A_PASS_AT_MOST` a pass may, rather than hanging for good.
+    // Counted by readings, since these clocks move by them rather than by
+    // the time a busy machine took.
+    for (how, clock) in [
+        (
+            "stepped back",
+            "if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((999990 + n)); fi",
+        ),
+        (
+            "stood still",
+            "if [ \"$n\" -lt 20 ]; then echo 1000000; else echo $((1000000 + n)); fi",
+        ),
+    ] {
+        let date = format!(
+            "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
+             echo $((n + 1)) > \"$HOME/clock\"\n\
+             {clock}"
+        );
+        let (code, err, home) = far_line(
+            NEVER_CROSSING,
+            &[("x", "x")],
+            "touch ../ran",
+            &kind(""),
+            None,
+            &[("date", date.as_str())],
+        );
+        let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
+        assert!(
+            code == Some(75) && err.contains(NONE_CROSSING),
+            "a file that never crossed wasn't waited out ({code:?}): {err}"
+        );
+        // The first, then a pass a second, however the clock moved.
+        assert_eq!(
+            readings.trim().parse::<u64>().ok(),
+            Some(super::WAITS + 1),
+            "a {}s wait over a clock that {how} read it wrongly often",
+            super::WAITS
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn files_crossing_too_slowly_are_given_up_on_however_steadily_they_cross() {
+    // A name a second, never the listed file, so the wait from the last
+    // that crossed never ends, and only the ceiling, the wait and a
+    // second for each `SLOWEST` bytes the near side sent, ends the whole.
+    // The list names more, so a ceiling taken from it would end later and
+    // say a ceiling of its own, not the near side's.
+    let sent = 3 * super::SLOWEST;
+    let (code, err, home) = far_line(
+        Left::Sized(&format!("{}\tx\nend\n", super::SHARE_BYTES), sent),
+        &[],
+        "touch ../ran",
+        &kind(""),
+        Some(&|tree| {
+            for at in 0..2 * super::WAITS {
+                let _ = std::fs::create_dir_all(tree);
+                let _ = std::fs::write(tree.join(format!("trickle-{at}")), "");
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        }),
+        &[],
+    );
+    let most = super::WAITS + sent / super::SLOWEST;
+    assert!(
+        code == Some(75)
+            && err.contains(&format!("{sent} bytes"))
+            && err.contains(&format!("within {most}s, still crossing too slowly")),
+        "a trickle was waited on past its ceiling ({code:?}): {err}"
+    );
+    assert!(
+        !work(&home).join("ran").exists(),
+        "it ran without its files"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_far_clock_that_steps_on_mid_crossing_spends_only_a_pass_of_it() {
+    // An hour on from the fourth reading, as a clock set right or a
+    // machine waking from sleep, while names cross every fifth of a
+    // second and the listed file lands a few seconds in: a wait that took
+    // the hour as spent gives up at once. The ceiling, the wait and a
+    // second for each `SLOWEST` bytes listed, is well past the most a
+    // pass may spend and the seconds the crossing takes.
+    let listed = 25 * super::SLOWEST;
     let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
                 echo $((n + 1)) > \"$HOME/clock\"\n\
-                if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((999990 + n)); fi";
+                t=$(PATH=${PATH#*:} date +%s)\n\
+                if [ \"$n\" -ge 3 ]; then echo $((t + 3600)); else echo \"$t\"; fi";
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
-        &[("x", "x")],
+        Left::Listed(&format!("{listed}\tx\nend\n")),
+        &[],
+        "touch ../ran",
+        &kind(""),
+        Some(&|tree| {
+            std::fs::create_dir_all(tree).unwrap();
+            for at in 0..20 {
+                std::fs::write(tree.join(format!("trickle-{at}")), "").unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            std::fs::write(tree.join("x"), "x".repeat(usize::try_from(listed).unwrap())).unwrap();
+        }),
+        &[("date", date)],
+    );
+    // What crossed is no archive, so the wait ended with all of it there.
+    assert!(
+        code == Some(77) && err.contains("isn't one of its archives"),
+        "a crossing was given up on for a clock stepping on ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_ceiling_is_never_counted_from_more_than_a_share_carries() {
+    // More than the near side could ever have sent, so a sum past it
+    // stays in range of the far shell's arithmetic.
+    let most = format!("bytes={}\n", crate::far::MOST_BYTES);
+    assert!(
+        crate::far::steps::waiting(u64::MAX, "'untaken'").contains(&most),
+        "bytes past what a share carries weren't held to it"
+    );
+}
+
+#[test]
+fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
+    // An hour on after its first reading, while nothing crosses, and on a
+    // second a pass from there: the step spends `A_PASS_AT_MOST`, and
+    // the passes after it the rest of `WAITS`, where a wait that took
+    // the hour as quiet gives up at its second reading. Counted by
+    // readings, as the clock moves by them, and the near side sends
+    // enough that only the quiet could end it.
+    let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
+                echo $((n + 1)) > \"$HOME/clock\"\n\
+                if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((1003600 + n)); fi";
+    let (code, err, home) = far_line(
+        Left::Sized("1\tx\nend\n", 10 * super::SLOWEST),
+        &[],
         "touch ../ran",
         &kind(""),
         None,
@@ -259,15 +432,15 @@ fn a_far_clock_that_steps_back_restarts_the_wait() {
     );
     let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
     assert!(
-        code == Some(75) && err.contains("didn't reach"),
+        code == Some(75) && err.contains("none crossing"),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
-    // The first, the one stepped back, and the wait's own from there.
+    // The first, the step, then a pass a second for what is left.
     assert_eq!(
         readings.trim().parse::<u64>().ok(),
-        Some(super::WAITS + 2),
-        "a {}s wait over a clock that stepped back read it wrongly often",
-        super::WAITS
+        Some(2 + super::WAITS - super::A_PASS_AT_MOST),
+        "a clock an hour on was spent as more than a pass of {}s",
+        super::A_PASS_AT_MOST
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -276,34 +449,184 @@ fn a_far_clock_that_steps_back_restarts_the_wait() {
 fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // Each step of making the tree failing, as a full disk, a fenced
     // scratch or a program missing would, ahead of the far machine's own
-    // on its path, over a tree with a mark to take off.
-    for step in ["cp", "mkdir", "mv", "find", "awk", "sort", "cut"] {
+    // on its path: each program's first call, an unpacking that fails
+    // once it has made a folder and closed it, and the search for what is
+    // neither a file nor a folder alone, after the calls before it. The
+    // unpacking closes the folder in what follows its -C wherever that
+    // lies, and says it did, so the case can't stop reaching the cleanup
+    // unseen.
+    let (_, unpacking) = refusing(
+        "tar",
+        "*\" -xf \"*",
+        "tar \"$@\" || exit 9; while [ $# -gt 0 ] && [ \"$1\" != -C ]; do shift; done; \
+         chmod 500 \"$2/target\" && : > \"$2/../closed\"; exit 1",
+    );
+    let (_, searching) = refusing("find", "*\" -type l \"*", "exit 1");
+    for (step, stand_in) in [
+        ("mkdir", "exit 1"),
+        ("tar", "exit 1"),
+        ("find", "exit 1"),
+        ("tar", &unpacking),
+        ("find", &searching),
+    ] {
         let (code, err, home) = far_line(
-            "1\ttarget.elsewhere/a\nend\n",
-            &[("target.elsewhere/a", "x")],
+            Left::Whole,
+            &[("target/a", "x")],
             "touch ../ran",
             &kind(""),
             None,
-            &[(step, "exit 1")],
+            &[(step, stand_in)],
         );
         let heard = relay(said(&home).as_slice(), "1");
         assert!(
             code == Some(75) && heard == Heard::Untaken,
-            "a tree it couldn't make for {step} read as {heard:?}, ending {code:?}: {err}"
+            "a tree it couldn't make for {step} ({stand_in:?}) read as {heard:?}, ending \
+             {code:?}: {err}"
         );
         assert!(
-            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
-            "a tree it couldn't make for {step} was run, or left behind"
+            !work(&home).join("ran").exists()
+                && !work(&home).join("1").exists()
+                && !work(&home).join("1.run").exists(),
+            "a tree it couldn't make for {step} ({stand_in:?}) was run, or left behind with \
+             its run's file"
+        );
+        assert!(
+            stand_in != unpacking || work(&home).join("closed").exists(),
+            "the unpacking stand-in never closed a folder it made: {err}"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
 }
 
 #[test]
+fn a_tree_left_in_several_archives_is_unpacked_from_each() {
+    // Each archive's list of names is made new where the one before's
+    // lay, so a second archive is never refused as already listed.
+    let (code, err, home) = far_line(
+        Left::Parts,
+        &[("a", "a"), ("b", "b"), ("c/d", "d")],
+        "cat a b c/d > ../ran",
+        &kind(""),
+        None,
+        &[],
+    );
+    let list = std::fs::read_to_string(handover(&home).join(crate::far::LEFT)).unwrap_or_default();
+    assert_eq!(
+        list.matches(".tar\n").count(),
+        3,
+        "the files weren't left in an archive each: {list:?}"
+    );
+    assert_eq!(code, Some(0), "a tree left in parts wasn't taken: {err}");
+    assert_eq!(
+        std::fs::read_to_string(work(&home).join("ran"))
+            .ok()
+            .as_deref(),
+        Some("abd"),
+        "a file of a later archive wasn't unpacked: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
+    // Another run of the job has written its run's file, its copy and its
+    // names by the time this one sweeps, so this line's noclobber write
+    // loses whenever the other's came. Its file names this machine and
+    // process space and a process still running, the test's own, so the
+    // sweep keeps it as a live run's rather than for naming none.
+    let theirs = std::process::id();
+    let (step, winning) = refusing(
+        "uname",
+        "*",
+        &format!(
+            "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+             if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+             echo {theirs} \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" \
+             > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\"; fi"
+        ),
+    );
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[(step, &winning)],
+    );
+    let heard = relay(said(&home).as_slice(), "1");
+    assert!(
+        code == Some(75) && heard == Heard::Untaken,
+        "a run that lost its run's file read as {heard:?}, ending {code:?}: {err}"
+    );
+    let runs = work(&home);
+    let file = std::fs::read_to_string(runs.join("1.run")).unwrap_or_default();
+    assert!(
+        file.starts_with(&format!("{theirs} ")),
+        "the winner's run's file was cleared or written over, reading {file:?}: {err}"
+    );
+    assert!(
+        runs.join("1/theirs").exists() && runs.join("1.names").exists(),
+        "the winner's copy or names were cleared: {err}"
+    );
+    assert!(
+        handover(&home).join(crate::far::TREE).exists(),
+        "the job's tree, which the winner unpacks, was cleared: {err}"
+    );
+    assert!(
+        !runs.join("ran").exists(),
+        "the job ran though it lost: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_far_line_stopped_before_its_run_s_file_leaves_another_run_s_copy() {
+    // Another run of the job writes its run's file, its copy and its names
+    // while this one waits on its files, and this one is stopped there,
+    // before it wrote a run's file of its own.
+    let (step, stopping) = refusing(
+        "sleep",
+        "*",
+        "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+         if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+         echo theirs > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
+         kill -TERM \"$PPID\"; fi",
+    );
+    let (code, err, home) = far_line(
+        NEVER_CROSSING,
+        &[("x", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[(step, &stopping)],
+    );
+    let died_by = std::fs::read_to_string(home.join("signal")).unwrap_or_default();
+    assert_eq!(
+        (code, died_by.as_str()),
+        (None, "15"),
+        "it wasn't stopped: {err}"
+    );
+    // Only the stop's own clearing takes the files still crossing, so a
+    // line the signal killed outright leaves them.
+    assert!(
+        !handover(&home).join(crate::far::TREE).exists(),
+        "the stop's clearing never ran: {err}"
+    );
+    let runs = work(&home);
+    assert!(
+        std::fs::read_to_string(runs.join("1.run")).ok().as_deref() == Some("theirs\n")
+            && runs.join("1/theirs").exists()
+            && runs.join("1.names").exists(),
+        "a stop before its own run's file cleared another run's: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     let (code, err, home) = far_line_in(
         Path::new("drafts"),
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -320,14 +643,14 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
         "why it was refused went unsaid: {err}"
     );
     assert!(
-        !work(&home).join("1").exists(),
-        "a refused job's copy of its tree was left behind"
+        !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
+        "a refused job's copy of its tree, or its run's file, was left behind"
     );
     let _ = std::fs::remove_dir_all(&home);
     // Nor when nothing at all travels, and no tree crosses.
     let (code, err, home) = far_line_in(
         Path::new("drafts"),
-        "end\n",
+        Left::Whole,
         &[],
         "touch ../ran",
         &kind(""),
@@ -340,7 +663,7 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     );
     let _ = std::fs::remove_dir_all(&home);
     // At the tree's top, the job runs in a tree with nothing in it.
-    let (code, err, home) = far_run("end\n", &[], "touch ../ran");
+    let (code, err, home) = far_run(Left::Whole, &[], "touch ../ran");
     assert!(
         code == Some(0) && work(&home).join("ran").exists(),
         "a job with no file that travels didn't run ({code:?}): {err}"
@@ -368,7 +691,7 @@ impl std::io::Read for Trickle<'_> {
 #[test]
 fn the_far_line_s_word_is_heard_whatever_came_before_or_after_it() {
     // A banner with no newline of its own, and a terminal's line ends.
-    let glued = far_line("1\tx\nend\n", &[("x", "x")], "true", &kind(""), None, &[]);
+    let glued = far_line(Left::Whole, &[("x", "x")], "true", &kind(""), None, &[]);
     let mut out = b"a welcome with no end".to_vec();
     out.extend(said(&glued.2));
     assert_eq!(

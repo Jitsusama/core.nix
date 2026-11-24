@@ -8,10 +8,17 @@
   lib,
   onLinux,
   pkgs,
+  self,
   ...
 }:
+let
+  # A graphical machine that shares the Brio, since no role does while its
+  # relay gives no picture (nixos.nix says why).
+  shared = graphical.extendModules { modules = [ self.nixosModules.mx-brio ]; };
+in
 onLinux {
-  # The MX Brio is shared through its loopback on every graphical machine:
+  # The MX Brio is shared through its loopback on a graphical machine that
+  # imports it:
   # among the machine's own udev rules, udev reads the Brio's without a
   # complaint, and it comes after every rule tagging cameras for the seat
   # and before the handing, keeps the Brio from the seat, marks it relayed
@@ -24,16 +31,16 @@ onLinux {
   # is named as the Brio is and removed when the Brio goes, and the shell
   # lists the Brio only while that file is there, by its card; and the
   # Brio's own watch writes in the hidden folder, never beside the
-  # loopback's file.
+  # loopback's file; and the seat's give-back is dropped.
   the-mx-brio-is-shared =
     let
-      inherit (graphical.config) environment services systemd;
+      inherit (shared.config) environment services systemd;
       relay = systemd.services.mx-brio or (throw "no service relays the MX Brio");
       holders = systemd.services.mx-brio-holders or (throw "no service says who holds the MX Brio");
       watch =
         systemd.services."usb-camera-holders-relayed@" or (throw "no watch records a relayed camera");
       card = "MX Brio 705 for Business";
-      shell = (account graphical).jitsusama.quickshell;
+      shell = (account shared).jitsusama.quickshell;
       shown = shell.margin.pieces.camera.holders;
       # The relay's own input, as its service gives it.
       read = builtins.match "[^']*-i '([^']*)'[^']*" relay.script;
@@ -57,6 +64,9 @@ onLinux {
           lib.any (lib.hasInfix "/bin/rm -f '/run/camera-holders/${card}'") holders.serviceConfig.ExecStopPost;
         "the Brio's own watch doesn't write in the hidden folder" =
           lib.hasSuffix " /run/camera-holders/.relayed" watch.serviceConfig.ExecStart;
+        # The sharing drops the seat's give-back (nixos.nix's disabledModules),
+        # which would otherwise replay the Brio's arrival at every boot.
+        "the seat's give-back runs beside the relay" = !(systemd.services ? mx-brio-seat);
         "a relayed camera's watch could write beside its loopback's" =
           lib.hasInfix ''ENV{CAMERA_RELAYED}!="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="usb-camera-holders@%k.service"'' services.udev.extraRules;
       };

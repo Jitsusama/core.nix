@@ -210,7 +210,14 @@ passed, from nix-offload's record of what passed at each commit. It refuses
 one no review round read too, from the rounds the harness keeps, and only
 when none of those read it, from those mirrored from other machines into
 `review/runs-from` beside them, where a range counts only when its base
-was given as a commit. It passes, too, when the head
+was given as a commit. Only when no round read the head does it ask
+about a pin. A head whose only change is flake.lock moving mycelium,
+whose own changes merge through our rounds, needs none when GitHub says
+the newer commit is what a pull request into mycelium's own trunk merged
+as, and that each of the at most 100 commits it brings came through such
+a pull request. Its lock must also be what Nix makes of that commit, with
+every other field and node as it was. `ready` says so, and a lock-only
+head turned down says why. It passes, too, when the head
 is a clean rebase of a commit one read, by the same patch id taken with
 its context lines and whitespace, so a block moved within its file is
 another change. A round over a range of commits stands for its head only
@@ -380,8 +387,7 @@ quietly stopped holding.
 ### The Desktop's Logic
 
 Run in Qt's own JavaScript engine, the one the desktop runs it in, over cases
-written beside the shell in `modules/quickshell/tests/`; those not moved yet
-wait in `tests/` until they do.
+written beside the shell in `modules/quickshell/tests/`.
 
 ### Examples
 
@@ -403,7 +409,7 @@ kernel guide][2] says what that catches.
 
 The account's desktop files and its real niri configuration, run on a real
 niri nested in a headless sway drawn in software, inside the build sandbox
-(`tests/nested-niri.sh`), in seconds rather than a machine's minutes. It
+(`tests/lib/nested-niri.sh`), in seconds rather than a machine's minutes. It
 proves what the desktop does on niri that needs no system service: a surface
 landing as niri's layer, what a bind's command does. It asserts through the
 desktop's reports and `niri msg`, never pixels. `the-notices-land-on-niri` is
@@ -694,7 +700,7 @@ the `values` fixture, as `tests/vm/keys/signing.nix` does. Fixtures several
 files share go in a module of the driver's Python, given through the helper's
 `extraPythonPackages` and named in its `plugins`, which pytest takes as
 plugins, so each file asks for them by name and never declares or imports
-them, as `tests/desktop.nix` does. Each
+them, as `tests/desktop/desktop.nix` does. Each
 test is one of the driver's subtests in the log, named by its docstring's
 first line, so a test runs alone, after only what it asks for. A program
 the test runs on the machine is a file beside it too, never a script in a

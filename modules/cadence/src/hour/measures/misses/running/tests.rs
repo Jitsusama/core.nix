@@ -2,6 +2,7 @@ use super::hosts::{host_unit, listed_host, runtime, shown_host, unit_runtime};
 use super::*;
 
 mod harness;
+mod merge;
 
 const OLD: &str = "xi5w06adwa04v6ifnajk1l37fp9hn79c";
 
@@ -250,21 +251,6 @@ fn a_runtime_build_that_only_lists_the_patches_changed_is_left_to_them() {
     assert!(
         !only_lists(other, &files),
         "a line listing a patch the merge didn't change was taken for its own"
-    );
-}
-
-#[test]
-fn a_merge_is_found_by_its_subject_not_a_later_body() {
-    let found = concat!(
-        "1111111 fix(pi): quote the crash (#5800)\n",
-        "2222222 Merge pull request #5800 from me/fix\n",
-    );
-    assert_eq!(subject_merging(found, 5800), Some("1111111".to_owned()));
-    let body = "3333333 Merge pull request #5801 from me/next\n";
-    assert_eq!(
-        subject_merging(body, 5800),
-        None,
-        "a later merge whose body named the change was taken as its merge"
     );
 }
 

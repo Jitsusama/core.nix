@@ -70,8 +70,8 @@
 
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
-  # vocabulary reads back into text and words into tokens, and silence or a
-  # moment isn't heard.
+  # vocabulary reads back into text and words into tokens, Parakeet's own
+  # gives each word its text has, and silence or a moment isn't heard.
   dictation-works-it-out = pkgs.callPackage ./package.nix { };
 
   # The whole of dictation's Whisper, on the CPU as a machine with no NPU
@@ -257,21 +257,45 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      # Keeping Joel's short answers that the echo filter took for the far
-      # end's took the rate from 17.7% to 17.5%; the ceiling sits between,
-      # so it fails the code from before it. The meetings hold no echo, so
-      # the check also names each line of Joel's the filter leaves out.
-      ceiling = "17.6";
+      # Cutting the far end's words from Joel's by word time and loudness
+      # took the rate from 17.5% to 17.4%, 594 words wrong to 590: the four
+      # cut are one of theirs heard in his microphone. The ceiling fails
+      # the code from before it. The meetings hold no echo, so the check
+      # also names each line of Joel's the filter leaves out.
+      ceiling = "17.4";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
       touch $out
     '';
 
+  # The same meetings with the far end heard again in Joel's microphone, as
+  # a call on speakers with no echo cancelling hears it (echoed-meetings.nix):
+  # what of their echo is written as his words, and what of his own goes
+  # with it, stays under the ceiling.
+  call-transcripts-hears-echoed-meetings-as-well-as-it-did =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./parakeet.nix { };
+      meetings = pkgs.callPackage ./echoed-meetings.nix {
+        meetings = pkgs.callPackage ./meetings.nix { };
+      };
+      # Cutting their echo from Joel's lines by word time and loudness,
+      # rather than leaving out only whole lines that repeat theirs, took
+      # the rate from 25.8% to 21.7%, and his side's from 37.0% to 24.6%.
+      # The ceiling is what it reaches, as the clean meetings' is.
+      ceiling = "21.7";
+    in
+    pkgs.runCommand "call-transcripts-hears-echoed-meetings-as-well-as-it-did" { } ''
+      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
+      touch $out
+    '';
+
   # call-transcripts tells the far end's voices apart on the same three AMI
   # meetings at least as well as it last did: their side cut into takes as
-  # a call's is, each take embedded with TitaNet small on the CPU and the
-  # takes grouped with no count of the people, of the speech given a voice
+  # a call's is, each take embedded in 3 s pieces with TitaNet small on
+  # the CPU and the pieces grouped with no count of the people, a piece
+  # left out taking its take's nearest voice, of the speech given a voice
   # at least `right` is its voice's speaker's, and at least `handled` of
   # the speech is handled as it should be: given a voice, or left under
   # Others where one talker holds all but a tenth of a far end, as
@@ -279,14 +303,18 @@
   # floors to what it reaches, and one that trades naming for words heard
   # lowers them, saying so: a second's pause before a take is cut hears
   # a point more of the words and names the voices worse. Each sits half
-  # a point under what was measured on 2026-11-20, 82.7% and 96.9%.
+  # a point under what was measured on 2026-11-21, 85.6% and 97.1%;
+  # whole takes gave 82.7% and 96.9%, and 2 s pieces 37.3% and 43.8%,
+  # TitaNet hearing one talker as several in pieces that short. Each
+  # piece is scored under its own voice: the lines the daemon splits from
+  # them where the voice changes are proved by split.rs's cases instead.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "82.2";
-      handled = "96.4";
+      right = "85.1";
+      handled = "96.6";
     in
     pkgs.runCommand "call-transcripts-tells-voices-apart-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts voices ${voices} ${meetings} \
@@ -301,7 +329,10 @@
   # came. Of the speech given a name, at least `right` is that person's,
   # and at least `named` of the speech is given one. A change that names
   # better raises the floors to what it reaches; each sits half a point
-  # under what the last measurement on 2026-11-21 gave, 83.5% and 27.9%.
+  # under what the last measurement on 2026-11-21 gave, 84.5% and 30.6%,
+  # with takes embedded in pieces as the voices check's are; whole takes
+  # gave 83.5% and 27.9%. Each piece is named on its own, not the lines
+  # the daemon splits from them (split.rs).
   # Waiting a second before cutting a take lowered `right` from 93.4%:
   # a take that runs through a short pause holds more of a second voice.
   # TS3003a names none, since one talker holds nearly all of its far end.
@@ -310,8 +341,8 @@
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "83.0";
-      named = "27.4";
+      right = "84.0";
+      named = "30.1";
     in
     pkgs.runCommand "call-transcripts-names-voices-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts names ${voices} ${meetings} \

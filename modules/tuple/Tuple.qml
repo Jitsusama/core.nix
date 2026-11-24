@@ -117,7 +117,7 @@ Singleton {
     // found anywhere by name and as Tuple's own acts in Programs › Tuple
     // (Calls.qml). A ringing call's window, where it's answered, comes
     // first; in a call, its window while it has one, whether Joel's Muted
-    // there, sharing while nothing is shared, and leaving; out of one,
+    // there, sharing while nothing is shared, his camera, and leaving; out of one,
     // opening Joel's room, or joining the call whose link was just copied;
     // and copying his room's link once it's known.
     readonly property var controls: {
@@ -164,6 +164,15 @@ Singleton {
                     later: true,
                     run: () => root.share()
                 }));
+            // Tuple's camera picker, where Joel picks a camera and shares
+            // it, or stopping the camera once it's in the call.
+            rows.push(Object.assign(said("tuple:camera", filming ? "on" : ""), {
+                glyph: Theme.glyph.camera,
+                hue: "action",
+                note: filming ? "" : "pick one in Tuple's window to share it",
+                later: true,
+                run: () => root.camera(!filming)
+            }));
             rows.push(Object.assign(said("tuple:leave"), {
                 glyph: Theme.glyph.hangUp,
                 hue: "action",
@@ -232,6 +241,19 @@ Singleton {
     // Tuple asks the portal, which asks Joel what to share.
     function share() {
         calls.ask({ ask: "share" });
+    }
+
+    // Opens Tuple's camera picker, which shares nothing until Joel picks
+    // there, or stops his camera; Tuple's stream says which it is after.
+    // The launcher has closed by the time Tuple answers, so a refusal,
+    // such as no camera Tuple can open, goes to the journal with Tuple's
+    // reason.
+    function camera(on) {
+        calls.ask({ ask: "camera", on: on }, answer => {
+            if (answer?.error)
+                console.warn(`tuple: the camera's ${on ? "picker" : "stop"} was refused: `
+                    + (answer.error.message ?? answer.error.code));
+        });
     }
 
     // Once Tuple says it's done, the record says so.

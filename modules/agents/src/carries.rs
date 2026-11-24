@@ -5,15 +5,21 @@
 //! which judges its state from what the node sees itself, never from what
 //! a session or its orchestrator says (mycelium's PROTOCOL.md).
 //!
-//! A carry's row is its session's title, how it stands at its right, and
-//! where it went and who carried it, and why, as its note. The node keeps
-//! the day; the row holds no clock of its own.
+//! A carry's row is its session's title, else its quest's, how it stands
+//! and when it was ordered at its right, and where it went and who carried
+//! it, and why, as its note. The node keeps the day; the row holds no
+//! clock of its own, only the time it was ordered, which the shell words.
+//! A carry asks nothing of Joel, so it stands here alone, never in For
+//! You (Joel, 2026-11-23 21:52, of five rows reading "A Session on Its
+//! Way" there: "how does it provide me with anything useful?").
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 use serde_json::{Value, json};
 
+use crate::clock;
 use crate::networks;
 use crate::row::Words;
 use crate::top::PLACE;
@@ -22,8 +28,9 @@ use crate::top::PLACE;
 /// them: the word its record says, the words its row says it in, the words
 /// a count of them is said in, how long it keeps its place on a row short
 /// of room, and its hue.
-const STATES: [(&str, &str, &str, u8, &str); 5] = [
+const STATES: [(&str, &str, &str, u8, &str); 6] = [
     ("refused", "refused", "refusedCount", 5, "alert"),
+    ("stuck", "stuck", "stuckCount", 5, "alert"),
     ("ordered", "ordered", "underWayCount", 4, ""),
     ("carrying", "carrying", "underWayCount", 4, ""),
     ("arrived", "arrived", "arrivedCount", 3, ""),
@@ -55,21 +62,22 @@ fn item(said: &str, keep: u8, hue: &str) -> Value {
     }
 }
 
-/// What the group's row says at its right: how many stand each way, the
-/// refused first, those ordered and on their way as one.
+/// What the group's row says at its right: how many stand each way, in
+/// `STATES`' order, so the refused come before the stuck whichever is
+/// newer, and those ordered and on their way as one.
 fn group_side(carries: &[&Value], words: &Words) -> Vec<Value> {
     let said = &words.carried;
     let mut counted: Vec<(&str, u8, &str, usize)> = Vec::new();
-    for one in carries {
-        let Some((_, _, count, keep, hue)) = state_of(one) else {
+    for (word, _, count, keep, hue) in &STATES {
+        let many = carries.iter().filter(|one| one["state"] == *word).count();
+        if many == 0 {
             continue;
-        };
+        }
         match counted.iter_mut().find(|(each, ..)| each == count) {
-            Some(found) => found.3 += 1,
-            None => counted.push((count, *keep, hue, 1)),
+            Some(found) => found.3 += many,
+            None => counted.push((count, *keep, hue, many)),
         }
     }
-    counted.sort_by_key(|(_, keep, ..)| Reverse(*keep));
     counted
         .iter()
         .map(|(count, keep, hue, many)| {
@@ -93,18 +101,51 @@ fn named(rows: &HashMap<String, &Value>, address: &str) -> Option<String> {
     row["name"].as_str().map(str::to_owned)
 }
 
-/// A carry's row under `parent`: its session's title, how it stands, and
-/// where it went, by whom and why, or why it was refused.
-fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &Words) -> Value {
-    let said = &words.carried;
-    let id = text(record, "key").trim_start_matches("carry:");
-    // A session between machines has no row anywhere, yet hasn't ended.
-    let gone = if matches!(state_of(record), Some((_, _, "underWayCount", ..))) {
+/// What a carry's row goes by: its session's title while the tree serves
+/// a row for it, else its quest's title, as the node's quest records give
+/// it, since a session between machines has no row anywhere and one
+/// carried away runs under another id; only a quest the records don't
+/// hold is said in words, on its way or ended.
+fn name_of<S: BuildHasher>(
+    record: &Value,
+    rows: &HashMap<String, &Value>,
+    titles: &HashMap<&str, &str, S>,
+    words: &Words,
+) -> String {
+    if let Some(name) = named(rows, text(record, "address")) {
+        return name;
+    }
+    if let Some(title) = titles
+        .get(text(record, "quest"))
+        .filter(|one| !one.is_empty())
+    {
+        return (*title).to_owned();
+    }
+    // One stuck on its way hasn't ended either.
+    let gone = if matches!(
+        state_of(record),
+        Some((_, _, "underWayCount" | "stuckCount", ..))
+    ) {
         "travelling"
     } else {
         "ended"
     };
-    let name = named(rows, text(record, "address")).unwrap_or_else(|| said.word(gone).to_owned());
+    words.carried.word(gone).to_owned()
+}
+
+/// A carry's row under `parent`: its session's or quest's title, how it
+/// stands and when it was ordered, and where it went, by whom and why, or
+/// why it was refused or is stuck.
+fn carry<S: BuildHasher>(
+    record: &Value,
+    parent: &str,
+    rows: &HashMap<String, &Value>,
+    titles: &HashMap<&str, &str, S>,
+    words: &Words,
+) -> Value {
+    let said = &words.carried;
+    let id = text(record, "key").trim_start_matches("carry:");
+    let name = name_of(record, rows, titles, words);
     // A carry Joel asked himself says so, as the node judged who asked.
     let by = if text(record, "by") == "person" {
         said.word("you").to_owned()
@@ -112,19 +153,27 @@ fn carry(record: &Value, parent: &str, rows: &HashMap<String, &Value>, words: &W
         named(rows, text(record, "by")).unwrap_or_else(|| said.word("someone").to_owned())
     };
     let to = text(record, "to");
-    let side = state_of(record)
+    let mut side: Vec<Value> = state_of(record)
         .map(|(_, word, _, keep, hue)| vec![item(said.word(word), *keep, hue)])
         .unwrap_or_default();
-    let (lead, why) = if record["state"] == "refused" {
-        (
+    // When it was ordered, worded by the shell as any time that came is.
+    if let Some(at) = clock::ms_of(&record["at"]) {
+        side.push(json!({"at": at, "as": "came", "keep": 1}));
+    }
+    let (lead, why) = match record["state"].as_str() {
+        Some("refused") => (
             said.fill("refusedTo", &[("machine", to)]),
             text(record, "refused"),
-        )
-    } else {
-        (
+        ),
+        // The node says why it judges one stuck, as it says a refusal's.
+        Some("stuck") => (
+            said.fill("to", &[("machine", to), ("by", &by)]),
+            text(record, "stuck"),
+        ),
+        _ => (
             said.fill("to", &[("machine", to), ("by", &by)]),
             text(record, "why"),
-        )
+        ),
     };
     let note = if why.is_empty() {
         lead
@@ -157,8 +206,14 @@ fn back(record: &Value) -> Value {
 
 /// Every row of the Carried row, it first, from the node's `carry`
 /// records, newest first, each session named as the tree served it in
-/// `top`; none while the node keeps no carry.
-pub fn rows(records: &[&Value], top: &[Value], words: &Words) -> Vec<Value> {
+/// `top`, else by its quest's title in `titles`, by quest id; none while
+/// the node keeps no carry.
+pub fn rows<S: BuildHasher>(
+    records: &[&Value],
+    top: &[Value],
+    titles: &HashMap<&str, &str, S>,
+    words: &Words,
+) -> Vec<Value> {
     if records.is_empty() {
         return Vec::new();
     }
@@ -175,7 +230,7 @@ pub fn rows(records: &[&Value], top: &[Value], words: &Words) -> Vec<Value> {
     all.extend(
         newest
             .iter()
-            .map(|record| carry(record, &parent, &sessions, words)),
+            .map(|record| carry(record, &parent, &sessions, titles, words)),
     );
     all
 }
@@ -216,6 +271,12 @@ mod tests {
         ]
     }
 
+    /// The rows `records` make beside `top()`, the node's quest records
+    /// holding no title for any.
+    fn listed(records: &[&Value]) -> Vec<Value> {
+        rows(records, &top(), &HashMap::new(), &words())
+    }
+
     fn said(row: &Value) -> Vec<&str> {
         row["side"]
             .as_array()
@@ -230,13 +291,13 @@ mod tests {
 
     #[test]
     fn no_carry_makes_no_row() {
-        assert_eq!(rows(&[], &top(), &words()), Vec::<Value>::new());
+        assert_eq!(listed(&[]), Vec::<Value>::new());
     }
 
     #[test]
     fn a_carry_is_its_sessions_title_where_it_went_by_whom_and_why() {
         let arrived = record("HARBOR", "2026-11-16T01:00:00Z", "arrived");
-        let made = rows(&[&arrived], &top(), &words());
+        let made = listed(&[&arrived]);
         let keys: Vec<&str> = made.iter().filter_map(|row| row["key"].as_str()).collect();
         assert_eq!(
             keys,
@@ -275,7 +336,7 @@ mod tests {
                 refused
             },
         ];
-        let made = rows(&records.iter().collect::<Vec<_>>(), &top(), &words());
+        let made = listed(&records.iter().collect::<Vec<_>>());
         let addresses: Vec<&str> = made[1..]
             .iter()
             .filter_map(|row| row["held"]["address"].as_str())
@@ -301,7 +362,7 @@ mod tests {
         let mut refused = record("GONE01", "2026-11-16T01:00:00Z", "refused");
         refused["refused"] = json!("it holds a lease");
         refused["by"] = json!("NOBODY");
-        let made = rows(&[&refused], &top(), &words());
+        let made = listed(&[&refused]);
         let carry = &made[1];
         assert_eq!(
             carry["name"], "A Session That Ended",
@@ -316,7 +377,7 @@ mod tests {
         let mut ordered = record("GONE01", "2026-11-16T01:00:00Z", "ordered");
         ordered["by"] = json!("NOBODY");
         ordered["why"] = json!("");
-        let made = rows(&[&ordered], &top(), &words());
+        let made = listed(&[&ordered]);
         assert_eq!(
             made[1]["note"], "carried to tern by an orchestrator",
             "and no why, none said"
@@ -329,21 +390,21 @@ mod tests {
         let mut his = record("HARBOR", "2026-11-16T01:00:00Z", "ordered");
         his["by"] = json!("person");
         his["why"] = json!(null);
-        let made = rows(&[&his], &top(), &words());
+        let made = listed(&[&his]);
         assert_eq!(
             made[1]["note"], "carried to tern by you",
             "by him, as the node judged who asked, and with no why"
         );
         assert_eq!(
             made[1]["held"]["by"], "person",
-            "which For You reads to leave his own carry out"
+            "kept on the row as the node judged it, though no shell reads it now"
         );
     }
 
     #[test]
     fn a_state_the_launcher_does_not_know_yet_still_shows_the_carry() {
         let later = record("HARBOR", "2026-11-16T01:00:00Z", "paused");
-        let made = rows(&[&later], &top(), &words());
+        let made = listed(&[&later]);
         assert_eq!(made.len(), 2, "the carry is listed");
         assert_eq!(
             said(&made[1]),
@@ -355,7 +416,7 @@ mod tests {
     #[test]
     fn an_arrived_carry_is_carried_back_in_one_ask_of_the_node_and_no_other_is() {
         let arrived = record("HARBOR", "2026-11-16T01:00:00Z", "arrived");
-        let made = rows(&[&arrived], &top(), &words());
+        let made = listed(&[&arrived]);
         assert_eq!(
             made[1]["acts"],
             json!([{"key": "verb:carry:back",
@@ -365,16 +426,16 @@ mod tests {
         assert_eq!(made[1]["held"]["quest"], "QEST-20261115-HARBOR");
         assert_eq!(
             made[1]["held"]["at"], "2026-11-16T01:00:00Z",
-            "when it was made, which For You weighs a carry under way by"
+            "when it was made, as the node said it"
         );
         for state in ["ordered", "carrying", "refused", "back", "paused"] {
             let other = record("HARBOR", "2026-11-16T01:00:00Z", state);
-            let made = rows(&[&other], &top(), &words());
+            let made = listed(&[&other]);
             assert_eq!(made[1]["acts"], json!([]), "{state} offers nothing");
         }
         let mut questless = arrived.clone();
         questless["quest"] = json!("");
-        let made = rows(&[&questless], &top(), &words());
+        let made = listed(&[&questless]);
         assert_eq!(made[1]["acts"], json!([]), "nor one naming no quest");
     }
 
@@ -392,13 +453,125 @@ mod tests {
         // session has no row anywhere, yet it hasn't ended.
         for state in ["ordered", "carrying"] {
             let under_way = record("AFLOAT", "2026-11-16T01:00:00Z", state);
-            let made = rows(&[&under_way], &top(), &words());
+            let made = listed(&[&under_way]);
             assert_eq!(made[1]["name"], "A Session on Its Way", "{state}");
         }
         for state in ["arrived", "refused", "back"] {
             let settled = record("AFLOAT", "2026-11-16T01:00:00Z", state);
-            let made = rows(&[&settled], &top(), &words());
+            let made = listed(&[&settled]);
             assert_eq!(made[1]["name"], "A Session That Ended", "{state}");
         }
+    }
+
+    /// One of the carries the node kept on 2026-11-23, as it served it but
+    /// for its machines, named as `record`'s are: 48UZ44's session went to
+    /// tern and runs there under another id, so no row the tree serves is
+    /// its.
+    fn tonights() -> Value {
+        json!({
+            "key": "carry:01a1f76d-2cf5-76c4-8c06-586103bb54df:2026-11-23T22:23:55.92938461Z",
+            "kind": "carry", "at": "2026-11-23T22:23:55.92938461Z", "by": "M6HZ8T",
+            "session": "01a1f76d-2cf5-76c4-8c06-586103bb54df", "address": "48UZ44",
+            "quest": "QEST-20261120-48UZ44", "from": "skiff", "to": "tern",
+            "why": "spreading load off skiff", "state": "carrying",
+        })
+    }
+
+    #[test]
+    fn a_carry_whose_session_has_no_row_goes_by_its_quests_title() {
+        // Joel's For You read "A Session on Its Way" for five of these on
+        // 2026-11-23, naming nothing he could tell apart.
+        let carried = tonights();
+        let titles = HashMap::from([("QEST-20261120-48UZ44", "Spikes 6 and 7")]);
+        let made = rows(&[&carried], &top(), &titles, &words());
+        assert_eq!(made[1]["name"], "Spikes 6 and 7", "its quest's title");
+        assert_eq!(
+            made[1]["note"], "carried to tern by an orchestrator \u{b7} spreading load off skiff",
+            "where it went, and why"
+        );
+        let live = record("HARBOR", "2026-11-16T01:00:00Z", "arrived");
+        let titles = HashMap::from([("QEST-20261115-HARBOR", "The Harbour Quest")]);
+        let made = rows(&[&live], &top(), &titles, &words());
+        assert_eq!(
+            made[1]["name"], "Chart the Harbour",
+            "a session the tree serves still goes by its own title"
+        );
+    }
+
+    #[test]
+    fn a_carry_says_when_it_was_ordered_beside_how_it_stands() {
+        let made = listed(&[&tonights()]);
+        assert_eq!(
+            made[1]["side"],
+            json!([{"said": "on its way", "keep": 4},
+                {"at": 1_795_472_635_929_i64, "as": "came", "keep": 1}]),
+            "its state, then the time it was ordered, for the shell to word"
+        );
+        for at in ["", "yesterday"] {
+            let mut timeless = tonights();
+            timeless["at"] = json!(at);
+            assert_eq!(
+                listed(&[&timeless])[1]["side"],
+                json!([{"said": "on its way", "keep": 4}]),
+                "and no time where the node gave none it can read: {at:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quest_whose_title_is_empty_goes_by_words_and_a_settled_one_by_its_title() {
+        let titles = HashMap::from([("QEST-20261120-48UZ44", "")]);
+        let made = rows(&[&tonights()], &[], &titles, &words());
+        assert_eq!(
+            made[1]["name"], "A Session on Its Way",
+            "an empty title names nothing"
+        );
+        let mut arrived = tonights();
+        arrived["state"] = json!("arrived");
+        let titles = HashMap::from([("QEST-20261120-48UZ44", "Spikes 6 and 7")]);
+        let made = rows(&[&arrived], &[], &titles, &words());
+        assert_eq!(
+            made[1]["name"], "Spikes 6 and 7",
+            "an arrived carry runs elsewhere under another id too"
+        );
+    }
+
+    #[test]
+    fn a_stuck_carry_with_no_reason_says_where_it_went_and_the_refused_count_first() {
+        let mut stuck = tonights();
+        stuck["state"] = json!("stuck");
+        let made = listed(&[&stuck]);
+        assert_eq!(
+            made[1]["note"], "carried to tern by an orchestrator",
+            "the orchestrator's why is not the node's reason"
+        );
+        let refused = record("HARBOR", "2026-11-16T01:00:00Z", "refused");
+        let made = listed(&[&stuck, &refused]);
+        assert_eq!(
+            said(&made[0]),
+            ["1 refused", "1 stuck"],
+            "refused first, though the stuck one is newer"
+        );
+    }
+
+    #[test]
+    fn a_stuck_carry_says_so_in_alert_with_the_nodes_reason() {
+        let mut stuck = tonights();
+        stuck["state"] = json!("stuck");
+        stuck["stuck"] = json!("not seen running on tern 30 minutes after it was ordered");
+        let made = listed(&[&stuck]);
+        assert_eq!(said(&made[1]), ["stuck"]);
+        assert_eq!(made[1]["side"][0]["hue"], "alert");
+        assert_eq!(
+            made[1]["note"],
+            "carried to tern by an orchestrator \u{b7} not seen running on tern 30 minutes \
+             after it was ordered"
+        );
+        assert_eq!(said(&made[0]), ["1 stuck"], "the group counts it apart");
+        assert_eq!(made[0]["side"][0]["hue"], "alert");
+        assert_eq!(
+            made[1]["name"], "A Session on Its Way",
+            "not one that ended"
+        );
     }
 }
