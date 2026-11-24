@@ -1991,11 +1991,17 @@ fn changed_there(
     if finished.whole {
         eprintln!("{}", ended::marked::signed(RAN_WHOLE));
     }
-    ended::status(ended::of_a_run(finished.status, finished.whole), || {
-        if finished.whole {
-            "the changed checks didn't pass, as the lines above say".to_owned()
-        } else {
+    let code = finished.ends();
+    // The ending's own words go unsaid once the lines above said a
+    // failure, so a red turned cut short says why here (round 8's F18).
+    if code != finished.status {
+        eprintln!("nix-offload: a check failed, but not every part of the run ran to its end");
+    }
+    ended::status(code, || {
+        if finished.cut {
             "the changed checks didn't pass, and not every part ran to its end".to_owned()
+        } else {
+            "the changed checks didn't pass, as the lines above say".to_owned()
         }
     })
 }
@@ -2391,12 +2397,16 @@ fn kept_passing(
 }
 
 /// How a `there --changed` run ended: its status, what changed-checks
-/// printed, where it was read, and whether every part of it ran to its
-/// end, so that its words name every check it broke.
+/// printed, where it was read, whether a lent builder said every part of
+/// it ran to its end, so that its words name every check it broke, and
+/// whether a part is known cut short. The two differ: a run built on the
+/// evaluator or a machine nearby is never whole, for nothing signs it,
+/// yet a failure there ran to its end and ends 1 (round 8's F18).
 struct Finished {
     status: i32,
     printed: Option<String>,
     whole: bool,
+    cut: bool,
 }
 
 impl Finished {
@@ -2405,13 +2415,28 @@ impl Finished {
             status,
             printed,
             whole: false,
+            cut: false,
         }
     }
 
-    /// The same run, whole as `whole` says.
+    /// The same run, whole as `whole` says, and cut short where not.
     fn wholly(mut self, whole: bool) -> Self {
         self.whole = whole;
+        self.cut = !whole;
         self
+    }
+
+    /// The same run, with a part that never ran.
+    fn cut_short(mut self) -> Self {
+        self.whole = false;
+        self.cut = true;
+        self
+    }
+
+    /// The status the run ends with: a failure with a part cut short
+    /// ends as a cut run does (`ended::of_a_run`).
+    fn ends(&self) -> i32 {
+        ended::of_a_run(self.status, !self.cut)
     }
 }
 
@@ -2988,7 +3013,7 @@ impl Apart<'_> {
                 Ok(testing) => Some(testing),
                 Err(error) => {
                     eprintln!("nix-offload: couldn't send the VM tests on: {error}");
-                    return Some(Finished::of(1, None));
+                    return Some(Finished::of(1, None).cut_short());
                 }
             }
         };
@@ -4552,6 +4577,17 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn a_red_ends_cut_short_only_when_a_part_of_it_was() {
+        // Built on the evaluator or nearby: unsigned, yet it ran.
+        assert_eq!(Finished::of(1, None).ends(), 1);
+        assert_eq!(Finished::of(1, None).wholly(true).ends(), 1);
+        assert_eq!(Finished::of(1, None).wholly(false).ends(), ended::CUT_SHORT);
+        assert_eq!(Finished::of(1, None).cut_short().ends(), ended::CUT_SHORT);
+        assert!(!Finished::of(1, None).cut_short().whole);
+        assert_eq!(Finished::of(0, None).cut_short().ends(), 0);
     }
 
     #[test]
