@@ -166,42 +166,50 @@ let
   # launcher's acts on a look by core's own names for them (kit/ask.ts), so
   # a machine renaming one would let a page offer what For You refuses.
   lookActs = import ./look-acts.nix;
-  coreWords = (import ../quickshell/launcher/words.nix).value;
-  machineWords = config.jitsusama.quickshell.launcher.words or coreWords;
-  # A word's name as the shell's Words.qml names it: by the last thing of
-  # its id, so a rename appended after core's own still counts. Words.qml
-  # keys a thing by its id as words.json writes it (toJSON, which writes a
-  # set with an outPath or __toString as that string), made a string, so a
-  # list of one id is that id; no act's id holds a comma or is empty, so no
-  # other id can be one.
+  # Words as the shell's Words.qml reads them: as words.json writes them,
+  # by toJSON, which writes a set with an outPath or __toString as that,
+  # whether it's a thing or its id. A store path's context, which fromJSON
+  # refuses, says nothing of a word, so it goes.
+  asRead = words: builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON words));
+  coreWords = asRead (import ../quickshell/launcher/words.nix).value;
+  machineWords = asRead (
+    config.jitsusama.quickshell.launcher.words or (import ../quickshell/launcher/words.nix).value
+  );
+  # A thing's id as Words.qml keys it, made a string: a list of one id is
+  # that id; no act's id holds a comma or is empty, or reads as an object,
+  # so no other id can be one.
   keyOf =
     id:
     if builtins.isString id then
       id
     else if builtins.isList id && builtins.length id == 1 then
       keyOf (builtins.head id)
-    else if builtins.isAttrs id then
-      # A set toJSON writes as an object comes back a set, which Words.qml
-      # keys as "[object Object]", no act's id. A store path's context,
-      # which fromJSON refuses, says nothing of the key, so it goes.
-      let
-        json = builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON id));
-      in
-      if builtins.isAttrs json then null else keyOf json
     else
       null;
+  # A word's name as Words.qml names it: by the last thing of its id, so a
+  # rename appended after core's own still counts, null where that thing
+  # names none.
   nameIn =
     words: id:
-    (lib.findFirst (thing: keyOf (thing.id or null) == id) { } (lib.reverseList (words.things or [ ])))
-    .name or id;
-  # A name as the refusal writes it: one that isn't words, which the
-  # option lets a machine give, written as Nix would, not refused unread.
+    let
+      things = words.things or [ ];
+      thing = lib.findFirst (thing: keyOf (thing.id or null) == id) null (
+        lib.reverseList (if builtins.isList things then things else [ ])
+      );
+    in
+    if thing == null then id else thing.name or null;
+  # A name as the refusal writes it, one that isn't words as JSON writes it.
   shownIn =
     words: id:
     let
       name = nameIn words id;
     in
-    if builtins.isString name then name else lib.generators.toPretty { } name;
+    if name == null then
+      "no name"
+    else if builtins.isString name then
+      name
+    else
+      builtins.toJSON name;
   renamedActs = lib.filter (id: nameIn machineWords id != nameIn coreWords id) lookActs;
   # Rows whose path isn't plain steps, which the home's builder refuses
   # (home/home.py's ours), named here so the switch never gets that far.

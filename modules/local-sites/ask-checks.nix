@@ -59,11 +59,13 @@ in
 # They evaluate the graphical machine, whose launcher has the words.
 // onLinux {
   # The home module refuses a machine whose launcher renames one of its acts
-  # on a look, in place or by an entry after core's (its id a list of one
-  # set words.json writes as the id, as the shell's Words.qml keys it all
-  # the same), naming only the act's
-  # old and new word, and takes core's own words. Each case's machine is
-  # evaluated once, since an evaluation is most of what this costs.
+  # on a look, in place or by an entry after core's (its id a list of one,
+  # or a set words.json writes as the id, or the whole entry so written, as
+  # the shell's Words.qml keys it all the same), even to no name, naming
+  # only the act's old and new word. It takes core's own words and ids
+  # Words.qml keys as no act: objects, lists of several or none, and a path
+  # in the store. Each case's machine is evaluated once, since an evaluation
+  # is most of what this costs.
   local-sites-refuses-renamed-look-acts =
     let
       clear = "verb:on:look:clear";
@@ -147,6 +149,13 @@ in
             name = "Two";
           }
           {
+            id = [
+              "x"
+              clear
+            ];
+            name = "Last";
+          }
+          {
             id = [ ];
             name = "None";
           }
@@ -158,12 +167,24 @@ in
           }
         ];
       };
-      # A rename to a name that isn't words, still refused in words.
+      # A rename to no name, by none given or a null one, said in words.
       unnamed = coreWords // {
         things = coreWords.things ++ [
+          { id = clear; }
           {
-            id = clear;
+            id = talk;
             name = null;
+          }
+        ];
+      };
+      # A whole entry words.json writes as the set its outPath holds.
+      wrapped = coreWords // {
+        things = coreWords.things ++ [
+          {
+            outPath = {
+              id = clear;
+              name = "Dismiss";
+            };
           }
         ];
       };
@@ -174,18 +195,20 @@ in
           appended
           odd
           unnamed
+          wrapped
           ;
       };
       says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
       lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry keyed by a list of one set or a set words.json writes as the id, refuses core's own words or ids written as objects, or doesn't name only the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name), refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
       (
         refusals.core == null
         && refusals.odd == null
         && says "inPlace" "acts on a look (${clear} from Clear It to Drop It),"
         && says "appended" "acts on a look (${clear} from Clear It to Dismiss, ${talk} from Talk to Chat),"
-        && says "unnamed" "acts on a look (${clear} from Clear It to null),"
+        && says "unnamed" "acts on a look (${clear} from Clear It to no name, ${talk} from Talk to no name),"
+        && says "wrapped" "acts on a look (${clear} from Clear It to Dismiss),"
       );
 }

@@ -309,9 +309,11 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   const lapsed = (at: number): boolean =>
     (looks.quieted(read as never, at as never) as Read).state !== "waiting";
   // The first form is laid out apart on purpose, its question on its own.
-  const leads = form.secondForm(read as never) !== true || ask.said.join(" ") === read.words;
+  const second = form.secondForm(read as never) === true;
+  const leads = !second || ask.said.join(" ") === read.words;
   return [
     leads ? "" : `leads with ${ask.said.join(" ")}, not ${read.words}`,
+    second && ask.question !== "" ? "asks a question For You doesn't show" : "",
     ask.asks === waits ? "" : "waits otherwise",
     ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
     ask.opens === opens ? "" : `opens ${ask.opens}, not ${opens}`,

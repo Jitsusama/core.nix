@@ -14,7 +14,9 @@
 // top. It waits only while its state is "waiting", its expiresAt hasn't
 // passed and it came less than three days ago, and one saying `asks: false`
 // is only to be read. Only while it waits does it show its question, what
-// happens if he does nothing and its choices, as For You's drawer does.
+// happens if he does nothing and its choices, as For You's drawer does;
+// only the first form shows a question, which the second leaves to what
+// happened and its choices, as For You does.
 // Its choices are the first form's, each sending the value the session
 // offered exactly as written, but for one whose label poses as one of the
 // launcher's own acts, which For You hides (Now.qml's lookOffers). Its act
@@ -132,7 +134,10 @@ interface Ask {
   readonly target: string;
   /** What happened and why it matters, the row's first words, as For You's drawer leads. */
   readonly said: readonly string[];
-  /** What it asks of him, in a sentence, or "" where it doesn't say. */
+  /**
+   * What the first form asks of him, in a sentence, or "" where it doesn't
+   * say; the second form says it in `said` and its choices, as For You does.
+   */
   readonly question: string;
   /**
    * What happens if he does nothing, in a sentence, or "" where it doesn't
@@ -161,7 +166,8 @@ interface Ask {
   readonly choices: readonly Choice[];
   /**
    * Whether, while it waits, it takes an answer in his own words, which
-   * only the second form asks for (LookForm.js's asksBack). No page sends
+   * only the second form asks for, by its wants' words (the clause of
+   * LookForm.js's asksBack that asks for words). No page sends
    * one yet: the launcher's shape for them comes with For You's second part.
    */
   readonly takesWords: boolean;
@@ -414,7 +420,7 @@ function asked(look: unknown, now: number): Ask | null {
     opens,
     target,
     said,
-    question: asks ? written(look["ask"]) : "",
+    question: asks && happened === "" ? written(look["ask"]) : "",
     ifNothing: asks ? written(look["ifNothing"]) : "",
     lapses: asks ? lapsing(look) : null,
     act: opens === null ? null : actFor(look, offered, happened !== ""),

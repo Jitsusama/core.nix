@@ -61,7 +61,7 @@ it("a look of the second form leads with what happened and why it matters, as on
   const ask = asked(second, NOW);
   assert.ok(ask !== null, "a whole look of the second form wasn't read");
   assert.deepEqual(ask.said, [`${second.happened}. ${second.matters}`]);
-  assert.equal(ask.question, first.ask, "the question isn't the record's ask");
+  assert.equal(ask.question, "", "the second form asked the first form's question");
   assert.equal(ask.ifNothing, first.ifNothing, "what happens if nothing isn't the record's");
   assert.equal(ask.act, "Check the Key Line");
   assert.equal(ask.takesWords, true);
