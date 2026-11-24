@@ -12,16 +12,17 @@
 // runs it, DrawerPage.matchesIn over laid lines, and held two ways: to a
 // multiple of the same lines with no joiners, which need no map, so the
 // map stays cheap; and that in turn to a multiple of the plainest search
-// there is, toLowerCase and includes over the same words, so a search
-// slower whether joined or not is refused too. Each is the fastest of
-// five batches of ten, batches of each timed in turn so all see the same
-// machine, since a slower one is the builder's other work or the
-// collector. Every search must find every place, so one quick from
+// there is, toLowerCase and indexOf over the same words, counting every
+// place, so a search slower whether joined or not is refused too. Each
+// is the fastest of five batches, batches of each timed in turn so all
+// see the same machine, since a slower one is the builder's other work
+// or the collector. Every search must find every place, so one quick from
 // finding nothing passes none. The ratios are said every run, to set the
 // bounds below from. Timing the finder alone, by code took 2.8 times as
 // long as with no joiners on a builder, and a letter at a time 12
-// (2026-11-22); timed through DrawerPage's walk over lines, which is the
-// same with joiners or none, 3.0 and 6.4.
+// (2026-11-22); timed through DrawerPage's walk over 400 short lines,
+// which is the same with joiners or none, 3.0 and 6.4, which is why
+// these lines are long.
 import QtQuick
 import "DrawerPage.js" as Page
 
@@ -31,8 +32,9 @@ QtObject {
     // between what this code takes and what it takes with a fix taken
     // out, from ten quiet runs of each (2026-11-23). Joined words took
     // 3.0 to 3.2 times none, and 9.4 to 9.9 read a letter at a time.
-    // Words with none took 5.5 to 5.9 times the plainest, and 8.6 on a
-    // busy builder, and 15.8 to 16.3 with their fast path gone.
+    // Words with none took 5.5 to 5.9 times the plainest, and 15.8 to
+    // 16.3 with their fast path gone. None of this shape has been timed
+    // on a busy machine yet; over 400 short lines, a builder took 8.6.
     readonly property real joined: 6
     readonly property real plain: 12
 
@@ -42,7 +44,7 @@ QtObject {
         try {
             judged();
         } catch (error) {
-            console.warn(`the test threw: ${error.message}`);
+            console.warn(`the test threw: ${error}`);
             Qt.exit(1);
         }
     }

@@ -195,7 +195,7 @@ QtObject {
         try {
             judged();
         } catch (error) {
-            console.warn(`the test threw: ${error.message}`);
+            console.warn(`the test threw: ${error}`);
             Qt.exit(1);
         }
     }
