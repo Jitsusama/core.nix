@@ -143,7 +143,7 @@
 }
 
 /* The floor's room is as tall as the widest floor drawn across the page,
-   1488 by 178 of its units as draw.ts's FLOOR sets them, at most half again
+   1512 by 178 of its units as draw.ts's FLOOR sets them, at most half again
    as large, and never under 6rem, so a floor of few cells on a phone still
    reads. The crest holds the same room until the node speaks, and once every
    cell has gone, so cells arriving or leaving move nothing under them; a floor
@@ -151,7 +151,7 @@
 .drawn {
   position: relative;
   inline-size: 100%;
-  block-size: clamp(6rem, 100cqi * 178 / 1488, 267px);
+  block-size: clamp(6rem, 100cqi * 178 / 1512, 267px);
   container-type: inline-size;
 }
 
@@ -263,7 +263,7 @@ rect.hollow {
 /* Narrower than this the widest floor's 13 px words would be drawn under
    the kit's 12 px floor for text. The eyebrow names the machine, the
    headline counts every cell and the list holds them all, so the words go. */
-@container (max-width: 1374px) {
+@container (max-width: 1396px) {
   .drawn text {
     display: none;
   }
