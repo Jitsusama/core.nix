@@ -478,12 +478,19 @@ MemoryLow=10%
         let folder = control.join("pi-host-x.service.d");
         fs::create_dir_all(folder.join("50-CPUWeight.conf")).unwrap();
         fs::write(folder.join("50-MemoryMin.conf"), "[Service]\n").unwrap();
+        mark(&control, "pi-host-x.service").unwrap();
         let (taken, error) = forget(&control, "pi-host-x.service");
+        let marked = folder.join(MARK).exists();
         let _ = fs::remove_dir_all(&control);
         assert_eq!(
             (taken, error.is_some()),
             (1, true),
             "a file that can't be removed leaves the others taken, and is said"
+        );
+        // Taken with the mark, a setting left would never be tried again.
+        assert!(
+            marked,
+            "the mark stays while a setting does, so the next look tries again"
         );
     }
 

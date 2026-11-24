@@ -1660,30 +1660,43 @@ fn sweep(
 /// settings the sorter set ([`own::mark`]), so they're taken back once it
 /// stops, and a mark that can't be left is said once.
 fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts, control: Option<&Path>) {
-    let mut unmarked = None;
-    let mut marked = false;
-    give_ranks_by(ranked, hosts, |unit, rank| {
+    give_ranks_marking(ranked, hosts, control, |unit, rank| {
         match Command::new("busctl")
             .args(hosts::rank_call(unit, rank))
             .stdout(Stdio::null())
             .output()
         {
-            Ok(output) if output.status.success() => {
-                match control.map(|control| own::mark(control, unit)) {
-                    Some(Ok(())) => marked = true,
-                    Some(Err(error)) => {
-                        unmarked.get_or_insert(format!("{unit:?}: {error}"));
-                    }
-                    None => {}
-                }
-                Ok(())
-            }
+            Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(format!(
                 "Couldn't rank {unit}: {}",
                 String::from_utf8_lossy(&output.stderr).trim()
             )),
             Err(error) => Err(format!("Couldn't run busctl to rank {unit}: {error}")),
         }
+    });
+}
+
+/// What [`give_ranks`] does with the ranks `call` gives: each that lands has its unit's folder in
+/// `control` marked, so its settings are taken back once the sorter stops, and one that fails
+/// leaves it as it was.
+fn give_ranks_marking(
+    ranked: Vec<Ranked>,
+    hosts: &mut hosts::Hosts,
+    control: Option<&Path>,
+    mut call: impl FnMut(&str, &hosts::Rank) -> Result<(), String>,
+) {
+    let mut unmarked = None;
+    let mut marked = false;
+    give_ranks_by(ranked, hosts, |unit, rank| {
+        call(unit, rank)?;
+        match control.map(|control| own::mark(control, unit)) {
+            Some(Ok(())) => marked = true,
+            Some(Err(error)) => {
+                unmarked.get_or_insert(format!("{unit:?}: {error}"));
+            }
+            None => {}
+        }
+        Ok(())
     });
     // A failure after a mark that was left is said again.
     let still = unmarked.is_some() || (hosts.sweep.unmarked && !marked);
@@ -4030,6 +4043,45 @@ mod tests {
             "a pi Joel is at is held, but with none of the floors the failing host keeps"
         );
         assert_eq!(ranks.holding.hard(), 0, "so no pi counts as holding one");
+    }
+
+    #[test]
+    fn a_rank_that_lands_leaves_the_mark_and_one_that_fails_none() {
+        let control = std::env::temp_dir().join(format!("ranks-mark-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&control);
+        for unit in ["a.service", "b.service"] {
+            fs::create_dir_all(control.join(format!("{unit}.d"))).unwrap();
+        }
+        let ranked = ["a.service", "b.service"]
+            .map(|unit| {
+                let rank = hosts::wanted(&own::Own::default(), hosts::Signs::default(), 10);
+                Ranked {
+                    path: Path::new("/cg/agents.slice").join(unit),
+                    asked: rank.floor,
+                    rank,
+                    signs: hosts::Signs::default(),
+                    own: 0,
+                    own_hard: 0,
+                    writeback: true,
+                }
+            })
+            .into();
+        let mut hosts = hosts::Hosts::default();
+        give_ranks_marking(ranked, &mut hosts, Some(&control), |unit, _| {
+            if unit == "b.service" {
+                Err(format!("{unit}'s call fails"))
+            } else {
+                Ok(())
+            }
+        });
+        let marked = ["a.service", "b.service"]
+            .map(|unit| control.join(format!("{unit}.d")).join(own::MARK).exists());
+        let _ = fs::remove_dir_all(&control);
+        assert_eq!(
+            marked,
+            [true, false],
+            "a landed rank marks its unit's settings to be taken back, and a failed one doesn't"
+        );
     }
 
     #[test]
