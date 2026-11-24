@@ -224,13 +224,20 @@ def test_a_held_sessions_window_closed_keeps_the_session_for_go_to_to_open(
             raise AssertionError(msg) from failed
         desktop.as_account(f"kill -0 {pid}")
         assert programs_for(desktop, session) == 1, "the closed window ended its program"
+        # Elsewhere is open before the windows are counted, so a lone run can't take the one
+        # Go To is pressed from for the one it opens.
+        elsewhere(desktop)
         before = {one["id"] for one in desktop.windows()} | {window["id"]}
         go_to_pressed(desktop, session)
         focused: list[Any] = []
 
         def opened_anew(_last: bool) -> bool:
             focused[:] = [json.loads(desktop.as_account("niri msg --json focused-window"))]
-            return bool(focused[0]) and focused[0]["id"] not in before
+            return (
+                bool(focused[0])
+                and focused[0]["id"] not in before
+                and str(focused[0].get("app_id") or "").startswith("pi-session.")
+            )
 
         try:
             desktop_session.retry(opened_anew, timeout=STEP)
@@ -243,11 +250,36 @@ def test_a_held_sessions_window_closed_keeps_the_session_for_go_to_to_open(
         # The keys go through the new window's attach to the hold's terminal, where the
         # program that ran before writes each one down.
         machine.send_chars("kept")
-        machine.wait_until_succeeds(
-            desktop.in_session(f"grep -q kept ~/typed-{session}"), timeout=STEP
-        )
+        try:
+            machine.wait_until_succeeds(
+                desktop.in_session(f"grep -q kept ~/typed-{session}"), timeout=STEP
+            )
+        except Exception as failed:
+            now = desktop.as_account("niri msg --json focused-window")
+            msg = f"the keys never reached the held program, typed into {now}"
+            raise AssertionError(msg) from failed
     finally:
         cleaned(desktop, session)
+
+
+def agents_serving(desktop: Desktop, session: str) -> str:
+    """Say whether the agents daemon was serving rows, and what it last said of the session.
+
+    Its served row's acts decide Go To once served, and the launcher's own rule only until
+    then, so a launcher offering none says which of the two it read.
+    """
+    return desktop.as_account(
+        "systemctl --user is-active agents; ls -l $XDG_RUNTIME_DIR/daemons/agents.sock;"
+        f" journalctl --user -u agents -n 40 --no-pager | grep -i -- {shlex.quote(session)}"
+        " || true"
+    ).strip()
+
+
+def elsewhere(desktop: Desktop) -> int:
+    """Open the window Go To is pressed from, once, and give its id."""
+    if "Elsewhere" not in {one["title"] for one in desktop.windows()}:
+        desktop.opened("Elsewhere")
+    return int(desktop.window_titled("Elsewhere")["id"])
 
 
 def opened_held(desktop: Desktop, session: str) -> Json:
@@ -311,12 +343,7 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
 def go_to_pressed(desktop: Desktop, session: str) -> float:
     """Press the launcher's Go To on the session from another window, giving when it was pressed."""
     machine = desktop.machine
-    titles = {one["title"] for one in desktop.windows()}
-    if "Elsewhere" not in titles:
-        desktop.opened("Elsewhere")
-    desktop.as_account(
-        f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
-    )
+    desktop.as_account(f"niri msg action focus-window --id {elsewhere(desktop)}")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in(session.split("-")[1], selecting=title_of(session))
@@ -325,7 +352,8 @@ def go_to_pressed(desktop: Desktop, session: str) -> float:
     # lone session holds only acts, so Ctrl+] goes to its row in Agents rather than into it
     # (Joel, 2026-11-11: no menu of acts alone), or found as Agents' own row, into its acts,
     # until Ctrl+] keeps out of an acts-only row (#3972). Go To is its act there as its drawer
-    # names it, once the launcher knows its window, or the act selected, done by its command.
+    # names it, once the launcher knows a window to go to or a hold to attach one to, or the act
+    # selected, done by its command.
     desktop.follow()
 
     def offers_go_to(shown: Json) -> bool:
@@ -340,6 +368,7 @@ def go_to_pressed(desktop: Desktop, session: str) -> float:
     except AssertionError as failed:
         msg = (
             f"the launcher offers no Go To: {desktop.showing()['drawer']},"
+            f" the agents daemon {agents_serving(desktop, session)},"
             f" while the node says {node_row(desktop, session)}"
             f" and niri {desktop.as_account('niri msg --json windows')}"
         )
