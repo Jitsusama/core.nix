@@ -187,6 +187,13 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
     // A tool's result is read for its name alone, so its output, often
     // the most of a log, is never decoded.
     let head: Head = serde_json::from_str(text).ok()?;
+    // A peer's or the harness's message after an error pi didn't try again
+    // starts a turn of its own, which answers them, not him.
+    if head.kind == "custom_message" && carried.errored {
+        carried.from = None;
+        carried.errored = false;
+        return None;
+    }
     let message = head.message.filter(|_| head.kind == "message")?;
     match message.role.as_str() {
         "assistant" => {
@@ -544,17 +551,37 @@ mod tests {
                 "{what} ended his turn, or gave it away"
             );
         }
-        let mut midway = Carried::default();
-        for text in [&his, &asking] {
-            line(text, &mut midway);
+        // Read across two runs, parted after a call for tools or an error.
+        for (before, after) in [
+            (vec![&his, &asking], vec![&done]),
+            (vec![&his, &asking, &failed], vec![&asking, &done]),
+        ] {
+            let mut midway = Carried::default();
+            for text in before {
+                line(text, &mut midway);
+            }
+            let kept = serde_json::to_string(&midway).expect("carried writes");
+            let mut back: Carried = serde_json::from_str(&kept).expect("carried reads");
+            for text in after {
+                line(text, &mut back);
+            }
+            assert_eq!(
+                back.answers,
+                vec![(opened, at)],
+                "a turn read across two runs lost when he opened it"
+            );
         }
-        let kept = serde_json::to_string(&midway).expect("carried writes");
-        let mut back: Carried = serde_json::from_str(&kept).expect("carried reads");
-        line(&done, &mut back);
+        // A peer's message after an error pi never tried again starts
+        // their turn, so its answer isn't his.
+        let peer = r#"{"type":"custom_message","content":"Mesh message"}"#.to_owned();
+        let mut carried = Carried::default();
+        for text in [&his, &asking, &failed, &peer, &asking, &done] {
+            line(text, &mut carried);
+        }
         assert_eq!(
-            back.answers,
-            vec![(opened, at)],
-            "a turn read across two runs lost when he opened it"
+            carried.answers,
+            Vec::new(),
+            "a peer's turn after an error answered him"
         );
     }
 
