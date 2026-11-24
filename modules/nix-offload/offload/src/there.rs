@@ -4767,7 +4767,9 @@ pub const VM_ROOM: usize = 4;
 /// While it waits, a run goes to the first of `others`, the other VM
 /// builders, that has room and nothing waiting, and says which it went to:
 /// a run's split is decided as it starts, so on 4 November ten runs waited
-/// 51 minutes on the first while the second sat idle.
+/// 51 minutes on the first while the second sat idle. Past
+/// [`ASKS_AFTER`], it asks one given back to stand again, while what
+/// waits passes the room of those coming ([`ask_for_room`]).
 ///
 /// A `bulk` run lets every run that isn't go before it, those waiting
 /// and those coming while it waits, and they wait for no bulk run: the
@@ -4814,6 +4816,8 @@ fn admitted_holding<'a>(
     // waited for room before a hand-over is still held its full time.
     let mut held = std::time::Duration::ZERO;
     let mut holding_since: Option<std::time::Instant> = None;
+    let came = std::time::Instant::now();
+    let mut asked: Option<Want> = None;
     loop {
         let was_holding = holding_since.take();
         // A builder root doesn't vouch for takes no room, so a run isn't
@@ -4903,6 +4907,11 @@ fn admitted_holding<'a>(
             drop(place);
             return (other, Some(claimed), held);
         }
+        // A run given `--never-ask` asks no lender for anything, room
+        // included, so it only waits for the builders already standing.
+        if waiting.asks && asked.is_none() && came.elapsed() >= ASKS_AFTER {
+            asked = ask_for_room(dir, others, room);
+        }
         if !said {
             let queue = match before {
                 0 => String::new(),
@@ -4920,6 +4929,46 @@ fn admitted_holding<'a>(
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
+}
+
+/// How long a run waits for room before it asks a VM builder that was
+/// given back to stand again, as [`ask_for_room`] does.
+const ASKS_AFTER: std::time::Duration = std::time::Duration::from_mins(1);
+
+/// Asks one of `others` to stand for the runs waiting for room, by a
+/// [`Want`] held while this run waits, if [`to_ask`] names one; says so.
+/// A builder given back stood again only for a run that asked as it
+/// began, so runs coming once the standing ones were full waited beside
+/// lanes nobody asked for: at 15:45 on 23 November 17 parts waited on
+/// three VM builders, while two given back at 15:13 and 15:20 stayed down.
+fn ask_for_room(dir: &Path, others: &[&Path], room: usize) -> Option<Want> {
+    let lane = to_ask(dir, others, room)?;
+    let want = wanting(lane)?;
+    eprintln!(
+        "nix-offload: the standing VM builders are full, so this asks {} to stand for the \
+         runs waiting",
+        lane.display()
+    );
+    Some(want)
+}
+
+/// Of `others`, the first nobody stands up or asks for, if the VM tests
+/// waiting on `dir` and on them pass the `room` of the cold builders
+/// already standing or asked for: one more is asked for only while those
+/// coming can't take what waits.
+fn to_ask<'a>(dir: &Path, others: &[&'a Path], room: usize) -> Option<&'a Path> {
+    let lanes = || std::iter::once(dir).chain(others.iter().copied());
+    let waits: usize = lanes().map(waiting).sum();
+    let rising = lanes()
+        .filter(|lane| !warm(lane) && (coming(lane) || wanted(lane)))
+        .count();
+    if waits <= rising * room {
+        return None;
+    }
+    others
+        .iter()
+        .copied()
+        .find(|other| !coming(other) && !wanted(other))
 }
 
 /// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
@@ -9093,6 +9142,68 @@ mod tests {
         assert!(
             began.elapsed() < QUICK.longest,
             "it gave up once no lender came back"
+        );
+    }
+
+    /// VM builder folders `names` under a folder of their own, with `waits`
+    /// VM tests waiting for room in the first, by the place it gives.
+    fn lanes_waiting(names: &[&str], waits: usize) -> (tempfile::TempDir, Vec<PathBuf>, Claim) {
+        let folder = tempfile::tempdir().unwrap();
+        let dirs: Vec<PathBuf> = names.iter().map(|name| folder.path().join(name)).collect();
+        for dir in &dirs {
+            fs::create_dir(dir).unwrap();
+        }
+        let place = queued(&dirs[0], waits, Rank::Plain).expect("a place");
+        (folder, dirs, place)
+    }
+
+    #[test]
+    fn a_run_waiting_past_the_coming_room_asks_a_lane_nobody_asked() {
+        let (_folder, dirs, _place) = lanes_waiting(&["vm-3", "vm-8", "vm-12"], 4);
+        let others = [dirs[1].as_path(), dirs[2].as_path()];
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            Some(dirs[1].as_path()),
+            "4 VM tests waiting with no lane coming asked none, or not the first"
+        );
+        fs::write(dirs[1].join("lending"), "a-builder\n").unwrap();
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            None,
+            "a lane standing up for 4 waiting wasn't room enough"
+        );
+    }
+
+    #[test]
+    fn a_run_asks_past_lanes_coming_or_asked_for() {
+        let (_folder, dirs, _place) = lanes_waiting(&["vm-3", "vm-8", "vm-12", "vm-14"], 12);
+        fs::write(dirs[1].join("lending"), "a-builder\n").unwrap();
+        let asked = wanting(&dirs[2]).expect("a want");
+        let others = [dirs[1].as_path(), dirs[2].as_path(), dirs[3].as_path()];
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            Some(dirs[3].as_path()),
+            "12 waiting past two lanes coming didn't ask the third, the one nobody had"
+        );
+        let more = wanting(&dirs[3]).expect("a want");
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            None,
+            "a lane was asked for with room coming for all 12"
+        );
+        drop((asked, more));
+    }
+
+    #[test]
+    fn a_run_asks_nothing_while_none_waits() {
+        let folder = tempfile::tempdir().unwrap();
+        let (dir, other) = (folder.path().join("vm-3"), folder.path().join("vm-8"));
+        fs::create_dir(&dir).unwrap();
+        fs::create_dir(&other).unwrap();
+        assert_eq!(
+            to_ask(&dir, &[other.as_path()], VM_ROOM),
+            None,
+            "a lane was asked for with nothing waiting"
         );
     }
 
