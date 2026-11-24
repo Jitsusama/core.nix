@@ -80,8 +80,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [ pkgs.jq ];
   };
 
-  # The house's other machine and its reporter, and socat and openssl to
-  # forge reports with.
+  # The house's other machine and its reporter, and a forger of its
+  # reports (house-forger.sh), a script of its own so it's linted on its
+  # own (house signing round 4's F13).
   nodes.house = {
     imports = [
       self.nixosModules.house-report
@@ -89,8 +90,16 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     ];
     jitsusama.house-report.keyFile = keyFile;
     environment.systemPackages = [
-      pkgs.openssl
-      pkgs.socat
+      (pkgs.writeShellScriptBin "house-forger" ''
+        export PATH=${
+          lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.openssl
+            pkgs.socat
+          ]
+        }
+        exec ${lib.getExe pkgs.bash} ${./house-forger.sh} "$@"
+      '')
     ];
     virtualisation.vlans = [ 1 ];
     networking.useDHCP = false;

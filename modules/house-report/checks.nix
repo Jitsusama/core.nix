@@ -84,11 +84,42 @@ let
     "  houseReportWhy=\"is a link\""
     "elif [ ! -f \"$houseReportRead\" ]; then"
     "  houseReportWhy=\"isn't there as a file\""
+    "elif [ \"$(/usr/bin/stat -f %u \"$houseReportRead\")\" != 0 ]; then"
+    "  houseReportWhy=\"isn't root's\""
+    "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +077)\" ]; then"
+    "  houseReportWhy=\"may be read by an account other than root's\""
+    "elif /bin/ls -le \"$houseReportRead\" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then"
+    "  houseReportWhy=\"has an access list letting another account in\""
     (
       "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportRead\" "
       + "\"$houseReportNew\" \\"
     )
   ];
+  # Each test the walk makes of a folder, whole, refusing as it says:
+  # its owner, its mode and its access list's rights (round 5's F3 and
+  # F6).
+  folderTests = [
+    (lib.concatStringsSep "\n" [
+      "if [ \"$(/usr/bin/stat -f %u \"$houseReportFolder\")\" != 0 ]; then"
+      "    houseReportWhy=\"is under $houseReportFolder, which isn't root's\""
+    ])
+    (lib.concatStringsSep "\n" [
+      "elif [ -n \"$(/usr/bin/find \"$houseReportFolder\" -maxdepth 0 -perm +022)\" ]; then"
+      "    houseReportWhy=\"is under $houseReportFolder, which another account may write\""
+    ])
+    (lib.concatStringsSep "\n" [
+      "elif /bin/ls -lde \"$houseReportFolder\" \\"
+      "    | /usr/bin/grep -qE 'allow.*(add_file|add_subdirectory|chown|delete|write)'; then"
+      (
+        "    houseReportWhy=\"is under $houseReportFolder, "
+        + "whose access list lets an account change it\""
+      )
+    ])
+  ];
+  # Each folder test is whole and inside the walk, before the chain.
+  walksWhole = lib.all (
+    test: lib.hasInfix test keyedPrepared && walked < placed test && placed test < placed chained
+  ) folderTests;
   # The key is read in the real folder the walk tests, not by its
   # spelling.
   readInRealFolder =
@@ -119,6 +150,8 @@ let
       "/etc/../tmp/house.key"
       "/etc//house.key"
       "/etc/./house.key"
+      "/etc/house-report/.."
+      "/etc/house.key/."
     ];
   };
   macMisread = lib.filter macRefuses macKeys.taken ++ lib.filter (k: !macRefuses k) macKeys.refused;
@@ -162,11 +195,12 @@ in
 
   # A Mac given a key reads activation's copy of it, nobody's, by its
   # path ahead of the address. Activation copies the key only once every
-  # folder above it is root's and written by no other account, by mode
-  # or access list, reading it in its real folder as a plain file, the
-  # copy the last branch of the chain that refuses, through a name of
-  # the run's own, and changes no file's owner or mode. The build
-  # refuses a key outside root's own trees, or spelled through dots.
+  # folder above it is root's and written or taken by no other account,
+  # by mode or access list, reading it in its real folder as a plain
+  # file root's alone, the copy the last branch of the chain that
+  # refuses, through a name of the run's own, and changes no file's
+  # owner or mode. The build refuses a key outside root's own trees, or
+  # spelled through dots.
   house-report-hands-a-mac-its-key-safely =
     holds "house-report-hands-a-mac-its-key-safely"
       (
@@ -175,9 +209,10 @@ in
         else
           "A Mac given /etc/house.key doesn't run house-report --key "
           + "/var/db/house-report/house.key 192.0.2.3:47110, or its activation copies the key "
-          + "outside the chain that refuses a link and a folder another account may write, "
-          + "reads it by its spelling rather than its real folder, or hands a file over "
-          + "otherwise than by one install into a name of its own."
+          + "outside the chain that refuses a link, a key not root's alone and a folder "
+          + "another account may write or take, reads it by its spelling rather than its "
+          + "real folder, or hands a file over otherwise than by one install into a name of "
+          + "its own."
       )
       (
         macMisread == [ ]
@@ -186,31 +221,42 @@ in
         && lib.hasInfix chained keyedPrepared
         && walked < placed chained
         && lib.hasInfix "&& pwd -P)" keyedPrepared
-        && lib.hasInfix "/usr/bin/stat -f %u \"$houseReportFolder\"" keyedPrepared
-        && lib.hasInfix "/usr/bin/find \"$houseReportFolder\" -maxdepth 0 -perm +022" keyedPrepared
-        && lib.hasInfix "/bin/ls -lde \"$houseReportFolder\"" keyedPrepared
+        && walksWhole
         && lib.hasInfix readInRealFolder keyedPrepared
         && walked > placed "houseReportRead="
+        # Set once, so nothing reads the key by its spelling after the
+        # walk (round 5's F7 and F17).
+        && times "houseReportRead=" watched == 1
         && lib.hasInfix "/usr/bin/install -d -o root -g wheel -m 0755 /var/db/house-report " watched
-        # Nothing in the copy's text hands a file over but the one install
-        # into this run's own name, moved onto the copy (round 4's F6).
-        && times "chown" watched == 0
-        && times "chmod" watched == 0
-        && times "/usr/bin/install " watched == 2
-        && times "/bin/mv " watched == 1
+        # The copy's text names no chown or chmod, and no install or mv
+        # but the one install into this run's own name, moved onto the
+        # copy (round 4's F6), however a command is spelled (round 5's
+        # F7); the access list's right of the name stays a word in the
+        # walk's pattern. A cp, a cat or a redirect isn't counted: a
+        # text check of an unrun script proves no more (house keys round
+        # 1's F3, F10 and F15).
+        && times "chown " watched == 0
+        && times "chmod " watched == 0
+        && times "install " watched == 2
+        && times "mv " watched == 1
         && lib.hasInfix "/bin/mv -f \"$houseReportNew\" \"$houseReportCopy\"" watched
         && lib.hasInfix "houseReportNew=\"$houseReportCopy.$$\"" watched
-        && lib.hasInfix "2>/dev/null || :" watched
+        # The failing run's cleanup is the line that must never end a
+        # switch, so it's pinned whole (house keys round 1's F9).
+        && lib.hasInfix (
+          "/bin/rm -f \"$houseReportCopy\" \"$houseReportCopy\".*" + " 2>/dev/null || :"
+        ) watched
       );
 
   # A Mac given a key copies it again, as root, whenever the key or its
-  # folder changes, by the same text activation runs, so a key swapped
-  # while the Mac runs is taken without a switch.
+  # folder changes, and each minute, by the same text activation runs,
+  # so a key swapped while the Mac runs is taken without a switch, and a
+  # change launchd missed within a minute.
   house-report-takes-up-a-macs-swapped-key =
     holds "house-report-takes-up-a-macs-swapped-key"
       (
         "A Mac given /etc/house.key doesn't copy it again, as root, by activation's own text, "
-        + "whenever /etc/house.key or /etc changes."
+        + "whenever /etc/house.key or /etc changes and each minute."
       )
       (
         lib.take 2 (watching.ProgramArguments or [ ]) == [
@@ -219,8 +265,16 @@ in
         ]
         && lib.hasInfix chained watched
         && lib.hasInfix watched keyedPrepared
+        # A switch says a refusal each time and leaves the job's `said`
+        # alone, so the log still gets it (house keys round 1's F1, F6,
+        # F13 and F17).
+        && lib.hasInfix ("houseReportAtSwitch=1\n" + watched) keyedPrepared
+        && !lib.hasInfix "houseReportAtSwitch=" watched
+        && lib.hasInfix "[ -n \"\${houseReportAtSwitch:-}\" ]" watched
+        && lib.hasInfix "[ -z \"\${houseReportAtSwitch:-}\" ]" watched
         && watching.UserName or null == null
         && watching.RunAtLoad or null == true
+        && watching.StartInterval or null == 60
         &&
           watching.WatchPaths or [ ] == [
             "/etc/house.key"

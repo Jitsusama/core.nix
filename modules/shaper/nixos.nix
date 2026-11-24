@@ -248,9 +248,13 @@ in
                   clock; while the file can't be read, the house holds
                   nothing and the journal says why. Unset, a report is
                   taken by its address alone. The path is read by the
-                  shaper, which runs as root, so make it root's alone:
-                  `head -c 32 /dev/urandom`, the same bytes on both
-                  machines. The shaper's service sees no /root, /home,
+                  shaper, which runs as root, so make it root's alone,
+                  as a root shell does with `install -m 0400 /dev/null
+                  FILE` and then `head -c 32 /dev/urandom > FILE`, the
+                  same bytes on both machines: any account that can
+                  read it may sign a report, and a redirect alone keeps
+                  an existing file's mode, so `chmod 0400` a key
+                  already in place. The shaper's service sees no /root, /home,
                   /tmp or /var/tmp, so keep it elsewhere, as under
                   /var/lib, spelled plainly and not through a link;
                   houses naming one address name one key. Never a Nix
