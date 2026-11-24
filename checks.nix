@@ -144,10 +144,14 @@ let
     name: package:
     let
       overlaid = pkgs.extend arguments.rust-overlay.overlays.default;
-      # The Rust nixpkgs builds with, so this judges by the same clippy as
-      # a crate's Linux clippy check rather than a newer one with lints of
-      # its own.
-      toolchain = overlaid.rust-bin.stable.${pkgs.rustc.version}.minimal.override {
+      # The clippy a crate's Linux clippy check runs, so this judges by the
+      # same lints rather than a newer clippy's own. A nixpkgs whose Rust the
+      # locked rust-overlay doesn't list yet stops here, saying so.
+      version = pkgs.clippy.version;
+      stable =
+        overlaid.rust-bin.stable.${version}
+          or (throw "rust-overlay lists no Rust ${version}: update it in flake.lock");
+      toolchain = stable.minimal.override {
         targets = [ "aarch64-apple-darwin" ];
         extensions = [ "clippy" ];
       };
