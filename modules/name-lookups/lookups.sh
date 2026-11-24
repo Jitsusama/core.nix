@@ -2,10 +2,14 @@
 # One round of a Mac's name lookups, run each minute: each name is looked up
 # through the system's resolver, as every program's lookup goes, and through
 # each server named, and mDNSResponder's share of a core is read. A lookup
-# that fails, one over the slow mark two rounds running, or mDNSResponder past
-# half a core five rounds running is said as an error, which the unified log
-# keeps and health counts, every round it holds; one well again is said once
-# as a notice. Each round's times are kept in the state folder's last file.
+# that fails or is over the slow mark two rounds running, or mDNSResponder
+# past half a core five rounds running, is said as an error, which the
+# unified log keeps and health counts, every round it holds; one well again
+# is said once as a notice. A Mac waking or changing networks fails a round
+# or answers one cold, so one round of either is never said. Each line opens
+# with name-lookups, since health names a Mac's line by the program that
+# wrote it, which is logger. Each round's times are kept in the state
+# folder's last file.
 # usage: lookups.sh <state folder> <slow, in ms> <names, by commas> [servers, by commas]
 set -euo pipefail
 
@@ -23,30 +27,44 @@ busy=50
 rounds=5
 mkdir -p "${state}"
 
-# What each check was last round: how many rounds running it was slow or
-# busy, and whether it was red, kept as "<check> <rounds> <red>".
-declare -A running=() red=()
+# What each check was last round: how many rounds running it was failed,
+# slow or busy, which of them, and whether it was red, kept as
+# "<check> <rounds> <red> <outcome>". A count that isn't a number is read as
+# none, since bash's arithmetic would run what it holds.
+declare -A running=() red=() kind=()
 if [[ -r "${state}/running" ]]; then
-  while read -r check count was; do
+  while read -r check count was outcome; do
+    [[ ${count} =~ ^[0-9]+$ ]] || count=0
     running[${check}]=${count}
     red[${check}]=${was}
+    kind[${check}]=${outcome}
   done <"${state}/running"
 fi
 declare -A now=()
 last=()
 
 # Keep a check's round, failed, slow, busy or well, as its words say it; and
-# say what's wrong, every round it holds, or that it's well again, once.
+# say what's wrong, every round it holds, or that it's well again, once. Each
+# kind keeps its own count, so a failure then one slow round reads as one
+# slow round, not two.
 judge() {
   local check=$1 outcome=$2 words=$3
-  local count=${running[${check}]-0}
+  local count=0
   case ${outcome} in
-    failed | slow | busy) count=$((count + 1)) ;;
-    *) count=0 ;;
+    failed | slow | busy)
+      count=1
+      if [[ ${kind[${check}]-} = "${outcome}" ]]; then
+        count=$((${running[${check}]-0} + 1))
+      fi
+      ;;
+    *) ;;
   esac
   local wrong=no
   case ${outcome} in
-    failed) wrong=yes ;;
+    failed)
+      words="${words}, ${count} rounds running"
+      [[ ${count} -ge 2 ]] && wrong=yes
+      ;;
     slow)
       words="${words}, past ${slow} ms ${count} rounds running"
       [[ ${count} -ge 2 ]] && wrong=yes
@@ -60,13 +78,18 @@ judge() {
   local at
   at=$(date '+%F %T')
   if [[ ${wrong} = yes ]]; then
-    logger -p user.err -t name-lookups "${words}"
+    logger -p user.err -t name-lookups "name-lookups: ${words}"
     echo "${at} ${words}" >&2
   elif [[ ${red[${check}]-no} = yes && ${count} -eq 0 ]]; then
-    logger -p user.notice -t name-lookups "${check} is well again: ${words}"
+    logger -p user.notice -t name-lookups "name-lookups: ${check} is well again: ${words}"
     echo "${at} ${check} is well again: ${words}" >&2
   fi
-  now[${check}]="${count} ${wrong}"
+  # A check still red keeps it while it's another kind of wrong, so its
+  # well again is still said.
+  if [[ ${red[${check}]-no} = yes && ${count} -gt 0 && ${wrong} = no ]]; then
+    wrong=yes
+  fi
+  now[${check}]="${count} ${wrong} ${outcome}"
 }
 
 # Milliseconds since $1, a moment as EPOCHREALTIME gives it.
@@ -104,7 +127,8 @@ for name in ${names[@]+"${names[@]}"}; do
       2>/dev/null) || answer=""
     took=$(since "${started}")
     check="${server}:${name}"
-    if grep -qE '^[^;[:space:]]' <<<"${answer}"; then
+    # An address record, not only a CNAME pointing at a name that has none.
+    if grep -qE '[[:space:]]IN[[:space:]]+A[[:space:]]' <<<"${answer}"; then
       result=$(outcome "${took}")
       judge "${check}" "${result}" "${server} answered ${name} in ${took} ms"
     else
@@ -114,9 +138,11 @@ for name in ${names[@]+"${names[@]}"}; do
   done
 done
 
-# mDNSResponder's share of a core, as ps reads it.
+# mDNSResponder's share of a core, as ps reads it, by its path alone; a ps
+# that fails reads as none rather than ending the round before it's kept.
 share=$(ps -A -o %cpu= -o comm= \
-  | awk '$2 ~ /mDNSResponder$/ { share += $1 } END { print int(share) }')
+  | awk '$2 == "/usr/sbin/mDNSResponder" { share += $1 } END { print int(share) }') \
+  || share=0
 if [[ ${share} -gt ${busy} ]]; then
   judge mDNSResponder busy "mDNSResponder uses ${share}% of a core"
 else

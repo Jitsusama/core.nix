@@ -1,10 +1,11 @@
 # shellcheck shell=bash
 # Checks that a round of the Mac's name lookups says nothing while every name
-# answers quickly, says each failed lookup at once, a slow one only from its
-# second round running, a busy mDNSResponder only from its fifth, and a check
-# well again once. dscacheutil, dig, ps and logger are stand-ins answering as
-# the test sets, and the slow mark is set to 0 ms rather than a lookup made
-# to wait, so no round sleeps.
+# answers quickly, says a failed or slow lookup only from its second round
+# running, each kind counted apart, a busy mDNSResponder only from its fifth,
+# and a check well again once; a server answering only a CNAME, or printing
+# dig's own failure lines, gave no address. dscacheutil, dig, ps and logger
+# are stand-ins answering as the test sets, and the slow mark is set to 0 ms
+# rather than a lookup made to wait, so no round sleeps.
 # usage: lookups-say-a-name-that-fails-or-takes-long.sh <lookups.sh>
 set -euo pipefail
 
@@ -17,7 +18,9 @@ said=${work}/said
 mkdir -p "${stand}" "${work}/answers"
 
 # Each stand-in answers from the answers folder: a name's file holds "fails"
-# for a name it can't find, and mDNSResponder's its share of a core.
+# for a name it can't find, or for a server "cname" for an alias whose name
+# has no address, and mDNSResponder's its share of a core. dig fails as the
+# real one does, saying why on stdout.
 cat >"${stand}/dscacheutil" <<EOF
 #!${BASH}
 [ "\$(cat "${work}/answers/\$5" 2>/dev/null)" = fails ] && exit 0
@@ -26,8 +29,14 @@ EOF
 cat >"${stand}/dig" <<EOF
 #!${BASH}
 server=\${5#@}
-[ "\$(cat "${work}/answers/\${server}-\$6" 2>/dev/null)" = fails ] && exit 9
-printf '%s.\t60\tIN\tA\t192.0.2.1\n' "\$6"
+case "\$(cat "${work}/answers/\${server}-\$6" 2>/dev/null)" in
+  fails)
+    printf ';; communications error to %s#53: timed out\n' "\${server}"
+    exit 9
+    ;;
+  cname) printf '%s.\t60\tIN\tCNAME\tgone.invalid.\n' "\$6" ;;
+  *) printf '%s.\t60\tIN\tA\t192.0.2.1\n' "\$6" ;;
+esac
 EOF
 cat >"${stand}/ps" <<EOF
 #!${BASH}
@@ -48,7 +57,7 @@ round() {
   bash "${lookups}" "${state}" "$1" example.org,example.net 192.0.2.53 2>/dev/null
 }
 
-# Whether the round said nothing, or said a line holding each of the words.
+# Whether the round said nothing, or said one line holding all the words.
 quiet() {
   if [[ -s ${said} ]]; then
     echo "$1: $(<"${said}")" >&2
@@ -58,13 +67,16 @@ quiet() {
 says() {
   local what=$1
   shift
-  local words
-  for words in "$@"; do
-    if ! grep -qF -- "${words}" "${said}"; then
-      echo "${what}: no line says \"${words}\": $(<"${said}")" >&2
-      exit 1
-    fi
-  done
+  local line words holds
+  while IFS= read -r line; do
+    holds=yes
+    for words in "$@"; do
+      [[ ${line} == *"${words}"* ]] || holds=no
+    done
+    [[ ${holds} = yes ]] && return 0
+  done <"${said}"
+  echo "${what}: no line says all of $*: $(<"${said}")" >&2
+  exit 1
 }
 
 round 5000
@@ -78,29 +90,50 @@ done
 
 echo fails >"${work}/answers/example.net"
 round 5000
-says "a failed lookup" "-p user.err" "the system couldn't look up example.net"
+quiet "a lookup failing for one round, as at a wake, said something"
 round 5000
-says "a lookup still failing" "couldn't look up example.net"
+says "a failed lookup" "-p user.err" "name-lookups: the system couldn't look up example.net" \
+  "2 rounds running"
+round 5000
+says "a lookup still failing" "-p user.err" "couldn't look up example.net" "3 rounds running"
 rm "${work}/answers/example.net"
 round 5000
-says "a lookup well again" "-p user.notice" "system:example.net is well again"
+says "a lookup well again" "-p user.notice" "name-lookups: system:example.net is well again"
 round 5000
 quiet "a lookup well for two rounds said something"
 
-echo fails >"${work}/answers/192.0.2.53-example.net"
+for answer in fails cname; do
+  echo "${answer}" >"${work}/answers/192.0.2.53-example.net"
+  round 5000
+  round 5000
+  says "a server answering with ${answer}" "-p user.err" \
+    "192.0.2.53 gave no address for example.net"
+  rm "${work}/answers/192.0.2.53-example.net"
+  round 5000
+  says "a server answering again after ${answer}" "-p user.notice" \
+    "192.0.2.53:example.net is well again"
+done
+
+# A failure, then one cold answer, as after a wake, is one slow round.
+echo fails >"${work}/answers/example.org"
 round 5000
-says "a server giving no address" "-p user.err" "192.0.2.53 gave no address for example.net"
-rm "${work}/answers/192.0.2.53-example.net"
+rm "${work}/answers/example.org"
+round 0
+if grep -qF example.org "${said}"; then
+  echo "a failure then one slow round was said: $(<"${said}")" >&2
+  exit 1
+fi
 round 5000
 
 round 0
 quiet "a lookup slow for one round said something"
 round 0
 says "a lookup slow two rounds running" "-p user.err" \
-  "the system looked up example.org in" "past 0 ms 2 rounds running" \
-  "192.0.2.53 answered example.net in"
+  "the system looked up example.org in" "past 0 ms 2 rounds running"
+says "a server slow two rounds running" "-p user.err" \
+  "192.0.2.53 answered example.net in" "past 0 ms 2 rounds running"
 round 5000
-says "a slow lookup quick again" "system:example.org is well again"
+says "a slow lookup quick again" "-p user.notice" "system:example.org is well again"
 
 echo 80.0 >"${work}/answers/mDNSResponder"
 for count in 1 2 3 4; do

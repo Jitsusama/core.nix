@@ -2034,10 +2034,11 @@
   '';
   lookups-say-a-name-that-fails-or-takes-long = ''
     a Mac's account times its names each minute through the system's resolver and each server
-    named, github.com among them, and a round over stand-ins says a failed lookup or a server
-    giving no address at once, a slow lookup from its second round running and a busy
-    mDNSResponder from its fifth, as errors, each well again once, and nothing while all is well;
-    Linux's account runs no such agent
+    named, given the slow mark, names and servers in order, and a round over stand-ins says a
+    failed lookup, a server giving no address (a CNAME alone, or dig's own failure lines) or a
+    slow lookup from its second round running, each kind counted apart so a failure then one
+    cold answer says nothing, and a busy mDNSResponder from its fifth, as errors opening with
+    name-lookups, each well again once, and nothing while all is well
   '';
   looks-probe-finds-what-a-deploy-lost = ''
     the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a

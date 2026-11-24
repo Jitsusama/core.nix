@@ -31,7 +31,9 @@ in
       default = [ ];
       description = ''
         DNS servers each name is also asked of directly, by address, so a
-        slow lookup is told apart from a slow server.
+        slow lookup is told apart from a slow server. Every name goes to
+        every server, in plain DNS, so name only servers that may see them
+        all and can answer them all.
       '';
     };
     slow = lib.mkOption {
@@ -63,8 +65,9 @@ in
       }:/usr/bin:/bin:/usr/sbin";
       StartInterval = 60;
       RunAtLoad = true;
-      # Whatever the account runs comes first.
-      ProcessType = "Background";
+      # Not Background, which keeps a job to the efficiency cores at low
+      # priority, so a Mac busy building would time its own wait for a core
+      # as a slow lookup. A round is a few lookups a minute.
       # Only what's wrong, and what's well again, a line each.
       StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/name-lookups.log";
     };
