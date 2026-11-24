@@ -311,7 +311,7 @@ class Opened:
             "holds_every_pixel ran after passes_the_skills_checks, whose layout.js opened "
             "every fold, so the shift it would count is theirs: call it first"
         )
-        for probe in ("pixels.js", "words.js", "names.js"):
+        for probe in ("pixels.js", "floor.js", "words.js", "names.js"):
             found = self.page.evaluate((Path(os.environ["WEB_SKILL"]) / probe).read_text())
             assert found == [], f"{probe} at {self.size} in the {self.look} look found {found}"
 
