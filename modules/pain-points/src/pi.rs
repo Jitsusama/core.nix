@@ -113,10 +113,12 @@ pub enum Errored {
 
 impl Errored {
     /// Where a call of his turn that stopped so leaves it and, after an
-    /// error, the entry pi's retry edits out of its context.
+    /// error, the entry pi's retry edits out of its context, none when it
+    /// has no id for one to name.
     fn after(stop: Stop, line: &[u8]) -> (Self, Option<String>) {
         if stop == Stop::Error {
-            (Self::Untried, head_str(line, "id").map(str::to_owned))
+            let id = head_str(line, "id").filter(|id| !id.is_empty());
+            (Self::Untried, id.map(str::to_owned))
         } else {
             (Self::No, None)
         }
@@ -394,13 +396,14 @@ fn cut_for(asked: Option<i64>, call: &Call) -> bool {
     asked.is_some_and(|at| call.stop == Stop::Aborted && call.start + call.ms - at <= ASK_CUTS_MS)
 }
 
-/// A context edit: the entry it changes, and what it puts in its place.
+/// A context edit: the entry it changes, and whether it puts anything in
+/// its place, read without decoding what.
 #[derive(Deserialize)]
 struct EditLine {
     #[serde(rename = "targetId", default)]
     target: Option<String>,
     #[serde(default)]
-    replacement: Option<serde_json::Value>,
+    replacement: Option<serde::de::IgnoredAny>,
 }
 
 /// Whether a context edit is pi's retry of the call that errored: one that

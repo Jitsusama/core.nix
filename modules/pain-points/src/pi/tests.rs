@@ -132,11 +132,14 @@ fn what_runs_after_his_turn_is_handed_back_is_not_his() {
 
 #[test]
 fn a_peers_message_after_an_error_takes_the_turn_unless_pi_tries_again() {
-    let retry =
-        || r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned() + "\n";
+    let retry = || r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned() + "\n";
     // The call that errored is entry "f", which pi's retry names.
     let failed = reply(AT + 100, 1000, "error").replacen(r#""id":"c""#, r#""id":"f""#, 1);
     let errored = || typed(AT, AT, "hello") + &failed;
+    // An errored entry with no id leaves pi's retry nothing to name, so
+    // whatever entry it edits out counts.
+    let nameless = typed(AT, AT, "hello")
+        + &reply(AT + 100, 1000, "error").replacen(r#""id":"c""#, r#""id":"""#, 1);
     // An extension may edit another entry, or put text in its place.
     let other = r#"{"type":"context_edit","targetId":"c","replacement":null}"#.to_owned()
         + "\n"
@@ -163,6 +166,11 @@ fn a_peers_message_after_an_error_takes_the_turn_unless_pi_tries_again() {
             errored() + &retry() + &mesh(AT + 5000) + &answered(),
             vec![Stop::Error, Stop::Done],
             "a peer's message during pi's retry",
+        ),
+        (
+            nameless + &mesh(AT + 5000) + &retry() + &answered(),
+            vec![Stop::Error, Stop::Done],
+            "pi's retry of an errored entry with no id",
         ),
         (
             typed(AT, AT, "hello")
