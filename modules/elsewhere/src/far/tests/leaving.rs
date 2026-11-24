@@ -28,6 +28,13 @@ fn a_tracked_name_outside_the_tree_is_refused_though_it_reads_as_hidden() {
         Ok(false),
         "an excluded file wasn't kept home"
     );
+    // One that travels, but that no list could carry, is refused.
+    for path in ["a\tb", "src/a\nb"] {
+        assert!(
+            tracked(path, &[]).is_err_and(|why| why.contains("a tab or a newline")),
+            "{path:?} wasn't refused for what no list carries"
+        );
+    }
     assert_eq!(
         tracked("src/lib.rs", &[]),
         Ok(true),

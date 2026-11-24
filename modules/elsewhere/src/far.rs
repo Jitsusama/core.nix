@@ -162,36 +162,6 @@ fn excluded(path: &str, pattern: &str) -> bool {
             .any(|(slash, _)| at(&path[slash + 1..]))
 }
 
-/// Whether `path` names somewhere within a tree: a relative path of plain
-/// names, never from the root, through `..` or `.`. Git writes no other
-/// into its index, but an index written by hand could, and the near side
-/// would then read from outside the tree; one from the root names `""`.
-fn within_tree(path: &str) -> bool {
-    !path
-        .split('/')
-        .any(|name| name.is_empty() || name == "." || name == "..")
-}
-
-/// Whether the tracked `path` travels, or why the job can't: one outside
-/// the tree is refused first, as `..` would read as hidden and pass unsaid,
-/// and one that travels holds no tab or newline, which no list carries.
-fn tracked(path: &str, excludes: &[String]) -> Result<bool, String> {
-    if !within_tree(path) {
-        return Err(format!(
-            "the tracked name {path:?} isn't a path within the tree"
-        ));
-    }
-    if !travels(path, excludes) {
-        return Ok(false);
-    }
-    if path.contains(['\t', '\n']) {
-        return Err(format!(
-            "the tracked name {path:?} holds a tab or a newline"
-        ));
-    }
-    Ok(true)
-}
-
 /// The files of the tree at `root` that travel: git's tracked files,
 /// read where they lie, not links or folders, or why the job can't
 /// travel. What they take as archives is counted again as they're
@@ -210,6 +180,7 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<String>, String> {
     }
     let mut files = Vec::new();
     let mut bytes = 0u64;
+    let mut folders = Folders::default();
     for path in output.stdout.split(|&byte| byte == 0) {
         let Ok(path) = std::str::from_utf8(path) else {
             return Err("a tracked file's name isn't UTF-8".to_owned());
@@ -217,7 +188,11 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<String>, String> {
         if path.is_empty() || !tracked(path, &kind.excludes)? {
             continue;
         }
-        // A file tracked but gone, a link or a submodule doesn't travel.
+        // A file tracked but gone, or under a folder now a link, a link or
+        // a submodule doesn't travel.
+        if !folders.own(root, path) {
+            continue;
+        }
         let Ok(meta) = fs::symlink_metadata(root.join(path)) else {
             continue;
         };
@@ -788,9 +763,13 @@ pub fn quoted(word: &str) -> String {
 mod archive;
 mod heard;
 mod landing;
+mod names;
 pub mod spent;
 mod steps;
 
+#[cfg(test)]
+use names::within_tree;
+use names::{Folders, tracked};
 use steps::{RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
