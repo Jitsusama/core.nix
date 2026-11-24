@@ -67,8 +67,9 @@ fn refused_as_no_archive(code: Option<i32>, err: &str, home: &Path, named: &str)
     assert!(
         !work(home).join("out").exists()
             && !work(home).join("1").exists()
+            && !work(home).join("1.run").exists()
             && !handover(home).join(TREE).exists(),
-        "a refused job left a file outside its folder, or its copies, for {named:?}"
+        "a refused job left a file outside its folder, its copies or its run's file, for {named:?}"
     );
     let _ = std::fs::remove_dir_all(home);
 }
@@ -177,7 +178,8 @@ fn every_archive_is_unpacked_in_turn_into_one_tree() {
     std::fs::write(made.join("in/d/c"), "3").unwrap();
     // Room for one file's entry and the close, so each goes in its own.
     let most = archive::taken("d/b", 1) + archive::CLOSED;
-    let parts = archive::write(&made.join("in"), ["a", "d/b", "d/c"], &made, most).unwrap();
+    let parts =
+        archive::write(&made.join("in"), ["a", "d/b", "d/c"], &made, most, u64::MAX).unwrap();
     assert_eq!(parts.len(), 3, "the files didn't go in an archive each");
     let texts: Vec<_> = parts
         .iter()
@@ -228,7 +230,7 @@ fn a_link_one_archive_makes_is_refused_before_the_next_writes_through_it() {
     let first = String::from_utf8(first.stdout).unwrap();
     std::fs::create_dir_all(made.join("second/l")).unwrap();
     std::fs::write(made.join("second/l/f"), "through").unwrap();
-    archive::write(&made.join("second"), ["l/f"], &made, 1 << 20).unwrap();
+    archive::write(&made.join("second"), ["l/f"], &made, 1 << 20, u64::MAX).unwrap();
     let second = String::from_utf8(std::fs::read(made.join("0.tar")).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&made);
     let list = format!("{}\t0.tar\n{}\t1.tar\nend\n", first.len(), second.len());
@@ -258,7 +260,7 @@ fn an_archive_naming_a_member_outside_its_tree_is_refused_before_it_s_unpacked()
     let made = scratch("climbing");
     std::fs::create_dir_all(made.join("in")).unwrap();
     std::fs::write(made.join("out"), "no").unwrap();
-    let parts = archive::write(&made.join("in"), ["../out"], &made, 1 << 20).unwrap();
+    let parts = archive::write(&made.join("in"), ["../out"], &made, 1 << 20, u64::MAX).unwrap();
     assert_eq!(parts.len(), 1, "one file made other than one archive");
     let text = String::from_utf8(std::fs::read(made.join("0.tar")).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&made);
@@ -282,8 +284,10 @@ fn an_archive_naming_a_member_outside_its_tree_is_refused_before_it_s_unpacked()
 fn a_far_line_stopped_mid_job_takes_its_copy_away() {
     // Mycelium stops a run whose asker let go with the terminate signal
     // to its whole group; here the job sends a signal to the far line
-    // alone, then ends, as a job the signal reached would.
-    for (signal, ends) in [("TERM", 143), ("HUP", 129), ("INT", 130), ("PIPE", 141)] {
+    // alone, then ends, as a job the signal reached would. The far line
+    // dies by the signal itself once it has cleared, so what waits on it
+    // sees it stopped.
+    for (signal, number) in [("TERM", 15), ("HUP", 1), ("INT", 2), ("PIPE", 13)] {
         let (code, err, home) = far_run(
             Left::Whole,
             &[("a", "1")],
@@ -293,14 +297,17 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
             work(&home).join("ran").exists(),
             "the job never ran ({code:?}): {err}"
         );
+        let died_by = std::fs::read_to_string(home.join("signal")).unwrap();
         assert_eq!(
-            code,
-            Some(ends),
+            (code, died_by.as_str()),
+            (None, number.to_string().as_str()),
             "a far line stopped by {signal} ended otherwise: {err}"
         );
         assert!(
-            !work(&home).join("1").exists() && !handover(&home).join(TREE).exists(),
-            "a far line stopped by {signal} left its copy or the job's archives"
+            !work(&home).join("1").exists()
+                && !work(&home).join("1.run").exists()
+                && !handover(&home).join(TREE).exists(),
+            "a far line stopped by {signal} left its copy, its run's file or the job's archives"
         );
         assert!(
             !handover(&home).join(BACK).exists(),

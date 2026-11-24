@@ -348,6 +348,15 @@ mod tests {
         notice.cell().map(|cell| cell.address)
     }
 
+    // The cases three copies of the address rule are held to, shared with
+    // the map and mycelium-link, and their one reader.
+    include!("../../mycelium/site/tests/addresses.rs");
+
+    #[test]
+    fn an_address_is_judged_by_the_shared_cases() {
+        judged_by_every_case(address_shaped);
+    }
+
     #[test]
     fn a_notice_from_a_session_names_its_cell_by_address() {
         let from = hinted("mycelium:cell/1C8A2F0E");

@@ -43,9 +43,10 @@ ShellRoot {
     // this, quiet without both moving windows having drawn twice.
     readonly property int startWaitsFor: 3000
     // How long a start may take to go quiet at all. Every start ends
-    // quiet, so a capped start's late frames are counted as its own and
-    // never land in the next one; a window still drawing at this point
-    // draws without anything moving, which fails the case.
+    // quiet, so a capped start's late frames are counted as its own, and
+    // land in the next one only when they come more than quietFor after
+    // the one before; a window still drawing at this point draws without
+    // anything moving, which fails the case.
     readonly property int quietWaitsFor: 6000
     // How long the windows stay quiet, after both animations stopped and
     // after the last frame, before a start ends: past the 350 ms the old
@@ -261,8 +262,10 @@ ShellRoot {
                         return;
                     running = false;
                     root.fail(`Start ${root.starts} never went quiet in ${root.quietWaitsFor} ms: `
-                        + `the moving window drew ${root.movingDrawn - root.movingBefore} frames, `
-                        + `the sliding one ${root.slidingDrawn - root.slidingBefore}, `
+                        + `the moving window drew ${root.movingDrawn - root.movingBefore} frames `
+                        + `and the sliding one ${root.slidingDrawn - root.slidingBefore} in it, `
+                        + `the still one ${root.stillDrawn - root.stillBefore} `
+                        + "since the counting began, "
                         + `and an animation was ${moving.running || sliding.running ? "" : "not "}`
                         + "still running.");
                     return;

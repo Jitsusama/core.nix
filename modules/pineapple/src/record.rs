@@ -148,6 +148,18 @@ pub fn keep(folder: &Path, name: &str, record: &Value) -> std::io::Result<bool> 
     Ok(true)
 }
 
+/// Takes away the record kept under `name`, if there is one.
+///
+/// # Errors
+///
+/// Why a record there couldn't be taken away.
+pub fn forget(folder: &Path, name: &str) -> std::io::Result<()> {
+    match fs::remove_file(folder.join(format!("{}.json", file_name(name)))) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
+}
+
 /// A key as a file's name: anything but letters, digits, `.` and `-`
 /// becomes `-`, so a key can't reach outside its folder.
 fn file_name(key: &str) -> String {

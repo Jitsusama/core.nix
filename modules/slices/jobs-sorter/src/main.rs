@@ -824,9 +824,8 @@ struct Ranks {
     reading: Option<u64>,
     /// Each pi host's rank, as last set.
     hosts: hosts::Hosts,
-    /// The slices whose floor couldn't be read to fit their units' floors
-    /// into, so each is said once.
-    unfitted: HashSet<String>,
+    /// What fitting the units' floors into their slices has said.
+    fitting: Fitting,
     /// The sessions viewers attach to that no slot holds, as the looks
     /// before found them, so each is said once while it lasts.
     unslotted: Unslotted,
@@ -1084,6 +1083,39 @@ fn children(pid: u32) -> Vec<u32> {
 /// keeping writeback off on one given back that's among `kept`.
 fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
+    set_holds_by(held, pis, ranks, |unit, hard, scope| {
+        let what = if hard.is_some() { "hold" } else { "give back" };
+        match Command::new("busctl")
+            .args(holds::hold_call(
+                unit,
+                hard,
+                kept.iter().any(|kept| kept == scope),
+            ))
+            .stdout(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(format!(
+                "Couldn't {what} {unit}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => Err(format!("Couldn't run busctl to {what} {unit}: {error}")),
+        }
+    });
+}
+
+/// Holds each of `held` not held yet and gives back each held no longer
+/// through `call`, given each one's unit, the hard floor it's held with or
+/// none to give it back, and its scope, and saying why one failed.
+fn set_holds_by(
+    held: &[PathBuf],
+    pis: &[String],
+    ranks: &mut Ranks,
+    mut call: impl FnMut(&str, Option<u64>, &Path) -> Result<(), String>,
+) {
+    // A host's give-back that failed leaves its hard floors with the kernel, so they count
+    // against the pis' as a pi's own failed give-back does.
+    ranks.holding.elsewhere = ranks.hosts.hard_left();
     for (scope, hold) in ranks.holding.changes(held, pis) {
         let unit = scope
             .file_name()
@@ -1091,12 +1123,8 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
             .to_string_lossy()
             .into_owned();
         let hard = hold.then(|| ranks.holding.hard_floor(&scope, pis));
-        let result = Command::new("busctl")
-            .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
-            .stdout(Stdio::null())
-            .output();
-        match result {
-            Ok(output) if output.status.success() => {
+        match call(&unit, hard, &scope) {
+            Ok(()) => {
                 // A failure after this one is said again, so a give-back that keeps failing, as
                 // it would leave a hard floor behind, isn't silent.
                 ranks.holding.failed = false;
@@ -1118,19 +1146,9 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
                     None => eprintln!("Gave back {unit}, a window Joel was just at."),
                 }
             }
-            Ok(output) => {
+            Err(why) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
-                    eprintln!(
-                        "Couldn't {} {unit}: {}",
-                        if hold { "hold" } else { "give back" },
-                        String::from_utf8_lossy(&output.stderr).trim()
-                    );
-                }
-            }
-            Err(error) => {
-                if !std::mem::replace(&mut ranks.holding.failed, true) {
-                    let what = if hold { "hold" } else { "give back" };
-                    eprintln!("Couldn't run busctl to {what} {unit}: {error}");
+                    eprintln!("{why}");
                 }
             }
         }
@@ -1377,7 +1395,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         unslotted,
     } = viewers_and_shown(windows, prefix, held, &units, &command_lines);
     say_unslotted(&mut ranks.unslotted, unslotted);
-    let shares = shares(ranks.holding.hard(), &units, &viewers);
+    let shares = shares(ranks.holding.hard(), &ranks.hosts, &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
@@ -1428,42 +1446,322 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             rank,
             signs,
             own: own.floor,
+            own_hard: own.hard,
             writeback: own.writeback,
         });
     }
+    ranks.fitting.held.clone_from(ranks.holding.scopes());
     fit_floors(
         &mut ranked,
         windows.prefixes,
         &ranks.hosts,
-        &mut ranks.unfitted,
+        &mut ranks.fitting,
+        now,
     );
-    give_ranks(ranked, &mut ranks.hosts);
+    let control =
+        kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
+    give_ranks(ranked, &mut ranks.hosts, control.as_deref());
+    let conversations = windows
+        .conversations
+        .map(|(conversations, _)| conversations);
+    take_back_left_settings(
+        control.as_deref(),
+        prefix,
+        conversations,
+        &seen,
+        &mut ranks.hosts,
+    );
     ranks.hosts.keep_only(&seen);
 }
 
-/// Gives each of the `ranked` units the rank it was fitted to, when it
-/// differs from the one `hosts` last gave it, saying once when it can't.
-fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
-    for Ranked {
-        path,
-        rank,
-        signs,
-        asked,
-        ..
-    } in ranked
-    {
-        let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if !hosts.changed(unit, &rank) {
-            continue;
+/// Takes back the settings the sorter gave units under `prefix` or
+/// `conversations` that no longer run, in the runtime control folder,
+/// `control` ([`sweep`]), asking systemctl.
+fn take_back_left_settings(
+    control: Option<&Path>,
+    prefix: &str,
+    conversations: Option<&str>,
+    seen: &[String],
+    hosts: &mut hosts::Hosts,
+) {
+    let prefixes: Vec<&str> = std::iter::once(prefix).chain(conversations).collect();
+    // systemctl answers for every unit even as it leaves with a failure for those not active,
+    // so what it says is read whatever its status; an answer short of a unit is refused below.
+    let ask = |units: &[String]| {
+        let mut asked = Command::new("systemctl")
+            .args(own::is_active_call(units))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("couldn't run systemctl: {error}"))?;
+        let mut out = asked
+            .stdout
+            .take()
+            .ok_or_else(|| "systemctl gave no output to read".to_owned())?;
+        let reading = thread::spawn(move || {
+            let mut answer = Vec::new();
+            io::Read::read_to_end(&mut out, &mut answer).map(|_| answer)
+        });
+        // It runs on the look that ranks the units Joel is at, so it's stopped past its time.
+        let deadline = std::time::Instant::now() + own::ASK_WITHIN;
+        loop {
+            match asked.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                _ => {
+                    let _ = asked.kill();
+                    let _ = asked.wait();
+                    return Err(format!(
+                        "systemctl didn't answer within {:?}",
+                        own::ASK_WITHIN
+                    ));
+                }
+            }
         }
+        let answer = reading
+            .join()
+            .map_err(|_| "reading systemctl's answer failed".to_owned())?
+            .map_err(|error| format!("couldn't read systemctl's answer: {error}"))?;
+        Ok(String::from_utf8_lossy(&answer).into_owned())
+    };
+    let now = std::time::Instant::now();
+    sweep(control, &prefixes, seen, hosts, now, ask);
+}
+
+/// Takes back the settings in `control` the sorter gave units under
+/// `prefixes` that no longer run, which systemd keeps after a unit stops
+/// ([`own::left_behind`]): on the first look, those of every unit not
+/// `seen` running, and after it, those of the units ranked before that
+/// have gone ([`hosts::Hosts::leave`]), as `ask` says of them all in one
+/// call. A unit seen has processes, so it runs and isn't asked after.
+/// One systemctl says hasn't stopped is asked after again a while later,
+/// until it has. Each unit's settings taken back are forgotten, so it's
+/// ranked afresh should it start again. A sweep that can't ask is said
+/// once and tried again a while later.
+fn sweep(
+    control: Option<&Path>,
+    prefixes: &[&str],
+    seen: &[String],
+    hosts: &mut hosts::Hosts,
+    now: std::time::Instant,
+    ask: impl FnOnce(&[String]) -> Result<String, String>,
+) {
+    hosts.leave(seen, now);
+    let due = |later: &HashMap<String, std::time::Instant>, unit: &String| {
+        later.get(unit).is_some_and(|due| now >= *due)
+    };
+    if hosts.sweep.done
+        && hosts.sweep.pending.is_empty()
+        && !hosts.sweep.later.values().any(|due| now >= *due)
+    {
+        return;
+    }
+    if hosts.sweep.held_off.is_some_and(|until| now < until) {
+        return;
+    }
+    let mut say = |why: String| {
+        if !std::mem::replace(&mut hosts.sweep.failed, true) {
+            eprintln!("Couldn't take back the settings stopped units left: {why}.");
+        }
+    };
+    let Some(control) = control else {
+        say("no user id to find the runtime control folder by".to_owned());
+        return;
+    };
+    let left: Vec<String> = match own::left_behind(control, prefixes) {
+        Ok(units) => units
+            .into_iter()
+            .filter(|unit| !seen.contains(unit))
+            .collect(),
+        Err(error) => {
+            say(format!("couldn't read {}: {error}", control.display()));
+            return;
+        }
+    };
+    let asked: Vec<String> = left
+        .iter()
+        .filter(|unit| {
+            !hosts.sweep.done
+                || hosts.sweep.pending.contains_key(*unit)
+                || due(&hosts.sweep.later, unit)
+        })
+        .cloned()
+        .collect();
+    // A unit gone with no settings of the sorter's left has nothing to take back.
+    hosts.sweep.pending.retain(|unit, _| asked.contains(unit));
+    hosts.sweep.later.retain(|unit, _| left.contains(unit));
+    if !asked.is_empty() {
+        let answer = ask(&asked);
+        let Some(states) = answer
+            .as_deref()
+            .ok()
+            .and_then(|stdout| own::states(stdout, asked.len()))
+        else {
+            say(answer.err().unwrap_or_else(|| {
+                format!(
+                    "systemctl didn't say whether each of {} units runs",
+                    asked.len()
+                )
+            }));
+            hosts.sweep.held_off = Some(now + own::ASK_AGAIN_AFTER);
+            return;
+        };
+        hosts.sweep.held_off = None;
+        // Each name was read from a folder anyone in the account can make, so it's said quoted,
+        // and a line or a quote in it can't pass for a line of the sorter's own.
+        for (unit, state) in asked.into_iter().zip(states) {
+            match state {
+                own::Active::Stopped => {
+                    let (taken, error) = own::forget(control, &unit);
+                    hosts.forget(&unit);
+                    hosts.sweep.later.remove(&unit);
+                    match error {
+                        None => {
+                            eprintln!(
+                                "Took back the {taken} settings {unit:?} left when it stopped."
+                            );
+                        }
+                        Some(error) => {
+                            if hosts.sweep.unswept.insert(unit.clone()) {
+                                eprintln!(
+                                    "Couldn't take back all the settings {unit:?} left, {taken} \
+                                     taken: {error}."
+                                );
+                            }
+                        }
+                    }
+                }
+                // systemd keeps a failed unit loaded, its settings' files listed, until it's
+                // reset, so they stay.
+                own::Active::Failed => {
+                    hosts.sweep.pending.remove(&unit);
+                    hosts.sweep.later.insert(unit, now + own::ASK_AGAIN_AFTER);
+                }
+                own::Active::Runs => {
+                    hosts.sweep.later.insert(unit, now + own::ASK_AGAIN_AFTER);
+                }
+            }
+        }
+    }
+    hosts.sweep.done = true;
+    hosts.sweep.failed = false;
+}
+
+/// Gives each of the `ranked` units the rank it was fitted to, when it
+/// differs from the one `hosts` last gave it, through busctl, saying once
+/// when it can't ([`give_ranks_by`]). Each unit whose rank lands has its
+/// folder in `control`, the runtime control folder, marked as holding
+/// settings the sorter set ([`own::mark`]), so they're taken back once it
+/// stops, and a mark that can't be left is said once.
+fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts, control: Option<&Path>) {
+    give_ranks_marking(ranked, hosts, control, |unit, rank| {
         match Command::new("busctl")
-            .args(hosts::rank_call(unit, &rank))
+            .args(hosts::rank_call(unit, rank))
             .stdout(Stdio::null())
             .output()
         {
-            Ok(output) if output.status.success() => {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(format!(
+                "Couldn't rank {unit}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => Err(format!("Couldn't run busctl to rank {unit}: {error}")),
+        }
+    });
+}
+
+/// What [`give_ranks`] does with the ranks `call` gives: each that lands has its unit's folder in
+/// `control` marked, so its settings are taken back once the sorter stops, and one that fails
+/// leaves it as it was.
+fn give_ranks_marking(
+    ranked: Vec<Ranked>,
+    hosts: &mut hosts::Hosts,
+    control: Option<&Path>,
+    mut call: impl FnMut(&str, &hosts::Rank) -> Result<(), String>,
+) {
+    let mut unmarked = None;
+    let mut marked = false;
+    give_ranks_by(ranked, hosts, |unit, rank| {
+        call(unit, rank)?;
+        match control.map(|control| own::mark(control, unit)) {
+            Some(Ok(())) => marked = true,
+            Some(Err(error)) => {
+                unmarked.get_or_insert(format!("{unit:?}: {error}"));
+            }
+            None => {}
+        }
+        Ok(())
+    });
+    // A failure after a mark that was left is said again.
+    let still = unmarked.is_some() || (hosts.sweep.unmarked && !marked);
+    let said = std::mem::replace(&mut hosts.sweep.unmarked, still);
+    if let Some(why) = unmarked
+        && !said
+    {
+        eprintln!("Couldn't mark the settings the sorter set on {why}, so they'll stay.");
+    }
+}
+
+/// Gives each of the `ranked` units the rank it was fitted to, when it
+/// differs from the one `hosts` last gave it, with `call`, which says why
+/// when it can't; that is said once. Those giving back hard floors go
+/// first, and once one not failing already fails, none after it is given
+/// more than it keeps: its floors stay with the kernel, and the shares
+/// were given as if they had gone, so a fourth would hold until the next
+/// look counted them ([`shares`]).
+fn give_ranks_by(
+    mut ranked: Vec<Ranked>,
+    hosts: &mut hosts::Hosts,
+    mut call: impl FnMut(&str, &hosts::Rank) -> Result<(), String>,
+) {
+    let name = |ranked: &Ranked| {
+        ranked
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(str::to_owned)
+    };
+    ranked.sort_by_key(|unit| {
+        name(unit).is_some_and(|name| unit.signs.held > hosts.last_held(&name))
+    });
+    let mut kept_back = false;
+    for mut unit in ranked {
+        let Some(name) = name(&unit) else {
+            continue;
+        };
+        let before = hosts.last_held(&name);
+        if kept_back && unit.signs.held > before {
+            unit.signs.held = before;
+            unit.rank.hard = unit
+                .own_hard
+                .saturating_add(u64::try_from(before).unwrap_or(u64::MAX) * holds::HARD);
+        }
+        // A failing unit is asked again each look though its rank is the one it was set: capped
+        // at what it keeps while failing, it may never differ, and would never land.
+        let failing = hosts.kept(&name).is_some();
+        if !failing && !hosts.changed(&name, &unit.rank) {
+            continue;
+        }
+        // A unit this sorter never set may keep what a call before left it, which its memory.min
+        // says, should its first call here fail.
+        let kept = || {
+            let min = fs::read_to_string(unit.path.join("memory.min"))
+                .ok()
+                .and_then(|min| min.trim().parse().ok());
+            if holds::in_agents(&unit.path) {
+                hosts::kept_hard(min, unit.own_hard)
+            } else {
+                0
+            }
+        };
+        match call(&name, &unit.rank) {
+            Ok(()) => {
+                let Ranked {
+                    rank, signs, asked, ..
+                } = unit;
                 // A floor fitted short says what it would have been, so a unit Joel is at
                 // left without one shows in the journal.
                 let short = if rank.floor < asked {
@@ -1472,7 +1770,7 @@ fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
                     String::new()
                 };
                 eprintln!(
-                    "Ranked {unit} at weight {}, floor {}{short}, hard {}: {} windows Joel's at \
+                    "Ranked {name} at weight {}, floor {}{short}, hard {}: {} windows Joel's at \
                      of {} showing it, {} orchestrators.",
                     rank.weight,
                     rank.floor,
@@ -1484,19 +1782,16 @@ fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
                 // A failure after this one is said again, as a hard floor that can't be given
                 // back would otherwise stay silent.
                 hosts.failed = false;
-                hosts.done(unit, rank);
+                hosts.done(&name, rank, signs.held);
             }
-            Ok(output) => {
+            Err(why) => {
+                // Only a unit not failing already: one that was is counted in the shares at what
+                // it keeps. What it keeps is read once `fail` has noted it, which for a unit this
+                // sorter never set is what the kernel says, not the none it was known to hold.
+                hosts.fail(&name, kept);
+                kept_back |= !failing && unit.signs.held < hosts.last_held(&name);
                 if !std::mem::replace(&mut hosts.failed, true) {
-                    eprintln!(
-                        "Couldn't rank {unit}: {}",
-                        String::from_utf8_lossy(&output.stderr).trim()
-                    );
-                }
-            }
-            Err(error) => {
-                if !std::mem::replace(&mut hosts.failed, true) {
-                    eprintln!("Couldn't run busctl to rank {unit}: {error}");
+                    eprintln!("{why}");
                 }
             }
         }
@@ -1513,32 +1808,172 @@ struct Ranked {
     signs: hosts::Signs,
     /// The floor its unit file sets.
     own: u64,
+    /// The hard floor its unit file sets.
+    own_hard: u64,
     /// Whether its unit file leaves writeback to the disk's swap on.
     writeback: bool,
 }
 
+/// How many of the others an overrun line names ([`Fitting::overran`]),
+/// so a slice with many children still says it in one line.
+const SAID: usize = 5;
+
+/// What fitting the units' floors into their slices ([`fit_floors`]) has
+/// said, so each is said once while it lasts.
+#[derive(Default)]
+struct Fitting {
+    /// The slices whose floor couldn't be read to fit their units' floors
+    /// into.
+    unfitted: HashSet<String>,
+    /// The slices whose others claimed past the room the units Joel is at
+    /// left them ([`Fitting::overran`]).
+    overrun: HashSet<String>,
+    /// Each window's claim at its peak within the minute.
+    peaks: budget::Peaks,
+    /// The windows the sorter holds, as of the last look.
+    held: HashSet<PathBuf>,
+}
+
+impl Fitting {
+    /// What to say of `slice` when the others beside its units, `strays`,
+    /// each by name with its claim, claim more in all, `claimed`, than the
+    /// room the units Joel is at `left` them: the sorter can't trim what
+    /// they claim, so the slice is claimed past its floor and the kernel
+    /// shares it among every child again, the windows too. Said once, and
+    /// again only once they fit by a [`budget::STEP`] and overrun again, so
+    /// others hovering at the edge don't say it on every crossing. Each is
+    /// named quoted, the first [`SAID`] of them, since a child's name is
+    /// whatever started it chose.
+    fn overran(
+        &mut self,
+        slice: &str,
+        strays: &[(String, u64)],
+        claimed: u64,
+        left: u64,
+    ) -> Option<String> {
+        if claimed.saturating_add(budget::STEP) <= left {
+            self.overrun.remove(slice);
+            return None;
+        }
+        if claimed <= left || !self.overrun.insert(slice.to_owned()) {
+            return None;
+        }
+        let named: Vec<&(String, u64)> = strays.iter().filter(|(_, claim)| *claim > 0).collect();
+        let mut which: Vec<String> = named
+            .iter()
+            .take(SAID)
+            .map(|(name, claim)| format!("{name:?} {} MiB", claim >> 20))
+            .collect();
+        if named.len() > SAID {
+            which.push(format!("and {} more", named.len() - SAID));
+        }
+        Some(format!(
+            "The others in {slice} claim {} MiB, past the {} MiB the units Joel is at leave \
+             them, so its floor is shared among every child again, the windows too: {}.",
+            claimed >> 20,
+            left >> 20,
+            which.join(", ")
+        ))
+    }
+}
+
+/// What the children of `slice` beside the units at `mine` claim of its
+/// floor `low`: the room the windows, those under `prefixes`, leave the
+/// units, and each other's claim by name, fitted after the units Joel is
+/// at ([`fit_floors`]).
+fn claims(
+    slice: &Path,
+    low: u64,
+    prefixes: &[String],
+    mine: &[&Path],
+    held: &HashSet<PathBuf>,
+    peaks: &mut budget::Peaks,
+    now: std::time::Instant,
+) -> (u64, Vec<(String, u64)>) {
+    // Only the windows' floors are taken first: any agent can start a scope here with a floor
+    // of max, which would leave the units Joel is at none.
+    let scopes = homes(slice, prefixes);
+    let (mut windows, others): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(slice)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && !mine.contains(&path.as_path()))
+        .partition(|path| scopes.contains(path));
+    // A child that can't be read has most likely just gone, so it claims nothing, while a unit
+    // that can't be read counts as holding its whole floor (`fit_floors`).
+    let claim = |path: &PathBuf| {
+        let name = path.file_name()?.to_string_lossy().into_owned();
+        Some((name, holds::current(path)?, memory_low(path)?))
+    };
+    // A scope counts as a window by its name alone, and the sorter holds no more than
+    // focus::MOST windows at focus::FLOOR each, so what the windows claim past that is claimed
+    // as a stray's is, after the units Joel is at, and isn't held: an agent naming scopes as
+    // windows and asking for max would otherwise take their floors. Each window claims what it
+    // held at its peak within the minute, so a window paging out doesn't hand the units room it
+    // takes back a look later, but never past its floor now: one the sorter has let go claims
+    // its new floor at once. The windows the sorter holds take the room first, so scopes only
+    // named as windows can't push them out of it, then the rest by name, so a look's order is
+    // the next one's.
+    windows.sort_by_key(|path| (!held.contains(path), path.clone()));
+    let mut left = focus::FLOOR.saturating_mul(u64::try_from(focus::MOST).unwrap_or(u64::MAX));
+    let mut kept = Vec::new();
+    let mut strays: Vec<(String, u64)> = Vec::new();
+    for path in &windows {
+        let Some((name, current, floor)) = claim(path) else {
+            continue;
+        };
+        let claims = current.min(floor);
+        let held = peaks
+            .hold(&path.display().to_string(), claims.min(focus::FLOOR), now)
+            .min(floor)
+            .min(left);
+        left -= held;
+        kept.push(held);
+        strays.push((name, claims.saturating_sub(held)));
+    }
+    let room = budget::room(low, kept.into_iter().map(|held| (held, held)));
+    strays.splice(
+        0..0,
+        others
+            .iter()
+            .filter_map(claim)
+            .map(|(name, current, floor)| (name, current.min(floor))),
+    );
+    (room, strays)
+}
+
 /// Fits the floors the `ranked` units would be given into what each one's
-/// slice has left once the windows and others beside them keep theirs
-/// ([`budget`]), so the windows Joel types in, those under `prefixes`,
-/// keep theirs whole, each against the floor `hosts` last set on it. A
-/// slice whose floor can't be read is left as ranked, and said once, as
-/// `unfitted` remembers.
+/// slice has left once the windows beside them keep theirs ([`budget`]),
+/// each against the floor `hosts` last set on it: first the units Joel is
+/// at, then what the others beside them claim, then the rest. So the
+/// windows Joel types in, those under `prefixes`, keep theirs whole while
+/// those others fit in what the units Joel is at leave; past it the
+/// kernel shares the slice's floor among every child again, which is said
+/// once ([`Fitting::overran`]). Each window claims its peak of the last
+/// minute at `now` ([`budget::Peaks`]). A slice whose floor can't be read is left
+/// as ranked, and said once, as `fitting` remembers.
 fn fit_floors(
     ranked: &mut [Ranked],
     prefixes: &[String],
     hosts: &hosts::Hosts,
-    unfitted: &mut HashSet<String>,
+    fitting: &mut Fitting,
+    now: std::time::Instant,
 ) {
+    fitting.peaks.forget_before(now);
     let mut slices: Vec<PathBuf> = ranked
         .iter()
         .filter_map(|unit| unit.path.parent().map(Path::to_path_buf))
         .collect();
     slices.sort();
     slices.dedup();
+    // A slice this look doesn't fit forgets it overran, so its next overrun is said.
+    let fitted: HashSet<String> = slices.iter().map(|s| s.display().to_string()).collect();
+    fitting.overrun.retain(|slice| fitted.contains(slice));
     for slice in slices {
         let name = slice.display().to_string();
         let Some(low) = memory_low(&slice) else {
-            if unfitted.insert(name) {
+            if fitting.unfitted.insert(name) {
                 eprintln!(
                     "Ranking the units in {} unfitted: its memory.low can't be read.",
                     slice.display()
@@ -1546,25 +1981,23 @@ fn fit_floors(
             }
             continue;
         };
-        unfitted.remove(&name);
+        fitting.unfitted.remove(&name);
         let mine: Vec<usize> = (0..ranked.len())
             .filter(|&at| ranked[at].path.parent() == Some(slice.as_path()))
             .collect();
-        // Only the windows' floors are taken first: any agent can start a scope here with a
-        // floor of max, which would leave the units Joel is at none.
-        let scopes = homes(&slice, prefixes);
-        let (windows, strays): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(&slice)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir() && !mine.iter().any(|&at| ranked[at].path == *path))
-            .partition(|path| scopes.contains(path));
-        // A child that can't be read has most likely just gone, so it claims nothing, while a
-        // unit that can't be read counts as holding its whole floor, below.
-        let claim = |path: &PathBuf| Some((holds::current(path)?, memory_low(path)?));
-        let room = budget::room(low, windows.iter().filter_map(claim));
-        let strays = budget::claimed(strays.iter().filter_map(claim));
+        let paths: Vec<&Path> = mine.iter().map(|&at| ranked[at].path.as_path()).collect();
+        let (room, strays) = claims(
+            &slice,
+            low,
+            prefixes,
+            &paths,
+            &fitting.held,
+            &mut fitting.peaks,
+            now,
+        );
+        let claimed = strays
+            .iter()
+            .fold(0u64, |sum, (_, claim)| sum.saturating_add(*claim));
         let signs: Vec<hosts::Signs> = mine.iter().map(|&at| ranked[at].signs).collect();
         let order: Vec<usize> = budget::order(&signs)
             .into_iter()
@@ -1588,14 +2021,20 @@ fn fit_floors(
             viewed,
             budget::Wanted {
                 own: 0,
-                added: strays,
+                added: claimed,
                 current: 0,
             },
         );
         let mut fitted = budget::fit(&wanted, room);
         let mut margin = budget::fit(&wanted, room.saturating_sub(budget::STEP));
+        // Weighed against the room the units Joel is at leave them, not what fit gave them,
+        // which is never more than they claim, so the mark could never clear.
+        let left = budget::left_after(&wanted, room, &fitted[..viewed]);
         fitted.remove(viewed);
         margin.remove(viewed);
+        if let Some(line) = fitting.overran(&name, &strays, claimed, left) {
+            eprintln!("{line}");
+        }
         for ((&at, fitted), margin) in order.iter().zip(fitted).zip(margin) {
             let unit = &mut ranked[at];
             let last = unit
@@ -1656,8 +2095,17 @@ fn own_of(
 /// How many hard floors each of `units` keeps for the `viewers` in the
 /// windows Joel is at: the held windows' are shared out across every
 /// unit, after the `pis` held hard (`set_holds`), to units in agents.slice
-/// alone, whose own hard floor backs them.
-fn shares(pis: usize, units: &[PathBuf], viewers: &[String]) -> HashMap<String, usize> {
+/// alone, whose own hard floor backs them. A unit whose last rank call
+/// failed keeps what it was set with until one lands ([`hosts::Hosts::kept`]),
+/// so those count against every other unit's, and it's given no more
+/// than it keeps: whether its next call lands or fails, the kernel then
+/// keeps at most [`focus::MOST`] across them all.
+fn shares(
+    pis: usize,
+    hosts: &hosts::Hosts,
+    units: &[PathBuf],
+    viewers: &[String],
+) -> HashMap<String, usize> {
     let in_agents: Vec<String> = viewers
         .iter()
         .filter(|unit| {
@@ -1668,7 +2116,18 @@ fn shares(pis: usize, units: &[PathBuf], viewers: &[String]) -> HashMap<String, 
         })
         .cloned()
         .collect();
-    holds::shares(pis, &in_agents)
+    let (failing, others): (Vec<String>, Vec<String>) = in_agents
+        .into_iter()
+        .partition(|unit| hosts.kept(unit).is_some());
+    let mut given = holds::shares(pis + hosts.hard_left(), &others);
+    for unit in failing {
+        let kept = hosts.kept(&unit).unwrap_or(0);
+        let share = given.entry(unit).or_insert(0);
+        if *share < kept {
+            *share += 1;
+        }
+    }
+    given
 }
 
 /// What windows' viewers join ([`viewers_and_shown`]).
@@ -3244,14 +3703,502 @@ mod tests {
         );
     }
 
+    /// A runtime control folder under the temporary folder named for `name`, holding each of
+    /// `units`' folders with the five files systemd writes for the sorter's settings, and
+    /// the sorter's mark.
+    fn control_with(name: &str, units: &[&str]) -> PathBuf {
+        let control = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&control);
+        for unit in units {
+            let folder = control.join(format!("{unit}.d"));
+            fs::create_dir_all(&folder).expect("a unit's folder");
+            for file in [
+                "50-CPUWeight.conf",
+                "50-MemoryLow.conf",
+                "50-MemoryZSwapWriteback.conf",
+                "50-ManagedOOMPreference.conf",
+                "50-MemoryMin.conf",
+            ] {
+                fs::write(folder.join(file), "[Service]\n").expect("a setting's file");
+            }
+            own::mark(&control, unit).expect("the sorter's mark");
+        }
+        control
+    }
+
+    #[test]
+    fn a_sweep_asks_once_after_the_units_not_running_and_again_after_those_still_stopping() {
+        let unit = |name: &str| format!("pi-conversation-w@{name}.service");
+        let control = control_with(
+            "sweep-asks-once",
+            &[
+                &unit("runs"),
+                &unit("gone"),
+                &unit("stopping"),
+                &unit("failed"),
+                &unit("old"),
+            ],
+        );
+        let mut hosts = hosts::Hosts::default();
+        let rank = hosts::wanted(&own::Own::default(), hosts::Signs::default(), 10);
+        for name in ["runs", "gone", "stopping", "failed"] {
+            hosts.done(&unit(name), rank.clone(), 0);
+        }
+        let seen = [unit("runs")];
+        let mut asked: Vec<Vec<String>> = Vec::new();
+        let mut states = HashMap::from([
+            (unit("gone"), "inactive"),
+            (unit("stopping"), "deactivating"),
+            (unit("failed"), "failed"),
+            (unit("old"), "inactive"),
+        ]);
+        let look = |hosts: &mut hosts::Hosts,
+                    states: &HashMap<String, &str>,
+                    asked: &mut Vec<Vec<String>>| {
+            let ask = |units: &[String]| {
+                asked.push(units.to_vec());
+                let lines: Vec<&str> = units
+                    .iter()
+                    .map(|unit| *states.get(unit).unwrap_or(&"active"))
+                    .collect();
+                Ok(lines.join("\n"))
+            };
+            let prefixes = ["pi-conversation-", "pi-host-"];
+            sweep(
+                Some(&control),
+                &prefixes,
+                &seen,
+                hosts,
+                std::time::Instant::now(),
+                ask,
+            );
+            // As `rank_hosts` does after it.
+            hosts.keep_only(&seen);
+        };
+        look(&mut hosts, &states, &mut asked);
+        let there = |name: &str| control.join(format!("{}.d", unit(name))).exists();
+        assert_eq!(
+            asked,
+            [[unit("failed"), unit("gone"), unit("old"), unit("stopping")]],
+            "one call asks after every unit with the sorter's settings that isn't seen running"
+        );
+        assert_eq!(
+            ["runs", "gone", "stopping", "failed", "old"].map(there),
+            [true, false, true, true, false],
+            "only the stopped units' settings go: a failed one's stay for systemd, which keeps \
+             it loaded"
+        );
+        assert!(
+            hosts.changed(&unit("gone"), &rank) && !hosts.changed(&unit("runs"), &rank),
+            "a unit whose settings went is forgotten, so its return is ranked afresh"
+        );
+        states.insert(unit("stopping"), "inactive");
+        look(&mut hosts, &states, &mut asked);
+        assert_eq!(
+            asked[1..],
+            [[unit("stopping")]],
+            "a unit that left still stopping is asked after again, alone"
+        );
+        assert!(!there("stopping"), "and once stopped its settings go");
+        look(&mut hosts, &states, &mut asked);
+        assert_eq!(
+            asked.len(),
+            2,
+            "with none left to ask after, nothing is asked"
+        );
+        let _ = fs::remove_dir_all(&control);
+    }
+
+    #[test]
+    fn a_unit_not_yet_stopped_when_first_asked_is_asked_again_until_it_is() {
+        // A unit still stopping when the sorter starts, or failed and kept loaded until it's
+        // reset, isn't one the sorter ranked, so nothing else would ever ask after it again.
+        for first in ["deactivating\n", "failed\n"] {
+            let gone = "pi-host-work-gone.service".to_owned();
+            let control = control_with("sweep-not-yet-stopped", &[&gone]);
+            let mut hosts = hosts::Hosts::default();
+            let start = std::time::Instant::now();
+            let again = own::ASK_AGAIN_AFTER;
+            let mut asks = 0;
+            let looks = [
+                (Duration::ZERO, first, true),
+                (again / 2, "inactive\n", false),
+                (again, first, true),
+                (again * 2, "inactive\n", true),
+                (again * 3, "inactive\n", false),
+            ];
+            for (after, answer, asked) in looks {
+                let before = asks;
+                let ask = |_: &[String]| {
+                    asks += 1;
+                    Ok(answer.to_owned())
+                };
+                sweep(
+                    Some(&control),
+                    &["pi-host-"],
+                    &[],
+                    &mut hosts,
+                    start + after,
+                    ask,
+                );
+                assert_eq!(
+                    asks > before,
+                    asked,
+                    "asked at {after:?} after a first look that found it {first:?}"
+                );
+            }
+            let left = control.join(format!("{gone}.d")).exists();
+            let _ = fs::remove_dir_all(&control);
+            assert!(
+                !left,
+                "its settings went once it stopped, after a first look found it {first:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_sweep_that_cant_ask_says_so_once_and_is_tried_again() {
+        let gone = "pi-host-work-gone.service".to_owned();
+        let control = control_with("sweep-cant-ask", &[&gone]);
+        let mut hosts = hosts::Hosts::default();
+        let start = std::time::Instant::now();
+        let mut asks = 0;
+        // Each look: how long after the first it comes, what systemctl says, and whether it's
+        // asked at all: after a failed ask, not again until ASK_AGAIN_AFTER has passed.
+        let again = own::ASK_AGAIN_AFTER;
+        let looks = [
+            (Duration::ZERO, Err("no bus".to_owned()), true),
+            (again / 2, Ok("inactive\n".to_owned()), false),
+            (again, Ok(String::new()), true),
+            (again * 2, Ok("inactive\n".to_owned()), true),
+        ];
+        for (after, answer, asked) in looks {
+            let before = asks;
+            let ask = |_: &[String]| {
+                asks += 1;
+                answer.clone()
+            };
+            let swept = hosts.sweep.done;
+            let said = hosts.sweep.failed;
+            sweep(
+                Some(&control),
+                &["pi-host-"],
+                &[],
+                &mut hosts,
+                start + after,
+                ask,
+            );
+            assert_eq!(
+                asks > before,
+                asked,
+                "asked at {after:?} after a first look whose ask failed"
+            );
+            assert!(
+                swept
+                    || hosts.sweep.done
+                        == (asked && answer.as_deref().is_ok_and(|answer| !answer.is_empty())),
+                "a sweep counts as done only once systemctl answers for every unit: {answer:?}"
+            );
+            assert!(
+                !said || hosts.sweep.failed || hosts.sweep.done,
+                "a failure said stays said until an ask works, so it's said once: {answer:?}"
+            );
+        }
+        assert_eq!(
+            asks, 3,
+            "a sweep that couldn't ask is tried again, held off a while"
+        );
+        assert!(
+            !hosts.sweep.failed,
+            "and the failure is said again once one works"
+        );
+        assert!(
+            !control.join(format!("{gone}.d")).exists(),
+            "the settings went once it could ask"
+        );
+        let _ = fs::remove_dir_all(&control);
+    }
+
     #[test]
     fn only_units_in_agents_slice_take_a_hard_floors_share() {
         let units = ["/cg/agents.slice/a.service", "/cg/app.slice/b.service"].map(PathBuf::from);
         let viewers = ["b.service", "a.service"].map(str::to_owned);
         assert_eq!(
-            shares(2, &units, &viewers),
+            shares(2, &hosts::Hosts::default(), &units, &viewers),
             HashMap::from([("a.service".to_owned(), 1)]),
             "the unit in app.slice takes no share, nor the one floor left"
+        );
+    }
+
+    /// What the kernel keeps hard, by unit, after one of `rank_hosts`'s looks over `units`: each
+    /// unit is given its share from `shares` and its rank through `give_ranks_by`, as
+    /// `rank_hosts` gives them, and a call `lands` says fails leaves the kernel with what it
+    /// kept before.
+    fn hard_look(
+        holding: &holds::Holding,
+        hosts: &mut hosts::Hosts,
+        kernel: &mut HashMap<String, usize>,
+        units: &[PathBuf],
+        viewers: &[&str],
+        lands: impl Fn(&str) -> bool,
+    ) {
+        let viewers: Vec<String> = viewers.iter().map(|unit| (*unit).to_owned()).collect();
+        let given = shares(holding.hard(), hosts, units, &viewers);
+        let ranked = units
+            .iter()
+            .filter_map(|path| {
+                let unit = path.file_name()?.to_str()?;
+                let signs = hosts::Signs {
+                    viewed: viewers.iter().filter(|viewer| *viewer == unit).count(),
+                    held: given.get(unit).copied().unwrap_or(0),
+                    ..hosts::Signs::default()
+                };
+                let rank = hosts::wanted(&own::Own::default(), signs, 10);
+                Some(Ranked {
+                    path: path.clone(),
+                    asked: rank.floor,
+                    rank,
+                    signs,
+                    own: 0,
+                    own_hard: 0,
+                    writeback: true,
+                })
+            })
+            .collect();
+        give_ranks_by(ranked, hosts, |unit, rank| {
+            if !lands(unit) {
+                return Err(format!("{unit}'s call fails"));
+            }
+            let hard = usize::try_from(rank.hard / holds::HARD).expect("a count of floors");
+            kernel.insert(unit.to_owned(), hard);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn at_most_three_hard_floors_hold_across_pis_and_hosts_while_a_hosts_call_fails() {
+        let units = ["a.service", "b.service"].map(|unit| Path::new("/cg/agents.slice").join(unit));
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = PathBuf::from("/cg/agents.slice/mycelium-pi-1.scope");
+        let all = |_: &str| true;
+        let not_a = |unit: &str| unit != "a.service";
+        // Each case: whether a pi holds hard, the viewers while every call lands, the viewers
+        // after, while a's calls fail, and the floors that hold on the second look of those,
+        // once a is counted as failing: no fewer than what a keeps leaves, so b isn't kept from
+        // its share for as long as a's calls fail.
+        let cases: [(bool, &[&str], &[&str], usize); 6] = [
+            (
+                false,
+                &["a.service", "a.service"],
+                &["b.service", "b.service", "a.service"],
+                3,
+            ),
+            (
+                false,
+                &["a.service", "a.service"],
+                &["a.service", "b.service", "b.service"],
+                3,
+            ),
+            (
+                false,
+                &["a.service"; 3],
+                &["b.service", "a.service", "a.service"],
+                3,
+            ),
+            (false, &["a.service"; 3], &["b.service", "b.service"], 3),
+            (
+                false,
+                &["a.service", "b.service", "b.service"],
+                &["a.service", "a.service", "a.service", "b.service"],
+                2,
+            ),
+            (
+                true,
+                &["a.service", "a.service"],
+                &["a.service", "b.service"],
+                3,
+            ),
+        ];
+        for (pi_held, before, after, full) in cases {
+            let mut holding = holds::Holding::default();
+            if pi_held {
+                holding.done(&pi, Some(holds::HARD));
+            }
+            let mut hosts = hosts::Hosts::default();
+            let mut kernel = HashMap::new();
+            hard_look(&holding, &mut hosts, &mut kernel, &units, before, all);
+            // Three looks with a's calls failing, a pi held beside them from the third as
+            // `set_holds` gives it its floor, counting what a's failed calls left, then two with
+            // a's calls landing again.
+            for look in 1..=5 {
+                if look == 3 {
+                    holding.elsewhere = hosts.hard_left();
+                    let another = PathBuf::from("/cg/agents.slice/mycelium-pi-2.scope");
+                    let hard = holding.hard_floor(&another, &pis);
+                    holding.done(&another, Some(hard));
+                }
+                let lands = |unit: &str| look > 3 || not_a(unit);
+                hard_look(&holding, &mut hosts, &mut kernel, &units, after, lands);
+                let kept = holding.hard() + kernel.values().sum::<usize>();
+                assert!(
+                    look != 2 || kept == full,
+                    "{kept} hard floors hold at the second look a's calls fail, not {full}, a \
+                     pi held hard {pi_held}, viewers {before:?} then {after:?}: {kernel:?}"
+                );
+                assert!(
+                    kept <= focus::MOST,
+                    "{kept} hard floors hold at look {look}, a's calls failing up to the third, a \
+                     pi held hard {pi_held} and another from the third, viewers {before:?} then \
+                     {after:?}: {kernel:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_pi_is_held_with_no_hard_floor_while_a_hosts_failed_give_back_keeps_them_all() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = PathBuf::from("/cg/agents.slice/mycelium-pi-1.scope");
+        let mut ranks = Ranks::default();
+        // A host this sorter never set, whose give-back fails, keeps every hard floor.
+        ranks.hosts.fail("a.service", || focus::MOST);
+        let mut given = Vec::new();
+        set_holds_by(
+            std::slice::from_ref(&pi),
+            &pis,
+            &mut ranks,
+            |unit, hard, _| {
+                given.push((unit.to_owned(), hard));
+                Ok(())
+            },
+        );
+        assert_eq!(
+            given,
+            [("mycelium-pi-1.scope".to_owned(), Some(0))],
+            "a pi Joel is at is held, but with none of the floors the failing host keeps"
+        );
+        assert_eq!(ranks.holding.hard(), 0, "so no pi counts as holding one");
+    }
+
+    #[test]
+    fn a_rank_that_lands_leaves_the_mark_and_one_that_fails_none() {
+        let control = std::env::temp_dir().join(format!("ranks-mark-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&control);
+        for unit in ["a.service", "b.service"] {
+            fs::create_dir_all(control.join(format!("{unit}.d"))).unwrap();
+        }
+        let ranked = ["a.service", "b.service"]
+            .map(|unit| {
+                let rank = hosts::wanted(&own::Own::default(), hosts::Signs::default(), 10);
+                Ranked {
+                    path: Path::new("/cg/agents.slice").join(unit),
+                    asked: rank.floor,
+                    rank,
+                    signs: hosts::Signs::default(),
+                    own: 0,
+                    own_hard: 0,
+                    writeback: true,
+                }
+            })
+            .into();
+        let mut hosts = hosts::Hosts::default();
+        give_ranks_marking(ranked, &mut hosts, Some(&control), |unit, _| {
+            if unit == "b.service" {
+                Err(format!("{unit}'s call fails"))
+            } else {
+                Ok(())
+            }
+        });
+        let marked = ["a.service", "b.service"]
+            .map(|unit| control.join(format!("{unit}.d")).join(own::MARK).exists());
+        let _ = fs::remove_dir_all(&control);
+        assert_eq!(
+            marked,
+            [true, false],
+            "a landed rank marks its unit's settings to be taken back, and a failed one doesn't"
+        );
+    }
+
+    #[test]
+    fn a_give_back_is_asked_before_a_gain_whichever_unit_comes_first() {
+        // b, which gains every floor, comes before a, which gives them back, as systemd may
+        // list them: were b asked first, it would take them while a's give-back fails.
+        let units = ["b.service", "a.service"].map(|unit| Path::new("/cg/agents.slice").join(unit));
+        let holding = holds::Holding::default();
+        let mut hosts = hosts::Hosts::default();
+        let mut kernel = HashMap::new();
+        let viewers = ["a.service"; 3];
+        hard_look(&holding, &mut hosts, &mut kernel, &units, &viewers, |_| {
+            true
+        });
+        let viewers = ["b.service"; 3];
+        hard_look(
+            &holding,
+            &mut hosts,
+            &mut kernel,
+            &units,
+            &viewers,
+            |unit| unit != "a.service",
+        );
+        let kept: usize = kernel.values().sum();
+        assert!(
+            kept <= focus::MOST,
+            "{kept} hard floors hold once b, listed first, gains while a's give-back fails: \
+             {kernel:?}"
+        );
+    }
+
+    #[test]
+    fn a_host_whose_gain_failed_is_asked_again_until_it_lands() {
+        let units = [Path::new("/cg/agents.slice/a.service").to_path_buf()];
+        // Three pis hold every hard floor while Joel is at a, so a is ranked with none.
+        let mut full = holds::Holding::default();
+        for pi in 1..=focus::MOST {
+            full.done(
+                Path::new(&format!("/cg/agents.slice/mycelium-pi-{pi}.scope")),
+                Some(holds::HARD),
+            );
+        }
+        let mut hosts = hosts::Hosts::default();
+        let mut kernel = HashMap::new();
+        let viewers = ["a.service"];
+        hard_look(&full, &mut hosts, &mut kernel, &units, &viewers, |_| true);
+        // The pis give theirs back and a's call to gain one fails once; capped at what it keeps
+        // while failing, its rank no longer differs from the one it was set, yet it must be
+        // asked again, or it never leaves failing and never gains its floor.
+        let empty = holds::Holding::default();
+        hard_look(&empty, &mut hosts, &mut kernel, &units, &viewers, |_| false);
+        for _ in 0..2 {
+            hard_look(&empty, &mut hosts, &mut kernel, &units, &viewers, |_| true);
+        }
+        assert_eq!(
+            kernel.get("a.service"),
+            Some(&1),
+            "a's floor never landed once its calls did: {kernel:?}"
+        );
+    }
+
+    #[test]
+    fn a_restarted_sorters_failed_give_back_holds_back_those_after_it() {
+        let units = ["a.service", "b.service"].map(|unit| Path::new("/cg/agents.slice").join(unit));
+        let holding = holds::Holding::default();
+        // A sorter just started never set a, whose memory.min can't be read here, so it counts
+        // as keeping all three the kernel may hold, as one before it may have left them.
+        let mut hosts = hosts::Hosts::default();
+        let mut kernel = HashMap::from([("a.service".to_owned(), focus::MOST)]);
+        let viewers = ["b.service"; 3];
+        hard_look(
+            &holding,
+            &mut hosts,
+            &mut kernel,
+            &units,
+            &viewers,
+            |unit| unit != "a.service",
+        );
+        let kept: usize = kernel.values().sum();
+        assert!(
+            kept <= focus::MOST,
+            "{kept} hard floors hold once a restarted sorter's give-back from a failed: {kernel:?}"
         );
     }
 
@@ -4010,6 +4957,7 @@ mod tests {
             asked: floor,
             signs,
             own,
+            own_hard: 0,
             writeback: true,
         };
         let shown = hosts::Signs {
@@ -4022,22 +4970,548 @@ mod tests {
             ranked_at("pi-host-a.service", 0, 512 * MIB, shown),
             ranked_at("pi-conversation-b@1.service", 256 * MIB, 2304 * MIB, viewed),
         ];
+        let mut fitting = Fitting::default();
         fit_floors(
             &mut ranked,
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
-            &mut HashSet::new(),
+            &mut fitting,
+            std::time::Instant::now(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
             [ranked[0].rank.floor, ranked[1].rank.floor],
             [0, 2304 * MIB],
             "of the 3 GiB the window leaves, the unit Joel is at keeps its whole floor, ahead of \
-             the scope no window holds, which claims the rest before the unit only shown"
+             the scope no window holds, and the unit only shown gets none"
+        );
+        assert!(
+            fitting.overrun.contains(&slice.display().to_string()),
+            "the scope claims its 2 GiB of the 768 MiB left, past the slice's floor, which is said"
         );
         assert!(
             !ranked[1].rank.writeback,
             "the unit Joel is at, fitting under its floor, has writeback off"
+        );
+    }
+
+    #[test]
+    fn others_claiming_past_the_room_left_them_are_said_once_each_time() {
+        const MIB: u64 = 1 << 20;
+        let mut fitting = Fitting::default();
+        let strays = [
+            ("run-u7.scope".to_owned(), 2048 * MIB),
+            ("run-u8.scope".to_owned(), 0),
+        ];
+        let said = fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB);
+        assert_eq!(
+            said.as_deref(),
+            Some(
+                "The others in agents.slice claim 2048 MiB, past the 768 MiB the units Joel is at \
+                 leave them, so its floor is shared among every child again, the windows too: \
+                 \"run-u7.scope\" 2048 MiB."
+            ),
+            "it says which children overran, quoted, and by how much"
+        );
+        assert_eq!(
+            fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB),
+            None,
+            "and once while it lasts"
+        );
+        assert_eq!(
+            fitting.overran("agents.slice", &strays, 767 * MIB, 768 * MIB),
+            None,
+            "others fitting in what's left say nothing"
+        );
+        assert_eq!(
+            fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB),
+            None,
+            "others hovering within a step of the edge don't say it again on each crossing"
+        );
+        fitting.overran("agents.slice", &strays, 704 * MIB, 768 * MIB);
+        assert!(
+            fitting
+                .overran("agents.slice", &strays, 2048 * MIB, 768 * MIB)
+                .is_some(),
+            "once they fit by a step and overrun again, it's said again"
+        );
+        let many: Vec<(String, u64)> = (0..9)
+            .map(|n| (format!("run-u{n}.scope"), 256 * MIB))
+            .collect();
+        let said = Fitting::default()
+            .overran("agents.slice", &many, 2304 * MIB, 768 * MIB)
+            .unwrap_or_default();
+        assert!(
+            said.ends_with("\"run-u4.scope\" 256 MiB, and 4 more."),
+            "a long list of others was said whole: {said}"
+        );
+    }
+
+    #[test]
+    fn others_that_shrink_well_inside_the_room_left_them_clear_the_overrun_mark() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let stray = "run-u1.service";
+        let slice = slice_with(
+            "fit-clears",
+            2048 * MIB,
+            &[(unit, 512 * MIB, "0"), (stray, 2048 * MIB, "max")],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(512 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut fitting = Fitting::default();
+        let mut marked = Vec::new();
+        for stray_mib in [2048, 256, 2048] {
+            fs::write(
+                slice.join(stray).join("memory.current"),
+                (stray_mib * MIB).to_string(),
+            )
+            .unwrap();
+            let mut ranked = [ranked_in(&slice, unit, 0, 512 * MIB, viewed)];
+            fit_floors(
+                &mut ranked,
+                &["kitty-".to_owned()],
+                &hosts::Hosts::default(),
+                &mut fitting,
+                std::time::Instant::now(),
+            );
+            marked.push(!fitting.overrun.is_empty());
+        }
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            marked,
+            [true, false, true],
+            "others that fit with room to spare kept the overrun mark, so their next overrun \
+             went unsaid"
+        );
+    }
+
+    #[test]
+    fn a_slice_left_out_of_a_look_forgets_it_overran() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with("fit-forget", 2048 * MIB, &[(unit, 512 * MIB, "0")]);
+        let mut fitting = Fitting::default();
+        fitting.overrun.insert("/elsewhere/agents.slice".to_owned());
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(512 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut ranked = [ranked_in(&slice, unit, 0, 512 * MIB, viewed)];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut fitting,
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert!(
+            fitting.overrun.is_empty(),
+            "a slice no look fits still counts as overrun, so its next overrun goes unsaid: {:?}",
+            fitting.overrun
+        );
+    }
+
+    /// The floors `fit_floors` gives the units in `slice`, each as ranked by `units`, at each of
+    /// `looks`, after `before` changes the slice for that look, in MiB.
+    fn floors_over(
+        slice: &Path,
+        units: &[(&str, u64, hosts::Signs)],
+        looks: &[u64],
+        before: impl Fn(u64),
+    ) -> Vec<Vec<u64>> {
+        let mut fitting = Fitting::default();
+        let start = std::time::Instant::now();
+        looks
+            .iter()
+            .map(|&secs| {
+                before(secs);
+                let mut ranked: Vec<Ranked> = units
+                    .iter()
+                    .map(|&(unit, floor, signs)| ranked_in(slice, unit, 0, floor, signs))
+                    .collect();
+                fit_floors(
+                    &mut ranked,
+                    &["kitty-".to_owned()],
+                    &hosts::Hosts::default(),
+                    &mut fitting,
+                    start + Duration::from_secs(secs),
+                );
+                ranked.iter().map(|unit| unit.rank.floor >> 20).collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_window_given_back_its_floor_gives_the_units_its_room_at_once() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-lowered",
+            3072 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "2147483648"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let floors = floors_over(&slice, &[(unit, 2560 * MIB, viewed)], &[0, 30], |secs| {
+            if secs == 30 {
+                fs::write(
+                    slice.join("kitty-1-1.scope/memory.low"),
+                    (512 * MIB).to_string(),
+                )
+                .unwrap();
+            }
+        });
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors,
+            [[1024], [2560]],
+            "a window whose floor the sorter lowered still claimed its old peak"
+        );
+    }
+
+    #[test]
+    fn what_a_window_claims_past_a_windows_floor_is_a_strays_claim_and_not_held() {
+        const MIB: u64 = 1 << 20;
+        let (viewed_unit, shown_unit) = ("pi-conversation-b@1.service", "pi-host-a.service");
+        let slice = slice_with(
+            "fit-past",
+            6144 * MIB,
+            &[
+                ("kitty-9-9.scope", 3072 * MIB, "max"),
+                (viewed_unit, 2048 * MIB, "0"),
+                (shown_unit, 2048 * MIB, "0"),
+            ],
+        );
+        let shown = hosts::Signs {
+            shown: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let viewed = hosts::Signs { viewed: 1, ..shown };
+        let units = [
+            (viewed_unit, 2048 * MIB, viewed),
+            (shown_unit, 2048 * MIB, shown),
+        ];
+        let floors = floors_over(&slice, &units, &[0, 30], |secs| {
+            if secs == 30 {
+                fs::write(
+                    slice.join("kitty-9-9.scope/memory.current"),
+                    (2048 * MIB).to_string(),
+                )
+                .unwrap();
+            }
+        });
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors[0],
+            [2048, 1024],
+            "the 1 GiB the window claims past a window's floor wasn't fitted after the unit Joel \
+             is at and before the rest"
+        );
+        assert_eq!(
+            floors[1],
+            [2048, 2048],
+            "what the window claimed past a window's floor was held for a minute, as a \
+             window's own is, though a stray's never is"
+        );
+    }
+
+    #[test]
+    fn the_windows_the_sorter_holds_are_held_first_and_scopes_named_as_windows_after() {
+        const MIB: u64 = 1 << 20;
+        let slice = slice_with(
+            "fit-held-first",
+            8192 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "max"),
+                ("kitty-1-2.scope", 2048 * MIB, "max"),
+                ("kitty-1-3.scope", 2048 * MIB, "max"),
+                ("kitty-1-4.scope", 2048 * MIB, "max"),
+            ],
+        );
+        let held: HashSet<PathBuf> = [slice.join("kitty-1-4.scope")].into();
+        let (_, strays) = claims(
+            &slice,
+            8192 * MIB,
+            &["kitty-".to_owned()],
+            &[],
+            &held,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        let past: Vec<&str> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            past,
+            ["kitty-1-3.scope"],
+            "a window the sorter holds was left past the cap, or the rest weren't taken by name"
+        );
+    }
+
+    #[test]
+    fn scopes_named_as_windows_claim_no_more_than_the_windows_the_sorter_holds() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-windows",
+            8192 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "max"),
+                ("kitty-1-2.scope", 2048 * MIB, "max"),
+                ("kitty-1-3.scope", 2048 * MIB, "max"),
+                ("kitty-1-4.scope", 2048 * MIB, "max"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let floors = floors_over(&slice, &[(unit, 2048 * MIB, viewed)], &[0], |_| {});
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors,
+            [[2048]],
+            "four scopes named as windows took the unit's floor, though the sorter holds at \
+             most {} windows",
+            focus::MOST
+        );
+    }
+
+    /// A slice under the temporary folder, named for `name`, with the floor `low` and each of
+    /// `children` as its name, what it holds and its memory.low.
+    fn slice_with(name: &str, low: u64, children: &[(&str, u64, &str)]) -> PathBuf {
+        let slice = std::env::temp_dir()
+            .join(format!("{name}-{}", std::process::id()))
+            .join("agents.slice");
+        let _ = fs::remove_dir_all(&slice);
+        for (child, current, floor) in children {
+            let dir = slice.join(child);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("memory.current"), current.to_string()).unwrap();
+            fs::write(dir.join("memory.low"), floor).unwrap();
+        }
+        fs::write(slice.join("memory.low"), low.to_string()).unwrap();
+        slice
+    }
+
+    /// `unit` in `slice` as ranked with its unit file's floor `own`, the floor `floor` before
+    /// it's fitted, and `signs`, its writeback as that floor gives it.
+    fn ranked_in(slice: &Path, unit: &str, own: u64, floor: u64, signs: hosts::Signs) -> Ranked {
+        Ranked {
+            path: slice.join(unit),
+            rank: hosts::Rank {
+                weight: 100,
+                floor,
+                hard: 0,
+                writeback: hosts::writeback(true, &signs, floor),
+                preference: "none".to_owned(),
+            },
+            asked: floor,
+            signs,
+            own,
+            own_hard: 0,
+            writeback: true,
+        }
+    }
+
+    #[test]
+    fn a_unit_joel_is_at_trimmed_under_what_it_holds_writes_back_again() {
+        const MIB: u64 = 1 << 20;
+        let slice = slice_with(
+            "fit-writeback",
+            2048 * MIB,
+            &[
+                ("kitty-1-1.scope", 1024 * MIB, "2147483648"),
+                ("pi-host-a.service", 512 * MIB, "0"),
+                ("pi-conversation-b@1.service", 2048 * MIB, "0"),
+            ],
+        );
+        let shown = hosts::Signs {
+            shown: 1,
+            current: Some(512 * MIB),
+            ..hosts::Signs::default()
+        };
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..shown
+        };
+        let mut ranked = [
+            ranked_in(&slice, "pi-host-a.service", 0, 512 * MIB, shown),
+            ranked_in(&slice, "pi-conversation-b@1.service", 0, 2048 * MIB, viewed),
+        ];
+        assert!(
+            !ranked[1].rank.writeback,
+            "the unit Joel is at holds no more than the floor it asks, so starts with writeback off"
+        );
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut Fitting::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            ranked[1].rank.floor,
+            1024 * MIB,
+            "it's trimmed to the room the window leaves"
+        );
+        assert!(
+            ranked[1].rank.writeback,
+            "holding past the floor it's fitted to, it writes back again"
+        );
+    }
+
+    #[test]
+    fn a_floor_set_last_look_within_a_step_is_kept_less_the_units_own() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-last",
+            4096 * MIB,
+            &[
+                ("kitty-1-1.scope", 1024 * MIB, "2147483648"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let own = 256 * MIB;
+        // The 3 GiB the window leaves, less what the unit holds of its own floor, fits 2816 MiB
+        // of the 4 GiB it would add; a step less, 2752.
+        let mut hosts = hosts::Hosts::default();
+        let last = own + 2752 * MIB;
+        let mut set = ranked_in(&slice, unit, own, last, viewed).rank;
+        set.floor = last;
+        hosts.done(unit, set, 0);
+        let mut ranked = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts,
+            &mut Fitting::default(),
+            std::time::Instant::now(),
+        );
+        let mut fresh = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
+        fit_floors(
+            &mut fresh,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut Fitting::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            fresh[0].rank.floor,
+            own + 2816 * MIB,
+            "with nothing set before, the unit is given all that fits"
+        );
+        assert_eq!(
+            ranked[0].rank.floor, last,
+            "a floor set within a step of what fits is kept, its own floor counted once"
+        );
+    }
+
+    #[test]
+    fn a_scope_named_like_a_window_claims_no_more_than_a_windows_floor() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        // A scope any agent could start, named as a window, holding 3 GiB under a floor of max.
+        let slice = slice_with(
+            "fit-window-max",
+            4096 * MIB,
+            &[
+                ("kitty-9-9.scope", 3072 * MIB, "max"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut ranked = [ranked_in(&slice, unit, 0, focus::FLOOR, viewed)];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut Fitting::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            ranked[0].rank.floor,
+            focus::FLOOR,
+            "the unit Joel is at keeps its floor: past a window's own, the scope claims as a \
+             stray does, after it"
+        );
+    }
+
+    #[test]
+    fn a_window_paging_out_gives_the_units_its_room_only_after_a_minute() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-peak",
+            3072 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "2147483648"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut fitting = Fitting::default();
+        let start = std::time::Instant::now();
+        let mut floors = Vec::new();
+        for (secs, window) in [(0, 2048), (30, 512), (61, 512)] {
+            fs::write(
+                slice.join("kitty-1-1.scope/memory.current"),
+                (window * MIB).to_string(),
+            )
+            .unwrap();
+            let mut ranked = [ranked_in(&slice, unit, 0, 2048 * MIB, viewed)];
+            let now = start + Duration::from_secs(secs);
+            fit_floors(
+                &mut ranked,
+                &["kitty-".to_owned()],
+                &hosts::Hosts::default(),
+                &mut fitting,
+                now,
+            );
+            floors.push(ranked[0].rank.floor / MIB);
+        }
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors,
+            [1024, 1024, 2048],
+            "the window's dip inside the minute keeps the unit's floor where it was, and once \
+             the minute is out the unit grows into the room"
         );
     }
 

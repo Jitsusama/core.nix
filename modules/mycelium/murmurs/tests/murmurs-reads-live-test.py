@@ -5,12 +5,13 @@ stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding three
 murmurs under test names, said minutes ago, through the node feed exactly as
 home.nix declares it for a machine in a realm (NODE_KINDS). It must say it's
 live with every murmur drawn and counted, take a murmur said, settled or gone
-within its pace, say what it couldn't read, say broken when the node stops
-while keeping what it drew and live once it's back, say stale when the server
-goes, draw a murmur's words as words and never as markup, step its cursor by
-the keys and by a tap on the keys its head shows, and pass the web-design
-skill's page checks at a phone's width and a desk's in both looks. Anything
-the page logs fails it. The server, the browser and the tab are
+within its pace, say a quiet node in a line with no empty list and no bare
+sky, never call a node it never heard quiet, say what it couldn't read, say
+broken when the node stops while keeping what it drew and live once it's back,
+say stale when the server goes, draw a murmur's words as words and never as
+markup, step its cursor by the keys and by a tap on the keys its head shows,
+and pass the web-design skill's page checks at a phone's width and a desk's in
+both looks. Anything the page logs fails it. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's, which opens once more a tab whose
 renderer died before its first reading, as a busy builder's sometimes does.
 """
@@ -46,8 +47,9 @@ TWICE = 2
 REOPENED = "crashed and was opened once more"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
-# What a first visit to the page may cost, drawn from the three murmurs.
-BUDGET = Budget(files=20, kilobytes=422, elements=145)
+# What a first visit to the page may cost, drawn from the three murmurs. The quiet
+# day's line is two of the elements and one of the kilobytes.
+BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
 
@@ -389,6 +391,125 @@ def crash(page: Page) -> None:
     # The navigation's own error says nothing the next reading's won't.
     with contextlib.suppress(Error):
         page.goto("chrome://crash")
+
+
+@pytest.fixture
+def quiet_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "quiet.sock", "node", {"murmur": []}).start()
+    yield stand_in
+    stand_in.leave()
+
+
+def heard_nothing(page: Page) -> None:
+    """Read the page live with nothing murmured, its first reading."""
+    the_page_stands(page, "live")
+    the_page_counts(page, "Nothing murmured yet.", "the quiet page miscounted")
+
+
+def said_quiet(page: Page, why: str) -> None:
+    """Expect the page to say a quiet day: its line, the crest, and no list or flock."""
+    expect(page.locator("#quiet"), why).to_be_visible(timeout=PACE_MS)
+    expect(page.locator("#quiet"), why).to_contain_text("Nothing murmured in the last day.")
+    # A listbox must hold options, so a list with none is no listbox at all.
+    expect(page.locator('[role="listbox"]'), "an empty listbox was drawn").to_have_count(0)
+    expect(page.locator("#murmurs"), "an empty list was drawn").to_be_hidden()
+    expect(page.locator("#sky svg:not(.crest)"), "a bare sky was drawn").to_have_count(0)
+    expect(page.locator("#sky .crest"), "the crest didn't stand in").to_be_visible()
+    expect(page.locator("#sky-says"), "the legend told of no flock").to_be_hidden()
+    expect(page.locator("figure.dusk"), "the crest was read out").to_have_attribute(
+        "aria-hidden", "true"
+    )
+
+
+def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
+    browser: Browser, tmp_path: Path, quiet_node: StandIn
+) -> None:
+    feed = {"socket": str(quiet_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"web": os.environ["MURMURS_SITE"]}, {"node": feed}) as served:
+        root, _ = served
+        opened = Opened(browser, f"{root}web/", SIZES[0], "light")
+        try:
+            opened.first(heard_nothing)
+            page = opened.page
+            said_quiet(page, "the quiet day wasn't said")
+            opened.passes_the_skills_checks()
+            # A murmur it can't read is still a murmur, so the day isn't called quiet.
+            unreadable = "murmur:GULLSS:1"
+            quiet_node.tell("murmur", changed=[{"key": unreadable, "writer": "GULLSS"}])
+            expect(page.locator("#asof"), "the unread murmur wasn't said").to_contain_text(
+                "Couldn't read: murmur:GULLSS:1", timeout=PACE_MS
+            )
+            expect(page.locator("#quiet"), "an unread murmur was called quiet").to_be_hidden()
+            quiet_node.tell("murmur", gone=[unreadable])
+            said_quiet(page, "the unread murmur going left no quiet line")
+            at = int(time.time())
+            quiet_node.tell("murmur", changed=[murmur("HERONS", at, "Fog.")])
+            the_page_counts(page, "One murmured, all still in the air.", "the murmur went unheard")
+            listed = page.locator("#murmurs")
+            expect(listed, "the first murmur's list").to_have_attribute("role", "listbox")
+            expect(listed, "the list went unnamed").to_have_accessible_name("The murmurs")
+            expect(page.locator("#quiet"), "the quiet line outlived the quiet").to_be_hidden()
+            expect(page.locator("#sky svg:not(.crest)"), "the flock didn't fly").to_have_count(1)
+            expect(page.locator("#sky-says"), "the flock went unexplained").to_be_visible()
+            expect(page.locator("figure.dusk"), "the flock was hidden").not_to_have_attribute(
+                "aria-hidden", "true"
+            )
+            # Showing only what's in the air, then settling the last of it, shows every
+            # murmur again rather than an empty list the quiet line would call a quiet day.
+            roosted = murmur("OSPREY", at - 60, "Charted.", settled="charted this morning")
+            quiet_node.tell("murmur", changed=[roosted])
+            the_page_counts(page, "Two murmured, one still in the air.", "the roost went unheard")
+            page.locator('#headline a[data-show="air"]').click()
+            options = listed.locator('[role="option"]')
+            title = page.locator("#murmurs-title")
+            expect(title, "the air filter didn't take").to_have_text("The murmurs still in the air")
+            key = f"murmur:HERONS:{at}"
+            expect(options, "the air filter showed a settled murmur").to_have_count(1)
+            expect(options, "the air filter showed the wrong murmur").to_have_attribute(
+                "data-key", key
+            )
+            quiet_node.tell("murmur", changed=[{"key": key, "settled": "cleared by noon"}])
+            roosts = "Two murmured, every one come to roost."
+            the_page_counts(page, roosts, "the settling went unheard")
+            expect(title, "the air filter outlived the air").to_have_text("The murmurs")
+            expect(options, "the settled murmurs hid").to_have_count(2)
+            expect(page.locator("#quiet"), "settled murmurs were called quiet").to_be_hidden()
+            quiet_node.tell("murmur", gone=[key, str(roosted["key"])])
+            said_quiet(page, "the last murmur going left no quiet line")
+        finally:
+            opened.close()
+
+
+def never_reached(page: Page) -> None:
+    """Read the page broken with nothing heard, as a node never reached leaves it."""
+    the_page_stands(page, "broken")
+    the_page_counts(page, "Nothing to hear yet.", "a node never reached wasn't said unheard")
+
+
+def test_a_node_never_reached_is_said_unheard_and_never_quiet(
+    browser: Browser, tmp_path: Path
+) -> None:
+    absent = tmp_path / "absent.sock"
+    feed = {"socket": str(absent), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"web": os.environ["MURMURS_SITE"]}, {"node": feed}) as served:
+        root, _ = served
+        first = Opened(browser, f"{root}web/", SIZES[0], "light")
+        second: Opened | None = None
+        try:
+            first.first(never_reached)
+            # A tab joining the watch once it's broken is told the server holds no
+            # records for it, which say nothing of the node's day.
+            second = Opened(browser, f"{root}web/", SIZES[0], "light")
+            second.first(never_reached)
+            second.page.wait_for_timeout(REDRAWN_MS)
+            for page in (first.page, second.page):
+                quiet = page.locator("#quiet")
+                expect(quiet, "a node never reached was called quiet").to_be_hidden()
+                the_page_counts(page, "Nothing to hear yet.", "the unheard page changed its word")
+        finally:
+            if second is not None:
+                second.close()
+            first.close()
 
 
 def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:

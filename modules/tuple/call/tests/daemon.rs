@@ -479,6 +479,8 @@ fn each_act_runs_tuples_command_and_answers_once_done() {
         (json!({"ask": "mute", "muted": true}), "call mute"),
         (json!({"ask": "mute", "muted": false}), "call unmute"),
         (json!({"ask": "share"}), "share"),
+        (json!({"ask": "camera", "on": true}), "webcam start"),
+        (json!({"ask": "camera", "on": false}), "webcam stop"),
         (json!({"ask": "leave"}), "call leave"),
     ] {
         let mut asked = asked;

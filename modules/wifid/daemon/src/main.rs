@@ -316,6 +316,9 @@ async fn serve(
         followed: HashMap::new(),
     };
     let (asks, taken) = mpsc::channel(1);
+    if let Err(error) = learn::let_go_of_before(Path::new(STATE)) {
+        eprintln!("<4>can't let go of the hours learned before video was weighed: {error}");
+    }
     // How well each access point carries, measured from where the machine
     // is, and the card moved to one carrying better (moves.rs), with what
     // each carried at each hour kept for a trusted network (learn.rs).
@@ -323,7 +326,7 @@ async fn serve(
         state.subscribe(),
         calling.subscribe(),
         asks.clone(),
-        Learned::kept_in(&Path::new(STATE).join("carried")),
+        Learned::kept_in(&Path::new(STATE).join(learn::FILE)),
     ));
     let watching = watch::Sender::new(0);
     let wifi = Wifi {

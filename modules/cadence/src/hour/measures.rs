@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use owner::first_owner;
-use promised::{Promise, promised};
+use promised::promised;
 
 use crate::tracking::{self, Tracking};
 
@@ -16,28 +16,35 @@ pub mod apps;
 mod balanced;
 mod broken;
 mod card;
+mod carried;
 mod cells;
-mod locked;
+pub mod locked;
 mod misses;
 mod owner;
 mod pains;
 mod promised;
+pub mod queues;
 mod reports;
 pub mod rounds;
+#[cfg(test)]
+mod slipped;
 pub mod spent;
 #[cfg(test)]
 mod tracked;
 pub mod unbilled;
 pub mod unresolved;
+pub mod wifi;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
 pub use card::{card_if_fresh, card_median, merge_to_on};
+pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
 pub use misses::{
-    BLIND, FINDINGS, HELD, UNREAD, UNRUN, UNSEEN, checked_beside, findings, held, held_for_good,
-    held_unseen, hosts_started, ledger, said,
+    BLIND, FINDINGS, HELD, SAID_NONE, UNREAD, UNRUN, UNSEEN, UNTESTED, checked_beside, findings,
+    forget_said_none, held, held_for_good, held_unseen, hosts_started, ledger, said, said_none,
+    untested,
 };
 pub use pains::{keeper, pains};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
@@ -58,6 +65,9 @@ pub enum Class {
     Ship,
     Cells,
     Clean,
+    /// The queues the work waits in, which never lead the drag: the worst
+    /// is asked apart, once a day (owing.rs).
+    Queues,
     /// Joel's pains, last: the hearer routes each to its owner itself.
     Pains,
 }
@@ -74,6 +84,7 @@ impl Class {
             Self::Ship => "ship",
             Self::Cells => "cell health",
             Self::Clean => "clean zones",
+            Self::Queues => "queues",
             Self::Pains => "his pains",
         }
     }
@@ -109,12 +120,13 @@ impl Measure {
 
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
-/// can't move, so they are filed to its owner apart and never lead.
+/// can't move, so they are filed to its owner apart and never lead; nor do
+/// the queues, whose worst is asked apart once a day.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
-        .filter(|m| !m.key.starts_with(rounds::FRUITLESS))
+        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)
@@ -143,33 +155,43 @@ type Slip = (i64, String, String);
 
 /// The dates promised in the orchestrator's `asks.jsonl` that passed in
 /// the day before `now` without their ask landing by then, of asks of
-/// the kind `which`. Every date an ask was given counts, from its
-/// `promised`, each with when it was given, so a date moved in place
-/// after it passed is still a slip; one moved before it passed isn't, nor
-/// one whose entry says it was `met` by then, as a step kept before the ask
-/// moves on to the next. A line without `promised` gives its `expected`
-/// alone.
+/// the kind `which`, and every older one its owner hasn't answered since
+/// by landing the ask, meeting the date or moving it: a slip closes only
+/// on its owner's word, never by going a day old. Every date an ask was
+/// given counts, from its `promised`, each with when it was given, so a
+/// date moved in place after it passed is still a slip that day; one moved
+/// before it passed isn't, nor one whose entry says it was `met` by then,
+/// as a step kept before the ask moves on to the next. A line without
+/// `promised` gives its `expected` alone. An older date is answered by a
+/// landing or a move said by `now`, or by any later date the ask was
+/// given, since a date moved by `expected` alone says no time it moved.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // The list writes an ask again to move its date, or to re-mark, land
     // or put it down: each date of an ask, by when and what was asked, is
     // read from its latest line, in the order the list first wrote it.
     let mut latest: BTreeMap<[String; 3], (usize, Option<Slip>)> = BTreeMap::new();
+    // Each ask's dates on its latest line. A date gone from them was moved
+    // by a line written without `promised` to say so, which answers it,
+    // while a latest line with no date it can read moves none.
+    let mut dated: BTreeMap<[String; 2], Vec<i64>> = BTreeMap::new();
     for (order, ask) in lines(text).enumerate() {
         let ours = tracking::of(&ask) == Some(which);
         let landed = seconds(&ask["landed"]);
-        for Promise {
-            expected,
-            moved,
-            met,
-        } in promised(&ask)
-        {
-            let late = ours
-                && expected <= now
-                && expected > now - DAY
-                && landed.is_none_or(|landed| landed > expected)
-                && met.is_none_or(|met| met > expected)
-                && moved.is_none_or(|moved| moved >= expected);
+        let given = promised(&ask);
+        let asked = [ask["at"].to_string(), ask["words"].to_string()];
+        dated.insert(asked, given.iter().map(|p| p.expected).collect());
+        let last = given.len();
+        for (i, promise) in given.iter().enumerate() {
+            let (expected, moved, met) = (promise.expected, promise.moved, promise.met);
+            let kept = landed.is_some_and(|landed| landed <= expected)
+                || met.is_some_and(|met| met <= expected)
+                || moved.is_some_and(|moved| moved < expected);
+            // A `met` stands only on a date moved from, so the move answers.
+            let answered = landed.is_some_and(|landed| landed <= now)
+                || moved.is_some_and(|moved| moved <= now)
+                || i + 1 < last;
+            let late = ours && expected <= now && !kept && (expected > now - DAY || !answered);
             let key = [
                 ask["at"].to_string(),
                 ask["words"].to_string(),
@@ -186,7 +208,17 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
             latest.insert(key, (first, slip));
         }
     }
-    let mut latest: Vec<(usize, Option<Slip>)> = latest.into_values().collect();
+    let mut latest: Vec<(usize, Option<Slip>)> = latest
+        .into_iter()
+        .map(|([at, words, _], (first, slip))| {
+            let held = dated.get(&[at, words]);
+            let slip = slip.filter(|&(expected, _, _)| {
+                expected > now - DAY
+                    || held.is_none_or(|held| held.is_empty() || held.contains(&expected))
+            });
+            (first, slip)
+        })
+        .collect();
     latest.sort_by_key(|(order, _)| *order);
     let mut slipped: Vec<Slip> = latest.into_iter().filter_map(|(_, slip)| slip).collect();
     slipped.sort_by_key(|(expected, _, _)| *expected);
@@ -194,9 +226,10 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
         key: which.key("slips"),
         class: Class::Slip,
         says: if which == Tracking::His {
-            "dates promised that passed in the last day without landing"
+            "dates promised that passed in the last day without landing, or since, unanswered"
         } else {
-            "dates the list set itself (derived, mends) that passed in the last day"
+            "dates the list set itself (derived, mends) that passed in the last day, or since, \
+             unanswered"
         }
         .to_owned(),
         now: count(slipped.len()),
@@ -571,33 +604,6 @@ mod tests {
             None,
             "nothing past its target is no drag"
         );
-    }
-
-    #[test]
-    fn a_date_passed_without_landing_is_a_slip_and_each_move_counts() {
-        let ask = |expected: i64, landed: Option<i64>| {
-            serde_json::json!({
-                "words": "fix it", "owner": "Y2YBTS", "expected": at(expected),
-                "landed": landed.map(at),
-            })
-            .to_string()
-        };
-        let text = [
-            ask(NOW - 7200, None),            // moved: the old line
-            ask(NOW - 600, None),             // moved again, also passed
-            ask(NOW + 3600, None),            // the date it has now
-            ask(NOW - 900, Some(NOW - 1000)), // landed in time
-            ask(NOW - 900, Some(NOW - 100)),  // landed late
-            ask(NOW - 2 * DAY, None),         // passed before the day
-        ]
-        .join("\n");
-        let m = slips(&text, NOW, Tracking::His);
-        assert!(
-            (m.now - 3.0).abs() < 0.5,
-            "two moves and a late landing, got {}",
-            m.now
-        );
-        assert_eq!(m.owner, "Y2YBTS", "the oldest slip's owner");
     }
 
     #[test]

@@ -22,9 +22,12 @@
   # ready from those files (modules/quickshell/tests/spend-served.qml), its
   # budgets' drawers among them; and what its socket tells, from a stand-in
   # serving those records (modules/quickshell/tests/spend-told.qml), a change
-  # remaking only the rows it changed.
+  # remaking only the rows it changed. First, how a row reads while Spend's rows
+  # aren't wanted (launcher/SpendNow.js), held in Qt's own engine by
+  # modules/quickshell/tests/spend-now.qml.
   the-desktop-reads-the-spend-watch =
     let
+      qt = pkgs.qt6.qtdeclarative;
       watch = pkgs.callPackage ../../spend-watch/package.nix { };
       niri = singleton "Niri.qml" ''
         property var spawned: []
@@ -71,6 +74,7 @@
       cp ${../pieces/StatusFile.qml} StatusFile.qml
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "SpendWatch.qml"
         "Words.qml"
         "launcher/Catalogue.js"
@@ -84,6 +88,7 @@
       cp ${../tests/spend.qml} shell.qml
       cp ${../tests/spend-served.qml} served.qml
       cp ${../tests/spend-told.qml} told.qml
+      cp ${../tests/spend-now.qml} spend-now.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       cp ${../../../tests/lib/Until.qml} Until.qml
       cp ${niri} Niri.qml
@@ -108,6 +113,7 @@
           exit "$status"
         }
       }
+      QT_FORCE_STDERR_LOGGING=1 QML_IMPORT_PATH=${qt}/lib/qt-6/qml runs 60 ${qt}/bin/qml spend-now.qml
       runs 180 ${qs} -p shell.qml
       SPEND_WATCH=${lib.getExe watch} SERVE_CONFIG=$PWD/serve.json runs 180 ${qs} -p served.qml
       # Serve ended with the shell, its socket left behind for the stand-in.

@@ -1,5 +1,5 @@
 // Wi-Fi, a collection: the networks in the air, the one connected first,
-// then those saved, then the rest by signal, each glyph saying how strong
+// then those saved, then the rest, each by name, each glyph saying how strong
 // it is and whether it's locked, the footer how it's connected. Return
 // disconnects the one connected or connects another, and the launcher stays,
 // the foot saying how far it has got, until the network takes the card or
@@ -32,6 +32,7 @@ import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "ReadyRows.js" as Ready
 import "ActForms.js" as Forms
 import "WirelessPlate.js" as Plate
@@ -313,13 +314,13 @@ Provider {
 
     // Asks an act of wifid, on its rows' own connection, and puts each row
     // it held as it will be back if wifid won't, or isn't there, saying why
-    // in wifid's words; one holding no row journals why.
+    // in wifid's words; one holding no row journals its code, as ReadyRows'
+    // refusals say it (Presented.codeShown).
     function actOn(ask, keys) {
         provider.askWifid(ask, answer => {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "" && keys.length === 0)
-                console.info(`launcher: wifi ${ask.act} refused: ${
-                    answer?.error?.refused ?? "no answer"}`);
+                console.info(`launcher: wifi ${ask.act} refused: ${Presented.codeShown(answer)}`);
             for (const key of keys)
                 provider.refused(key, why);
         });

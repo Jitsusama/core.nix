@@ -1,9 +1,9 @@
 """Opening every place again keeps no more of the shell's JavaScript heap live, on niri.
 
-modules/quickshell/checks/shell.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts. A place's first opening builds what it keeps, so the first round
-may grow the heap; every round after it must land where the one before it did. Joel's shell grew
-from 108 MB a minute after a start to 150 and more with use (2026-11-11), while the lab fed his
+modules/quickshell/checks/shell.nix runs this through pytest inside tests/lib/nested-niri.sh, with
+the shell launcher_on_niri.py starts. A place's first opening builds what it keeps, so the first
+round may grow the heap; every round after it must land where the one before it did. Joel's shell
+grew from 108 MB a minute after a start to 150 and more with use (2026-11-11), while the lab fed his
 records kept 38 to 42 MB live after every round, so a round that keeps more each time is a leak,
 and this is where it's caught.
 
@@ -13,7 +13,12 @@ collectClosed), from its allocatorStats, which only the detailed log keeps at de
 Each closing's line also says what jemalloc holds, found by name in Quickshell's process, so a
 Quickshell whose jemalloc stopped answering to that name is caught here, where it really runs.
 The shell's Qt makes the heap anonymous memory, so each of its pages is held once
-(qtdeclarative-heap-held-once.patch), and the shell's own maps must show no memfd of it.
+(qtdeclarative-heap-held-once.patch), and the shell's own maps must show no memfd of it. And
+some closing must lend resident free pages back, which catches a launcher that stopped lending and
+a heap the kernel won't take lent (memory not anonymous refuses it, and a refusal isn't counted).
+The kernel must then say it holds some of the shell lent, a figure for the whole process, so it
+holds that the line reads it, not that the heap alone lent it. That lending keeps the pages until
+the kernel needs them, rather than giving them back, is the heap test's lendsBack to hold.
 """
 
 from __future__ import annotations
@@ -97,6 +102,17 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         said = shell.log.read_text(errors="replace")
         jemalloc = re.search(r"collected after closing.*; jemalloc \d+ MB in use", said)
         assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
+        lendings = re.findall(
+            r" (\d+) MB of free pages lent in \d+ ms,"
+            r" the kernel holding (\d+ MB|an unknown amount) of the shell lent",
+            said,
+        )
+        lent = [int(each) for each, _ in lendings]
+        held = [int(each.split()[0]) if each[0].isdigit() else -1 for _, each in lendings]
+        assert any(lent), f"no closing lent its heap's free pages back: {lent}\n{shell.tail()}"
+        assert any(each > 0 for each in held), (
+            f"the kernel held nothing of the shell lent after any closing: {held}\n{shell.tail()}"
+        )
         assert shell.process, "the shell's process was never started"
         maps = Path(f"/proc/{shell.process.pid}/maps").read_text().splitlines()
         memfds = [line for line in maps if "/memfd:JSGCHeap" in line]

@@ -6,6 +6,7 @@ use serde_json::json;
 use std::fs;
 use std::io::Write;
 
+mod answered;
 mod standing;
 mod troubles;
 
@@ -35,6 +36,8 @@ impl Place {
             sessions: self.root.join("sessions"),
             state: self.root.join("state"),
             ledgers: vec![self.root.join("asks.jsonl"), self.root.join("misses.jsonl")],
+            misses: self.root.join("misses.jsonl"),
+            misses_from: 0,
             void: self.root.join("void"),
             messages: self.root.join("messages"),
             switches: self.root.join("switches.jsonl"),

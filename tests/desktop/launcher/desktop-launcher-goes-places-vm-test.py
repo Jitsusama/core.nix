@@ -3,8 +3,8 @@
 Here the launcher goes places: its home, catalogue and drawers, the volume, a detail inside a
 thing, programs' acts, and what an opening makes and traces.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -948,6 +948,11 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
 
 
+# What Machine's drawer names first, as the plain run and the gallery's shots both wait on it,
+# so a change to the drawer fails the run the net reads rather than only a gallery.
+MACHINE_LEADS = ["Lag", "Processor"]
+
+
 def holds(shown: Json, name: str, first: list[str], *, wraps: bool = False) -> bool:
     """Say whether the place named is selected, its drawer out naming what it holds.
 
@@ -1010,7 +1015,7 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["rows"] == home)
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power"], wraps=True))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", MACHINE_LEADS, wraps=True))
     desktop.shoot("launcher-home-machine-drawn")
     desktop.close_launcher()
 
@@ -1061,7 +1066,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # it. A place names the places it holds by their names, never the words its typed
     # commands start with: Network once read "ip, is, split, mac".
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", MACHINE_LEADS, wraps=True))
     desktop.down_to("Network")
     desktop.launcher_until(lambda shown: holds(shown, "Network", ["Wi-Fi"]))
     home_holds_still_as_the_queue_changes(desktop)
@@ -1243,10 +1248,10 @@ def walk_passwords(desktop: Desktop) -> None:
     """Walk Passwords, stepped into: 1Password read through the shell's daemon, and a copy.
 
     The passwords daemon the shell runs runs 1Password's own manager, which asks a stand-in for
-    op (desktop/stand-ins/op-stand-in.sh), and copies through the wl-copy the VM alone names as its
-    copier to the session's clipboard, since a real machine copies nothing yet.
-    One path through that wiring is all this walks: what the place lists, says and copies, case
-    by case, is the-passwords-show-every-figure-but-the-secret's and
+    op (tests/desktop/stand-ins/op-stand-in.sh), and copies through the wl-copy the VM alone names
+    as its copier to the session's clipboard, since a real machine copies nothing yet. One path
+    through that wiring is all this walks: what the place lists, says and copies, case by case, is
+    the-passwords-show-every-figure-but-the-secret's and
     the-passwords-place-copies-through-its-daemon-on-niri's.
     """
     favourite = "Lighthouse Console"

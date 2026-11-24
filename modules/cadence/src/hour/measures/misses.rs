@@ -19,11 +19,13 @@ use crate::{axes, command, write_whole};
 mod held;
 mod running;
 mod symbiosis;
+mod tested;
 
 pub use held::{BLIND, HELD, held};
 use running::LASTING;
 pub use running::{UNRUN, UNSEEN, hosts_started};
 pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
+pub use tested::{UNTESTED, untested};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -235,15 +237,7 @@ fn judged<T>(
     switches: &str,
     then: impl FnOnce(&Checkouts, &Judged<'_>) -> T,
 ) -> io::Result<T> {
-    let mut repos = Checkouts::from([
-        ("core".to_owned(), folder.join("core.git")),
-        ("harness".to_owned(), axes::landings::harness_mirror()),
-    ]);
-    for named in checkouts {
-        if let Some((name, path)) = named.split_once('=') {
-            repos.insert(name.to_lowercase(), path.into());
-        }
-    }
+    let repos = checkouts_of(folder, checkouts);
     let kept_at = folder.join("merged.json");
     let known = std::fs::read_to_string(&kept_at)
         .ok()
@@ -263,6 +257,22 @@ fn judged<T>(
         here: here.trim(),
     };
     Ok(then(&repos, &judged))
+}
+
+/// The checkouts whose mains cadence reads: core's and the harness's, as
+/// `folder` and pi-packages keep them, and each of `checkouts`, as
+/// `NAME=PATH`.
+fn checkouts_of(folder: &Path, checkouts: &[String]) -> Checkouts {
+    let mut repos = Checkouts::from([
+        ("core".to_owned(), folder.join("core.git")),
+        ("harness".to_owned(), axes::landings::harness_mirror()),
+    ]);
+    for named in checkouts {
+        if let Some((name, path)) = named.split_once('=') {
+            repos.insert(name.to_lowercase(), path.into());
+        }
+    }
+    repos
 }
 
 /// The changes the misses' checks name now that have merged: only these
@@ -315,6 +325,69 @@ fn named_as(miss: &Value) -> &str {
         .as_str()
         .or_else(|| miss["words"].as_str())
         .unwrap_or_default()
+}
+
+/// The key of the misses their owners said in the last day were none.
+pub const SAID_NONE: &str = "misses-said-none";
+
+/// Whether its owner said `miss` was none, with why, through
+/// `pain-points test --none`: a pain heard as a miss that wasn't one, such
+/// as his reassurance, can't name a test, so the owner's word closes it
+/// instead, as a finding closes on its owner's word of why it's expected.
+/// A reason with no time it was said stays open, since the card couldn't
+/// show it for its day.
+fn no_miss(miss: &Value) -> bool {
+    let said = miss["none"]
+        .as_str()
+        .is_some_and(|why| !why.trim().is_empty());
+    said && miss["none_at_ms"].is_i64()
+}
+
+/// Takes from `open`, last hour's open misses as the card listed them,
+/// each miss in `text` its owner said was none, so the hour closes it
+/// without telling Joel it's fixed: it wasn't, and nothing catches it.
+/// Each is known by its words and its owner, so another owner's miss in
+/// the same words stays.
+pub fn forget_said_none(text: &str, open: &mut Vec<String>) {
+    let none: Vec<String> = lines(text)
+        .filter(no_miss)
+        .map(|miss| {
+            let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
+            format!("{} · {owner}", named_as(&miss))
+        })
+        .collect();
+    let said_none = |line: &String| none.iter().any(|said| line.starts_with(said.as_str()));
+    open.retain(|line| !said_none(line));
+}
+
+/// The misses in `text` their owners said in the day before `now` were
+/// none, each with why, shown unjudged so the word that closed each is
+/// read before it goes; none when no owner said so in that day. It's
+/// filed with the cells' health, as the untested misses are, since a
+/// measure of the misses' own class left unjudged would leave every miss
+/// unjudged on the card.
+#[must_use]
+pub fn said_none(text: &str, now: i64) -> Option<Measure> {
+    let since_ms = (now - DAY) * 1000;
+    let said: Vec<(String, String)> = lines(text)
+        .filter(no_miss)
+        .filter(|miss| miss["none_at_ms"].as_i64().is_some_and(|at| at > since_ms))
+        .map(|miss| {
+            let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
+            let why = miss["none"].as_str().unwrap_or_default().trim();
+            (format!("{} · {owner}: {why}", named_as(&miss)), owner)
+        })
+        .collect();
+    let owner = said.first()?.1.clone();
+    Some(Measure {
+        key: SAID_NONE.to_owned(),
+        class: Class::Cells,
+        says: "misses their owners said in the last day were none, each with why".to_owned(),
+        now: count(said.len()),
+        target: None,
+        owner,
+        behind: said.into_iter().map(|(line, _)| line).collect(),
+    })
 }
 
 /// Reads the misses ledger at `path`, with which of the misses open last
@@ -421,7 +494,13 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             .map(|check| named(check, repos))
             .unwrap_or_default()
     };
+    // A pain the hearer wrote that the keeper carried into the asks since
+    // is tracked there from then, not twice; one it closed was closed by a
+    // commit it found in the core this machine switched to, so its fix
+    // runs here, whatever change its check names.
     let open: Vec<(String, String, String)> = lines(text)
+        .filter(|miss| miss["carried"].as_bool() != Some(true) && !no_miss(miss))
+        .filter(|miss| !(miss["heard_by"] == PAIN_POINTS && miss["closed_by"].is_string()))
         .filter_map(|miss| {
             let changes = changes(&miss);
             let elsewhere = miss["machine"].as_str().filter(|machine| {
@@ -508,6 +587,9 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             .collect(),
     }
 }
+
+/// What a line the pain listener wrote says heard it.
+const PAIN_POINTS: &str = "pain-points";
 
 /// What the misses measure says after its words when the ledger wasn't
 /// read whole, and so judges nothing.
@@ -596,6 +678,88 @@ mod tests {
         serde_json::json!({"at": AT, "words": "w", "what": "the cat waits", "owner": "XY9H5C",
             "check": check})
         .to_string()
+    }
+
+    #[test]
+    fn a_pain_the_keeper_carried_or_the_listener_closed_is_no_open_miss() {
+        let text = [
+            serde_json::json!({"at": AT, "words": "still open", "owner": "ABC123",
+                "pain": "s/e1", "heard_by": "pain-points"}),
+            serde_json::json!({"at": AT, "words": "carried on", "owner": "ABC123",
+                "pain": "s/e2", "heard_by": "pain-points", "carried": true}),
+            serde_json::json!({"at": AT, "words": "closed here", "owner": "ABC123",
+                "pain": "s/e3", "heard_by": "pain-points", "check": "landed it",
+                "closed_by": "255494bb414c"}),
+            serde_json::json!({"at": AT, "words": "said closed", "owner": "KNURBN",
+                "closed_by": "255494bb414c"}),
+            serde_json::json!({"at": AT, "words": "said none", "owner": "IKQ63G",
+                "pain": "s/e4", "heard_by": "pain-points", "none": "he was reassuring",
+                "none_at_ms": 1}),
+            serde_json::json!({"at": AT, "words": "said none, no time", "owner": "IKQ63G",
+                "none": "he was reassuring"}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let open = misses(&text, &repos(), &BTreeSet::new(), &BTreeSet::new());
+        let named: Vec<&str> = open
+            .behind
+            .iter()
+            .filter_map(|line| line.rsplit_once(" · "))
+            .map(|(what, _)| what)
+            .collect();
+        assert_eq!(
+            named,
+            ["still open", "said closed", "said none, no time"],
+            "a carried pain counted twice, or one closed by a commit running here stayed, \
+             or another writer's closed_by closed a miss, or one its owner said was none \
+             stayed, or one said none with no time it was said closed"
+        );
+    }
+
+    #[test]
+    fn a_miss_said_none_shows_why_for_a_day_and_is_never_told_fixed() {
+        let now = 1_795_600_000;
+        let text = [
+            serde_json::json!({"at": AT, "words": "it's fine", "owner": "IKQ63G (WCJQSG)",
+                "none": "he was reassuring", "none_at_ms": (now - 60) * 1000}),
+            serde_json::json!({"at": AT, "words": "long ago", "owner": "XY9H5C",
+                "none": "no pain", "none_at_ms": (now - DAY - 1) * 1000}),
+            serde_json::json!({"at": AT, "words": "still open", "owner": "ABC123"}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let shown = said_none(&text, now).expect("one said in the day");
+        assert_eq!(
+            (shown.behind, shown.target, shown.owner, shown.class),
+            (
+                vec!["it's fine · IKQ63G: he was reassuring".to_owned()],
+                None,
+                "IKQ63G".to_owned(),
+                Class::Cells
+            ),
+            "a miss said none in the day wasn't shown with why, unjudged, beside the cells \
+             rather than the misses it would leave unjudged, or an older one was"
+        );
+        assert!(
+            said_none(&text, now + DAY).is_none(),
+            "a day on, a miss said none still showed"
+        );
+        let mut open = vec![
+            "it's fine · IKQ63G".to_owned(),
+            "it's fine · ABC123".to_owned(),
+            "still open · ABC123".to_owned(),
+        ];
+        forget_said_none(&text, &mut open);
+        assert_eq!(
+            open,
+            ["it's fine · ABC123", "still open · ABC123"],
+            "a miss said none was kept open, so it would be told fixed, or another owner's \
+             in the same words was forgotten"
+        );
     }
 
     #[test]

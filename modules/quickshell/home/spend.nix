@@ -4,4 +4,5 @@
   "SpendWatch.qml"
   "SpendWatch.js"
   "launcher/SpendDrawer.js"
+  "launcher/SpendNow.js"
 ]

@@ -48,10 +48,11 @@
     nixosModules.gnome-keyring
     nixosModules.greetd
     nixosModules.kmscon
+    nixosModules.lag-watch
     nixosModules.litra
     nixosModules.memory-modules
     nixosModules.mpv
-    nixosModules.mx-brio
+    nixosModules.mx-brio-seat
     nixosModules.niri
     nixosModules.niri-off-cpu
     nixosModules.onepassword

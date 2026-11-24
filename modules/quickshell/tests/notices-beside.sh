@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Runs a command with the notices daemon (modules/notices) serving on its
 # session bus, as the account's unit does on the desktop, for a check that
-# runs the shell without systemd (tests/nested-niri.sh). The daemon is
+# runs the shell without systemd (tests/lib/nested-niri.sh). The daemon is
 # given in NOTICES_DAEMON as the unit's ExecStart, whose %t and %S, the
 # runtime and state folders systemd would put in, are the check's own, and
 # whose @<program> <name> start is read as systemd reads it: the program

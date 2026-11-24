@@ -13,9 +13,11 @@
 //! The export reads 15 s at a time. Call-transcripts' takes are cut to fit
 //! one (takes.rs), since a word at a window's edge can be lost; a longer
 //! sound is still heard, as windows of 15 s, the decoder's state carried
-//! from one to the next so a window's first word follows the last one's. Decoding is greedy, as TDT's is:
-//! at each frame the joint names a token and how many frames to move on,
-//! a blank writes nothing, and a frame writes at most `MOST_PER_FRAME`.
+//! from one to the next so a window's first word follows the last one's.
+//! Decoding is greedy, as TDT's is: at each frame the joint names a token
+//! and how many frames to move on, a blank writes nothing, and a frame
+//! writes at most `MOST_PER_FRAME`. Each token's frame says when its word
+//! was said, so a take can be split where its voice changes.
 //!
 //! The model knows 25 languages, and now and then heard English as
 //! another ("Look at all this stuff man" once came out as "Legal, ne?"),
@@ -25,8 +27,11 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+mod vocab;
+
 use crate::cache;
 use crate::openvino::{Core, Input, Priority, Request, Result};
+use vocab::Vocab;
 
 /// The rate it hears at.
 pub const RATE: usize = 16_000;
@@ -45,8 +50,39 @@ const DURATIONS: [usize; 5] = [0, 1, 2, 3, 4];
 /// The most tokens one frame writes before the next is read, so a frame
 /// that keeps naming a token and no move can't write forever.
 const MOST_PER_FRAME: usize = 10;
-/// The piece that starts a word.
-const SPACE: char = '\u{2581}';
+/// The samples an encoder frame stands for, 80 ms: the spectrogram's
+/// 10 ms hop, eight of which the encoder makes one.
+const FRAME: usize = 8 * RATE / 100;
+/// The encoder's frames for a window when it steps by FRAME: three
+/// halvings of the spectrogram's 1501 frames, each rounding up.
+const STEPPED: usize = 188;
+
+/// A word heard, the sample of the sound it starts at, by the frame its
+/// first piece was written on, and how loud it was there, in dB of full
+/// scale, so an echo can be told from its source by which is louder.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Word {
+    pub text: String,
+    pub at: usize,
+    pub level: f32,
+}
+
+/// How long a word's loudness is measured over from its start: a quarter
+/// second, as long as a short word, so a word's level is its own.
+const LOUDNESS: usize = RATE / 4;
+
+/// How loud `audio` is over `LOUDNESS` from sample `at`, in dB of full
+/// scale; silence, or nothing past the end, is near -120 dB rather than
+/// minus infinity, so levels stay comparable.
+fn level(audio: &[f32], at: usize) -> f32 {
+    let span = audio
+        .get(at..(at + LOUDNESS).min(audio.len()))
+        .unwrap_or_default();
+    let energy: f32 = span.iter().map(|s| s * s).sum();
+    #[expect(clippy::cast_precision_loss, reason = "a quarter second's samples")]
+    let power = energy / span.len().max(1) as f32;
+    10.0 * (power + 1e-12).log10()
+}
 
 /// Parakeet, loaded and compiled.
 pub struct Parakeet {
@@ -181,6 +217,26 @@ impl Parakeet {
     ///
     /// When a run of any of the models fails.
     pub fn transcribe(&mut self, audio: &[f32]) -> Result<(String, Timings)> {
+        let (tokens, timings) = self.decode(audio)?;
+        let tokens: Vec<usize> = tokens.iter().map(|&(token, _)| token).collect();
+        Ok((self.vocab.text(&tokens), timings))
+    }
+
+    /// The words said in 16 kHz audio of any length, each with where it
+    /// starts, so a take can be split where its voice changes; they spell
+    /// what `transcribe` hears, a space between each.
+    ///
+    /// # Errors
+    ///
+    /// When a run of any of the models fails.
+    pub fn transcribe_words(&mut self, audio: &[f32]) -> Result<(Vec<Word>, Timings)> {
+        let (tokens, timings) = self.decode(audio)?;
+        Ok((self.vocab.words(&tokens, |at| level(audio, at)), timings))
+    }
+
+    /// The tokens written over `audio`, each with the sample it was
+    /// written at, and how long it took.
+    fn decode(&mut self, audio: &[f32]) -> Result<(Vec<(usize, usize)>, Timings)> {
         let mut timings = Timings {
             mel: Duration::ZERO,
             encoder: Duration::ZERO,
@@ -199,7 +255,7 @@ impl Parakeet {
             },
         )?;
         timings.decoder += started.elapsed();
-        for window in audio.chunks(WINDOW) {
+        for (number, window) in audio.chunks(WINDOW).enumerate() {
             let started = Instant::now();
             let (mel, mel_frames) = self.spectrogram(window)?;
             let after_mel = Instant::now();
@@ -210,14 +266,18 @@ impl Parakeet {
                 frames: &frames,
                 predicted,
             };
-            tokens.extend(greedy(frames.len(), &mut steps)?);
+            tokens.extend(
+                greedy(frames.len(), &mut steps)?
+                    .into_iter()
+                    .map(|(token, frame)| (token, sample_of(number, frame))),
+            );
             predicted = steps.predicted;
             timings.mel += after_mel - started;
             timings.encoder += after_encoder - after_mel;
             timings.decoder += after_encoder.elapsed();
         }
         timings.tokens = tokens.len();
-        Ok((self.vocab.text(&tokens), timings))
+        Ok((tokens, timings))
     }
 
     /// A window's spectrogram, its frames that hold sound counted.
@@ -255,6 +315,9 @@ impl Parakeet {
         if width != ENCODED {
             return Err(format!("the encoder's output is {width} wide"));
         }
+        // It's checked here, on every window, rather than only where words
+        // are timed, so each check that runs the real model proves it.
+        steps_by_frame(all)?;
         // The output is laid out a dimension at a time, every frame's value
         // for each, so each frame is gathered across them.
         Ok((0..usize_of(count)?.min(all))
@@ -331,11 +394,12 @@ impl Model for Steps<'_> {
     }
 }
 
-/// The tokens written over `frames` frames, greedily: at each frame the
-/// likeliest token allowed, or blank, and the likeliest move on. A token
-/// that names no move stays on the frame for another, up to
-/// `MOST_PER_FRAME`; a blank that names none moves on one.
-fn greedy(frames: usize, model: &mut impl Model) -> Result<Vec<usize>> {
+/// The tokens written over `frames` frames, greedily, each with the frame
+/// it was written on: at each frame the likeliest token allowed, or
+/// blank, and the likeliest move on. A token that names no move stays on
+/// the frame for another, up to `MOST_PER_FRAME`; a blank that names none
+/// moves on one.
+fn greedy(frames: usize, model: &mut impl Model) -> Result<Vec<(usize, usize)>> {
     let blank = model.blank();
     let mut tokens = Vec::new();
     let (mut t, mut written) = (0, 0);
@@ -347,7 +411,7 @@ fn greedy(frames: usize, model: &mut impl Model) -> Result<Vec<usize>> {
         let token = likeliest(&scores[..=blank], |id| id == blank || model.allowed(id));
         let mut step = DURATIONS[likeliest(&scores[blank + 1..], |_| true)];
         if token != blank {
-            tokens.push(token);
+            tokens.push((token, t));
             model.predict(token)?;
             written += 1;
         }
@@ -374,60 +438,23 @@ fn likeliest(scores: &[f32], allowed: impl Fn(usize) -> bool) -> usize {
         .0
 }
 
-/// The model's pieces, by token, and which may be written.
-struct Vocab {
-    pieces: Vec<String>,
-    allowed: Vec<bool>,
-}
-
-impl Vocab {
-    /// The vocabulary from the export's JSON, an object of pieces by
-    /// their tokens' numbers.
-    fn parse(json: &str) -> Result<Self> {
-        let value: serde_json::Value =
-            serde_json::from_str(json).map_err(|e| format!("reading the vocabulary: {e}"))?;
-        let object = value.as_object().ok_or("the vocabulary isn't an object")?;
-        let mut pieces = vec![String::new(); object.len()];
-        for (id, piece) in object {
-            let slot = id
-                .parse::<usize>()
-                .ok()
-                .and_then(|id| pieces.get_mut(id))
-                .ok_or_else(|| format!("the vocabulary's {id} isn't one of its tokens"))?;
-            piece
-                .as_str()
-                .ok_or_else(|| format!("the vocabulary's {id} isn't text"))?
-                .clone_into(slot);
-        }
-        let allowed = pieces.iter().map(|piece| english(piece)).collect();
-        Ok(Self { pieces, allowed })
-    }
-
-    /// Blank, the token after the vocabulary's last.
-    fn blank(&self) -> usize {
-        self.pieces.len()
-    }
-
-    fn allowed(&self, token: usize) -> bool {
-        self.allowed.get(token).copied().unwrap_or(false)
-    }
-
-    /// The text `tokens` spell, each word's piece starting it with a space.
-    fn text(&self, tokens: &[usize]) -> String {
-        let joined: String = tokens
-            .iter()
-            .filter_map(|&token| self.pieces.get(token))
-            .map(String::as_str)
-            .collect();
-        joined.replace(SPACE, " ").trim().to_owned()
+/// Whether an encoder that gives `all` frames a window steps by FRAME.
+/// Word times rest on it, so one that steps otherwise is refused rather
+/// than misplacing every word.
+fn steps_by_frame(all: usize) -> Result<()> {
+    if all == STEPPED {
+        Ok(())
+    } else {
+        Err(format!(
+            "the encoder gave {all} frames a window, not {STEPPED}, so it doesn't step by 80 ms"
+        ))
     }
 }
 
-/// Whether a piece is English text: no special token such as `<unk>` or
-/// `<|nospeech|>`, and nothing outside ASCII but the mark of a word's start.
-fn english(piece: &str) -> bool {
-    let special = piece.len() > 2 && piece.starts_with('<') && piece.ends_with('>');
-    !special && piece.chars().all(|c| c == SPACE || c.is_ascii())
+/// The sample of a take that window `number`'s encoder frame `frame`
+/// starts at.
+fn sample_of(number: usize, frame: usize) -> usize {
+    number * WINDOW + frame * FRAME
 }
 
 fn first(values: &[i64]) -> Result<i64> {
@@ -447,14 +474,8 @@ fn usize_of(n: i64) -> Result<usize> {
 
 #[cfg(test)]
 mod tests {
+    use super::vocab::tests::vocab;
     use super::*;
-
-    const VOCAB: &str = r#"{"0": "<unk>", "1": "<|nospeech|>", "2": "▁hello", "3": "▁wor",
-        "4": "ld", "5": "▁é", "6": "<", "7": "▁ne"}"#;
-
-    fn vocab() -> Vocab {
-        Vocab::parse(VOCAB).unwrap()
-    }
 
     #[test]
     fn parakeet_is_compiled_once_its_own_folder_holds_models() {
@@ -565,41 +586,81 @@ mod tests {
     }
 
     #[test]
-    fn words_are_spelled_from_their_pieces() {
-        assert_eq!(vocab().text(&[2, 3, 4]), "hello world");
-    }
-
-    #[test]
-    fn blank_follows_the_vocabulary() {
-        assert_eq!(vocab().blank(), 8);
-    }
-
-    #[test]
-    fn only_english_text_may_be_written() {
-        let vocab = vocab();
-        let allowed: Vec<usize> = (0..vocab.blank()).filter(|&t| vocab.allowed(t)).collect();
-        assert_eq!(allowed, [2, 3, 4, 6, 7]);
-    }
-
-    #[test]
-    fn a_vocabulary_with_a_gap_is_refused() {
-        assert!(Vocab::parse(r#"{"0": "a", "2": "b"}"#).is_err());
-    }
-
-    #[test]
     fn a_token_and_its_move_are_followed() {
         // Frame 0 writes "hello" and moves two on; frame 2 writes "wor"
         // and stays; then "ld" and moves on one, to the last frame's blank.
         let mut model = Scripted::new(&[(0, 2, 2), (2, 3, 0), (2, 4, 1), (3, 8, 1)]);
         let tokens = greedy(4, &mut model).unwrap();
-        assert_eq!(tokens, [2, 3, 4]);
+        assert_eq!(
+            tokens,
+            [(2, 0), (3, 2), (4, 2)],
+            "the tokens, or the frames they were written on, were wrong"
+        );
         assert_eq!(model.predicted, [2, 3, 4]);
+    }
+
+    #[test]
+    fn a_words_level_is_the_sounds_over_the_quarter_second_from_it() {
+        // A tenth of full scale is -20 dB; the quiet stretch before the
+        // word, and the silence a quarter second after it starts, aren't it.
+        let mut audio = vec![0.001; RATE];
+        audio[RATE / 4..RATE / 2].fill(0.1);
+        audio[RATE / 2..].fill(0.0);
+        let near = |at: usize, db: f32| (level(&audio, at) - db).abs() < 0.01;
+        assert!(
+            near(RATE / 4, -20.0),
+            "a word at -20 dB measured {}",
+            level(&audio, RATE / 4)
+        );
+        assert!(
+            near(0, -60.0),
+            "a quiet stretch measured {}",
+            level(&audio, 0)
+        );
+        assert!(
+            level(&audio, RATE / 2) < -100.0 && level(&audio, 2 * RATE) < -100.0,
+            "silence, or past the sound's end, wasn't as quiet as can be"
+        );
+    }
+
+    #[test]
+    fn a_frame_is_timed_from_the_takes_start_through_its_window() {
+        assert_eq!(sample_of(0, 3), 3 * 1280, "a frame isn't 80 ms");
+        assert_eq!(
+            sample_of(2, 1),
+            2 * 15 * RATE + 1280,
+            "a later window's frame isn't timed from the take's start"
+        );
+    }
+
+    #[test]
+    fn an_encoder_stepping_otherwise_than_by_a_frame_is_refused() {
+        let halved = (0..3).fold(usize::try_from(MEL_FRAMES).unwrap(), |n, _| n.div_ceil(2));
+        assert_eq!(
+            STEPPED, halved,
+            "STEPPED isn't the spectrogram's frames halved thrice"
+        );
+        assert_eq!(
+            steps_by_frame(STEPPED),
+            Ok(()),
+            "the shipped encoder's step was refused"
+        );
+        for all in [94, 187, 189, 376] {
+            assert!(
+                steps_by_frame(all).is_err(),
+                "an encoder giving {all} frames a window wasn't refused"
+            );
+        }
     }
 
     #[test]
     fn a_blank_naming_no_move_moves_on_one() {
         let mut model = Scripted::new(&[(0, 8, 0), (1, 8, 0), (2, 8, 0)]);
-        assert_eq!(greedy(3, &mut model).unwrap(), [] as [usize; 0]);
+        assert_eq!(
+            greedy(3, &mut model).unwrap(),
+            [] as [(usize, usize); 0],
+            "a blank wrote a token"
+        );
         assert_eq!(model.predicted, [] as [usize; 0]);
     }
 
@@ -608,14 +669,22 @@ mod tests {
         let mut script = vec![(0, 2, 0); MOST_PER_FRAME];
         script.push((1, 8, 1));
         let mut model = Scripted::new(&script);
-        assert_eq!(greedy(2, &mut model).unwrap(), [2; MOST_PER_FRAME]);
+        assert_eq!(
+            greedy(2, &mut model).unwrap(),
+            [(2, 0); MOST_PER_FRAME],
+            "a frame wrote more than its share, or on another frame"
+        );
     }
 
     #[test]
     fn a_token_outside_english_gives_way_to_the_next() {
         // "é" and "<|nospeech|>" score highest, so the runner up is written.
         let mut model = Scripted::new(&[(0, 5, 1), (1, 1, 1)]);
-        assert_eq!(greedy(2, &mut model).unwrap(), [3, 3]);
+        assert_eq!(
+            greedy(2, &mut model).unwrap(),
+            [(3, 0), (3, 1)],
+            "a token outside English was written, or not on its frame"
+        );
     }
 
     #[test]
@@ -635,6 +704,9 @@ mod tests {
                 Ok(())
             }
         }
-        assert!(greedy(1, &mut Short).is_err());
+        assert!(
+            greedy(1, &mut Short).is_err(),
+            "a joint with no scores for its durations was read"
+        );
     }
 }

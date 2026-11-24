@@ -6,8 +6,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{builders, gate, health, holders, machine, passed, phases};
+use crate::{builders, gate, health, holders, machine};
 
+pub mod passed;
+pub mod phases;
 mod switches;
 
 pub use switches::switches;
@@ -131,8 +133,8 @@ impl Measure {
 
 /// Every figure the day reads: the delivery cycle's here, the machine's
 /// own from health in machine.rs, the builders' in builders.rs, the merge
-/// gate's in gate.rs, how long gates took in passed.rs and where that
-/// time went in phases.rs, and each repository's from code-health in
+/// gate's in gate.rs, how long gates took in day/passed.rs and where that
+/// time went in day/phases.rs, and each repository's from code-health in
 /// health.rs.
 pub fn measures() -> impl Iterator<Item = &'static Measure> {
     MEASURES

@@ -39,7 +39,10 @@ let
   # whose imports aren't what imports.nix says fails the check instead,
   # naming what differs, so the table can't drift from the files. The
   # launcher's words.json is the one its places' files join to
-  # (launcher/words.nix), as the shell reads it.
+  # (launcher/words.nix), as the shell reads it. Options.qml, which the
+  # account's configuration writes, is a stand-in holding only whether
+  # reports are on, and they're off, as on a machine that hasn't chosen,
+  # for a check whose files say a line by it (Presented.rowShown).
   copied =
     files:
     let
@@ -50,11 +53,20 @@ let
       wrong = lib.filter (
         file:
         (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
+        && file != "Options.qml"
         && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
       ) every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
-      source = file: if file == "launcher/words.json" then words else ../. + "/${file}";
+      options = singleton "Options.qml" "readonly property bool reports: false";
+      source =
+        file:
+        if file == "launcher/words.json" then
+          words
+        else if file == "Options.qml" then
+          options
+        else
+          ../. + "/${file}";
     in
     if wrong == [ ] then
       lib.concatStringsSep "\n" (
@@ -174,7 +186,7 @@ let
 
   # The account's shell on its real niri, with its own configuration,
   # nested in a headless sway in the sandbox rather than in a machine
-  # (tests/nested-niri.sh): a command run against it, which starts the
+  # (tests/lib/nested-niri.sh): a command run against it, which starts the
   # shell from the folder its root is in, as quickshell, and logs to logs.
   # The account says what its shell does, as the desktop test's does, and
   # counts as away after so many seconds of nothing typed or moved. Its
@@ -234,6 +246,44 @@ let
           '';
         };
       inherit (pkgs) mesa;
+      # A setting of the account's shell unit, by its name: the last assignment of it in
+      # its Environment, as systemd takes the last, each entry's words split at its spaces.
+      # systemd also reads quotes, escapes, tabs, newlines and % specifiers, and resets the
+      # list at an empty entry, so an entry holding any of them fails the evaluation rather
+      # than being misread. So does a setting the unit no longer sets, or unsets, which systemd does
+      # last, by its bare name or by the very assignment taken, the two ways systemd.exec(5)
+      # says remove it. Only the settings named below are carried; the unit's others aren't.
+      unitSets =
+        setting:
+        let
+          asked = "${setting}=";
+          unit = home.systemd.user.services.quickshell.Service;
+          given = lib.toList (unit.Environment or [ ]);
+          unsetting = lib.toList (unit.UnsetEnvironment or [ ]);
+          misread =
+            entry:
+            entry == ""
+            || lib.any (mark: lib.hasInfix mark entry) [
+              "\""
+              "'"
+              "\\"
+              "\t"
+              "\n"
+              "%"
+            ];
+          unread = lib.findFirst misread null (given ++ unsetting);
+          words = lib.concatMap (lib.splitString " ");
+          said = lib.findFirst (lib.hasPrefix asked) null (lib.reverseList (words given));
+          unsets = words unsetting;
+        in
+        if unread != null then
+          throw "The shell's unit has an entry unitSets can't read: ${builtins.toJSON unread}."
+        else if said == null then
+          throw "The shell's unit no longer sets ${setting}."
+        else if lib.elem setting unsets || lib.elem said unsets then
+          throw "The shell's unit unsets ${setting}, so the checks can't run with it set."
+        else
+          lib.removePrefix asked said;
     in
     pkgs.runCommandLocal name
       {
@@ -266,6 +316,13 @@ let
             unit = home.xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf".text;
           in
           lib.removePrefix asked (lib.findFirst (lib.hasPrefix asked) "" (lib.splitString "\n" unit));
+        # Never taking a window for hidden however late niri's frame callback, as the shell's
+        # unit has it (home.nix, its reason there): the one of the unit's settings carried,
+        # since it decides when Qt draws. With Qt's default of 100 ms, a loaded
+        # builder's niri answered late, and Qt stopped drawing a window, then drew it again as
+        # the answer came: the margin cat drew a frame beside each of the launcher's while held
+        # under it, 3 to 8 in five of 66 runs, though Joel's shell never does (2026-11-22).
+        QT_WAYLAND_FRAME_CALLBACK_TIMEOUT = unitSets "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT";
         NOTICES_DAEMON = home.systemd.user.services.notices.Service.ExecStart;
         NOTICES_LOG = "logs/notices.log";
         # The step a switch runs before it restarts the shell, as the
@@ -280,7 +337,7 @@ let
         )}
         ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
         ${lib.optionalString (size != null) "export NESTED_SIZE=${size}"}
-        ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           ${lib.getExe pkgs.bash} ${../tests/notices-beside.sh} ${command}
         touch $out
       '';
@@ -458,12 +515,14 @@ let
   # Now itself in Quickshell, offscreen, `test` its shell.qml, with the
   # margin's pieces, the agents' waiting list, the weather and the calendar
   # stood in, and Location.qml's own, reading whereabouts over its socket.
-  # `before` readies the home a case needs, before the shell starts.
+  # `before` readies the home a case needs, before the shell starts, and
+  # `after` reads what the shell said, in said.log, once it has passed.
   nowShown =
     {
       name,
       test,
       before ? "",
+      after ? "",
     }:
     let
       facts = singleton "Facts.qml" ''
@@ -514,6 +573,7 @@ let
         "Daemon.qml"
         "ForYouHolds.qml"
         "Location.qml"
+        "Options.qml"
         "Timekeeping.qml"
         "Words.qml"
         "launcher/Explainer.qml"
@@ -549,7 +609,16 @@ let
       export FONTCONFIG_FILE=${noFonts}
       ${before}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      ${
+        if after == "" then
+          "timeout 60 ${qs} -p shell.qml"
+        else
+          ''
+            timeout 60 ${qs} -p shell.qml > said.log 2>&1 || { cat said.log; exit 1; }
+            cat said.log
+            ${after}
+          ''
+      }
       touch $out
     '';
 in

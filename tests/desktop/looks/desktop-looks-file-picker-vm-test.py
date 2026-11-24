@@ -6,9 +6,9 @@ as the laptop does. The file picker's plate is held to the card's lines for each
 previews (docs/design.md, the drawer); a picker for one file asks for one, a save is named on the
 line, :arga gathers files across folders, and :sort lists a folder in the order chosen. It's an area
 of its own, rather than more of looks, so the looks areas run side by side rather than one after
-another; what they share is in looks_session.py. tests/desktop.nix runs this through pytest inside
-the driver (tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test
-asks for the desktop, started once a run (desktop_session.py), and leaves it as it found it.
+another; what they share is in looks_session.py. tests/desktop/desktop.nix runs this through pytest
+inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every
+test asks for the desktop, started once a run (desktop_session.py), and leaves it as it found it.
 """
 
 from __future__ import annotations

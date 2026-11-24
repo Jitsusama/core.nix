@@ -16,6 +16,7 @@
 
 pub mod cache;
 pub mod daemon;
+pub mod echo;
 pub mod genai;
 pub mod graph;
 pub mod language;
@@ -24,6 +25,7 @@ pub mod microphone;
 pub mod openvino;
 pub mod parakeet;
 pub mod picture;
+pub mod pieces;
 pub mod speech;
 pub mod takes;
 pub mod tidy;

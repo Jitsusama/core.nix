@@ -36,6 +36,38 @@ use crate::choose;
 use crate::echo;
 use crate::measure::Measured;
 
+/// The file in wifid's state what's learned is kept in. It was `carried`
+/// until the video class was weighed (measure.rs): what that holds was
+/// learned of best effort alone, which holds a point stalling a call's
+/// queue as quick as its best effort, and on 23 Nov 2026 such a figure
+/// drew a card back to one 81 s after it was moved off. So the hours are
+/// learned again in a file of their own. A wifid from before knows nothing
+/// of this one, so going back to it leaves this file on the disk, kept to
+/// the networks saved again only once a wifid from after starts.
+pub const FILE: &str = "carried-weighing-video";
+
+/// The file the hours were kept in before, let go of as wifid starts:
+/// nothing keeps it to the networks still saved, and which access points
+/// a machine was near, and when, would say where it has been. A wifid
+/// from before begins its hours again.
+const BEFORE: &str = "carried";
+
+/// Lets go of the hours kept before in wifid's state folder, and of any
+/// write of them cut short, which holds the same; each is tried whatever
+/// the other does, and the first error said.
+pub fn let_go_of_before(state: &Path) -> io::Result<()> {
+    let before = state.join(BEFORE);
+    let removed = [before.with_extension("partial"), before].map(fs::remove_file);
+    removed
+        .into_iter()
+        .find(|removed| {
+            removed
+                .as_ref()
+                .is_err_and(|error| error.kind() != io::ErrorKind::NotFound)
+        })
+        .unwrap_or(Ok(()))
+}
+
 /// How many minutes an access point must have been measured at an hour,
 /// from about one place, before what it carried is gone by.
 const ENOUGH: u32 = 5;
@@ -75,8 +107,7 @@ struct Learnt {
     /// The share of echoes lost, in percent, over every minute.
     lost: f64,
     minutes: u32,
-    /// How many minutes `p95` is of. Figures kept before it was counted
-    /// apart take `minutes`, as nearly all of theirs were idle.
+    /// How many minutes `p95` is of.
     #[serde(default)]
     idle: u32,
     /// The gateway's p95 over the minutes the card brought a download
@@ -112,9 +143,6 @@ impl Learned {
         let mut learnt = learnt.unwrap_or_default();
         for learnt in &mut learnt {
             learnt.kept = true;
-            if learnt.idle == 0 && learnt.loaded.is_none() {
-                learnt.idle = learnt.minutes;
-            }
         }
         Learned {
             file: file.to_path_buf(),
@@ -124,7 +152,8 @@ impl Learned {
 
     /// Folds in what the access point a card is on carried over the span,
     /// keeping it on the disk where its network is trusted. An echo never
-    /// answered counts as slow as it was waited for. A minute the card
+    /// answered counts as slow as it was waited for, and none slower: a
+    /// held one answering later is no better, and no worse. A minute the card
     /// brings a download down in teaches what it lost alike, and its slow
     /// end as what the access point carries under load, so points are
     /// weighed against each other by minutes alike.
@@ -133,7 +162,11 @@ impl Learned {
             return Ok(());
         }
         let loaded = choose::loaded(measured);
-        let p95 = measured.p95.unwrap_or(echo::LOST).as_secs_f64() * 1000.0;
+        let p95 = measured
+            .p95
+            .map_or(echo::LOST, |p95| p95.min(echo::LOST))
+            .as_secs_f64()
+            * 1000.0;
         let step = here.signal.div_euclid(STEP);
         let same = |learnt: &Learnt| {
             learnt.point == here.point && learnt.hour == here.hour && learnt.step == step
@@ -313,6 +346,38 @@ mod tests {
     fn p95_of(learned: &Learned, point: &str, hour: u8, signal: i16) -> Option<u64> {
         let measured = learned.of(point, hour, signal)?;
         Some(u64::try_from(measured.p95?.as_millis()).unwrap())
+    }
+
+    #[test]
+    fn the_hours_kept_before_are_let_go_of_with_any_write_cut_short() {
+        let dir = tempfile::tempdir().unwrap();
+        for file in [BEFORE, "carried.partial", FILE] {
+            fs::write(dir.path().join(file), "{}").unwrap();
+        }
+        let_go_of_before(dir.path()).unwrap();
+        assert!(!dir.path().join(BEFORE).exists(), "the old hours are gone");
+        assert!(
+            !dir.path().join("carried.partial").exists(),
+            "and their write cut short"
+        );
+        assert!(dir.path().join(FILE).exists(), "the new hours stay");
+        let_go_of_before(dir.path()).expect("nothing left to let go of is no error");
+    }
+
+    #[test]
+    fn a_point_held_past_an_echo_s_wait_is_learned_no_slower_than_one_unanswered() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join(FILE));
+        for _ in 0..ENOUGH {
+            learned
+                .carried(&at(DESK, 20, -50), &carried(Some(2400), 40.0))
+                .unwrap();
+            learned
+                .carried(&at(HALL, 20, -50), &carried(None, 100.0))
+                .unwrap();
+        }
+        assert_eq!(p95_of(&learned, DESK, 20, -50), Some(1000), "held");
+        assert_eq!(p95_of(&learned, HALL, 20, -50), Some(1000), "unanswered");
     }
 
     #[test]
@@ -504,27 +569,6 @@ mod tests {
             loaded_p95_of(&Learned::kept_in(&file), DESK, -43),
             Some(136)
         );
-    }
-
-    #[test]
-    fn figures_kept_before_load_was_learned_apart_are_gone_by_as_idle() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("carried");
-        let kept = r#"[{"network":"Lantern","point":"6c:ae:f6:c1:84:28","hour":20,
-            "step":-9,"p95":15.0,"lost":0.5,"minutes":10}]"#;
-        fs::write(&file, kept).unwrap();
-        let mut learned = Learned::kept_in(&file);
-
-        assert_eq!(p95_of(&learned, HALL, 20, -50), Some(15));
-        learned
-            .carried(&at(HALL, 20, -50), &carried(Some(25), 0.0))
-            .unwrap();
-        assert_eq!(
-            p95_of(&Learned::kept_in(&file), HALL, 20, -50),
-            Some(16),
-            "a minute of 25 is folded into the kept 15, not put in its place"
-        );
-        assert_eq!(learned.loaded(HALL, -50), None);
     }
 
     #[test]

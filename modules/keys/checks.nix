@@ -507,10 +507,14 @@ in
   # key it takes only while selecting.
   keys-speak-the-language =
     let
-      # A workstation with a desktop has every layer, Neovim's among them.
+      # A workstation with a desktop has every layer, Neovim's among them,
+      # and inlyne's put back, which only the Mac reads with, so its
+      # arrows, its Escape and the keys it gives an act are held here too;
+      # the rest, q doing nothing among them, its own build test holds.
       machine = bareNixos [
         self.nixosModules.workstation
         self.nixosModules.graphical
+        { home-manager.sharedModules = [ self.homeModules.inlyne ]; }
       ];
       keys = (account machine).xdg.configFile."jitsusama/keys.json".source;
       # Every name the machine's Neovim takes for a command of its own,

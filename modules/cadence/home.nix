@@ -49,10 +49,12 @@
 # before it, keeps it in day/ beside them, and sends the orchestrator a
 # note of what got worse and better, so a regression is named the day it
 # appears.
-# Each finding stays in findings.jsonl until its figure is back two days,
-# goes once to the owner `owners` names for it, and once it's still open
-# past its date, to each holder of its subject's hub in turn, kept as a
-# need, then to the orchestrator once no holder is left to give it to.
+# Each finding stays in findings.jsonl until its owner has said what fixed
+# it, with `cadence owe --done`, and its figure is back two days. It goes
+# once to the owner `owners` names for it, again once its figure is back
+# with no fix said, and once it's still open past its date, to each holder
+# of its subject's hub in turn, kept as a need, then to the orchestrator
+# once no holder is left to give it to.
 #
 # The owners are also written to ~/.config/cadence/owners.txt, one
 # `prefix=ADDRESS` a line, the very lines the tick takes as `--owner`, so
@@ -67,7 +69,11 @@
 # Each hour at ten past, `cadence hour` measures what shipped, what broke,
 # what slipped and how clean the code is against their targets, names the
 # one biggest drag and files it with its owner in findings.jsonl, says
-# whether last hour's moved, and sends the card to the orchestrator.
+# whether last hour's moved, and sends the card to the orchestrator. Its
+# Queues section reads each queue's wait over the day from the queue's own
+# record (the priority workflow's outcomes, nix-offload's sends, the merge
+# train's landings) against a target for its p90, with its flow beside it,
+# and asks the owner of the worst one for its next change once a day.
 #
 # cadence-spec (./spec) serves the axes to the launcher's Spec place over
 # $XDG_RUNTIME_DIR/daemons/cadence-spec.sock in the shell's daemon interface,
@@ -294,6 +300,11 @@ in
           }${lib.optionalString onProfile ":${config.home.profileDirectory}/bin:/run/current-system/sw/bin"}"
         ];
         Slice = "background.slice";
+        # A tick still starting holds back every tick after it. Each ask of
+        # a node is cut off at its own deadline, so this ends only a hang
+        # nothing else bounds. Ticks took up to 3 min 52 s on a loaded
+        # machine on 23 November, so ten minutes costs a tick or two.
+        TimeoutStartSec = "10min";
       };
     };
     systemd.user.services.cadence-day = {
@@ -430,8 +441,9 @@ in
         # git for the three mains, and journalctl for update-to-main's
         # looks at them, as the axes read them. A machine's own git comes
         # first, for a checkout stock git refuses to open. The account's
-        # mycelium, last, says how crowded each realm's machines are and how
-        # its cells stand, and holds the map's check, mycelium-map-check.
+        # mycelium, last, says how crowded each realm's machines are, where
+        # its sessions run and how its cells stand, and holds the map's
+        # check, mycelium-map-check.
         Environment = [
           "PATH=${
             lib.makeBinPath (

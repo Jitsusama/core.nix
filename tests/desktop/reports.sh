@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # What the shell has reported (modules/quickshell/Report.qml), as the desktop
-# test's `reports` runs it (../desktop.nix): waits until the shell reports
+# test's `reports` runs it (./desktop.nix): waits until the shell reports
 # something starting with PREFIX after the journal's point SINCE, or since
 # the boot when SINCE is empty, then prints every report since that point,
 # each as "said", a tab and what was said, and last the point it read to, as

@@ -254,3 +254,122 @@ fn a_run_takes_up_and_closes_a_pain_from_its_thread_and_the_switch() {
         "{hour:?}"
     );
 }
+
+/// Writes a message into `messages` as the mesh keeps one, `ago` before
+/// the run, and gives its id.
+fn message(messages: &Path, ago: i64, from: &str, short: &str, re: &str, text: &str) -> String {
+    let id = format!("{}-{from}-1-{short}", AT - ago);
+    let message = json!({"id": id, "from": from, "to": ["@X"], "re": re, "text": text});
+    let at = messages.join(format!("{id}.json"));
+    fs::write(at, message.to_string()).expect("a message");
+    id
+}
+
+#[test]
+fn a_landing_read_on_an_earlier_run_closes_its_pain_once_a_switch_carries_it() {
+    let place = Place::new("earlier");
+    place.routes();
+    let messages = place.root.join("messages");
+    fs::create_dir_all(&messages).expect("a messages folder");
+    let kept = three_pains(&place);
+    let question = route::finding(&[&kept[0]], &route::cells(CELLS), 0);
+    let asked = message(&messages, 49_000, "EAR001", "086eeb39", "", &question);
+    let landing = "landed core #5342, merged at 255494bb414c";
+    message(&messages, 40_000, "ABC123", "a85417d8", &asked, landing);
+    let (git, _) = a_machine(&place);
+    fs::remove_dir_all(place.root.join("core.git")).expect("no core yet");
+    let mut ears = place.ears();
+    ears.git = git;
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+    assert_eq!((hour.taken, hour.closed), (1, 0), "taken, no core yet");
+    // The thread is kept, so nothing need be read again: the messages
+    // are gone by the next run, and the switch's core is there.
+    for entry in fs::read_dir(&messages).expect("the messages").flatten() {
+        fs::remove_file(entry.path()).expect("a message gone");
+    }
+    fs::create_dir_all(place.root.join("core.git")).expect("the core");
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a later run");
+    assert_eq!((hour.taken, hour.closed), (0, 1), "closed: {hour:?}");
+    let heard = place.heard();
+    let first = heard.iter().find(|h| h.entry == "e1").expect("kept");
+    assert_eq!(
+        first.fixed_by().map(|l| l.said.as_str()),
+        Some(landing),
+        "what closed it is kept as its landing said it"
+    );
+    let ledger = fs::read_to_string(place.root.join("misses.jsonl")).expect("his ledger");
+    let lines: Vec<serde_json::Value> = ledger
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a line"))
+        .collect();
+    assert_eq!(lines.len(), 3, "a line a pain sent: {lines:?}");
+    let mine = lines.iter().find(|l| l["pain"] == "s/e1").expect("a line");
+    assert_eq!(mine["check"], landing, "its check names the change");
+}
+
+#[test]
+fn a_pain_past_a_day_stays_open_until_a_landing_naming_it_runs() {
+    let place = Place::new("past-a-day");
+    place.routes();
+    let messages = place.root.join("messages");
+    fs::create_dir_all(&messages).expect("a messages folder");
+    let mut kept = three_pains(&place);
+    for h in &mut kept {
+        h.at -= 3 * DAY_MS;
+        h.routed_at = h.routed_at.map(|at| at - 3 * DAY_MS);
+    }
+    // The first was taken up on a thread read long ago, and the third
+    // was asked where no thread of it was ever seen.
+    kept[0].taken_by = Some("ABC123".into());
+    kept[0].thread = vec!["086eeb39".into()];
+    kept[1].thread = vec!["186eeb39".into()];
+    let lines = kept
+        .iter()
+        .map(|h| serde_json::to_string(h).expect("a line") + "\n")
+        .collect::<String>();
+    fs::write(place.root.join("state/heard.jsonl"), lines).expect("kept");
+    let (git, _) = a_machine(&place);
+    let mut ears = place.ears();
+    ears.git = git;
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a run");
+    assert_eq!(
+        (hour.open, hour.taken, hour.lost, hour.closed),
+        (1, 1, 1, 0),
+        "open past a day, and the thread-less one lost: {hour:?}"
+    );
+    let named = "landed core #5342, merged at 255494bb414c, for #e3";
+    message(&messages, 1000, "ABC123", "b85417d8", "", named);
+    let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a later run");
+    assert_eq!(
+        (hour.open, hour.taken, hour.lost, hour.closed),
+        (1, 1, 0, 1),
+        "a landing naming its entry closed the lost one, counted today: {hour:?}"
+    );
+    let heard = place.heard();
+    let third = heard.iter().find(|h| h.entry == "e3").expect("kept");
+    assert_eq!(third.closed_by.as_deref(), Some("255494bb414c"), "closed");
+}
+
+#[test]
+fn a_pain_sent_and_unfixed_is_kept_past_a_fortnight() {
+    let place = Place::new("fortnight");
+    place.routes();
+    let mut kept = three_pains(&place);
+    for h in &mut kept {
+        h.at -= 20 * DAY_MS;
+    }
+    kept[1].closed_by = Some("255494bb414c".into());
+    kept[2].to = None;
+    let lines = kept
+        .iter()
+        .map(|h| serde_json::to_string(h).expect("a line") + "\n")
+        .collect::<String>();
+    fs::write(place.root.join("state/heard.jsonl"), lines).expect("kept");
+    hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+    let entries: Vec<String> = place.heard().into_iter().map(|h| h.entry).collect();
+    assert_eq!(
+        entries,
+        ["e1"],
+        "only the unfixed one sent is kept past a fortnight"
+    );
+}

@@ -13,6 +13,7 @@ import qs
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
+import KeyTimes
 import "MarginCat.js" as MarginCat
 import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
@@ -159,11 +160,53 @@ PanelWindow {
     // came to under isn't one that moved onto it (MarginCat.strokes).
     readonly property bool still: going === null && moving === null && !holding
         && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
-    property real stillSince: 0
+    property real stillSince: -1
     onStillChanged: {
-        stillSince = Date.now();
-        if (!still)
+        if (still) {
+            rests();
+        } else {
+            satAt = -1;
+            stillSince = -1;
             unpetted();
+        }
+    }
+    // Its rest begins once niri has answered for the first frame synced
+    // after it sat, which holds its cells where it sits, and counts from
+    // when the shell heard that answer, on the monotonic clock. niri sends
+    // the pointer over its cells as it takes the commit moving them,
+    // before it answers for that frame, so however long niri was held up,
+    // a pointer it came to under is felt before its rest begins, or as
+    // soon after as the shell hands that enter on: 46.7 ms once in 12 on an
+    // idle builder, and never under load (2026-11-24), where SETTLED gives
+    // it 200. Counted from its walk's end, a builder under load held that
+    // commit up to 233 ms after it sat and the cat leant on a pointer it
+    // had walked under. An ask only marks the frame Qt draws for its
+    // sitting pose, drawing none of its own, but for when no frame was
+    // coming: a glance still draws two (MarginCat.restFrom).
+    property real satAt: -1
+    property int satFrom: 0
+    function rests(): void {
+        stillSince = -1;
+        if (!window.FramePresentation.available) {
+            stillSince = KeyTimes.now();
+            return;
+        }
+        satAt = KeyTimes.now();
+        satFrom = window.FramePresentation.framesBegun;
+        window.FramePresentation.ask();
+    }
+    // A frame niri showed or let go, `frame`, as MarginCat.restFrom says.
+    function restSeen(frame: int): void {
+        if (satAt < 0)
+            return;
+        const seen = MarginCat.restFrom(frame, window.FramePresentation.timesOf(frame).synchronizing,
+            satFrom, satAt);
+        if (seen === "begins") {
+            satAt = -1;
+            stillSince = KeyTimes.now();
+        } else if (seen === "asks") {
+            window.FramePresentation.ask();
+        }
     }
     // Where the pointer was last seen over it, in the screen's pixels,
     // null with none; the way it leans into it, 0 while it doesn't
@@ -471,18 +514,22 @@ PanelWindow {
     }
 
     // A walk's `plan` played from where it is, from its first step.
+    // A walk's frames are counted from begunAt, read once `going` has
+    // set following, so no frame it counts begins unasked.
     function walks(plan: var): void {
-        if (going === null) {
+        const fresh = going === null;
+        if (fresh) {
             sayWalked();
             shown = [];
             costs = [];
             unseen = 0;
             unheld();
             steps = 0;
-            begunAt = window.FramePresentation.framesBegun;
         }
         byHand = false;
         going = plan;
+        if (fresh)
+            begunAt = window.FramePresentation.framesBegun;
         goes(walker);
     }
 
@@ -677,15 +724,20 @@ PanelWindow {
             Niri.wantTiles(wantsAs, false);
     }
 
-    // Each frame of a walk or a hop, as niri showed it or didn't, asking after the next until
-    // it sits. Asked only here, once niri says the last was shown, the ask lands after the next
-    // frame has begun where frames come close together, so only every other frame was heard
-    // of: on a GPU at 60 Hz, and on Joel's screen at 120. Each step asks too (walker, and a
-    // hop's lift), before its frame is drawn. Asked only there, a GPU at 120 Hz drew every
-    // other frame, so both stay.
-    // Once it's done, the answers still to come are only heard, never
-    // asked after: each frame on its way was asked of as it began.
+    // Every frame of a walk, a move or a play is asked of as it begins,
+    // while it isn't held under the launcher, but for what Joel's hand
+    // set off. Asked after each answer and at each step, a frame begun
+    // before either reached the render thread went unasked: on Joel's
+    // screen 30 of 44 walks, moves and plays from 22:00 to 01:30 on
+    // 2026-11-22 told 1 to 7 frames fewer than they drew, each waiting
+    // out its answers (Shown.follows, its cases in Qt's engine).
+    FramePresentation.following: Shown.follows(window.FramePresentation.available,
+        going !== null || moving !== null, Launched.up, byHand)
+    // Each frame of it as niri showed it or didn't. Once it's done, the
+    // answers still to come are only heard: each frame on its way was
+    // asked of as it began.
     FramePresentation.onPresented: (frame, at) => {
+        restSeen(frame);
         if (going === null && moving === null && telling === "")
             return;
         const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
@@ -698,6 +750,7 @@ PanelWindow {
         answered(heard);
     }
     FramePresentation.onDiscarded: frame => {
+        restSeen(frame);
         if (going === null && moving === null && telling === "")
             return;
         const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
@@ -706,15 +759,10 @@ PanelWindow {
         answered(heard);
     }
     // After a frame's answer, `heard` (Shown.heard): the walk told once
-    // every frame of it is in, or the next frame asked of while it goes.
-    // Nothing is asked while it's held under the launcher, since each ask
-    // draws a frame of its own (stilled, below), but for what Joel's hand
-    // set off, which runs on there and is heard frame by frame as ever.
+    // every frame of it is in.
     function answered(heard: var): void {
         if (heard.ends)
             sayWalked();
-        else if (telling === "" && (!Launched.up || byHand))
-            window.FramePresentation.ask();
     }
     // The longest a walk done waits to hear of its last frames.
     Timer {
@@ -746,10 +794,6 @@ PanelWindow {
         stepped = now;
         steps += 1;
         place = { x: now.x, y: now.y };
-        // Asked as the step is taken, before its frame is drawn, so the
-        // frame it moves is the one niri is asked about.
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // A scene's walk done, handing the scene its next beat.
@@ -959,11 +1003,11 @@ PanelWindow {
         unseen = 0;
         unheld();
         steps = 0;
-        begunAt = window.FramePresentation.framesBegun;
         goingTo = wanted;
         under = column;
         byHand = hand;
         going = playing;
+        begunAt = window.FramePresentation.framesBegun;
         goes(walker);
         // Set once it's going, so the seat moving under it is its
         // own walk's end, and sets no walk off.
@@ -1035,8 +1079,8 @@ PanelWindow {
     // Under the launcher's card it holds where it got to and draws
     // nothing: a walk or a move is paused, never skipped ahead, and goes
     // on from there as the card goes, since a paused clock keeps its
-    // elapsedTime, and nothing asks niri of its frames meanwhile, since
-    // each ask draws one. A play off its seat ends as a key ends it, and
+    // elapsedTime, and niri isn't asked of its frames meanwhile
+    // (following, above). A play off its seat ends as a key ends it, and
     // its walk back is held the same way (MarginCat.qml goes still).
     // Joel's keys are in the launcher then, and each of the cat's frames
     // is one the shell draws beside theirs: on his laptop it drew 10 to
@@ -1064,14 +1108,12 @@ PanelWindow {
         heldBegun += window.FramePresentation.framesBegun - heldAt;
         heldAt = -1;
         resumedAt = resumedAt.concat([shown.length]);
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // Sets `clock`, the walker, the mover or the yarn's fading, going
-    // from its start, and for a walk or a move asks niri of its frames;
-    // held at once while the launcher's card is up, asking nothing, but
-    // for what Joel's hand set off. It reads the card itself rather than
+    // from its start; held at once while the launcher's card is up, its
+    // frames unasked (following, above), but for what Joel's hand set
+    // off. It reads the card itself rather than
     // `stilled`, which another handler of the same change may run before.
     function goes(clock: var): void {
         clock.restart();
@@ -1080,8 +1122,6 @@ PanelWindow {
             if (clock !== yarnFades && heldAt < 0)
                 heldAt = window.FramePresentation.framesBegun;
         }
-        else if (clock !== yarnFades && window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // Until the keys rest on the column, so a tap along them never
@@ -1243,7 +1283,19 @@ PanelWindow {
     // The pointer over it at `at`, in the screen's pixels, `across` its
     // cells: one that moved onto it as it sat still starts a pet.
     function felt(at: point, across: real): void {
-        const moved = MarginCat.strokes(pointer, at, still ? Date.now() - stillSince : -1);
+        const rested = still && stillSince >= 0 ? KeyTimes.now() - stillSince : -1;
+        const moved = MarginCat.strokes(pointer, at, rested);
+        // As the pointer comes onto it and as it strokes it, it says how
+        // long it had rested and where the pointer was, so a test that
+        // finds it leaning on a pointer it came to under can say why.
+        if (Options.reports && (pointer === null || moved))
+            Report.say(`feels cat ${named} ${JSON.stringify({
+                was: pointer,
+                at: { x: at.x, y: at.y },
+                rested: rested,
+                strokes: moved,
+                reach: window.implicitHeight
+            })}`);
         pointer = { x: at.x, y: at.y };
         window.across = across;
         if (moved && leaning === 0 && !petting.running) {
@@ -1351,10 +1403,15 @@ PanelWindow {
                 turn: stepped.turn,
                 facing: stepped.facing,
                 way: moving.way,
-                beats: moving.beats.map(beat => beat.name)
+                beats: moving.beats.map(beat => beat.name),
+                // How far niri's slide still has its ground off
+                // where its way lies, so a check can tell a ride
+                // from a jump.
+                carried: Math.round((stepped.carried ?? 0) * 10) / 10
             },
-            // The layer's height, the screen's on a move, so it's drawn
-            // wherever its way takes it.
+            // The layer's height, the screen's while it has one and 0
+            // as it goes, so a check can tell a place below it from one
+            // on it.
             reach: window.implicitHeight
         });
         Report.say(`sits cat ${named} ${at} over ${JSON.stringify(column)}`);
@@ -1377,8 +1434,14 @@ PanelWindow {
     // A scene's pose changes nothing of its place, so it says so too.
     readonly property string posed: window.scene.posed
     onPosedChanged: say()
+    // One still as it's made rests from there, since still's first value
+    // calls no onStillChanged. On a nested niri's start it comes to be
+    // still only after it's made, so a pet reaches it either way there
+    // (2026-11-24); this is for a screen where it's still from the first.
     Component.onCompleted: {
         follow();
+        if (still)
+            rests();
         say();
     }
 

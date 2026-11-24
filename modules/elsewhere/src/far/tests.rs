@@ -3,7 +3,10 @@ use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod handing;
 mod heard;
+mod leaving;
+mod sweeping;
 mod unpacking;
 
 pub(super) fn kind(setup: &str) -> Kind {
@@ -103,7 +106,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             "QEST-20261115-ABC123",
             "1",
             0,
-            "s",
+            ".s",
             Path::new(""),
             &kind(""),
             &command
@@ -116,7 +119,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             "QEST-20261115-ABC123",
             "1",
             0,
-            "s",
+            ".s",
             Path::new(""),
             &kind(""),
             &command
@@ -188,6 +191,10 @@ pub(super) const SLOWEST: u64 = 100;
 /// `wc`, and inside `WAITS`, so a clock stepping on while nothing crosses
 /// is seen to spend no more.
 pub(super) const A_PASS_AT_MOST: u64 = 3;
+const _: () = assert!(
+    A_PASS_AT_MOST < WAITS,
+    "a pass must spend less than the wait"
+);
 
 /// How many files, and bytes, a share carries in these tests' far lines,
 /// so a test can pass them without making ten thousand files.
@@ -199,10 +206,10 @@ pub(super) fn said(home: &Path) -> Vec<u8> {
     std::fs::read(home.join("said")).unwrap()
 }
 
-/// The folder the far line's copies run in under `home`, the `s` within
+/// The folder the far line's copies run in under `home`, the `.s` within
 /// the quest's scratch that `far_line_in` names.
 pub(super) fn work(home: &Path) -> PathBuf {
-    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s")
+    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s")
 }
 
 /// The job's handover folder in a far run's `home`.
@@ -221,6 +228,8 @@ pub(super) enum Left<'a> {
     /// As `Whole`, but each archive at half its size until a second has
     /// passed, as a share still writing it leaves it.
     Short,
+    /// As `Whole`, but each small file in an archive of its own.
+    Parts,
     /// This list, with each file in the tree under its own path, as no
     /// near side leaves them, for a list that is odd or never arrives.
     Listed(&'a str),
@@ -258,7 +267,9 @@ pub(super) fn far_line(
 /// `meanwhile` to the job's tree a second after it starts, as a share
 /// still crossing would, with each of `programs`, a name and its script,
 /// ahead of the rest on its path, in the tree's `folder`. What it said
-/// for the near side to hear, on stdout, is left in the home's `said`.
+/// for the near side to hear, on stdout, is left in the home's `said`,
+/// the signal it died by, if one ended it, in its `signal`, and its own
+/// process's number in its `pid`.
 pub(super) fn far_line_in(
     folder: &Path,
     list: Left,
@@ -299,7 +310,7 @@ pub(super) fn far_line_in(
         "QEST-20261115-ABC123",
         "1",
         bytes,
-        "s",
+        ".s",
         folder,
         kind,
         &command,
@@ -310,11 +321,14 @@ pub(super) fn far_line_in(
         .args(["-c", &line])
         .env("HOME", &home)
         .env("PATH", path)
+        // As though inherited, so a line keeping it clears another's copy.
+        .env("mine", "1")
         .env_remove("XDG_CACHE_HOME")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
+    std::fs::write(home.join("pid"), far.id().to_string()).unwrap();
     if !still_crossing.is_empty() {
         std::thread::sleep(std::time::Duration::from_secs(1));
         for (part, whole) in &still_crossing {
@@ -327,6 +341,12 @@ pub(super) fn far_line_in(
     }
     let output = far.wait_with_output().unwrap();
     std::fs::write(home.join("said"), &output.stdout).unwrap();
+    let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
+    std::fs::write(
+        home.join("signal"),
+        signal.map(|signal| signal.to_string()).unwrap_or_default(),
+    )
+    .unwrap();
     // Its own words, then what it said for the near side to hear.
     let said = [output.stderr, output.stdout].concat();
     (
@@ -374,7 +394,15 @@ fn leave(
         std::fs::create_dir_all(into.parent().unwrap()).unwrap();
         std::fs::write(into, text).unwrap();
     }
-    let bytes = super::left(&source, files.iter().map(|(path, _)| *path), job).unwrap();
+    let paths = files.iter().map(|(path, _)| *path);
+    // 4 blocks of 512 bytes: a header, one block of a file and the close,
+    // so one file with data a part (two empty ones may share one), and one
+    // past 512 bytes or needing a pax header for its name is refused.
+    let bytes = match left {
+        Left::Parts => super::leave(&source, paths, job, 4 * 512, super::MOST_BYTES),
+        _ => super::left(&source, paths, job),
+    }
+    .unwrap();
     // No tree at all when no file crosses, as a share carrying only
     // files leaves it.
     let _ = std::fs::remove_dir(&tree);
@@ -429,26 +457,6 @@ fn quickened(line: &str) -> String {
         line = line.replace(&real, &quick);
     }
     line
-}
-
-#[test]
-fn what_is_left_is_its_archives_each_listed_at_its_size() {
-    let root = scratch("left");
-    std::fs::write(root.join("x"), "xyz").unwrap();
-    let job = root.join("job");
-    let bytes = super::left(&root, ["x"], &job).unwrap();
-    let size = std::fs::metadata(job.join(super::TREE).join("0.tar"))
-        .unwrap()
-        .len();
-    // A header, the data's block and the two that close it.
-    assert_eq!(size, 4 * 512, "one small file's archive came to {size}");
-    assert_eq!(bytes, size, "what was left was said to come to {bytes}");
-    assert_eq!(
-        std::fs::read_to_string(job.join(super::LEFT)).unwrap(),
-        format!("{size}\t0.tar\nend\n"),
-        "an archive wasn't listed at the size it was written at"
-    );
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

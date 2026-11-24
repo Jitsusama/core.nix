@@ -3,8 +3,8 @@
 Here the session starts clean: its units, its shell, the theme programs draw in, the
 touchscreen's swipes and Bluetooth's agent.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it, so any test runs alone.
 """
 

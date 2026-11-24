@@ -11,6 +11,13 @@ run by Node's own test runner when the local sites build the page.
   one started; a start counted as the node's own only when its start
   book holds it; and a split cell grown under the cell it split from
   when nothing here started it.
+- `cursor.test.ts` tries which cells the list shows in its view, every
+  cell or those without purpose (the cells the headline and lede count,
+  and the row, panel and floor show so, a purpose of only spaces or
+  characters that draw nothing among them), and where the cursor rests on them:
+  kept while shown, else on the first row, and through a find matching
+  nothing while its cell lasts and the view takes it in, there too; a
+  cell that ends, or that the view no longer takes in, takes it along.
 - `joins.test.ts` tries the needs each cell serves and relies on, joined
   once a pair however both ends keep them.
 - `records.ts` builds the forage records both of those read, as the node
@@ -31,7 +38,13 @@ run by Node's own test runner when the local sites build the page.
   drawn around, the cells that grew straight from that one and those nearest it,
   each with every cell it grew from, once round a ring, so a booked start
   far down the list still draws solid, and a line deeper than the floor
-  cut at its top, but stopped at a cell already drawn; the cells the
+  cut at its top, but stopped at a cell already drawn; the open cell's
+  line cut, however shallow, to leave the cells booked as grown from it
+  up to half the floor, and kept whole when they only claim it; a ring
+  longer than the room filling it cut at its top; an ellipsis wherever the floor
+  skips cells of its list, none on a list that fits, and none between two
+  where all it skips is the rest of the first's brood, folded under it,
+  though a ring's cut stays marked; the cells the
   node's book holds started before those only claimed; that a step draws
   the floor again only for a cell it leaves off or one that grew a cell it
   leaves off, no cursor at all not among them; that a live
@@ -41,6 +54,12 @@ run by Node's own test runner when the local sites build the page.
   over the list it was worked out for; and that with no cursor a floor
   whose own cell ends goes back to the first 48, and stays there when
   that cell comes back.
+- `lineage.test.ts` tries which skipped cells the floor folds: all that
+  is left of a drawn cell's brood, grandchildren too, the next cell drawn
+  not of it, and never one that only shares a ring with it.
+- `floors.ts` builds the forages the floor draws, and reads what the floor
+  drew of them: its compartments, what stands along its main line, and
+  the runs that line is broken into.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.
@@ -54,9 +73,13 @@ headless browser through the sites' server beside a stand-in node holding
 `node.json`, four cells' forage on one machine with a wait, a plan, a
 need served, a start the node's book holds and a split. It steps the
 cursor by keys, follows the records as they change, stop and come back,
+draws the crest again once every cell has gone and the floor again once
+one is heard again,
 lets a cell a purpose takes out of the view of cells without purpose
-take the cursor with it, find or not, and keeps the page within its
-budget and passing the web-design skill's page checks. Beside a second
+take the cursor with it, find or not, holds a first visit still at a
+phone's width, a desk's and a wide desk's, where the floor draws its
+machine's name and no word under 12 px, while a long link never widens the page, and
+keeps the page within its budget and passing the web-design skill's page checks. Beside a second
 stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn
 solid. A step on the floor leaves the floor drawn as it is, and a find

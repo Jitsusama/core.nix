@@ -49,6 +49,7 @@ import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
@@ -847,7 +848,8 @@ Provider {
 
     // A session elsewhere that couldn't be joined, a hosted one with no
     // window to go to, or any the node couldn't tell, is said in the foot,
-    // by its name (footName) in the alert colour, where the act was pressed: at
+    // by its name (footName) in the alert colour, but for a viewer asked for
+    // a moment ago, which nothing refused, where the act was pressed: at
     // once while the launcher's open, or else once it opens next, never as
     // a notice (VKCF3Z, 2026-11-07 [4a00987e]).
     Connections {
@@ -864,9 +866,10 @@ Provider {
                 Theme.alert]]);
         }
 
-        function onUnhosted(session) {
+        // Said by why it held, in words of its own (Sessions' unhosted).
+        function onUnhosted(session, why) {
             provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere("hosted", session), Theme.alert]]);
+                provider.elsewhere(why, session), why === "opening" ? Theme.text : Theme.alert]]);
         }
 
         function onUnopened(session) {
@@ -1685,6 +1688,9 @@ Provider {
             glyph: Words.glyph(`verb:agents:start-new-work:${id}`),
             hue: "action",
             ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
+            // A folder's field opens on words a start refused for want of
+            // one carried here (askWhere).
+            offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
             given: said => provider.sprout(key, said, folder)
         });
@@ -1754,7 +1760,15 @@ Provider {
         }
         sprouting = key;
         sprouts += 1;
+        sproutGiven = { words: String(said), letters: launcher.lettersAt };
+        sproutCarried = "";
         const sprout = sprouts;
+        // Marked again once the Return that gave the words has emptied the field, which moves
+        // lettersAt as a letter would (Launcher.qml's give), so only a key after it counts.
+        Qt.callLater(() => {
+            if (sprouts === sprout)
+                sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
+        });
         sproutSays(key, words.starting);
         sproutPatience.restart();
         const token = Sprouting.token(Date.now(), Math.random());
@@ -1883,7 +1897,10 @@ Provider {
         rowsKind.ask({ ask: "sprout-told", starts: tokens }, answer => {
             if (answer !== null && answer.error === undefined)
                 return;
-            const why = answer?.error?.message ?? "no daemon answered";
+            // The daemon's words can name a session, so they're said as errorShown
+            // says a daemon's error.
+            const why = answer?.error === undefined ? "no daemon answered"
+                : Presented.errorShown(answer.error, Options.reports);
             console.info(`launcher: a start's told wasn't taken: ${why}`);
             tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
                 sproutTokens[token] = "ended";
@@ -1914,9 +1931,12 @@ Provider {
         if (sproutTokens[sproutToken] === "asking")
             sproutTokens[sproutToken] = "ended";
         sproutToken = "";
-        sproutSays(key, Sprouting.told(how, sproutWords()));
+        const where = Sprouting.asksWhere(how) && askWhere(key);
+        const text = where ? Sprouting.toldWhere(how, sproutWords())
+            : Sprouting.told(how, sproutWords());
+        sproutSays(key, text);
         // Told Joel before the daemon is told it's told, so it's kept until he is.
-        sproutReaches(how);
+        sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
@@ -1930,11 +1950,37 @@ Provider {
     // Says how a start ended beyond its own row (Sprouting.reach): in the
     // journal always, and told Joel when it opens no window, so no start
     // he gives ends unseen.
-    function sproutReaches(how) {
+    function sproutReaches(how, toldAs) {
         const reach = Sprouting.reach(how, sproutWords());
         console.info(`launcher: ${reach.journal}`);
-        if (reach.told !== null)
-            sproutTell([reach.told]);
+        const told = toldAs ?? reach.told;
+        if (told !== null)
+            sproutTell([told]);
+    }
+
+    // The words of the start running and the launcher's lettersAt at its
+    // Return, and the words a start refused for want of a repository
+    // carries to the folder Joel picks next, "" when none does.
+    property var sproutGiven: ({ words: "", letters: 0 })
+    property string sproutCarried: ""
+    // Steps Joel out of the act `key`, whose start wanted a repository, back
+    // onto Start New Work's folders, its words carried to whichever he picks
+    // (Sprouting.asksWhere), only while he's still in its field to be
+    // stepped back (Sprouting.stepsBack). Whether it did.
+    function askWhere(key) {
+        const launcher = provider.launcher ?? null;
+        const folders = (source("quests")?.folders() ?? []).length;
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+            return false;
+        sproutCarried = sproutGiven.words;
+        // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
+        // stepping out of it steps into Start New Work too.
+        const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
+        launcher.back();
+        if (under !== "agents:start-new-work")
+            launcher.enter(startNewWorkMade());
+        console.info("launcher: new work wanted a repository; asking where it starts");
+        return true;
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -1970,6 +2016,7 @@ Provider {
         const footed = sproutFooted;
         const launcher = provider.launcher ?? null;
         sproutFooted = null;
+        sproutCarried = "";
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
@@ -2697,6 +2744,14 @@ Provider {
         landingShown = landingDrawn;
     }
 
+    // No carry stands in For You, though an orchestrator made it in Joel's
+    // stead: it asks nothing of him, and five there read "A Session on Its
+    // Way" hours after they went, naming nothing he could act on (Joel,
+    // 2026-11-23 21:52: "how does it provide me with anything useful?").
+    // Agents › Carried lists every carry of the day, each by its quest,
+    // where it went and when, so he still sees each one (ISXEG8's fourth
+    // condition). A refused or stuck one says so there in alert, and rings
+    // nowhere else yet.
     // What Landed gives For You (ForYou.js's given): each landing that says
     // what to try and Joel hasn't read, waiting in To Try with its mark,
     // weighed as the rest are, and each read since, in its History with
@@ -2770,68 +2825,9 @@ Provider {
         })).concat(tries.filter(tried => typeof tried.read === "number").map(tried => ({
             row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
             done: { how: String(said.read ?? ""), at: tried.read }
-        }))).concat(carriesUnderWay());
+        })));
         provider.keptOnly(forYouKeeping);
         return given;
-    }
-
-    // What For You holds of the carries Agents lists under Carried while
-    // they're under way (CarryBack.js's underWay): each a thing to read,
-    // in To Read, which rings no bell and adds to no count, gone once the
-    // daemon serves it arrived, refused or back. A carry is an
-    // orchestrator's, made in Joel's stead, so he sees it without being
-    // asked anything; only his own Carry Back refused rings (DCU5J4's
-    // third item). Return goes to its row in Agents › Carried, never a
-    // copy. Each row is kept while its carry row reads the same, among
-    // For You's own (forYouKeeping), so it's asked only as that's made.
-    function carriesUnderWay() {
-        const waiting = JSON.parse(carriesWaiting);
-        const group = waiting.length === 0 ? null : top.rowAt("row:agents-top:carried");
-        if (!group)
-            return [];
-        return waiting.map(one => ({
-            row: provider.keptOr(forYouKeeping, `on:carrying:${one.key}`,
-                JSON.stringify([one.name, one.side, one.note]),
-                () => carryUnderWay(group, top.rowAt(one.key) ?? one)),
-            thing: one.waits
-        }));
-    }
-    // The carries under way as Carried's rows read them, said as text, so
-    // For You is told only as one comes, goes or reads otherwise. Asking
-    // the rows is what tells of a change: the group alone, asked before any
-    // carry came, told nothing, so For You never showed one until something
-    // else moved (the carries' niri case, 2026-11-16). Asked from forYou
-    // itself, every change to Agents' rows made For You again, carries or
-    // none (the carries' council); a string binding tells only as it differs.
-    readonly property string carriesWaiting: JSON.stringify(top.rows("row:agents-top:carried")
-        .map(made => ({
-            key: made.key,
-            name: made.name,
-            side: made.side,
-            note: made.note,
-            glyph: made.glyph,
-            waits: CarryBack.underWay(top.served(top.madeOf[made.key]))
-        })).filter(one => one.waits !== null))
-    function carryUnderWay(group, made) {
-        const trail = () => ["collection:agents", provider.launcher?.steadyId(group),
-            provider.launcher?.steadyId(made)];
-        return thing({
-            thing: true,
-            key: `on:carrying:${made.key}`,
-            name: made.name,
-            side: made.side,
-            note: made.note,
-            glyph: made.glyph,
-            verb: "go to",
-            spot: "",
-            stays: true,
-            changes: false,
-            // Every one says go to, so the foot weighs one of a run.
-            keysAlike: "carry:for-you",
-            hue: "muted",
-            forYou: { kind: "read", source: "sessions" },
-            run: () => provider.launcher?.goTo({ trail: trail(), spot: "" })
-        });
     }
 
     // Agents' Recent: the sessions that closed this boot, newest first, as

@@ -349,7 +349,7 @@ interface Headline {
 /** The whole in a sentence's two parts: how many cells, and how many have no purpose written. */
 function headline(forages: readonly Forage[]): Headline {
   const cells = forages.length;
-  const without = forages.filter((each) => each.purpose === "").length;
+  const without = forages.filter(unwritten).length;
   if (cells === 0) {
     return { cells, without, lead: "No cells", turn: "at work on a quest." };
   }
@@ -431,7 +431,7 @@ function lede(forages: readonly Forage[]): string {
 
 /** The lede's account of purposes and plans. */
 function purposes(forages: readonly Forage[]): string {
-  const hollow = forages.filter((each) => each.purpose === "").map((each) => each.cell);
+  const hollow = forages.filter(unwritten).map((each) => each.cell);
   const first =
     hollow.length === 0
       ? "Every cell has its purpose written."
@@ -460,16 +460,85 @@ function holds(forage: Forage, query: string): boolean {
     .some((each) => each.includes(sought));
 }
 
+/**
+ * A purpose that shows nothing: spaces and breaks, controls, the characters
+ * Unicode says draw nothing by default (a zero-width space, a word joiner, a
+ * soft hyphen, a Hangul filler, a variation selector) and the blank braille
+ * cell, which a pasted or written purpose can carry and `trim` leaves. The
+ * marks written before a number, such as the end of an ayah, show a glyph,
+ * so a purpose of them is written.
+ */
+const SAYS_NOTHING = /^[\s\p{Cc}\p{Default_Ignorable_Code_Point}\u2800]*$/u;
+
+/**
+ * Whether `forage` has no purpose written yet: what the headline counts,
+ * the lede names, the row and the floor show hollow and the view of cells
+ * without purpose takes in, so none of them can disagree with another. A
+ * purpose that shows nothing says nothing, so it counts as unwritten.
+ */
+function unwritten(forage: Forage): boolean {
+  return SAYS_NOTHING.test(forage.purpose);
+}
+
+/**
+ * Whether the list's view takes `forage` in before a find narrows it: every
+ * cell does, but while `hollowOnly` asks for the cells with no purpose
+ * written, only those.
+ */
+function inView(forage: Forage, hollowOnly: boolean): boolean {
+  return !hollowOnly || unwritten(forage);
+}
+
+/** The cells of `forages` the list shows for the find `sought` in its view, in its order. */
+function shownBy(
+  forages: readonly Forage[],
+  sought: string,
+  hollowOnly: boolean,
+): readonly Forage[] {
+  return forages.filter((forage) => holds(forage, sought) && inView(forage, hollowOnly));
+}
+
+/**
+ * The cell the cursor rests on once the list shows what the find `sought`
+ * holds of `forages` in its view: `cursor` while the list shows it, else
+ * its first row. A find that matches nothing keeps it while its cell lasts
+ * and the view still takes it in, so ending the find finds it again; a cell
+ * that ends, or that the view no longer takes in, takes the cursor with it.
+ * It works the rows out itself, as the list does, so the two can't be given
+ * different views.
+ */
+function cursorAfter(
+  forages: readonly Forage[],
+  sought: string,
+  hollowOnly: boolean,
+  cursor: string | null,
+): string | null {
+  const rows = shownBy(forages, sought, hollowOnly);
+  if (rows.some((each) => each.cell === cursor)) {
+    return cursor;
+  }
+  const [first] = rows;
+  if (first !== undefined) {
+    return first.cell;
+  }
+  const open = forages.find((each) => each.cell === cursor);
+  return open !== undefined && inView(open, hollowOnly) ? cursor : null;
+}
+
 export type { Document, Forage, Forages, Headline, Join, Wait };
 export {
   counted,
+  cursorAfter,
   foragesOf,
   grewFrom,
   grewClaimed,
   headline,
   holds,
+  inView,
   keeps,
   lede,
+  shownBy,
   startedFrom,
   steps,
+  unwritten,
 };

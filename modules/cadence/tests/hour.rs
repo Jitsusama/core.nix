@@ -101,9 +101,7 @@ fn the_card_counts_the_pains_the_hearer_summed_up() {
     let ran = hour(account.path(), &[]);
     let card = String::from_utf8_lossy(&ran.stdout);
     assert!(
-        card.contains(
-            "His pains:\n  ✕ pains Joel said in the last day that nobody has taken up: 3"
-        ),
+        card.contains("His pains:\n  ✕ pains Joel said that nobody has taken up: 3"),
         "the card didn't read the hearer's summary into its own row: {card}"
     );
 }

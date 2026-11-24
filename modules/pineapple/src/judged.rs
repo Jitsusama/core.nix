@@ -9,6 +9,7 @@
 //! (src/progress.rs): they count from seconds, where Slack names a
 //! message by its own timestamp.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -30,6 +31,10 @@ pub struct Judged {
     pub since: String,
     /// The keys of those judged, newest last.
     pub keys: Vec<String>,
+    /// Each search's newest message in the last answer to it read, as a
+    /// Slack timestamp, by its query: a gateway's full answer is read only
+    /// when it reaches back to it, so nothing between goes unread.
+    pub newest: BTreeMap<String, String>,
 }
 
 impl Judged {
@@ -39,6 +44,31 @@ impl Judged {
         Judged {
             since: format!("{seconds}.000000"),
             keys: Vec::new(),
+            newest: BTreeMap::new(),
+        }
+    }
+
+    /// How far back an answer to `query` must reach for nothing it could
+    /// find to go unread since the last: the newest message the last answer
+    /// to it read gave, or `since`, when that's later, as nothing earlier
+    /// is judged; never later than `now`, in seconds, as no message is said
+    /// after then, and a mark past it would let every answer through.
+    #[must_use]
+    pub fn back_to(&self, query: &str, now: u64) -> String {
+        let now = Judged::starting(now).since;
+        match self.newest.get(query) {
+            Some(newest) if micros(newest) > micros(&now) => now,
+            Some(newest) if micros(newest) > micros(&self.since) => newest.clone(),
+            _ => self.since.clone(),
+        }
+    }
+
+    /// That an answer to `query` was read and its messages judged, the
+    /// newest of them `newest`, none if it gave none, which leaves how far
+    /// it reached as it was.
+    pub fn reached(&mut self, query: &str, newest: Option<&Message>) {
+        if let Some(newest) = newest {
+            self.newest.insert(query.to_owned(), newest.ts.clone());
         }
     }
 
@@ -105,6 +135,16 @@ pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
         .map(str::to_owned)
         .collect();
     let whole = listed.is_some_and(|listed| listed.len() == keys.len());
+    // How far each search reached only ever makes an answer cut short
+    // harder to read, so one that can't be read is let go.
+    let newest: BTreeMap<String, String> = kept
+        .get("newest")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(query, ts)| Some((query.clone(), ts.as_str()?.to_owned())))
+        .filter(|(_, ts)| micros(ts).is_some())
+        .collect();
     match kept
         .get("since")
         .and_then(Value::as_str)
@@ -114,12 +154,14 @@ pub fn read(state: &Path, fresh: u64) -> (Judged, Option<Afresh>) {
             Judged {
                 since: since.to_owned(),
                 keys,
+                newest,
             },
             (!whole).then_some(Afresh::Unjudged),
         ),
         None => (
             Judged {
                 keys,
+                newest,
                 ..Judged::starting(fresh)
             },
             Some(Afresh::Unreadable),
@@ -135,14 +177,20 @@ pub fn read_at(state: &Path) -> Option<u64> {
 }
 
 /// Keeps `judged` whole in `state`, with `at`, in milliseconds, as when
-/// Slack was read, through a file renamed into place, so no reader sees
-/// half. Written every round, a few hundred bytes each 30 s.
+/// Slack was last read whole, none if it hasn't been, through a file
+/// renamed into place, so no reader sees half. Written every round, a few
+/// hundred bytes each 30 s.
 ///
 /// # Errors
 ///
 /// Why it couldn't be kept.
-pub fn write(state: &Path, judged: &Judged, at: u64) -> std::io::Result<()> {
-    let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": at });
+pub fn write(state: &Path, judged: &Judged, at: Option<u64>) -> std::io::Result<()> {
+    let kept = json!({
+        "since": judged.since,
+        "keys": judged.keys,
+        "newest": judged.newest,
+        "read_at": at,
+    });
     let path = state.join(FILE);
     let written = path.with_extension("new");
     std::fs::create_dir_all(state)?;

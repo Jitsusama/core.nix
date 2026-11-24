@@ -26,6 +26,8 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   border-block-start: 1px solid var(--rule);
+  /* A purpose or a title holding a long link breaks rather than widening the page. */
+  overflow-wrap: anywhere;
 }
 
 .panel-body:focus {
@@ -220,6 +222,12 @@
 
   .panel-body {
     overflow: visible;
+  }
+
+  /* Under the list, a panel with no cell yet is only padding, and the rows
+     arriving would push it off the screen as a shift of the whole page. */
+  .panel:has(> .panel-body:empty) {
+    display: none;
   }
 }
 

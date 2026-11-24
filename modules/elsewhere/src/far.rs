@@ -162,24 +162,11 @@ fn excluded(path: &str, pattern: &str) -> bool {
             .any(|(slash, _)| at(&path[slash + 1..]))
 }
 
-/// Whether `path` names somewhere within a tree: a relative path of plain
-/// names, never from the root, through `..` or `.`. Git writes no other
-/// into its index, but an index written by hand could, and the near side
-/// would then read from outside the tree.
-fn within_tree(path: &str) -> bool {
-    use std::path::Component;
-    !path
-        .split('/')
-        .any(|name| name.is_empty() || name == "." || name == "..")
-        && Path::new(path)
-            .components()
-            .all(|part| matches!(part, Component::Normal(_)))
-}
-
-/// The files of the tree at `root` that travel, with their sizes: git's
-/// tracked files, read where they lie, not links or folders, or why the
-/// job can't travel.
-pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> {
+/// The files of the tree at `root` that travel: git's tracked files,
+/// read where they lie, not links or folders, or why the job can't
+/// travel. What they take as archives is counted again as they're
+/// written, so the far line's ceiling is what was left.
+pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<String>, String> {
     let output = Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(root)
@@ -193,24 +180,19 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
     }
     let mut files = Vec::new();
     let mut bytes = 0u64;
+    let mut folders = Folders::default();
     for path in output.stdout.split(|&byte| byte == 0) {
         let Ok(path) = std::str::from_utf8(path) else {
             return Err("a tracked file's name isn't UTF-8".to_owned());
         };
-        if path.is_empty() || !travels(path, &kind.excludes) {
+        if path.is_empty() || !tracked(path, &kind.excludes)? {
             continue;
         }
-        if path.contains(['\t', '\n']) {
-            return Err(format!(
-                "the tracked name {path:?} holds a tab or a newline"
-            ));
+        // A file tracked but gone, or under a folder now a link, a link or
+        // a submodule doesn't travel.
+        if !folders.own(root, path) {
+            continue;
         }
-        if !within_tree(path) {
-            return Err(format!(
-                "the tracked name {path:?} isn't a path within the tree"
-            ));
-        }
-        // A file tracked but gone, a link or a submodule doesn't travel.
         let Ok(meta) = fs::symlink_metadata(root.join(path)) else {
             continue;
         };
@@ -224,7 +206,7 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
             ));
         }
         bytes += taken;
-        files.push((path.to_owned(), meta.len()));
+        files.push(path.to_owned());
     }
     let bytes = archive::archived(bytes, LARGEST_FILE);
     if bytes > MOST_BYTES {
@@ -239,17 +221,29 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
 /// Leaves `paths`, files of the tree at `root`, in the job's folder of
 /// the handover as archives each a share carries whole, and lists the
 /// archives last so the list is never ahead of them, each at the size it
-/// was written at.
+/// was written at. It answers the bytes they take in all.
 pub fn left<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
     job: &Path,
 ) -> io::Result<u64> {
+    leave(root, paths, job, LARGEST_FILE, MOST_BYTES)
+}
+
+/// What `left` does, with archives each at most `most` bytes, and `all`
+/// in all, so a test can leave several without writing 64 MiB.
+fn leave<'a>(
+    root: &Path,
+    paths: impl IntoIterator<Item = &'a str>,
+    job: &Path,
+    most: u64,
+    all: u64,
+) -> io::Result<u64> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
     let mut bytes = 0;
-    for part in archive::write(root, paths, &tree, LARGEST_FILE)? {
+    for part in archive::write(root, paths, &tree, most, all)? {
         // Writing to a String can't fail.
         let _ = writeln!(list, "{}\t{}", part.size, part.name);
         bytes += part.size;
@@ -261,12 +255,13 @@ pub fn left<'a>(
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's archives, `bytes` in all, to cross, unpacks them in `scratch` within the
-/// quest's own scratch there, the one folder a strict fence lets it
-/// write, runs the kind's setup and then the job, its program found on
-/// the far path by its name, in the job's folder `within` the tree, then
-/// leaves what the kind brings back in the handover and takes its copy
-/// away.
+/// for the job's archives, `bytes` in all, to cross, unpacks them in
+/// `scratch` within the quest's own scratch there, the one folder a
+/// strict fence lets it write, runs the kind's setup and then the job,
+/// its program found on the far path by its name, in the job's folder
+/// `within` the tree, then leaves what the kind brings back in the
+/// handover and takes its copy away. First it clears the copies of runs
+/// here that are gone.
 pub fn script(
     quest: &str,
     id: &str,
@@ -278,10 +273,7 @@ pub fn script(
 ) -> String {
     let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
     let job = format!("{scratches}/{HANDOVER}/{id}");
-    let work = format!(
-        "{scratches}/{}",
-        quoted(&format!("{}/{id}", scratch.trim_matches('/')))
-    );
+    let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
     let folder = match within.to_string_lossy() {
         within if within.is_empty() => "\"$work\"".to_owned(),
         within => format!("\"$work\"/{}", quoted(&within)),
@@ -300,29 +292,50 @@ pub fn script(
     let waiting = waiting(bytes, &untaken);
     let copying = copying();
     let stopping = stopping();
+    let sweeping = sweeping();
+    let handing = handing();
     let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
         r#"job={job}
 work={work}
+mine=
 tab=$(printf '\t')
 {crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
 {stopping}
+{sweeping}
 {waiting}
-if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
-rm -f "$work.names"
+# Its run's file first, so no copy lies here without one. A link at the
+# copies' folder or at the file's name, as an earlier job could leave,
+# goes first, and noclobber refuses a file, or a link to one, put there
+# meanwhile. A link to a device put there meanwhile is still written
+# through, and one to a pipe holds the far line until something reads it.
+# A plain run's file at its name is another run's of this very job, since
+# a job's number is never used twice and the sweep took a gone run's
+# where it could judge one, or one another job of the quest put there;
+# either way it stands and this line's write loses, as the near side then
+# hears. A line that lost its write clears nothing that run holds, the
+# copy, its names or the job's tree, and one that never made it leaves
+# the tree to the near side's clearing.
+if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
+  {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
+  (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
+  rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
+[ -z "$mine" ] || rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
-  cd "$HOME" && rm -rf "$work" "$job/{TREE}"
+  [ -z "$mine" ] || {{
+    cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+  }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 fi
 cd {folder} || {{
   printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && rm -rf "$work" "$job/{TREE}"
+  cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
   say {refused}
   exit {REFUSES}
 }}
@@ -332,9 +345,7 @@ say {started}
   }} && exec {job_line}
 )
 code=$?
-# Made fresh, so no copy is written through whatever sat at its number.
-rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
-{bringing}exit "$code"
+{handing}{bringing}exit "$code"
 "#,
         started = quoted(&Heard::Started.line(id)),
         refused = quoted(&Heard::Refused.line(id)),
@@ -763,10 +774,14 @@ pub fn quoted(word: &str) -> String {
 mod archive;
 mod heard;
 mod landing;
+mod names;
 pub mod spent;
 mod steps;
 
-use steps::{bringing, copying, crossing, stopping, waiting};
+#[cfg(test)]
+use names::within_tree;
+use names::{Folders, tracked};
+use steps::{RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

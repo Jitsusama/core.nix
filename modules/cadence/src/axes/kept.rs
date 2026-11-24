@@ -1,8 +1,10 @@
 //! Whether the loop's fixes stayed fixed, from the ledger `cadence day`
-//! keeps as findings.jsonl (findings.rs). A figure finding closes once two
-//! days' reads no longer find it; one that falls outside its bar again
-//! later is a fix that didn't hold. This reads the whole ledger, closed
-//! entries too, where open.rs reads only what's open.
+//! keeps as findings.jsonl (findings.rs). A figure finding closes once its
+//! owner has said what fixed it and two days' reads no longer find it; one
+//! that falls outside its bar again later is a fix that didn't hold. One
+//! back with no fix said is no fix, so it counts on neither side. This
+//! reads the whole ledger, closed entries too, where open.rs reads only
+//! what's open.
 
 use std::collections::BTreeMap;
 

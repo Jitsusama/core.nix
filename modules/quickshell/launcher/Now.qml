@@ -28,6 +28,7 @@ import "ForYou.js" as ForYou
 import "ForYouCells.js" as Cells
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
+import "LookForm.js" as LookForm
 import "Looks.js" as Looks
 import "NowGroups.js" as Groups
 import "Showing.js" as Showing
@@ -35,7 +36,9 @@ import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
+import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
+import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
 import "../pieces/Holding.js" as Holding
 
@@ -570,14 +573,18 @@ Provider {
         const how = !here ? "" : here.hand === true ? said("byHand")
             : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
-        // how far off it was at the last poll, signed, as Time says it.
+        // how far off it was at the clock's last update, signed, as Time
+        // says it (Clocks.qml's clockParts). A clock never yet updated
+        // has no offset of its own, chrony giving 0 in its place, so it's
+        // said only once the clock has a last update.
         // Chrony is asked only while home shows, so until the reader
         // answers it's left out, but for a reading kept from the minute
         // before (Timekeeping.qml); that nothing keeps the time is said
         // only once the reader refused, as on a machine without chrony.
         const time = source("time");
         const kept = time?.kept ?? null;
-        const offset = kept?.exchange ? time.millis(kept.exchange.offset, true) : "";
+        const offset = kept?.clock?.lastSync
+            ? Keeping.seconds(kept.clock.lastOffset, true, time.clockSaid?.point ?? ".") : "";
         const step = kept ? said(kept.synchronised ? "synchronised" : "unsynchronised")
             : Timekeeping.refused ? said("unkept") : "";
         return {
@@ -612,9 +619,11 @@ Provider {
             { title: title });
     }
 
+    // Each placeholder given by a function, so a `$` in what fills it, as a
+    // look's own choice label may hold, is read as itself, not a pattern.
     function filledIn(words, fill) {
         for (const key of Object.keys(fill))
-            words = words.replace(`{${key}}`, fill[key]);
+            words = words.replace(`{${key}}`, () => String(fill[key]));
         return words;
     }
 
@@ -943,7 +952,11 @@ Provider {
         };
         const row = member({
             thing: true,
-            key: `on:waiting:${WaitingOnYou.identity(each)}`,
+            // Under `item:`, since its identity is its quest and id as its
+            // session wrote them, and a quest named want, done, came, try or
+            // screen would otherwise take the key of a want's row, or
+            // another's of For You's own.
+            key: `on:waiting:item:${WaitingOnYou.identity(each)}`,
             // What it is and where it's from, which For You filters by; not
             // `kind`, which a row says beside its side (Choice.qml).
             forYou: { kind: "do", source: "needs-you" },
@@ -1147,8 +1160,13 @@ Provider {
     function lookSettled(file, text, was, answer) {
         if (answer?.done === true)
             return;
-        console.warn(`Now: the to-do daemon didn't settle ${file} (${answer?.error?.message
-            ?? "not there to ask"}), so its look stands as it was`);
+        // A look's file is named for what Joel wrote, and the daemon's words
+        // may quote it, so they're said by letters and as errorShown says them.
+        const why = answer?.error === undefined ? "not there to ask"
+            : Presented.errorShown(answer.error, Options.reports);
+        const named = Presented.typedShown(file, Options.reports);
+        console.warn(`Now: the to-do daemon didn't settle ${named} (${why}),`
+            + " so its look stands as it was");
         if (looksSettling[file]?.text !== text)
             return;
         delete looksSettling[file];
@@ -1219,7 +1237,8 @@ Provider {
             const moved = Looks.movedOn(one, Sessions.running, Sessions.parked);
             const told = provider.launcher?.toldGone(moved) === true;
             console.warn(`Now: no session held for look ${JSON.stringify(one.id)} to go to:`
-                + ` cell ${JSON.stringify(one.cell ?? null)},`
+                + ` cell ${JSON.stringify(one.cell ?? null)}`
+                + ` (led by ${JSON.stringify(Looks.cellNamed(one))}),`
                 + ` quest ${JSON.stringify(one.quest ?? null)},`
                 + ` session ${JSON.stringify(one.session ?? null)}, the daemon says`
                 + ` ${JSON.stringify(Looks.cellGoes(one, cellsDaemon.held))},`
@@ -1237,7 +1256,12 @@ Provider {
     // its window, which a terminal's Open already is, offered as Agents
     // offers it: where it has a window, or is parked and wakes into one;
     // then Explain It, which says what the cell works on in a sentence or
-    // two (explainAct), where the machine has Ask's pi to answer it. None
+    // two and, where it waits on Joel, which act on the row answers it
+    // (explainAct), where the machine has Ask's pi to answer it: Talk and Go
+    // To, which reach the cell, and a terminal look's own Open, which is Go
+    // To, under the name its row shows (LookForm.presses). Any other look's
+    // Open, and its choices, answer the look, not what the cell asks now,
+    // which may be another question, and Clear It answers nothing. None
     // while no cell is held for it, or Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
@@ -1245,10 +1269,8 @@ Provider {
         if (cell === null || !agents)
             return [];
         const talk = [talkTo(cell)].filter(act => act !== null);
-        const explain = source("ask") === null ? []
-            : [explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell)];
         const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
-        return one.kind === "terminal" || !reachable ? talk.concat(explain) : talk.concat([thing({
+        const acts = one.kind === "terminal" || !reachable ? talk : talk.concat([thing({
             // Under Go To's own word, so the : line names it as a want's is.
             key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
@@ -1258,15 +1280,28 @@ Provider {
             side: cell.title,
             later: true,
             run: () => provider.goToCell(one)
-        })], explain);
+        })]);
+        const beside = LookForm.presses(one, acts.map(act => act.name), lookOpenName(one));
+        return source("ask") === null ? acts : acts.concat([explainAct(
+            `verb:on:waiting:explain:on:look:${one.id}`, cell, beside)]);
+    }
+
+    // What a look's Open is named on its row, waiting or in History: in the
+    // look's own words where it says them, else Go To for a terminal's and
+    // Open for any other's.
+    function lookOpenName(one) {
+        const opens = one.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
+        return LookForm.actOf(one, lookActNames) || Words.name(opens);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
     // what the session works on, why and how it stands, its answer then
     // standing in the act's place (Explainer.qml), so Joel needn't open a
     // session to know what a short line is about (WCJQSG, 2026-11-17).
-    function explainAct(key, cell) {
-        const shown = explainer.shown(key);
+    // `beside` names the acts on its row, which its answer may point to,
+    // so it goes once they change (Explainer.qml's shown).
+    function explainAct(key, cell, beside) {
+        const shown = explainer.shown(key, beside);
         return thing(Object.assign({
             key: key,
             verb: Words.verb("verb:on:waiting:explain"),
@@ -1276,7 +1311,7 @@ Provider {
             side: cell.title,
             stays: true,
             changes: false,
-            run: () => explainer.explain(key, cell.address)
+            run: () => explainer.explain(key, cell.address, beside)
         }, shown === null ? {} : {
             name: shown.name,
             reads: shown.reads,
@@ -1295,11 +1330,36 @@ Provider {
         onChanged: provider.changed()
     }
 
-    // The answers Joel gave looks, `{ [look id]: { label, at, taken } }`,
-    // each shown as given while the node is asked (Looks.js's answering),
-    // then, once it took it, in History (Looks.js's taken). Replaced
-    // whole, so what reads it hears.
+    // The answers Joel gave looks, `{ [look id]: { label, at, sent, taken,
+    // failed } }`, each shown as given while the node is asked (Looks.js's
+    // answering), then, once it took it, in History (Looks.js's taken), or
+    // said not to have gone (Looks.js's unanswered). Replaced whole, so
+    // what reads it hears, and again as its 5 s comes, so one shown on an
+    // idle For You changes when it should (answersLapse).
     property var lookAnswers: ({})
+    // How many answers have been sent, each answer's `sent` its count, so
+    // two are told apart however close in time.
+    property int answersSent: 0
+
+    onLookAnswersChanged: {
+        const wait = Looks.answersChange(lookAnswers, Date.now());
+        if (wait === null) {
+            answersLapse.stop();
+        } else {
+            answersLapse.interval = Math.max(1, wait);
+            answersLapse.restart();
+        }
+    }
+
+    Timer {
+        id: answersLapse
+
+        onTriggered: provider.lookAnswers = Object.assign({}, provider.lookAnswers)
+    }
+
+    // How long until the sides next change, in ms, or -1 while nothing
+    // waits: for a case to see the timer armed as answers come and go.
+    readonly property int answersDue: answersLapse.running ? answersLapse.interval : -1
 
     // Answers a look with one of its choices where it is, rather than in a
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
@@ -1309,22 +1369,68 @@ Provider {
     // Talk reaches, or the look's own where the cell only lists that, never
     // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
-    // leaves what waits at once; one it didn't is no longer shown as given,
-    // so its choices come back.
+    // leaves what waits at once. One with nobody to tell, never sent, that
+    // the node couldn't give or went before saying it took, or that no word came
+    // for, says so at its side (Looks.js's unanswered), the journal saying
+    // why where it ended. Its choices stay away only while no word has come
+    // on a connection still open (Looks.js's awaiting), and one run then,
+    // from acts drawn before it was given, sends nothing; the connection
+    // going ends that wait, as every ask's (Daemon.qml's gone). A word for
+    // an answer since replaced changes nothing (`sent`).
     function answerLook(one, choice) {
-        const told = Looks.answer(one, choice, lookCell(one), Date.now());
-        if (told === null)
+        if (Looks.awaiting(one, lookAnswers)) {
+            console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
+                + ` ${JSON.stringify(one.id)}, whose answer may still reach its session`);
             return;
+        }
+        answersSent += 1;
+        const sent = answersSent;
+        const at = Date.now();
+        const told = Looks.answer(one, choice, lookCell(one), at);
+        if (told === null) {
+            console.warn(`Now: nobody to tell the answer to look ${JSON.stringify(one.id)}:`
+                + ` address ${JSON.stringify(one.address ?? null)},`
+                + ` quest ${JSON.stringify(one.quest ?? null)}`);
+            lookAnswers = Object.assign({}, lookAnswers, { [one.id]: { label: choice.label,
+                at: at, sent: sent, failed: "nobody" } });
+            return;
+        }
         lookAnswers = Object.assign({}, lookAnswers,
-            { [one.id]: { label: choice.label, at: Date.now() } });
-        Sessions.steer(told.address, told.steer, put => {
+            { [one.id]: { label: choice.label, at: at, sent: sent } });
+        Sessions.steer(told.address, told.steer, (put, answer, reached) => {
             const left = Object.assign({}, provider.lookAnswers);
-            if (put)
+            if (left[one.id]?.sent !== sent)
+                return;
+            if (put) {
                 left[one.id] = Object.assign({}, left[one.id], { taken: true });
-            else
-                delete left[one.id];
+                provider.lookAnswers = left;
+                return;
+            }
+            const failed = provider.answerFailed(reached, answer);
+            const words = {
+                unsent: "never sent, with no node connected",
+                dropped: "sent, but the node went before saying it took it",
+                untaken: answer?.error?.message
+                    ? `not given by the node, which said ${JSON.stringify(answer.error.message)}`
+                    : "not given by the node, which said nothing of why"
+            };
+            console.warn(`Now: the answer to look ${JSON.stringify(one.id)} for`
+                + ` ${JSON.stringify(told.address)} was ${words[failed]}`);
+            left[one.id] = { label: choice.label, at: Date.now(), sent: sent, failed: failed };
             provider.lookAnswers = left;
         });
+    }
+
+    // Why an answer the node didn't put failed: never sent, with no node
+    // connected; the node gone before answering one it was sent, which may
+    // be in the session's inbox all the same (Daemon.qml's gone gives
+    // none); or else not given, refused or its machine out of reach, which
+    // is also what an answer of no known shape is taken for, so its
+    // choices come back saying so.
+    function answerFailed(reached, answer) {
+        if (reached === false)
+            return "unsent";
+        return reached === true && answer === null ? "dropped" : "untaken";
     }
 
     // A look as ForYou.js weighs it, blocking the session that left it
@@ -1344,17 +1450,27 @@ Provider {
         const target = ["pr", "page", "diff"].includes(one.kind) ? one.target : "";
         // Its choices and what happens if Joel does nothing, in place of a
         // weight and when it clears, which told him a score and nothing to
-        // do (Joel, 2026-11-19).
-        const choices = lookChoices(one, now).map(choice => choice.label);
-        const facts = [
-            fact("choices", choices.join(" \u00b7 ")),
+        // do (Joel, 2026-11-19): in its second form, where it says what
+        // follows any, one fact a choice, its label and what follows it or
+        // that it doesn't say (QGB4ON's layout of 2026-11-22), so none is
+        // left out; else the labels together. They're said while an answer
+        // is out too, so Joel still reads what he chose and what else there
+        // was, though none can be pressed (lookChoices).
+        const offered = lookOffers(one);
+        const followed = LookForm.secondForm(one) && offered.some(choice => choice.follows !== "")
+            ? offered.map(choice => ({ label: choice.label,
+                value: choice.follows || waitingSaid("followsUnsaid", {}) }))
+            : [];
+        const choices = followed.length > 0 ? []
+            : [fact("choices", offered.map(choice => choice.label).join(" \u00b7 "))];
+        const facts = followed.concat(choices, [
             fact("ifNothing", waits ? Looks.ifNothingOf(one) || lookLapses(one, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
             // What it points at, short; its whole address with its id in
             // the nerdy bits, where y copies it (Y2YBTS, 2026-11-12).
             fact("target", ForYou.pointsAt(one.kind, target, say))
-        ].filter(each => each.value !== "");
+        ]).filter(each => each.value !== "");
         return Object.assign(lookFrom(one, say), {
             title: one.title,
             facts: facts,
@@ -1397,10 +1513,24 @@ Provider {
         return one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
     }
 
-    // The choices a look offers while it waits and none is given yet.
+    // The names of the launcher's own acts on a look, which neither its act
+    // nor a choice may pass for (LookForm.js's actOf and poses).
+    readonly property var lookActNames: ["verb:on:look:open", "verb:on:look:answer",
+        "verb:on:look:clear", "verb:on:waiting:go", "verb:on:waiting:explain",
+        "verb:agent:talk"].map(id => Words.name(id))
+
+    // The choices a look offers while it waits, but for one named as the
+    // launcher's own acts are, which a look's writer could word to pass for
+    // Clear It.
+    function lookOffers(one) {
+        return one.state === "waiting"
+            ? one.offers.filter(choice => !LookForm.poses(choice.label, lookActNames)) : [];
+    }
+
+    // Those Joel can press: none while an answer given is out (Looks.js's
+    // awaiting).
     function lookChoices(one, now) {
-        return one.state === "waiting" && Looks.answering(one, lookAnswers, now) === ""
-            ? one.offers : [];
+        return Looks.awaiting(one, lookAnswers) ? [] : lookOffers(one);
     }
 
     // A look's row: its title, who asks in its note, its kind's mark, and
@@ -1430,15 +1560,27 @@ Provider {
             later: true,
             run: () => provider.openLook(one)
         };
+        // A choice's drawer says what follows it, where the look says, so
+        // Joel reads what his Return does before he presses it.
+        const followsOf = choice => choice.follows === "" || !LookForm.secondForm(one) ? {} : {
+            drawer: () => Object.assign(lookFrom(one, say), {
+                title: choice.label,
+                facts: [],
+                body: choice.follows
+            })
+        };
         const inside = () => choices.map(choice => thing(Object.assign({
             key: `verb:on:look:answer:${one.id}:${choice.value}`,
             name: choice.label,
             glyph: Words.glyph("verb:on:look:answer"),
             hue: "action"
-        }, answering(choice)))).concat([thing({
+        }, answering(choice), followsOf(choice)))).concat([thing({
             key: `verb:on:look:open:${one.id}`,
             verb: Words.verb(opens),
-            name: Words.name(opens),
+            // What Joel presses, in the look's own words where it says them;
+            // the verb stays the launcher's, since the foot and the : line
+            // read a verb as what an act does, never a look's to choose.
+            name: provider.lookOpenName(one),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
@@ -1468,15 +1610,25 @@ Provider {
     }
 
     // What a look's row says at its side: the answer given, while it may
-    // yet take, else what it asks while it waits, else the strongest reason
-    // it waits, or, in History, how it went and when.
+    // yet take, or that it didn't go, else, while it waits, in its second
+    // form "asks you" where it wants an answer, then the strongest reason it
+    // waits, so those that want something read apart down the column
+    // (QGB4ON's layout), and in its first form what it asks, else that
+    // reason; or, in History, how it went and when.
     function lookSide(one, now, say) {
         const given = Looks.answering(one, lookAnswers, now);
         if (given !== "")
             return waitingSaid("answering", { choice: given });
+        const failed = Looks.unanswered(one, lookAnswers, now);
+        if (failed !== "")
+            return waitingSaid(`unanswered:${failed}`, { choice: lookAnswers[one.id].label });
         if (one.state !== "waiting")
             return ForYou.historySide(one, say);
-        return Looks.askOf(one) || ForYou.reason(lookThing(one), now, say);
+        const reason = ForYou.reason(lookThing(one), now, say);
+        if (LookForm.secondForm(one))
+            return [LookForm.asksBack(one) ? waitingSaid("asksYou", {}) : "", reason]
+                .filter(part => part !== "").join(" \u00b7 ");
+        return Looks.askOf(one) || reason;
     }
 
     // A look's row, kept while its file reads the same and its side says
@@ -1601,8 +1753,8 @@ Provider {
         // so (Looks.js's taken), or settled while the daemon hasn't told it
         // yet, and every one while the daemon serves none. Few, they're made
         // here and sorted with what else the shell holds, each led to its
-        // cell as a served one is (doneWith).
-        const apart = from === undefined ? lookedApart(looked).map(Looks.doneWith) : [];
+        // cell as a served one is (Looks.js's cellFor).
+        const apart = from === undefined ? lookedApart(looked) : [];
         const ours = from === undefined ? apart.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
@@ -1705,17 +1857,20 @@ Provider {
     // opened, and its drawer says who it's from. Its acts hold Open, then
     // Talk, Go To and Explain It on the cell behind it (cellActs), as a
     // waiting look's do, so a look done with still leads to the cell that
-    // sent it, as it is now; one naming no cell, by its address (doneWith).
+    // sent it, as it is now; one naming no cell, by the one its session
+    // goes by (Looks.js's cellNamed).
     function lookServed(row, key) {
         const held = row.held ?? {};
         // Open and Return lead where Talk does, a terminal look's Open being
-        // its only way to its cell (doneWith).
-        const one = () => Looks.doneWith(provider.lookHeld(held));
+        // its only way to its cell.
+        const one = () => provider.lookHeld(held);
         const opens = held.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
         const inside = () => [thing({
             key: `verb:on:look:open:${held.id}`,
             verb: Words.verb(opens),
-            name: Words.name(opens),
+            // As its waiting row named it, so Explain It points to it by
+            // what it shows (cellActs).
+            name: provider.lookOpenName(one()),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
@@ -2608,7 +2763,7 @@ Provider {
     // nothing below it, it's asked with For You's own, after the change
     // (forYouMoved): said outright there, a session's notice updated as its
     // work turned just after Return into For You was drawn as Return's act,
-    // though no row For You showed had moved (the niri case, 2026-11-18:
+    // though no row For You showed had moved (seen on niri, 2026-11-18:
     // "the notices' history, then the notices' rows"). What such a step
     // shows is rows of places or a thing's acts, whose every drawn line
     // changedTo compares. Where the notices themselves are shown, in

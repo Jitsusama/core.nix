@@ -274,9 +274,10 @@ mod tests {
     #[test]
     fn a_trees_call_gets_the_exemptions_environment_and_no_more() {
         // The same list, in the same order, as the harness's
-        // tests/lib/internal/offload-exemption.test.ts pins for a held
-        // tree, with NIX_CONFIG beside it, which the harness takes up when
-        // it runs its calls through `outside` (by 17 November).
+        // agentic-harness.pi/tests/lib/internal/fence/offload-exemption.test.ts
+        // pins for a held tree, with NIX_CONFIG beside it, which that list
+        // doesn't hold yet: it's this side's own until the harness runs its
+        // calls through `outside`.
         // Whoever changes one changes the other.
         let account = Account {
             home: "/home/someone",

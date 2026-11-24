@@ -70,8 +70,10 @@
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
-//! every ten minutes and as it leaves, idle or stopped, unless a logout or
-//! a shutdown kills it first.
+//! every ten minutes and as it leaves, idle or stopped, unless a shutdown,
+//! or a logout where the account doesn't linger, kills it first. Leaving,
+//! it says them once it has dropped what it cut, so its last counts hold
+//! every cut.
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
@@ -420,12 +422,14 @@ impl Default for Clocks {
     }
 }
 
-/// What a relay that has left says last: the counts once more, once its
-/// runtime has dropped the answers it cut, which count only then.
+/// What a relay that has left says last: its counts, once its runtime
+/// has dropped the answers it cut, which count only then. Said earlier,
+/// they'd say none was cut just before a later line said some were.
+#[must_use = "a relay's last counts are said only when its last word is"]
 pub struct LastWord(Arc<Counts>);
 
 impl LastWord {
-    /// Says the counts, when the answers dropped since moved them.
+    /// Says the counts as they stand once everything it cut has ended.
     pub fn say(&self) {
         self.0.say();
     }
@@ -521,15 +525,17 @@ enum ForAgain {
     Closed,
 }
 
-/// A request reset and waiting on a connection to go once more. Should pi
-/// leave meanwhile, hyper drops the request with nothing said, so it's
-/// counted as pi's cancel, or as cut when a stop's cut drops it.
-struct WaitingAgain<'a>(Option<&'a Counts>);
+/// A request asked that nothing else counts yet: while its body is read,
+/// and while it waits on a connection to go on, first or once more after a
+/// reset. Should pi leave meanwhile, hyper drops the request with nothing
+/// said, so it's counted as pi's cancel, or as cut when a stop's cut drops
+/// it; otherwise it would be counted as asked and nothing else.
+struct Uncounted<'a>(Option<&'a Counts>);
 
-impl<'a> WaitingAgain<'a> {
+impl<'a> Uncounted<'a> {
     /// A request starting to wait, for `counts`.
     fn new(counts: &'a Counts) -> Self {
-        WaitingAgain(Some(counts))
+        Uncounted(Some(counts))
     }
 
     /// Its wait is over, with or without a connection.
@@ -538,7 +544,7 @@ impl<'a> WaitingAgain<'a> {
     }
 }
 
-impl Drop for WaitingAgain<'_> {
+impl Drop for Uncounted<'_> {
     fn drop(&mut self) {
         if let Some(counts) = self.0 {
             if counts.cutting.load(Ordering::SeqCst) {
@@ -1138,9 +1144,9 @@ impl Relay {
     /// clocks' `drains_within` at most and then cuts them, and a second
     /// stop cuts them at once. Those it sends direct get
     /// `SAYS_GO_DIRECT_WITHIN` once its answers have ended, as they do when
-    /// it's stopped as it leaves idle. What it hands back says the counts
-    /// once more, for the answers it cut, which end only as its runtime
-    /// drops them.
+    /// it's stopped as it leaves idle. It says its counts as it begins to
+    /// leave; what it hands back says them last, for the answers it cut,
+    /// which end only as its runtime drops them.
     pub async fn serve_until(
         self,
         listener: UnixListener,
@@ -1215,13 +1221,17 @@ impl Relay {
         if stopped_as_it_left {
             eprintln!("model-relay: stopped as it left, so it ends what it was sending direct");
             relay.lets_the_late_finish(&mut stops).await;
+            // What's still held, such as another origin's body still being
+            // read, which holds no idle leave back, is dropped with the
+            // runtime by this stop, so it's cut, not pi's cancel.
+            relay.counts.cutting.store(true, Ordering::SeqCst);
         }
-        // Once more for those refused while it left.
-        relay.counts.say();
+        // Those refused while it left are said in its last word.
         last_word
     }
 
-    /// Leaves as `serve_until` says once stopped, its counts said.
+    /// Leaves as `serve_until` says once stopped, leaving its last counts
+    /// to the word `serve_until` hands back.
     async fn leave_as_stopped(
         self: &Arc<Relay>,
         listener: &UnixListener,
@@ -1252,7 +1262,6 @@ impl Relay {
                     self.late.now.load(Ordering::SeqCst)
                 );
                 self.counts.cutting.store(true, Ordering::SeqCst);
-                self.counts.say();
                 return;
             }
         };
@@ -1272,8 +1281,6 @@ impl Relay {
             let _ = leave.send(Leave::Now);
         }
         self.lets_the_late_finish(stops).await;
-        // Once more for those refused while it left.
-        self.counts.say();
     }
 
     /// Taking no more, gives those it was sending direct the moment they
@@ -1402,8 +1409,11 @@ impl Relay {
         // Its body read whole before any 421, so pi isn't writing one the
         // relay has stopped reading, failing on a broken pipe, when the
         // 421 would send it direct. A body too large still gets the 421, as
-        // it was never to go to the origin anyway.
+        // it was never to go to the origin anyway. A stop that cuts it
+        // midway counts it as cut; a read that ends counts itself below.
+        let reading = Uncounted::new(&self.counts);
         let read = read_whole(body).await;
+        reading.over();
         // A body pi left, or one still coming past its deadline, which pi
         // would have written at once, is a cancel whatever else, as nobody
         // waits on a 421 for it. The tests can't wait out the deadline, so
@@ -1522,7 +1532,7 @@ impl Relay {
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
         let mut request = sendable(parts, whole);
         let mut sent = 0;
-        let mut taken = self.sender().await;
+        let mut taken = self.sender_waited_on().await;
         // The connection the origin reset this request on, once it has.
         // Sent again, it's answered or fails on that send, so a request
         // reset is one not yet sent again for as long as the loop goes.
@@ -1595,7 +1605,7 @@ impl Relay {
                             // could hand it.
                             taken = match reset_on {
                                 Some((at, number)) => self.another(at, number).await,
-                                None => self.sender().await,
+                                None => self.sender_waited_on().await,
                             };
                         }
                         // Reset before its answer began, saying the origin
@@ -1642,9 +1652,10 @@ impl Relay {
 
     /// A connection for a request reset on slot `at`'s `number` to go once
     /// more on, or why there's none: `fresh`'s, refused when it has none.
-    /// It's counted as waiting again until it has its answer.
+    /// It's counted as waiting on a connection until it has one, or hears
+    /// why there's none.
     async fn another(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
-        let waiting = WaitingAgain::new(&self.counts);
+        let waiting = Uncounted::new(&self.counts);
         let another = self.fresh(at, number).await.unwrap_or_else(|| {
             // Said, so a journal of these isn't read as an origin refusing
             // connections, when the relay chose to open none.
@@ -1794,6 +1805,15 @@ impl Relay {
         (1..count)
             .map(|step| (at + step) % count)
             .find_map(|other| self.slots[other].sender().map(|kept| (other, kept)))
+    }
+
+    /// `sender`'s connection, with the request waiting on it counted should
+    /// it be dropped meanwhile.
+    async fn sender_waited_on(self: &Arc<Relay>) -> Result<(usize, Kept), Unreachable> {
+        let waiting = Uncounted::new(&self.counts);
+        let taken = self.sender().await;
+        waiting.over();
+        taken
     }
 
     /// A connection to send down: the next in turn if it's open, or any

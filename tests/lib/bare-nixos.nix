@@ -4,9 +4,9 @@
 # account, someone, for home-manager to configure, so the home half of a role
 # or module is evaluated too. A check calls `nixpkgs.lib.nixosSystem` with it
 # and the modules it checks, since core builds no machine itself. It is only
-# for checks, never a machine's base: it allows unfree packages, as core's
-# nixpkgs settings do, and its account has no password, so nobody logs in
-# with one. Its platform, boot loader, disk and state versions give way even
+# for checks, never a machine's base: it allows the unfree packages core's
+# nixpkgs settings and modules name, and its account has no password, so
+# nobody logs in with one. Its platform, boot loader, disk and state versions give way even
 # to a module's defaults, so a module checked on it may set its own.
 { self }:
 { lib, ... }:

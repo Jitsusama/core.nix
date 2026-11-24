@@ -27,6 +27,7 @@ QtObject {
                 failures.push(`${name}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
         };
         strokes(expect);
+        rests(expect);
         leans(expect);
         swats(expect);
         held(expect);
@@ -49,6 +50,22 @@ QtObject {
             [false, false, false]);
         expect("resting on it 300 ms, and leaning 600 ms after it goes",
             [MarginCat.PETS, MarginCat.PETTED], [300, 600]);
+    }
+
+    // When its rest begins, which a pet waits on: on niri's answer for the
+    // first frame synced after it sat, never one a walk began, and never
+    // by asking for frame after frame (2026-11-24, #6382's round).
+    function rests(expect) {
+        // It sat at 1000 ms with 40 frames begun.
+        const rest = (frame, synchronizing) => MarginCat.restFrom(frame, synchronizing, 40, 1000);
+        expect("a frame synced as it sat or after begins it",
+            [rest(41, 1000), rest(42, 1016.5)], ["begins", "begins"]);
+        expect("one that took the ask but synced before it sat asks again",
+            [rest(41, 999.9), rest(41, 0)], ["asks", "asks"]);
+        expect("a walk's frame begun before it sat is only heard, however late",
+            [rest(40, 990), rest(39, 1200), rest(40, undefined)], ["waits", "waits", "waits"]);
+        expect("one nothing was kept of begins it rather than asking on",
+            rest(41, undefined), "begins");
     }
 
     // Its lean toward the hand (VKCF3Z, 10bacc58): only its head moves, so

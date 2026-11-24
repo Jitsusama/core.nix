@@ -586,9 +586,7 @@ fn serve(args: Args) -> Result<(), Failure> {
             }
             inputs.hear(one, &paths);
         }
-        if still.due(Instant::now()) {
-            inputs.keep_places(&paths.arrangement);
-        }
+        inputs.keep_when_still(&mut still, &paths, Instant::now());
         let moved = served.take(inputs.made());
         // The landings are read again only once they were made again, and
         // only what moved is told: 4,997 of them, read and cloned at every

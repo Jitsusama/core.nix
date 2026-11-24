@@ -733,10 +733,16 @@ fn built_nearby(
     let mut status = 0;
     for (machine, part) in near {
         let began = now();
-        let ran = (!held_nearby(machine, scratch) && there::fetches(machine, part, scratch, "ssh"))
+        let held = held_nearby(machine, scratch);
+        let ran = (!held && there::fetches(machine, part, scratch, "ssh"))
             .then(|| there::nearby_run(machine, part, scratch, ["ssh", "tar", "nix"]))
             .flatten();
         let Some(ran) = ran else {
+            // ssh failing there may be the machine going, which what it
+            // said within the last minute can't know, so it's asked afresh.
+            if !held {
+                machines::forget_reached(&machine.host);
+            }
             let (goes, stays) = there::lent_builds(part, dir);
             if !stays.is_empty() {
                 eprintln!(
@@ -848,6 +854,25 @@ fn nearby_listed() -> Vec<there::Nearby> {
         .unwrap_or_default()
 }
 
+/// Who stands in for a builder that doesn't come: a VM builder past the
+/// first leaves its tests to the first; the first and second lent builders
+/// stand in for each other, and the first stands in for a VM builder given
+/// a spill.
+fn fallbacks<'a>(
+    spill: Option<&'a PathBuf>,
+    first_dir: &'a PathBuf,
+    more_dir: &'a PathBuf,
+    vm_dirs: &'a [PathBuf],
+) -> Vec<(&'a PathBuf, &'a PathBuf)> {
+    spill
+        .map(|spill| (spill, first_dir))
+        .into_iter()
+        .chain(std::iter::once((more_dir, first_dir)))
+        .chain(there::lends(more_dir).then_some((first_dir, more_dir)))
+        .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
+        .collect()
+}
+
 fn there(arguments: &[String]) -> Result<(), Failure> {
     if let Some(failure) = marked(arguments) {
         return Err(failure);
@@ -898,7 +923,9 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
-    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (near, left) = there::shared(&asked, &nearby, |machine| {
+        machines::nearby_answers(&machine.address, &machine.host)
+    });
     let (left, owed) = there::owed(left, &nearby, &this_system());
     if !owed.is_empty() {
         eprintln!(
@@ -913,20 +940,27 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     // lender runs to make one.
     let more_dir = more_dir();
     let first_dir = dir;
-    let left_dir = match &left {
-        Some(_) if there::lends(&more_dir) => more_than(&first_dir, &more_dir, &scratch),
-        _ => first_dir.clone(),
-    };
+    let general = [&first_dir, &more_dir];
+    let room = vm_room();
+    // The spill's claim holds its lane's room for as long as the run goes.
+    let (left_dir, spill, _spill_claim) = left_to(
+        left.is_some(),
+        general,
+        (&vm_dirs, &vm_parts),
+        room,
+        &scratch,
+    );
     let mut parts: Vec<(&PathBuf, Option<there::Asked>)> = vm_dirs.iter().zip(vm_parts).collect();
     parts.push((&left_dir, left));
-    // A VM builder past the first that doesn't come leaves its tests to
-    // the first; the first and second lent builders stand in for each other.
-    let fallbacks: Vec<(&PathBuf, &PathBuf)> = std::iter::once((&more_dir, &first_dir))
-        .chain(there::lends(&more_dir).then_some((&first_dir, &more_dir)))
-        .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
-        .collect();
+    let fallbacks = fallbacks(spill.as_ref(), &first_dir, &more_dir, &vm_dirs);
     let vm_dirs: Vec<&PathBuf> = vm_dirs.iter().collect();
-    let ran = at_once(&parts, &vm_dirs, vm_room(), &fallbacks, &scratch, waiting);
+    let sends = Sends {
+        vm_dirs: &vm_dirs,
+        spill: spill.as_deref(),
+        room,
+        fallbacks: &fallbacks,
+    };
+    let ran = at_once(&parts, &sends, &scratch, waiting);
     for (part, began, ended, waited, ran) in &ran {
         there::note(
             &journal,
@@ -1093,16 +1127,17 @@ fn own_vm_extra_dirs() -> Vec<PathBuf> {
 /// 51 minutes on the first builder, with 2 of its 4 claimed, while the
 /// second sat idle. A builder past the first that stands while root
 /// doesn't vouch for it takes none, since a run split there would wait
-/// on root while the first had room.
+/// on root while the first had room. One kept for the runs that name it
+/// takes none past the first, as it's the first only for those runs.
 fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there::Asked>> {
     let mut parts: Vec<Option<there::Asked>> = vm_dirs.iter().map(|_| None).collect();
     let Some(part) = vm else {
         return parts;
     };
+    let spills_onto =
+        |index: &usize| there::lends(&vm_dirs[*index]) && !there::named_only(&vm_dirs[*index]);
     let lending: Vec<usize> = (0..vm_dirs.len())
-        .filter(|index| {
-            *index == 0 || (there::lends(&vm_dirs[*index]) && !there::unvouched(&vm_dirs[*index]))
-        })
+        .filter(|index| *index == 0 || (spills_onto(index) && !there::unvouched(&vm_dirs[*index])))
         .collect();
     if lending.len() == 1 {
         parts[0] = Some(part);
@@ -1114,7 +1149,7 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
     // Those left out as root vets them still come, so none more is asked
     // for in their place.
     let vetting = (1..vm_dirs.len())
-        .filter(|index| there::lends(&vm_dirs[*index]) && there::unvouched(&vm_dirs[*index]))
+        .filter(|index| spills_onto(index) && there::unvouched(&vm_dirs[*index]))
         .count();
     let lending = warm_of(&part, lending, vm_dirs, builds, vetting, busy_in);
     let busy: Vec<usize> = lending.iter().map(busy_in).collect();
@@ -1188,22 +1223,39 @@ fn warm_of(
     warm
 }
 
+/// Where a run's parts may go: the VM builders, the one given what's left
+/// while both lent builders stand full, how many VM tests each runs at
+/// once, and which builder stands in for which.
+#[derive(Clone, Copy)]
+struct Sends<'a> {
+    vm_dirs: &'a [&'a PathBuf],
+    spill: Option<&'a Path>,
+    room: usize,
+    fallbacks: &'a [(&'a PathBuf, &'a PathBuf)],
+}
+
 /// Sends each of `parts` to its builder at once, on a thread of its own
 /// with scratch of its own, since each goes to a builder of its own: one
 /// after another, the second VM builder's tests waited out the first's.
-/// Those sent to one of `vm_dirs` go once it has room for them, as many
-/// as `room`, and are claimed there while they go. Says how each ran,
-/// with when it began and ended and the seconds it waited for room and
-/// for its builder to stand, in the order given. Each waits for its
-/// builder as `waiting` says.
+/// Those sent to one of the VM builders go once it has room for them, as
+/// many as its room, and are claimed there while they go. What's left sent
+/// to the spill's VM builder isn't a VM part: it claims the builder's
+/// whole room while it goes, so VM tests go elsewhere rather than beside
+/// big builds. Says how each ran, with when it began and ended and the
+/// seconds it waited for room and for its builder to stand, in the order
+/// given. Each waits for its builder as `waiting` says.
 fn at_once<'a>(
     parts: &'a [(&PathBuf, Option<there::Asked>)],
-    vm_dirs: &[&PathBuf],
-    room: usize,
-    fallbacks: &[(&PathBuf, &PathBuf)],
+    sends: &Sends,
     scratch: &Path,
     waiting: there::Waiting,
 ) -> Vec<(&'a there::Asked, u64, u64, u64, there::Ran)> {
+    let Sends {
+        vm_dirs,
+        spill,
+        room,
+        fallbacks,
+    } = *sends;
     thread::scope(|scope| {
         let sending: Vec<_> = parts
             .iter()
@@ -1211,12 +1263,16 @@ fn at_once<'a>(
             .filter_map(|(index, (dir, part))| Some((index, *dir, part.as_ref()?)))
             .map(|(index, dir, part)| {
                 let scratch = scratch.join(index.to_string());
-                let vm = vm_dirs.contains(&dir);
+                let spilled = spill == Some(dir.as_path());
+                let vm = vm_dirs.contains(&dir) && !spilled;
                 // The other VM builders, while a lender runs to make each,
-                // which a VM part waiting for room goes to once one has some.
+                // which a VM part waiting for room goes to once one has some,
+                // all but those kept for the runs that name them.
                 let others: Vec<&Path> = vm_dirs
                     .iter()
-                    .filter(|other| **other != dir && there::lends(other))
+                    .filter(|other| {
+                        **other != dir && there::lends(other) && !there::named_only(other)
+                    })
                     .map(|other| other.as_path())
                     .collect();
                 scope.spawn(move || {
@@ -1407,17 +1463,18 @@ impl Kept {
 /// decides, else `first`. A build waits for the first while none stands,
 /// as it always has, but not while one stands that root doesn't vouch
 /// for yet and the second's does: it would wait on root with the second
-/// idle.
-fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
+/// idle. Says too whether both stand full, as `there::both_full` decides,
+/// so what's left may go to an idle VM builder instead.
+fn more_than(first: &Path, more: &Path, scratch: &Path) -> (PathBuf, bool) {
     let Some(stands) = standing(first) else {
         if there::unvouched(first) && standing(more).is_some() {
             eprintln!(
                 "nix-offload: root doesn't vouch for the lent builder yet, and the second's it \
                  does, so this goes to the second"
             );
-            return more.to_owned();
+            return (more.to_owned(), false);
         }
-        return first.to_owned();
+        return (first.to_owned(), false);
     };
     let busy = |store: String| there::pressure(&store, scratch, "ssh");
     let waits = busy(stands);
@@ -1430,20 +1487,101 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
         None => there::Second::Unlent,
     };
     match waits {
-        // The second is read only once the first is full.
-        Some(waits) if waits >= there::FULL && there::to_second(Some(waits), &second()) => {
-            eprintln!(
-                "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its CPUs, \
-                 so this goes to a second"
-            );
-            more.to_owned()
+        // The second is read only once the first is full, and once.
+        Some(waits) if waits >= there::FULL => {
+            let second = second();
+            let full = there::both_full(Some(waits), &second);
+            if there::to_second(Some(waits), &second) {
+                eprintln!(
+                    "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its \
+                     CPUs, so this goes to a second"
+                );
+                return (more.to_owned(), full);
+            }
+            (first.to_owned(), full)
         }
         None if there::to_second(None, &second()) => {
             eprintln!("nix-offload: the lent builder didn't answer, so this goes to a second");
-            more.to_owned()
+            (more.to_owned(), false)
         }
-        _ => first.to_owned(),
+        _ => (first.to_owned(), false),
     }
+}
+
+/// The lender's folder what's left of a run goes to, when anything is: the
+/// second's while the first is full, as `more_than` decides, else the
+/// first's, unless both stand full and a VM builder of `vms` is idle,
+/// whose folder is said too, with the claim on its `room` that keeps VM
+/// tests off it while the run goes.
+fn left_to(
+    any: bool,
+    [first, more]: [&PathBuf; 2],
+    (vm_dirs, vm_parts): (&[PathBuf], &[Option<there::Asked>]),
+    room: usize,
+    scratch: &Path,
+) -> (PathBuf, Option<PathBuf>, Option<there::Claim>) {
+    let (dir, full) = if any && there::lends(more) {
+        more_than(first, more, scratch)
+    } else {
+        (first.clone(), false)
+    };
+    match full
+        .then(|| spilled_onto(vm_dirs, vm_parts, room, scratch))
+        .flatten()
+    {
+        Some((spill, claim)) => (spill.clone(), Some(spill), Some(claim)),
+        None => (dir, None, None),
+    }
+}
+
+/// The VM builder what's left of a run goes to while both lent builders
+/// stand full, if one is idle: lent, vouched for, open to every run,
+/// sent and waiting on nothing, given no VM tests of this run in `parts`,
+/// and quiet enough, as `there::takes_spill` reads its CPUs, with its
+/// whole `room` claimed under its lock. On 23 November both lent builders
+/// ran past load 200 while eleven VM builders stood with nothing sent.
+/// None while none is, or while another run's spill holds a lane: one at
+/// a time, never the first lane, and the last asked first, as
+/// `there::spill_order` says, so VM runs keep the lanes they reach first.
+fn spilled_onto(
+    vm_dirs: &[PathBuf],
+    parts: &[Option<there::Asked>],
+    room: usize,
+    scratch: &Path,
+) -> Option<(PathBuf, there::Claim)> {
+    if vm_dirs.iter().any(|dir| there::spilled(dir)) {
+        return None;
+    }
+    let index = there::spill_order(vm_dirs.len()).find(|&index| {
+        let dir = &vm_dirs[index];
+        let open = parts.get(index).is_none_or(Option::is_none)
+            && there::lends(dir)
+            && !there::named_only(dir)
+            && !there::unvouched(dir)
+            && there::claimed(dir) + there::waiting(dir) == 0;
+        standing(dir)
+            .filter(|_| open)
+            .is_some_and(|store| there::takes_spill(there::pressure(&store, scratch, "ssh")))
+    });
+    let Some(index) = index else {
+        eprintln!(
+            "nix-offload: both lent builders are full, but no VM builder stands idle and quiet \
+             to take this, so it waits on them"
+        );
+        return None;
+    };
+    // The lane is probed unlocked, since a probe is an ssh; the claim is
+    // made only while still no lane holds a spill, so runs that start
+    // together spill once between them.
+    let claim = there::claim_only_spill(vm_dirs, index, room)?;
+    let idle = vm_dirs[index].clone();
+    eprintln!(
+        "nix-offload: both lent builders' tasks wait past {:.0}% of the time for their CPUs, \
+         so this goes to the idle VM builder in {}",
+        there::FULL,
+        idle.display()
+    );
+    Some((idle, claim))
 }
 
 /// How many VM tests each VM builder runs at once, as XDG's config folder
@@ -1888,7 +2026,7 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
     let mac = nearby_listed()
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
-        .find(|machine| machines::answers(&machine.address))?;
+        .find(|machine| machines::nearby_answers(&machine.address, &machine.host))?;
     // A run that goes says the load it went at, so a busy Mac that was
     // sent one can be told from the gate that let it through.
     match mac::room_alone(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
@@ -2005,7 +2143,8 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     if there::lent_only() {
         return skipped("--lent-only keeps the change off a Mac nearby".to_owned());
     }
-    let answering = |machine: &&there::Nearby| machines::answers(&machine.address);
+    let answering =
+        |machine: &&there::Nearby| machines::nearby_answers(&machine.address, &machine.host);
     let Some(mac) = macs.iter().find(answering) else {
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));
@@ -2023,7 +2162,14 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         "nix-offload: {read} is read by a Mac's checks, so they're compared there too: {room}"
     );
     let longest = mac::longest();
-    match compared_within(&mac::for_a_mac(arguments), waiting, longest) {
+    let compared = compared_within(&mac::for_a_mac(arguments), waiting, longest);
+    // A comparison that didn't pass, or never ended, may be the Mac going,
+    // which what ssh said of it within the last minute can't know, so it's
+    // asked afresh.
+    if compared != Some(0) {
+        machines::forget_reached(&mac.host);
+    }
+    match compared {
         Some(0) => OnAMac::Passed,
         None => skipped(format!(
             "{}'s comparison ran past {}",
@@ -2286,13 +2432,15 @@ impl Sent<'_> {
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
         // A turn at sending it there, held until the run ends
         // (`changed/turns.rs`); a run that may move is sent on from a full
-        // builder to the next.
-        let turns = env::var_os("XDG_RUNTIME_DIR")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("nix-offload-there");
-        let _turn = match changed::turns::sending(&turns, &lent.host, self.moves, !on_vm) {
-            changed::turns::Turn::Full => return Some(Finished::of(there::BUSY, None)),
-            changed::turns::Turn::Had(held) => held,
+        // builder to the next. They're kept in the account's own folder,
+        // as the uplink's are, so no other account's can hold them; with
+        // none, which is said, the run goes on without one.
+        let turn = there::turns_folder()
+            .map(|turns| changed::turns::sending(&turns, &lent.host, self.moves, !on_vm));
+        let _turn = match turn {
+            Some(changed::turns::Turn::Full) => return Some(Finished::of(there::BUSY, None)),
+            Some(changed::turns::Turn::Had(held)) => held,
+            None => Vec::new(),
         };
         // Sent as `--run`'s `--copy` paths are, as held outputs go, since
         // the builder trusts no account.
@@ -2413,8 +2561,9 @@ impl Sent<'_> {
             .kept_first(arguments, lent)
             .into_iter()
             .chain(
+                // A lane kept for the runs naming it takes no whole run.
                 vm.iter()
-                    .filter(|builder| there::warm(builder))
+                    .filter(|builder| there::warm(builder) && !there::named_only(builder))
                     .map(|builder| standing(builder)),
             )
             .collect();
@@ -2600,10 +2749,9 @@ impl Sent<'_> {
         let github = match source {
             there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
         };
-        for evaluator in evaluators
-            .iter()
-            .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
-        {
+        for evaluator in evaluators.iter().filter(|evaluator| {
+            evaluator.takes(github) && machines::nearby_answers(&evaluator.address, &evaluator.host)
+        }) {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
                 changed::evaluated(
@@ -3151,7 +3299,10 @@ fn kept(
              and no new build goes there until the way to it carries one"
         ),
         Some(false) if !keeper.health.dropped() => {
-            eprintln!("nix-offload: {name} failed a proof; another in a row gives it back");
+            eprintln!(
+                "nix-offload: {name} failed a proof; another in a row and no new build goes \
+                 there"
+            );
         }
         Some(true) if state == State::Full && was != State::Full => eprintln!(
             "nix-offload: {name} has {} GB free, under the {} GB floor, so builders with room \
@@ -3188,23 +3339,36 @@ fn ticked(settings: &Settings, sleep: &mut sleep::Sleep) -> Tick {
 
 /// Give back `builder` as `event` says: as one unanswered when its
 /// proofs in `keeper` say it failed them, keeping them for its folder to
-/// say so until another stands, else forgetting them.
+/// say so until another stands, else forgetting them. Says what it was
+/// given back as, which the hold after it is worked out from.
 fn given_back(
     settings: &Settings,
     machines: &mut Machines,
     builder: Lent,
     event: Event,
     keeper: &mut Option<Keeper>,
-) {
-    let unanswered = keeper
-        .as_ref()
-        .is_some_and(|keeper| keeper.health.builder == builder.name && keeper.health.dropped());
+) -> Event {
+    let unanswered = failed(keeper.as_ref(), &builder.name);
     if unanswered {
         give_back_unanswered(settings, machines, builder);
     } else {
         *keeper = None;
         give_back(settings, machines, builder, event);
     }
+    gone_as(unanswered, event)
+}
+
+/// Whether `builder`'s proofs in `keeper` say it failed them.
+fn failed(keeper: Option<&Keeper>, builder: &str) -> bool {
+    keeper.is_some_and(|keeper| keeper.health.builder == builder && keeper.health.dropped())
+}
+
+/// What a builder given back as `event` says goes as: lost whenever it
+/// failed its proofs (`unanswered`), as one kept while it answered and
+/// then left idle does, so another is asked for at once rather than after
+/// an idle builder's hold.
+fn gone_as(unanswered: bool, event: Event) -> Event {
+    if unanswered { Event::Lost } else { event }
 }
 
 /// Name the one `lent`, if any, in every file a build reads, and say how
@@ -3231,9 +3395,27 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
 /// proofs, so it says each once while that lasts.
 #[derive(Default)]
 struct SaidKept {
+    /// The builder this is said of, so the next one starts afresh.
+    builder: String,
     reached: bool,
     stalled: bool,
     busy: bool,
+    /// How many times in a row the builder hasn't said whether it answers.
+    silent: u32,
+}
+
+impl SaidKept {
+    /// What's said of `builder` from now: a builder lent after one given
+    /// back doesn't take its count of missed answers, or it could go at
+    /// its first miss.
+    fn of(&mut self, builder: &str) {
+        if self.builder != builder {
+            *self = Self {
+                builder: builder.to_owned(),
+                ..Self::default()
+            };
+        }
+    }
 }
 
 /// Whether `builder`, which a build `reached` this tick or not, is given
@@ -3248,6 +3430,7 @@ fn unanswered(
     said: &mut SaidKept,
     [ssh, nix]: [&str; 2],
 ) -> bool {
+    said.of(&builder.name);
     let dropped = kept(settings, keeper, builder, at, [ssh, nix]);
     let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
     // One that builds but can't take a copy has a way to it that's full,
@@ -3255,9 +3438,50 @@ fn unanswered(
     // be lent again over the same way, cold, and a VM builder takes 17
     // minutes to warm.
     let stalled = keeper.as_ref().is_some_and(|keeper| keeper.health.stalled);
-    let unanswered = decide::proven_lost(dropped, failures, reached || stalled, || {
-        answers(settings, builder, ssh)
-    });
+    let silent_before = said.silent;
+    // Whether it was asked if it answers, as proven_lost decided, so what
+    // is said can't drift from the decision.
+    let mut asked = false;
+    let unanswered = decide::proven_lost(
+        dropped,
+        failures,
+        reached || stalled,
+        &mut said.silent,
+        || {
+            asked = true;
+            answers(settings, builder, ssh)
+        },
+    );
+    if unanswered {
+        let reaching = if reached || stalled {
+            "though builds reach it"
+        } else {
+            "and no build is seen to reach it"
+        };
+        eprintln!(
+            "nix-offload: {} didn't say whether it answers {} times in a row, so it's lost \
+             {reaching}",
+            builder.name, said.silent
+        );
+    }
+    if !unanswered && said.silent > silent_before && builder.store.is_none() {
+        eprintln!(
+            "nix-offload: {} has no store of its own to ask whether it answers, {} of {} in a \
+             row, so it keeps what it builds for now",
+            builder.name,
+            said.silent,
+            decide::SILENT_WHILE_REACHED
+        );
+    } else if !unanswered && said.silent > silent_before {
+        eprintln!(
+            "nix-offload: {} didn't say within {} s whether it answers, {} of {} in a row, so \
+             it keeps what it builds for now",
+            builder.name,
+            proof::ANSWERING.as_secs(),
+            said.silent,
+            decide::SILENT_WHILE_REACHED
+        );
+    }
     if dropped && !unanswered && stalled && !std::mem::replace(&mut said.stalled, true) {
         eprintln!(
             "nix-offload: {} builds but couldn't carry a copy up {failures} proofs in a row, \
@@ -3268,7 +3492,8 @@ fn unanswered(
         );
     }
     said.stalled &= dropped && stalled;
-    if dropped && !unanswered && !stalled && !std::mem::replace(&mut said.reached, true) {
+    if dropped && !unanswered && !stalled && reached && !std::mem::replace(&mut said.reached, true)
+    {
         eprintln!(
             "nix-offload: {} failed {failures} proofs in a row, so no new build goes there, but \
              builds still reach it, so it's kept until they end, or once it has failed {} in a \
@@ -3278,7 +3503,7 @@ fn unanswered(
         );
     }
     said.reached &= dropped;
-    let busy = dropped && !unanswered && failures >= decide::FAILS_WHILE_REACHED;
+    let busy = dropped && !unanswered && said.silent == 0 && asked;
     if busy && !std::mem::replace(&mut said.busy, true) {
         eprintln!(
             "nix-offload: {} still answers, so it's busy rather than lost, and keeps what it \
@@ -3286,7 +3511,8 @@ fn unanswered(
             builder.name
         );
     }
-    said.busy &= dropped;
+    // Said again once it answers after a miss.
+    said.busy &= dropped && said.silent == 0;
     unanswered
 }
 
@@ -3313,10 +3539,9 @@ fn answers(settings: &Settings, builder: &Lent, ssh: &str) -> bool {
 /// at once, as after any builder lost.
 fn give_back_unanswered(settings: &Settings, machines: &mut Machines, builder: Lent) {
     eprintln!(
-        "nix-offload: {} failed {} proofs in a row, so no build goes there, its relay ends \
-         and it's given back",
-        builder.name,
-        proof::FAILS
+        "nix-offload: {} failed its last proofs, so no build goes there, its relay ends and \
+         it's given back",
+        builder.name
     );
     machines.proven(None, State::Dropped);
     give_back(settings, machines, builder, Event::Lost);
@@ -3425,7 +3650,8 @@ fn serve(settings: &Settings) -> bool {
                 let (used, ends) = (builder.used, builder.ends);
                 match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
-                        given_back(settings, &mut machines, builder, event, &mut keeper);
+                        let event =
+                            given_back(settings, &mut machines, builder, event, &mut keeper);
                         hold = decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
@@ -5104,6 +5330,44 @@ exit 0
         );
         assert!(runs(&mut builder.helper), "its helper still runs");
         end(&mut builder.helper);
+    }
+
+    // A builder kept while it answered goes back idle, as Stopped, but
+    // the hold after it must be a lost one's, or none is asked for for
+    // half an hour with work queued.
+    #[test]
+    fn a_builder_that_failed_its_proofs_goes_as_lost_whatever_gave_it_back() {
+        assert_eq!(gone_as(true, Event::Stopped), Event::Lost, "left idle");
+        assert_eq!(gone_as(false, Event::Stopped), Event::Stopped, "it passed");
+        // Long enough after its making for an idle builder's hold to apply.
+        let now = decide::IDLE + 100;
+        let after = |event| decide::next_after(event, true, 0, u64::MAX, false, now).until;
+        assert_eq!(
+            after(gone_as(true, Event::Stopped)),
+            now,
+            "another is asked for at once"
+        );
+        assert!(
+            after(Event::Stopped) > now,
+            "as Stopped it would have waited an idle builder's hold"
+        );
+    }
+
+    #[test]
+    fn a_builder_lent_anew_doesnt_take_the_last_ones_missed_answers() {
+        let mut said = SaidKept::default();
+        said.of("lend-5");
+        said.silent = decide::SILENT_WHILE_REACHED;
+        said.busy = true;
+        said.of("lend-5");
+        assert_eq!(
+            said.silent,
+            decide::SILENT_WHILE_REACHED,
+            "the same builder keeps it"
+        );
+        said.of("lend-6");
+        assert_eq!(said.silent, 0, "the next builder starts at none");
+        assert!(!said.busy, "nor is it said to be busy");
     }
 
     #[test]

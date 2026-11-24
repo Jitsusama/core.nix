@@ -141,18 +141,85 @@ fn left(request: &Request, gate: &Path) -> Result<(), String> {
     super::write_whole(gate, REQUEST, request.json().as_bytes())
 }
 
+/// Why mycelium didn't do what it was asked.
+#[derive(Debug, PartialEq, Eq)]
+enum Said {
+    /// The node answered no, so asking it again another way would only
+    /// get round its no.
+    Refused(String),
+    /// mycelium couldn't start, or ended without the node's answer.
+    Failed(String),
+}
+
 /// mycelium, run with `arguments`, what it said passed on to stderr.
-fn mycelium(arguments: &[&str]) -> Result<(), String> {
+fn mycelium(arguments: &[&str]) -> Result<(), Said> {
     let output = Command::new("mycelium")
         .args(arguments)
         .stdin(Stdio::null())
         .output()
-        .map_err(|error| format!("mycelium couldn't start: {error}"))?;
-    eprint!("{}", String::from_utf8_lossy(&output.stdout));
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+        .map_err(|error| Said::Failed(format!("mycelium couldn't start: {error}")))?;
+    let said = String::from_utf8_lossy(&output.stdout);
+    eprint!("{said}");
+    judged(
+        output.status.success(),
+        &said,
+        &String::from_utf8_lossy(&output.stderr),
+    )
+}
+
+/// What a run of mycelium that `ran` cleanly or not comes to, from what it
+/// `said` and its `errors`. The node's reply, where it printed one as
+/// `{"Ok": …}` or `{"Err": …}`, decides whatever mycelium's exit: it ends
+/// 0 once it has the reply, whatever that says, so a refused start read by
+/// its exit alone left ask waiting for a gate that was never started.
+fn judged(ran: bool, said: &str, errors: &str) -> Result<(), Said> {
+    match reply(said) {
+        Some(answer) => answer.map_err(Said::Refused),
+        None if ran => Ok(()),
+        None => Err(Said::Failed(
+            Some(errors.trim())
+                .filter(|errors| !errors.is_empty())
+                .map_or_else(
+                    || "mycelium failed, saying nothing why".to_owned(),
+                    str::to_owned,
+                ),
+        )),
+    }
+}
+
+/// The node's first reply in `said`: the whole of it read as one, where
+/// mycelium printed it across lines, or else its first line that is one.
+fn reply(said: &str) -> Option<Result<(), String>> {
+    std::iter::once(said)
+        .chain(said.lines())
+        .filter_map(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .find_map(|value| {
+            let object = value.as_object()?;
+            if object.contains_key("Ok") {
+                return Some(Ok(()));
+            }
+            let why = object.get("Err")?;
+            let why = why.as_str().map_or_else(|| why.to_string(), str::to_owned);
+            Some(Err(if why.trim().is_empty() {
+                "the node refused, saying nothing why".to_owned()
+            } else {
+                why
+            }))
+        })
+}
+
+/// What `ask` tells of mycelium's `said`, as `what` failed: a refusal ends
+/// as one, since asking again won't change the node's mind, and isn't
+/// sent to check what can be reached, which didn't stop it.
+fn failed_by(said: Said, what: &str, instead: &str) -> Failure {
+    match said {
+        Said::Refused(why) => failed(
+            Exit::Refused,
+            what,
+            &format!("the node refused: {why}"),
+            "Asking again won't change its answer",
+        ),
+        Said::Failed(why) => failed(Exit::Unavailable, what, &why, instead),
     }
 }
 
@@ -296,16 +363,14 @@ fn gated_here() -> Result<(String, Repo), Failure> {
 fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
     // Shared to the machine and waited for, where both ends' mycelium
     // can; otherwise shared, and `answer` finds the gate once it crosses.
-    mycelium(&["share", quest, "--to", on, "--wait"])
-        .or_else(|_| mycelium(&["share", quest]))
-        .map_err(|why| {
-            failed(
-                Exit::Unavailable,
-                "ask couldn't share the quest",
-                &why,
-                "Check `mycelium machines` reaches the gate's machine.",
-            )
-        })?;
+    // Any no to the narrow share falls back to the plain one, as before:
+    // a node whose mycelium can't wait answers it with an `Err` too, and
+    // a Mac's gate rests on the plain share. Only the start's no ends ask.
+    let sharing = "Check `mycelium machines` reaches the gate's machine.";
+    if mycelium(&["share", quest, "--to", on, "--wait"]).is_err() {
+        mycelium(&["share", quest])
+            .map_err(|said| failed_by(said, "ask couldn't share the quest", sharing))?;
+    }
     let machine = format!("machine={on}");
     let answering = [
         "start",
@@ -317,11 +382,10 @@ fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
         quest,
         commit,
     ];
-    mycelium(&answering).map_err(|why| {
-        failed(
-            Exit::Unavailable,
+    mycelium(&answering).map_err(|said| {
+        failed_by(
+            said,
             "ask couldn't start the gate",
-            &why,
             "Check `mycelium machines` says it's ready.",
         )
     })
@@ -330,6 +394,108 @@ fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn refusal(why: &str) -> Result<(), Said> {
+        Err(Said::Refused(why.to_owned()))
+    }
+
+    #[test]
+    fn a_start_the_node_refused_is_a_refusal_though_mycelium_ended_0() {
+        let said = "{\"Err\":\"this asks as a fenced agent, so it starts nothing\"}\n";
+        assert_eq!(
+            judged(true, said, ""),
+            refusal("this asks as a fenced agent, so it starts nothing"),
+            "a reply of Err must read as the node's refusal, whatever the exit"
+        );
+    }
+
+    #[test]
+    fn a_start_the_node_took_is_no_failure() {
+        let said = "{\"Ok\":{\"Started\":{\"machine\":\"far\"}}}\nshared\n";
+        assert_eq!(
+            judged(true, said, ""),
+            Ok(()),
+            "a reply of Ok refuses nothing"
+        );
+    }
+
+    #[test]
+    fn the_first_reply_decides() {
+        let said = "{\"Ok\":null}\n{\"Err\":\"later\"}\n";
+        assert_eq!(
+            judged(true, said, ""),
+            Ok(()),
+            "an Err after an Ok mustn't undo it"
+        );
+        let said = "{\"Err\":\"first\"}\n{\"Ok\":null}\n";
+        assert_eq!(
+            judged(true, said, ""),
+            refusal("first"),
+            "an Ok after an Err mustn't undo it"
+        );
+    }
+
+    #[test]
+    fn a_reply_printed_across_lines_is_read_whole() {
+        let said = "{\n  \"Err\": \"no room\"\n}\n";
+        assert_eq!(
+            judged(true, said, ""),
+            refusal("no room"),
+            "a reply spread over lines refuses"
+        );
+    }
+
+    #[test]
+    fn a_refusal_that_isnt_words_or_says_nothing_still_says_something() {
+        let said = "{\"Err\":{\"Fenced\":3}}\n";
+        assert_eq!(
+            judged(true, said, ""),
+            refusal("{\"Fenced\":3}"),
+            "a refusal that isn't a string is told as its JSON"
+        );
+        assert_eq!(
+            judged(true, "{\"Err\":\" \"}\n", ""),
+            refusal("the node refused, saying nothing why"),
+            "an empty refusal still says it was one"
+        );
+    }
+
+    #[test]
+    fn mycelium_ending_badly_without_a_reply_failed_and_says_why() {
+        assert_eq!(
+            judged(false, "shared\n", " can't reach the node\n"),
+            Err(Said::Failed("can't reach the node".to_owned())),
+            "a failed run with no reply is a failure, told by its errors"
+        );
+        assert_eq!(
+            judged(false, "", ""),
+            Err(Said::Failed(
+                "mycelium failed, saying nothing why".to_owned()
+            )),
+            "a failed run that says nothing still says it failed"
+        );
+        assert_eq!(
+            judged(true, "shared\n", ""),
+            Ok(()),
+            "plain words at exit 0 are no failure"
+        );
+    }
+
+    #[test]
+    fn a_refusal_ends_as_refused_and_a_failure_as_unavailable() {
+        let refused = failed_by(Said::Refused("no".to_owned()), "it", "Try.");
+        let failure = failed_by(Said::Failed("down".to_owned()), "it", "Try.");
+        assert_eq!(
+            refused.exit,
+            Exit::Refused,
+            "a node's no must end as a refusal"
+        );
+        assert_eq!(
+            failure.exit,
+            Exit::Unavailable,
+            "a run that failed must end as unavailable"
+        );
+    }
 
     fn words(text: &str) -> Vec<String> {
         text.split(' ').map(str::to_owned).collect()

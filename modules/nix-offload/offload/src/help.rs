@@ -236,6 +236,10 @@ fn ask() -> Help {
         Exit::Unavailable,
         "mycelium couldn't share the quest or start the gate",
     )
+    .exit(
+        Exit::Refused,
+        "the node refused to share the quest or start the gate",
+    )
     .exit(Exit::Bug, "it couldn't leave the gate's request")
     .exit(Exit::TryAgain, "no result came in time")
     .exit(Exit::Config, "neither --on nor gates-on names a machine")

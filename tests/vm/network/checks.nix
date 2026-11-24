@@ -60,4 +60,12 @@ onLinux {
   # Whether the shaper's queues drop a call's packets while the connection
   # is full both ways shows only with real flows filling real CAKEs.
   vm-a-call-keeps-its-packets = import ./shaper-call.nix { inherit self pkgs; };
+  # Whether the VPN's next socket leaves from a port that goes the quick
+  # way shows only with real NAT, conntrack and a router that splits by
+  # source port.
+  vm-the-vpn-takes-the-quick-way = import ./shaper-pin.nix { inherit self pkgs; };
+  # Whether another machine's reports hold the shaper's upload, and stop
+  # holding it, shows only with the reporter run as a system service
+  # and its datagrams crossing a real network to the shaper's firewall.
+  vm-the-house-holds-the-upload = import ./house.nix { inherit self pkgs; };
 }

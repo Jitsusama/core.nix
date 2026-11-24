@@ -302,6 +302,22 @@ function thrown(error) {
     return `${kind}: ${real ? "" : `${typeof error} `}thrown${where}`;
 }
 
+// What a call for the launcher's state answers: what read gives, or,
+// where it threw, JSON naming what threw as thrown says it, told to said
+// as well for the journal, since a call once answered an empty line and
+// kept nothing of why (vm-desktop-looks, 22 Nov). The desktop tests read
+// "threw" (tests/desktop/heard.py's shown); the state itself has no key
+// of that name.
+function answered(read, said) {
+    try {
+        return read();
+    } catch (error) {
+        const threw = thrown(error);
+        said(threw);
+        return JSON.stringify({ threw });
+    }
+}
+
 // What each history keeps once a step left by itself has landed where
 // Joel stepped in from, which is now where he is: the way back
 // (`went.jumps`, Ctrl+O), the places ahead (`went.ahead`, Ctrl+I), the

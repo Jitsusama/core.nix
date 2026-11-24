@@ -20,7 +20,7 @@
   # there are, as the windows daemon counts them.
   the-screens-go-off-on-niri = launcherOnNiri {
     name = "the-screens-go-off-on-niri";
-    tests = ../../../tests/screens-off-on-niri-test.py;
+    tests = ../tests/screens-off-on-niri-test.py;
   };
 
   # The launcher tells how the desk light is lit and sets it, and the brightness
@@ -122,8 +122,10 @@
   # The launcher's Screens draws each screen's row as the windows daemon serves it,
   # makes again only the row a change names, offers Windows the screens laid out by
   # what their rows hold, with no record of niri's, asks the daemon a screen's Return
-  # rather than niri, and says the Brightness as the place's line serves it
-  # (modules/quickshell/tests/displays.qml), with the daemon and niri stood in. A
+  # rather than niri, says the Brightness as the place's line serves it, and says a
+  # share the daemon refused by its code and how many letters with reports off
+  # (modules/quickshell/tests/displays.qml, read by displays-heard.sh), with the
+  # daemon and niri stood in. A
   # screen's ways, what :setl power and unplugged do with them, and what the place's
   # :set line serves, are the windows daemon's, tested beside it.
   the-launcher-remakes-only-the-screens-that-changed =
@@ -138,6 +140,7 @@
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Catalogue.js"
         "launcher/Displays.qml"
@@ -153,7 +156,9 @@
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/daemons
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      set -o pipefail
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+      ${pkgs.lib.getExe pkgs.bash} ${../tests/displays-heard.sh} said
       touch $out
     '';
 }

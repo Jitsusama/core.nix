@@ -66,6 +66,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "Seen.js" as Seen
 
 Provider {
@@ -205,7 +206,12 @@ Provider {
     // how it stands once the daemon tells them. No row asked it, so none is
     // drawn becoming: a refusal, in the daemon's words or the launcher's for
     // an answer that never came, goes to `later` as the : line's other
-    // answers do (lineAsk), else to the journal, naming `what` was asked.
+    // answers do (lineAsk), with the daemon's code, else to the journal,
+    // naming `what` was asked, the why quoted with reports on, and with
+    // them off by how many letters beside the daemon's code, or that no
+    // answer came (Presented.codeShown, refusalShown), as ReadyRows'
+    // whySaid says an act's, so the line still tells a daemon refusing
+    // from one gone.
     function lineAsked(ask, later, what) {
         if (!ready.link)
             return;
@@ -214,9 +220,10 @@ Provider {
             const why = !answer ? becoming.noAnswer ?? ""
                 : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "";
             if (later)
-                later(why, true);
+                later(why, true, Presented.codeShown(answer));
             else if (why !== "")
-                console.info(`launcher: ${what} refused: ${why}`);
+                console.info(`launcher: ${what} refused: `
+                    + Presented.refusalShown(why, Presented.codeShown(answer), Options.reports));
         });
     }
 
@@ -418,8 +425,8 @@ Provider {
     // Asks the windows daemon to set what the line typed, a switch's on or
     // off and a choice's words, and hands `later` the words it answers
     // with where it wasn't set: the daemon's own, or the launcher's for an
-    // answer that never came. Gone, the daemon can't be asked, so it says
-    // so at once.
+    // answer that never came, and its code, as lineAsked hands it. Gone,
+    // the daemon can't be asked, so it says so at once.
     function lineAsk(output, option, to, later) {
         const becoming = Words.field.becoming ?? {};
         if (!ready.link)
@@ -427,7 +434,8 @@ Provider {
         const typed = typeof to === "boolean" ? to : String(to);
         ready.link.ask({ ask: "screen", do: "line", output: output.name, option, typed },
             answer => later?.(!answer ? becoming.noAnswer ?? ""
-                : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "", true));
+                : answer.error ? answer.error.said || (becoming.couldNot ?? "") : "", true,
+                Presented.codeShown(answer)));
         return "";
     }
 

@@ -8,7 +8,7 @@ import { Held, isRecord, number, object, text, texts } from "../records.ts";
 it("a watch's records whole are held by key", () => {
   const held = new Held();
   const moved = held.took({ records: [{ key: "cell:A", title: "A" }, { key: "cell:B" }] });
-  assert.deepEqual(moved, { changed: ["cell:A", "cell:B"], gone: [], skipped: 0 });
+  assert.deepEqual(moved, { changed: ["cell:A", "cell:B"], gone: [], whole: true, skipped: 0 });
   assert.equal(held.size, 2);
   assert.equal(held.get("cell:A")?.title, "A");
 });
@@ -20,6 +20,13 @@ it("a record told twice is one record, as last told", () => {
   held.took({ changed: [{ key: "cell:A", machine: "osprey" }] });
   assert.equal(held.size, 1);
   assert.equal(held.get("cell:A")?.machine, "osprey");
+});
+
+it("only an answer of records whole is told as whole", () => {
+  const held = new Held();
+  assert.equal(held.took({ records: [] }).whole, true);
+  assert.equal(held.took({ changed: [{ key: "cell:A" }] }).whole, false);
+  assert.equal(held.took({ gone: ["cell:A"] }).whole, false);
 });
 
 it("records whole again stand for every record, those unnamed gone", () => {

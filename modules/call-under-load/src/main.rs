@@ -20,10 +20,19 @@
 //! and the calendar, keeping ten minutes clear of any meeting there. A run
 //! stopped or skipped writes nothing.
 //!
+//! `call-under-load watch` watches Joel's own calls as they happen, and
+//! each hour's figures carry the worst of those since the hour before
+//! (src/watch.rs says how).
+//!
+//! `call-under-load camera DEVICE` checks before each of Joel's meetings
+//! that his camera gives a picture, and says when it doesn't (src/camera.rs
+//! says how).
+//!
 //! `call-under-load`, or `call-under-load now`, says the last hour's
 //! figures, in the form `--format` asks for (docs/commands.md).
 
 mod call;
+mod camera;
 mod cdp;
 mod figures;
 mod gate;
@@ -31,6 +40,7 @@ mod history;
 mod hour;
 mod launcher;
 mod managed;
+mod watch;
 
 use serde_json::{Value, json};
 use std::fmt::Write as _;
@@ -93,6 +103,33 @@ fn help() -> Help {
                 )
                 .exit(Exit::Failed, "the call couldn't be made"),
         )
+        .subcommand(
+            Help::new("watch", "Joel's own calls, as its service watches them")
+                .example(
+                    "call-under-load watch",
+                    "adds each call's sending waits to the history as it ends",
+                )
+                .exit(Exit::Unavailable, "the apps' slice can't be found")
+                .exit(Exit::Refused, "another watch is running")
+                .exit(Exit::Failed, "a call's line couldn't be written"),
+        )
+        .subcommand(
+            Help::new(
+                "camera",
+                "the camera before a meeting, as its timer checks it",
+            )
+            .argument(
+                "device",
+                "the machine's camera, or a file naming it; one plugged in comes first",
+            )
+            .example(
+                "call-under-load camera /run/camera/device",
+                "says when a meeting is near and the camera gives no picture",
+            )
+            .exit(Exit::Done, "checked, or nothing due")
+            .exit(Exit::Unavailable, "the calendar can't be read")
+            .exit(Exit::Failed, "the notice or the check couldn't be written"),
+        )
         .exit(Exit::NotFound, "no hour has been measured yet")
         .exit(Exit::BadInput, "the hour can't be read")
 }
@@ -108,6 +145,17 @@ fn main() -> ExitCode {
         match command {
             "now" => none_after(rest).and_then(|()| now(context)),
             "run" => none_after(rest).and_then(|()| run(context)),
+            "watch" => none_after(rest).and_then(|()| watch()),
+            "camera" => {
+                let mut words = rest
+                    .iter()
+                    .filter(|arg| !matches!(arg.as_str(), "--verbose" | "-v"));
+                let device = words.next();
+                match words.next() {
+                    Some(arg) => none_after(std::slice::from_ref(arg)),
+                    None => camera_check(context, device.map(String::as_str)),
+                }
+            }
             word => Err(flags::unknown("command", word, &commands)),
         }
     })
@@ -120,10 +168,120 @@ fn none_after(rest: &[String]) -> Result<(), Failure> {
         .find(|arg| !matches!(arg.as_str(), "--verbose" | "-v"))
     {
         Some(arg) => Err(Failure::new(Exit::Usage, format!("{arg} isn't taken here"))
-            .because("now and run take nothing more")
+            .because("now, run and watch take nothing more, and camera only its device")
             .try_this("call-under-load --help")),
         None => Ok(()),
     }
+}
+
+/// Checks the camera before a meeting near enough, once each, when no call
+/// is on: a call on has its camera, and the check would only load it.
+fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> {
+    let said = |what: String| {
+        context
+            .say(&format!("{what}\n"))
+            .map_err(|error| unwritten(&error))
+    };
+    let runtime = env_dir("XDG_RUNTIME_DIR", ".cache");
+    let calendar = gate::ask(&runtime.join("daemons/google.sock"))
+        .and_then(|answer| gate::calendar(&answer))
+        .map_err(|why| {
+            Failure::new(Exit::Unavailable, "the calendar can't be read")
+                .because(why)
+                .try_this("systemctl --user status google")
+        })?;
+    let now = seconds_now() * 1000;
+    // A calendar not read for an hour may hold meetings since moved.
+    if now.saturating_sub(calendar.read) > gate::STALE_MS {
+        return said("the camera waits: the calendar wasn't read this past hour".to_string());
+    }
+    let file = folder().join("camera-checked.json");
+    let starts = camera::checked(&file, now);
+    let Some(meeting) = camera::due(&calendar, now, &starts) else {
+        return Ok(());
+    };
+    // Asked up to three times, since one slow answer under the heaviest
+    // load would leave the minute unchecked.
+    let mut asked = gate::a_call();
+    for _ in 1..call::UNSURE {
+        if !matches!(asked, gate::Call::Unknown(_)) {
+            break;
+        }
+        asked = gate::a_call();
+    }
+    if !camera::clear(&asked) {
+        return said(format!(
+            "the camera waits: a call may be on before {} ({asked:?})",
+            meeting.title
+        ));
+    }
+    let (node, read, gave) = match camera::which(Path::new("/"), device) {
+        Some(node) => {
+            let read = camera::loopback(Path::new("/"), &node);
+            let gave = camera::gives(&node, read);
+            (node, read, gave)
+        }
+        None => match device {
+            Some(device) => (PathBuf::from(device), true, Err(camera::Fault::Missing)),
+            None => return said("no camera to check".to_string()),
+        },
+    };
+    let now = seconds_now() * 1000;
+    let what = if read {
+        "gives frames"
+    } else {
+        "answers; its picture isn't read"
+    };
+    let (line, noticed) = match camera::settled(gave, meeting.start, now) {
+        camera::Outcome::Fine => (format!("{} {what}", node.display()), Ok(())),
+        camera::Outcome::Again(fault) => {
+            let line = format!(
+                "{}: {fault}; it's looked at again next minute",
+                node.display()
+            );
+            return said(format!("{line} before {}", meeting.title));
+        }
+        camera::Outcome::Late(fault) => (
+            format!(
+                "{}: {fault}, though the meeting had begun, so untold",
+                node.display()
+            ),
+            Ok(()),
+        ),
+        // He's told before the check is kept, so a state file that can't
+        // be written never keeps the notice from him, and a notice that
+        // couldn't be sent keeps the meeting due for the next minute.
+        camera::Outcome::Tell(fault) => (
+            format!("{}: {fault}", node.display()),
+            notice(&camera::told(meeting, now, read, &fault)),
+        ),
+    };
+    let kept = if noticed.is_ok() {
+        camera::remember(&file, starts, meeting.start).map_err(|error| {
+            Failure::new(Exit::Failed, "the check couldn't be kept")
+                .because(format!("{}: {error}", file.display()))
+        })
+    } else {
+        Ok(())
+    };
+    said(format!("{line} before {}", meeting.title))?;
+    noticed.and(kept)
+}
+
+/// Tells Joel his camera gives no picture, in a notice from Camera that
+/// waits for him until he reads it.
+fn notice((summary, body): &(String, String)) -> Result<(), Failure> {
+    let words = [
+        "--app-name=Camera".to_string(),
+        "--urgency=critical".to_string(),
+        summary.clone(),
+        body.clone(),
+    ];
+    camera::within("notify-send", &words, std::time::Duration::from_secs(10)).map_err(|fault| {
+        Failure::new(Exit::Failed, "the notice couldn't be sent")
+            .because(fault.to_string())
+            .try_this("systemctl --user status notices")
+    })
 }
 
 fn unwritten(error: &std::io::Error) -> Failure {
@@ -334,13 +492,13 @@ fn run(context: &Context) -> Result<(), Failure> {
     let call = figures::call(&mine, &far, &clicks);
     let at = seconds_now();
     let watched = state().join("lag-watch");
-    let ran =
-        history::ran(&std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default());
+    let lines = std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default();
+    let ran = history::ran(&lines);
     let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
     let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
     let read = launcher::read();
     let took: Vec<f64> = read.opens.iter().map(|(_, ms)| *ms).collect();
-    let measures = hour::measures(
+    let mut measures = hour::measures(
         &call,
         call::STAND_IN,
         &chrome_waits,
@@ -348,6 +506,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         &took,
         read.unread.as_deref(),
     );
+    measures.extend(real_calls(&lines, &ran, at));
     // The call's span runs from the run's start, Chromium's own included,
     // to now: the whole of the load the test put beside Joel's programs.
     let launcher = launcher::written(&read, started, at);
@@ -360,6 +519,77 @@ fn run(context: &Context) -> Result<(), Failure> {
     context
         .say(&said(&json!({"measures": measures, "run": run}), 0))
         .map_err(|error| unwritten(&error))
+}
+
+/// Joel's own calls' figures: those since the last hour written, so calls
+/// in hours a meeting or a call skipped still reach cadence, and when the
+/// watch last could tell.
+fn real_calls(lines: &str, ran: &[(u64, u64)], at: u64) -> Vec<hour::Measure> {
+    let since = ran.iter().map(|&(_, ended)| ended).max().unwrap_or(0);
+    let clear = watch::clear_at(&folder().join("watch.json"));
+    hour::real(&watch::heard(lines, since, at), since, clear, at)
+}
+
+/// Joel's own calls, watched until the service stops.
+fn watch() -> Result<(), Failure> {
+    let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let account = account(&cgroup).ok_or_else(|| {
+        Failure::new(Exit::Unavailable, "the apps' slice can't be found")
+            .because(format!(
+                "it runs outside a user's manager: {}",
+                cgroup.trim()
+            ))
+            .try_this("systemctl --user status call-under-load-watch")
+    })?;
+    // Without XDG_RUNTIME_DIR, the account's own runtime folder, so an
+    // agent's systemd-run unit is still told from his.
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
+        || PathBuf::from(format!("/run/user/{}", uid(&account).unwrap_or_default())),
+        PathBuf::from,
+    );
+    let seat = watch::Seat {
+        proc: PathBuf::from("/proc"),
+        slice: PathBuf::from(format!("/sys/fs/cgroup{account}/app.slice")),
+        account,
+        transient: runtime.join("systemd/transient"),
+    };
+    let history = folder().join("history.jsonl");
+    let unwritable = |error: std::io::Error| {
+        Failure::new(Exit::Failed, "a call's line couldn't be written")
+            .because(error.to_string())
+            .try_this(format!("ls -ld {}", folder().display()))
+    };
+    fs::create_dir_all(folder()).map_err(unwritable)?;
+    let Some(_held) = watch::alone(&folder().join("watch.lock")).map_err(unwritable)? else {
+        return Err(Failure::new(Exit::Refused, "another watch is running")
+            .because("two would write each of Joel's calls twice")
+            .try_this("systemctl --user status call-under-load-watch"));
+    };
+    watch::watch(&seat, &history, &folder().join("watch.json")).map_err(|error| {
+        Failure::new(Exit::Failed, "a call's line couldn't be written")
+            .because(error.to_string())
+            .try_this(format!("ls -ld {}", folder().display()))
+    })
+}
+
+/// The path in the cgroup tree of the user's manager this runs under,
+/// from its own line in `/proc/self/cgroup`.
+fn account(cgroup: &str) -> Option<String> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let (manager, _) = path.split_once(".service/")?;
+    manager
+        .contains("/user@")
+        .then(|| format!("{manager}.service"))
+}
+
+/// The account's uid, from its manager's path, `.../user@<uid>.service`.
+fn uid(account: &str) -> Option<u32> {
+    account
+        .rsplit_once("/user@")?
+        .1
+        .strip_suffix(".service")?
+        .parse()
+        .ok()
 }
 
 /// The first program named `name` on PATH.
@@ -435,6 +665,28 @@ mod tests {
             beside_said(&Value::Null),
             None,
             "an older hour says nothing"
+        );
+    }
+
+    #[test]
+    fn the_watch_finds_the_manager_it_runs_under() {
+        assert_eq!(
+            account(
+                "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
+                 call-under-load-watch.service\n"
+            )
+            .as_deref(),
+            Some("/user.slice/user-1000.slice/user@1000.service")
+        );
+        assert_eq!(
+            uid("/user.slice/user-1000.slice/user@1000.service"),
+            Some(1000),
+            "the account's runtime folder couldn't be found without XDG_RUNTIME_DIR"
+        );
+        assert_eq!(
+            account("0::/system.slice/sshd.service\n"),
+            None,
+            "a system service took a slice no user's apps are in"
         );
     }
 

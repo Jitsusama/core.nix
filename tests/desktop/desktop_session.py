@@ -1,7 +1,7 @@
 """The desktop every area of the desktop test drives: its boot, and the helpers each area shares.
 
-tests/desktop.nix gives this to the driver as a module of its Python, which pytest takes as a
-plugin, and its opening comment says what the test proves. So every area finds the fixtures here
+tests/desktop/desktop.nix gives this to the driver as a module of its Python, which pytest takes as
+a plugin, and its opening comment says what the test proves. So every area finds the fixtures here
 without declaring or importing them: the desktop, made once a run by `started`, the launcher
 closed after each test, for an area that asks for it, and the stand-in Google. A helper two
 areas use comes here too, and nothing here is a test.
@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import diagnosed, ended, said_by, until_heard
+from heard import diagnosed, ended, said_by, shown, until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -37,12 +37,12 @@ if TYPE_CHECKING:
 
 
 class Values(TypedDict):
-    """What tests/desktop.nix gives the test: the account, the theme and paths in the store."""
+    """What desktop.nix gives the test: the account, the theme and paths in the store."""
 
     # The account the desktop runs as, and its password.
     account: str
     secret: str
-    # The programs tests/desktop.nix writes for the test to run inside the machine.
+    # The programs tests/desktop/desktop.nix writes for the test to run inside the machine.
     asking: str
     ask_portal: str
     choose_a_file: str
@@ -67,8 +67,9 @@ class Values(TypedDict):
     # the stand-in warp-cli to give: only the areas that show WARP, so no other area moves with
     # them.
     warp_contract: str
-    # Windows retitled without rest, as a crowd of agents' windows is (desktop/window-storm.py):
-    # only keeps-pace, which opens the launcher through the storm.
+    # Windows retitled without rest, as a crowd of agents' windows is
+    # (tests/desktop/stand-ins/window-storm.py): only keeps-pace, which opens the launcher
+    # through the storm.
     window_storm: str
     # The packages whose programs the test runs by their paths.
     coreutils: str
@@ -166,7 +167,8 @@ NOTICES = "qs ipc call notices shows | grep -q ."
 # writes, and which the daemon rewrites as it starts.
 TUPLE_LOG = "~/.local/share/tuple/0/log.txt"
 # Tuple's stream as tuple-call follows it in the VM, through the stand-in
-# for Tuple's command (desktop/tuple-stand-in.sh), and what it was asked.
+# for Tuple's command (tests/desktop/stand-ins/tuple-stand-in.sh), and
+# what it was asked.
 TUPLE_STREAM = "$XDG_RUNTIME_DIR/tuple-stream"
 TUPLE_ASKED = "$XDG_RUNTIME_DIR/tuple-asked"
 
@@ -368,7 +370,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     """The account's desktop on the test's machine, and what every area does with it."""
 
     def __init__(self, machine: QemuMachine, values: Values) -> None:
-        """Drive the desktop on that machine, with what tests/desktop.nix gave the test.
+        """Drive the desktop on that machine, with what tests/desktop/desktop.nix gave the test.
 
         It's QEMU's, since the desktop is seen on its screen and typed at by its keys.
         """
@@ -703,9 +705,23 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Give what the launcher shows, from its showing call.
 
         That's whether it holds the keys, what's typed and held, and the row Return takes.
-        Under load the launcher lags the keys sent to it, so each step waits on this.
+        Under load the launcher lags the keys sent to it, so each step waits on this. An answer
+        that isn't the state, or says what threw making it, fails saying so and the shell's
+        last journal lines (heard.shown). Those leave out its reports, each a whole state the
+        waits already say, which would bury the line saying what threw, and cut short, drop it.
         """
-        return cast("Json", json.loads(self.as_account("qs ipc call launcher showing")))
+        journal = (
+            "journalctl --user --unit=quickshell --no-pager --output=cat --lines=2000"
+            " | grep -avF 'report[' | tail -n 60"
+        )
+        return cast(
+            "Json",
+            shown(
+                self.as_account("qs ipc call launcher showing"),
+                lambda: textwrap.indent(self.diagnosis(journal), "  "),
+                "the launcher's showing call answered",
+            ),
+        )
 
     def launcher_until(
         self,
@@ -1647,8 +1663,8 @@ def charged(desktop: Desktop) -> str:
 
 # What opens-files, which opens what Chrome downloaded and goes to a Neovim's buffer, shares
 # with looks-programs, which shoots both programs' pages: Chrome's lists, files the stand-in's
-# listers print (tests/desktop.nix), in the form chrome-recent-sites prints them, and Neovims in
-# kitty windows, read only from outside, so the account's own configuration is what runs.
+# listers print (tests/desktop/desktop.nix), in the form chrome-recent-sites prints them, and
+# Neovims in kitty windows, read only from outside, so the account's own configuration is what runs.
 CHROME_VISITED = "/run/user/1000/chrome-visited"
 CHROME_OPEN = "/run/user/1000/chrome-open"
 CHROME_DOWNLOADS = "/run/user/1000/chrome-downloads"

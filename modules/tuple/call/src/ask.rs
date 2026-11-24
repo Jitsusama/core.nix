@@ -13,7 +13,7 @@ pub const KEY: &str = "call:current";
 
 /// The asks that are acts, each answered on a thread of its own, since
 /// each waits on Tuple's command, and a share on Joel picking a screen.
-pub const ACTS: &[&str] = &["join", "leave", "mute", "share", "accept", "open"];
+pub const ACTS: &[&str] = &["join", "leave", "mute", "share", "camera", "accept", "open"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Act {
@@ -28,6 +28,12 @@ pub enum Act {
     },
     /// Shares a screen, which the desktop's portal asks Joel to pick.
     Share,
+    /// Opens Tuple's camera picker on the call, where Joel picks a camera
+    /// and shares it, or stops sharing his camera. The picker shares
+    /// nothing by itself, so the camera reaches the call only from there.
+    Camera {
+        on: bool,
+    },
     /// Answers the call ringing.
     Accept,
     /// Opens Joel's room, answering with its link.
@@ -46,6 +52,11 @@ pub fn act(said: &Value) -> Option<Act> {
             muted: said.get("muted").and_then(Value::as_bool) != Some(false),
         },
         "share" => Act::Share,
+        // Only a plain yes turns the camera on, so an unclear ask leaves
+        // it off, as Muted's unclear ask leaves Joel unheard.
+        "camera" => Act::Camera {
+            on: said.get("on").and_then(Value::as_bool) == Some(true),
+        },
         "accept" => Act::Accept,
         "open" => Act::Open,
         _ => return None,
@@ -99,6 +110,21 @@ mod tests {
             asked(r#"{"id": 1, "ask": "mute"}"#),
             Some(Act::Mute { muted: true })
         );
+        assert_eq!(
+            asked(r#"{"id": 1, "ask": "camera", "on": false}"#),
+            Some(Act::Camera { on: false })
+        );
+        assert_eq!(
+            asked(r#"{"id": 1, "ask": "camera", "on": true}"#),
+            Some(Act::Camera { on: true })
+        );
+        for unclear in ["", r#", "on": "true""#, r#", "on": null"#] {
+            assert_eq!(
+                asked(&format!(r#"{{"id": 1, "ask": "camera"{unclear}}}"#)),
+                Some(Act::Camera { on: false }),
+                "an unclear camera ask ({unclear}) must stop the camera"
+            );
+        }
         for (word, act) in [
             ("leave", Act::Leave),
             ("share", Act::Share),

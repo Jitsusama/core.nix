@@ -13,7 +13,9 @@ claimed split dashed and said as claimed at both ends, say what waits on its per
 plan furthest from done in its lede, draw each cell's plans, quest, needs and
 split in its panel and the need as a dotted arc, step its cursor by keys,
 follow a purpose written, drawn as words though it holds markup, a wait
-answered and a cell going, say broken when the node stops with its cells kept
+answered, a cell going and, once every cell has, the crest drawn again until
+a cell is heard again, say
+broken when the node stops with its cells kept
 and live again, its cells read again, when it's back, say stale when the
 server goes and keep what it drew, keep to its budget, and pass the
 web-design skill's page checks at a phone's width and a desk's in both looks.
@@ -392,7 +394,7 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(
         opened.close()
 
 
-def test_a_purpose_written_and_a_cell_gone_are_followed(
+def test_a_purpose_written_and_cells_gone_are_followed(
     forage_page: Page, mycelium_node: StandIn
 ) -> None:
     says_it_stands(forage_page, "live")
@@ -416,6 +418,23 @@ def test_a_purpose_written_and_a_cell_gone_are_followed(
     expect(headline, "the count didn't follow the cell going").to_have_text(
         "3 cells, each with its purpose."
     )
+    # Once every cell has gone, the floor holds the crest again rather than cells gone.
+    mycelium_node.tell("forage", gone=["forage:KESTRL", "forage:SKIFFS", "forage:OSPREY"])
+    expect(forage_page.locator("#cells [role=option]"), "a gone cell was listed").to_have_count(
+        0, timeout=PACE_MS
+    )
+    expect(forage_page.locator("#floor svg.crest"), "the crest didn't come back").to_have_count(1)
+    expect(forage_page.locator("#floor rect[data-cell]"), "gone cells were drawn").to_have_count(0)
+    expect(forage_page.locator("#panel-body"), "a gone cell's panel stayed").to_be_empty()
+    # A cell heard again, as after a node's restart, takes the floor back from the crest.
+    mycelium_node.tell("forage", changed=[long_record("PLOVER")])
+    expect(cell(forage_page, "PLOVER"), "the cell heard again wasn't listed").to_have_count(
+        1, timeout=PACE_MS
+    )
+    expect(forage_page.locator("#floor svg.crest"), "the crest stayed over a cell").to_have_count(0)
+    floored = forage_page.locator('#floor rect[data-cell="PLOVER"]')
+    expect(floored, "the cell heard again wasn't drawn").to_have_count(1)
+    selected(forage_page, "PLOVER", "the cell heard again didn't take the cursor")
 
 
 def test_a_cell_leaving_the_view_without_purpose_takes_the_cursor(
@@ -485,6 +504,85 @@ def test_a_sites_server_that_goes_is_said_stale(
     forage_page.wait_for_timeout(REDRAWN_MS)
     every_cell_drawn(forage_page)
     says_it_stands(forage_page, "stale")
+
+
+# The most a first visit's layout may shift, the web vitals' line for good.
+STILL = 0.1
+# Every shift of the page since it began loading that the reader didn't cause, read from the
+# browser's buffer, with what moved from where to where so a failure names its cause, or
+# none once it has kept none for a moment.
+SHIFTED = """() => new Promise((done) => {
+  const box = (rect) => `${Math.round(rect.y)}+${Math.round(rect.height)}`;
+  const named = (node) =>
+    node?.id || node?.getAttribute?.("class") || node?.nodeName || "a node since gone";
+  new PerformanceObserver((list, observer) => {
+    observer.disconnect();
+    const shifts = list.getEntries().filter((each) => !each.hadRecentInput);
+    done({
+      total: shifts.reduce((sum, each) => sum + each.value, 0),
+      moved: shifts.flatMap((each) => each.sources.map((source) =>
+        `${named(source.node)} ${box(source.previousRect)} to ${box(source.currentRect)}`)),
+    });
+  }).observe({ type: "layout-shift", buffered: true });
+  setTimeout(() => done({ total: 0, moved: [] }), 500);
+})"""
+# A purpose holding a link whose last run of letters, with nowhere to break, not even a hyphen,
+# is wider than a phone.
+LONG_LINK = (
+    "OSPREY reads https://example.org/tides/"
+    "hourlyreadingsfortheouterbuoyandtheinnerbuoythewholeseasonlongfromfirstfrosttolastthaw"
+)
+# The floor's room and the size its words are drawn at, those shown, in pixels.
+DRAWN = """() => ({
+  room: document.querySelector(".drawn").getBoundingClientRect().height,
+  rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+  words: [...document.querySelectorAll(".drawn text")]
+    .filter((each) => each.getClientRects().length > 0)
+    .map((each) => parseFloat(getComputedStyle(each).fontSize) * each.getScreenCTM().a),
+})"""
+# The least a word may be drawn at, the kit's floor for text.
+LEAST_WORD_PX = 12
+# A desk wide enough for the floor's words, which site.css hides at a phone's width and at
+# SIZES' desk, where they'd draw under LEAST_WORD_PX.
+WIDE_DESK = (1920, 1080)
+
+
+@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
+def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
+    browser: Browser, forage_served: Served, mycelium_node: StandIn, size: tuple[int, int]
+) -> None:
+    root, _ = forage_served
+    opened = Opened(browser, f"{root}forage/", size, "light")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_cell_drawn(page)
+        page.wait_for_timeout(REDRAWN_MS)
+        shifted = page.evaluate(SHIFTED)
+        assert shifted["total"] < STILL, (
+            f"a first visit at {size} shifted {shifted['total']}: {shifted['moved']}"
+        )
+        drawn = page.evaluate(DRAWN)
+        # A floor of a few cells on a phone still reads, in a room no shorter than 6rem.
+        assert drawn["room"] >= 6 * drawn["rem"] - 1, f"at {size} the floor's room was {drawn}"
+        assert drawn["words"] or size != WIDE_DESK, f"at {size} the floor drew no words"
+        small = [each for each in drawn["words"] if each < LEAST_WORD_PX]
+        assert not small, f"at {size} the floor drew words at {small} px"
+        mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])
+        expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text(
+            "https://", timeout=PACE_MS
+        )
+        # Open, so the panel draws the link as well as the row.
+        cell(page, "OSPREY").click()
+        selected(page, "OSPREY", "a click didn't open the long link's cell")
+        expect(page.locator("#panel"), "the opened cell's panel wasn't shown").to_be_visible()
+        expect(page.locator("#panel-body .lead"), "the panel lost the link").to_contain_text(
+            "https://"
+        )
+        wider = page.evaluate("() => document.documentElement.scrollWidth - innerWidth")
+        assert wider <= 0, f"a long link made the page {wider} px wider than {size}"
+    finally:
+        opened.close()
 
 
 def test_the_forage_page_keeps_to_its_budget(forage_opened: Opened) -> None:

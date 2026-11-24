@@ -26,6 +26,7 @@
       cp ${../../../tests/lib/Watch.js} Watch.js
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Power.qml"
         "launcher/Provider.qml"

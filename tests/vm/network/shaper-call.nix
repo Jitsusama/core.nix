@@ -5,11 +5,13 @@
 # an app holds two calls both ways, one to a media server's port, which the
 # shaper puts in the video tin, and one to 443, which it takes for a page's
 # QUIC and sends best effort. While a call is on, the call to 443 goes in
-# the video tin too. Each call loses at most a hundredth of its datagrams
-# coming down, counted from the server to the client's input hook, a bar
-# the router meets alone with the shaper stopped; the socket's own
-# overflow, which a starved builder causes, is only printed, though a
-# builder's stall before the hook still counts. With
+# the video tin too, and the shaper holds the download under the line it's
+# told, so it queues in its CAKE rather than the router's. Each call loses
+# at most a hundredth of its datagrams coming down, counted from the server
+# to the client's input hook, a bar the router alone missed about one run in
+# fifty, so the shaper's hold on the download is what meets it; the
+# socket's own overflow, which a starved builder causes, is
+# only printed, though a builder's stall before the hook still counts. With
 # the upload held low and the app uploading beside its video call, the
 # shaper drops at most a hundredth of the call going up. The tests are
 # shaper-call-vm-test.py, run through pytest.
@@ -58,6 +60,9 @@ let
     "net.core.rmem_max" = 4194304;
     "net.core.wmem_max" = 4194304;
   };
+  # The router's address on the client's side, by which the client's
+  # shaper knows the network.
+  routerMac = "52:54:00:12:01:12";
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-call";
@@ -78,6 +83,10 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       interface = "eth1";
     };
     jitsusama.shaper.controller = "one-way";
+    # The line's download, the router's 90 Mbit/s, under which a call is
+    # given room. The upload is left undeclared, as before, so the
+    # controller finds it.
+    jitsusama.shaper.networks.${routerMac}.down = 90000;
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
     systemd.services.shaper.path = lib.mkBefore [ callIsOn ];
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
@@ -105,6 +114,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     networking.nftables.enable = true;
     networking.nftables.tables.path = path;
     networking.interfaces.eth2.ipv4 = public router;
+    networking.interfaces.eth1.macAddress = routerMac;
     # The connection: 90 Mbit/s down to the client on eth1, 15 up to the
     # server on eth2, each shared flow by flow.
     systemd.services.connection = {

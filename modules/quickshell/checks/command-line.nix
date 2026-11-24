@@ -6,6 +6,7 @@
   noFonts,
   pkgs,
   shellFolderLint,
+  timedQml,
   ...
 }:
 {
@@ -89,7 +90,9 @@
   # place used last, sequences, and where the caret goes, which Typing.js says;
   # ListedKeys.js to the keys Space ? lists; the drawer as a window, Space and
   # the arrows into it and back, with DrawerPage.js to where its keys take its
-  # cursor and view, DrawerFigure.js to where a fact's figure stands,
+  # cursor and view, DrawerRun.js to what a key and a page shown lay of a long
+  # run, DrawerLines.js to where its laid lines end or run on into the next,
+  # DrawerFigure.js to where a fact's figure stands,
   # DrawerProse.js to where its prose is cut and DrawerValue.js to how its value
   # is laid on lines, with Identifier.js to keeping its cuts bounded and whole;
   # Operators.js to what d and y do to the rows they take; and Confirm.js to how
@@ -107,8 +110,10 @@
         "Changes.js"
         "Confirm.js"
         "DrawerFigure.js"
+        "DrawerLines.js"
         "DrawerPage.js"
         "DrawerProse.js"
+        "DrawerRun.js"
         "DrawerValue.js"
         "Editing.js"
         "KeyNames.js"
@@ -123,4 +128,18 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml query-keys.qml
       touch $out
     '';
+
+  # A drawer's search over hyphenated names, as Emoji's every part is, keeps
+  # within a multiple of the same words with no joiners, and that within one of
+  # the plainest search there is, timed as the drawer runs it, DrawerPage.js's
+  # matchesIn, in at least one of five processes of Qt's own engine
+  # (modules/quickshell/tests/drawer-search-pace.qml).
+  the-drawer-search-keeps-pace = pkgs.runCommandLocal "the-drawer-search-keeps-pace" { } ''
+    cp ${../tests/drawer-search-pace.qml} drawer-search-pace.qml
+    ${copied [ "DrawerPage.js" ]}
+    export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts}
+    ${timedQml "drawer-search-pace.qml"}
+    touch $out
+  '';
 }

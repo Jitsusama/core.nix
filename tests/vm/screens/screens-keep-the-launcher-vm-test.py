@@ -14,6 +14,8 @@ import datetime as dt
 import time
 from typing import TYPE_CHECKING
 
+from screens_session import PASSWORD
+
 if TYPE_CHECKING:
     from screens_session import Screens
 
@@ -117,6 +119,40 @@ def test_the_first_screen_goes_with_the_launcher_open_on_it(first_gone: Screens)
     first_gone.launcher_works_on("Virtual-2")
 
 
+def test_polkits_prompt_comes_up_on_the_screen_left_once_the_first_goes(
+    first_gone: Screens,
+) -> None:
+    """Polkit's prompt comes up on the screen that's left, takes the password and lets it run.
+
+    The prompt's window is made as the shell starts, on the screen there then, and stays
+    hidden until polkit asks, so a screen gone since must not leave it shown on none. Joel's
+    machine runs on its monitor alone with the laptop's lid shut, which this stands for.
+    """
+    polkit_lets_it_run(first_gone, {"Virtual-2"})
+
+
+def polkit_lets_it_run(screens: Screens, on: set[str]) -> None:
+    """Ask polkit to start a system service, and wait for its prompt on these screens.
+
+    Then type the password, and wait for the service to have run and the prompt to go.
+    """
+    machine = screens.machine
+    machine.succeed("rm -f /run/polkit-allowed")
+    keys = screens.in_niri(
+        "journalctl --user -u quickshell -o cat | grep -cF 'report[keys polkit]' || true"
+    )
+    before = int(machine.succeed(keys))
+    # Spawned by niri, so it asks from the graphical session, where polkit's agent is.
+    machine.succeed(
+        screens.in_niri("niri msg action spawn -- systemctl start polkit-allowed.service")
+    )
+    screens.wait_for_held_on("polkit", on)
+    machine.wait_until_succeeds(f"test $({keys}) -gt {before}", timeout=dt.timedelta(seconds=30))
+    machine.send_chars(f"{PASSWORD}\n")
+    machine.wait_for_file("/run/polkit-allowed", timeout=dt.timedelta(seconds=30))
+    screens.wait_for_no_surface("polkit")
+
+
 def test_a_screen_coming_back_leaves_the_launcher_open_on_the_other(first_gone: Screens) -> None:
     """A screen coming back leaves the launcher open where it is, on the other.
 
@@ -168,6 +204,22 @@ def test_both_screens_go_with_the_launcher_open_and_come_back(second_back: Scree
     second_back.gone_while_open(*sorted(second_back.both))
     second_back.come_back(*sorted(second_back.both))
     second_back.launcher_works_on_both()
+
+
+def test_polkits_prompt_comes_up_after_both_screens_go_and_come_back(
+    second_back: Screens,
+) -> None:
+    """Polkit's prompt comes up on the screen the keys are on once both screens are back.
+
+    With no screen left, Qt moves a window onto a stand-in of its own, and back onto a screen
+    as one comes, so a window made before, as the prompt's is, must still find one.
+    """
+    second_back.plug("off", *sorted(second_back.both))
+    for screen in sorted(second_back.both):
+        second_back.outputs_say(screen, there=False)
+    second_back.come_back(*sorted(second_back.both))
+    second_back.machine.succeed(second_back.in_niri("niri msg action focus-monitor Virtual-1"))
+    polkit_lets_it_run(second_back, {"Virtual-1"})
 
 
 def test_super_s_line_comes_up_again_after_both_screens_go_and_come_back(

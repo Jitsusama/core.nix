@@ -75,6 +75,10 @@ interface Kept {
 
 /** What ties a machine to the other parts; each tie none when it wasn't read. */
 interface Ties {
+  /** Whether the node reaches it now; one from a daemon that doesn't say is. */
+  readonly reached: boolean;
+  /** When the node last heard from it, said only of one out of reach. */
+  readonly heardAt: string | undefined;
   readonly cells: Cells | undefined;
   readonly network: readonly Place[] | undefined;
   readonly code: Code | undefined;
@@ -155,6 +159,8 @@ function tiesOf(value: unknown): Ties {
   const acts = object(said, "acts") ?? EMPTY;
   const kept = object(said, "kept") ?? EMPTY;
   return {
+    reached: flag(said, "reached") ?? true,
+    heardAt: text(said, "heard_at"),
     cells: cellsOf(object(said, "cells")),
     network: placesOf(said["network"]),
     code: codeOf(object(said, "code")),

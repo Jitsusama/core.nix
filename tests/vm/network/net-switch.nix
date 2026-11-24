@@ -1,6 +1,6 @@
 # Runs net's switch reader as the machine runs it, a system service under a
 # user of its own, against a second machine standing in for the home's
-# TP-Link switch (switch-stand-in.py), which serves the real switch's status
+# TP-Link switch (tests/vm/network/switch-stand-in.py), which serves the real switch's status
 # pages only once signed in. Only a booted machine shows what systemd makes
 # of the credential: that the reader starts signed out without one, signs
 # in once it's written, and that Joel's account can read neither the
