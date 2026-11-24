@@ -173,33 +173,36 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
 /// wearing his mark for a session under it (`anyWaitsOnJoel`) counts
 /// once more, unless that session, or a marked lead under it, is a cell
 /// here, counted already, or the lead has a want of its own (top.rs's
-/// `wants`), which the node counted already. A put-off lead still marked for one under it
-/// still needs him, where the node counted it, unless that one is a cell
-/// here, counted already, when it too stands as it would wanting
-/// nothing. The machines' network names machines, not cells, so it's
-/// left as the node counts it, until a follow-up due Mon 23 Nov. A
-/// network so holding a
-/// marked cell sorts first, says it needs him and never folds away, as
-/// the cell does inside it. A network counts cells, not wants, so a lead
-/// marked for two outside it counts once, and a cell the record names
-/// twice counts once. A
-/// lead it moves leaves the count the node put it in, so the counts still
+/// `wants`), which the node counted already. A put-off lead still marked
+/// for one under it still needs him, where the node counted it, unless
+/// that one is a cell here, counted already, when it too stands as it
+/// would wanting nothing. The machines' network names machines, not
+/// cells, but the node counts every session in it (mycelium's
+/// networks/made.rs `machines_network`), so every cell the tree holds is
+/// its cells here, by address. A network so holding a marked cell sorts
+/// first, says it needs him and never folds away, as the cell does inside
+/// it. A network counts cells, not wants, so a lead marked for two
+/// outside it counts once, and a cell the record names twice counts once.
+/// A lead it moves leaves the count the node put it in, so the counts still
 /// sum to the cells, from the one its own standing puts it in, or where
 /// that one is empty (the node a beat behind) the likeliest left.
 pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) -> Cow<'a, Value> {
-    if network["shape"] == "machines" {
-        return Cow::Borrowed(network);
-    }
-    let mut named = HashSet::new();
-    let cells: Vec<&Value> = network["cells"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .map(str::to_lowercase)
-        .filter(|name| named.insert(name.clone()))
-        .filter_map(|name| rows.get(&name).copied())
-        .collect();
+    let cells: Vec<&Value> = if network["shape"] == "machines" {
+        let mut addresses: Vec<&String> = rows.keys().collect();
+        addresses.sort_unstable();
+        addresses.into_iter().map(|address| rows[address]).collect()
+    } else {
+        let mut named = HashSet::new();
+        network["cells"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_lowercase)
+            .filter(|name| named.insert(name.clone()))
+            .filter_map(|name| rows.get(&name).copied())
+            .collect()
+    };
     let held = |row: &Value, field: &str| row["held"][field] == true;
     let marked = |row: &&&Value| held(row, "anyWaitsOnJoel") && !held(row, "waitsOnJoel");
     let counted: HashSet<String> = cells
@@ -1105,6 +1108,29 @@ mod tests {
             behind,
             "with the node a beat behind, not yet counting its want, nothing is taken from \
              needs-you that it doesn't hold"
+        );
+    }
+
+    #[test]
+    fn the_machines_network_counts_every_cell_as_joel_marks_it() {
+        let mut put_off = session("TERN03", "needs", "session");
+        put_off["held"] = json!({"address": "TERN03", "state": "needs",
+            "waitsOnJoel": false, "anyWaitsOnJoel": false, "putOff": true,
+            "putOffAs": "working"});
+        let wanting = json!({"needs-you": 1, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0});
+        let machines = record("machines", "machines", &["kestrel"], &wanting, 0);
+        assert_eq!(
+            as_marked(&machines, &sessions(&[put_off]))["counts"],
+            json!({"needs-you": 0, "stuck": 0, "moving": 1, "quiet": 0, "dormant": 0}),
+            "a want Joel put off leaves the machines' needs-you, though the network names \
+             machines, not cells"
+        );
+        let working = json!({"needs-you": 0, "stuck": 0, "moving": 1, "quiet": 0, "dormant": 0});
+        let machines = record("machines", "machines", &["kestrel"], &working, 0);
+        assert_eq!(
+            as_marked(&machines, &sessions(&[marked_lead("KELP01", None)]))["counts"],
+            json!({"needs-you": 1, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0}),
+            "and a lead wearing his mark for one under it needs him there too"
         );
     }
 
