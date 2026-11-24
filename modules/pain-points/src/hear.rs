@@ -503,9 +503,11 @@ fn hear_logs(
         // waits in its reading for a run that does; one by a cell the
         // routes refuse, as the void begun elsewhere, takes nothing up.
         // An answer kept before answers held their turn's opening takes,
-        // as it did then, every pain said before it.
+        // as it did then, the pains from the message it answered, or
+        // every pain said before it where none was kept.
         if let Some(cell) = cells.get(&log.session) {
-            let older = log.carried.answered.take().map(|at| (i64::MIN, at));
+            let asked = log.carried.asked.take().unwrap_or(i64::MIN);
+            let older = log.carried.answered.take().map(|at| (asked, at));
             let answers = std::mem::take(&mut log.carried.answers);
             if !routes.refuses(&cell.address) {
                 for turn in older.into_iter().chain(answers) {

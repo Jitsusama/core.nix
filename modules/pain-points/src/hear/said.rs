@@ -71,11 +71,19 @@ pub struct Carried {
     /// in the session before it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answered: Option<i64>,
+    /// When he said the message the kept `answered` answered, as a reading
+    /// kept it before `answers`: its pains from then on are taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<i64>,
     /// When he opened the turn under way, by his first message since the
     /// last turn ended: none once it ends, or once someone else's message
     /// makes the turn theirs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<i64>,
+    /// Whether the turn under way last stopped on an error, which pi tries
+    /// again within it unless he speaks first, opening a turn of his own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub errored: bool,
     /// Each answer to him not yet taken, as when his turn opened and when
     /// it was answered, kept until the session's cell is known, so every
     /// answer in one reading takes what it answered.
@@ -87,13 +95,11 @@ pub struct Carried {
 /// when someone else sent it.
 pub fn his(text: &str) -> Option<(String, Option<String>)> {
     let text = text.trim();
-    let body = if text.starts_with('[') {
-        if !HIS_OPENINGS.iter().any(|opening| text.starts_with(opening)) {
-            return None;
-        }
-        &text[text.find(']')? + 1..]
-    } else if automated(text) {
+    if others(text) {
         return None;
+    }
+    let body = if text.starts_with('[') {
+        &text[text.find(']')? + 1..]
     } else {
         text
     };
@@ -111,6 +117,27 @@ pub fn his(text: &str) -> Option<(String, Option<String>)> {
             .map(|w| w.trim().to_string())
     });
     Some((words.to_string(), window))
+}
+
+/// His message at `at` in `carried`'s turn: it opens the turn where none is
+/// under way, or where the last stopped on an error he spoke after rather
+/// than waiting for pi to try it again.
+fn opened(carried: &mut Carried, at: i64) {
+    if carried.errored {
+        carried.from = Some(at);
+    } else {
+        carried.from.get_or_insert(at);
+    }
+}
+
+/// Whether a user message's trimmed `text` is someone else's: a peer's or
+/// the harness's, by its opening or as automated text.
+fn others(text: &str) -> bool {
+    if text.starts_with('[') {
+        !HIS_OPENINGS.iter().any(|opening| text.starts_with(opening))
+    } else {
+        automated(text)
+    }
 }
 
 /// A log line's parts that say whose it is, read without its content.
@@ -194,8 +221,10 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
                 carried.answers.push((from, at));
                 keep_last(&mut carried.answers, ANSWERS_KEPT);
             }
-            // A turn ends on any stop but a call for tools, answered or not.
-            if stopped.is_some_and(|stop| stop != "toolUse") {
+            // A turn ends on any stop but a call for tools, answered or not,
+            // or an error, which pi tries again within the same turn.
+            carried.errored = stopped == Some("error");
+            if stopped.is_some_and(|stop| !matches!(stop, "toolUse" | "error")) {
                 carried.from = None;
             }
             None
@@ -214,12 +243,25 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             // that answers them, not him.
             carried.acting = false;
             let full: Value = serde_json::from_str(text).ok()?;
-            let Some((words, looking_at)) = his(&text_of(full.pointer("/message/content")?)) else {
-                carried.from = None;
+            let content = full
+                .pointer("/message/content")
+                .map(text_of)
+                .unwrap_or_default();
+            let at = iso_ms(&head.timestamp);
+            let Some((words, looking_at)) = his(&content) else {
+                // Only someone else's message makes the turn theirs: one of
+                // his with no words, such as a screenshot alone, opens his.
+                if others(content.trim()) {
+                    carried.from = None;
+                } else if let Some(at) = at {
+                    opened(carried, at);
+                }
+                carried.errored = false;
                 return None;
             };
-            let at = iso_ms(&head.timestamp)?;
-            carried.from.get_or_insert(at);
+            let at = at?;
+            opened(carried, at);
+            carried.errored = false;
             let said = Said {
                 entry: head.id,
                 at,
@@ -456,6 +498,63 @@ mod tests {
             old,
             Carried::default(),
             "a reading kept before answers reads as none"
+        );
+    }
+
+    #[test]
+    fn his_turn_lasts_through_calls_for_tools_retries_and_his_wordless_messages() {
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let asking = serde_json::json!({
+            "type": "message", "id": "a", "parentId": "p",
+            "timestamp": "2026-11-16T18:00:06.000Z",
+            "message": {"role": "assistant", "stopReason": "toolUse", "timestamp": 0,
+                        "content": [{"type": "toolCall", "id": "c", "name": "bash",
+                                     "arguments": {}}]}
+        })
+        .to_string();
+        let failed = ended("error", "");
+        let shot = serde_json::json!({
+            "type": "message", "id": "e2", "parentId": "p",
+            "timestamp": "2026-11-16T18:00:07.000Z",
+            "message": {"role": "user", "content": [{"type": "image", "data": "x"}],
+                        "timestamp": 0}
+        })
+        .to_string();
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        for (lines, what) in [
+            (vec![&his, &asking, &done], "a call for tools"),
+            (
+                vec![&his, &asking, &failed, &asking, &done],
+                "pi's retry after an error",
+            ),
+            (
+                vec![&his, &shot, &asking, &done],
+                "a screenshot of his alone",
+            ),
+        ] {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            assert_eq!(
+                carried.answers,
+                vec![(opened, at)],
+                "{what} ended his turn, or gave it away"
+            );
+        }
+        let mut midway = Carried::default();
+        for text in [&his, &asking] {
+            line(text, &mut midway);
+        }
+        let kept = serde_json::to_string(&midway).expect("carried writes");
+        let mut back: Carried = serde_json::from_str(&kept).expect("carried reads");
+        line(&done, &mut back);
+        assert_eq!(
+            back.answers,
+            vec![(opened, at)],
+            "a turn read across two runs lost when he opened it"
         );
     }
 
