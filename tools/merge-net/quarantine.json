@@ -68,9 +68,10 @@
   {
     "at": 1795335524,
     "commit": "a60435126103b2901210023deae7a9bda4bfe616",
-    "due": "2026-11-24",
+    "due": "2026-11-27",
+    "due_why": "Its owner, ISXEG8, who owns the fence's strength, took it on 24 Nov from the orchestrator. It failed 6 of the net's 62 runs of it from 20 to 23 Nov, at a60435126103, 40c0beb33200 twice, ad1d4fc0cfb4, b5acf904044f and 3bdb3ff3d5ab, each the same way and never by the fence: xlogo opened and niri focused no window for a minute, and the satellite's log met xlogo's window only as the test killed it, saying it couldn't get the pid of a window whose program had gone, where 52 of the passing runs say instead that it found no toplevel to focus it from. Reading xwayland-satellite, xcb queues the events it reads while a request waits for a reply, and the main loop then polls the socket over them, so the window's CreateNotify waited for the next event; upstream fixed that in 779151fdfc, which modules/niri/drain-buffered-events.patch backports. It comes off once twenty net runs in a row after that patch merges exit 0 with no 'Failed to get pid of window' in their logs, about a day and a half at the net's 62 runs in four days: at 6 in 62, twenty pass by luck about one time in eight, so the log line is the evidence the count alone can't be. A failure the same way after the patch means the cause is elsewhere, and its owner moves the due and says why before this one passes. While it stands, nothing here catches the fence letting a fenced command read a secret copy through X11, or Joel's own X11 client no longer reading his copies through the satellite",
     "owner_pr": 6062,
-    "owner_session": "orchestrator",
+    "owner_session": "ISXEG8",
     "reason": "failed, then passed, at a60435126103",
     "subtests": [
       "test_a_fenced_command_reads_no_secret_copy_through_x11"
