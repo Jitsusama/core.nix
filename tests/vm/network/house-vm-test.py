@@ -67,6 +67,9 @@ FORGED = "mac isn't the house's key's"
 # come for up to QUIETING and CLIMBING: once a minute, and once more if a
 # minute's turn falls in. src/house.rs's tests hold it to once a minute.
 REFUSALS_SAID = 4
+# The key both machines are moved to, and the file each holds it in.
+NEXT_KEY = "the house's next key, 32 bytes!!"
+KEY_FILE = "/etc/house.key"
 
 
 @dataclass
@@ -245,6 +248,42 @@ done
     )
     refusals = journal.count(FORGED) - refused
     assert refusals <= REFUSALS_SAID, f"the journal said {refusals} refusals of the forgeries"
+
+
+def swap_key(machine: BaseMachine) -> None:
+    """Put the next key in place on a machine, by rename, as a key put there by hand is."""
+    machine.succeed(
+        f"install -m 0400 /dev/null {KEY_FILE}.next",
+        f'printf %s "{NEXT_KEY}" > {KEY_FILE}.next',
+        f"mv {KEY_FILE}.next {KEY_FILE}",
+    )
+
+
+def test_a_key_swapped_on_both_machines_is_taken_up(rig: Rig) -> None:
+    """A key swapped on both restarts the reporter, whose reports then hold again."""
+    held(rig)
+    started = rig.house.succeed("systemctl show -p InvocationID --value house-report").strip()
+    quiet = rig.said("went quiet")
+    # The shaper reads its key again within a second, so its side first:
+    # the reports still signed with the old key are refused as forged, and
+    # the house goes quiet until its reporter signs with the next.
+    swap_key(rig.client)
+    rig.client.wait_until_succeeds(
+        f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "went quiet")" -gt {quiet}',
+        timeout=QUIETING,
+    )
+    holds = rig.said("the house's ceiling holds")
+    swap_key(rig.house)
+    rig.house.wait_until_succeeds(
+        f'test "$(systemctl show -p InvocationID --value house-report)" != "{started}"',
+        timeout=QUIETING,
+    )
+    rig.client.wait_until_succeeds(
+        'test "$(journalctl -u shaper -o cat --no-pager | grep -c "the house\'s ceiling holds")"'
+        f" -gt {holds}",
+        timeout=HOLDING,
+    )
+    held(rig)
 
 
 def test_a_house_gone_quiet_lets_the_upload_go(rig: Rig) -> None:

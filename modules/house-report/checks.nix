@@ -53,6 +53,40 @@ let
     "fe80::3"
   ];
   misread = lib.filter (to: !takes to) taken ++ lib.filter takes refused;
+  # A Mac and a Linux machine given a key.
+  keyed = lib.recursiveUpdate told { jitsusama.house-report.keyFile = "/etc/house.key"; };
+  keyedMac =
+    (bareDarwin [
+      self.darwinModules.house-report
+      keyed
+    ]).config;
+  keyedProgram = lib.last (
+    keyedMac.launchd.daemons.house-report.serviceConfig.ProgramArguments or [ "" ]
+  );
+  keyedPrepared = keyedMac.system.activationScripts.preActivation.text or "";
+  # Where `words` first come in the Mac's activation text, or past its end.
+  placed =
+    words:
+    let
+      parts = lib.splitString words keyedPrepared;
+    in
+    if lib.length parts < 2 then
+      lib.stringLength keyedPrepared + 1
+    else
+      lib.stringLength (lib.head parts);
+  handedOver = placed "/usr/sbin/chown -h nobody:nobody \"$houseReportKey\"";
+  refusedFirst = map placed [
+    "[ -L \"$houseReportKey\" ]"
+    "/usr/bin/stat -f %l \"$houseReportKey\""
+    "/usr/bin/stat -L -f %u \"$houseReportFolder\""
+    "/usr/bin/find -H \"$houseReportFolder\" -maxdepth 0 -perm +022"
+  ];
+  keyedLinux =
+    (bareNixos [
+      self.nixosModules.house-report
+      keyed
+    ]).config.systemd;
+  keyedStart = keyedLinux.services.house-report.serviceConfig;
 in
 {
   # A Mac runs house-report as a daemon, as nobody, from its start and
@@ -83,6 +117,24 @@ in
         && job.StandardErrorPath or null == "/var/log/house-report.log"
         && lib.hasInfix "touch /var/log/house-report.log" prepared
         && lib.hasInfix "chown nobody:nobody /var/log/house-report.log" prepared
+      );
+
+  # A Mac given a key reads it by its path, ahead of the address, and its
+  # activation hands the key to nobody only after refusing a link, a
+  # second name and a folder not root's alone, never following a link.
+  house-report-hands-a-mac-its-key-safely =
+    holds "house-report-hands-a-mac-its-key-safely"
+      (
+        "A Mac given /etc/house.key doesn't run house-report --key /etc/house.key 192.0.2.3:47110, "
+        + "or its activation hands the key over before refusing a link, a second name or a "
+        + "folder another account may write, or follows a link as it does."
+      )
+      (
+        lib.hasSuffix "/bin/house-report --key /etc/house.key 192.0.2.3:47110" keyedProgram
+        && lib.hasInfix "houseReportKey=/etc/house.key" keyedPrepared
+        && handedOver < lib.stringLength keyedPrepared
+        && lib.all (at: at < handedOver) refusedFirst
+        && lib.hasInfix "/bin/chmod -h 0400 \"$houseReportKey\"" keyedPrepared
       );
 }
 # What follows needs Linux to build or to run, so a Mac leaves it out.
@@ -118,5 +170,24 @@ in
         && linux.ProtectSystem or null == "strict"
         && linux.Restart or null == "always"
         && linux.RestartPreventExitStatus or null == "64"
+      );
+
+  # A Linux machine given a key hands it to house-report as a credential,
+  # which it reads by --key, and restarts it whenever the key file
+  # changes, leaving one someone stopped stopped.
+  house-report-takes-up-a-swapped-key =
+    holds "house-report-takes-up-a-swapped-key"
+      (
+        "A Linux machine given /etc/house.key doesn't hand it over as a credential read by --key, "
+        + "or doesn't try-restart house-report when the file changes."
+      )
+      (
+        keyedStart.LoadCredential or null == "house.key:/etc/house.key"
+        && lib.hasInfix "--key %d/house.key " keyedStart.ExecStart
+        && keyedLinux.paths.house-report-key.pathConfig.PathChanged or null == "/etc/house.key"
+        && builtins.elem "multi-user.target" keyedLinux.paths.house-report-key.wantedBy
+        && lib.hasSuffix "/bin/systemctl try-restart house-report.service" (
+          keyedLinux.services.house-report-key.serviceConfig.ExecStart or ""
+        )
       );
 }

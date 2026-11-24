@@ -11,8 +11,9 @@
 # machines hold one key, so only signed reports are taken: with the true
 # reporter stopped, reports forged from the house's own address under
 # another key, in step and saying what it sends, hold nothing, and the
-# upload climbs as it does once the house goes quiet. The tests are
-# house-vm-test.py, run through pytest.
+# upload climbs as it does once the house goes quiet. A key swapped on
+# both, put in place by rename, restarts the reporter, whose reports hold
+# again. The tests are house-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
