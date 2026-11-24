@@ -35,8 +35,9 @@
 
 use std::collections::HashMap;
 
+use dictation::echo;
 use dictation::parakeet::Word;
-use dictation::transcript::{self, Line, Side};
+use dictation::transcript::{Line, Side};
 
 use crate::said;
 
@@ -149,7 +150,7 @@ pub fn unechoed(lines: &[Line], pieces: &[Piece], read: usize) -> Vec<Line> {
     lines
         .iter()
         .enumerate()
-        .filter(|&(index, line)| index < read || !transcript::echoes(line, &takes))
+        .filter(|&(index, line)| index < read || !echo::echoes(line, &takes))
         .map(|(_, line)| line.clone())
         .collect()
 }
@@ -307,6 +308,7 @@ mod tests {
         Word {
             text: text.to_owned(),
             at: at_s * SECOND,
+            level: 0.0,
         }
     }
 
@@ -601,7 +603,7 @@ mod tests {
             words: &mut words,
         };
         by_voice(&mut call, &[Some(0), Some(0), Some(1)]);
-        let of_a_part = transcript::echoes(joels, &lines);
+        let of_a_part = echo::echoes(joels, &lines);
         (unechoed(&lines, &pieces, 0), of_a_part)
     }
 
