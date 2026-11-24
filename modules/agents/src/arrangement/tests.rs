@@ -2,8 +2,8 @@
 //!
 //! Long because each is one rule of where a window goes back, when its
 //! place is let go, and when the daemon wakes to keep it, built on this
-//! file's fixtures (held, desk_parts, untold, in_kitty, session), which a
-//! split by rule would have to share across files.
+//! file's fixtures (`held`, `desk_parts`, `untold`, `in_kitty` and
+//! `session`), which a split by rule would have to share across files.
 
 use super::*;
 
