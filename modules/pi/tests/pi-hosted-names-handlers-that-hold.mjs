@@ -130,7 +130,11 @@ const run = async (extensions, emitting, write) => {
       });
     },
   );
-  assert.deepEqual(ran, ["message_update", "tool_execution_update"], "a streamed handler never ran");
+  assert.deepEqual(
+    ran,
+    ["message_update", "tool_execution_update"],
+    "a streamed handler never ran",
+  );
   assert.deepEqual(errors, []);
   assert.deepEqual(lines, [], "said a turn's streamed event");
 }
