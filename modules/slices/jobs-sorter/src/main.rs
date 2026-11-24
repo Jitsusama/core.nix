@@ -3772,8 +3772,8 @@ mod tests {
                 none,
                 (vec![x.clone()], vec![]),
             ],
-            "a session found by looks spanning {UNSLOTTED_FOR:?} is said once, said cleared when it \
-             goes, and said again when it comes back; y, for one look, is never said"
+            "a session found by looks spanning {UNSLOTTED_FOR:?} is said once, said cleared \
+             when it goes, and said again when it comes back; y, for one look, is never said"
         );
     }
 
