@@ -124,8 +124,9 @@ pub const YOUNG: u64 = 500;
 const MS_PER_TICK: u64 = 10;
 
 /// Whether a command line, its words, is Nix work that grows: an
-/// evaluation, a `nix flake check`, a build, a shell or a run, and
-/// `nix-offload there` told to run here.
+/// evaluation, a `nix flake check`, a build, a shell or a run, a
+/// `nix path-info` of a flake, which evaluates it, and `nix-offload there`
+/// told to run here.
 pub fn heavy(words: &[&str]) -> bool {
     let Some(program) = words.first() else {
         return false;
@@ -152,6 +153,9 @@ pub fn heavy(words: &[&str]) -> bool {
         "nix" => match verbs.next() {
             Some(&("eval" | "build" | "develop" | "shell" | "run")) => true,
             Some(&"flake") => verbs.next() == Some(&"check"),
+            // A flake is named by its `#` or a path from here; a store
+            // path's info is read from the store, evaluating nothing.
+            Some(&"path-info") => verbs.any(|word| word.contains('#') || word.starts_with('.')),
             _ => false,
         },
         _ => false,
@@ -858,6 +862,11 @@ mod tests {
             "nix-store --realise /nix/store/x.drv",
             "/nix/store/y-nix-offload/bin/nix-offload there --here -L . checks.x",
             "nix-offload there --here-when-idle . checks.x",
+            // On 15 November three of these evaluated a machine, 7.5 GB
+            // each, and filled agents.slice till oomd ended 38 units.
+            "nix path-info .#nixosConfigurations.x.config.system.build.toplevel",
+            "nix path-info --derivation .#x",
+            "nix path-info .",
             "tec --git-dir /w/.git --ref main instantiate //areas/x:y",
             "/nix/store/t-tec/bin/tec eval --json //areas/x",
         ] {
@@ -865,7 +874,9 @@ mod tests {
         }
         for words in [
             "nix flake show",
-            "nix path-info .#x",
+            // A store path's info is read from the store, evaluating nothing.
+            "nix path-info /nix/store/x-y",
+            "nix path-info --store https://cache.nixos.org -r /nix/store/x-y",
             "nix-store -q",
             "nix-offload progress host",
             // Evaluated and built on builders, never here unasked: on 9
