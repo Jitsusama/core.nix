@@ -33,6 +33,9 @@ ShellRoot {
     // When QEST-HOSTED's session was started again, once its viewer was
     // listed, or 0 before.
     property real againAt: 0
+    // How many acts niri had been asked for then, so only a raise asked
+    // for after counts as the start's.
+    property int actsAgain: 0
     // How long a start the host runs may go unsaid, well past the stand-in
     // decider's answer and well inside the check's 60 s.
     readonly property int unsaidFor: 10000
@@ -214,11 +217,12 @@ ShellRoot {
         if (!shown)
             return;
         if (root.againAt === 0) {
+            root.actsAgain = Niri.acts.length;
             Sessions.start("QEST-AGAIN", root.folder, false);
             root.againAt = Date.now();
             return;
         }
-        if (!Niri.acts.some(act => act.FocusWindow?.id === shown.id)) {
+        if (!Niri.acts.slice(root.actsAgain).some(act => act.FocusWindow?.id === shown.id)) {
             if (Date.now() - root.againAt > unsaidFor)
                 Expect.fail("started again but its viewer wasn't raised: "
                     + JSON.stringify(Niri.acts));
