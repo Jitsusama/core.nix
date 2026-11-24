@@ -1783,8 +1783,8 @@ Singleton {
                 const started = hosted && said === "hosted";
                 // A host's name begins with a letter or digit, so it can't
                 // pass for one of mycelium's flags.
-                const viewer = started && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(host ?? "")
-                    ? root.viewerNamed(id ?? "") : "";
+                const hostly = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(host ?? "");
+                const viewer = started && hostly ? root.viewerNamed(id ?? "") : "";
                 if (started && viewer === "") {
                     // Its host runs it, so a window here would begin a
                     // second pi on its quest; with no viewer it can name
@@ -1793,7 +1793,8 @@ Singleton {
                         + `as ${id ?? "no id"}, but it can't be viewed by that host and id`);
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
                         + " in pi's host");
-                    root.unhosted(footed, "unviewable");
+                    // Said by which held, its host's name or its id.
+                    root.unhosted(footed, hostly ? "unviewable" : "unviewableHost");
                     return;
                 }
                 if (started) {
@@ -2567,9 +2568,9 @@ Singleton {
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
-    // (heldBack); "unviewable", started in pi's host under a host or id
-    // it can't view by. Each is said in the launcher's foot, since a press
-    // is never met with nothing.
+    // (heldBack); "unviewable", started in pi's host under an id it can't
+    // view by, or "unviewableHost", a host's name it can't. Each is said
+    // in the launcher's foot, since a press is never met with nothing.
     signal unhosted(var session, string why)
     // A window Go To opens goes where the session would reopen (goesTo),
     // never on whichever workspace Joel is on.
