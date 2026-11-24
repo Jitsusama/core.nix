@@ -1257,7 +1257,8 @@ def back_from_where_it_got_to(was: Json, after: Json, apart: float) -> bool:
     got to is drawn `apart` lower, off by as far as niri's slide still has its ground
     (`carried`). That holds for the ride, with nowhere yet to sit, and for the way across to a
     seat, which sets off from that same place (MarginCatStacked.js's moves() and crosses()):
-    a builder's run at 56b7a7b8 began its way across with a fall, laid 2 px off the gap.
+    a builder's run at 56b7a7b8 began its way across with a fall, laid 2 px off the gap. It
+    reads no beats, since both ways set off alike; only the way and the place say it.
     """
     move = after.get("move") or {}
     near = STEPS_ON * was["size"]
@@ -1271,22 +1272,31 @@ def test_the_way_back_sets_off_from_where_it_got_to_a_gap_below() -> None:
     """A ride or a way across, laid a gap below where the cat got to, sets off from there."""
     was = {"x": 636, "y": -5, "size": 8}
 
-    def back(x: float, y: float, beats: list[str], way: int = -1) -> Json:
-        return {"x": x, "y": y, "move": {"way": way, "beats": beats, "carried": -1.6}}
+    def back(x: float, y: float, way: int = -1, carried: float = -1.6) -> Json:
+        return {"x": x, "y": y, "move": {"way": way, "carried": carried}}
 
-    assert back_from_where_it_got_to(was, back(636, 849.38, ["falls", "unseen"]), 854), (
-        "a way across that set off where it got to was refused"
+    assert back_from_where_it_got_to(was, back(636, 849.38), 854), (
+        "a move back up that set off where it got to was refused"
     )
-    assert back_from_where_it_got_to(was, back(636, 847.4, ["rides"]), 854), (
-        "a ride that set off where it got to was refused"
+    assert back_from_where_it_got_to(was, back(636, 847.4), 854), (
+        "a move back up that set off a pixel or two off where it got to was refused"
     )
-    assert not back_from_where_it_got_to(was, back(636, 700, ["falls"]), 854), (
-        "a way across set off well short of the gap was taken"
+    # Said at 816 against a gap at about 849 (the net, 2026-11-22), its ground 33 px off:
+    # only that ground taken off brings it within reach, so a helper that dropped `carried`,
+    # or added it, would refuse it; with no ground to carry it there, the same place is refused.
+    assert back_from_where_it_got_to(was, back(636, 816, carried=-33), 854), (
+        "a move back up whose ground was carried 33 px off was refused"
     )
-    assert not back_from_where_it_got_to(was, back(400, 849.38, ["falls"]), 854), (
-        "a way across set off from elsewhere along was taken"
+    assert not back_from_where_it_got_to(was, back(636, 816, carried=0), 854), (
+        "a move said 33 px short of the gap was taken with no ground to carry it there"
     )
-    assert not back_from_where_it_got_to(was, back(636, 849.38, ["falls"], way=1), 854), (
+    assert not back_from_where_it_got_to(was, back(636, 700), 854), (
+        "a move set off well short of the gap was taken"
+    )
+    assert not back_from_where_it_got_to(was, back(400, 849.38), 854), (
+        "a move set off from elsewhere along was taken"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 849.38, way=1), 854), (
         "a move down was taken as the way back up"
     )
 
@@ -1345,7 +1355,7 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # is always up here, so only that way is held to it. `carried` is the cat's own word, so
     # this holds only where the move began; that the rest of a ride keeps to its way is held
     # below, and how far its ground is off over niri's slide is proven frame by frame in Qt's
-    # engine (margin-cat-one-screen.qml).
+    # engine (margin-cat-one-screen.qml). A way across is held only where it sets off.
     scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
     apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
     back = back_from_where_it_got_to(was, after, apart)
@@ -1358,6 +1368,8 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # run back or laid again from the slide's start fails here. That holds for the theme's
     # spring, which settles without overshooting (damping 1); a looser one, which the theme
     # allows, would carry its ground past the way and back, and this would need to know it.
+    # A second move taken as a way across to a seat says no ride, so these read nothing of it:
+    # it is held where it sets off, above, and to moving on at all, below.
     begins = next((i for i in range(turned, len(places)) if rides_back(places[i])), len(places))
     ends = next((i for i in range(begins, len(places)) if not rides_back(places[i])), len(places))
     riding = [one for one in places[begins:ends] if rides_back(one)]

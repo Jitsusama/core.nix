@@ -570,6 +570,19 @@ ShellRoot {
             "time:clock:update-interval"].map(id => figure(id)?.side).join(", ");
         expect("the clock says its RMS offset, stratum and update interval",
             told === "200 \u00b5s, 3, 1 min 4 s", told);
+        // Its offset notes how far off it was at its last update, and a
+        // clock never yet updated has chrony's 0 there, which isn't one, so
+        // it notes none, as Now's plate does (Now.qml's placePlate).
+        const lastNoted = figure("time:clock:offset")?.note;
+        expect("the clock's offset notes its last update",
+            lastNoted === "last update \u2212388 \u00b5s", lastNoted);
+        const keptReading = Timekeeping.reading;
+        Timekeeping.reading = Object.assign({}, keptReading, {
+            clock: Object.assign({}, keptReading.clock, { lastOffset: 0, lastSync: null }) });
+        const neverNoted = clocks.answer("time").rows.find(each => each.key === "time:clock")
+            .verbs().find(each => each.name === Words.name("time:clock:offset"))?.note;
+        Timekeeping.reading = keptReading;
+        expect("a clock never yet updated notes no offset", neverNoted === "", neverNoted);
         const servers = row("time:servers").verbs();
         // A server never heard from says so on its side, so its note
         // doesn't say it again.

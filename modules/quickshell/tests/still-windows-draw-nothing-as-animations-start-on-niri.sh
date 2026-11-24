@@ -74,12 +74,17 @@ fi
 # qsgthreadedrenderloop.cpp, every other caller that starts the timer
 # logs a line of the loop's own on the GUI thread first (animationStopped,
 # handleExposure, handleObscurity, windowDestroyed, polishAndSync), so
-# one can't pass for animationStarted()'s; the one exception, a polish
+# one can't pass for animationStarted()'s. The one exception is a polish
 # that starts an animation in the same polishAndSync that then finds bad
-# vsync, says badVSync=1 on its timer line, so a line saying that is
-# marked -other even straight after a start. The timer's line, the
-# animationStarted() line before it and the (RT) mark on the render
-# thread's lines are Qt's own wording, which a Qt bump may change: a
+# vsync: it says so first on qt.scenegraph.general, which QSG_INFO turns
+# on (qsgrhisupport.cpp), so that line ends the start's too. Its timer
+# line's badVSync is no mark of it, since it counts the windows ever
+# found so (a flag Qt never clears), and would say 1 on every later
+# start's line. Nor can that line say all three shown: with three,
+# animationStarted() has already started the timer, and Qt starts it
+# only once. The timer's line, the animationStarted() line before it,
+# the broken vsync line and the (RT) mark on the render thread's lines
+# are Qt's own wording, which a Qt bump may change: a
 # render-thread line without the mark, or a new line from the GUI thread
 # between the two, marks real starts -other and fails the case, never
 # passes it.
@@ -103,15 +108,14 @@ counts=$(awk '
   # says itself. Any other line from the loop on the GUI thread ends
   # that; those from the render thread, marked (RT), come between.
   inside && /- animationStarted\(\)/ { started = 1; next }
+  started && /is determined to have broken vsync throttling/ { started = 0 }
   started && /qt\.scenegraph\.renderloop/ && !/\(RT\)/ &&
     !/Starting system \(not vsync-based\) animation timer/ { started = 0 }
   inside && /Starting system \(not vsync-based\) animation timer \(exposedWindows=/ {
     shown = $0
     sub(/.*exposedWindows=/, "", shown)
     sub(/ .*/, "", shown)
-    # A polish that starts an animation and finds bad vsync starts the
-    # timer itself, and says so; that line comes from no start.
-    ours = started && !/badVSync=1/
+    ours = started
     seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown (ours ? "" : "-other")
     if (ours && shown == 3) {
       timed[starts] = 1

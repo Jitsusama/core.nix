@@ -4331,7 +4331,9 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
         none_drawn_cut(shell, key)
     # The last step back onto Study lays nothing, so fillAt alone places the selection; the
     # key's first frame must have it on Study's drawn row, which a fillAt laid from the list's
-    # top rather than Study's gap misses by the gap.
+    # top rather than Study's gap misses by the gap. `sent` is the last landing's, so that
+    # landing has to be the step back, or a landing added after it would be read instead.
+    assert landings[-1] == ("j", study), f"the last landing isn't the step back: {landings}"
     stepped = key_presented_since(shell, sent)
     assert stepped["onRow"], f"stepping back onto Study, the selection was off its row: {stepped}"
     shell.close_launcher()
