@@ -297,6 +297,17 @@ fn entries(listing: &Value, id: &str) -> Result<Vec<Entry>, Failure> {
 /// The entries of the tree `id`, from its object as git stores it, each
 /// `<mode> <name>\0<id's bytes>`, checked as the host's are. A tree's
 /// mode says what each entry is, as git's own listing reads it.
+/// The bytes of a raw object id as git writes it, two hex digits each.
+fn hex_of(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+}
+
 fn held_entries(object: &[u8], id: &str) -> Result<Vec<Entry>, Failure> {
     let bad = || {
         Failure::new(format!(
@@ -322,10 +333,7 @@ fn held_entries(object: &[u8], id: &str) -> Result<Vec<Entry>, Failure> {
         let entry = Entry {
             name: String::from_utf8_lossy(&rest[space + 1..end]).into_owned(),
             kind: kind.to_owned(),
-            id: rest[end + 1..end + 1 + width]
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect(),
+            id: hex_of(&rest[end + 1..end + 1 + width]),
             mode,
         };
         if !entry.sound() {
