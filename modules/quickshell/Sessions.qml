@@ -2870,7 +2870,9 @@ Singleton {
     // A viewer no kitty took that the walk's patience already gave up on
     // is kept neither late nor begun: no window can come to end it, so it
     // would keep the walk from ending and a press from asking again. With
-    // it gone the walk ends if nothing else is left, as one come late does.
+    // it gone the walk ends if nothing else is left, as one come late does,
+    // and as that one, never behind the lock, where niri refuses every move
+    // reopenDone's put-back asks: the lock's end settles it (placeBehind).
     function lateUntaken(named) {
         const going = reopening;
         const gone = going?.late.filter(one => one.classed === named && one.opened === null)
@@ -2882,7 +2884,7 @@ Singleton {
         going.late = going.late.filter(one => !gone.includes(one));
         going.begun = going.begun.filter(id => !gone.some(one => one.id === id));
         if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
-            && !going.looking && !going.settling)
+            && !going.looking && !going.settling && root.placeable())
             root.reopenDone();
     }
 
