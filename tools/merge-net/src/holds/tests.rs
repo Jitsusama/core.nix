@@ -235,7 +235,7 @@ fn a_renewal_keeps_what_it_renews_and_a_later_hold_still_counts() {
         Some("B, for every quest: start no builds.".to_owned())
     );
     assert_eq!(
-        passed_by(&both),
+        passed_by(&both, 0),
         [&both[0]],
         "the Slack hold wasn't the one passed by"
     );
@@ -265,7 +265,7 @@ fn a_hold_on_one_session_leaves_the_net_alone() {
 #[test]
 fn a_hold_with_no_sender_names_no_one() {
     assert_eq!(
-        held_by(&[hold("h", "", "#machine")]).map(|held| held.from),
+        held_by(&[hold("h", "", "#machine")], 0).map(|held| held.from),
         Some(None),
         "a hold from an empty sender was named as from someone"
     );
@@ -281,7 +281,7 @@ fn only_holds_sent_since_the_boot_are_read() {
     };
     write("1000-A-1-aa.json", &hold("old", "A", "#machine"));
     assert_eq!(
-        standing(&folder, 500),
+        standing(&folder, 500, 5000),
         Some(Held {
             why: "old".to_owned(),
             from: Some("A".to_owned())
@@ -296,14 +296,14 @@ fn only_holds_sent_since_the_boot_are_read() {
     );
     write("900-B-1-ab.json", &conclude);
     assert_eq!(
-        standing(&folder, 500).and_then(|held| held.from),
+        standing(&folder, 500, 5000).and_then(|held| held.from),
         Some("A".to_owned()),
         "a hold the net leaves alone was named as who holds it"
     );
-    assert_eq!(standing(&folder, 2000), None);
+    assert_eq!(standing(&folder, 2000, 5000), None);
     write("3000-A-1-bb.json", &hold("new", "A", "#machine"));
     assert_eq!(
-        standing(&folder, 2000).map(|held| held.why),
+        standing(&folder, 2000, 5000).map(|held| held.why),
         Some("new".to_owned())
     );
     fs::remove_dir_all(&folder).unwrap();
@@ -317,7 +317,7 @@ fn an_answer_filed_in_a_day_folder_still_ends_its_hold() {
     let held = hold("1000-A-1-aa", "A", "#all");
     fs::write(folder.join("1000-A-1-aa.json"), held.to_string()).unwrap();
     assert_eq!(
-        standing(&folder, 500).map(|held| held.why),
+        standing(&folder, 500, 5000).map(|held| held.why),
         Some("1000-A-1-aa".to_owned()),
         "a hold with no answer stands"
     );
@@ -328,9 +328,130 @@ fn an_answer_filed_in_a_day_folder_still_ends_its_hold() {
     )
     .unwrap();
     assert_eq!(
-        standing(&folder, 500),
+        standing(&folder, 500, 5000),
         None,
         "the answer in the day's folder ends the hold above it"
     );
     fs::remove_dir_all(&folder).unwrap();
+}
+
+#[test]
+fn an_iso_time_reads_as_the_mesh_writes_it() {
+    let cases = [
+        ("1970-01-01T00:00:00Z", Some(0)),
+        // The hold of 24 November at 12:14, whose file's name begins with it.
+        ("2026-11-24T17:14:15.133Z", Some(1_795_540_455_133)),
+        ("2026-11-24T12:14:15.133-05:00", Some(1_795_540_455_133)),
+        ("2026-11-24T22:44:15.1+05:30", Some(1_795_540_455_100)),
+        ("2000-02-29T00:00:00Z", Some(951_782_400_000)),
+        ("2000-03-01T00:00:00Z", Some(951_868_800_000)),
+        ("2026-11-24T17:14:15", None),
+        ("2026-13-01T00:00:00Z", None),
+        ("2026-11-24T25:00:00Z", None),
+        ("2026-11-24T17:14:15.Z", None),
+        ("12:15", None),
+        ("", None),
+    ];
+    for (text, ms) in cases {
+        assert_eq!(iso_ms(text), ms, "{text:?} read as another time");
+    }
+}
+
+/// A hold to everyone, `id`, with the times `fields` give it.
+fn timed(id: &str, fields: &[(&str, &str)]) -> Value {
+    let mut held = hold(id, "A", "#machine");
+    for (field, at) in fields {
+        held[*field] = json!(at);
+    }
+    held
+}
+
+#[test]
+fn a_hold_sent_ahead_holds_only_in_its_window() {
+    // 1OGSE7's 280fdfcb, sent at 10:58 for Joel's call, said in words that
+    // it held from 12:15 to 13:10; told in fields, the net runs at 11:35.
+    let call = timed(
+        "call",
+        &[
+            ("at", "2026-11-24T15:58:06.559Z"),
+            ("starts", "2026-11-24T17:15:00.000Z"),
+            ("ends", "2026-11-24T18:10:00.000Z"),
+        ],
+    );
+    let at = |text: &str| iso_ms(text).unwrap();
+    let messages = std::slice::from_ref(&call);
+    assert_eq!(
+        held_by(messages, at("2026-11-24T16:35:00Z")),
+        None,
+        "held before it starts"
+    );
+    assert_eq!(
+        ahead(messages, at("2026-11-24T16:35:00Z")).count(),
+        1,
+        "a hold sent ahead wasn't found ahead"
+    );
+    assert!(
+        held_by(messages, at("2026-11-24T17:15:00Z")).is_some(),
+        "not held once it starts"
+    );
+    assert!(
+        held_by(messages, at("2026-11-24T18:09:59Z")).is_some(),
+        "not held a second before it ends"
+    );
+    assert_eq!(
+        held_by(messages, at("2026-11-24T18:10:00Z")),
+        None,
+        "held once it ends"
+    );
+    assert_eq!(
+        ahead(messages, at("2026-11-24T17:30:00Z")).count(),
+        0,
+        "ahead once started"
+    );
+}
+
+#[test]
+fn a_hold_that_says_no_end_stands_two_hours() {
+    let open = timed("open", &[("at", "2026-11-24T15:00:00Z")]);
+    let messages = std::slice::from_ref(&open);
+    let at = |text: &str| iso_ms(text).unwrap();
+    assert!(
+        held_by(messages, at("2026-11-24T16:59:59Z")).is_some(),
+        "an open hold ended before two hours"
+    );
+    assert_eq!(
+        held_by(messages, at("2026-11-24T17:00:00Z")),
+        None,
+        "stood past two hours"
+    );
+    // An end it says rules over the two hours, either way.
+    let long = timed(
+        "long",
+        &[
+            ("at", "2026-11-24T15:00:00Z"),
+            ("ends", "2026-11-24T19:00:00Z"),
+        ],
+    );
+    assert!(
+        held_by(std::slice::from_ref(&long), at("2026-11-24T18:00:00Z")).is_some(),
+        "a hold's own end past two hours was cut short"
+    );
+}
+
+#[test]
+fn a_window_that_cant_be_read_holds_as_one_with_none() {
+    let unread = timed(
+        "unread",
+        &[("at", "soon"), ("starts", "12:15"), ("ends", "later")],
+    );
+    assert_eq!(
+        still_held(std::slice::from_ref(&unread)),
+        Some("unread".to_owned()),
+        "a hold whose times can't be read held nothing"
+    );
+    assert_eq!(
+        ahead(std::slice::from_ref(&unread), 0).count(),
+        0,
+        "unread start read as ahead"
+    );
 }

@@ -28,6 +28,13 @@
 //! This reads
 //! the hold's words, a stopgap until a hold carries its scope in a field of
 //! its own.
+//!
+//! A hold stands only in its window, as the mesh keeps it: from its
+//! `starts` until its `ends`, each an ISO time, or for two hours from when
+//! it was sent where it says no end (`LONGEST_MS`). On 24 November a hold
+//! sent at 10:58 for a call from 12:15 to 13:10 held the net from 11:30,
+//! once the hold before it ended, and it sat 33 minutes before the call. A
+//! time that can't be read holds as though the hold had said none.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, PoisonError};
@@ -39,6 +46,10 @@ use serde_json::Value;
 
 /// The groups a hold for the whole machine goes to.
 const EVERYONE: [&str; 2] = ["#machine", "#all"];
+
+/// The longest a hold that says no end stands, in milliseconds, as the
+/// mesh's peers keep it: past it, it holds nothing.
+const LONGEST_MS: u64 = 2 * 60 * 60 * 1000;
 
 /// Words naming a hold's subject that the net never touches. "Quest" is
 /// none, since "for every quest" opens holds on anything.
@@ -384,10 +395,10 @@ pub struct Held {
     pub from: Option<String>,
 }
 
-/// The first hold on the whole machine still standing among the messages
-/// in `folder` sent since `since` (milliseconds, as each file's name
-/// begins).
-pub fn standing(folder: &Path, since: u64) -> Option<Held> {
+/// The first hold on the whole machine still standing at `now` among the
+/// messages in `folder` sent since `since` (both milliseconds, as each
+/// file's name begins).
+pub fn standing(folder: &Path, since: u64, now: u64) -> Option<Held> {
     let entries: Vec<fs::DirEntry> = fs::read_dir(folder).ok()?.filter_map(Result::ok).collect();
     let days: Vec<fs::DirEntry> = entries
         .iter()
@@ -411,7 +422,17 @@ pub fn standing(folder: &Path, since: u64) -> Option<Held> {
     sent.sort_by_key(|(at, _)| *at);
     let messages: Vec<Value> = sent.into_iter().map(|(_, message)| message).collect();
     let mut said = SAID.lock().unwrap_or_else(PoisonError::into_inner);
-    for hold in passed_by(&messages) {
+    for hold in ahead(&messages, now) {
+        let id = hold["id"].as_str().unwrap_or_default();
+        if said
+            .get_or_insert_with(HashSet::new)
+            .insert(format!("{id} ahead"))
+        {
+            let starts = hold["starts"].as_str().unwrap_or_default();
+            eprintln!("merge-net: hold {id} holds nothing until {starts}, when it starts");
+        }
+    }
+    for hold in passed_by(&messages, now) {
         let id = hold["id"].as_str().unwrap_or_default();
         if said.get_or_insert_with(HashSet::new).insert(id.to_owned()) {
             // A newline in a hold would otherwise read as a journal line of
@@ -427,7 +448,7 @@ pub fn standing(folder: &Path, since: u64) -> Option<Held> {
             eprintln!("merge-net: passing by hold {id}, not about its work: {text}");
         }
     }
-    held_by(&messages)
+    held_by(&messages, now)
 }
 
 /// The holds the net has said it passes by. A misread hold would otherwise
@@ -435,9 +456,88 @@ pub fn standing(folder: &Path, since: u64) -> Option<Held> {
 /// journal.
 static SAID: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
+/// The holds on the whole machine among `messages` standing at `now`: in
+/// their window, and answered or replaced by no later one from their
+/// sender.
+fn standing_holds(messages: &[Value], now: u64) -> impl Iterator<Item = &Value> {
+    unended(messages).filter(move |hold| in_window(hold, now))
+}
+
+/// The holds on the whole machine among `messages` sent ahead, which start
+/// after `now` and so hold nothing yet.
+fn ahead(messages: &[Value], now: u64) -> impl Iterator<Item = &Value> {
+    unended(messages).filter(move |hold| time(hold, "starts").is_some_and(|starts| starts > now))
+}
+
+/// Whether `now` falls in `hold`'s window: from its start, or always where
+/// it says none, until its end, or `LONGEST_MS` after it was sent where it
+/// says none. A hold whose sending time can't be read has no end.
+fn in_window(hold: &Value, now: u64) -> bool {
+    let started = time(hold, "starts").is_none_or(|starts| starts <= now);
+    let ends =
+        time(hold, "ends").or_else(|| time(hold, "at").map(|at| at.saturating_add(LONGEST_MS)));
+    started && ends.is_none_or(|ends| now < ends)
+}
+
+/// The time `hold`'s `field` says, in milliseconds since 1970, or none
+/// where it says none or can't be read.
+fn time(hold: &Value, field: &str) -> Option<u64> {
+    hold[field].as_str().and_then(iso_ms)
+}
+
+/// The milliseconds since 1970 of an ISO time as the mesh writes one,
+/// `2026-11-24T17:14:15.133Z`, or with an offset such as `-05:00`; none
+/// for anything else.
+fn iso_ms(text: &str) -> Option<u64> {
+    let (date, clock) = text.split_once('T')?;
+    let mut parts = date.splitn(3, '-').map(|part| part.parse::<i64>().ok());
+    let (year, month, day) = (parts.next()??, parts.next()??, parts.next()??);
+    let zone = clock.find(['Z', '+', '-'])?;
+    let (clock, offset) = clock.split_at(zone);
+    let offset_s = match offset.split_at(1) {
+        ("Z", "") => 0,
+        (sign, rest) if sign == "+" || sign == "-" => {
+            let (hours, minutes) = rest.split_once(':')?;
+            let span = hours.parse::<i64>().ok()? * 3600 + minutes.parse::<i64>().ok()? * 60;
+            if sign == "-" { -span } else { span }
+        }
+        _ => return None,
+    };
+    let (whole, fraction) = clock.split_once('.').unwrap_or((clock, "0"));
+    if fraction.is_empty() || !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let millis: i64 = format!("{:0<3}", &fraction[..fraction.len().min(3)])
+        .parse()
+        .ok()?;
+    let mut parts = whole.splitn(3, ':').map(|part| part.parse::<i64>().ok());
+    let (hour, minute, second) = (parts.next()??, parts.next()??, parts.next()??);
+    let fits = (1..=12).contains(&month)
+        && (1..=31).contains(&day)
+        && (0..24).contains(&hour)
+        && (0..60).contains(&minute)
+        && (0..=60).contains(&second);
+    if !fits {
+        return None;
+    }
+    let seconds = days_since_1970(year, month, day) * 86_400 + hour * 3600 + minute * 60 + second;
+    u64::try_from((seconds - offset_s) * 1000 + millis).ok()
+}
+
+/// The days from 1970's first day to `year`, `month` and `day`, by Howard
+/// Hinnant's civil-to-days arithmetic, as terminal-kit's `time` goes back.
+fn days_since_1970(year: i64, month: i64, day: i64) -> i64 {
+    // Counted from 1 March, so a leap day ends its year.
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let of_era = year - era * 400;
+    let of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    era * 146_097 + of_era * 365 + of_era / 4 - of_era / 100 + of_year - 719_468
+}
+
 /// The holds on the whole machine among `messages` that no later one from
-/// its sender answers or replaces.
-fn standing_holds(messages: &[Value]) -> impl Iterator<Item = &Value> {
+/// its sender answers or replaces, whatever their window.
+fn unended(messages: &[Value]) -> impl Iterator<Item = &Value> {
     messages.iter().filter(|hold| {
         let everyone = hold["to"].as_array().is_some_and(|to| {
             to.iter()
@@ -453,10 +553,10 @@ fn standing_holds(messages: &[Value]) -> impl Iterator<Item = &Value> {
     })
 }
 
-/// The first hold on the whole machine among `messages` still standing and
-/// about the net's work.
-fn held_by(messages: &[Value]) -> Option<Held> {
-    standing_holds(messages)
+/// The first hold on the whole machine among `messages` still standing at
+/// `now` and about the net's work.
+fn held_by(messages: &[Value], now: u64) -> Option<Held> {
+    standing_holds(messages, now)
         .find(|hold| about(hold, messages))
         .map(|hold| Held {
             why: hold["text"].as_str().unwrap_or_default().to_owned(),
@@ -467,16 +567,17 @@ fn held_by(messages: &[Value]) -> Option<Held> {
         })
 }
 
-/// The text of `held_by`'s hold, which is all most cases read.
+/// The text of `held_by`'s hold, which is all most cases read, at a time
+/// no window in them leaves out.
 #[cfg(test)]
 fn still_held(messages: &[Value]) -> Option<String> {
-    held_by(messages).map(|held| held.why)
+    held_by(messages, 0).map(|held| held.why)
 }
 
 /// The holds on the whole machine among `messages` still standing that the
 /// net passes by.
-fn passed_by(messages: &[Value]) -> Vec<&Value> {
-    standing_holds(messages)
+fn passed_by(messages: &[Value], now: u64) -> Vec<&Value> {
+    standing_holds(messages, now)
         .filter(|hold| !about(hold, messages))
         .collect()
 }
