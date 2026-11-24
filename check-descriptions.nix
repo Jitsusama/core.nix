@@ -4026,7 +4026,8 @@
     cell's forage under the cell that started it, even in a ring, plans first with their steps
     added up, how many cells have no purpose written, what each quest waits on its person for, a
     record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
-    with the cells it started and every cell each grew from, kept on its cell through records
+    with the cells it started and every cell each grew from, kept on its cell through records,
+    and a floor wider for its gaps drawing its words no smaller than site.css's cut allows
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
@@ -4036,9 +4037,11 @@
     purpose written followed and drawn as words though it holds markup, a cell a purpose takes out
     of the view of cells without purpose taking the cursor with it, a wait answered no longer
     said, a cell going and the crest drawn again once every cell has, broken while the node is
-    away with its cells kept and live with them read
-    again once it's back, stale once the server goes with its cells kept, a first visit within its
-    budget and a second answered unchanged, the web-design skill's page checks passing at a phone's
+    away with its cells kept and live with them read again once it's back, stale once the server
+    goes with its cells kept, a first visit holding still at a phone's width and a desk's in a
+    room for its floor with no word under 12 px and a long link, open in its panel, never
+    widening the page, a first visit within its budget and a second answered unchanged, the
+    web-design skill's page checks passing at a phone's
     width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
     floor following the cursor to a booked start past the 48th, drawn solid, not drawn again on a
     step it holds, kept on its cells through a find, one matching nothing keeping the cursor and
