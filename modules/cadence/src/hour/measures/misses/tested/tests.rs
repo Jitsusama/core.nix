@@ -154,7 +154,7 @@ fn a_test_is_found_in_its_path_at_the_revision_that_runs() {
         (test("src/a.rs", "elsewhere"), Look::Missing),
         (test("src/a.rs", "the_cat_never"), Look::Missing),
         (test("src", "the_cat_never_waits"), Look::Folder),
-        (test(".", "fn"), Look::Folder),
+        (test(".", "fn"), Look::Missing),
         (test("*", "fn"), Look::Missing),
         (test("src/b.rs", "fn"), Look::Missing),
     ];
