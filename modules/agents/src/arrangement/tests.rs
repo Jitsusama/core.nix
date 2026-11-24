@@ -834,17 +834,17 @@ fn places_are_kept_once_the_windows_are_still() {
         still.due(start + Duration::from_secs(72)),
         "and is kept then"
     );
-    still.again(start + Duration::from_secs(95));
     still.again(start + Duration::from_secs(90));
+    still.again(start + Duration::from_secs(95));
     assert_eq!(
         still.wait(start + Duration::from_secs(80)),
         Some(Duration::from_secs(10)),
-        "of two let-gos asked, the later first, the sooner is waited for"
+        "of two let-gos asked, the sooner first, the later puts it off no further"
     );
     assert!(still.due(start + Duration::from_secs(90)), "and kept then");
     still.moved(start + Duration::from_secs(100));
-    still.retry(start + Duration::from_secs(111));
     still.retry(start + Duration::from_secs(101));
+    still.retry(start + Duration::from_secs(111));
     assert_eq!(
         still.wait(start + Duration::from_secs(100)),
         Some(Duration::from_secs(1)),

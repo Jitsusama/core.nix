@@ -12,7 +12,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -209,9 +209,11 @@ pub struct Inputs {
     /// The same of `kept_places`, tried again each [`WRITE_AGAIN_MS`]
     /// though the shell says nothing more.
     pub kept_places_unwritten: Option<Unwritten>,
-    /// The places file a change to was last left unread, as its write was
-    /// behind and memory goes over it, as the journal heard it.
-    pub ignored: Option<PathBuf>,
+    /// What the journal was told of the last change heard to a places
+    /// file: the line saying it was left unread, as its write is behind
+    /// and memory goes over it, or none once a change is read, so its
+    /// cases see the line the journal can't be read back for.
+    pub left_unread: Option<String>,
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
     pub kept_places: KeptPlaces,
