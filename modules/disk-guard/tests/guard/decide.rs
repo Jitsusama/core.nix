@@ -214,7 +214,10 @@ fn a_band_under_nixs_floor_isnt_told_as_coming() {
         fill.steady_until(30 * GIB, 20 * GIB),
         "under where Nix collects, it hasn't kept up"
     );
-    assert!(fill.band_in(free, 60 * GIB, floor).is_some());
+    assert!(
+        fill.band_in(free, 60 * GIB, floor).is_some(),
+        "a filling disk has a time to a band above the floor"
+    );
 }
 
 /// A status carries no time to full for the store's disk above Nix's
