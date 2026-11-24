@@ -238,7 +238,11 @@ against this head once the page leaves its waiting list in
 `modules/local-sites/heads.nix`, and says what to change.
 
 An interface (`data-kind="interface"` on the root) starts the same parts on
-its gutter's edge rather than the centre.
+its gutter's edge rather than the centre, unless it's composed on one centre
+axis, as the home and murmurs are: its head then says `data-axis="centre"`.
+The glyph is the kit's dot, a `span`; a site that turns it to its own world
+draws it as an `svg class="glyph"` (murmurs' bird) and styles it itself,
+saying the feed's state by its shape too.
 
 **A long list folds** with `fold.ts`: at most seven rows, ranked by the
 page, then a button saying how many more rows opening shows ("And 13 more

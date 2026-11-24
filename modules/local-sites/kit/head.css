@@ -27,6 +27,15 @@
   text-align: start;
 }
 
+/* An interface composed on one centre axis, as the home and murmurs are,
+   keeps its head on it: the page marks its head data-axis="centre". The
+   home opening so is what Joel loved of it (rulings.md, What He's Loved). */
+:root[data-kind="interface"] .page-head[data-axis="centre"] {
+  align-items: center;
+  margin-inline: auto;
+  text-align: center;
+}
+
 .page-head > * {
   margin: 0;
 }
@@ -64,7 +73,9 @@
    glyph: a dot lit by half while it's reaching its daemon, whole while
    live, and an empty ring in the alert's colour once it has stopped, so the
    state is said by its shape and its words, never by colour alone. It takes
-   no tap, so it's as tall as its words. */
+   no tap, so it's as tall as its words. Only the kit's dot, a span, is drawn
+   here: a site that turns the glyph to its own world draws it as an svg
+   (murmurs' bird) and styles it itself. */
 .page-head .standing {
   display: inline-flex;
   flex-wrap: wrap;
@@ -74,7 +85,7 @@
   font-size: var(--step-small);
 }
 
-.page-head .standing .glyph {
+.page-head .standing span.glyph {
   inline-size: 0.6em;
   block-size: 0.6em;
   flex: none;
@@ -89,7 +100,7 @@
    through :has. Each :has sits inside :is, whose list forgives what a
    browser can't read: one without :has keeps the half-lit glyph, and the
    words still say the feed stopped. */
-.page-head .standing:is([data-state="live"], :has([data-state="live"])) .glyph {
+.page-head .standing:is([data-state="live"], :has([data-state="live"])) span.glyph {
   background: var(--tint);
 }
 
@@ -108,7 +119,7 @@
     [data-state="broken"],
     :has([data-state="stale"], [data-state="broken"])
   )
-  .glyph {
+  span.glyph {
   border-color: var(--alert);
   background: transparent;
 }
