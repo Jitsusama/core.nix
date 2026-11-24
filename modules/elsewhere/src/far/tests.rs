@@ -228,6 +228,8 @@ pub(super) enum Left<'a> {
     /// As `Whole`, but each archive at half its size until a second has
     /// passed, as a share still writing it leaves it.
     Short,
+    /// As `Whole`, but each small file in an archive of its own.
+    Parts,
     /// This list, with each file in the tree under its own path, as no
     /// near side leaves them, for a list that is odd or never arrives.
     Listed(&'a str),
@@ -390,7 +392,12 @@ fn leave(
         std::fs::create_dir_all(into.parent().unwrap()).unwrap();
         std::fs::write(into, text).unwrap();
     }
-    let bytes = super::left(&source, files.iter().map(|(path, _)| *path), job).unwrap();
+    let paths = files.iter().map(|(path, _)| *path);
+    let bytes = match left {
+        Left::Parts => super::leave(&source, paths, job, 4 * 512, super::MOST_BYTES),
+        _ => super::left(&source, paths, job),
+    }
+    .unwrap();
     // No tree at all when no file crosses, as a share carrying only
     // files leaves it.
     let _ = std::fs::remove_dir(&tree);
