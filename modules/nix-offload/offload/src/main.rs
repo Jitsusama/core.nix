@@ -1552,19 +1552,29 @@ fn spilled_onto(
     if vm_dirs.iter().any(|dir| there::spilled(dir)) {
         return None;
     }
-    let (idle, claim) = there::spill_order(vm_dirs.len()).find_map(|index| {
+    let index = there::spill_order(vm_dirs.len()).find(|&index| {
         let dir = &vm_dirs[index];
         let open = parts.get(index).is_none_or(Option::is_none)
             && there::lends(dir)
             && !there::named_only(dir)
             && !there::unvouched(dir)
             && there::claimed(dir) + there::waiting(dir) == 0;
-        let store = standing(dir).filter(|_| open)?;
-        if !there::takes_spill(there::pressure(&store, scratch, "ssh")) {
-            return None;
-        }
-        Some((dir.clone(), there::claim_spill(dir, room)?))
-    })?;
+        standing(dir)
+            .filter(|_| open)
+            .is_some_and(|store| there::takes_spill(there::pressure(&store, scratch, "ssh")))
+    });
+    let Some(index) = index else {
+        eprintln!(
+            "nix-offload: both lent builders are full, but no VM builder stands idle and quiet \
+             to take this, so it waits on them"
+        );
+        return None;
+    };
+    // The lane is probed unlocked, since a probe is an ssh; the claim is
+    // made only while still no lane holds a spill, so runs that start
+    // together spill once between them.
+    let claim = there::claim_only_spill(vm_dirs, index, room)?;
+    let idle = vm_dirs[index].clone();
     eprintln!(
         "nix-offload: both lent builders' tasks wait past {:.0}% of the time for their CPUs, \
          so this goes to the idle VM builder in {}",

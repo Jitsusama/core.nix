@@ -4771,6 +4771,23 @@ pub fn claim_spill(dir: &Path, room: usize) -> Option<Claim> {
     claim_marked(dir, room.max(1), SPILL)
 }
 
+/// [`claim_spill`] on `lanes[index]`, only while no lane among `lanes`
+/// holds a spill, with that checked and the claim made under one lock in
+/// the first lane's folder, which takes no spill itself. Checked unlocked,
+/// runs starting together each found no spill and claimed a lane apiece.
+pub fn claim_only_spill(lanes: &[PathBuf], index: usize, room: usize) -> Option<Claim> {
+    use std::os::fd::AsRawFd;
+    let lock = fs::File::create(lanes.first()?.join("spilling.lock")).ok()?;
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return None;
+    }
+    if lanes.iter().any(|dir| spilled(dir)) {
+        return None;
+    }
+    claim_spill(lanes.get(index)?, room)
+}
+
 /// Whether a run still going holds a spill's claim on the VM builder
 /// `dir`'s lender lends. One spill at a time takes a VM builder, so VM
 /// runs never find every idle lane taken by builds that aren't theirs.
@@ -9657,6 +9674,25 @@ mod tests {
         assert!(
             !spilled(lane.path()),
             "nor may the lane still say it holds one"
+        );
+    }
+
+    #[test]
+    fn a_second_lane_takes_no_spill_while_another_holds_one() {
+        let folders: Vec<_> = (0..3)
+            .map(|_| tempfile::tempdir().expect("a folder"))
+            .collect();
+        let lanes: Vec<PathBuf> = folders.iter().map(|dir| dir.path().to_owned()).collect();
+        let held = claim_only_spill(&lanes, 2, VM_ROOM).expect("an idle lane takes a spill");
+        assert!(
+            claim_only_spill(&lanes, 1, VM_ROOM).is_none(),
+            "another lane must take no spill while one holds a spill"
+        );
+        assert_eq!(claimed(&lanes[1]), 0, "nor may it be left claimed");
+        drop(held);
+        assert!(
+            claim_only_spill(&lanes, 1, VM_ROOM).is_some(),
+            "once the spill ends, another lane must take the next"
         );
     }
 
