@@ -375,6 +375,23 @@ ShellRoot {
             link.gone();
             Expect.expect("gone again, the next line that isn't JSON is said too",
                 !link.unreadSaid, "");
+            // Lost again once it was asked again, it waits for the next key, so a search that
+            // is what takes the daemon down isn't asked at every restart till systemd gives up.
+            link.wire = { write: line => {}, flush: () => {} };
+            const restarted = link.asked;
+            hello();
+            Expect.expect("lost again after it was asked again, it isn't asked a third time",
+                link.asked === restarted && borrower.searchState().lost === null,
+                JSON.stringify([link.asked - restarted, borrower.searchState()]));
+            borrower.search("rid");
+            borrower.search("ride");
+            link.gone();
+            link.wire = { write: line => {}, flush: () => {} };
+            const retyped = link.asked;
+            hello();
+            Expect.expect("while typed again, it's asked again once more",
+                link.asked === retyped + 1 && borrower.asking === "ride",
+                JSON.stringify([link.asked - retyped, borrower.asking]));
             borrower.ended();
             borrower.drawn = false;
             link.wire = null;
