@@ -10,10 +10,10 @@ keep their modules their own. A reload, and a link moving off a copy, give
 the package's next load a new cache. Its loads take turns, so none is
 given a module another is still evaluating. A reload, or a link moving
 off the copy, lets go of the loads waiting behind one that never ends;
-those import as an unkeyed package's do. While a load holds its turn past
-ten seconds, the loads behind it and any begun meanwhile import so too,
-and nothing kept is let go of; once it ends, it is kept and loads share
-again. A failed load forgets each module it was first to import, however
+those import as an unkeyed package's do. A load that runs past ten
+seconds gives up its turn, and until it ends, the loads after it import
+so too, each giving up its turn as it goes on; nothing kept is let go of,
+and once it ends, it is kept and loads share again. A failed load forgets each module it was first to import, however
 deep, and keeps those another extension was first to import as it ran.
 A factory is kept only from a load through modules still its package's,
 so none from a copy a link has moved off, or from modules let go of. An
@@ -73,13 +73,14 @@ cache until a reload.
 +// elsewhere, gives its next load a new cache. A load keeps the cache it
 +// began with, so its own modules stay one graph, and nothing it reads
 +// reaches a load begun after. The package's loads take turns, so none is
-+// given a module another is still evaluating. While a load holds its turn
-+// past TURN_HELD_MS, the loads behind it, and any begun before it ends,
-+// import as an unkeyed package's do, so one that never ends holds them up
-+// no longer. Nothing is let go of, so each factory kept stays kept; once
-+// the load ends, its own is kept too, and later loads share again. A failed load forgets each module it was first to import, so
-+// none it finished keeps what one that threw left behind, and keeps those
-+// another extension was first to import as it ran; jiti records only the
++// given a module another is still evaluating. A load that runs past
++// TURN_HELD_MS gives up its turn, and until it ends, the loads after it
++// import as an unkeyed package's do, each giving up its turn as it goes on,
++// so one that never ends holds them up no longer. Nothing is let go of, so
++// each factory kept stays kept; once the load ends, its own is kept too,
++// and later loads share again. A failed load forgets each module it was
++// first to import, so none it finished keeps what one that threw left
++// behind, and keeps those another extension was first to import as it ran; jiti records only the
 +// first, so one it finished that another extension was handed meanwhile is
 +// forgotten too. A factory is kept only from a load through modules that
 +// are still its package's, so none from a copy a link moved off, or from
@@ -94,17 +95,18 @@ cache until a reload.
 +	// The package's folder.
 +	root: string;
 +	cache: ModuleCache;
-+	// Settles once the package's latest load has.
++	// Settles once the package's latest load gives up its turn: as it ends,
++	// or as it goes on unshared.
 +	turn: Promise<void>;
 +	// Whether these modules have been let go.
 +	dropped: boolean;
-+	// Whether a load still holds the turn past TURN_HELD_MS.
++	// Whether a load has run past TURN_HELD_MS and not yet ended.
 +	overdue: boolean;
 +	// Starts each load still waiting for its turn.
 +	waiting: Set<() => void>;
  }
  
-+// How long a load may hold its package's turn before the loads behind it
++// How long a load may hold its package's turn before the loads after it
 +// go on unshared: long past what evaluating one extension takes.
 +const TURN_HELD_MS = 10_000;
 +
@@ -112,16 +114,11 @@ cache until a reload.
 +	return { root, cache: {}, turn: Promise.resolve(), dropped: false, overdue: false, waiting: new Set() };
 +}
 +
-+// Starts each load still waiting for its turn in `modules`.
-+function startWaiting(modules: PackageModules): void {
-+	for (const go of modules.waiting) go();
-+	modules.waiting.clear();
-+}
-+
 +// Lets go of `modules`, starting each load waiting for its turn in them.
 +function dropModules(modules: PackageModules): void {
 +	modules.dropped = true;
-+	startWaiting(modules);
++	for (const go of modules.waiting) go();
++	modules.waiting.clear();
 +}
 +// Each keyed package's modules, by its folder.
 +const packageModules = new Map<string, PackageModules>();
@@ -188,9 +185,9 @@ cache until a reload.
 +
 +// Imports the shared extension at `file` through its package's modules, in
 +// the package's turn, or as an unkeyed package's is while they are let go
-+// or a load holds their turn past TURN_HELD_MS.
++// or a load has run past TURN_HELD_MS and not yet ended.
 +async function importShared(jiti: Jiti, file: string, modules: PackageModules): Promise<unknown> {
-+	if (modules.dropped || modules.overdue) return jiti.import(file, { default: true });
++	if (modules.dropped) return jiti.import(file, { default: true });
 +	const { cache } = modules;
 +	let go = (): void => undefined;
 +	const ready = new Promise<void>((resolve) => {
@@ -198,18 +195,25 @@ cache until a reload.
 +	});
 +	modules.waiting.add(go);
 +	modules.turn.then(go);
++	let release = (): void => undefined;
++	const turn = new Promise<void>((resolve) => {
++		release = resolve;
++	});
 +	const imported = ready.then(async () => {
 +		modules.waiting.delete(go);
-+		if (modules.dropped || modules.overdue) return jiti.import(file, { default: true });
++		if (modules.dropped || modules.overdue) {
++			release();
++			return jiti.import(file, { default: true });
++		}
 +		const known = cache[file];
-+		if (known?.loaded) return defaultOf(known.exports);
 +		const before = new Set(Object.keys(cache));
 +		const held = setTimeout(() => {
 +			modules.overdue = true;
-+			startWaiting(modules);
++			release();
 +		}, TURN_HELD_MS);
 +		held.unref();
 +		try {
++			if (known?.loaded) return defaultOf(known.exports);
 +			return defaultOf(
 +				await jiti.evalModule(fs.readFileSync(file, "utf-8"), { filename: file, async: true, cache }),
 +			);
@@ -222,14 +226,10 @@ cache until a reload.
 +		} finally {
 +			clearTimeout(held);
 +			modules.overdue = false;
++			release();
 +		}
 +	});
-+	modules.turn = imported.then(
-+		() => undefined,
-+		() => {
-+			// The load that failed says why; the next takes its turn regardless.
-+		},
-+	);
++	modules.turn = turn;
 +	return imported;
 +}
 +

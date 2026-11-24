@@ -396,7 +396,8 @@ await heldUpUntil("a link to an unkeyed copy", throughUnkeyed, async () => {
 // While a load holds its turn too long, the load waiting behind it and one
 // begun meanwhile load as an unkeyed package's do, and a factory kept
 // before stays kept. Once the load ends, it is kept too, and later loads
-// share the package's modules again.
+// share the package's modules again, without waiting for one that went on
+// unshared.
 afresh();
 const { entries: stall, counts: stalledCounts } = stalledPackage(join(scratch, "stalled"));
 await open("stalled-early", [stall.early]);
@@ -417,23 +418,20 @@ await within(
   open("stalled-meanwhile", [stall.meanwhile, stall.early]),
   "a load begun while a turn was held too long waited for it",
 );
+stallGate.putAway();
+stallGate.open();
+await within(stallHanging, "a load that held its turn too long never ended");
+await within(
+  open("stalled-after", [stall.hangs, stall.after]),
+  "a load after a turn held too long waited for one that went on unshared",
+);
 lagGate.putAway();
 lagGate.open();
 await within(stallWaiting, "a load that went on behind a turn held too long never ended");
 assert.deepEqual(
   stalledCounts(),
-  // The held extension counts itself only once its imports end.
-  [3, 1, 0, 1, 1, 0],
-  "loads while a turn was held too long shared its modules, or a factory kept before was let go",
-);
-stallGate.putAway();
-stallGate.open();
-await within(stallHanging, "a load that held its turn too long never ended");
-await open("stalled-after", [stall.hangs, stall.after]);
-assert.deepEqual(
-  stalledCounts(),
   [3, 1, 1, 1, 1, 1],
-  "a load that held its turn too long wasn't kept once it ended, or later loads didn't share again",
+  "loads while a turn was held too long shared its modules, a factory kept was let go, or later loads didn't share again",
 );
 
 // A load in flight as its link moves to another copy, while the copy it
