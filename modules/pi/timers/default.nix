@@ -5,7 +5,9 @@
 # not failed, on a machine without the harness or before its first
 # install, and a Mac, with no systemd, gets none. The sweep's two settings,
 # the modules it loads providers from and the folders their programs are
-# in, are declared here beside it.
+# in, are declared here beside it. The nightly rewrite of pi's closed
+# session logs, which isn't the harness's, sits beside them in this folder
+# (compressed-logs.nix).
 {
   config,
   lib,

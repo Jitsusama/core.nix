@@ -3125,6 +3125,11 @@
     the harness's config takes a machine's declared settings at a switch, on Linux and a Mac, keeps
     every key already there, is left alone where none are declared, and a bad file doesn't stop it
   '';
+  pi-keeps-closed-logs-compressed = ''
+    pi's closed session logs are rewritten compressed each night in background.slice, catching up a
+    night missed while off, over pi's sessions folder only where there is one, with no I/O class
+    of their own and three hours before their clock ends them, and never on a Mac
+  '';
   pi-keeps-its-own-settings = ''
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
@@ -3166,6 +3171,10 @@
   pi-loads-its-packages = ''
     pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
     after them rather than in their place, and pi is given each git package as its current link
+  '';
+  pi-log-compression-passes-over-other-file-systems = ''
+    the nightly rewrite of pi's logs ends at once off btrfs, saying there's nothing to compress,
+    rather than failing
   '';
   pi-measures-each-day-in-the-background = ''
     the harness's measure runs each morning in background.slice with the store's node, catching up on
