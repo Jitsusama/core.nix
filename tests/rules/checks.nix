@@ -73,6 +73,16 @@
     waiting = import ./every-suppression-says-why-waiting.nix;
   };
 
+  # A comment saying where something lives is a guide, and one left behind
+  # when that thing moved sends its reader looking for nothing, as a doc
+  # does; docs-name-what-exists holds the markdown. Those stale before the
+  # rule wait in tests/rules/comments-name-what-exists-waiting.nix, and the
+  # check fails once one is fixed, so the list only shrinks.
+  comments-name-what-exists = pkgs.callPackage ./comments-name-what-exists.nix { } {
+    src = ../..;
+    waiting = import ./comments-name-what-exists-waiting.nix;
+  };
+
   # shellcheck's optional checks for a hidden failure, a set -e turned off,
   # an uppercase variable nothing sets and a case with no default find
   # faults, but too many scripts break them for treefmt to run them yet.
