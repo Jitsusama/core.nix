@@ -116,9 +116,9 @@
   '';
   a-look-leads-to-its-cell = ''
     a look's Talk and Go To reach the session that left it, the agents daemon's answer for its
-    cell, or a session on its quest, and another quest's only as the one that left a look naming
-    no cell, a Go whose session works on another quest now says it moved on, a file's lent mark is
-    never read, and a served look settles only once it opened
+    cell, or a session on its quest, and another quest's only as the one that left a look on no
+    quest, an old look naming no cell is led by the one its session went by, a Go whose session
+    works on another quest now says it moved on, and a served look settles only once it opened
   '';
   a-low-charge-is-said-once = ''
     a battery that reports only its charge runs low at its mark and critical at its own, only ever

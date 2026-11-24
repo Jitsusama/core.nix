@@ -6,9 +6,10 @@
 // cell a look's Talk and Go To reach (Looks.js's cellOf and cellFor): the
 // session that left it, the agents daemon's answer for its cell, and the
 // sessions on its quest, and another quest's only as the one that left a
-// look naming no cell; when a Go says its session moved on (movedOn); a
-// file's lent mark never read; and when a served look is settled once it
-// opened. How For You weighs a look is for-you.qml's.
+// look on no quest; an old look naming no cell led by the one its
+// session went by (cellNamed); when a Go says its session moved on
+// (movedOn); and when a served look is settled once it opened. How For
+// You weighs a look is for-you.qml's.
 import QtQuick
 import "Looks.js" as Looks
 
@@ -70,7 +71,7 @@ QtObject {
         // to the live session it is now, running or parked; ended with none
         // to go to, or to one not listed yet, itself, else one on its quest
         // only; not served yet, or the daemon away, the same; naming no cell,
-        // cellOf's search over every session.
+        // the one its session went by, else cellOf's search on its quest.
         const cells = {
             "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
             "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
@@ -150,15 +151,27 @@ QtObject {
             "AAAAAA");
         expect("the daemon away, never one on another quest listing its address",
             Looks.cellFor(naming("GGGGGG"), {}, [listing], []), null);
-        expect("naming no cell, cellOf's search over every quest",
-            Looks.cellFor(lookLeft, {}, [listing], []).address, "TTTTTT");
-        expect("done with, naming no cell, never one on another quest listing its address",
-            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing], []), null);
-        expect("done with, naming no cell, the session that left it by its address",
-            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing, leaver], []).address,
-            "AAAAAA");
-        expect("done with, naming its cell, that cell kept",
-            Looks.doneWith({ cell: "BBBBBB", address: "AAAAAA" }).cell, "BBBBBB");
+        expect("naming no cell, never one on another quest listing its address",
+            Looks.cellFor(lookLeft, {}, [listing], []), null);
+        expect("naming no cell, the session that left it on its quest",
+            Looks.cellFor(lookLeft, {}, [listing, leaver], []).address, "AAAAAA");
+        // A look left before looks named their cell is led by the one its
+        // session went by, made from pi's id for it as the harness makes it
+        // (lib/mesh/address.ts's sessionAddress): its last eight hex digits.
+        const lookOld = { session: "01a1dd5c-1372-7422-ab6f-f984e1921aab", quest: "Q-1" };
+        const derived = { address: "E1921AAB", presence: { session: "s-8", quest: "Q-1" } };
+        expect("an old look naming no cell, the cell its session went by",
+            Looks.cellFor(lookOld, {}, [heir, derived], []).address, "E1921AAB");
+        expect("and where the daemon says that cell goes now",
+            Looks.cellFor(lookOld, { "agent-cell:agents:E1921AAB": { cell: "E1921AAB",
+                goes: "BBBBBB" } }, [resting, heir], []).address, "BBBBBB");
+        expect("an old look naming no cell, never one on another quest listing it",
+            Looks.cellFor(Object.assign({ address: "E1921AAB" }, lookOld), {},
+                [{ address: "TTTTTT", presence: { session: "s-9", quest: "Q-2",
+                    addresses: ["TTTTTT", "E1921AAB"] } }], []), null);
+        expect("a session id of another shape names no cell",
+            Looks.cellFor({ session: "e1921aab", quest: "Q-1" }, {}, [heir, derived], [])
+                .address, "BBBBBB");
         expect("naming no cell, cellOf's search",
             Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
         expect("nothing served, cellOf's search",
@@ -272,19 +285,13 @@ QtObject {
             Looks.servedSettles({ file: "q.json", state: "quiet" }, true), false);
         expect("one opened before, left as it was",
             Looks.servedSettles({ file: "", state: "opened" }, true), false);
-        // A lent cell is the shell's own mark, never read from a file.
-        const lentRead = Looks.look(JSON.stringify({ v: 1, id: "l-1", title: "A look",
-            target: "/x", kind: "file", state: "cleared", cell: "BBBBBB", cellLent: true }));
-        expect("a file's lent mark is not read", "cellLent" in lentRead, false);
+        // A file's __proto__ key is never read, so it lends no cell.
         // Written by hand, since a literal's __proto__ is no key of its own.
         const protoText = '{"v":1,"id":"l-2","title":"A look","target":"/x",'
-            + '"kind":"file","state":"cleared","cell":"BBBBBB","__proto__":{"cellLent":true}}';
+            + '"kind":"file","state":"cleared","__proto__":{"cell":"BBBBBB"}}';
         expect("the engine parses a __proto__ key as the file's own",
             Object.keys(JSON.parse(protoText)).includes("__proto__"), true);
-        expect("nor one lent through its prototype",
-            Looks.look(protoText).cellLent === true, false);
-        expect("so a cell it names stays written as its own", JSON.parse(Looks.rewritten(
-            Looks.doneWith(lentRead), "cleared", "cleared", now)).cell, "BBBBBB");
+        expect("a file's __proto__ lends it no cell", "cell" in Looks.look(protoText), false);
 
         // What a Go whose session isn't held says: the moved words where it
         // has moved on, else its own, and its own where the moved words are

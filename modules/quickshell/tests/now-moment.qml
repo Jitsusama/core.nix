@@ -2428,10 +2428,11 @@ ShellRoot {
         // held in no file of the shell's, leads to its cell as well, by
         // the cell its row names alone: Open, then Talk, then Go To. One
         // written before looks named their cell still leads to the session
-        // that left it, by its address; one whose cell has ended with no
+        // that left it, on its quest; one whose cell has ended with no
         // answer for it keeps Open only. What holds an unnamed one to its
-        // address (doneWith) is the two cases with a session on another
-        // quest that merely lists its name: served, and made by the shell.
+        // quest (Looks.js's cellFor) is the two cases with a session on
+        // another quest that merely lists its name: served, and made by the
+        // shell.
         const historyActs = held => now.lookServed({ held: Object.assign({ id: "h",
             kind: "page", title: "Read H", target: "https://example.com", state: "opened" },
             held) }, "row:looks-history:h").verbs().map(act => act.key)

@@ -641,17 +641,15 @@ QtObject {
         expect("nor one with a word more", Looks.settledAlike(shown, written({ ask: "Why?" })),
             false);
         expect("nor what can't be read", Looks.settledAlike(shown, "{"), false);
-        // A cell History lends a look is never written, as the daemon writes none.
-        const unnamed = Object.assign({}, read.waiting[1], { cell: undefined, address: "AAAAAA" });
-        const lentShown = Looks.rewritten(Looks.doneWith(unnamed), "cleared", "cleared", now);
-        expect("a cell lent to a look done with is not written as its own",
-            JSON.parse(lentShown).cell, undefined);
-        expect("nor is the lending", "cellLent" in JSON.parse(lentShown), false);
-        expect("so what the daemon writes of it is alike", Looks.settledAlike(lentShown,
-            Looks.rewritten(unnamed, "cleared", "cleared", now)), true);
+        // The cell a look naming none is led by (Looks.js's cellNamed) is
+        // never written as its own, as the daemon writes none.
+        const unnamed = Object.assign({}, read.waiting[1], { cell: undefined,
+            session: "01a1dd5c-1372-7422-ab6f-f984e1921aab" });
+        expect("a look naming no cell is written naming none",
+            "cell" in JSON.parse(Looks.rewritten(unnamed, "cleared", "cleared", now)), false);
         expect("a cell the look names is written as its own",
-            JSON.parse(Looks.rewritten(Looks.doneWith(Object.assign({}, unnamed,
-                { cell: "BBBBBB" })), "cleared", "cleared", now)).cell, "BBBBBB");
+            JSON.parse(Looks.rewritten(Object.assign({}, unnamed, { cell: "BBBBBB" }),
+                "cleared", "cleared", now)).cell, "BBBBBB");
         const offered = Looks.rewritten(choosing, "cleared", "cleared", now);
         const reordered = JSON.parse(offered);
         // Qt's engine has no Object.fromEntries, so each is turned by hand.
