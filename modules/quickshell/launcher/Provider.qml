@@ -197,7 +197,7 @@ Scope {
     // is said: then the launcher shows the step's rows and none of the
     // others, so the change is no key's act on screen. A session's work
     // turning just after Return into For You moved another of Now's rows,
-    // and was timed as Return's act (the niri case, 16 November: "its own
+    // and was timed as Return's act (seen on niri, 16 November: "its own
     // rows"). A held row that isn't among the rows is never unseen, since
     // what the launcher draws for it can't be read here, as Windows'
     // agents' fold isn't among its things.

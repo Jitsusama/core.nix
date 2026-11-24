@@ -3312,6 +3312,21 @@ ShellRoot {
         };
         outright("For You held, the notices moving aren't said outright",
             into(now.waiting.verbs()), 0);
+        // So too as Now hears them, by the notices' rows and history, not
+        // only through noticesMoved: a handler that went round it would
+        // say them outright again with For You held.
+        const heardBy = (name, moves) => {
+            theLauncher.held = into(now.waiting.verbs());
+            root.nowChanged = 0;
+            root.nowMoved = "";
+            moves();
+            expect(name, root.nowChanged === 0 && root.nowMoved === "",
+                JSON.stringify([root.nowChanged, root.nowMoved]));
+        };
+        heardBy("nor as their daemon says its rows moved", () => pastNotices.changed());
+        heardBy("nor as their history moves", () => {
+            Notices.history = Notices.history.slice();
+        });
         outright("held below For You, they are", into(now.waiting.verbs()).concat([
             { row: { key: "on:waiting:screen" }, rows: [] }]), 1);
         const underNow = key => [{ row: { from: now, key: "on" } },
@@ -3392,7 +3407,7 @@ ShellRoot {
             root.nowMoved === "its own rows as it stepped", root.nowMoved);
         // For You held, one of Now's other rows moving is drawn nowhere,
         // so it's no key's act: a session's work turning just after Return
-        // was timed as Return's (the niri case, 16 November).
+        // was timed as Return's (seen on niri, 16 November).
         const another = { key: "on:another", name: "Another" };
         const said = (name, changes, unseen) => expect(name,
             root.nowChanged === changes && root.nowUnseen === unseen,
