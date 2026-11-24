@@ -28,6 +28,10 @@ const HIS: [&str; 1] = ["ask"];
 /// How far into a line its role is looked for. pi writes an entry's type,
 /// ids and time before its message's role, about 130 bytes in.
 const HEAD: usize = 400;
+/// How soon after a compaction's ask the call it cuts ends. pi's own cut
+/// lands a tenth of a second after the ask; five seconds leaves room for
+/// a loaded machine, and an abort later than that is his.
+const ASK_CUTS_MS: i64 = 5_000;
 
 /// How one call to the model ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +41,9 @@ pub enum Stop {
     Tool,
     Error,
     Aborted,
+    /// Cut short by pi itself, to compact the context: an abort he
+    /// didn't ask for, which hands the turn back all the same.
+    Compacted,
 }
 
 /// One call to the model: when it began, in milliseconds since 1970, how
@@ -89,6 +96,35 @@ pub struct Turn {
     pub tool_mark: i64,
 }
 
+/// Where his turn stands after one of its calls stopped on an error.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Errored {
+    /// No call of his turn is left on an error.
+    #[default]
+    No,
+    /// The last call stopped on an error, with no word yet that pi tries
+    /// again.
+    Untried,
+    /// A peer's or the harness's message came after that error, so the
+    /// call after it, if pi never tries again, answers them, not him.
+    Crossed,
+}
+
+impl Errored {
+    /// Where a call of his turn that stopped so leaves it and, after an
+    /// error, the entry pi's retry edits out of its context, none when it
+    /// has no id for one to name.
+    fn after(stop: Stop, line: &[u8]) -> (Self, Option<String>) {
+        if stop == Stop::Error {
+            let id = head_str(line, "id").filter(|id| !id.is_empty());
+            (Self::Untried, id.map(str::to_owned))
+        } else {
+            (Self::No, None)
+        }
+    }
+}
+
 /// What's been read of one session's log: how far, whether the last
 /// message in it was his, and his turns.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -100,6 +136,17 @@ pub struct Log {
     /// first token, which the harness logs just before the call itself.
     #[serde(default)]
     pub next: Option<(i64, i64)>,
+    /// When a compaction was asked for, until it lands or settles, his
+    /// next message opens a turn, or the next call of his turn is read.
+    /// pi's compaction aborts the call it cuts, so an abort ending soon
+    /// after the ask is pi's.
+    #[serde(default)]
+    pub compacting: Option<i64>,
+    #[serde(default)]
+    pub errored: Errored,
+    /// The entry of the call that errored, which pi's retry edits out.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 impl Log {
@@ -166,9 +213,32 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 ..Turn::default()
             });
             log.open = true;
+            log.errored = Errored::No;
+            // A compaction asked before he typed can't cut a call he set
+            // off, whether or not it ever lands.
+            log.compacting = None;
             last = Some(text);
+        } else if log.errored != Errored::No && head_has(&line, r#""type":"custom_message""#) {
+            // pi tries an errored call again by first editing the error out
+            // of its context, so a peer's or the harness's message before
+            // that edit can still land inside his retry, and one after it
+            // does. Only one with no retry after it sets off a call that
+            // answers them, not him (hear/said.rs keeps the same rule).
+            log.errored = Errored::Crossed;
+        } else if log.errored != Errored::No && head_has(&line, r#""type":"context_edit""#) {
+            if retried(&line, log.error.as_deref()) {
+                log.errored = Errored::No;
+            }
+        } else if log.errored == Errored::Crossed && begins_with_role(&line, "assistant") {
+            (log.errored, log.open) = (Errored::No, false);
         } else if head_has(&line, r#""customType":"harness-call""#) {
             log.next = harness_call(&line);
+        } else if head_has(&line, r#""customType":"compaction-asked""#) {
+            log.compacting = asked_at(&line);
+        } else if head_has(&line, r#""type":"compaction""#)
+            || head_has(&line, r#""customType":"compaction-settled""#)
+        {
+            log.compacting = None;
         } else if log.open
             && begins_with_role(&line, "assistant")
             && let (Some(turn), Some(mut call)) = (log.turns.last_mut(), call(&line))
@@ -178,10 +248,14 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 .take()
                 .filter(|(of, _)| *of == call.start)
                 .map(|(_, first)| first);
+            if cut_for(log.compacting.take(), &call) {
+                call.stop = Stop::Compacted;
+            }
             // A call that answers or is stopped hands the turn back: what
             // runs after it was set off by something else, a mesh message
             // or a job's result, not by him.
             log.open = matches!(call.stop, Stop::Tool | Stop::Error);
+            (log.errored, log.error) = Errored::after(call.stop, &line);
             turn.tool_mark = turn.tool_mark.max(call.start + call.ms);
             turn.calls.push(call);
         } else if log.open
@@ -316,6 +390,49 @@ fn harness_call(line: &[u8]) -> Option<(i64, i64)> {
     Some((entry.data.of, entry.data.first_token_ms?))
 }
 
+/// Whether a call is the one pi cut for a compaction asked at `asked`: an
+/// abort ending soon after the ask.
+fn cut_for(asked: Option<i64>, call: &Call) -> bool {
+    asked.is_some_and(|at| call.stop == Stop::Aborted && call.start + call.ms - at <= ASK_CUTS_MS)
+}
+
+/// A context edit: the entry it changes, and whether it puts anything in
+/// its place, read without decoding what.
+#[derive(Deserialize)]
+struct EditLine {
+    #[serde(rename = "targetId", default)]
+    target: Option<String>,
+    #[serde(default)]
+    replacement: Option<serde::de::IgnoredAny>,
+}
+
+/// Whether a context edit is pi's retry of the call that errored: one that
+/// drops that entry from its context with nothing in its place. Any other
+/// edit, such as an extension's, isn't one (hear/said.rs keeps the same
+/// rule).
+fn retried(line: &[u8], error: Option<&str>) -> bool {
+    serde_json::from_slice::<EditLine>(line).is_ok_and(|edit| {
+        edit.replacement.is_none() && (error.is_none() || edit.target.as_deref() == error)
+    })
+}
+
+/// A compaction's ask, as the harness writes it: numbers alone, so it's
+/// parsed whole.
+#[derive(Deserialize)]
+struct AskLine {
+    data: Ask,
+}
+
+#[derive(Deserialize)]
+struct Ask {
+    at: i64,
+}
+
+fn asked_at(line: &[u8]) -> Option<i64> {
+    let entry: AskLine = serde_json::from_slice(line).ok()?;
+    Some(entry.data.at)
+}
+
 /// Whether a line is a message in this role, from the head of the line
 /// alone, so tool results, most of a log's bytes, are never parsed.
 fn begins_with_role(line: &[u8], role: &str) -> bool {
@@ -370,312 +487,4 @@ pub fn iso_ms(stamp: &str) -> Option<i64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pain::Signs;
-    use std::io::Cursor;
-
-    /// 2026-11-11 16:00:00 UTC.
-    pub(super) const AT: i64 = 1_794_412_800_000;
-
-    fn iso(at: i64) -> String {
-        let secs = at.div_euclid(1000);
-        let (days, rest) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
-        assert_eq!(days, 20_768, "these tests stay on 11 November 2026");
-        format!(
-            "2026-11-11T{:02}:{:02}:{:02}.{:03}Z",
-            rest / 3600,
-            rest / 60 % 60,
-            rest % 60,
-            at.rem_euclid(1000)
-        )
-    }
-
-    fn typed(enter: i64, delivered: i64, text: &str) -> String {
-        format!(
-            r#"{{"type":"message","id":"a","parentId":"b","timestamp":"{}","message":{{"role":"user","content":[{{"type":"text","text":{}}}],"timestamp":{enter}}}}}"#,
-            iso(delivered),
-            serde_json::to_string(text).expect("a string serializes")
-        ) + "\n"
-    }
-
-    fn reply(start: i64, ms: i64, stop: &str) -> String {
-        format!(
-            r#"{{"type":"message","id":"c","parentId":"a","timestamp":"{}","message":{{"role":"assistant","content":[{{"type":"text","text":"an answer"}}],"api":"x","timestamp":{start},"durationMs":{ms},"stopReason":"{stop}"}}}}"#,
-            iso(start + ms)
-        ) + "\n"
-    }
-
-    fn tool_result(at: i64, text: &str) -> String {
-        format!(
-            r#"{{"type":"message","id":"d","parentId":"c","timestamp":"{}","message":{{"role":"toolResult","content":[{{"type":"text","text":{}}}],"timestamp":{at}}}}}"#,
-            iso(at),
-            serde_json::to_string(text).expect("a string serializes")
-        ) + "\n"
-    }
-
-    fn tool_ended(at: i64, name: &str) -> String {
-        format!(
-            r#"{{"type":"message","id":"d","parentId":"c","timestamp":"{}","message":{{"role":"toolResult","toolCallId":"t","toolName":"{name}","content":[{{"type":"text","text":"done"}}],"timestamp":{at}}}}}"#,
-            iso(at)
-        ) + "\n"
-    }
-
-    fn harness_call(of: i64, first_token: i64) -> String {
-        format!(
-            r#"{{"type":"custom","customType":"harness-call","data":{{"v":1,"of":{of},"turnAt":"{}","preparedMs":5,"firstTokenMs":{first_token},"durationMs":9000,"stopReason":"stop"}},"id":"h","parentId":"a","timestamp":"{}"}}"#,
-            iso(of),
-            iso(of + 9000)
-        ) + "\n"
-    }
-
-    fn mesh(at: i64) -> String {
-        format!(
-            r#"{{"type":"custom_message","customType":"mesh","content":"Mesh message from a peer","timestamp":"{}"}}"#,
-            iso(at)
-        ) + "\n"
-    }
-
-    fn read(text: &str) -> Log {
-        let mut log = Log::default();
-        follow(&mut Cursor::new(text.as_bytes().to_vec()), &mut log).expect("a cursor reads");
-        log
-    }
-
-    pub(super) fn turn(enter: i64, calls: &[(i64, i64, Stop)]) -> Turn {
-        Turn {
-            offset: 0,
-            enter,
-            delivered: enter,
-            calls: calls
-                .iter()
-                .map(|&(start, ms, stop)| Call {
-                    start,
-                    ms,
-                    stop,
-                    first: None,
-                })
-                .collect(),
-            ..Turn::default()
-        }
-    }
-
-    #[test]
-    fn what_runs_after_his_turn_is_handed_back_is_not_his() {
-        let text = typed(AT, AT, "hello")
-            + &reply(AT + 100, 1000, "stop")
-            + &mesh(AT + 5000)
-            + &reply(AT + 5100, 2000, "error")
-            + &reply(AT + 8000, 500, "aborted");
-        let log = read(&text);
-        assert_eq!(
-            log.turns[0].calls.len(),
-            1,
-            "calls a mesh message set off after his reply aren't his turn's"
-        );
-        assert!(!log.open, "the answer handed the turn back");
-    }
-
-    #[test]
-    fn a_tool_holding_the_session_past_a_minute_is_pis_own_and_the_model_is_not() {
-        let text = typed(AT, AT, "run the tests")
-            + &reply(AT + 500, 10_000, "toolUse")
-            + &tool_ended(AT + 100_500, "bash")
-            + &reply(AT + 101_000, 5000, "stop");
-        let log = read(&text);
-        assert_eq!(log.turns[0].tools_ms, 90_000, "the tool ran 90 s");
-        let p = &painful(&[&log.turns], AT - 1, AT + 1)[0];
-        assert_eq!(
-            (p.lost_seconds, p.slowed, p.part),
-            (30.5, "waiting", "pi"),
-            "of 106 s, the model's 15 aren't lost, nor the tool's first minute"
-        );
-        let Signs::Pi(signs) = &p.signs else {
-            panic!("a pi moment carries pi's signs");
-        };
-        assert_eq!(
-            (
-                signs.model_ms,
-                signs.provider_ms,
-                signs.pi_ms,
-                signs.tools_ms
-            ),
-            (15_000, 0, 91_000, 90_000)
-        );
-    }
-
-    #[test]
-    fn a_question_put_to_him_is_not_a_wait() {
-        let text = typed(AT, AT, "plan it")
-            + &reply(AT + 500, 10_000, "toolUse")
-            + &tool_ended(AT + 40_500, "ask")
-            + &reply(AT + 41_000, 5000, "stop");
-        let log = read(&text);
-        assert!(
-            painful(&[&log.turns], AT - 1, AT + 1).is_empty(),
-            "the 30 s were his own, answering"
-        );
-    }
-
-    #[test]
-    fn the_first_token_comes_from_the_harness_entry_before_its_call() {
-        let text =
-            typed(AT, AT, "hello") + &harness_call(AT + 500, 4000) + &reply(AT + 500, 9000, "stop");
-        let log = read(&text);
-        assert_eq!(log.turns[0].calls[0].first, Some(4000));
-        let named = painful(&[&log.turns], AT - 1, AT + 1);
-        assert!(named.is_empty(), "the model thinking is no fault");
-    }
-
-    #[test]
-    fn a_typed_message_and_its_replies_make_a_turn() {
-        let text = typed(AT, AT + 4000, "make the launcher faster")
-            + &reply(AT + 4100, 3000, "toolUse")
-            + &tool_result(AT + 7200, "ok")
-            + &reply(AT + 7300, 2000, "stop");
-        let log = read(&text);
-        assert_eq!(log.turns.len(), 1, "one message, one turn");
-        let turn = &log.turns[0];
-        assert_eq!(
-            (turn.offset, turn.enter, turn.delivered),
-            (0, AT, AT + 4000)
-        );
-        assert_eq!(
-            turn.calls,
-            vec![
-                Call {
-                    start: AT + 4100,
-                    ms: 3000,
-                    stop: Stop::Tool,
-                    first: None,
-                },
-                Call {
-                    start: AT + 7300,
-                    ms: 2000,
-                    stop: Stop::Done,
-                    first: None,
-                },
-            ]
-        );
-        assert_eq!(log.end, u64::try_from(text.len()).expect("a length fits"));
-    }
-
-    #[test]
-    fn messages_he_did_not_type_are_not_his_turns() {
-        let text = typed(AT, AT, "hello")
-            + &reply(AT + 100, 1000, "stop")
-            + &typed(
-                AT + 5000,
-                AT + 5000,
-                "[Automated message, no human input: carry on]",
-            )
-            + &reply(AT + 5100, 9000, "stop")
-            + &typed(
-                AT + 20_000,
-                AT + 20_000,
-                "[Joel is asking from outside this window] hi",
-            )
-            + &mesh(AT + 30_000);
-        let log = read(&text);
-        assert_eq!(log.turns.len(), 1, "only the typed message is his");
-        assert_eq!(
-            log.turns[0].calls.len(),
-            1,
-            "a reply to an automated message isn't his turn's"
-        );
-        assert!(!log.open, "the last message in the log wasn't his");
-    }
-
-    #[test]
-    fn a_read_picks_up_where_the_last_one_stopped() {
-        let first = typed(AT, AT, "fix the launcher") + &reply(AT + 100, 1000, "toolUse");
-        let rest =
-            reply(AT + 2000, 1000, "stop") + &typed(AT + 60_000, AT + 60_000, "fix the launcher!");
-        let whole = read(&(first.clone() + &rest));
-        let mut log = Log::default();
-        let unended = first.clone() + &rest[..10];
-        follow(&mut Cursor::new(unended.into_bytes()), &mut log).expect("a cursor reads");
-        assert_eq!(
-            log.end,
-            u64::try_from(first.len()).expect("a length fits"),
-            "a line not yet ended waits for the next read"
-        );
-        follow(&mut Cursor::new((first + &rest).into_bytes()), &mut log).expect("a cursor reads");
-        assert_eq!(log, whole, "two reads make what one would");
-        assert!(
-            log.turns[1].again,
-            "the second is the first said again, across reads"
-        );
-    }
-
-    #[test]
-    fn a_log_shorter_than_what_was_read_is_read_anew() {
-        let mut log = read(&(typed(AT, AT, "one") + &typed(AT + 1000, AT + 1000, "two")));
-        let shorter = typed(AT + 5000, AT + 5000, "three");
-        follow(&mut Cursor::new(shorter.into_bytes()), &mut log).expect("a cursor reads");
-        assert_eq!(log.turns.len(), 1, "what was read before is gone");
-        assert_eq!(log.turns[0].enter, AT + 5000);
-    }
-
-    #[test]
-    fn a_message_said_again_soon_is_a_second_go() {
-        let log = read(
-            &(typed(AT, AT, "why is the launcher slow to open")
-                + &typed(
-                    AT + 120_000,
-                    AT + 120_000,
-                    "why is the launcher so slow to open?",
-                )
-                + &typed(
-                    AT + 900_000,
-                    AT + 900_000,
-                    "why is the launcher so slow to open?",
-                )
-                + &typed(AT + 960_000, AT + 960_000, "now look at the backlight")),
-        );
-        let again: Vec<bool> = log.turns.iter().map(|t| t.again).collect();
-        assert_eq!(again, [false, true, false, false]);
-    }
-
-    #[test]
-    fn what_he_typed_and_what_agents_said_is_never_kept() {
-        let text = typed(AT, AT + 20_000, "the token is sk-FAKE-7QEY1S-0001 ok")
-            + &reply(AT + 21_000, 1000, "stop")
-            + &tool_result(AT + 22_000, "sk-FAKE-7QEY1S-0002")
-            + &typed(
-                AT + 30_000,
-                AT + 30_000,
-                "the token is sk-FAKE-7QEY1S-0001 ok!",
-            );
-        let log = read(&text);
-        assert_eq!(log.turns.len(), 2, "both messages were read");
-        let kept = serde_json::to_string(&log).expect("the state serializes")
-            + &serde_json::to_string(&painful(&[&log.turns], AT - 1, AT + 1))
-                .expect("the day serializes");
-        assert!(
-            !kept.contains("FAKE"),
-            "nothing typed or answered is kept: {kept}"
-        );
-    }
-
-    #[test]
-    fn iso_times_read_as_pi_writes_them() {
-        assert_eq!(iso_ms("2026-11-10T19:16:00.282Z"), Some(1_794_338_160_282));
-        assert_eq!(iso_ms("2026-11-10T19:16:00Z"), Some(1_794_338_160_000));
-        assert_eq!(iso_ms("2026-11-10T19:16:00.2Z"), Some(1_794_338_160_200));
-        assert_eq!(iso_ms("not a time"), None);
-    }
-
-    #[test]
-    fn pruning_keeps_the_last_turn_to_compare_with() {
-        let mut log = Log {
-            end: 0,
-            open: true,
-            turns: vec![turn(AT - 10, &[]), turn(AT - 5, &[])],
-            next: None,
-        };
-        log.prune(AT);
-        assert_eq!(log.turns.len(), 1, "the older is gone");
-        assert_eq!(log.turns[0].enter, AT - 5);
-    }
-}
+mod tests;
