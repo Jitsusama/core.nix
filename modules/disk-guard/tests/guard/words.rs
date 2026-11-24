@@ -43,6 +43,16 @@ fn a_disk_filling_fast_says_when_it_fills() {
 }
 
 #[test]
+fn a_forecast_whose_moment_has_passed_says_nothing() {
+    assert_eq!(
+        filesystem(&room("/", Band::Filling, 104 * GIB, Some(-3600.0)), None),
+        "The disk is filling, with 104.0 GiB free. \
+         The guard is clearing builds and caches nobody has used lately.",
+        "a disk with room left hasn't filled, whatever an old forecast said"
+    );
+}
+
+#[test]
 fn each_band_below_healthy_says_what_the_guard_is_doing() {
     let said = |band, free| filesystem(&room("/", band, free, None), None);
     assert_eq!(

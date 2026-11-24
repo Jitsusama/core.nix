@@ -20,6 +20,9 @@ pub struct Room<'a> {
     pub free: u64,
     pub size: u64,
     /// Seconds until it's full at the present fill, if it's filling.
+    /// Seconds until the forecast fills it. A forecast's moment passed
+    /// with the disk still holding room is no forecast, so neither row
+    /// says one at or below zero.
     pub full_in: Option<f64>,
     /// Whether the last pass in this band or a worse one found nothing
     /// more it may clear, so saying it's clearing would be untrue.
@@ -57,11 +60,16 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
              the guard is clearing everything it can and may freeze what is filling it."
         ),
     };
-    if let Some(full_in) = room.full_in.filter(|full_in| *full_in < TELL_WITHIN) {
+    if let Some(full_in) = room.full_in.filter(|full_in| telling(*full_in)) {
         // Writing to a String can't fail.
         _ = write!(said, " At this rate it fills in {}.", span(full_in));
     }
     said
+}
+
+/// Whether a forecast this many seconds off is worth a sentence.
+fn telling(full_in: f64) -> bool {
+    full_in > 0.0 && full_in < TELL_WITHIN
 }
 
 /// The one sentence the machine's row shows: its worst disk's, or when
@@ -78,7 +86,7 @@ pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     let filling = rooms
         .iter()
         .filter_map(|room| room.full_in.map(|full_in| (room, full_in)))
-        .filter(|(_, full_in)| *full_in < TELL_WITHIN)
+        .filter(|(_, full_in)| telling(*full_in))
         .min_by(|(_, one), (_, other)| one.total_cmp(other));
     if let Some((room, _)) = filling {
         return filesystem(room, home);
