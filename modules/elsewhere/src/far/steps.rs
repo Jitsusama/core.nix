@@ -121,10 +121,20 @@ done"#
 /// only once this line wrote that file, `mine`: before then, any there
 /// are another run's, of this job or of another job of the quest. What
 /// lies in the handover is cleared only once no link the job left stands
-/// at it or above it, as `unlinked` makes sure.
+/// at it or above it, as `unlinked` makes sure. Every copy, and what lies
+/// beside it, is taken away by `cleared`, which opens its folders first,
+/// since a job may close one so that nothing under it can be taken.
 pub(super) fn stopping() -> String {
     format!(
-        r#"# True once neither the job's handover folder nor either folder above
+        r#"# Takes each path away whole, its folders made the far line's own to
+# enter and write first: a job may close one, so that what lies under it
+# can't be taken. find takes a link it meets as itself alone, as -P says,
+# so nothing past one is opened. Its answer is the removal's.
+cleared() {{
+  find -P "$@" -type d ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
+  rm -rf "$@"
+}}
+# True once neither the job's handover folder nor either folder above
 # it in the quest's scratch is a link, any one there cleared first: a job
 # may leave one, and whatever the far line writes or clears below goes
 # through it. Each is opened, top down from the scratch, once it's known
@@ -143,9 +153,9 @@ unlinked() {{
 }}
 stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && {{ ! unlinked || rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
+  cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
     {{ [ -z "$mine" ] || {{
-      rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
+      cleared "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
     }}; }}
   trap - "$1"
   kill -s "$1" "$$"
@@ -210,9 +220,7 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *'No such process'*) ;;
       *) continue ;;
     esac
-    find "$copy.names" "$copy.back" "$copy.back".* "$copy" -type d \
-      ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
-    {{ rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
+    {{ cleared "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
       rm -f "$run"; }} 2>/dev/null ||
       printf "elsewhere: couldn't clear %s, an earlier run's copy\n" "$copy" >&2
   done
@@ -228,8 +236,10 @@ pub(super) const RUN: &str = ".run";
 /// once made, 1 for the tree's own fault, which every try meets, and 2
 /// for this machine's, which another may not. Each name the list holds
 /// must be one of the archives the near side writes, `0.tar` and on, all
-/// checked before any is unpacked. A job with no file that travels sends
-/// none, and its tree is made empty.
+/// checked before any is unpacked. The list is read once, so the names
+/// unpacked are the very names checked, whatever is at its name after.
+/// A job with no file that travels sends none, and its tree is made
+/// empty.
 ///
 /// The near side writes only files and folders, each named within the
 /// tree, so an archive naming a member from the root or through `..`
@@ -251,13 +261,16 @@ pub(super) const RUN: &str = ".run";
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
+  left=$(cat "$job/{LEFT}") || return 2
   while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
     case $number in
       ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; return 1 ;;
     esac
-  done < "$job/{LEFT}"
+  done <<EOF
+$left
+EOF
   while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     rm -f "$work.names" && (set -C && tar -tf "$job/{TREE}/$part" > "$work.names") ||
@@ -279,7 +292,9 @@ pub(super) fn copying() -> String {
 *}}" >&2
       return 1
     }}
-  done < "$job/{LEFT}"
+  done <<EOF
+$left
+EOF
 }}"#
     )
 }
@@ -293,8 +308,8 @@ pub(super) fn copying() -> String {
 /// those under its copies' folder are opened, so a job that closed them
 /// changes nothing, and whatever lies at its list's name goes, a folder
 /// the job made there included, so the list's own write never fails on it.
-/// `find` takes a link it meets as itself alone, as `-P` says, so
-/// nothing past the handover is opened.
+/// `cleared` takes a link it meets as itself alone, so nothing past the
+/// handover is opened.
 /// Where the folder still can't be made new, as on a disk gone wrong, the
 /// tree goes too, to free its room, and the list is only its cut, so the
 /// near side says at once that nothing came back, whatever list the job
@@ -306,17 +321,15 @@ pub(super) fn handing() -> String {
 # stands, so nothing past the handover is opened.
 stuck="a link it left at its handover couldn't be cleared"
 if unlinked; then
-  find -P "$job/{BACK}" "$job/{BROUGHT}" -type d ! -perm -700 -exec chmod u+rwx {{}} \; \
-    2>/dev/null
   stuck="its folder for copies or its list couldn't be made new"
-  rm -rf "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
+  cleared "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
-  cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
+  cd "$HOME" && cleared "$work.names" "$work.back" "$work.back".* "$work" &&
     rm -f "$work{RUN}"
   ! unlinked || {{
-    rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+    cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
     (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}") ||
       printf "elsewhere: nor could it cut its list, so the near side waits it out\n" >&2
   }}
@@ -450,5 +463,5 @@ fi
 /// from, once nothing is brought back out of them, and then its run's
 /// file, once they went.
 fn freed() -> String {
-    format!("cd \"$HOME\" && rm -rf \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
+    format!("cd \"$HOME\" && cleared \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
 }
