@@ -138,15 +138,69 @@ P_SCOPE = {"button", "caption", "html", "marquee", "object", "table", "td", "tem
 # Where an element written closed is closed, as it is in SVG and MathML.
 FOREIGN = {"svg", "math"}
 
+# Where SVG or MathML holds HTML again, as HTML's integration points do.
+INTEGRATION = {"foreignobject", "desc", "title", "mi", "mo", "mn", "ms", "mtext"}
+
+# The tags that end SVG or MathML left open, as a browser reads them there.
+BREAKOUT = {
+    "b",
+    "big",
+    "blockquote",
+    "body",
+    "br",
+    "center",
+    "code",
+    "dd",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "listing",
+    "menu",
+    "meta",
+    "nobr",
+    "ol",
+    "p",
+    "pre",
+    "ruby",
+    "s",
+    "small",
+    "span",
+    "strike",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tt",
+    "u",
+    "ul",
+    "var",
+}
+
 # What holds markup never drawn as the page's own: a template, what shows only
-# without scripts, and what a browser reads as words or another page's, however a
-# parser of this Python's version nests them.
+# without scripts, and what a browser reads as words, a script or another page's,
+# however a parser of this Python's version nests them. An end tag inside one
+# closes nothing outside it.
 UNDRAWN = {
     "iframe",
     "noembed",
     "noframes",
     "noscript",
     "plaintext",
+    "script",
+    "style",
     "template",
     "textarea",
     "title",
@@ -261,17 +315,91 @@ ROLES = {
 LIVE_ROLES = {"status", "alert", "log"}
 
 # What an element's own style may say that draws none of it, as a browser
-# reads each declaration; a sheet's rules are the live tests' to hold.
+# reads each declaration, beside an opacity of nothing; a sheet's rules, and a
+# clip or a size of nothing, are the live tests' to hold.
 STYLED_OUT = {
     ("display", "none"),
     ("visibility", "hidden"),
     ("visibility", "collapse"),
     ("content-visibility", "hidden"),
-    ("opacity", "0"),
 }
 
 # A declaration's mark of weight, which CSS lets a space split.
 IMPORTANT = re.compile(r"!\s*important\s*$")
+
+# A comment in a style, which CSS reads as nothing.
+COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.DOTALL)
+
+# What any property may say.
+GLOBAL = {"inherit", "initial", "unset", "revert", "revert-layer"}
+
+# What rolls a display back to the browser's own, which hides what's hidden.
+ROLLED_BACK = {"revert", "revert-layer"}
+
+# The words a display is written in, one to three of them.
+DISPLAYS = {
+    "block",
+    "contents",
+    "flex",
+    "flow",
+    "flow-root",
+    "grid",
+    "inline",
+    "inline-block",
+    "inline-flex",
+    "inline-grid",
+    "inline-table",
+    "list-item",
+    "math",
+    "none",
+    "ruby",
+    "ruby-base",
+    "ruby-base-container",
+    "ruby-text",
+    "ruby-text-container",
+    "run-in",
+    "table",
+    "table-caption",
+    "table-cell",
+    "table-column",
+    "table-column-group",
+    "table-footer-group",
+    "table-header-group",
+    "table-row",
+    "table-row-group",
+}
+MOST_DISPLAY_WORDS = 3
+
+# What a visibility or content-visibility may say.
+VISIBILITIES = {"visibility": {"visible", "hidden", "collapse"}}
+VISIBILITIES["content-visibility"] = {"visible", "hidden", "auto"}
+
+# A number, or a percentage, as an opacity is written.
+AMOUNT = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?%?")
+
+
+def valid(name: str, value: str) -> bool:
+    """Say whether a browser keeps `value` for `name`, rather than dropping it unread."""
+    if value == "":
+        return False
+    if value in GLOBAL:
+        return True
+    if name == "display":
+        words = value.split()
+        return len(words) <= MOST_DISPLAY_WORDS and all(word in DISPLAYS for word in words)
+    if name in VISIBILITIES:
+        return value in VISIBILITIES[name]
+    return True
+
+
+def opaque(value: str) -> bool:
+    """Say whether an opacity draws anything: more than none; one this can't read fails closed."""
+    if value in GLOBAL:
+        return True
+    if AMOUNT.fullmatch(value) is None:
+        return False
+    return float(value.rstrip("%")) > 0
+
 
 # The sheet that draws the head, as a mounted page links it and as Home does
 # from the root.
@@ -291,6 +419,8 @@ class Element:
         self.parent = parent
         self.children: list[Element] = []
         self.content: list[Element | str] = []
+        # Whether it's SVG's or MathML's, as what they hold is but where they hold HTML.
+        self.foreign = False
 
     def classes(self) -> list[str]:
         """Give the classes it's marked with."""
@@ -303,15 +433,17 @@ class Element:
     def styled(self) -> dict[str, str]:
         """Give what its own style declares, each property's value as a browser takes it."""
         # The last declaration of a property wins, but not over an important one.
+        # One a browser can't read, empty or of no value its property takes,
+        # is dropped, and what was declared before it stands.
         declared: dict[str, tuple[str, bool]] = {}
-        for name, colon, value in (
-            each.partition(":") for each in self.attributes.get("style", "").split(";")
-        ):
+        style = COMMENT.sub(" ", self.attributes.get("style", ""))
+        for name, colon, value in (each.partition(":") for each in style.split(";")):
             said = value.strip(SPACE).lower()
             weighty = IMPORTANT.search(said) is not None
             key = name.strip(SPACE).lower()
-            if colon and (weighty or not declared.get(key, ("", False))[1]):
-                declared[key] = (IMPORTANT.sub("", said).strip(SPACE), weighty)
+            kept = IMPORTANT.sub("", said).strip(SPACE)
+            if colon and valid(key, kept) and (weighty or not declared.get(key, ("", False))[1]):
+                declared[key] = (kept, weighty)
         return {key: value for key, (value, _) in declared.items()}
 
     def hides(self) -> bool:
@@ -321,12 +453,17 @@ class Element:
             return False
         styled = self.styled()
         # hidden and an unshown popover hide by the browser's display: none,
-        # which the element's own display beats; hidden=until-found doesn't.
+        # which the element's own display beats, unless it rolls back to the
+        # browser's; hidden=until-found doesn't.
         held = ("hidden" in self.attributes or "popover" in self.attributes) and (
-            "display" not in styled
+            styled.get("display", "revert") in ROLLED_BACK
             or self.attributes.get("hidden", "").strip(SPACE).lower() == "until-found"
         )
-        return held or any(each in STYLED_OUT for each in styled.items())
+        return (
+            held
+            or any(each in STYLED_OUT for each in styled.items())
+            or not opaque(styled.get("opacity", "1"))
+        )
 
     def within(self) -> list[Element]:
         """Give every element drawn inside it, in the order they're written."""
@@ -355,6 +492,14 @@ class Element:
             found.append(child)
             if child.tag not in UNDRAWN:
                 found.extend(child.written())
+        return found
+
+    def every(self) -> list[Element]:
+        """Give every element parsed inside it, wherever it's held, in order."""
+        found = []
+        for child in self.children:
+            found.append(child)
+            found.extend(child.every())
         return found
 
     def words(self) -> str:
@@ -413,13 +558,13 @@ class Element:
     def is_banner(self) -> bool:
         """Say whether it's heard as the page's banner: marked one, or a header in no section."""
         role = self.role()
-        return role == "banner" or (
-            self.tag == "header" and role is None and self.section() is None
+        return not self.foreign and (
+            role == "banner" or (self.tag == "header" and role is None and self.section() is None)
         )
 
     def is_heading(self) -> bool:
         """Say whether it's drawn or heard as a heading: h1 to h6, or marked one."""
-        return self.tag in HEADINGS or self.role() == "heading"
+        return not self.foreign and (self.tag in HEADINGS or self.role() == "heading")
 
     def interrupts(self) -> bool:
         """Say whether it cuts in on what's being read, as an alert does."""
@@ -452,16 +597,19 @@ class Reader(HTMLParser):
         for name, value in attrs:
             attributes.setdefault(name, value or "")
         element = Element(tag, attributes, self.open)
+        element.foreign = self.foreign()
         self.open.children.append(element)
         self.open.content.append(element)
         return element
 
     def foreign(self) -> bool:
-        """Say whether the open element sits in SVG or MathML."""
+        """Say whether the open element sits in SVG or MathML, not in HTML they hold."""
         element: Element | None = self.open
         while element is not None:
             if element.tag in FOREIGN:
                 return True
+            if element.tag in INTEGRATION and element.foreign:
+                return False
             element = element.parent
         return False
 
@@ -506,21 +654,15 @@ class Reader(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Open an element under the one open now, where a parser would put it."""
+        # SVG or MathML left open ends at a tag of HTML's own, as a browser
+        # leaves foreign content there.
+        if self.foreign() and tag in BREAKOUT:
+            while self.foreign() and self.open.parent is not None:
+                self.open = self.open.parent
         # A browser ignores a second head, and one written in the body.
         if tag == "head" and (self.head is not None or self.bodied):
             return
-        # The body begins at its tag, or at the first tag a head can't hold,
-        # though not within a template or noscript there, which hold their own;
-        # after the head's end, at any but what goes back in it.
-        holds = AFTER_HEAD if self.head is not None and not self.in_head() else HEAD_HOLDS
-        if tag == "body" or (
-            tag not in holds
-            and tag != "html"
-            and ((self.in_head() and not self.held_in_head()) or self.before_body())
-        ):
-            self.bodied = True
-            while self.in_head() and self.open.parent is not None:
-                self.open = self.open.parent
+        self.begin_body_at(tag)
         if tag in ENDS_A_P:
             self.end_a_p()
         home = self.head_for(tag)
@@ -535,9 +677,24 @@ class Reader(HTMLParser):
         elif home is not None:
             self.open = was
 
+    def begin_body_at(self, tag: str) -> None:
+        """Begin the body where `tag` begins it, leaving the head."""
+        # The body begins at its tag, or at the first tag a head can't hold,
+        # though not within a template or noscript there, which hold their own;
+        # after the head's end, at any but what goes back in it.
+        holds = AFTER_HEAD if self.head is not None and not self.in_head() else HEAD_HOLDS
+        if tag == "body" or (
+            tag not in holds
+            and tag != "html"
+            and ((self.in_head() and not self.held_in_head()) or self.before_body())
+        ):
+            self.bodied = True
+            while self.in_head() and self.open.parent is not None:
+                self.open = self.open.parent
+
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Add an element written closed: closed in SVG or MathML, else left open."""
-        if self.foreign():
+        if self.foreign() and tag not in BREAKOUT:
             self.add(tag, attrs)
             return
         # Written closed or not, it begins the body, implies the head or ends
@@ -545,11 +702,20 @@ class Reader(HTMLParser):
         self.handle_starttag(tag, attrs)
         if tag in FOREIGN and self.open.tag == tag and self.open.parent is not None:
             self.open = self.open.parent
+        # A browser reads on after a script, style, title or the like written
+        # closed as its text, up to its end tag, as it does after its start tag.
+        if tag in self.CDATA_CONTENT_ELEMENTS:
+            self.set_cdata_mode(tag)
+        elif tag in self.RCDATA_CONTENT_ELEMENTS:
+            self.set_cdata_mode(tag, escapable=True)
 
     def handle_endtag(self, tag: str) -> None:
         """Close the nearest open element of this tag, and any left open in it."""
+        # Inside what holds its own markup, an end tag closes nothing outside it.
         element: Element | None = self.open
         while element is not None and element.tag != tag:
+            if element.tag in UNDRAWN:
+                return
             element = element.parent
         if element is not None and element.parent is not None:
             self.open = element.parent
@@ -584,8 +750,13 @@ def named(element: Element) -> str:
 
 def head_faults(markup: str) -> list[str]:
     """Say what `markup`'s head must change to be the kit's, or nothing."""
-    everything = read(markup).within()
-    heads = [element for element in everything if "page-head" in element.classes()]
+    document = read(markup)
+    everything = document.within()
+    heads = [
+        element
+        for element in everything
+        if "page-head" in element.classes() and not element.foreign
+    ]
     if len(heads) != 1:
         return [f'it draws {len(heads)} heads: open it with one <header class="page-head">']
     head = heads[0]
@@ -606,14 +777,14 @@ def head_faults(markup: str) -> list[str]:
             f"its head sits in a {where}, where a header is no banner:"
             " draw it before, as the page's own"
         )
-    faults.extend(banner_faults(head, everything))
+    faults.extend(banner_faults(head, everything, document.every()))
     faults.extend(title_faults(head, everything))
     if any(isinstance(each, str) and each.strip(SPACE) for each in head.content):
         faults.append("its head writes words outside its parts: keep every word in a part")
     return faults + parts_faults(head) + speaking_faults(head)
 
 
-def banner_faults(head: Element, everything: list[Element]) -> list[str]:
+def banner_faults(head: Element, everything: list[Element], written: list[Element]) -> list[str]:
     """Say what the page must change for the head to be its one banner, its skip link before."""
     faults = []
     banners = [element for element in everything if element.is_banner()]
@@ -627,17 +798,17 @@ def banner_faults(head: Element, everything: list[Element]) -> list[str]:
         faults.append(
             f"it draws a {named(banners[0])} {where} its head: let the kit's head be its one banner"
         )
-    # A role is heard wherever it's marked, so one in the head is a second banner.
-    later = [
-        banner for banner in banners[1:] if not banner.inside(head) or banner.role() == "banner"
-    ]
+    # A banner inside the head is a second, as a header in a header is heard.
+    later = banners[1:]
     if banners and banners[0] is head and later:
+        where = "inside" if later[0].inside(head) else "below"
         faults.append(
-            f"it draws a {named(later[0])} below its head as well:"
+            f"it draws a {named(later[0])} {where} its head as well:"
             " let the kit's head be its one banner"
         )
-    skips = [element for element in everything if element.is_part("a", "skip")]
-    if any(everything.index(skip) > everything.index(head) for skip in skips):
+    # site.sh puts the strip after a skip link's line whether it's drawn or not.
+    skips = [element for element in written if element.is_part("a", "skip")]
+    if any(written.index(skip) > written.index(head) for skip in skips):
         faults.append(
             "its skip link sits in or after its head, where the strip site.sh puts after it"
             " would split what holds it: write it before the head"
@@ -795,6 +966,8 @@ def links_the_sheet(element: Element, document: list[Element]) -> bool:
         element.tag == "link"
         and "stylesheet" in rel
         and "alternate" not in rel
+        # A titled sheet is one of a set, which another set's title may switch off.
+        and "title" not in element.attributes
         and "disabled" not in element.attributes
         and "integrity" not in element.attributes
         and kind in {"", "text/css"}

@@ -34,14 +34,19 @@ let
   # localSite serves its index.html at least, so one naming no page fails
   # too, but for what the sites share (site.nix's shared), which says it
   # serves none. Home, which no mount serves, is named in `pages` from the
-  # folder home.nix builds it from. No name exempts a mount.
+  # folder home.nix builds it from. No name exempts a mount. What a mount
+  # says of itself is trusted: one may write site.nix's passthru by hand,
+  # which only review catches. It can't be known by rebuilding it, since
+  # the workstation's mounts are built for another system than the one the
+  # checks may evaluate on.
+  isShared = site: site.sharedBySites or false;
   faultsOf =
     named: mounts:
     let
       sourced = lib.filterAttrs (_: site: site ? localSitePages) mounts;
       unsourced = lib.attrNames (removeAttrs mounts (lib.attrNames sourced));
       unpaged = lib.attrNames (
-        lib.filterAttrs (_: site: site.localSitePages == [ ] && !(site.sharedBySites or false)) sourced
+        lib.filterAttrs (_: site: site.localSitePages == [ ] && !(isShared site)) sourced
       );
       served = lib.concatLists (lib.mapAttrsToList (_: site: site.localSitePages) sourced);
       unnamed = lib.filter (page: !(lib.elem page (lib.attrValues named))) served;
@@ -83,39 +88,69 @@ let
 
   # The mount rules hold of a mount built each other way, so the gate is
   # seen to fail closed rather than taken to: each case `refused` must be
-  # refused, against all the pages but where it says, and `passed` passes.
+  # refused, against all the pages but where it says, for the reason it
+  # names, and `passed` passes.
+  unsourcedFault = "mount no localSite";
+  unnamedFault = "in heads.nix's pages";
+  unpagedFault = "name no page";
   refused = {
     "no mounts" = [
       pages
       { }
+      "mounts no page"
     ];
     "only what the sites share" = [
       pages
       { local-sites = shared; }
+      "mounts no page"
     ];
     "a plain folder" = [
       pages
       { x = pkgs.emptyDirectory; }
+      unsourcedFault
+    ];
+    "a plain folder beside the network site" = [
+      pages
+      {
+        network = network ../net/site;
+        x = pkgs.emptyDirectory;
+      }
+      unsourcedFault
     ];
     "a plain folder under the shared kit's name" = [
       pages
       { local-sites = pkgs.emptyDirectory; }
+      unsourcedFault
     ];
     "a derivation built from a source" = [
       pages
       { x.src = ../mycelium/forage; }
+      unsourcedFault
     ];
     "a localSite built from its folder as a string" = [
       pages
       { network = network "${../net/site}"; }
+      unsourcedFault
     ];
     "a localSite whose page pages doesn't name" = [
       (removeAttrs pages [ "Network" ])
       { network = network ../net/site; }
+      unnamedFault
     ];
     "a mount naming no page that isn't the shared kit" = [
       pages
       { x.localSitePages = [ ]; }
+      unpagedFault
+    ];
+    "a mount naming no page beside the network site" = [
+      pages
+      {
+        network = network ../net/site;
+        x = pkgs.emptyDirectory // {
+          localSitePages = [ ];
+        };
+      }
+      unpagedFault
     ];
     "a second page pages doesn't name" = [
       pages
@@ -125,6 +160,7 @@ let
           ./nowhere/cell.html
         ];
       }
+      unnamedFault
     ];
   };
   passed = {
@@ -132,9 +168,19 @@ let
     local-sites = shared;
   };
   ruleFaults =
-    map (case: "the gate's own mount rules let ${case} through, so its page would go unjudged") (
-      lib.attrNames (lib.filterAttrs (_: case: faultsOf (lib.head case) (lib.last case) == [ ]) refused)
-    )
+    map
+      (
+        case:
+        "the gate's own mount rules let ${case} through, or refuse it for another reason, so its page would go unjudged"
+      )
+      (
+        lib.attrNames (
+          lib.filterAttrs (
+            _: case:
+            !(lib.any (lib.hasInfix (lib.elemAt case 2)) (faultsOf (lib.elemAt case 0) (lib.elemAt case 1)))
+          ) refused
+        )
+      )
     ++
       lib.optional (faultsOf pages passed != [ ])
         "the gate's own mount rules refuse localSite's network and the shared kit: ${lib.concatStringsSep "; " (faultsOf pages passed)}"

@@ -501,7 +501,7 @@ in
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           WEB_KIT = "${webKit}";
-          HOME_SOURCES = "${./home}";
+          HOME_SOURCES = "${import ./home-source.nix}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";

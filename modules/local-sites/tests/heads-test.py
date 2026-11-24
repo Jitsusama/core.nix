@@ -80,13 +80,14 @@ NO_SHEET = heads.NO_SHEET
         '<link rel="stylesheet" href="../local-sites/kit/head.css" media="print">',
         '<link rel="stylesheet" type="text/plain" href="../local-sites/kit/head.css">',
         '<link rel="stylesheet" integrity="sha384-x" href="../local-sites/kit/head.css">',
+        '<link rel="stylesheet" title="kit" href="../local-sites/kit/head.css">',
     ],
 )
 def test_a_sheet_no_screen_draws_the_head_with_is_named(link: str) -> None:
     """Preloaded, a page's own copy, a miss, an alternate, off, print-only, not CSS, or pinned.
 
     A pinned digest goes stale as the kit's sheet changes, and a browser then
-    applies nothing.
+    applies nothing; a titled sheet is one of a set another title can switch off.
     """
     markup = f"<!doctype html><html><head>{link}</head><body>{written()}</body></html>"
     assert heads.page_faults(markup) == [NO_SHEET]
@@ -186,6 +187,19 @@ def test_a_skip_link_sharing_its_line_is_named() -> None:
     assert heads.page_faults(page(f"\n{skip} \n{written()}")) == []
 
 
+@pytest.mark.parametrize("tag", ["script", "style", "title"])
+def test_what_follows_a_raw_text_element_written_closed_is_its_text(tag: str) -> None:
+    """A browser reads on after <script/> as script, so the sheet and head after it are none."""
+    markup = (
+        f"<!doctype html><html><head><{tag} />{LINK}</head>"
+        f"<body>{written()}<main></main></body></html>"
+    )
+    assert heads.page_faults(markup) == [
+        NO_SHEET,
+        'it draws 0 heads: open it with one <header class="page-head">',
+    ]
+
+
 def test_a_skip_link_written_over_two_lines_is_named() -> None:
     """The strip goes after the line its start tag opens on, inside the link."""
     skip = '<a class="skip"\n  href="#main">Skip to the sites</a>'
@@ -198,6 +212,22 @@ def test_a_skip_link_in_the_head_is_named() -> None:
         '<p class="eyebrow">your sites',
         '<p class="eyebrow"><a class="skip" href="#main">Skip</a>\nyour sites',
     )
+    assert (
+        "its skip link sits in or after its head, where the strip site.sh puts after it"
+        " would split what holds it: write it before the head"
+    ) in heads.page_faults(page(head))
+
+
+@pytest.mark.parametrize(
+    "skip",
+    [
+        '<a class="skip" hidden href="#main">Skip</a>',
+        '<template>\n<a class="skip" href="#main">Skip</a>\n</template>',
+    ],
+)
+def test_a_skip_link_in_the_head_is_named_drawn_or_not(skip: str) -> None:
+    """site.sh puts the strip after a skip link's line whether a browser draws it or not."""
+    head = changed('<p class="eyebrow">your sites', f'\n{skip}\n<p class="eyebrow">your sites')
     assert (
         "its skip link sits in or after its head, where the strip site.sh puts after it"
         " would split what holds it: write it before the head"
@@ -301,8 +331,50 @@ def test_a_banner_marked_inside_the_head_is_a_second() -> None:
     """A role is heard wherever it's marked, so a banner in the lede is one more."""
     faults = heads.head_faults(changed("Seven sites", '<span role="banner">Seven</span> sites'))
     assert faults == [
-        ("it draws a <span> below its head as well: let the kit's head be its one banner")
+        ("it draws a <span> inside its head as well: let the kit's head be its one banner")
     ]
+
+
+def test_a_header_inside_the_head_is_a_second_banner() -> None:
+    """A header in a header is in no section, so it's heard as a banner too."""
+    faults = heads.head_faults(
+        changed(
+            "<!-- the three-way switch, centred under the key line -->",
+            '<header class="switch"></header>',
+        )
+    )
+    assert faults == [
+        (
+            'it draws a <header class="switch"> inside its head as well:'
+            " let the kit's head be its one banner"
+        )
+    ]
+
+
+def test_a_head_in_svg_left_open_is_no_head() -> None:
+    """A browser makes a header in SVG SVG's, and leaves the SVG at the first part's <p>."""
+    faults = heads.head_faults('<svg class="sprite"><symbol></symbol>' + written())
+    assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
+
+
+def test_a_head_after_svg_holding_html_is_drawn() -> None:
+    """SVG closed before the head, or HTML held in its foreignObject, leaves the head HTML's."""
+    held = "<svg><foreignObject><p>Mine</p></foreignObject></svg>"
+    assert heads.head_faults(held + written()) == []
+
+
+def test_a_head_after_html_written_in_svg_left_open_is_drawn() -> None:
+    """A <p> in SVG left open leaves it, as a browser does, so the head after is HTML's."""
+    assert heads.head_faults('<svg class="sprite"><p>Icons</p>' + written()) == []
+
+
+@pytest.mark.parametrize("holder", ["template", "noscript"])
+def test_an_end_tag_inside_what_holds_its_own_closes_nothing_outside(holder: str) -> None:
+    """A </main> in a template or noscript leaves the head in the <main>, where it's no banner."""
+    faults = heads.head_faults(f"<main><{holder}></main></{holder}>{written()}</main>")
+    assert (
+        "its head sits in a <main>, where a header is no banner: draw it before, as the page's own"
+    ) in faults
 
 
 def test_a_banner_wrapped_around_the_head_is_named() -> None:
@@ -347,13 +419,25 @@ def test_a_head_in_open_details_is_drawn() -> None:
         'style="display: block; display: none"',
         'style="display: none !important; display: block"',
         'style="opacity: 0"',
+        'style="opacity: 0.0"',
+        'style="opacity: .0"',
+        'style="opacity: 0%"',
+        'style="opacity: -1"',
+        'style="opacity: var(--gone)"',
+        'style="display: none; display:"',
+        'style="display: none; display: banana"',
+        'style="display:/* gone */none"',
         'hidden="until-found" style="display: block"',
+        'hidden style="display: revert"',
+        'hidden style="display:"',
+        'hidden style="display: banana"',
     ],
 )
 def test_a_hidden_head_is_no_head(marked: str) -> None:
     """A head hidden, a popover no script has shown, or styled out is never drawn.
 
-    A property's last value counts, but not over an important one.
+    A property's last value it can read counts, but not over an important one;
+    one it can't is dropped, and an opacity this can't read fails closed.
     """
     head = changed('<header class="page-head">', f'<header class="page-head" {marked}>')
     faults = heads.head_faults('<div class="hero"><h2>Mine</h2></div>' + head)
@@ -378,7 +462,11 @@ def test_a_head_held_in_a_popover_is_no_head() -> None:
         'style="--x: none"',
         'style="display: none; display: block"',
         'hidden style="display: block"',
+        'hidden style="display: initial"',
         'popover style="display: flex"',
+        'style="opacity: 0.5"',
+        'style="opacity: 50%"',
+        'style="display: block flow"',
     ],
 )
 def test_a_head_styled_otherwise_is_drawn(marked: str) -> None:

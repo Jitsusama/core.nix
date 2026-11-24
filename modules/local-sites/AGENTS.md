@@ -113,13 +113,16 @@ What holds it together:
    the test; the system page's test still writes its own and isn't the
    one to copy for this. It holds the web-design skill's page checks and
    a `Budget` set a little above what the page costs now. Name each check
-   in `check-descriptions.nix`. Add its `index.html` to `pages` in
+   in `check-descriptions.nix`. Every top-level `.html` a site serves is
+   a live page Joel opens, wearing the family head; a page that isn't one
+   stays out of the site's folder. Add its `index.html` to `pages` in
    [`heads.nix`][heads], which `heads-are-the-kits` holds to the kit's
    head, and fails while a page core mounts on the realm workstation in
    [`checks.nix`][checks] goes unnamed, saying which in its build's log.
    A mount behind an option that workstation doesn't turn on isn't seen,
    so turn the option on there too. Build the site with `localSite` from a
-   path in the tree, and end its skip link's line at the link. A new
+   path in the tree, and write its skip link alone on a line of its own,
+   from its `<a` to its `</a>`, before the head. A new
    page opens with the head: the check fails on a name that joins
    `waitingForTheHead`, and a page that moves to it leaves that list.
 

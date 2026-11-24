@@ -1024,21 +1024,24 @@
   '';
   heads-are-the-kits = ''
     every live page off the waiting list opens with the kit's head as the web-design skill's
-    sites.md writes it, read as a browser parses it with what's hidden, shut, a popover never
-    shown or styled out by its own style's display, visibility or opacity left undrawn and
-    what's inert unheard: its one banner,
+    sites.md writes it, read as a browser parses it, raw text and SVG left open included, with
+    what's hidden, shut, a popover never shown or styled out by its own style's display,
+    visibility or an opacity of nothing, as a browser keeps each declaration, left undrawn and
+    what's inert unheard: its one banner, holding none,
     by tag or role, inside no other and in no section by tag or role, its title the first
     heading of any level, each part drawn and heard, an eyebrow of two phrases drawn and heard
     split by the kit's one dot, the title, a lede, the standing line and the quiet row in that
     order and nothing else, only the standing line's polite status live as ARIA reads it and
     nothing around the head live, the quiet row opening with its key line, and the kit's
-    head.css linked by its own path in the page's head as a sheet every screen applies, with no
-    base anywhere and each skip link on a line of its own before the head; a page still waiting
+    head.css linked by its own path in the page's head as an untitled sheet every screen
+    applies, with no base anywhere and each skip link, drawn or not, on a line of its own
+    before the head; a page still waiting
     passes until it
     keeps to the head, then fails until it's taken off the list, which no page joins; every
     page core's own modules mount on the realm workstation the checks build is judged, a mount
     not built with localSite from a path in the tree, or naming no page but the shared kit,
-    failing as its rules, run over localSite itself, are seen to; Home is the page the home is
+    failing for the reason each of its rules, run over localSite itself,
+    is seen to; Home is the page the home is
     built from; and the gate passes sites.md's own head and names each way a page strays from it
   '';
   each-machine-signs-with-its-hardware = ''
