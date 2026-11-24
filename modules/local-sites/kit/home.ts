@@ -51,10 +51,10 @@ function wire(): void {
   const actions = { j: next, k: back, ArrowDown: down, ArrowUp: up, g: top, G: last };
   if (help instanceof HTMLDialogElement) {
     listen({ help, actions, answersAt });
-    pressable(".threshold .keys kbd", { j: next, k: back, "?": () => toggle(help) });
+    pressable(".page-head .keys kbd", { j: next, k: back, "?": () => toggle(help) });
   } else {
     listen({ actions, answersAt });
-    pressable(".threshold .keys kbd", { j: next, k: back });
+    pressable(".page-head .keys kbd", { j: next, k: back });
   }
   links[0]?.setAttribute("aria-current", "true");
   themeSwitch();

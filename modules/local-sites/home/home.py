@@ -179,15 +179,18 @@ def bed(number: str, bed: Bed, rows: list[Site]) -> list[str]:
 
 
 def standing(sites: list[Site]) -> str:
-    """Say in one line how the home stands: how many grow, how many ask, how many are kept."""
+    """Say in one line how the home stands: how many grow, how many ask, how many are kept.
+
+    Only the words: the page's standing line holds its glyph and the status
+    they're written in, as every live page's head does.
+    """
     fresh = [site for site in sites if not site.kept]
     asking = sum(bool(site.asks) for site in fresh)
     kept = len(sites) - len(fresh)
     said = [f"{len(fresh)} growing", f"{asking} asking something of you"]
     if kept:
         said.append(f"{kept} kept")
-    glyph = '<span class="glyph" aria-hidden="true"></span>'
-    return glyph + ' <span class="sep">·</span> '.join(said)
+    return ' <span class="sep">·</span> '.join(said)
 
 
 def home(page: str, sites: list[Site]) -> str:

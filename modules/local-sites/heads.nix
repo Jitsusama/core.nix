@@ -205,7 +205,6 @@ let
   waitingForTheHead = [
     "Code"
     "Forage"
-    "Home"
     "Machines"
     "Map"
     "Murmurs"
