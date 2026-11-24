@@ -55,11 +55,16 @@ const P90_FROM: usize = 17;
 
 /// A queue the card reads: its key after [`QUEUE`], what waits in it as
 /// the card says it, and the most its p90 wait may be, in seconds.
-struct Queue {
-    key: &'static str,
+pub struct Queue {
+    pub key: &'static str,
     name: &'static str,
-    target: f64,
+    pub target: f64,
 }
+
+/// Every queue the card reads, so its targets can be checked against the
+/// definition of good.
+#[cfg(test)]
+pub const ALL: [&Queue; 4] = [&WALKS, &BUILDS, &SENDS, &TRAINS];
 
 /// A World git run waits for a turn so runs don't collide; a turn longer
 /// than a minute is work held for nothing most of the time, since the

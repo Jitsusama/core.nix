@@ -94,6 +94,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let whole = gone.as_ref().is_some_and(Vec::is_empty);
     kept.open
         .retain(|open| !gone.as_ref().is_some_and(|gone| gone.contains(open)));
+    // A miss its owner said was none isn't fixed, so it leaves without Joel
+    // being told it is; the card shows why for a day instead.
+    measures::forget_said_none(&misses, &mut kept.open);
     let mut measures = gather(
         &folder,
         &state_home,
@@ -285,6 +288,7 @@ fn gather(
         ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(measures::said_none(misses, now));
     all.extend(found);
     all.extend(rounds_per_merge(
         state_home,

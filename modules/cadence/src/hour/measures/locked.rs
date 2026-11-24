@@ -16,7 +16,10 @@ use crate::command;
 /// The most minutes a mycelium merge may wait for core's lock: a bump's
 /// changed-checks and its VM tests take some 30 minutes, and merge to on's
 /// own 18 follow it.
-const AT_MOST_MIN: f64 = 60.0;
+pub const AT_MOST_MIN: f64 = 60.0;
+
+/// The key the card shows the wait under.
+pub const KEY: &str = "mycelium-to-lock";
 
 /// The mycelium revision core's `flake.lock` carries.
 fn locked(lock: &str) -> Option<String> {
@@ -138,7 +141,7 @@ pub fn unlocked(waiting: &str, seen: &str, fetches: &[i64], now: i64, owner: &st
         .collect();
     let longest = waits.iter().map(|(minutes, _)| *minutes).max().unwrap_or(0);
     Measure {
-        key: "mycelium-to-lock".to_owned(),
+        key: KEY.to_owned(),
         class: Class::Ship,
         says: "minutes the longest-waiting mycelium merge has waited outside core's lock"
             .to_owned(),
