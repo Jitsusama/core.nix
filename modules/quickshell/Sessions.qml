@@ -247,7 +247,7 @@ Singleton {
     // or it came too late, either of which leaves it where it opened, said.
     function focusOpened(window) {
         const going = goingTo;
-        if (going === null || window.opened !== going.app)
+        if (going === null || window.opened !== going.app || !drawnHere(window))
             return;
         goingTo = null;
         const waited = Date.now() - going.at;
@@ -2698,7 +2698,7 @@ Singleton {
     // isn't: one never come would leave nothing to open it.
     function viewerCame(window) {
         const named = window?.opened ?? "";
-        if (!named.startsWith("pi-hosted."))
+        if (!named.startsWith("pi-hosted.") || !drawnHere(window))
             return;
         const waited = Object.keys(keptPlaces).filter(id => keptPlaces[id]?.named === named
             && keptPlaces[id]?.waiting !== undefined);
@@ -2854,8 +2854,18 @@ Singleton {
     function listedNamed(named) {
         if (named === "")
             return undefined;
-        return trustsNiri() ? Object.values(Niri.windows).find(window => window.opened === named)
-            : (niriWindows.opened[named] ?? [])[0];
+        return trustsNiri()
+            ? Object.values(Niri.windows)
+                .find(window => window.opened === named && drawnHere(window))
+            : (niriWindows.opened[named] ?? []).find(window => drawnHere(window));
+    }
+    // Whether the sessions' kitty drew `window`, once its pid is known:
+    // any Wayland program can give its window a viewer's app id, so one
+    // another drew is never raised, focused or counted come as a viewer.
+    // Before then, and for a kitty from before its unit wrote one, the app
+    // id alone says.
+    function drawnHere(window) {
+        return sessionsKittyPid === "" || String(window?.pid) === sessionsKittyPid;
     }
     // Whether niri's list says which windows are open: while it lists
     // any, being the windows daemon's own, or while niri's own stream
