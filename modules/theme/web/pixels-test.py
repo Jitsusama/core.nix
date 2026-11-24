@@ -65,9 +65,12 @@ def opened(tab: Page, body: str, head: str = "") -> None:
 
     The page comes by a real navigation, not `set_content`, whose written
     document keeps no layout shifts in its timeline as a loaded page does.
+    It's sent as UTF-8 and says so, as a live page is, or a browser reads
+    its bytes as windows-1252 and a mark such as "\u00d7" arrives as letters.
     """
     page = f"<!doctype html><head>{head}<style>{STYLE}</style></head><body>{body}</body>"
-    tab.route(ORIGIN, lambda route: route.fulfill(content_type="text/html", body=page))
+    sent = "text/html; charset=utf-8"
+    tab.route(ORIGIN, lambda route: route.fulfill(content_type=sent, body=page))
     tab.goto(ORIGIN)
 
 
@@ -911,10 +914,14 @@ def test_a_spaced_tile_leaves_the_ground_between_its_tiles(tab: Page) -> None:
 def test_a_band_thicker_than_a_hairline_keeps_the_ground_under_it(tab: Page) -> None:
     """#111 words on white are named on a black band under them, in em or an ancestor's em."""
     bands = (
-        '<p style="color: #111; background: linear-gradient(#000, #000) no-repeat 0 100% /'
-        ' 100% 0.4em, #fff">Dim</p>',
-        '<div style="font-size: 8px; background: linear-gradient(#000, #000) no-repeat 0 100% /'
-        ' 100% 1em, #fff"><p style="font-size: 16px; color: #111">Dim</p></div>',
+        (
+            '<p style="color: #111; background: linear-gradient(#000, #000) no-repeat 0 100% /'
+            ' 100% 0.4em, #fff">Dim</p>'
+        ),
+        (
+            '<div style="font-size: 8px; background: linear-gradient(#000, #000) no-repeat 0'
+            ' 100% / 100% 1em, #fff"><p style="font-size: 16px; color: #111">Dim</p></div>'
+        ),
     )
     for band in bands:
         found = probed(tab, f"<main>{band}</main>")
