@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="site.css">
 <link rel="stylesheet" href="parts.css">
 <link rel="stylesheet" href="keys.css">
@@ -40,7 +41,7 @@
 
 <a class="skip" href="#parts">Skip to each machine</a>
 
-<header class="mast">
+<div class="mast">
   <p class="wordmark">
     <svg class="mark" width="40" height="40" viewBox="0 0 32 32" aria-hidden="true">
       <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -50,21 +51,20 @@
         <path d="M3 28.5h7M13 28.5h16" opacity="0.5"/>
       </g>
     </svg>
-    <span>Your machines, <em>now</em></span>
+    <span>Machines</span>
   </p>
   <nav class="places" id="places" aria-label="Each machine"></nav>
-  <p class="keys"><kbd>a</kbd> goes to what is worth a look, <kbd>j</kbd> and <kbd>k</kbd> step through it and each machine, <kbd>1</kbd> to <kbd>8</kbd> go to a machine, and <kbd>?</kbd> lists every key <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button></p>
-</header>
+</div>
 
-<main id="main" class="stage" tabindex="-1">
-  <header class="hero">
-    <p class="eyebrow">Your machines, and what each carries</p>
-    <h1 class="headline" id="headline">Reading your <em>machines.</em></h1>
-    <section class="looking" id="looking" aria-labelledby="looks-title">
-      <h2 class="sr" id="looks-title">Worth a look</h2>
-      <div id="looks" data-rows tabindex="-1"></div>
-    </section>
-    <p class="standing" id="standing" data-state="connecting"><span class="glyph" aria-hidden="true"></span><span id="standing-words">Reaching the system daemon.</span></p>
+<header class="page-head">
+  <p class="eyebrow">your machines<span class="sep">·</span>and what each carries</p>
+  <h1>Your Machines, <em>Now</em></h1>
+  <!-- Not a live region: its counts are written again with each reading; the standing line
+       speaks for the feeds. -->
+  <p class="lede" id="headline">Reading your <em>machines.</em></p>
+  <p class="standing" id="standing" data-state="connecting"><span class="glyph" aria-hidden="true"></span><span id="standing-words" role="status">Reaching the system daemon.</span></p>
+  <div class="quiet">
+  <p class="keys"><kbd>a</kbd> goes to what is worth a look, <kbd>j</kbd> and <kbd>k</kbd> step through it and each machine, <kbd>1</kbd> to <kbd>8</kbd> go to a machine, and <kbd>?</kbd> lists every key <button type="button" class="help" id="help" aria-haspopup="dialog" aria-controls="keys">Keys</button></p>
     <div class="switch" role="radiogroup" aria-label="Theme">
       <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -76,7 +76,14 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
       </label>
     </div>
-  </header>
+  </div>
+</header>
+
+<main id="main" class="stage" tabindex="-1">
+  <section class="looking" id="looking" aria-labelledby="looks-title">
+    <h2 class="sr" id="looks-title">Worth a look</h2>
+    <div id="looks" data-rows tabindex="-1"></div>
+  </section>
 
   <figure class="bridge" id="bridge" aria-hidden="true"></figure>
 

@@ -204,7 +204,6 @@ let
   # so do it only to unblock a merge, and say so.
   waitingForTheHead = [
     "Forage"
-    "Machines"
   ];
 in
 pkgs.runCommandLocal "heads-are-the-kits"
