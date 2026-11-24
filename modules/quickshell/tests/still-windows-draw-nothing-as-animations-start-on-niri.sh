@@ -59,37 +59,70 @@ fi
 # whose driver never stopped passes untested, and one with a window not
 # shown draws nothing patched or not. Qt's line starting its timer with
 # all three windows shown, inside a start, shows that start reached the
-# branch with all three shown. So each of the case's starts, from its
-# own line to the next start's or the count's, is asked for that line,
+# branch with all three shown, but only where it's the loop's next line
+# on the GUI thread after its own "- animationStarted()": the loop starts
+# its timer as a window is exposed too, and a start's timer line from
+# that would say nothing of the branch. So each of the case's starts, from
+# its own line to the next start's or the count's, is asked for that line,
 # and at least half of the starts the case counted must have one. Not
-# every start: on a loaded builder Qt logged it 8 times over a whole run
-# of ten starts, one stop finding a window not shown, likely a late frame
-# callback (2026-11-21, before the timeout above), and how many of those fell within the starts that
-# log doesn't say; a passing run logged 11 over the run and 10 within
-# them. The timer's line is Qt's own wording, which a Qt bump may change.
+# every start: on a loaded builder Qt logged a timer line with all three
+# shown 8 times over a whole run of ten starts, one stop finding a window
+# not shown, likely a late frame callback (2026-11-21, counted before
+# this script asked for the line straight after animationStarted(), and
+# before the timeout above). Counted this way, a run on a lender on
+# 2026-11-22 found it in 10 of 10 starts. In Qt 6.12.0's
+# qsgthreadedrenderloop.cpp, every other caller that starts the timer
+# logs a line of the loop's own on the GUI thread first (animationStopped,
+# handleExposure, handleObscurity, windowDestroyed, polishAndSync), so
+# one can't pass for animationStarted()'s. The one exception is a polish
+# that starts an animation in the same polishAndSync that then finds bad
+# vsync: it says so first on qt.scenegraph.general, which QSG_INFO turns
+# on (qsgrhisupport.cpp), so that line ends the start's too. Its timer
+# line's badVSync is no mark of it, since it counts the windows ever
+# found so (a flag Qt never clears), and would say 1 on every later
+# start's line. Nor can that line say all three shown: with three,
+# animationStarted() has already started the timer, and Qt starts it
+# only once. The timer's line, the animationStarted() line before it,
+# the broken vsync line and the (RT) mark on the render thread's lines
+# are Qt's own wording, which a Qt bump may change: a
+# render-thread line without the mark, or a new line from the GUI thread
+# between the two, marks real starts -other and fails the case, never
+# passes it. A reworded broken vsync line goes the other way, taking that
+# timer line for the start's own, but it still can't pass the case, since
+# that line never says all three shown.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
 fi
 # Prints the starts the case logged, the starts it counted, those with
 # Qt's line, and those without it, each with the windows Qt found shown
-# as it started its timer there, or "none" where it didn't start it.
+# as it started its timer there, marked -other where that wasn't straight
+# after animationStarted(), or "none" where it didn't start it.
 counts=$(awk '
-  /The case starts its squares moving, start / { inside = 1; starts++; next }
+  /The case starts its squares moving, start / { inside = 1; started = 0; starts++; next }
   /Over [0-9]+ starts the still window drew/ {
     inside = 0
     counted = $0
     sub(/.*Over /, "", counted)
     sub(/ .*/, "", counted)
   }
+  # The timer line is judged only straight after animationStarted()
+  # says itself. Any other line from the loop on the GUI thread ends
+  # that; those from the render thread, marked (RT), come between.
+  inside && /- animationStarted\(\)/ { started = 1; next }
+  started && /is determined to have broken vsync throttling/ { started = 0 }
+  started && /qt\.scenegraph\.renderloop/ && !/\(RT\)/ &&
+    !/Starting system \(not vsync-based\) animation timer/ { started = 0 }
   inside && /Starting system \(not vsync-based\) animation timer \(exposedWindows=/ {
     shown = $0
     sub(/.*exposedWindows=/, "", shown)
     sub(/ .*/, "", shown)
-    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown
-    if (shown == 3) {
+    ours = started
+    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown (ours ? "" : "-other")
+    if (ours && shown == 3) {
       timed[starts] = 1
     }
+    started = 0
   }
   END {
     n = 0
@@ -116,7 +149,8 @@ fi
 echo "Qt started its animation timer with all three windows shown in $timed of $starts starts."
 if [ $((timed * 2)) -lt "$starts" ]; then
   echo "That's fewer than half: 'Starting system (not vsync-based) animation timer" \
-    "(exposedWindows=3 ...)' never came in starts $missing, the windows Qt found" \
-    "shown there in brackets." >&2
+    "(exposedWindows=3 ...)' never came straight after '- animationStarted()' in" \
+    "starts $missing, the windows Qt found shown at that start's timer lines in" \
+    "brackets, -other where one came from elsewhere." >&2
   exit 1
 fi

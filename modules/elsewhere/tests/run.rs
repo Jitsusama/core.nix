@@ -403,6 +403,26 @@ fn nothing_travels_but_the_job_s_tracked_files() {
 }
 
 #[test]
+fn a_tracked_file_under_a_folder_now_a_link_stays_home() {
+    let realm = Realm::new(true);
+    realm.tracked("Spec.tla", "spec\n");
+    realm.tracked("lib/x.ts", "source\n");
+    let outside = realm.root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("x.ts"), "secret\n").unwrap();
+    fs::remove_dir_all(realm.folder().join("lib")).unwrap();
+    std::os::unix::fs::symlink(&outside, realm.folder().join("lib")).unwrap();
+    let output = realm.check(&[], "find . -name x.ts; ls");
+    let (out, err) = said(&output);
+    assert!(output.status.success(), "the far job failed: {err}");
+    assert_eq!(
+        out.trim(),
+        "Spec.tla",
+        "a file was read through a folder now a link: {out}"
+    );
+}
+
+#[test]
 fn tracked_files_in_folders_a_build_would_fill_still_travel() {
     let realm = Realm::new(true);
     realm.tracked("lib/target/x.ts", "source\n");

@@ -13,10 +13,11 @@
 //! each ask its owner for a check at once. They still count as open or
 //! lost in the hour until a landing naming each closes it.
 //!
-//! The keeper writes the ledger by hand and takes no lock, so a line
-//! changed is written whole only once the ledger reads as it did before,
-//! read again just ahead of the rename that replaces it; one changed
-//! between is left for the next run.
+//! pain-points is the ledger's only writer, under its lock, and nobody
+//! writes it by hand; a line changed is still written whole only once the
+//! ledger reads as it did before, read again just ahead of the rename
+//! that replaces it, so a write from outside the lock is never lost but
+//! left for the next run.
 
 use super::heard::Heard;
 use super::stalled;

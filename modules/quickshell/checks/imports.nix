@@ -223,6 +223,7 @@
     "launcher/ForYouCells.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
+    "launcher/Keeping.js"
     "launcher/Lately.js"
     "launcher/LookForm.js"
     "launcher/Looks.js"
@@ -310,7 +311,10 @@
     "launcher/Sounds.js"
     "launcher/Targets.js"
   ];
-  "launcher/Spend.qml" = [ "Fuzzy.js" ];
+  "launcher/Spend.qml" = [
+    "Fuzzy.js"
+    "launcher/SpendNow.js"
+  ];
   "launcher/StartsStopped.js" = [ "launcher/Sprouting.js" ];
   "launcher/Stepped.js" = [ "launcher/Order.js" ];
   "launcher/Subnets.js" = [

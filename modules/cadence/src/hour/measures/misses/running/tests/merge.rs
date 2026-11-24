@@ -70,7 +70,7 @@ fn a_merge_is_found_without_reading_main_below_it() {
         std::fs::OpenOptions::new().write(true).open(&object).ok();
     }
     assert_eq!(
-        answer.ok().flatten(),
+        answer.ok().and_then(Result::ok).flatten(),
         Some(merge),
         "the merge wasn't found before main's history below it was read"
     );
@@ -91,8 +91,8 @@ fn a_merge_not_on_main_is_left_at_its_time() {
     }
     assert_eq!(
         answer,
-        Ok(None),
-        "a walk for a merge not on main wasn't left at its time"
+        Ok(Err(within)),
+        "a walk for a merge not on main wasn't left at its time, saying so"
     );
     // A walk that ended on its own, short of its time, didn't wait for one.
     assert!(
@@ -102,11 +102,52 @@ fn a_merge_not_on_main_is_left_at_its_time() {
 }
 
 #[test]
-fn the_walk_flushes_each_record_whatever_it_inherits() {
-    let git = walk("here", 7);
+fn a_walk_left_at_its_time_is_the_hours_blindness_not_its_owners() {
+    assert_eq!(
+        said_of_walk(Some(UNFOUND), true),
+        Some(LEFT),
+        "a walk left at its time with no merge found didn't say it ran out of time"
+    );
+    assert_eq!(
+        said_of_walk(Some(UNFOUND), false),
+        Some(UNFOUND),
+        "a walk that read to main's root said it ran out of time"
+    );
+    assert_eq!(
+        said_of_walk(Some(NOT_CARRIED), true),
+        Some(NOT_CARRIED),
+        "a left walk hid a reason that wasn't about the merge"
+    );
+    assert_eq!(
+        said_of_walk(None, true),
+        None,
+        "a change that runs was held for a walk left at its time"
+    );
+    // Read as the card and the owing read the hour's own blindness, so the
+    // change's owner is never asked about a loaded machine's clock.
     assert!(
-        git.get_envs()
-            .any(|(key, value)| key == "GIT_FLUSH" && value == Some(std::ffi::OsStr::new("1"))),
-        "an inherited GIT_FLUSH=0 could hold the merge until main's root"
+        LEFT.starts_with(UNSEEN),
+        "a walk left at its time would be asked of the change's owner: {LEFT}"
+    );
+}
+
+#[test]
+fn the_walk_flushes_each_record_whatever_it_inherits() {
+    // The walk above is run again in a test run of its own that hands git
+    // GIT_FLUSH=0, which holds every record in git's buffer until the walk
+    // ends: only a walk that flushes each finds the merge there.
+    let (_, here) = module_path!()
+        .split_once("::")
+        .expect("a test's path names its crate");
+    let test = format!("{here}::a_merge_is_found_without_reading_main_below_it");
+    let run = std::process::Command::new(std::env::current_exe().expect("this test run"))
+        .args([test.as_str(), "--exact"])
+        .env("GIT_FLUSH", "0")
+        .output()
+        .expect("a test run of its own");
+    let said = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        run.status.success() && said.contains("1 passed"),
+        "an inherited GIT_FLUSH=0 held the merge until main's root: {said}"
     );
 }

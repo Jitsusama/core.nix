@@ -358,6 +358,36 @@ fn a_link_or_a_pipe_in_a_file_s_place_is_refused_not_followed_or_waited_on() {
 }
 
 #[test]
+fn a_file_whose_folder_is_now_a_link_is_refused_not_read_through_it() {
+    let root = crate::far::tests::scratch("archive-linked");
+    let outside = root.join("outside");
+    std::fs::create_dir_all(outside.join("b")).unwrap();
+    std::fs::write(outside.join("b").join("f"), "secret").unwrap();
+    std::fs::create_dir_all(root.join("a")).unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("d")).unwrap();
+    std::os::unix::fs::symlink(outside.join("b"), root.join("a").join("b")).unwrap();
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    // At the top of the name, and below a folder of the tree's own.
+    for name in ["d/b/f", "a/b/f"] {
+        let refused = write(&root, [name], &parts, 1 << 20, u64::MAX);
+        assert!(
+            refused.as_ref().is_err_and(|error| error.to_string()
+                == format!(
+                    "{} can't go in: a folder on its way is a link",
+                    root.join(name).display()
+                )),
+            "{name}, through a link, was taken: {refused:?}"
+        );
+    }
+    assert!(
+        write(&root, ["outside/b/f"], &parts, 1 << 20, u64::MAX).is_ok(),
+        "a file under the tree's own folders was refused"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn a_pax_record_s_length_counts_itself_across_a_digit_more() {
     for length in 1..200 {
         let value = "v".repeat(length);

@@ -172,6 +172,13 @@ interface Kin {
   readonly line: (start: number, known: ReadonlySet<number>, most: number) => readonly number[];
   /** The cells that grew from the cell at `parent`, in the list's order. */
   readonly children: (parent: number) => readonly number[];
+  /**
+   * Whether the cells from `first` to before `end` are all that is left of
+   * the brood of the cell at `top`: each grew from it, and the cell at `end`
+   * didn't. The list puts each cell after the one it grew from, so a tie
+   * back to a later place, a ring's, ends the walk unfound.
+   */
+  readonly rest: (top: number, first: number, end: number) => boolean;
 }
 
 /** How the cells of `forages` grew from each other, each from the cell `grewFrom` says. */
@@ -195,7 +202,27 @@ function kinOf(forages: readonly Forage[], grewFrom: Tie<string | undefined>): K
   };
   const children = (parent: number): readonly number[] =>
     from.flatMap((by, place) => (by === parent ? [place] : []));
-  return { line, children };
+  const grewUnder = (start: number, top: number): boolean => {
+    let at = start;
+    let by = from[at];
+    while (by !== undefined && by < at && by >= top) {
+      if (by === top) {
+        return true;
+      }
+      at = by;
+      by = from[at];
+    }
+    return false;
+  };
+  const rest = (top: number, first: number, end: number): boolean => {
+    for (let at = first; at < end; at += 1) {
+      if (!grewUnder(at, top)) {
+        return false;
+      }
+    }
+    return end >= forages.length || !grewUnder(end, top);
+  };
+  return { line, children, rest };
 }
 
 /** The places of a list `length` long, from `centre` outward, nearest first. */

@@ -580,6 +580,8 @@ struct Relay {
     child: Child,
     socket: PathBuf,
     _folder: tempfile::TempDir,
+    /// What it said before a test read on, kept for `said`.
+    heard: String,
 }
 
 impl Relay {
@@ -640,7 +642,25 @@ impl Relay {
             child,
             socket,
             _folder: folder,
+            heard: String::new(),
         }
+    }
+
+    /// What the relay has said up to `mark`, read as it says it, so a test
+    /// can act the moment it does; all it said, should it leave first.
+    fn heard_by(&mut self, mark: &str) -> &str {
+        if let Some(stderr) = self.child.stderr.as_mut() {
+            let mut piece = [0; 1024];
+            while !self.heard.contains(mark) {
+                match stderr.read(&mut piece) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => self
+                        .heard
+                        .push_str(&String::from_utf8_lossy(&piece[..read])),
+                }
+            }
+        }
+        &self.heard
     }
 
     /// Whether the relay has left, and how.
@@ -675,7 +695,7 @@ impl Relay {
     fn said(mut self) -> String {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let mut said = String::new();
+        let mut said = std::mem::take(&mut self.heard);
         if let Some(mut stderr) = self.child.stderr.take() {
             stderr.read_to_string(&mut said).expect("the relay's log");
         }
@@ -2647,6 +2667,94 @@ async fn an_answer_pi_leaves_during_a_drain_is_its_cancel_and_not_a_cut() {
     assert!(
         said.contains("connection 0.0 carried 2 asked, 1 of them cancelled and 1 cut"),
         "its connection didn't tell pi's cancel from the cut: {said}"
+    );
+}
+
+/// A pi that has said a request for `host` and only part of its body,
+/// held open so the relay is still reading it.
+async fn half_a_body(socket: &Path, host: &str) -> UnixStream {
+    let mut stream = UnixStream::connect(socket)
+        .await
+        .expect("the socket answers");
+    let head =
+        format!("POST /v1/messages HTTP/1.1\r\nhost: {host}\r\ncontent-length: 10\r\n\r\nhi");
+    stream
+        .write_all(head.as_bytes())
+        .await
+        .expect("half a body written");
+    stream
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_whose_body_a_drain_cuts_midway_is_cut() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let drain = DRAINS_WITHIN.as_secs().to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--drain-within", &drain],
+    );
+    let _pi = half_a_body(&relay.socket, &host).await;
+    tokio::time::sleep(WAITS_WITHIN).await;
+
+    relay.stop();
+    tokio::time::sleep(HEARD_WITHIN).await;
+    // One that asks during the drain moves the counts, so counts said
+    // before the cut was dropped would say none was.
+    let late = ask(&relay.socket, request(&host, "/v1/messages", b"")).await;
+    assert_eq!(
+        late.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request during the drain wasn't sent direct"
+    );
+
+    let left = relay.left_within(DRAINS_WITHIN + SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    let said = relay.said();
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave on its own once its drain ran out: {left:?}, saying: {said}"
+    );
+    assert!(
+        said.contains("1 connections it had taken hadn't ended within"),
+        "the drain didn't wait on the body still being read: {said}"
+    );
+    assert!(
+        said.contains("2 asked, 1 refused, 0 failed") && said_once_after(&said, "so they're cut"),
+        "a request the drain cut as its body was read wasn't counted cut, once: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_stop_as_it_leaves_idle_cuts_a_body_still_being_read() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "2"],
+    );
+    // Another origin's request holds no idle leave back, even while its
+    // body is read, so the relay leaves idle with it in hand.
+    let _pi = half_a_body(&relay.socket, "example.com").await;
+    let heard = relay.heard_by("so it leaves; its socket starts it again");
+    assert!(
+        heard.contains("so it leaves; its socket starts it again"),
+        "the relay didn't leave idle: {heard}"
+    );
+
+    relay.stop();
+    let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    let said = relay.said();
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave once stopped as it left: {left:?}, saying: {said}"
+    );
+    assert!(
+        said_once_after(&said, "stopped as it left"),
+        "a body it was reading when stopped as it left wasn't counted cut, once: {said}"
     );
 }
 

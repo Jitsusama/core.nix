@@ -53,6 +53,81 @@ let
     "fe80::3"
   ];
   misread = lib.filter (to: !takes to) taken ++ lib.filter takes refused;
+  # A Mac and a Linux machine given a key.
+  keyed = lib.recursiveUpdate told { jitsusama.house-report.keyFile = "/etc/house.key"; };
+  keyedMac =
+    (bareDarwin [
+      self.darwinModules.house-report
+      keyed
+    ]).config;
+  keyedProgram = lib.last (
+    keyedMac.launchd.daemons.house-report.serviceConfig.ProgramArguments or [ "" ]
+  );
+  keyedPrepared = keyedMac.system.activationScripts.preActivation.text or "";
+  # Where `words` first come in the Mac's activation text, or past its end.
+  placed =
+    words:
+    let
+      parts = lib.splitString words keyedPrepared;
+    in
+    if lib.length parts < 2 then
+      lib.stringLength keyedPrepared + 1
+    else
+      lib.stringLength (lib.head parts);
+  # Every folder above the key is tested before the chain that copies
+  # it, and the copy is that chain's last branch, so a refusal stops it.
+  walked = placed "while [ -z \"$houseReportWhy\" ] && [ \"$houseReportFolder\" != / ]; do";
+  chained = lib.concatStringsSep "\n" [
+    "if [ -n \"$houseReportWhy\" ]; then"
+    "  :"
+    "elif [ -L \"$houseReportRead\" ]; then"
+    "  houseReportWhy=\"is a link\""
+    "elif [ ! -f \"$houseReportRead\" ]; then"
+    "  houseReportWhy=\"isn't there as a file\""
+    (
+      "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportRead\" "
+      + "\"$houseReportNew\" \\"
+    )
+  ];
+  # The key is read in the real folder the walk tests, not by its
+  # spelling.
+  readInRealFolder =
+    "houseReportRead=\"$houseReportFolder/" + "$(/usr/bin/basename \"$houseReportKey\")\"";
+  # How many times `words` come in `text`.
+  times = words: text: lib.length (lib.splitString words text) - 1;
+  # Where a Mac's daemon reads activation's copy of its key.
+  copied = "/var/db/house-report/house.key";
+  watching = keyedMac.launchd.daemons.house-report-key.serviceConfig or { };
+  watched = lib.last (watching.ProgramArguments or [ "" ]);
+  # Whether a Mac given `keyFile` is refused as it builds.
+  macRefuses =
+    keyFile:
+    lib.any (said: !said.assertion)
+      (bareDarwin [
+        self.darwinModules.house-report
+        (lib.recursiveUpdate told { jitsusama.house-report.keyFile = keyFile; })
+      ]).config.assertions;
+  macKeys = {
+    taken = [
+      "/etc/house.key"
+      "/private/etc/house-report/house.key"
+      "/var/root/house.key"
+    ];
+    refused = [
+      "/Users/someone/house.key"
+      "/usr/local/etc/house.key"
+      "/etc/../tmp/house.key"
+      "/etc//house.key"
+      "/etc/./house.key"
+    ];
+  };
+  macMisread = lib.filter macRefuses macKeys.taken ++ lib.filter (k: !macRefuses k) macKeys.refused;
+  keyedLinux =
+    (bareNixos [
+      self.nixosModules.house-report
+      keyed
+    ]).config.systemd;
+  keyedStart = keyedLinux.services.house-report.serviceConfig;
 in
 {
   # A Mac runs house-report as a daemon, as nobody, from its start and
@@ -83,6 +158,74 @@ in
         && job.StandardErrorPath or null == "/var/log/house-report.log"
         && lib.hasInfix "touch /var/log/house-report.log" prepared
         && lib.hasInfix "chown nobody:nobody /var/log/house-report.log" prepared
+      );
+
+  # A Mac given a key reads activation's copy of it, nobody's, by its
+  # path ahead of the address. Activation copies the key only once every
+  # folder above it is root's and written by no other account, by mode
+  # or access list, reading it in its real folder as a plain file, the
+  # copy the last branch of the chain that refuses, through a name of
+  # the run's own, and changes no file's owner or mode. The build
+  # refuses a key outside root's own trees, or spelled through dots.
+  house-report-hands-a-mac-its-key-safely =
+    holds "house-report-hands-a-mac-its-key-safely"
+      (
+        if macMisread != [ ] then
+          "a Mac's key check misreads: ${lib.concatStringsSep ", " macMisread}"
+        else
+          "A Mac given /etc/house.key doesn't run house-report --key "
+          + "/var/db/house-report/house.key 192.0.2.3:47110, or its activation copies the key "
+          + "outside the chain that refuses a link and a folder another account may write, "
+          + "reads it by its spelling rather than its real folder, or hands a file over "
+          + "otherwise than by one install into a name of its own."
+      )
+      (
+        macMisread == [ ]
+        && lib.hasSuffix "/bin/house-report --key ${copied} 192.0.2.3:47110" keyedProgram
+        && lib.hasInfix "houseReportKey=/etc/house.key" keyedPrepared
+        && lib.hasInfix chained keyedPrepared
+        && walked < placed chained
+        && lib.hasInfix "&& pwd -P)" keyedPrepared
+        && lib.hasInfix "/usr/bin/stat -f %u \"$houseReportFolder\"" keyedPrepared
+        && lib.hasInfix "/usr/bin/find \"$houseReportFolder\" -maxdepth 0 -perm +022" keyedPrepared
+        && lib.hasInfix "/bin/ls -lde \"$houseReportFolder\"" keyedPrepared
+        && lib.hasInfix readInRealFolder keyedPrepared
+        && walked > placed "houseReportRead="
+        && lib.hasInfix "/usr/bin/install -d -o root -g wheel -m 0755 /var/db/house-report " watched
+        # Nothing in the copy's text hands a file over but the one install
+        # into this run's own name, moved onto the copy (round 4's F6).
+        && times "chown" watched == 0
+        && times "chmod" watched == 0
+        && times "/usr/bin/install " watched == 2
+        && times "/bin/mv " watched == 1
+        && lib.hasInfix "/bin/mv -f \"$houseReportNew\" \"$houseReportCopy\"" watched
+        && lib.hasInfix "houseReportNew=\"$houseReportCopy.$$\"" watched
+        && lib.hasInfix "2>/dev/null || :" watched
+      );
+
+  # A Mac given a key copies it again, as root, whenever the key or its
+  # folder changes, by the same text activation runs, so a key swapped
+  # while the Mac runs is taken without a switch.
+  house-report-takes-up-a-macs-swapped-key =
+    holds "house-report-takes-up-a-macs-swapped-key"
+      (
+        "A Mac given /etc/house.key doesn't copy it again, as root, by activation's own text, "
+        + "whenever /etc/house.key or /etc changes."
+      )
+      (
+        lib.take 2 (watching.ProgramArguments or [ ]) == [
+          "/bin/sh"
+          "-c"
+        ]
+        && lib.hasInfix chained watched
+        && lib.hasInfix watched keyedPrepared
+        && watching.UserName or null == null
+        && watching.RunAtLoad or null == true
+        &&
+          watching.WatchPaths or [ ] == [
+            "/etc/house.key"
+            "/etc"
+          ]
       );
 }
 # What follows needs Linux to build or to run, so a Mac leaves it out.
@@ -118,5 +261,26 @@ in
         && linux.ProtectSystem or null == "strict"
         && linux.Restart or null == "always"
         && linux.RestartPreventExitStatus or null == "64"
+      );
+
+  # A Linux machine given a key hands it to house-report as a credential,
+  # which it reads by --key, and restarts it whenever the key file
+  # changes, leaving one someone stopped stopped.
+  house-report-takes-up-a-swapped-key =
+    holds "house-report-takes-up-a-swapped-key"
+      (
+        "A Linux machine given /etc/house.key doesn't hand it over as a credential read by --key, "
+        + "doesn't try-restart house-report when the file changes, or limits their starts."
+      )
+      (
+        keyedStart.LoadCredential or null == "house.key:/etc/house.key"
+        && lib.hasInfix "--key %d/house.key " (keyedStart.ExecStart or "")
+        && keyedLinux.paths.house-report-key.pathConfig.PathChanged or null == "/etc/house.key"
+        && builtins.elem "multi-user.target" (keyedLinux.paths.house-report-key.wantedBy or [ ])
+        && lib.hasSuffix "/bin/systemctl try-restart house-report.service" (
+          keyedLinux.services.house-report-key.serviceConfig.ExecStart or ""
+        )
+        && keyedLinux.services.house-report.startLimitIntervalSec or null == 0
+        && keyedLinux.services.house-report-key.startLimitIntervalSec or null == 0
       );
 }

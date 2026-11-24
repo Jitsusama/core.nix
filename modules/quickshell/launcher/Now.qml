@@ -36,6 +36,7 @@ import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
+import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
@@ -572,14 +573,18 @@ Provider {
         const how = !here ? "" : here.hand === true ? said("byHand")
             : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
-        // how far off it was at the last poll, signed, as Time says it.
+        // how far off it was at the clock's last update, signed, as Time
+        // says it (Clocks.qml's clockParts). A clock never yet updated
+        // has no offset of its own, chrony giving 0 in its place, so it's
+        // said only once the clock has a last update.
         // Chrony is asked only while home shows, so until the reader
         // answers it's left out, but for a reading kept from the minute
         // before (Timekeeping.qml); that nothing keeps the time is said
         // only once the reader refused, as on a machine without chrony.
         const time = source("time");
         const kept = time?.kept ?? null;
-        const offset = kept?.exchange ? time.millis(kept.exchange.offset, true) : "";
+        const offset = kept?.clock?.lastSync
+            ? Keeping.seconds(kept.clock.lastOffset, true, time.clockSaid?.point ?? ".") : "";
         const step = kept ? said(kept.synchronised ? "synchronised" : "unsynchronised")
             : Timekeeping.refused ? said("unkept") : "";
         return {
@@ -1253,10 +1258,11 @@ Provider {
     // then Explain It, which says what the cell works on in a sentence or
     // two and, where it waits on Joel, which act on the row answers it
     // (explainAct), where the machine has Ask's pi to answer it: Talk and Go
-    // To, which reach the cell. A look's own choices and Open answer the
-    // look, not what the cell asks now, which may be another question, and
-    // Clear It answers nothing. None while no cell is held for it, or
-    // Agents isn't there to talk through.
+    // To, which reach the cell, and a terminal look's own Open, which is Go
+    // To, under the name its row shows (LookForm.presses). Any other look's
+    // Open, and its choices, answer the look, not what the cell asks now,
+    // which may be another question, and Clear It answers nothing. None
+    // while no cell is held for it, or Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
@@ -1275,8 +1281,17 @@ Provider {
             later: true,
             run: () => provider.goToCell(one)
         })]);
+        const beside = LookForm.presses(one, acts.map(act => act.name), lookOpenName(one));
         return source("ask") === null ? acts : acts.concat([explainAct(
-            `verb:on:waiting:explain:on:look:${one.id}`, cell, acts.map(act => act.name))]);
+            `verb:on:waiting:explain:on:look:${one.id}`, cell, beside)]);
+    }
+
+    // What a look's Open is named on its row, waiting or in History: in the
+    // look's own words where it says them, else Go To for a terminal's and
+    // Open for any other's.
+    function lookOpenName(one) {
+        const opens = one.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
+        return LookForm.actOf(one, lookActNames) || Words.name(opens);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
@@ -1565,7 +1580,7 @@ Provider {
             // What Joel presses, in the look's own words where it says them;
             // the verb stays the launcher's, since the foot and the : line
             // read a verb as what an act does, never a look's to choose.
-            name: LookForm.actOf(one, provider.lookActNames) || Words.name(opens),
+            name: provider.lookOpenName(one),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
@@ -1853,7 +1868,9 @@ Provider {
         const inside = () => [thing({
             key: `verb:on:look:open:${held.id}`,
             verb: Words.verb(opens),
-            name: Words.name(opens),
+            // As its waiting row named it, so Explain It points to it by
+            // what it shows (cellActs).
+            name: provider.lookOpenName(one()),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
@@ -2746,7 +2763,7 @@ Provider {
     // nothing below it, it's asked with For You's own, after the change
     // (forYouMoved): said outright there, a session's notice updated as its
     // work turned just after Return into For You was drawn as Return's act,
-    // though no row For You showed had moved (the niri case, 2026-11-18:
+    // though no row For You showed had moved (seen on niri, 2026-11-18:
     // "the notices' history, then the notices' rows"). What such a step
     // shows is rows of places or a thing's acts, whose every drawn line
     // changedTo compares. Where the notices themselves are shown, in

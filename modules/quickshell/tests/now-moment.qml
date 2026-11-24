@@ -117,9 +117,9 @@ ShellRoot {
 
         readonly property var settings: ({ name: "time" })
         readonly property var kept: Timekeeping.reading
-        function millis(ms, signed) {
-            return `${ms} ms`;
-        }
+        // How Time says the clock's figures, as Clocks.qml builds it.
+        readonly property var clockSaid: Object.assign({ point: "." },
+            Words.of("time:clock").said ?? {})
     }
 
     // Quests, as Now's What Moved reads it: each workstream that moved, as
@@ -945,8 +945,10 @@ ShellRoot {
             root.keptReadings();
     }
 
-    // The reader's answer, as timekeeping says it.
-    readonly property string keptSaid: JSON.stringify({ synchronised: true })
+    // The reader's answer, as timekeeping says it, with the clock the plate reads its
+    // offset from, updated a while ago.
+    readonly property string keptSaid: JSON.stringify({ synchronised: true,
+        clock: { lastOffset: -0.000388, lastSync: 1793829480000 } })
     function answerTime() {
         Timekeeping.heard(`{"parameters":${keptSaid}}`);
     }
@@ -1347,6 +1349,13 @@ ShellRoot {
         const keptSays = JSON.stringify(["synchronised"]);
         expect("answered, the plate's clock says how it's kept",
             JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
+        const clockQualifiers = () => Array.from(now.placePlate().groups)
+            .reduce((all, group) => all.concat(Array.from(group)), [])
+            .filter(fact => fact.label === Words.name("on:plate:clock"))
+            .map(fact => fact.qualifier);
+        expect("answered, it says how far off the reading's clock was at its last update",
+            JSON.stringify(clockQualifiers()) === JSON.stringify(["\u2212388 \u00b5s"]),
+            JSON.stringify(clockQualifiers()));
         Timekeeping.watching -= 1;
         expect("unwatched, the reading is kept", kept(), JSON.stringify(Timekeeping.reading));
         expect("unwatched, the plate still says the kept reading",
@@ -1378,6 +1387,37 @@ ShellRoot {
         Timekeeping.watching -= 1;
         Timekeeping.trying = true;
         theLauncher.sources = sources;
+
+        // Once it answers, the plate says how far off the clock was at its last update, from
+        // the reading's clock as Time's own figures read it: the reading carries an exchange
+        // only per server, so reading one at its top said nothing. It's signed, in Time's
+        // decimal mark, as Time says it. The time source goes first, so Now finds it before
+        // any the harness holds.
+        const sourcesBeforeTime = theLauncher.sources;
+        const offsetSaid = (lastOffset, point, lastSync = 1793829480000) => {
+            theLauncher.sources = [{ settings: { name: "time" }, clockSaid: { point: point },
+                kept: { synchronised: lastSync !== null,
+                    clock: { lastOffset: lastOffset, lastSync: lastSync }, servers: [] } }]
+                .concat(sourcesBeforeTime);
+            const said = Array.from(now.placePlate().groups)
+                .reduce((all, group) => all.concat(Array.from(group)), [])
+                .filter(fact => fact.label === Words.name("on:plate:clock"))
+                .map(fact => fact.qualifier);
+            theLauncher.sources = sourcesBeforeTime;
+            return said;
+        };
+        const behindSaid = offsetSaid(-0.000388, ".");
+        expect("kept, the plate's clock says how far off it was at its last update",
+            JSON.stringify(behindSaid) === JSON.stringify(["\u2212388 \u00b5s"]),
+            JSON.stringify(behindSaid));
+        const commaSaid = offsetSaid(0.0000412, ",");
+        expect("and ahead, it says so in Time's decimal mark",
+            JSON.stringify(commaSaid) === JSON.stringify(["+41,2 \u00b5s"]),
+            JSON.stringify(commaSaid));
+        // A clock never yet updated has chrony's 0 for its offset, which isn't one.
+        const neverSaid = offsetSaid(0, ".", null);
+        expect("never updated, it says no offset",
+            JSON.stringify(neverSaid) === JSON.stringify([""]), JSON.stringify(neverSaid));
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
@@ -1486,15 +1526,26 @@ ShellRoot {
             now.openedAt === keptOpening - 60000 && now.openingAt === -1,
             JSON.stringify([now.openedAt, keptOpening, now.openingAt]));
         theLauncher.open = false;
+        // A notice read while Now sleeps in an open launcher runs that
+        // work then, so the read holds still from the launcher's opening,
+        // not from none: Desktop still counts it unread until the launcher
+        // shuts, rather than dropping it and taking it back as Now wakes.
+        const historyBeforeRead = Notices.history;
+        Notices.history = [{ id: 31, at: Date.now() - 1000, app: "Firefox",
+            summary: "Read before Now woke", read: false }];
         now.asleep = true;
         theLauncher.open = true;
         const toldOpening = now.openingAt - 60000;
         now.openingAt = toldOpening;
-        Notices.history = Notices.history.slice();
-        expect("a notice told while Now sleeps in an open launcher opens it then",
-            now.openedAt === toldOpening && now.openingAt === -1,
-            JSON.stringify([now.openedAt, toldOpening, now.openingAt]));
+        Notices.history = [Object.assign({}, Notices.history[0],
+            { read: true, readHow: "read", readAt: Date.now() })];
+        expect("a notice read while Now sleeps in an open launcher opens it, and stays unread",
+            now.openedAt === toldOpening && now.openingAt === -1
+                && now.unreadNotices.some(notice => notice.id === 31),
+            JSON.stringify([now.openedAt, toldOpening, now.openingAt,
+                now.unreadNotices.map(notice => notice.id)]));
         theLauncher.open = false;
+        Notices.history = historyBeforeRead;
         now.asleep = true;
         theLauncher.open = true;
         theLauncher.open = false;
@@ -2445,6 +2496,15 @@ ShellRoot {
             JSON.stringify(servedActs) === JSON.stringify(["verb:on:look:open:h",
                 "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
             JSON.stringify(servedActs));
+        // A terminal look's Open in History goes by the name its waiting row
+        // gave it, the one Explain It is told (Now.qml's cellActs).
+        const servedOpen = now.lookServed({ held: { id: "r", kind: "terminal",
+            title: "Read R", target: "", state: "opened", happened: "It ran.",
+            act: "Review It", cell: "ACTED" } }, "row:looks-history:r").verbs()
+            .find(act => act.key === "verb:on:look:open:r");
+        expect("a terminal look's Open in History goes by its own words, as its row did",
+            servedOpen !== undefined && servedOpen.name === "Review It",
+            JSON.stringify(servedOpen?.name));
         const unnamedActs = historyActs({ session: "s-old", address: "ACTED", quest: "QEST-E" });
         expect("a look done with naming no cell leads to the session that left it",
             JSON.stringify(unnamedActs) === JSON.stringify(["verb:on:look:open:h",
@@ -3237,14 +3297,21 @@ ShellRoot {
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
     }
 
-    // The notices moving, with For You held, are asked with For You's own
-    // after the change rather than said outright: a session's notice updated
+    // The notices moving, with For You held, aren't said outright as they
+    // move, Now leaving them to For You's own ask: a session's notice updated
     // as its work turned just after Return into For You was drawn as
-    // Return's act (the niri case, 2026-11-18). Deeper, where the notices
+    // Return's act (seen on niri, 2026-11-18). This is where that's proven:
+    // a case on niri laying a session's turn beside Return couldn't land
+    // one within the launcher's 50 ms on a loaded builder, its turns heard
+    // 150 to 520 ms after Return's work with the node itself held, so it
+    // never reached the race (2026-11-24). Deeper, where the notices
     // themselves are shown, and with nothing held, they're said outright;
     // so too with Desktop or what's on screen held right under Now, where
     // Super+N leads with no critical notice waiting (round 7, F77), though
-    // not with another of Now's rows there, Mail's (round 8, F80).
+    // not with another of Now's rows there, Mail's (round 8, F80). What
+    // isn't proven here is that For You's ask then draws them, nor that a
+    // say put off a turn is none: each case reads what was said as the
+    // notices move.
     function noticesWeighed(into) {
         const outright = (name, held, said) => {
             theLauncher.held = held;
@@ -3257,6 +3324,29 @@ ShellRoot {
         };
         outright("For You held, the notices moving aren't said outright",
             into(now.waiting.verbs()), 0);
+        // So too as Now hears them, by the notices' rows and history, not
+        // only through noticesMoved: a handler that went round it would
+        // say them outright again with For You held.
+        // Each is first heard with nothing held, said outright by its own
+        // words, so the silence held after it is the guard's and not a
+        // move that never reached Now.
+        const heardBy = (name, why, moves) => {
+            for (const held of [[], into(now.waiting.verbs())]) {
+                const said = held.length === 0 ? 1 : 0;
+                theLauncher.held = held;
+                root.nowChanged = 0;
+                root.nowMoved = "";
+                moves();
+                expect(said === 1 ? `${name}, heard with nothing held` : name,
+                    root.nowChanged === said && root.nowMoved === (said === 1 ? why : ""),
+                    JSON.stringify([root.nowChanged, root.nowMoved]));
+            }
+        };
+        heardBy("nor as their daemon says its rows moved", "the notices' rows",
+            () => pastNotices.changed());
+        heardBy("nor as their history moves", "the notices' history", () => {
+            Notices.history = Notices.history.slice();
+        });
         outright("held below For You, they are", into(now.waiting.verbs()).concat([
             { row: { key: "on:waiting:screen" }, rows: [] }]), 1);
         const underNow = key => [{ row: { from: now, key: "on" } },
@@ -3337,7 +3427,7 @@ ShellRoot {
             root.nowMoved === "its own rows as it stepped", root.nowMoved);
         // For You held, one of Now's other rows moving is drawn nowhere,
         // so it's no key's act: a session's work turning just after Return
-        // was timed as Return's (the niri case, 16 November).
+        // was timed as Return's (seen on niri, 16 November).
         const another = { key: "on:another", name: "Another" };
         const said = (name, changes, unseen) => expect(name,
             root.nowChanged === changes && root.nowUnseen === unseen,

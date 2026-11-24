@@ -2088,7 +2088,9 @@ impl Controller {
             Some(plateau) if !at_the_hold && up.rate <= plateau * up.tuning.hold + 1.0 => {
                 Why::Router { plateau }
             }
-            _ => Why::Clear,
+            _ => Why::Clear {
+                probing: up.probing_until.is_some(),
+            },
         }
     }
 

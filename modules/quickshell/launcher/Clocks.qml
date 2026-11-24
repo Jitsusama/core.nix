@@ -333,10 +333,13 @@ Provider {
         const chosen = kept.servers.find(server => server.standing === "chosen") ?? null;
         const hardware = kept.hardwareClock ?? null;
         const part = (id, side, note) => ({ id: id, side: side, note: note ?? "" });
-        // chronyd's correction is how far the clock is behind true time.
+        // chronyd's correction is how far the clock is behind true time. A
+        // clock never yet updated has chrony's 0 for its last offset, which
+        // isn't one, so its note says none, as Now's plate does.
         return [
-            part("offset", Keeping.out(-clock.correction, said), said.lastOffset
-                .replace("{offset}", Keeping.seconds(clock.lastOffset, true, said.point))),
+            part("offset", Keeping.out(-clock.correction, said), clock.lastSync
+                ? said.lastOffset.replace("{offset}",
+                    Keeping.seconds(clock.lastOffset, true, said.point)) : ""),
             part("rms-offset", Keeping.seconds(clock.rmsOffset, false, said.point), said.average),
             part("frequency", Keeping.runs(clock.frequency, said), said.residual
                 .replace("{ppm}", Keeping.ppm(clock.residualFrequency, true, said.point))),

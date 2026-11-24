@@ -317,8 +317,11 @@ fn follow(
     } else {
         0
     };
-    if replies || ((names_it || by_entry) && m.to.iter().any(|to| to.starts_with('@'))) {
-        pain.taken_by.get_or_insert_with(|| m.from.clone());
+    // A peer on its thread is named over the session's own cell, whose
+    // answer where he said it only stood in for one.
+    let takes = replies || ((names_it || by_entry) && m.to.iter().any(|to| to.starts_with('@')));
+    if takes && (pain.taken_by.is_none() || pain.answered_at.take().is_some()) {
+        pain.taken_by = Some(m.from.clone());
     }
     if let [commit] = merged_at(&m.text)[..]
         && (by_entry || replies || (names_it && named == 1))

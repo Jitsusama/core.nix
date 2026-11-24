@@ -59,6 +59,44 @@ in
         makes, which the shaped machine's house can't name.
       '';
     };
+    keyFile = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.pathWith {
+          inStore = false;
+          absolute = true;
+        }
+      );
+      default = null;
+      example = "/etc/house-report/house.key";
+      description = ''
+        A file holding the house's key, the same bytes as the shaped
+        machine's house names in its `keyFile`, at least 16, which each
+        report is signed with, so a device on the line can't forge one
+        from this machine's address. On Linux the service reads it
+        through systemd's credentials, a copy made as it starts, so it
+        may be root's alone: a key put there or swapped restarts the
+        service, and while none is there the service fails to start,
+        systemd saying why, and tries again every 5 s, writing a few
+        journal lines each time, so put the key in place before naming
+        it; one empty or short at start ends the service, which starts
+        again on a fresh copy. On a Mac the service runs as nobody, so
+        root copies the key for nobody's account, where the service reads
+        it each second, at each switch and within seconds of the key or
+        its folder changing; a copy refused or failed is taken away, so
+        the service sends nothing until the key is right, and
+        /var/log/house-report.log says why. There the build takes it only
+        under /etc, /private/etc or /var/root, spelled plainly, and the
+        copy only once every folder above it, every link resolved, is
+        root's and written by no other account. Never a link, a Nix path
+        or a value in the store.
+      '';
+    };
+    keyPath = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      internal = true;
+      default = cfg.keyFile;
+      description = "Where the service reads the key: on Linux its credential, on a Mac its copy.";
+    };
     interface = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -76,8 +114,12 @@ in
       readOnly = true;
       default = [
         (lib.getExe package)
-        to
       ]
+      ++ lib.optionals (cfg.keyPath != null) [
+        "--key"
+        cfg.keyPath
+      ]
+      ++ [ to ]
       ++ lib.optional (cfg.interface != null) cfg.interface;
     };
   };

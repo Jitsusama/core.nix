@@ -1177,7 +1177,10 @@ def the_turn(places: list[Json | None]) -> tuple[int, Json, Json | None]:
     between the two (arrive()) says neither a move nor a walk, since halt() drops both, so
     each report saying neither is held a step from the place said before it and the jump
     fails here. A walk's reports aren't held to a step: a cut's walk may fall, and a fall
-    across one slow frame of a loaded builder passes a step's bound. A report that says
+    across one slow frame of a loaded builder passes a step's bound. Nor is the walk's own
+    end, which the walker says after halt() too, at the route's end; the walk report before
+    it names that end's x, so a report there saying neither is taken as the walk's. A
+    seat jump at the very x a walk was going to passes that way, unseen. A report that says
     nowhere is never passed over, so a cat gone from the screen between the two is the
     second move's first place, which fails its case.
     """
@@ -1195,7 +1198,8 @@ def the_turn(places: list[Json | None]) -> tuple[int, Json, Json | None]:
     # None of these is nowhere, since a place said nowhere is the turn; this only says so.
     said = [one for one in places[first:turned] if one is not None]
     for before, one in itertools.pairwise(said):
-        if one.get("move") is None and not one.get("walk"):
+        ended = abs(one["x"] - ((before.get("walk") or {}).get("to") or math.inf)) < 1
+        if one.get("move") is None and not one.get("walk") and not ended:
             gone = math.hypot(one["x"] - before["x"], one["y"] - before["y"])
             assert gone <= STEPS_ON * one["size"], (
                 f"between the two moves it was put at {one}, from {before}, saying no move"
@@ -1208,25 +1212,32 @@ def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> N
 
     The second move is held to the place said just before it, where a cut's walk or a late
     step of the first got to; a walk that falls far in one report passes; a halt is held to
-    where the walk before it got to, not to where the first move left off; a cat put on its
-    seat between the two fails; and a cat said nowhere between the two is the second move's
-    first place, which fails its case.
+    where the walk before it got to, not to where the first move left off; a walk's end,
+    said with no walk, passes where its fall ends far below; a cat put on its seat between
+    the two fails, after a walk going elsewhere too; and a cat said nowhere between the two is
+    the second move's first place, which fails its case.
     """
     down: Json = {"x": 0, "y": 10, "size": 30, "move": {"way": 1}}
     halted: Json = {"x": 0, "y": 10, "size": 30, "move": None}
-    walked: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8}}
-    fell: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95}}
+    walked: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8, "to": 30}}
+    fell: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95, "to": 30}}
     stopped: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": None}
+    dropped: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95, "to": 9}}
+    landed: Json = {"x": 30, "y": 300, "size": 30, "move": None, "walk": None}
+    going: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8, "to": 500}}
     later: Json = {"x": 0, "y": 40, "size": 30, "move": {"way": 1}}
     seated: Json = {"x": 0, "y": 700, "size": 30, "move": None}
     up: Json = {"x": 30, "y": 890, "size": 30, "move": {"way": -1}}
     assert the_turn([halted, down, halted, walked, up]) == (4, walked, up)
     assert the_turn([down, later, up]) == (2, later, up)
-    assert the_turn([down, walked, fell, stopped, up]) == (4, stopped, up)
+    assert the_turn([down, walked, dropped, stopped, up]) == (4, stopped, up)
+    assert the_turn([down, walked, fell, landed, up]) == (4, landed, up)
     # The caller fails on a second move whose first place is nowhere.
     assert the_turn([down, halted, None, up]) == (2, halted, None)
     with pytest.raises(AssertionError, match="between the two moves it was put at"):
         the_turn([down, seated, up])
+    with pytest.raises(AssertionError, match="between the two moves it was put at"):
+        the_turn([down, going, seated, up])
     with pytest.raises(AssertionError, match="the second move never said"):
         the_turn([down, halted, walked])
     with pytest.raises(AssertionError, match="the first move never said"):
@@ -1237,6 +1248,65 @@ def rides_back(place: Json | None) -> TypeGuard[Json]:
     """Say whether a place the cat said is on a ride back up, with nowhere yet to sit."""
     move = (place or {}).get("move") or {}
     return move.get("way") == -1 and move.get("beats") == ["rides"]
+
+
+def back_from_where_it_got_to(was: Json, after: Json, apart: float) -> bool:
+    """Say whether the second move's first place is where the first got to, a gap below.
+
+    Turned back up, the workspace it was on lies a gap below the one sliding back, so where it
+    got to is drawn `apart` lower, off by as far as niri's slide still has its ground
+    (`carried`). That holds for the ride, with nowhere yet to sit, and for the way across to a
+    seat, which sets off from that same place (MarginCatStacked.js's moves() and crosses()):
+    a builder's run at 56b7a7b8 began its way across with a fall, laid 2 px off the gap. It
+    reads no beats, since both ways set off alike; only the way and the place say it.
+    """
+    move = after.get("move") or {}
+    near = STEPS_ON * was["size"]
+    laid = after["y"] - move.get("carried", 0) - was["y"]
+    return (
+        move.get("way") == -1 and abs(after["x"] - was["x"]) <= near and abs(laid - apart) <= near
+    )
+
+
+def test_the_way_back_sets_off_from_where_it_got_to_a_gap_below() -> None:
+    """A ride or a way across, laid a gap below where the cat got to, sets off from there."""
+    was = {"x": 636, "y": -5, "size": 8}
+
+    def back(x: float, y: float, way: int = -1, carried: float = -1.6) -> Json:
+        return {"x": x, "y": y, "move": {"way": way, "carried": carried}}
+
+    # Its ground taken off, 847.4 lies on the gap and 849.38, the builder's, 2 px off it.
+    assert back_from_where_it_got_to(was, back(636, 847.4), 854), (
+        "a move back up that set off where it got to was refused"
+    )
+    assert back_from_where_it_got_to(was, back(636, 849.38), 854), (
+        "a move back up that set off a pixel or two off where it got to was refused"
+    )
+    # Two of its sizes is the reach: 15 px off the gap is within it, and 17 px past it.
+    assert back_from_where_it_got_to(was, back(636, 862.4), 854), (
+        "a move back up 15 px off where it got to, within two of its sizes, was refused"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 864.4), 854), (
+        "a move back up 17 px off where it got to, past two of its sizes, was taken"
+    )
+    # Said at 816 against a gap at about 849 (the net, 2026-11-22), its ground 33 px off:
+    # only that ground taken off brings it within reach, so a helper that dropped `carried`,
+    # or added it, would refuse it; with no ground to carry it there, the same place is refused.
+    assert back_from_where_it_got_to(was, back(636, 816, carried=-33), 854), (
+        "a move back up whose ground was carried 33 px off was refused"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 816, carried=0), 854), (
+        "a move said 33 px short of the gap was taken with no ground to carry it there"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 700), 854), (
+        "a move set off well short of the gap was taken"
+    )
+    assert not back_from_where_it_got_to(was, back(400, 849.38), 854), (
+        "a move set off from elsewhere along was taken"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 849.38, way=1), 854), (
+        "a move down was taken as the way back up"
+    )
 
 
 def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> None:
@@ -1273,6 +1343,9 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
     turned, was, after = the_turn(places)
     assert after is not None, "the cat was nowhere as the second move began"
+    # A reach of 0, said as its screen goes, would count every place as off it.
+    assert was["reach"] > 0, f"the cat said no screen under it before the second: {was}"
+    assert after["reach"] > 0, f"the cat said no screen under it as it began: {after}"
     # Caught off the screen between workspaces, waiting to drop in, it
     # may ride back in from anywhere else off it, since neither place is
     # seen (the net, 2026-11-16: from y -849 in its unseen beat to -131).
@@ -1286,22 +1359,15 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # slide still has its ground. Peeking 3 of its 8 rows down from the gap at y -5, it was
     # next said at 816 and 845 a millisecond into that ride (the net, 2026-11-22). So on the
     # ride, a place a step from the gap below where it got to, off by its ground, is where it
-    # got to too. The second move is always up here, so only that way is held to it.
-    # `carried` is the cat's own word, so this holds only where the ride began; that the rest
-    # of the ride keeps to its way is held below, and how far its ground is off over niri's
-    # slide is proven frame by frame in Qt's engine (margin-cat-one-screen.qml).
-    move = after.get("move") or {}
+    # got to too, and so on a way across to a seat, which sets off from there. The second move
+    # is always up here, so only that way is held to it. `carried` is the cat's own word, so
+    # this holds only where the move began; that the rest of a ride keeps to its way is held
+    # below, and how far its ground is off over niri's slide is proven frame by frame in Qt's
+    # engine (margin-cat-one-screen.qml). A way across is held only where it sets off.
     scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
     apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
-    carried = move.get("carried", 0)
-    laid = after["y"] - carried - was["y"]
-    rode = (
-        move.get("way") == -1
-        and move.get("beats") == ["rides"]
-        and abs(after["x"] - was["x"]) <= near
-        and abs(laid - apart) <= near
-    )
-    assert all(off) or gone <= near or rode, f"the second move put it at {after}, from {was}"
+    back = back_from_where_it_got_to(was, after, apart)
+    assert all(off) or gone <= near or back, f"the second move put it at {after}, from {was}"
     # The ride back, from its first place said after the turn, past any report between the
     # two moves that says no move, to its last. Each place it says lies on the way it was laid,
     # off it by its ground alone, within a pixel of where the place is drawn; and its ground
@@ -1310,6 +1376,8 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # run back or laid again from the slide's start fails here. That holds for the theme's
     # spring, which settles without overshooting (damping 1); a looser one, which the theme
     # allows, would carry its ground past the way and back, and this would need to know it.
+    # A second move taken as a way across to a seat says no ride, so these read nothing of it:
+    # it is held where it sets off, above, and to moving on at all, below.
     begins = next((i for i in range(turned, len(places)) if rides_back(places[i])), len(places))
     ends = next((i for i in range(begins, len(places)) if not rides_back(places[i])), len(places))
     riding = [one for one in places[begins:ends] if rides_back(one)]

@@ -337,6 +337,11 @@ function settled(openings, found, now, patience) {
     return { late, up, waiting };
 }
 
+// What opens a placement refusal, and a machine's reason in one that waiting
+// never changes, as mayYetTake reads them.
+const PLACED_NOWHERE = /^nowhere: /u;
+const NEVER_TAKES = /^\S+ (?:lacks|isn't) |, (?:lacks|isn't) /u;
+
 // The refusals Joel can meet that one act of the launcher's gets past, by
 // the node's or the agents daemon's words, each with the key of that act's
 // words in `said` and, for one naming the command line's act, what to cut
@@ -346,20 +351,35 @@ function settled(openings, found, now, patience) {
 // of his repositories, or from the work's whole link, which names its own;
 // one placed nowhere, whose words say each machine's reasons (needs it
 // lacks, reach, room, its time), is said again once one of those can take
-// it. One whose node's socket is missing or refuses, as the agents
-// daemon's sprout.rs says from Rust's own words for the two, is said again
-// once the node runs; any other failure to reach it isn't a node that's
-// down. A refusal none of these knows is told in its own words alone.
+// it, unless each lacks what the work needs or isn't the machine it names,
+// which waiting never changes (mayYetTake); one placed nowhere now, as the
+// node's nowhere_now says one a machine out of reach would take, is said
+// again so too. One whose node's socket is
+// missing or refuses, as the agents daemon's sprout.rs says from Rust's own
+// words for the two, is said again once the node runs; any other failure to
+// reach it isn't a node that's down. A refusal none of these knows is told in its own words alone.
 const ACTS = [
     { says: /^it needs a repository to work in, /u, cut: /: say which, as `[^`]*`$/u,
         act: "actRepository" },
     { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
         act: "actRepository" },
     { says: / isn't a folder here$/u, cut: null, act: "actRepository" },
-    { says: /^nowhere: /u, cut: null, act: "actPlaced" },
+    { says: /^nowhere: /u, cut: null, act: "actPlaced", only: mayYetTake },
+    { says: /^nowhere now, though a machine out of reach would do: /u, cut: null,
+        act: "actPlaced" },
     { says: /^the node couldn't be reached: (?:No such file or directory|Connection refused) /u,
         cut: null, act: "actNode" }
 ];
+
+// Whether a placement refusal's `words` name a machine that may yet take
+// the work: one whose reasons, as mycelium's placement says them
+// ("skiff lacks system macos; tern is out of reach"), include none that
+// waiting never changes, a need it lacks or a name it isn't. A realm that
+// knows no machine has none.
+function mayYetTake(words) {
+    return words.replace(PLACED_NOWHERE, "").split("; ")
+        .some(miss => miss !== "the realm knows no machine" && !NEVER_TAKES.test(miss));
+}
 
 // The keys of the words each known refusal's act is said in (ACTS), so a
 // test can hold them to the words Joel reads.
@@ -376,7 +396,8 @@ function acted(why, said) {
     const words = String(why ?? "");
     const known = ACTS.find(one => one.says.test(words));
     const act = String(said?.[known?.act] ?? "");
-    if (known === undefined || act === "" || (known.cut !== null && !known.cut.test(words))) {
+    if (known === undefined || act === "" || (known.cut !== null && !known.cut.test(words))
+        || (known.only !== undefined && !known.only(words))) {
         return words;
     }
     const cut = known.cut === null ? words : words.replace(known.cut, "");

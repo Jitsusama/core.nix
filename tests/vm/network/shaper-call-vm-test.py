@@ -296,7 +296,8 @@ class Rig:
         and left it unanswered, as iperf3 racing its own next listener may, and no call failed
         any other way, every call is made again, so the calls that count ran together, up to
         HANDSHAKES times in all. A call whose handshake is never answered still fails, saying
-        how many times it was made, why the making stopped and what was heard.
+        how many times it was made, why the making stopped and what was heard; one that every
+        reply reached, its client still unable to read, says only what was heard.
         """
         held = names or list(CALLS)
         for made in range(1, HANDSHAKES + 1):
@@ -364,9 +365,9 @@ class Rig:
                 f" (made {made} of {HANDSHAKES} times, {said[name]}, with the IFB dropping"
                 f" {dropped} in the calls' tins, {stopped(made, failed, over, down)})"
             )
-        # A call unanswered with nothing lost on the way fails as iperf3's own error, the
-        # counts beside it saying whether the server left a connect unanswered or the client
-        # never took a reply that came.
+        # A call unanswered with nothing lost on the way, and every connect the server heard
+        # answered, fails as iperf3's own error: every reply came and the client still didn't
+        # read it, as the counts beside it show.
         for name in failed:
             if unanswered(results[name]):
                 results[name]["error"] += f" ({said[name]}, so no datagram was lost between them)"

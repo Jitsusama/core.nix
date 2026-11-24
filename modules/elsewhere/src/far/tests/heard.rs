@@ -451,11 +451,15 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // scratch or a program missing would, ahead of the far machine's own
     // on its path: each program's first call, an unpacking that fails
     // once it has made a folder and closed it, and the search for what is
-    // neither a file nor a folder alone, after the calls before it.
+    // neither a file nor a folder alone, after the calls before it. The
+    // unpacking closes the folder in what follows its -C wherever that
+    // lies, and says it did, so the case can't stop reaching the cleanup
+    // unseen.
     let (_, unpacking) = refusing(
         "tar",
         "*\" -xf \"*",
-        "tar \"$@\" && chmod 500 \"$4/target\"; exit 1",
+        "tar \"$@\" || exit 9; while [ $# -gt 0 ] && [ \"$1\" != -C ]; do shift; done; \
+         chmod 500 \"$2/target\" && : > \"$2/../closed\"; exit 1",
     );
     let (_, searching) = refusing("find", "*\" -type l \"*", "exit 1");
     for (step, stand_in) in [
@@ -485,6 +489,10 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
                 && !work(&home).join("1.run").exists(),
             "a tree it couldn't make for {step} ({stand_in:?}) was run, or left behind with \
              its run's file"
+        );
+        assert!(
+            stand_in != unpacking || work(&home).join("closed").exists(),
+            "the unpacking stand-in never closed a folder it made: {err}"
         );
         let _ = std::fs::remove_dir_all(&home);
     }

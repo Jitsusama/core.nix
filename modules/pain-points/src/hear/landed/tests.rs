@@ -113,6 +113,33 @@ fn a_landing_no_switch_carries_leaves_it_taken() {
 }
 
 #[test]
+fn a_peer_on_its_thread_is_named_over_the_cell_that_answered_him_where_he_said_it() {
+    let mut answered = heard("e1");
+    answered.taken_by = Some("ABC123".into());
+    answered.answered_at = Some(1);
+    let mut thread = tuple();
+    thread.push(message(
+        "6-OTHER1-1-cccccccc",
+        "OTHER1",
+        "@6LU6ZM",
+        Some("1-6LU6ZM-1-186eeb39"),
+        "I can look at it too",
+    ));
+    assert_eq!(
+        standing(&answered, "6LU6ZM", &["e1"], &thread, &mut |_| false),
+        taken("WCJQSG"),
+        "the first peer on its thread wasn't named over the cell, or a second one was too"
+    );
+    let mut by_peer = heard("e1");
+    by_peer.taken_by = Some("PEER01".into());
+    assert_eq!(
+        standing(&by_peer, "6LU6ZM", &["e1"], &tuple(), &mut |_| false),
+        taken("PEER01"),
+        "a peer's take stands"
+    );
+}
+
+#[test]
 fn an_unanswered_question_or_the_keepers_note_takes_nothing_up() {
     assert_eq!(
         stands("e1", &["e1"], &tuple()[..1], true),
