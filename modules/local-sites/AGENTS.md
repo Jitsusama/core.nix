@@ -114,9 +114,10 @@ What holds it together:
    one to copy for this. It holds the web-design skill's page checks and
    a `Budget` set a little above what the page costs now. Name each check
    in `check-descriptions.nix`. Add its `index.html` to `pages`, which
-   `heads-are-the-kits` holds to the kit's head; a new page opens with it,
-   so it never joins `waitingForTheHead`, and a page that moves to it
-   leaves that list.
+   `heads-are-the-kits` holds to the kit's head, and fails while a page a
+   realm machine mounts goes unnamed. A new page opens with the head: the
+   check fails on a name that joins `waitingForTheHead`, and a page that
+   moves to it leaves that list.
 
 A live site can also leave this machine as one folder that stands alone:
 `site.nix`'s `standalone`. It refuses a folder whose pages, styles or

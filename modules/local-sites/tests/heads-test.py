@@ -58,12 +58,63 @@ def test_the_head_sites_md_writes_is_the_kits() -> None:
 def test_a_page_not_linking_the_sheet_is_named() -> None:
     """A head the kit's sheet never reaches would be drawn as the page's own."""
     markup = f"<!doctype html><html><head></head><body>{written()}</body></html>"
-    assert heads.page_faults(markup) == ["it doesn't link the kit's head.css, which draws the head"]
+    assert heads.page_faults(markup) == [NO_SHEET]
+
+
+# What the gate says of a page whose head the kit's sheet never draws.
+NO_SHEET = "it doesn't link local-sites/kit/head.css as a stylesheet in its <head>"
+
+
+@pytest.mark.parametrize(
+    "link",
+    [
+        '<link rel="preload" as="style" href="../local-sites/kit/head.css">',
+        '<link rel="stylesheet" href="kit/head.css">',
+    ],
+)
+def test_a_sheet_preloaded_or_the_pages_own_is_named(link: str) -> None:
+    """Only the kit's own sheet, linked as a stylesheet, draws the head."""
+    markup = f"<!doctype html><html><head>{link}</head><body>{written()}</body></html>"
+    assert heads.page_faults(markup) == [NO_SHEET]
+
+
+def test_a_sheet_linked_in_the_body_is_named() -> None:
+    """A sheet linked after the head draws it late, once it has shown bare."""
+    markup = f"<!doctype html><html><head></head><body>{LINK}{written()}</body></html>"
+    assert heads.page_faults(markup) == [NO_SHEET]
+
+
+def test_a_sheet_asked_for_afresh_still_draws_the_head() -> None:
+    """A query asking past a cache names the same sheet."""
+    link = LINK.replace("head.css", "head.css?v=2")
+    markup = f"<!doctype html><html><head>{link}</head><body>{written()}</body></html>"
+    assert heads.page_faults(markup) == []
 
 
 def test_a_page_with_no_head_is_named() -> None:
     """A page drawing its own header instead says how many heads it has."""
     faults = heads.head_faults('<header class="hero"><h1>Mine</h1></header>')
+    assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
+
+
+def test_a_page_with_two_heads_is_named() -> None:
+    """A page opens with one head, never the kit's twice."""
+    faults = heads.head_faults(written() + written())
+    assert faults == ['it draws 2 heads: open it with one <header class="page-head">']
+
+
+def test_a_banner_kept_above_the_head_is_named() -> None:
+    """A page half moved, its own banner still drawn first, isn't one of the family."""
+    faults = heads.head_faults('<header class="hero"><h2>Mine</h2></header>' + written())
+    assert faults == [
+        'it draws a <header class="hero"> above its head: let the kit\'s head be its first'
+    ]
+
+
+@pytest.mark.parametrize("holder", ["template", "noscript"])
+def test_a_head_never_drawn_is_no_head(holder: str) -> None:
+    """A head held where no browser draws it leaves the page's own showing."""
+    faults = heads.head_faults(f"<{holder}>{written()}</{holder}>")
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
 
 
@@ -103,25 +154,118 @@ def test_a_part_drawn_apart_is_named() -> None:
 def test_an_eyebrow_of_three_phrases_is_named() -> None:
     """An eyebrow says what this is and whose, never three clauses."""
     head = changed("on this machine</p>", 'on this machine<span class="sep">·</span>now</p>')
+    assert heads.head_faults(head) == [f"its eyebrow has 3 phrases: {heads.EYEBROW}"]
+
+
+def test_an_eyebrow_of_one_phrase_is_named() -> None:
+    """An eyebrow with no dot says one thing where it should say two."""
+    head = changed('your sites<span class="sep">·</span>on', "your sites on")
+    assert heads.head_faults(head) == [f"its eyebrow has 1 phrase: {heads.EYEBROW}"]
+
+
+def test_an_eyebrow_dotted_as_text_is_named() -> None:
+    """The pages write their dot as text today; the kit spaces only its own."""
+    head = changed('<span class="sep">·</span>', " · ")
     assert heads.head_faults(head) == [
-        'its eyebrow has 3 phrases: say two, what this is <span class="sep">·</span> whose or where'
+        'its eyebrow writes its dot as text: write it as <span class="sep">·</span>'
     ]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [("your sites<span", "<span"), ("</span>on this machine", "</span> ")],
+)
+def test_an_eyebrow_with_an_empty_phrase_is_named(old: str, new: str) -> None:
+    """A dot with nothing on one side of it is one phrase drawn as two."""
+    assert heads.head_faults(changed(old, new)) == [
+        f"its eyebrow has an empty phrase: {heads.EYEBROW}"
+    ]
+
+
+# What the gate says of a standing line that doesn't say the feed's state alone.
+NO_STATUS = 'its standing line needs one role="status" for the feed\'s state, and nothing else live'
 
 
 def test_a_standing_line_with_no_status_is_named() -> None:
     """The feed's state is said through the standing line's status alone."""
     head = changed(' role="status"', "")
-    assert heads.head_faults(head) == [
-        'its standing line needs one role="status" for the feed\'s state'
-    ]
+    assert heads.head_faults(head) == [NO_STATUS]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('role="status"', 'role="alert"'),
+        ('role="status"', 'aria-live="assertive"'),
+        ('role="status"', 'role="status" aria-live="off"'),
+        (
+            '<span class="glyph" aria-hidden="true">',
+            '<span class="glyph" aria-hidden="true" role="status">',
+        ),
+    ],
+)
+def test_a_standing_line_speaking_otherwise_is_named(old: str, new: str) -> None:
+    """Another live role, an alert, a status silenced or two statuses aren't the one status."""
+    assert heads.head_faults(changed(old, new)) == [NO_STATUS]
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ('role="status"', 'role="wobble status"'),
+        ('role="status"', 'role="status" aria-live=""'),
+        ("Reaching its daemon.</span>", 'Reaching its daemon.</span><span aria-live="">.</span>'),
+    ],
+)
+def test_a_status_as_a_browser_reads_it_passes(old: str, new: str) -> None:
+    """A role a browser skips to reach status, and an empty aria-live, which is off."""
+    assert heads.head_faults(changed(old, new)) == []
 
 
 def test_a_lede_that_speaks_is_named() -> None:
     """A lede rewritten as the feed moves would be heard at every change."""
     head = changed('<p class="lede">', '<p class="lede" aria-live="polite">')
-    assert heads.head_faults(head) == [
-        "1 more of its head speaks as it changes: only the standing line's status may be live"
-    ]
+    assert heads.head_faults(head) == [SPEAKS]
+
+
+# What the gate says of one more part of the head heard as it changes.
+SPEAKS = "1 more of its head speaks as it changes: only the standing line's status may be live"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("Seven sites", "<output>Seven</output> sites"),
+        ('<p class="lede">', '<p class="lede" role="wobble status">'),
+        ('<header class="page-head">', '<header class="page-head" role="status">'),
+    ],
+)
+def test_a_head_speaking_beyond_its_status_is_named(old: str, new: str) -> None:
+    """An output is a status, and so is a part or a head marked one, each heard at every change."""
+    assert heads.head_faults(changed(old, new)) == [SPEAKS]
+
+
+def test_a_role_list_is_read_as_its_first_known_role() -> None:
+    """A browser takes none from none status, so the lede stays quiet."""
+    head = changed('<p class="lede">', '<p class="lede" role="none status">')
+    assert heads.head_faults(head) == []
+
+
+def test_a_p_left_open_ends_where_the_next_starts() -> None:
+    """An end tag left off, as HTML allows, reads as a browser reads it."""
+    head = re.sub(r"</p>(\s*<(p|div|h1))", r"\1", written())
+    assert head != written(), "sites.md's head no longer ends a <p> before a block"
+    assert heads.head_faults(head) == []
+
+
+def test_a_break_or_an_svg_drawn_closed_holds_nothing() -> None:
+    """A <wbr> in the title, and an icon's path written closed, leave the parts in order."""
+    head = changed("Every Site", "Every<wbr> Site")
+    head = head.replace(
+        '<span class="glyph" aria-hidden="true"></span>',
+        '<span class="glyph" aria-hidden="true"><svg><path d="M0 0"/></svg></span>',
+    )
+    assert heads.head_faults(head) == []
 
 
 def test_a_quiet_row_with_no_key_line_is_named() -> None:
@@ -144,7 +288,8 @@ def judged(
             path = tmp_path / f"{name}.html"
             path.write_text(markup)
             named.append(f"{name}={path}")
-        monkeypatch.setattr(sys, "argv", ["heads.py", "--waiting", waiting, *named])
+        # As checks.nix writes it, the list one word however short.
+        monkeypatch.setattr(sys, "argv", ["heads.py", f"--waiting={waiting}", *named])
         code = heads.main()
         return code, capsys.readouterr().out.splitlines()
 
@@ -164,7 +309,20 @@ def test_a_moved_page_is_held_to_the_head(judged: Callable[..., tuple[int, list[
     """A page off the waiting list is named for each way it strays."""
     code, said = judged("", Code=OWN)
     assert code == 1, said
-    assert said[0] == "Code: it doesn't link the kit's head.css, which draws the head", said
+    assert said[0] == f"Code: {NO_SHEET}", said
+
+
+def test_an_empty_list_judges_every_page(judged: Callable[..., tuple[int, list[str]]]) -> None:
+    """Once the last page moves, the list is empty and every page is held."""
+    assert judged("", Code=page(written()), Home=page(written())) == (0, [])
+
+
+def test_a_page_joining_the_list_is_named(judged: Callable[..., tuple[int, list[str]]]) -> None:
+    """A page new to the sites opens with the head; it never waits for it."""
+    assert judged("Code,Garden", Code=OWN, Garden=OWN) == (
+        1,
+        ["Garden joined the waiting list: a page that joins the sites opens with the head"],
+    )
 
 
 def test_a_waiting_page_that_moved_must_leave_the_list(

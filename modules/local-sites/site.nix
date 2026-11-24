@@ -76,8 +76,9 @@ in
       looks ? webKit.looks,
     }:
     # The site carries the web kit it was built on, so a folder laid out
-    # from it copies the same one in.
-    pkgs.runCommandLocal "${name}-site" { passthru = { inherit webKit; }; } ''
+    # from it copies the same one in, and the source it was built from, so
+    # the heads gate can see every page a machine mounts.
+    pkgs.runCommandLocal "${name}-site" { passthru = { inherit webKit src; }; } ''
       ${lib.getExe pkgs.bash} ${./site.sh} ${
         lib.escapeShellArgs [
           tsc

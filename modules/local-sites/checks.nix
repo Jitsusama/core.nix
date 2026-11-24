@@ -56,9 +56,20 @@ let
     Network = ../net/site/index.html;
   };
 
+  # Each page a machine in a realm mounts that `pages` doesn't name, which
+  # the heads gate would never judge. Code, mounted only where repositories
+  # are rooted, and Home, which no mount serves, are named by hand.
+  unnamedPages = lib.filter (page: !(lib.elem page (lib.attrValues pages))) (
+    lib.mapAttrsToList (_: site: site.src + "/index.html") (
+      lib.filterAttrs (_: site: site ? src) inRealm.jitsusama.local-sites.mounts
+    )
+  );
+
   # The pages still drawing a head of their own. Take each off as it moves
-  # to the kit's; the list only shrinks, and the gate fails while a page on
-  # it already keeps to the head.
+  # to the kit's: the gate fails while a page on it already keeps to the
+  # head, and refuses a name that wasn't on it from the start. Putting a
+  # moved page back is the one way past the gate, which review alone holds,
+  # so do it only to unblock a merge, and say so.
   waitingForTheHead = [
     "Code"
     "Forage"
@@ -138,10 +149,13 @@ in
   # their order and nothing else, an eyebrow of two phrases, only the
   # standing line's status live, a key line in the quiet row, and the kit's
   # head.css linked; a page still waiting passes until it keeps to the head,
-  # then fails until it's taken off; and the gate passes sites.md's own head
-  # and names each way a page strays from it (tests/heads.py,
+  # then fails until it's taken off, and no page joins the list; every page
+  # a machine in a realm mounts is judged; and the gate passes sites.md's own
+  # head and names each way a page strays from it (tests/heads.py,
   # tests/heads-test.py).
   heads-are-the-kits =
+    assert lib.assertMsg (unnamedPages == [ ])
+      "heads-are-the-kits: name ${lib.concatMapStringsSep ", " toString unnamedPages} in pages";
     pkgs.runCommandLocal "heads-are-the-kits"
       {
         env = {
@@ -154,7 +168,7 @@ in
         ${plainPython}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
           --basetemp="$TMPDIR/pytest" ${./tests}/heads-test.py
         ${plainPython}/bin/python ${./tests/heads.py} \
-          --waiting ${lib.concatStringsSep "," waitingForTheHead} ${
+          ${lib.escapeShellArg "--waiting=${lib.concatStringsSep "," waitingForTheHead}"} ${
             lib.escapeShellArgs (lib.mapAttrsToList (name: page: "${name}=${page}") pages)
           }
         touch $out
