@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use pineapple::deaf::{Deafness, Round, Search};
-use pineapple::ears::Ears;
+use pineapple::ears::{Ears, Unread};
 use pineapple::gate::{Asked, gate};
 use pineapple::judged::{self, Judged};
 use pineapple::phone;
@@ -41,10 +41,12 @@ pub(super) struct Reader {
 /// `me` is Joel's Slack id, and his sign-in, where a reply could be said
 /// with it.
 ///
-/// A search whose answer can't be read is never partly trusted, and
-/// nothing of it is judged; the other's messages are, and the round says
-/// which search is deaf. Both deaf reads nothing. Either way the next
-/// round asks both again, with no rest a poster could stretch.
+/// A search whose answer can't be read is never read as far as it reaches,
+/// and the round says which search is deaf; the other's messages are
+/// judged. What it gave is judged as its ears say it may be: messages a
+/// second ask agreed with in full, any other only for a stop, which may
+/// come from anyone, never for a resume a writer could type. Either way
+/// the next round asks both again, with no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -75,12 +77,35 @@ pub(super) fn round(
         phrase => (phrase, ears.search(&tag, &judged.back_to(&tag, now))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
+    // What a deaf search gave: only a stop is taken from what no second
+    // ask agreed with, and it's judged again once read; what one agreed
+    // with is judged with the rest, in the order it was said.
+    let mut partly = Vec::new();
+    for (query, answer) in [(PHRASE, &phrase), (tag.as_str(), &tagged)] {
+        if answer.as_ref().err() == Some(&unread) {
+            let Unread { agreed, unagreed } = ears.unread(query);
+            for message in &unagreed {
+                if judged.is_new(message) && !alert(&joel, message) {
+                    judge(ears, reader, account, state, &joel, message, false);
+                }
+            }
+            partly.extend(agreed);
+        }
+    }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
         (Ok(phrase), Err(tagged)) if tagged == unread => (phrase, Vec::new(), Some(Search::Tag)),
         (Err(phrase), Ok(tagged)) if phrase == unread => (Vec::new(), tagged, Some(Search::Phrase)),
         (phrase, tagged) => {
             let failed = [phrase.err(), tagged.err()];
+            // What was judged of an answer it couldn't read is kept, and
+            // how far each was read and when Slack was read whole aren't.
+            if !partly.is_empty() {
+                judge_each(ears, reader, account, state, &joel, judged, partly.iter());
+                if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
+                    eprintln!("<3>couldn't keep what it judged: {error}");
+                }
+            }
             // A refusal is said first, then a sign-in none could give.
             // One search unasked, its network blinking, says nothing new
             // of the other, so only both unread are told as both.
@@ -94,22 +119,8 @@ pub(super) fn round(
             .unwrap_or(unread);
         }
     };
-    let mut seen = HashSet::new();
-    let mut heard: Vec<&Message> = phrase
-        .iter()
-        .chain(&tagged)
-        .filter(|message| judged.is_new(message) && seen.insert(message.key()))
-        .collect();
-    heard.sort_by_key(|message| micros(&message.ts));
-    for message in heard {
-        // The reader's own alert quotes others as Joel, so it's no saying.
-        if message.author == me && phone::is_alert(&message.text) {
-            judged.judged(message);
-            continue;
-        }
-        judge(ears, reader, account, state, &joel, message);
-        judged.judged(message);
-    }
+    let heard = phrase.iter().chain(&tagged).chain(&partly);
+    judge_each(ears, reader, account, state, &joel, judged, heard);
     // Only a search whose messages were all judged has read as far as
     // they reach; one deaf gave none, so stays where it was.
     judged.reached(PHRASE, phrase.last());
@@ -129,7 +140,39 @@ pub(super) fn round(
     deaf.map_or(Round::Heard, |search| Round::Deaf(Deafness::Unread(search)))
 }
 
-/// One message judged where it was said, and written down.
+/// Each new message `heard` judged once, in the order they were said, and
+/// kept as judged.
+fn judge_each<'a>(
+    ears: &mut dyn Ears,
+    reader: &Reader,
+    account: Option<&Account>,
+    state: &Path,
+    joel: &Joel,
+    judged: &mut Judged,
+    heard: impl Iterator<Item = &'a Message>,
+) {
+    let mut seen = HashSet::new();
+    let mut heard: Vec<&Message> = heard
+        .filter(|message| judged.is_new(message) && seen.insert(message.key()))
+        .collect();
+    heard.sort_by_key(|message| micros(&message.ts));
+    for message in heard {
+        if !alert(joel, message) {
+            judge(ears, reader, account, state, joel, message, true);
+        }
+        judged.judged(message);
+    }
+}
+
+/// Whether `message` is the reader's own alert, which quotes others as
+/// Joel, so is no saying.
+fn alert(joel: &Joel, message: &Message) -> bool {
+    joel.slack_ids.contains(&message.author) && phone::is_alert(&message.text)
+}
+
+/// One message judged where it was said, and written down; not `agreed`
+/// with by a second ask, it could be typed, so only a stop it says is
+/// kept, with nothing written, answered or resumed.
 fn judge(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -137,6 +180,7 @@ fn judge(
     state: &Path,
     joel: &Joel,
     message: &Message,
+    agreed: bool,
 ) {
     let context = message
         .thread
@@ -187,10 +231,10 @@ fn judge(
     };
     let gated = gate(&asked, &sent, read_at, replies_off(state));
     let line = record::line(&source, &decision, gated, now, reader.shadow);
-    if let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
+    if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
         eprintln!("<3>couldn't write a decision down: {error}");
     }
-    if gated.goes() {
+    if agreed && gated.goes() {
         let named: Vec<String> = decision.reaches.iter().map(ToString::to_string).collect();
         let post = reply::post(message, decision.reply, &named, &reader.words);
         if answer(reader, account, message, post.as_ref()) {
@@ -208,14 +252,19 @@ fn judge(
     }
     if decision.stops() {
         let stop = record::stop(&source, &decision, now, reader.shadow);
+        let shadow = if reader.shadow { ", in shadow" } else { "" };
+        let unagreed = if agreed {
+            ""
+        } else {
+            ", in an answer no second ask agreed with"
+        };
         match record::keep(&state.join("stops"), &key, &stop) {
-            Ok(true) if reader.shadow => eprintln!("<5>a stop, in shadow: {}", message.link),
-            Ok(true) => eprintln!("<5>a stop: {}", message.link),
+            Ok(true) => eprintln!("<5>a stop{shadow}{unagreed}: {}", message.link),
             Ok(false) => {}
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
         }
     }
-    if decision.verdict == Verdict::Resume && decision.by_joel {
+    if agreed && decision.verdict == Verdict::Resume && decision.by_joel {
         let said = micros(&message.ts).unwrap_or(0);
         resume_as_joel(
             &state.join("stops"),

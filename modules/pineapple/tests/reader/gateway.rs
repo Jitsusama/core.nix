@@ -25,6 +25,7 @@ use super::{
 
 mod cut;
 mod pages;
+mod unread;
 
 /// Where the reader over a gateway keeps all it writes, under its home.
 const OWN: &str = "state/pineapple-gateway";

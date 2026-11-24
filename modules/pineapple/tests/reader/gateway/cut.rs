@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use serde_json::{Value, json};
 
-use super::{JOEL, THREAD, Until, each, hearing, hearing_in, poisoned, said};
+use super::{JOEL, THREAD, Until, each, hearing, poisoned, said};
 
 /// The phrase's search, finding nothing.
 pub(super) fn nothing() -> String {
@@ -54,7 +54,7 @@ pub(super) fn tags_answer(counted: usize, given: &[(u64, &str)]) -> String {
 }
 
 /// Result `at` of `counted`, said at a second by `author`, saying `text`.
-fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> String {
+pub(super) fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> String {
     format!(
         "### Result {at} of {counted}\nChannel: #team (ID: C0ONE00001)\n\
          From: Someone <someone@example.com> (ID: {author}) \n\
@@ -202,67 +202,6 @@ fn a_search_cut_again_when_asked_for_as_many_as_it_gave_is_asked_again() {
 }
 
 #[test]
-fn a_search_cut_each_time_it_is_asked_again_is_asked_four_times_then_told() {
-    let came = hearing(
-        |tool, asked, now| {
-            if tool != "slack_search_public_and_private" {
-                return said(tool, now);
-            }
-            if asked["query"] == "pineapple" {
-                return nothing();
-            }
-            // Thirty words it finds, always cut to one fewer than asked
-            // for.
-            let found: Vec<(u64, &str)> = (0..30).map(|at| (now - 60 - at, "a word")).collect();
-            let limit = asked["limit"]
-                .as_u64()
-                .and_then(|limit| usize::try_from(limit).ok())
-                .unwrap_or(20);
-            tags(asked, &found, limit - 1)
-        },
-        &Until {
-            judging: 0,
-            asks: 12,
-            read_at: None,
-        },
-    );
-    let tag = json!(format!("<@{JOEL}>"));
-    let limits: Vec<&Value> = came
-        .limits
-        .iter()
-        .filter(|(query, _)| *query == tag)
-        .map(|(_, limit)| limit)
-        .take(6)
-        .collect();
-    assert_eq!(
-        limits,
-        [
-            &json!(20),
-            &json!(19),
-            &json!(18),
-            &json!(17),
-            &json!(16),
-            &json!(20)
-        ],
-        "it asks again for as many as each answer gave four times, then no more that round"
-    );
-    assert!(
-        came.journal.contains(
-            "cut to 19, then 18, then 17, then 16 of 20, then asked for 16, still cut after \
-             asking again 4 times, it counts 16 messages and gives the first 15"
-        ),
-        "the journal says it's still cut once it's asked again as often as it may: {}",
-        came.journal
-    );
-    assert!(
-        came.why
-            .contains("search of Slack for your tag can't be read"),
-        "so the search is told: {}",
-        came.why
-    );
-}
-
-#[test]
 fn a_search_cut_short_is_read_when_it_reaches_back_before_anything_judged() {
     let came = hearing(
         |tool, asked, now| {
@@ -317,7 +256,7 @@ fn a_search_cut_short_is_read_when_it_reaches_back_before_anything_judged() {
 /// minutes back; then cut to three, newest first as a search sorted by
 /// when they were said gives them, the oldest of them that newest, so
 /// one Slack found late in the minute before is cut.
-fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
+pub(super) fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
     let stop = stop();
     read_then_cut(
         rounds,
@@ -363,9 +302,12 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
                 a_gap(&TAGS, asked, now)
             }
         },
+        // A round is three searches, then seven once there's a gap: five
+        // rounds and the next's first, past the read on, as what the gap
+        // gave is judged before it.
         &Until {
             judging: 4,
-            asks: 0,
+            asks: 32,
             read_at: None,
         },
     );
@@ -390,88 +332,7 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
     assert_eq!(
         each(&came.said, "verdict"),
         ["nothing", "nothing", "nothing", "stop"],
-        "and the stop it reads on to is judged, not left deaf for good"
-    );
-}
-
-#[test]
-fn a_gap_whose_row_cant_be_written_is_never_read_on() {
-    static TAGS: AtomicUsize = AtomicUsize::new(0);
-    let came = hearing_in(
-        |tool, asked, now| {
-            if tool != "slack_search_public_and_private" {
-                said(tool, now)
-            } else if asked["query"] == "pineapple" {
-                nothing()
-            } else {
-                a_gap(&TAGS, asked, now)
-            }
-        },
-        // A round is three searches, then seven once there's a gap, so
-        // this is five rounds, past the two that would tell Joel.
-        &Until {
-            judging: 2,
-            asks: 31,
-            read_at: None,
-        },
-        // A folder where the row would go, so it can't be written.
-        |own| std::fs::create_dir_all(own.join("waiting.json")).expect("in its way"),
-    );
-    assert!(
-        came.journal
-            .contains("couldn't tell Joel in For You whether Slack is heard")
-            && !came.journal.contains("reads on"),
-        "a row that can't be written tells Joel nothing, so the gap is never read on: {}",
-        came.journal
-    );
-    assert_eq!(
-        each(&came.said, "verdict"),
-        ["nothing", "nothing"],
-        "only the two words read whole are judged, as the gap stays deaf"
-    );
-}
-
-#[test]
-fn a_gap_beside_a_search_that_cant_be_read_is_read_on_under_the_row_for_both() {
-    static TAGS: AtomicUsize = AtomicUsize::new(0);
-    let came = hearing(
-        |tool, asked, now| {
-            if tool != "slack_search_public_and_private" {
-                said(tool, now)
-            } else if asked["query"] == "pineapple" {
-                poisoned()
-            } else {
-                a_gap(&TAGS, asked, now)
-            }
-        },
-        &Until {
-            judging: 4,
-            asks: 0,
-            read_at: None,
-        },
-    );
-    let both = ": Slack's answers to the safe word can't be read";
-    let told = came
-        .journal
-        .match_indices("<5>wrote Joel's row in ")
-        .map(|(at, _)| at)
-        .find(|at| {
-            came.journal[*at..]
-                .lines()
-                .next()
-                .is_some_and(|line| line.contains(both))
-        });
-    let (_, read_on) = told_and_read_on(&came.journal);
-    assert!(
-        told.is_some() && read_on > told,
-        "both searches deaf, the row says Slack can't be read, which names the tag's search \
-         too, so its gap is read on only after it: {}",
-        came.journal
-    );
-    assert_eq!(
-        each(&came.said, "verdict"),
-        ["nothing", "nothing", "nothing", "stop"],
-        "and the stop it reads on to is judged"
+        "and the stop the gap gave is judged, as an ask for one fewer agreed with it"
     );
 }
 
@@ -492,9 +353,11 @@ fn a_gap_beside_a_round_the_other_search_went_unasked_in_waits_for_the_row() {
                 nothing()
             }
         },
+        // A round is three searches, then seven once there's a gap: five
+        // rounds and the next's first, past the read on.
         &Until {
             judging: 4,
-            asks: 0,
+            asks: 32,
             read_at: None,
         },
     );

@@ -88,6 +88,17 @@ pub fn found(results: &str) -> Result<Vec<Message>, String> {
     Ok(found)
 }
 
+/// The messages an answer gives, oldest first, whether or not it gives all
+/// it counts; none when it can't be read otherwise. Past the first, any
+/// could be typed where the gateway cut the real ones, so they're only
+/// ever read for a stop, which may come from anyone.
+#[must_use]
+pub fn given(results: &str) -> Vec<Message> {
+    listed(results)
+        .map(|(_, found, _)| found)
+        .unwrap_or_default()
+}
+
 /// How many results an answer cut short gives: some, fewer than it counts,
 /// each numbered in turn from the first. None for an answer whole, empty
 /// or unreadable otherwise.

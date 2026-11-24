@@ -175,7 +175,7 @@ fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
             }
         },
         &Until {
-            judging: 5,
+            judging: 6,
             asks: 0,
             read_at: None,
         },
@@ -192,9 +192,11 @@ fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
     );
     assert_eq!(
         each(&came.said, "verdict"),
-        ["nothing", "nothing", "nothing", "nothing", "stop"],
-        "read on, only the first page is judged, never what the page that doesn't meet it \
-         gave: {}",
+        [
+            "nothing", "nothing", "nothing", "nothing", "nothing", "stop"
+        ],
+        "what both pages gave was agreed, so each is judged while the span between them is \
+         unread, the one Slack found late among them: {}",
         came.journal
     );
 }
@@ -223,9 +225,12 @@ fn a_page_that_cant_be_read_or_goes_unanswered_is_a_gap_read_on_once_told() {
                 in_pages(&TAGS, asked, began, &paged(began, &stop), 3, true)
             }
         },
+        // A round is three searches, then five once there's a gap: four
+        // rounds and the next's first, past the read on, as what the
+        // first page gave is judged before it.
         &Until {
             judging: 5,
-            asks: 0,
+            asks: 19,
             read_at: None,
         },
     );
@@ -333,9 +338,12 @@ fn five_pages_short_of_the_last_read_are_a_gap_told_then_read_on() {
                 .collect();
             in_pages(&TAGS, asked, began, &flood, 2, true)
         },
+        // A round is three searches, then sixteen once there's a gap:
+        // four rounds and the next's first, past the read on, as what the
+        // pages gave is judged before it.
         &Until {
             judging: 8,
-            asks: 0,
+            asks: 52,
             read_at: None,
         },
     );
