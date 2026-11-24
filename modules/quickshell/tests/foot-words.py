@@ -40,6 +40,12 @@ def whys(source: str) -> set[str]:
     return found
 
 
+def unread(source: str) -> list[str]:
+    """Give each call's why that names no word of its own, so can't be read."""
+    del source
+    return []
+
+
 def keys(source: str) -> set[str]:
     """Give each key the launcher's elsewhere is asked for by name, its first argument's."""
     found: set[str] = set()
@@ -72,6 +78,15 @@ def refuses_what_it_should() -> list[str]:
         let_through.append("a why given as a choice of two")
     if whys("signal unhosted(var session, string why)"):
         let_through.append("the signal's own declaration")
+    wrapped = 'root.unhosted(footed,\n    hostly ? "unviewable" : "unviewableHost");'
+    if whys(wrapped) != {"unviewable", "unviewableHost"}:
+        let_through.append("a why wrapped onto the call's next line")
+    if whys('unhosted(said, "unviewable-host");') != {"unviewable-host"}:
+        let_through.append("a why that isn't letters alone")
+    if whys('unhosted({ address: quest, machine: "" }, "hostless");') != {"hostless"}:
+        let_through.append("a why after a first argument holding a comma")
+    if unread("unhosted(said, why);") != ["why"]:
+        let_through.append("a why held in a name, which can't be read")
     if keys('provider.elsewhere("unopened", session), Theme.alert]]);') != {"unopened"}:
         let_through.append("a key the launcher names")
     vocabulary = {"things": [{"id": "agents:machine", "said": {"hosted": "x", "opening": ""}}]}
