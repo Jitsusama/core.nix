@@ -1434,10 +1434,14 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
-        # Its link to the Launcher names that machine too, never the basin.
+        # Its links to the Launcher name that machine too, never the basin.
         expect(
-            body.locator('a[href^="mycelium:cell/"]'), "the cell's link lost its machine"
+            body.locator('a[href^="mycelium:cell/"]:not([data-go-to])'),
+            "the cell's link lost its machine",
         ).to_have_attribute("href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}")
+        expect(body.locator("a[data-go-to]"), "its Go to It lost its machine").to_have_attribute(
+            "href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}/go"
+        )
         # Now counts every machine, a basin's each its own, not each mark.
         page.locator("#now-control").click()
         expect(title, "Now never opened").to_have_text("Now")
