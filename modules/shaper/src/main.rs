@@ -2024,14 +2024,7 @@ impl NetworkCeilings {
     fn of(options: &Options) -> Self {
         let file = options.networks.as_deref();
         let houses = file.map(networks::houses).unwrap_or_default();
-        let from = || {
-            house::Ear::start(
-                houses
-                    .values()
-                    .flat_map(|h| h.from.iter().copied())
-                    .collect(),
-            )
-        };
+        let from = || house::Ear::start(house::reporters(&houses));
         Self {
             written: file.map(networks::ceilings).unwrap_or_default(),
             ear: (!houses.is_empty()).then(from),
@@ -2093,9 +2086,10 @@ fn house_traced(line: &mut trace::Line, network: Option<&str>, house: &HouseHold
 
 /// What each network's house holds its links to at `now`: none where the
 /// other machine hasn't said lately what it sends, or none is heard, and
-/// never under the least a trial may set, where a call still fits. The
-/// address alone says a report is the other machine's, so this bounds what
-/// one forged on the line can do to what a trial may.
+/// never under the least a trial may set, where a call still fits. Where
+/// a house names no key, the address alone says a report is the other
+/// machine's, so this bounds what one forged on the line can do to what a
+/// trial may.
 fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant) -> HouseHolds {
     let Some(ear) = ear else {
         return HouseHolds::new();
@@ -2109,9 +2103,9 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
             // the most holds, so a report forged from an address the other
             // machine isn't sending by can only tighten the hold, and a
             // move's old address stands only until its last word is stale.
-            // One forged from the address it is sending by replaces that
-            // address's word, so it can still loosen the hold until reports
-            // are signed.
+            // Where the house names no key, one forged from the address it
+            // is sending by replaces that address's word, so it can still
+            // loosen the hold; under a key, only a signed one is taken.
             let sent = h
                 .from
                 .iter()
@@ -3587,6 +3581,7 @@ mod tests {
             networks::House {
                 most: 7_000,
                 from: vec![mac],
+                key: None,
             },
         )]);
         let at = Instant::now();
@@ -3668,6 +3663,7 @@ mod tests {
             networks::House {
                 most: 7_000,
                 from: vec![wifi, cable],
+                key: None,
             },
         )]);
         let ear = house::Ear::default();

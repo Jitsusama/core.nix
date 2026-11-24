@@ -1680,6 +1680,14 @@
     kind's first claim, passes a page that links none of a pattern's things, fails with no row home
     to anything, and reads a shortened name's tail as no mention
   '';
+  house-report-hands-a-mac-its-key-safely = ''
+    a Mac given a key runs house-report signing with activation's copy of it, readable by nobody's
+    account alone in a folder of root's, ahead of the address; activation copies the key only once
+    every folder on its real path is root's and written by no other account, by its mode or an
+    access list, reading it in that real folder as a plain file, through a name of each run's own,
+    and changes no file's owner or mode nor installs any other; and the build refuses a Mac's key
+    outside /etc, /private/etc or /var/root, or spelled through dots
+  '';
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started
     again when it ends but not after its usage exit, and is told only an address as the shaper's
@@ -1701,6 +1709,15 @@
     uplink that moves counts on from the new one's count, the way reports go is said first and
     each time its interface or address moves, this machine's own address is sent to by its
     loopback from a loopback address, and an interface's count is read from its statistics alone
+  '';
+  house-report-takes-up-a-macs-swapped-key = ''
+    a Mac given a key copies it again, as root, by the same text activation runs, whenever the key
+    or its folder changes, so a key swapped while the Mac runs is taken without a switch
+  '';
+  house-report-takes-up-a-swapped-key = ''
+    a Linux machine given a key hands it to house-report as a credential read by --key, and
+    restarts it whenever the key file changes, leaving one someone stopped stopped, with no start
+    limit on either unit, so a key written in several steps never leaves the reporter down
   '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
@@ -3798,6 +3815,12 @@
     opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
     IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried, and a
     list to one address at least
+  '';
+  shaper-refuses-a-house-key-it-can-t-read = ''
+    a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
+    or spelled through doubled slashes or dot folders, is refused as the machine builds, and so are
+    two houses naming one address under two keys, while a key under /var/lib, and a keyed house
+    beside a keyless one naming the same address, are taken
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
@@ -6619,8 +6642,10 @@
     sending 3 Mbit/s across the home network, the shaper hears it through its firewall, its
     reports read 2.4 to 3.6 Mbit/s, and it holds its own upload under what the house's 8 Mbit/s
     leaves, never under 4, and says so; once the reporter's route moves to another address the
-    house names, the reporter says so, the shaper hears the new address and the hold stands; once
-    the reports stop it says the house went quiet and the upload climbs past the hold
+    house names, the reporter says so, the shaper hears the new address and the hold stands; the
+    reports are signed, and ones signed under another key are refused and hold nothing; a key
+    swapped on both machines is taken up and the hold stands again; once the reports stop it says
+    the house went quiet and the upload climbs past the hold
   '';
   vm-the-cores-stay-out-of-deep-rest = ''
     a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit
