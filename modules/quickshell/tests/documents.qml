@@ -303,9 +303,9 @@ ShellRoot {
             // answer still to come let go.
             link.wire = { write: line => {}, flush: () => {} };
             borrower.typedIn(move, "lunch");
-            const inside = `find-${link.asked}`;
+            const typedAsk = `find-${link.asked}`;
             borrower.ended();
-            link.awaited[inside]({ id: inside, keys: [], rows: {} });
+            link.awaited[typedAsk]({ id: typedAsk, keys: [], rows: {} });
             Expect.expect("ended, an answer to what was typed inside a row is let go",
                 borrower.typing.words === null && borrower.typedAsking === "",
                 JSON.stringify([borrower.typing.words, borrower.typedAsking]));
