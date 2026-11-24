@@ -78,7 +78,7 @@ function viewersDue(kept, sessions, now, screen) {
             const asked = place.asked === true;
             const stale = asked && !(now - place.at <= ASKED_FOR);
             const woke = stale ? { kept: null, into: null }
-                : sleeperDue(place, sleeper, now, workspaces ?? {}, listed);
+                : sleeperDue(place, sleeper, now, { workspaces: workspaces ?? {}, listed });
             if (woke.into !== null && asked && (sleeper.held || viewable)) {
                 open.push({ session: sleeper, into: woke.into });
             } else if (woke.into !== null && asked) {
@@ -144,8 +144,10 @@ function viewersDue(kept, sessions, now, screen) {
 // still open as its place is kept just before it closes, or gone before
 // the host has parked it, and lapses as any place does; once seen it's
 // kept however long it sleeps. One whose viewer is open again, by Go To
-// or by waking, is let go.
-function sleeperDue(place, session, now, workspaces, listed) {
+// or by waking, is let go. `screen` holds niri's `workspaces` and
+// `listed`, whether a window is open, as viewersDue's.
+function sleeperDue(place, session, now, screen) {
+    const { workspaces, listed } = screen;
     const kept = { kept: place, into: null };
     if (session === undefined) {
         return place.asleep === true || now - place.at <= KEPT_FOR ? kept
