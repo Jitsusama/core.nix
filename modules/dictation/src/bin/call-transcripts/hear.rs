@@ -263,7 +263,12 @@ pub fn hear(
                     continue;
                 };
                 let heard = transcribe_take(parakeet, start, &samples);
-                let ((text, words), _) = heard_or_left_out(heard, &mut told, &key);
+                let ((text, words), tell) = heard_or_left_out(heard, &mut told, &key);
+                if let Some(why) = tell {
+                    let title = title_of(book, &key);
+                    let why = format!("The speech model failed on a take: {why}");
+                    notices::show(&notices::not_all_heard(&title, &why), |_| {});
+                }
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -363,12 +368,14 @@ fn heard_or_left_out(
     told: &mut HashSet<String>,
     key: &str,
 ) -> ((Option<String>, Vec<Word>), Option<String>) {
-    let _ = (told, key);
-    let kept = heard.unwrap_or_else(|why| {
-        eprintln!("call-transcripts: a take wasn't heard: {why}");
-        (None, Vec::new())
-    });
-    (kept, None)
+    match heard {
+        Ok(kept) => (kept, None),
+        Err(why) => {
+            eprintln!("call-transcripts: a take wasn't heard: {why}");
+            let tell = told.insert(key.to_owned()).then_some(why);
+            ((None, Vec::new()), tell)
+        }
+    }
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,

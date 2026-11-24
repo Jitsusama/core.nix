@@ -92,6 +92,17 @@ pub fn not_transcribed(title: &str, why: &str) -> Notice {
     }
 }
 
+/// The notice when a take of a call that's on couldn't be heard, so its
+/// transcript, left without it, isn't taken for whole.
+pub fn not_all_heard(title: &str, why: &str) -> Notice {
+    Notice {
+        heading: format!("Part of {} Wasn't Heard", named(title, false)),
+        body: why.to_owned(),
+        acts: vec![("forget", "Forget")],
+        quiet: true,
+    }
+}
+
 /// The notice when a call written down couldn't be summed up: Try Again
 /// first when the cause can pass, such as a busy NPU or a full disk.
 pub fn not_summed_up(title: &str, why: &str, can_pass: bool) -> Notice {
@@ -385,6 +396,10 @@ mod tests {
         assert_eq!(
             not_transcribed("", "x").heading,
             "The Call Couldn't Be Transcribed"
+        );
+        assert_eq!(
+            not_all_heard("", "x").heading,
+            "Part of the Call Wasn't Heard"
         );
     }
 
