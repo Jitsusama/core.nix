@@ -1754,4 +1754,39 @@ in
         && pinnedOn bareDarwin self.darwinModules.workstation
         && keys bareNixos self.nixosModules.workstation { } == [ ]
       );
+
+  # The words a link key is pinned to, read from the line a machine's system
+  # writes rather than typed again, are ones the locked mycelium takes, so a
+  # renamed action or flag fails here rather than at the first link or
+  # attach. clap reads every word before the help, so one it doesn't take
+  # ends it with an error. The words alone, as the node's flags are, so a
+  # Mac's check never builds the Linux package the line names. It proves the
+  # words parse, not what the action does with them.
+  mycelium-takes-its-link-key-s-words =
+    let
+      line = lib.head (
+        (bareNixos [
+          self.nixosModules.workstation
+          {
+            jitsusama.mycelium = {
+              account = "someone";
+              linkedFrom.personal.one = "ecdsa-sha2-nistp256 AAAAone";
+            };
+          }
+        ]).config.users.users.someone.openssh.authorizedKeys.keys
+      );
+      pinned = builtins.match ''.*command="[^ "]*/bin/mycelium ([^"]*)".*'' (
+        builtins.unsafeDiscardStringContext line
+      );
+      words = lib.filter (word: word != "") (lib.splitString " " (lib.head pinned));
+      locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      mycelium = lib.getExe (locked.overrideAttrs { doCheck = false; });
+    in
+    assert lib.assertMsg (pinned != null) "no link key line pins mycelium: ${line}";
+    pkgs.runCommandLocal "mycelium-takes-its-link-key-s-words" { } ''
+      ${mycelium} ${lib.escapeShellArgs words} --help > help 2> refused \
+        || { echo "mycelium doesn't take its link key's words:" ${lib.escapeShellArgs words}; \
+          cat refused; exit 1; }
+      touch $out
+    '';
 }

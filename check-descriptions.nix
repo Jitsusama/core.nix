@@ -2328,6 +2328,11 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
+  mycelium-takes-its-link-key-s-words = ''
+    the words a link key pins mycelium to, read from the line a machine's system writes, are ones
+    the locked mycelium takes, so a renamed action or flag fails the check rather than the first
+    link or attach
+  '';
   mycelium-map-check-answers-soon = ''
     mycelium-map-check says what its last reading found and when, with the day if not today, then
     that it's looking again, before a stand-in for its browser test opens; it keeps each answer
