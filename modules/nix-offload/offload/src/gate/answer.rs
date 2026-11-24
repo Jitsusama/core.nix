@@ -11,7 +11,8 @@
 //! checked, refused unless each commit it needs is on that main and the
 //! commit descends from it (`fence.rs` runs each git). Only then does
 //! `there --changed` run, through `outside`, on the exemption's terms,
-//! kept to the lent builders, so its pass is kept where a merge reads it.
+//! kept to the lent builders, so its pass is kept where a merge reads it;
+//! or `there` builds the checks the request names, each plain, there.
 //!
 //! It runs as the person, outside the agent fence, so it trusts nothing
 //! in the quest's scratch by its path: the gate's folder is held open
@@ -38,7 +39,9 @@ use terminal_kit::{Exit, Failure};
 
 use super::fence::{Fence, Net};
 use super::folder::GateFolder;
-use super::{BUNDLE, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESULT, Repo, Request};
+use super::{
+    BUNDLE, Checks, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESULT, Repo, Request,
+};
 
 /// How many gates run at once.
 const AT_ONCE: usize = 2;
@@ -244,7 +247,8 @@ fn held(places: &Places, commit: &str) -> Result<(Held, Held), Refusal> {
 }
 
 /// The gate of `request`, read once from `gate`, to the run's exit, the
-/// run given the checked clone and its log; or why it ran none.
+/// run given the checked clone, its log and what the request runs; or
+/// why it ran none.
 ///
 /// # Errors
 ///
@@ -255,7 +259,7 @@ pub fn gated(
     gate: &GateFolder,
     request: &Request,
     (quest, commit): (&str, &str),
-    run: &mut dyn FnMut(&Path, &Path) -> Result<u8, String>,
+    run: &mut dyn FnMut(&Path, &Path, &Checks) -> Result<u8, String>,
 ) -> Result<u8, Refusal> {
     if request.commit != commit || request.quest != quest {
         return Err(refused(
@@ -352,7 +356,7 @@ pub fn gated(
     )
     .map_err(|_| refused("the commit doesn't descend from the forge's main"))?;
     git(Net::None, &["checkout", "--quiet", "--detach", commit]).map_err(refused)?;
-    run(&tree, &work.join(LOG)).map_err(unreached)
+    run(&tree, &work.join(LOG), &request.checks).map_err(unreached)
 }
 
 /// A gate's clone and bundle, taken away however its run ends: a clone
@@ -458,9 +462,23 @@ fn cloned(
     Ok(())
 }
 
-/// The run of `there --changed` in the checked clone, through `outside`,
-/// what it says going to `log`.
-fn changed_checks(tree: &Path, log: &Path) -> Result<u8, String> {
+/// The `there` words that run `checks`: `--changed`, or each check named,
+/// every one built however another fails, so the log says each.
+fn there_words(checks: &Checks) -> Vec<String> {
+    let mut words: Vec<String> = ["there", "--never-ask"].map(str::to_owned).to_vec();
+    match checks {
+        Checks::Changed => words.push("--changed".to_owned()),
+        Checks::Named(attributes) => {
+            words.extend(["--keep-going", "."].map(str::to_owned));
+            words.extend(attributes.iter().cloned());
+        }
+    }
+    words
+}
+
+/// The run of `checks` in the checked clone, through `outside`, what it
+/// says going to `log`.
+fn checks_run(tree: &Path, log: &Path, checks: &Checks) -> Result<u8, String> {
     let program =
         std::env::current_exe().map_err(|error| format!("this program's path: {error}"))?;
     let said = unlinked()
@@ -476,7 +494,8 @@ fn changed_checks(tree: &Path, log: &Path) -> Result<u8, String> {
         .arg(&git_dir)
         .arg("--work-tree")
         .arg(&work_tree)
-        .args(["--lent-only", "--", "there", "--never-ask", "--changed"])
+        .args(["--lent-only", "--"])
+        .args(there_words(checks))
         .stdin(Stdio::null())
         .stdout(said)
         .stderr(also)
@@ -531,11 +550,23 @@ fn trusted_work(places: &Places, commit: &str) -> bool {
         && owned(&work).is_ok()
 }
 
-/// What a run's exit says, in a sentence.
-fn said_of(exit: u8) -> String {
-    match exit {
-        0 => "the commit's changed checks passed, and the pass is kept for a merge".to_owned(),
-        code => format!("the commit's changed checks failed, exiting {code}; the log says which"),
+/// What a run of `checks` exiting `exit` says, in a sentence.
+fn said_of(exit: u8, checks: &Checks) -> String {
+    match (exit, checks) {
+        (0, Checks::Changed) => {
+            "the commit's changed checks passed, and the pass is kept for a merge".to_owned()
+        }
+        (code, Checks::Changed) => {
+            format!("the commit's changed checks failed, exiting {code}; the log says which")
+        }
+        (0, Checks::Named(attributes)) => format!(
+            "the {} checks named passed at the commit, each pass kept but standing for no gate",
+            attributes.len()
+        ),
+        (code, Checks::Named(attributes)) => format!(
+            "of the {} checks named, at least one failed, exiting {code}; the log says which",
+            attributes.len()
+        ),
     }
 }
 
@@ -579,15 +610,15 @@ pub fn answer(arguments: &[String], state: &Path) -> Result<(), Failure> {
         }
     };
     let request = super::read_request(&gate);
-    let mut ran = |tree: &Path, log: &Path| changed_checks(tree, log);
+    let mut ran = checks_run;
     let gone = request
         .as_ref()
         .map_err(|why| refused(why.clone()))
-        .and_then(|request| gated(&fence, &places, &gate, request, (quest, commit), &mut ran));
-    let (exit, said) = match gone {
-        Ok(exit) => (exit, said_of(exit)),
-        Err((exit, why)) => (exit, why),
-    };
+        .and_then(|request| {
+            gated(&fence, &places, &gate, request, (quest, commit), &mut ran)
+                .map(|exit| (exit, said_of(exit, &request.checks)))
+        });
+    let (exit, said) = gone.unwrap_or_else(|refusal| refusal);
     let request = request.ok();
     if trusted_work(&places, commit) {
         carried_log(&places.work(commit).join(LOG), &gate);

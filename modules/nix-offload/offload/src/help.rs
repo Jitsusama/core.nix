@@ -209,9 +209,17 @@ fn ask() -> Help {
         "ask",
         "asks the machine that gates for the gate of this tree's commit, ending as the gate did",
     )
+    .argument(
+        "[-- CHECK...]",
+        "checks to build there instead, each checks.x86_64-linux.NAME, at most 64",
+    )
     .example(
         "nix-offload ask --quest QEST-20261112-0TUD09",
         "gates this commit for a quest",
+    )
+    .example(
+        "nix-offload ask --quest QEST-20261112-0TUD09 -- checks.x86_64-linux.formatting",
+        "builds a Linux check at this commit, a pass standing for no gate",
     )
     .example(
         "nix-offload ask --quest QEST-20261112-0TUD09 --session SK1FF0 --on kestrel",

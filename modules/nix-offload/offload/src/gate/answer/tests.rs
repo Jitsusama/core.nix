@@ -75,6 +75,12 @@ impl Forge {
     /// A gate's folder for `commit` of `repo`, with `bundle` and a
     /// request.
     fn gate_of(&self, repo: &str, commit: &str, bundle: &[u8]) -> GateFolder {
+        self.gate_asking(repo, commit, bundle, Checks::Changed)
+    }
+
+    /// A gate's folder for `commit` of `repo`, with `bundle` and a
+    /// request for `checks`.
+    fn gate_asking(&self, repo: &str, commit: &str, bundle: &[u8], checks: Checks) -> GateFolder {
         let scratch = self.root.path().join("scratch");
         let gate = scratch.join(QUEST).join(super::super::GATES).join(commit);
         fs::create_dir_all(&gate).expect("the gate's folder");
@@ -82,6 +88,7 @@ impl Forge {
         let request = Request {
             repo: Repo::parse(repo).expect("a repo"),
             commit: commit.to_owned(),
+            checks,
             quest: QUEST.to_owned(),
             session: None,
         };
@@ -119,12 +126,25 @@ impl Forge {
 
     /// The gate run with a run that says what it ran and passes.
     fn gated(&self, gate: &GateFolder, commit: &str) -> Result<String, Refusal> {
+        self.gated_running(gate, commit)
+            .map(|(checked_out, _)| checked_out)
+    }
+
+    /// The gate run with a run that passes, saying the commit it ran at
+    /// and the checks it was given.
+    fn gated_running(
+        &self,
+        gate: &GateFolder,
+        commit: &str,
+    ) -> Result<(String, Option<Checks>), Refusal> {
         let git_program = super::super::fence::on_path("git").expect("git is on the PATH");
         let fence = Fence::Bare { git: git_program };
         let request = super::super::read_request(gate).map_err(refused)?;
         let mut checked_out = String::new();
-        let mut run = |tree: &Path, _: &Path| {
+        let mut given = None;
+        let mut run = |tree: &Path, _: &Path, checks: &Checks| {
             checked_out = git(tree, &["rev-parse", "HEAD"]);
+            given = Some(checks.clone());
             Ok(0)
         };
         gated(
@@ -135,7 +155,7 @@ impl Forge {
             (QUEST, commit),
             &mut run,
         )
-        .map(|_| checked_out)
+        .map(|_| (checked_out, given))
     }
 }
 
@@ -150,6 +170,56 @@ fn a_bundle_of_commits_past_main_is_checked_out_and_run() {
         forge.gated(&gate, &head),
         Ok(head),
         "the commit asked for should be the one run"
+    );
+}
+
+#[test]
+fn the_checks_a_request_names_are_built_at_its_commit() {
+    let forge = Forge::new();
+    let head = committed(&forge.tree(), "three");
+    let named = Checks::Named(vec![
+        "checks.x86_64-linux.formatting".to_owned(),
+        "checks.x86_64-linux.stands-alone".to_owned(),
+    ]);
+    let gate = forge.gate_asking(
+        "github:kestrel/osprey",
+        &head,
+        &forge.bundle("origin/main..HEAD"),
+        named.clone(),
+    );
+    assert_eq!(
+        forge.gated_running(&gate, &head),
+        Ok((head, Some(named))),
+        "the run should be given the checks named, at the commit asked for"
+    );
+}
+
+#[test]
+fn the_checks_named_are_built_by_name_and_each_one_however_another_fails() {
+    let named = Checks::Named(vec![
+        "checks.x86_64-linux.formatting".to_owned(),
+        "checks.x86_64-linux.stands-alone".to_owned(),
+    ]);
+    assert_eq!(
+        there_words(&named),
+        [
+            "there",
+            "--never-ask",
+            "--keep-going",
+            ".",
+            "checks.x86_64-linux.formatting",
+            "checks.x86_64-linux.stands-alone",
+        ],
+        "named checks should be built by name from the tree, each one"
+    );
+    assert_eq!(
+        there_words(&Checks::Changed),
+        ["there", "--never-ask", "--changed"],
+        "a gate should run the changed checks as it always has"
+    );
+    assert!(
+        said_of(0, &named).contains("standing for no gate"),
+        "a named pass should say it stands for no gate"
     );
 }
 

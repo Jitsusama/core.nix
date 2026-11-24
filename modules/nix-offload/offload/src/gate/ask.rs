@@ -1,7 +1,12 @@
 //! `nix-offload ask --quest QUEST [--session ADDRESS] [--on MACHINE]
-//! [--longest SECONDS]`: asks the machine that gates to run `there
-//! --changed` for this tree's commit, from a machine with no way to the
-//! builders, and says what it found.
+//! [--longest SECONDS] [-- CHECK...]`: asks the machine that gates to run
+//! `there --changed` for this tree's commit, or to build the checks named
+//! after `--`, each `checks.x86_64-linux.NAME`, from a machine with no way
+//! to the builders, and says what it found.
+//!
+//! One ask at a time is answered for a commit: a second ask of the same
+//! commit replaces the first's folder, and its gate waits for the first's
+//! to end.
 //!
 //! It leaves the commits since origin's main as a bundle, and the request,
 //! in the quest's scratch `handover/gates/<commit>/`, shares the quest so
@@ -18,7 +23,9 @@ use std::time::{Duration, Instant};
 
 use terminal_kit::{Exit, Failure};
 
-use super::{BUNDLE, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESULT, Repo, Request};
+use super::{
+    BUNDLE, Checks, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESULT, Repo, Request,
+};
 
 /// How long `ask` waits for a result unless told: a gate's run is an
 /// evaluation of each side and the builds, which took up to an hour under
@@ -48,13 +55,20 @@ struct Asked {
     session: Option<String>,
     on: Option<String>,
     longest: Duration,
+    checks: Checks,
 }
 
 /// Reads `ask`'s arguments, or says what's wrong with them.
 fn asked(arguments: &[String]) -> Result<Asked, String> {
     let (mut quest, mut session, mut on, mut longest) = (None, None, None, LONGEST);
+    let mut checks = Checks::Changed;
     let mut words = arguments.iter();
     while let Some(word) = words.next() {
+        if word == "--" {
+            let named: Vec<String> = words.by_ref().cloned().collect();
+            checks = Checks::named(&named)?;
+            break;
+        }
         let mut value = || {
             words
                 .next()
@@ -88,6 +102,7 @@ fn asked(arguments: &[String]) -> Result<Asked, String> {
         session,
         on,
         longest,
+        checks,
     })
 }
 
@@ -262,6 +277,7 @@ pub fn ask(arguments: &[String]) -> Result<(), Failure> {
     let request = Request {
         repo,
         commit: commit.clone(),
+        checks: asked.checks.clone(),
         quest: asked.quest.clone(),
         session: asked.session.clone(),
     };
@@ -275,8 +291,12 @@ pub fn ask(arguments: &[String]) -> Result<(), Failure> {
         ));
     }
     started(&asked.quest, &on, &commit)?;
+    let what = match &asked.checks {
+        Checks::Changed => format!("gate {commit}"),
+        Checks::Named(attributes) => format!("build {} checks at {commit}", attributes.len()),
+    };
     eprintln!(
-        "nix-offload: asked {on} to gate {commit}; waiting for its result in {}",
+        "nix-offload: asked {on} to {what}; waiting for its result in {}",
         gate.display()
     );
     let Some(found) = waited(&gate, &commit, asked.longest) else {
@@ -518,8 +538,32 @@ mod tests {
                 session: Some("SK1FF0".to_owned()),
                 on: Some("kestrel".to_owned()),
                 longest: Duration::from_secs(60),
+                checks: Checks::Changed,
             }),
             "every option should be read"
+        );
+        assert_eq!(
+            asked(&words(
+                "--quest QEST-20261115-ABC123 -- checks.x86_64-linux.formatting --on"
+            ))
+            .map(|asked| asked.checks),
+            Err("--on isn't a check a gate builds, which is checks.x86_64-linux.NAME".to_owned()),
+            "every word after -- should be a check"
+        );
+        assert_eq!(
+            asked(&words(
+                "--quest QEST-20261115-ABC123 --on kestrel -- checks.x86_64-linux.formatting"
+            ))
+            .map(|asked| (asked.on, asked.checks)),
+            Ok((
+                Some("kestrel".to_owned()),
+                Checks::Named(vec!["checks.x86_64-linux.formatting".to_owned()])
+            )),
+            "the checks after -- should be named, and the options before read"
+        );
+        assert!(
+            asked(&words("--quest QEST-20261115-ABC123 --")).is_err(),
+            "-- naming no check should be refused"
         );
         assert!(
             asked(&words("--session SK1FF0")).is_err(),

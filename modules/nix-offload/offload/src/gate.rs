@@ -18,9 +18,15 @@
 //! and never proof: whoever writes the quest's scratch can write it, and a
 //! merge reads the kept pass alone.
 //!
+//! A Mac may ask instead for checks it names, each `checks.SYSTEM.NAME`
+//! for a system the lent builders build, which `answer` builds with
+//! `there` in the same checked clone: a Linux check a Mac session wants
+//! run, which it otherwise couldn't. Their result is a pass or a failure
+//! and keeps nothing a merge reads.
+//!
 //! What the request may say is a fixed grammar ([`Request`]): the repo,
-//! the commit, the quest, the asking session, and nothing that reaches a
-//! command line but the commit.
+//! the commit, the checks, the quest, the asking session, and nothing that
+//! reaches a command line but the commit and the checks, each plain.
 
 pub mod answer;
 pub mod ask;
@@ -152,22 +158,110 @@ pub fn plain_session(session: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || byte.is_ascii_uppercase())
 }
 
-/// What a Mac asks a gate to run: `there --changed` for a commit of a
-/// repo, for a quest and the session in it.
+/// The systems whose checks a gate may be named: those the lent
+/// builders build.
+const SYSTEMS: [&str; 1] = ["x86_64-linux"];
+/// The most checks one request names.
+pub const MOST_NAMED: usize = 64;
+
+/// Whether `attribute` is a check a gate may be named: `checks.SYSTEM.NAME`,
+/// for a system the lent builders build, its name letters, digits, `-`
+/// and `_`, as every check's is.
+#[must_use]
+pub fn plain_check(attribute: &str) -> bool {
+    let parts: Vec<&str> = attribute.split('.').collect();
+    matches!(
+        parts.as_slice(),
+        ["checks", system, name]
+            if SYSTEMS.contains(system)
+                && (1..=100).contains(&name.len())
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
+    )
+}
+
+/// What a gate runs for a commit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Checks {
+    /// `there --changed`, whose pass is kept where a merge reads it.
+    Changed,
+    /// The checks named, each [`plain_check`], built with `there`.
+    Named(Vec<String>),
+}
+
+/// How a request says it asks for `there --changed`.
+const CHANGED: &str = "changed";
+
+impl Checks {
+    /// The checks named, once each is plain and there are from one to
+    /// [`MOST_NAMED`] of them, or why not.
+    ///
+    /// # Errors
+    ///
+    /// When none is named, too many are, or one isn't plain.
+    pub fn named(attributes: &[String]) -> Result<Self, String> {
+        if attributes.is_empty() {
+            return Err("it names no check".to_owned());
+        }
+        if attributes.len() > MOST_NAMED {
+            return Err(format!(
+                "it names {} checks, past the {MOST_NAMED} one gate builds",
+                attributes.len()
+            ));
+        }
+        if let Some(strange) = attributes.iter().find(|attribute| !plain_check(attribute)) {
+            return Err(format!(
+                "{strange} isn't a check a gate builds, which is checks.{}.NAME",
+                SYSTEMS.join("|")
+            ));
+        }
+        Ok(Self::Named(attributes.to_vec()))
+    }
+
+    /// As a request holds them.
+    fn value(&self) -> Value {
+        match self {
+            Self::Changed => Value::from(CHANGED),
+            Self::Named(attributes) => Value::from(attributes.clone()),
+        }
+    }
+
+    /// What a request's `checks` holds, or why it isn't checks.
+    fn of(value: Option<&Value>) -> Result<Self, String> {
+        match value {
+            Some(Value::String(changed)) if changed == CHANGED => Ok(Self::Changed),
+            Some(Value::Array(named)) => {
+                let attributes: Option<Vec<String>> = named
+                    .iter()
+                    .map(|attribute| attribute.as_str().map(str::to_owned))
+                    .collect();
+                let attributes =
+                    attributes.ok_or("the request's checks aren't each a check's name")?;
+                Self::named(&attributes).map_err(|why| format!("the request's checks: {why}"))
+            }
+            _ => {
+                Err("the request's checks are neither \"changed\" nor a list of checks".to_owned())
+            }
+        }
+    }
+}
+
+/// What a Mac asks a gate to run: `there --changed`, or the checks it
+/// names, for a commit of a repo, for a quest and the session in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Request {
     /// The repo the commit is of.
     pub repo: Repo,
     /// The commit, in full.
     pub commit: String,
+    /// What it runs there.
+    pub checks: Checks,
     /// The quest whose scratch carries it.
     pub quest: String,
     /// The session that asked, when it has an address.
     pub session: Option<String>,
 }
-
-/// The only run a gate takes today.
-const CHANGED: &str = "changed";
 
 impl Request {
     /// The request as `ask` writes it.
@@ -176,7 +270,7 @@ impl Request {
         let mut fields = Map::new();
         fields.insert("repo".to_owned(), Value::from(self.repo.key()));
         fields.insert("commit".to_owned(), Value::from(self.commit.clone()));
-        fields.insert("checks".to_owned(), Value::from(CHANGED));
+        fields.insert("checks".to_owned(), self.checks.value());
         fields.insert("quest".to_owned(), Value::from(self.quest.clone()));
         if let Some(session) = &self.session {
             fields.insert("session".to_owned(), Value::from(session.clone()));
@@ -208,11 +302,7 @@ impl Request {
         let commit = text("commit")
             .filter(|commit| plain_commit(commit))
             .ok_or("the request's commit isn't a full commit hash")?;
-        if text("checks") != Some(CHANGED) {
-            return Err(
-                "the request's checks aren't \"changed\", the only run a gate takes".to_owned(),
-            );
-        }
+        let checks = Checks::of(fields.get("checks"))?;
         let quest = text("quest")
             .filter(|quest| plain_quest(quest))
             .ok_or("the request's quest isn't a quest's id")?;
@@ -224,6 +314,7 @@ impl Request {
         Ok(Self {
             repo,
             commit: commit.to_owned(),
+            checks,
             quest: quest.to_owned(),
             session,
         })
@@ -427,6 +518,7 @@ mod tests {
         Request {
             repo: Repo::parse("github:kestrel/osprey").expect("a plain repo"),
             commit: A.to_owned(),
+            checks: Checks::Changed,
             quest: "QEST-20261115-ABC123".to_owned(),
             session: Some("SK1FF0".to_owned()),
         }
@@ -440,6 +532,48 @@ mod tests {
             Ok(request),
             "a request should read back whole"
         );
+        let named = Request {
+            checks: Checks::Named(vec![
+                "checks.x86_64-linux.formatting".to_owned(),
+                "checks.x86_64-linux.vm-the-net_waits".to_owned(),
+            ]),
+            ..asked()
+        };
+        assert_eq!(
+            Request::parse(&named.json()),
+            Ok(named),
+            "a request naming checks should read back whole"
+        );
+    }
+
+    #[test]
+    fn only_plain_checks_of_a_lent_system_are_named() {
+        let refused = [
+            "checks.aarch64-darwin.formatting",
+            "packages.x86_64-linux.default",
+            "checks.x86_64-linux",
+            "checks.x86_64-linux.a.b",
+            "checks.x86_64-linux.$(x)",
+            "checks.x86_64-linux.a b",
+            "checks.x86_64-linux.",
+            "--option",
+        ];
+        for attribute in refused {
+            assert!(
+                Checks::named(&[attribute.to_owned()]).is_err(),
+                "{attribute} shouldn't be named"
+            );
+        }
+        assert!(Checks::named(&[]).is_err(), "naming none should be refused");
+        let many = vec!["checks.x86_64-linux.formatting".to_owned(); MOST_NAMED + 1];
+        assert!(
+            Checks::named(&many).is_err(),
+            "naming past the most should be refused"
+        );
+        assert!(
+            Checks::named(&many[..MOST_NAMED]).is_ok(),
+            "naming the most should be taken"
+        );
     }
 
     #[test]
@@ -448,6 +582,10 @@ mod tests {
             r#"{"repo":"github:kestrel/osprey","commit":"main","checks":"changed","quest":"QEST-20261115-ABC123"}"#.to_owned(),
             format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":"changed","quest":"QEST-20261115-ABC123","env":"X=1"}}"#),
             format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":"vm-everything","quest":"QEST-20261115-ABC123"}}"#),
+            format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":[],"quest":"QEST-20261115-ABC123"}}"#),
+            format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":["checks.x86_64-linux.a",3],"quest":"QEST-20261115-ABC123"}}"#),
+            format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":["-L"],"quest":"QEST-20261115-ABC123"}}"#),
+            format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","quest":"QEST-20261115-ABC123"}}"#),
             format!(r#"{{"repo":"github:kestrel/../osprey","commit":"{A}","checks":"changed","quest":"QEST-20261115-ABC123"}}"#),
             format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":"changed","quest":"../../etc"}}"#),
             format!(r#"{{"repo":"github:kestrel/osprey","commit":"{A}","checks":"changed","quest":"QEST-20261115-ABC123","session":"$(x)"}}"#),
