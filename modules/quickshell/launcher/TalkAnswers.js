@@ -68,16 +68,28 @@ function sideOf(at, dayOf) {
     return day === "" ? Said.clockOf(since) : `${day} ${Said.clockOf(since)}`;
 }
 
+// The blank lines before a whole question, and the spaces after it.
+const BLANK_BEFORE = /^\s*\n/u;
+const SPACE_AFTER = /\s+$/u;
+
+// What a want asks in full, as the agents daemon passes on the harness's whole question
+// (wants.rs's `whole`: its paragraphs, list lines and indentation kept), its blank lines
+// before and its spaces after let go; "" where it says no more than its short line.
+function whole(want) {
+    return String(want?.whole ?? "").replace(BLANK_BEFORE, "").replace(SPACE_AFTER, "");
+}
+
 // What the session asks, in TalkLine.js's exchange shape, as the talk's first: who asks,
-// muted, with since when at its right, then what it asks in full and what it takes where it
-// offers answers, from `now`'s want while it's `asking` (Agents.qml's answersOf). Null while
-// it asks nothing, or says nothing of what: the daemon's `asked` is then the session's title,
-// which says nothing it asks.
+// muted, with since when at its right, then what it asks, whole where the want says more than
+// its short line, and what it takes where it offers answers, from `now`'s want while it's
+// `asking` (Agents.qml's answersOf). Null while it asks nothing, or says nothing of what: the
+// daemon's `asked` is then the session's title, which says nothing it asks.
 function question(now, name, words, dayOf) {
     const want = now?.want ?? null;
     const asking = now?.asking === true;
-    const what = String(want?.asked ?? "").trim();
-    const untold = String(want?.said ?? "").trim() === "" && what === String(want?.title ?? "");
+    const what = whole(want) || String(want?.asked ?? "").trim();
+    const untold = whole(want) === "" && String(want?.said ?? "").trim() === ""
+        && what === String(want?.title ?? "");
     if (!asking || what === "" || untold) {
         return null;
     }
