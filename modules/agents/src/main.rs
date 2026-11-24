@@ -339,7 +339,7 @@ fn sprouts_for_the_shell(
         ],
         Box::new(move |said, stream| {
             if said["ask"] == places::ASK {
-                return Some(places::answer(asker::the_shell(stream), node.as_deref()));
+                return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
             }
             if said["ask"] == starts_stopped::ASK {
                 let (answer, now) =

@@ -1661,7 +1661,7 @@ Provider {
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
             .concat(startWheres().map(one => newWorkAct("in", one.start,
-                Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
+                Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name))));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
             name: Words.name("agents:start-new-work"),

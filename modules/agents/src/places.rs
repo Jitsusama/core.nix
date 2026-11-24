@@ -24,20 +24,27 @@ const PATIENCE: Duration = Duration::from_secs(5);
 
 /// The places the node at `node` lists, `{"places": [...]}` in its own
 /// fields, or an error saying why there are none: `asker` says whether
-/// the shell asked, and `node` is the realm's, none where this machine
-/// runs no node. Each place is read again where it's drawn (Wheres.js).
-pub fn answer(asker: Result<(), String>, node: Option<&Path>) -> Value {
+/// the shell asked, told only where there's a node to ask, since telling
+/// reads who asked from the kernel and its service manager, and `node` is
+/// the realm's, none where this machine runs no node. Each place is read
+/// again where it's drawn (Wheres.js).
+pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -> Value {
     let Some(node) = node else {
         return unlisted("this machine runs no node to list places on");
     };
-    if let Err(why) = asker {
+    if let Err(why) = asker() {
         return unlisted(&why);
     }
     match sprout::asked(node, &json!({"Places": {}}), PATIENCE) {
         Ok(reply) => match (&reply["Ok"]["Places"], &reply["Err"]) {
             (Value::Array(places), _) => json!({"places": places}),
             (_, Value::String(why)) => unlisted(why),
-            _ => unlisted(&format!("the node's answer couldn't be read: {reply}")),
+            // Only its start is said, as the launcher journals it and a
+            // whole answer names Joel's folders.
+            _ => unlisted(&format!(
+                "the node's answer couldn't be read: {}",
+                reply.to_string().chars().take(80).collect::<String>()
+            )),
         },
         Err(Unanswered::Unreached(why)) => {
             unlisted(&format!("the node couldn't be reached: {why}"))
@@ -85,7 +92,7 @@ mod tests {
                 r#""name": "//system/pond", "kind": "zone", "out": false}]}}"#,
             ),
         );
-        let answer = answer(Ok(()), Some(&socket));
+        let answer = answer(|| Ok(()), Some(&socket));
         assert_eq!(
             answer,
             json!({"places": [{"folder": "/home/j/big/src/areas/system/pond",
@@ -113,7 +120,7 @@ mod tests {
             ("garbled", "not json", "the node's answer couldn't be read"),
         ] {
             let (socket, asked) = node(name, reply);
-            let answer = answer(Ok(()), Some(&socket));
+            let answer = answer(|| Ok(()), Some(&socket));
             assert_eq!(
                 answer["error"]["code"],
                 json!("unlisted"),
@@ -131,11 +138,30 @@ mod tests {
     }
 
     #[test]
+    fn an_unread_answer_says_only_its_start() {
+        let (socket, asked) = node(
+            "long",
+            concat!(
+                r#"{"Ok": {"Other": ["/home/j/src/one", "/home/j/src/two", "#,
+                r#""/home/j/src/three", "/home/j/src/four", "/home/j/src/five"]}}"#,
+            ),
+        );
+        let answer = answer(|| Ok(()), Some(&socket));
+        let _ = asked.join();
+        let _ = std::fs::remove_file(&socket);
+        let said = answer["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            said.starts_with("the node's answer couldn't be read: ") && !said.contains("five"),
+            "only its first 80 characters: {said}"
+        );
+    }
+
+    #[test]
     fn places_not_the_shells_or_with_no_node_arent_asked() {
         let gone = std::env::temp_dir().join("agents-places-no-node.sock");
         assert_eq!(
             answer(
-                Err("only the launcher lists places here".to_owned()),
+                || Err("only the launcher lists places here".to_owned()),
                 Some(&gone)
             ),
             json!({"error": {"code": "unlisted",
@@ -143,13 +169,16 @@ mod tests {
             "anyone but the shell is refused before the node is asked"
         );
         assert!(
-            answer(Ok(()), Some(&gone))["error"]["message"]
+            answer(|| Ok(()), Some(&gone))["error"]["message"]
                 .as_str()
                 .is_some_and(|why| why.starts_with("the node couldn't be reached: ")),
             "a node that isn't there wasn't reached"
         );
         assert_eq!(
-            answer(Ok(()), None)["error"]["message"],
+            answer(
+                || panic!("who asked is told only where there's a node to ask"),
+                None
+            )["error"]["message"],
             json!("this machine runs no node to list places on")
         );
     }

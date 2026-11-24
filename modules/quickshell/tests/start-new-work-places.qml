@@ -42,12 +42,23 @@ QtObject {
             [{ folder: unchecked.folder, name: "~/big/reef", start: "//system/reef" }]);
         Expect.same("what the node calls it decides, not how its name opens",
             Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
-                Object.assign({}, harness, { name: "harness", kind: "zone" })])
-                .map(one => one.start), [pond.folder, "harness"]);
+                Object.assign({}, harness, { kind: "zone" })])
+                .map(one => one.start), [pond.folder, harness.folder]);
+        Expect.same("a zone whose name the node would take as a folder is started by its folder",
+            Wheres.wheres([], [Object.assign({}, harness, { name: "harness", kind: "zone" })])
+                .map(one => one.start), [harness.folder]);
         const otherPond = Object.assign({}, pond, { folder: "/home/j/big2/src/areas/system/pond" });
         Expect.same("a zone two checkouts share is started by each one's folder",
             Wheres.wheres([], [pond, otherPond]).map(one => one.start),
             [pond.folder, otherPond.folder]);
+        const otherReef = Object.assign({}, unchecked,
+            { folder: "/home/j/big2/src/areas/system/reef" });
+        Expect.same("one not checked out that two share is started by name, as no folder is here",
+            Wheres.wheres([], [unchecked, otherReef]).map(one => one.start),
+            ["//system/reef", "//system/reef"]);
+        Expect.same("a zone the node names twice at one folder is still started by its name",
+            Wheres.wheres([], [pond, Object.assign({}, pond)]).map(one => one.start),
+            ["//system/pond"]);
 
         // The node's words are drawn, so only plain ones are.
         for (const [why, place] of [
@@ -77,5 +88,7 @@ QtObject {
         const listed = Wheres.wheres(quests, Wheres.listable(many));
         Expect.same("at most 2000 of the node's are listed, beside the quests'",
             [listed.length, listed[listed.length - 1].name], [2001, "~/src/r1999"]);
+        Expect.same("and only the first 2000 are read",
+            Wheres.listable([null].concat(many)).length, 1999);
     }
 }
