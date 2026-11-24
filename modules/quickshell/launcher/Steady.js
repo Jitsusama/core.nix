@@ -68,6 +68,14 @@ function searched(rows) {
     return rows.map(asSeen);
 }
 
+// A held step's rows as what's typed is taken away from `shown`: one that
+// waits unseen and was shown there (by `id`) has been seen, rather than
+// hidden again, counted new and losing the selection; the rest still wait.
+function seenAmong(rows, shown, id) {
+    const found = new Set(shown.filter(row => row.unseen !== true).map(id));
+    return rows.map(row => row.unseen === true && found.has(id(row)) ? asSeen(row) : row);
+}
+
 // The rows laid again, `rows`, with `lit(rows)` dimming each heading said
 // again with no row of its own standing under it in `rows`, and `late`,
 // how many new ones wait to be shown afresh where `withholding`.
@@ -136,9 +144,8 @@ function laidAgain(shown, now, id, withholding) {
             }
             continue;
         }
-        // One shown has been seen, though `now` hands it back marked, as a
-        // held step's rows do one a search found: kept marked, the refresh
-        // after would read it as never shown and move it to the end.
+        // One shown is seen, though `now` hands it back marked, as a held
+        // step does one a search found: marked, it'd next move to the end.
         if (left && left.length > 0) {
             const at = left.shift();
             const again = asSeen(fresh[at]);

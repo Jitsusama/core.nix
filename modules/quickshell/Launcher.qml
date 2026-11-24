@@ -7174,9 +7174,11 @@ Scope {
             const searchedAt = Date.now();
             gathered = [];
             // Listed as they stand, its members leave out those that wait
-            // unseen, counted, as a held step's rows do.
+            // unseen, counted, as a held step's rows do, but for one what
+            // was typed found, which has been seen (Steady.seenAmong).
             const standing = words.length === 0 && (!steadying || ordering)
-                ? Steady.seen(offered) : { rows: offered.slice(), waiting: 0 };
+                ? Steady.seen(Steady.seenAmong(offered, matches, steadyId))
+                : { rows: offered.slice(), waiting: 0 };
             root.found = words.length === 0 ? standing.rows
                 : Steady.searched(inCategory(letters));
             const foundAt = Date.now();
@@ -7225,9 +7227,11 @@ Scope {
             // Listed as they stand, its rows leave out those that wait
             // unseen (Steady.seen), counted, since the step keeps them at
             // its end, where they'd read as the last cell's; steadied, they
-            // stay in, for the refresh to withhold and count.
+            // stay in, for the refresh to withhold and count. One what was
+            // typed found has been seen, so it stays as what's typed is
+            // taken away, the selection on it (Steady.seenAmong).
             else if (words.length === 0 && !holdsWords) {
-                const standing = Steady.seen(offered);
+                const standing = Steady.seen(Steady.seenAmong(offered, matches, steadyId));
                 found = steadying && !ordering ? offered.slice() : standing.rows;
                 unseen = standing.waiting;
             } else if (held[held.length - 1].row.finds)
