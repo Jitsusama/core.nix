@@ -34,7 +34,11 @@ function refocused(
   before: readonly Act[],
   after: readonly Act[],
   works = "on b",
-  { deep = false, around }: { readonly deep?: boolean; readonly around?: Control } = {},
+  {
+    deep = false,
+    around,
+    focusable = true,
+  }: { readonly deep?: boolean; readonly around?: Control; readonly focusable?: boolean } = {},
 ): Landed {
   const list = new List();
   if (around !== undefined) {
@@ -44,7 +48,7 @@ function refocused(
     keyed(list, {
       rows: told,
       key: (cell) => cell.key,
-      draw: (cell) => new Row(cell.works, list.ownerDocument, true, acts),
+      draw: (cell) => new Row(cell.works, list.ownerDocument, focusable, acts),
       moved: ["b"],
     });
   rows(before, cells("a", "b"));

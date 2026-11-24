@@ -40,6 +40,8 @@ interface Control {
   readonly attributes: Readonly<Record<string, string>>;
   readonly kind?: string;
   readonly holds?: Control | readonly Control[];
+  /** It scrolls, which lets it take focus in Chromium with no tabindex, as markup can't say. */
+  readonly scrolls?: boolean;
 }
 
 /** One of a row's acts: a link to its name, a control saying nothing, or one told whole. */
@@ -94,10 +96,12 @@ class Inner implements Placed {
   readonly textContent: string;
   readonly #page: Page;
   readonly #attributes: Record<string, string>;
+  readonly #scrolls: boolean;
 
   constructor(parent: Placed, page: Page, says: string, told: Omit<Control, "says">) {
     this.parentElement = parent;
     this.#page = page;
+    this.#scrolls = told.scrolls === true;
     this.textContent = says;
     this.#attributes = { ...told.attributes };
     this.localName = told.kind ?? ("href" in told.attributes ? "a" : "button");
@@ -116,6 +120,7 @@ class Inner implements Placed {
 
   focus(): void {
     const takes =
+      this.#scrolls ||
       "tabindex" in this.#attributes ||
       (this.localName === "a" && "href" in this.#attributes) ||
       (FOCUSABLE.has(this.localName) && this.#attributes["type"] !== "hidden");
@@ -182,7 +187,6 @@ class Row implements Drawn, Placed {
   children: Inner[];
   readonly #attributes = new Map<string, string>();
   readonly #page: Page;
-  readonly #focusable: boolean;
   readonly #acts: readonly Act[];
 
   constructor(
@@ -193,7 +197,6 @@ class Row implements Drawn, Placed {
   ) {
     this.words = words;
     this.#page = page;
-    this.#focusable = focusable;
     this.#acts = acts;
     this.children = this.#links();
     if (focusable) {
@@ -238,8 +241,14 @@ class Row implements Drawn, Placed {
     this.#attributes.set(name, value);
   }
 
+  removeAttribute(name: string): void {
+    this.#attributes.delete(name);
+  }
+
   focus(): void {
-    const takes = this.#focusable && this.#page.holds(this) && !marked(this, "inert");
+    // A list item takes focus by its tabindex alone, as a browser's does.
+    const tabbed = this.#attributes.has("tabindex");
+    const takes = tabbed && this.#page.holds(this) && !marked(this, "inert");
     if (takes && drawn(this, { visibilityProperty: true })) {
       this.#page.activeElement = this;
     }

@@ -108,8 +108,11 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   // its row is drawn afresh, since a row kept keeps its control.
   const redrawing = focus !== null && (moved === null || moved.has(focus.key));
   const known = redrawing && focused !== null ? knownAs(focused, holder) : null;
+  // A control markup says takes no press but the page let focus, a
+  // scroller say, keeps taking it as long as it stays the control it was.
+  const refused = redrawing && focused !== null && refuses(focused);
 
-  const before = { focused, known, page, holder, redrawing };
+  const before = { focused, known, page, holder, redrawing, refused };
 
   // Every row is drawn first, so nothing is touched if one throws.
   const rows: { key: string; item: Item; old: Item | undefined; fresh: boolean }[] = [];
@@ -246,6 +249,7 @@ interface Before {
   readonly page: { readonly activeElement: Placed | null } | null;
   readonly holder: object;
   readonly redrawing: boolean;
+  readonly refused: boolean;
 }
 
 /**
@@ -258,17 +262,20 @@ interface Before {
  * when a focused element leaves, and a control kept where it stands but
  * no longer the same is let go too, since nothing else takes focus from
  * it. A control that takes no press, which a browser may still call
- * focused, hands it to the row too, rather than let it fall to the page;
- * in a row the drawing left alone, what has focus is left with it, since
- * a page may let more take focus than markup says.
+ * focused, hands it to the row too, rather than let it fall to the page,
+ * or is let go where the row takes none, whether drawn in place or afresh.
+ * Only what the drawing made so counts: a page may let more take focus
+ * than markup says, so a control that took focus taking no press by its
+ * markup, a scroller say, keeps it, as does what has focus in a row the
+ * drawing left alone.
  */
 function refocus(
-  { focused, known, page, holder, redrawing }: Before,
+  { focused, known, page, holder, redrawing, refused }: Before,
   path: number[],
   item: object,
 ) {
   const took = (on: Placed) =>
-    (page === null || page.activeElement === on) && !(redrawing && refuses(on));
+    (page === null || page.activeElement === on) && !(redrawing && !refused && refuses(on));
   if (focused !== null && inside(focused, item)) {
     if (known === null || alike(focused, known, holder)) {
       focused.focus?.({ preventScroll: true });
@@ -303,6 +310,9 @@ function refocus(
     }
   }
   item.focus?.({ preventScroll: true });
+  if (target !== item && (page === null || page.activeElement === target)) {
+    target.blur?.();
+  }
 }
 
 export type { Drawing, Drawn, Drew, Holder, Placed };

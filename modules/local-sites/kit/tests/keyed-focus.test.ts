@@ -7,12 +7,15 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { keyed } from "../keyed.ts";
+import { keyed, type Placed } from "../keyed.ts";
 import { bare, button, inPlace, refocused } from "./focused.ts";
 import { type Act, type Control, cells, draw, List, Row } from "./rows.ts";
 
 /** What a drawing throws on a record its row can't read. */
 const MISSHAPEN = /isn't the shape/u;
+
+/** A row's acts beside a log that scrolls, which a browser focuses with no tabindex. */
+const LOGGED: Act[] = ["open", { says: "log", kind: "pre", attributes: {}, scrolls: true }];
 
 /** Two buttons, which a disabled fieldset disables, as it doesn't a link. */
 const buttons = [button("open", "act", "open"), button("copy", "act", "copy")];
@@ -78,45 +81,101 @@ it("a focused row drawn into itself keeps its focus", () => {
 
 it("focus on what a page lets take it, in a row the drawing left alone, stays", () => {
   const list = new List();
-  const acts: Act[] = ["open", { says: "log", kind: "pre", attributes: {} }];
   const rows = (moved: string[]) =>
     keyed(list, {
       rows: cells("a", "b"),
       key: (cell) => cell.key,
-      draw: (cell) => new Row(cell.works, list.ownerDocument, true, acts),
+      draw: (cell) => new Row(cell.works, list.ownerDocument, true, LOGGED),
       moved,
     });
   rows([]);
-  // A scroller, which a browser focuses with no tabindex, as markup can't say.
   const log = list.rows[1]?.children[1] ?? null;
-  list.ownerDocument.activeElement = log;
+  log?.focus();
   rows(["a"]);
   assert.equal(list.ownerDocument.activeElement, log);
 });
 
-it("a drawing that throws after marking the focused control for another act lets it go", () => {
+/** How b's drawing changes its row where it stands, before a row throws. */
+type Changed = (row: Row) => void;
+
+/** Where focus on b's second control lands when b's change is made and `throwing` throws. */
+function thrown(
+  throwing: string,
+  change: Changed,
+  focusable = true,
+): { list: List; landed: Placed | null } {
+  const list = new List();
+  const rows = (changed: boolean) =>
+    keyed(list, {
+      rows: cells("a", "b", "c"),
+      key: (cell) => cell.key,
+      draw: (cell, was) => {
+        if (changed && cell.key === "b" && was !== undefined) {
+          change(was);
+        }
+        if (changed && cell.key === throwing) {
+          throw new Error("a record isn't the shape its row reads");
+        }
+        return was ?? new Row(cell.works, list.ownerDocument, focusable);
+      },
+      moved: changed ? ["a", "b", "c"] : [],
+    });
+  rows(false);
+  list.rows[1]?.children[1]?.focus();
+  assert.throws(() => rows(true), MISSHAPEN);
+  return { list, landed: list.ownerDocument.activeElement };
+}
+
+/** b's second control marked to go elsewhere, where it stands. */
+const repointed: Changed = (row) => row.children[1]?.setAttribute("href", "#forget");
+
+it("a drawing that throws after marking the focused control for another act hands focus to its row", () => {
   for (const throwing of ["b", "c"]) {
-    const list = new List();
-    const rows = (changed: boolean) =>
-      keyed(list, {
-        rows: cells("a", "b", "c"),
-        key: (cell) => cell.key,
-        draw: (cell, was) => {
-          if (changed && cell.key === "b") {
-            was?.children[1]?.setAttribute("href", "#forget");
-          }
-          if (changed && cell.key === throwing) {
-            throw new Error("a record isn't the shape its row reads");
-          }
-          return was ?? new Row(cell.works, list.ownerDocument);
-        },
-        moved: changed ? ["b", "c"] : [],
-      });
-    rows(false);
-    list.rows[1]?.children[1]?.focus();
-    assert.throws(() => rows(true), MISSHAPEN);
-    assert.equal(list.ownerDocument.activeElement, list.rows[1], `${throwing} throwing`);
+    const { list, landed } = thrown(throwing, repointed);
+    assert.equal(landed, list.rows[1], `${throwing} throwing`);
+    // A row that takes no focus lets it go.
+    assert.equal(thrown(throwing, repointed, false).landed, null, `${throwing}, unfocusable`);
   }
+});
+
+it("a drawing that throws before reaching the focused row leaves its focus", () => {
+  const { list, landed } = thrown("a", repointed);
+  assert.equal(landed, list.rows[1]?.children[1]);
+});
+
+it("a drawing that throws after drawing the focused row anew gives focus back to its control", () => {
+  for (const throwing of ["b", "c"]) {
+    // Its links drawn again, the focused one is taken out with its focus.
+    const { list, landed } = thrown(throwing, (row) => row.again(row.words));
+    assert.equal(landed, list.rows[1]?.children[1], `${throwing} throwing`);
+  }
+});
+
+it("a scroller a page lets take focus keeps it in a row drawn again, in place or afresh", () => {
+  for (const fresh of [false, true]) {
+    const list = new List();
+    const rows = (moved: string[]) =>
+      keyed(list, {
+        rows: cells("a", "b"),
+        key: (cell) => cell.key,
+        draw: (cell, was) =>
+          (fresh ? undefined : was) ?? new Row(cell.works, list.ownerDocument, true, LOGGED),
+        moved,
+      });
+    rows([]);
+    list.rows[1]?.children[1]?.focus();
+    rows(["b"]);
+    assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1], `fresh ${fresh}`);
+  }
+});
+
+it("a row whose tabindex is taken away takes no focus", () => {
+  const list = new List();
+  const row = new Row("on a", list.ownerDocument);
+  list.insertBefore(row, null);
+  row.removeAttribute("tabindex");
+  row.focus();
+  assert.equal(list.ownerDocument.activeElement, null);
 });
 
 it("a focused control kept where it stands keeps focus, its state changed or not", () => {
@@ -212,6 +271,15 @@ it("buttons sharing a name are told apart by their values", () => {
   const copy = button("copy", "act", "copy");
   assert.equal(refocused([open, copy], [copy, open]), "row");
   assert.equal(refocused([open, copy], [open, copy], "on b, moved"), "control");
+});
+
+it("a twin drawn afresh taking no press, in a row that takes no focus, is let go", () => {
+  // A link marked disabled still takes focus in a browser, as in place.
+  const unpressed: Act = { says: "copy", attributes: { href: "#copy", disabled: "" } };
+  assert.equal(
+    refocused(["open", "copy"], ["open", unpressed], "on b", { focusable: false }),
+    "none",
+  );
 });
 
 it("buttons sharing a name and no value are told apart by their words", () => {
