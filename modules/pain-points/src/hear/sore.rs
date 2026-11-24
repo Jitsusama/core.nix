@@ -134,7 +134,9 @@ fn swears(low: &str) -> bool {
         .iter()
         .any(|(asked, words)| *asked && swore(words));
     let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || sentences.iter().any(|(_, words)| words.last() == Some(&"whatever"));
+        || sentences
+            .iter()
+            .any(|(_, words)| words.last() == Some(&"whatever"));
     !eased || asked_swearing || gave_up
 }
 
