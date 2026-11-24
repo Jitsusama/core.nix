@@ -861,10 +861,31 @@ ShellRoot {
             workspace_id: 44, opened: "pi-hosted.s-lead",
             layout: { pos_in_scrolling_layout: [1, 1] } } });
         Niri.revision += 1;
+        refusedUnnamed();
         stage = "naming";
         Watch.tell(root.watch, { changed: [
             Object.assign(hosted("s-kelp", "KELPER"), { told: "0000000000000011" }),
             Object.assign(hosted("s-reef", "REEFER"), { told: "0000000000000012" })] });
+    }
+
+    // A row's Reopen refused, or held back as its viewer comes, is said
+    // before any place is worked out (reopenWaiting), so none names a
+    // workspace for its orchestrator for a window that isn't asked for:
+    // one led by NOBODY, whose workspace no one has, would name the quiet
+    // one niri keeps last, were its place worked out.
+    function refusedUnnamed() {
+        const before = Niri.acts.length;
+        const quiet = Sessions.quietSpace();
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { "pi-hosted.s-coming": Date.now() });
+        for (const lost of [waitingEntry("s.unnamed"),
+            Object.assign(waitingEntry("s-wordless"), { view: undefined }),
+            waitingEntry("s-coming")])
+            Sessions.reopen(Object.assign(lost, { orchestratedBy: "NOBODY" }), root.never);
+        const acted = Niri.acts.slice(before);
+        Expect.expect("a row's Reopen refused or held back names no workspace, nor opens one",
+            quiet !== null && !acted.some(act => act.SetWorkspaceName || act.OpenNextWindowOn),
+            `${JSON.stringify(quiet)} ${JSON.stringify(acted)}`);
     }
 
     // One kept on a workspace named for its orchestrator goes back to the
