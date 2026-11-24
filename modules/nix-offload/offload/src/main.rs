@@ -873,6 +873,17 @@ fn fallbacks<'a>(
         .collect()
 }
 
+/// Who stands in for `dir`, the first pair in `fallbacks` naming it: a
+/// spill's lane is also a VM lane past the first, and its builds go back
+/// to the first lent builder, not to the first VM lane, so the spill's pair
+/// comes first and wins.
+fn fallback_for<'a>(fallbacks: &[(&PathBuf, &'a PathBuf)], dir: &Path) -> Option<&'a Path> {
+    fallbacks
+        .iter()
+        .find(|(from, _)| from.as_path() == dir)
+        .map(|(_, to)| to.as_path())
+}
+
 fn there(arguments: &[String]) -> Result<(), Failure> {
     if let Some(failure) = marked(arguments) {
         return Err(failure);
@@ -1324,8 +1335,8 @@ fn sent(
 ) -> (there::Ran, u64) {
     let asked = std::time::Instant::now();
     let (dir, store) = match standing(dir).or_else(|| there::waited(dir, first)) {
-        None => match fallbacks.iter().find(|(beside, _)| beside.as_path() == dir) {
-            Some((_, other)) => (other.as_path(), standing(other)),
+        None => match fallback_for(fallbacks, dir) {
+            Some(other) => (other, standing(other)),
             None => (dir, None),
         },
         store => (dir, store),
@@ -1361,11 +1372,7 @@ fn sent(
     // VM tests wait for their own lender, as above. Within the outage's
     // `longest` only, so two lost builders never hand a run back and
     // forth for good.
-    let beside = fallbacks
-        .iter()
-        .find(|(from, _)| from.as_path() == dir)
-        .map(|(_, to)| to.as_path())
-        .filter(|_| !vm);
+    let beside = fallback_for(fallbacks, dir).filter(|_| !vm);
     let again = |since: std::time::Instant| {
         beside
             .filter(|_| since.elapsed() < waiting.longest)
@@ -4512,6 +4519,42 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn a_spills_lane_falls_back_to_the_first_lent_builder_not_the_first_vm_lane() {
+        let first = PathBuf::from("/run/nix-offload");
+        let more = PathBuf::from("/run/nix-offload-more");
+        let vm: Vec<PathBuf> = (1..=4)
+            .map(|lane| PathBuf::from(format!("/run/nix-offload-vm-{lane}")))
+            .collect();
+        let spilled = fallbacks(Some(&vm[2]), &first, &more, &vm);
+        assert_eq!(
+            fallback_for(&spilled, &vm[2]),
+            Some(first.as_path()),
+            "the spill's lane fell back to a VM lane, which builds no general work"
+        );
+        assert_eq!(
+            fallback_for(&spilled, &vm[3]),
+            Some(vm[0].as_path()),
+            "a VM lane that took no spill stopped leaving its tests to the first"
+        );
+        let unspilled = fallbacks(None, &first, &more, &vm);
+        assert_eq!(
+            fallback_for(&unspilled, &vm[2]),
+            Some(vm[0].as_path()),
+            "with no spill, a VM lane stopped leaving its tests to the first"
+        );
+        assert_eq!(
+            fallback_for(&unspilled, &more),
+            Some(first.as_path()),
+            "the second lent builder stopped leaving its builds to the first"
+        );
+        assert_eq!(
+            fallback_for(&unspilled, &vm[0]),
+            None,
+            "the first VM lane gained a stand-in it never had"
+        );
     }
 
     #[test]
