@@ -60,12 +60,14 @@ fn section(text: &str) -> Section {
     for line in body.lines() {
         let more = line.trim_start();
         let indented = more.len() < line.len();
+        // An item indented under another is no field of it, nor its own.
+        let nested = more.starts_with("- ");
         if let Some(item) = line.strip_prefix("- ") {
             items.push(item.to_owned());
             open = true;
         } else if more.is_empty() {
             open = false;
-        } else if let Some(last) = items.last_mut().filter(|_| open && indented) {
+        } else if let Some(last) = items.last_mut().filter(|_| open && indented && !nested) {
             last.push(' ');
             last.push_str(more);
         } else {
@@ -78,7 +80,7 @@ fn section(text: &str) -> Section {
             None => misread.push(format!("no such field: {}", opening(item))),
             Some(name) if items[..at].iter().any(|i| i.starts_with(name)) => {
                 let name = name.trim_end_matches([':', ',', ' ']);
-                misread.push(format!("{name} said twice"));
+                misread.push(format!("{name} said again: {}", opening(item)));
             }
             Some(_) => {}
         }
@@ -89,12 +91,13 @@ fn section(text: &str) -> Section {
             .find_map(|i| i.strip_prefix(name))
             .map(str::trim)
     };
+    let [keys, held, joel, cost] = FIELDS;
     Section {
         title: title.trim().to_owned(),
-        keys: field("Measures:").map(spans).unwrap_or_default(),
-        target: field("Target:").and_then(target),
-        joel: items.iter().find(|i| i.starts_with("Joel, ")).cloned(),
-        cost: field("Over costs him:").map(str::to_owned),
+        keys: field(keys).map(spans).unwrap_or_default(),
+        target: field(held).and_then(target),
+        joel: items.iter().find(|i| i.starts_with(joel)).cloned(),
+        cost: field(cost).map(str::to_owned),
         misread,
     }
 }
@@ -179,7 +182,8 @@ fn unsaid(page: &[Section]) -> Vec<String> {
         for key in &s.keys {
             if key.contains(char::is_whitespace) {
                 faults.push(format!(
-                    "{key}: holds a space, as a key broken across lines does"
+                    "{}: {key} holds a space, as a key broken across lines does",
+                    s.title
                 ));
             }
             if seen
