@@ -55,8 +55,8 @@ const LEAD: usize = RATE * 3 / 10;
 /// as likely his own.
 const RUN: usize = 2;
 
-/// How many of their words a word of their echo may follow the last by:
-/// either side may hear a word the other doesn't.
+/// How many words on either side a word of their echo may follow the
+/// last by: either side may hear a word the other doesn't.
 const GAP: usize = 2;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
@@ -96,7 +96,9 @@ fn may_echo(heard: &Word, said: &Word) -> bool {
 /// For each of Joel's `mine`, the one of `theirs`, in the order they were
 /// said, it's the echo of, if it's one: a run of his words, each spelled
 /// as one of theirs, in their order, that his microphone heard within a
-/// moment of them saying it, and quieter.
+/// moment of them saying it, and quieter. A run may pass over a word
+/// either side heard and the other didn't, and one his side heard alone
+/// is kept as his.
 fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
     // Each of his words' runs: which of theirs it may echo, and how long
     // the run ending on it is.
@@ -105,9 +107,7 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
         let spelling = spelled(&word.text);
         let from = theirs.partition_point(|said| said.at + LAG < word.at);
         let to = theirs.partition_point(|said| said.at <= word.at + LEAD);
-        let before = i
-            .checked_sub(1)
-            .map_or(&[][..], |last| runs[last].as_slice());
+        let before = &runs[i.saturating_sub(GAP)..i];
         let heard = (from..to.max(from))
             .filter(|&j| {
                 !spelling.is_empty()
@@ -117,6 +117,7 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
             .map(|j| {
                 let longest = before
                     .iter()
+                    .flatten()
                     .filter(|&&(k, _)| k < j && j - k <= GAP)
                     .map(|&(_, run)| run)
                     .max()
@@ -139,19 +140,19 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
             continue;
         }
         echoes[end] = Some(j);
-        for i in (0..end).rev() {
-            if run == 1 {
-                break;
-            }
+        let mut i = end;
+        while run > 1 {
             run -= 1;
-            let Some(&(k, _)) = runs[i]
-                .iter()
-                .find(|&&(k, length)| length == run && k < j && j - k <= GAP)
-            else {
+            let Some((h, k)) = (i.saturating_sub(GAP)..i).rev().find_map(|h| {
+                runs[h]
+                    .iter()
+                    .find(|&&(k, length)| length == run && k < j && j - k <= GAP)
+                    .map(|&(k, _)| (h, k))
+            }) else {
                 break;
             };
-            echoes[i] = Some(k);
-            j = k;
+            echoes[h] = Some(k);
+            (i, j) = (h, k);
         }
     }
     echoes
