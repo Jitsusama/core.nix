@@ -314,9 +314,11 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
         transcript::echoes(answer, read_back),
         "Joel's answer, read back, isn't an echo of Bo's part, so keeping it shows nothing"
     );
-    // Joel's side hears Bo's part again just after it, the restart having
-    // cut his recording there, so it's an echo of a line read back.
-    let again = joels(50, 51, "Not yet.");
+    // Joel's side hears Bo's part again, the restart having cut his
+    // recording there, so it's an echo of a line read back. A line read
+    // back ends where it starts, 46 s in, so it's heard within the echo's
+    // slack of that.
+    let again = joels(48, 49, "Not yet.");
     assert!(
         transcript::echoes(&again, &writing.lines[..writing.read]),
         "Bo's part heard again isn't an echo of it, so leaving it out shows nothing"
