@@ -161,6 +161,25 @@ let
   realm = config.jitsusama.mycelium.realm or null;
   # Rows naming a site nothing is mounted at.
   unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
+
+  # The launcher's six acts on a look, by their words' ids, as Now.qml's
+  # lookActNames names them. The sites' ask row refuses a choice or act
+  # posing as one by core's own names for them (kit/ask.ts), so a machine
+  # renaming one would let a page offer what For You refuses.
+  lookActs = [
+    "verb:on:look:open"
+    "verb:on:look:answer"
+    "verb:on:look:clear"
+    "verb:on:waiting:go"
+    "verb:on:waiting:explain"
+    "verb:agent:talk"
+  ];
+  coreWords = (import ../quickshell/launcher/words.nix).value;
+  nameIn =
+    words: id: (lib.findFirst (thing: (thing.id or null) == id) { } (words.things or [ ])).name or id;
+  renamedActs = lib.filter (
+    id: nameIn (config.jitsusama.quickshell.launcher.words or coreWords) id != nameIn coreWords id
+  ) lookActs;
   # Rows whose path isn't plain steps, which the home's builder refuses
   # (home/home.py's ours), named here so the switch never gets that far.
   step = "[A-Za-z0-9_~-][A-Za-z0-9._~-]*";
@@ -532,6 +551,14 @@ in
   # A row the home lists with nothing mounted at its path would send Joel
   # to a page that isn't there.
   config.assertions = [
+    {
+      assertion = renamedActs == [ ];
+      message = lib.concatStrings [
+        "jitsusama.quickshell.launcher.words renames the launcher's acts on a look "
+        "(${toString renamedActs}), which the sites' ask row knows only by core's names, "
+        "so a page would offer a choice For You refuses: keep core's names for them"
+      ];
+    }
     {
       assertion = unmounted == [ ];
       message = lib.concatStrings [

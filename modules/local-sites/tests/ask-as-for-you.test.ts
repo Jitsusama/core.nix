@@ -2,11 +2,13 @@
 // against the launcher's own code rather than against what ask.ts says it
 // copied, so a rule changed on either side fails here. Looks.js's `look`,
 // `quieted` and `asksNothing` and Now.qml's own lookOffers decide, over
-// looks at each boundary, which a page reads, which wait, what each offers
-// and when it stops; LookForm.js's actOf decides its act, beside the
-// launcher's act names as Now.qml's lookActNames and its words name them;
-// and every character, wherever it stands in a name, is read and judged
-// as LookForm.js reads and judges it. The launcher's scripts run in Node,
+// looks at each boundary and of every kind and state, which a page reads,
+// which wait, what each offers and what follows each, and when it stops;
+// LookForm.js's actOf decides its act, beside the launcher's act names as
+// Now.qml's lookActNames and its words name them; and every character,
+// within, leading and ending a name, is read and judged as LookForm.js
+// reads and judges it. A side saying nothing (no lapse, no act) agrees only
+// where the other has nothing to say. The launcher's scripts run in Node,
 // not in Qt's engine, which tests/for-you.qml holds them in. The check
 // the-ask-row-reads-as-for-you hands it the launcher's files by the names
 // `launcher` reads.
@@ -140,21 +142,56 @@ const LOOK = {
   why: "The ask row is ready.",
   ask: "Say whether a page may ask.",
   ifNothing: "No page asks.",
+  // What follows each: the wanted words, its own, its own over the wanted,
+  // and its own though only spaces, which For You keeps over the wanted.
   choices: [
     { value: "keep", label: "Keep It" },
-    { value: "show", label: "Always Show It", follows: "Its own words." },
+    { value: "show", label: "Always Show It", follows: " Its own words. " },
+    { value: "both", label: "Both", follows: "Its own." },
+    { value: "blank", label: "Blank", follows: "  " },
   ],
   state: "waiting",
   happened: "The ask row is ready",
   matters: "Pages ask as For You does",
   act: "Read the Diff",
-  wants: { choices: [{ label: "Keep It", follows: "A page asks." }], words: true },
+  wants: {
+    choices: [
+      { label: "Keep It", follows: "A page asks." },
+      { label: "Both", follows: "Wanted." },
+      { label: "Blank", follows: "Wanted too." },
+    ],
+    words: true,
+  },
+};
+
+/** Each kind and state a look may say, and one of each For You doesn't know. */
+const KINDS = ["pr", "page", "file", "diff", "terminal", "folder"];
+const STATES = ["waiting", "opened", "cleared", "resolved", "expired", "quiet"];
+
+/** A target fit for each kind, so each is read as a look of it would be. */
+const TARGETS: Record<string, string> = {
+  file: "/home/joel/notes.md",
+  terminal: "QGB4ON",
 };
 
 /** Looks to read alike: each rule's cases, either side of what it decides. */
 const LOOKS: Record<string, object> = {
   "a look of the second form": LOOK,
   "one of the first form": { ...LOOK, happened: "", act: "" },
+  ...Object.fromEntries(
+    KINDS.map((kind) => [
+      `one of kind ${kind}`,
+      { ...LOOK, kind, target: TARGETS[kind] ?? LOOK.target },
+    ]),
+  ),
+  ...Object.fromEntries(STATES.map((state) => [`one in state ${state}`, { ...LOOK, state }])),
+  "five plain choices": {
+    ...LOOK,
+    choices: ["one", "two", "three", "four", "five"].map((value) => ({ value, label: value })),
+  },
+  "one with no time it came": { ...LOOK, at: undefined },
+  "one with an empty time it came": { ...LOOK, at: "" },
+  "one with an expiry no clock reads": { ...LOOK, expiresAt: "soon" },
   "five choices, posing ones among the first four": {
     ...LOOK,
     choices: [
@@ -183,11 +220,7 @@ const LOOKS: Record<string, object> = {
   "a numeric came and expiry": { ...LOOK, at: CAME, expiresAt: EXPIRES },
   "an expiry written as a time": { ...LOOK, expiresAt: new Date(EXPIRES).toISOString() },
   "one asking nothing": { ...LOOK, asks: false },
-  "one about a session": { ...LOOK, kind: "terminal", target: "QGB4ON" },
   "one about a page by a script": { ...LOOK, kind: "page", target: "javascript:alert(1)" },
-  "one opened": { ...LOOK, state: "opened" },
-  "one of a kind not known": { ...LOOK, kind: "folder" },
-  "one in a state not known": { ...LOOK, state: "quiet" },
   "one of another version": { ...LOOK, v: 2 },
   "one with no title": { ...LOOK, title: "" },
   "one with no id": { ...LOOK, id: undefined },
@@ -196,8 +229,12 @@ const LOOKS: Record<string, object> = {
 /** Moments either side of each that ends a wait: its expiry, and its quiet. */
 const MOMENTS = [CAME, EXPIRES - 1, EXPIRES, CAME + QUIET_AFTER, CAME + QUIET_AFTER + 1];
 
-/** A choice as both sides offer it: what it sends and what it's named. */
-const sent = ({ value, label }: { value: string; label: string }): string => `${value}: ${label}`;
+/** A choice as both sides offer it: what it sends, what it's named and what follows it. */
+const sent = ({ value, label, follows }: Read["offers"][number]): string =>
+  `${value}: ${label}: ${follows.trim()}`;
+
+/** A moment past every quiet and expiry the looks above say. */
+const LONG_AFTER = CAME + QUIET_AFTER + DAY;
 
 /** Where the row and For You part, for one look at one moment: none where they agree. */
 function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou): string[] {
@@ -208,18 +245,24 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   const held = looks.quieted(read as never, now as never) as Read;
   const waits = held.state === "waiting" && looks.asksNothing(held as never) === false;
   // For You offers a waiting look's choices under To Read too, where the
-  // row, stricter, offers none on a look not asking (ask.ts).
-  const offered = waits ? offers(held).map(sent) : [];
+  // row, stricter, offers none on a look not asking (ask.ts). It says what
+  // follows each only in the second form, as Now.qml's followsOf does.
+  const said = form.secondForm(read as never) === true;
+  const offered = waits
+    ? offers(held).map((one) => sent({ ...one, follows: said ? one.follows : "" }))
+    : [];
   const act = (form.actOf(read as never, acts as never) as string) || open;
   const lapsed = (at: number): boolean =>
     (looks.quieted(read as never, at as never) as Read).state !== "waiting";
   return [
     ask.asks === waits ? "" : "waits otherwise",
     ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
+    (ask.act === null) === (ask.opens === null) ? "" : "links otherwise than it acts",
     ask.act === null || ask.act === act ? "" : `acts as ${ask.act}, not ${act}`,
     ask.lapses === null || (!lapsed(ask.lapses - 1) && lapsed(ask.lapses))
       ? ""
       : "lapses otherwise",
+    !waits || ask.lapses !== null || !lapsed(LONG_AFTER) ? "" : "never lapses",
   ].filter((one) => one !== "");
 }
 
@@ -236,11 +279,12 @@ it("reads, holds waiting, offers, acts and lapses as Looks.js, LookForm.js and l
 });
 
 /**
- * Whether `character` reads and is judged alike by both, within a name and
- * leading one, and against a name it could pass for or by a turn pose as.
+ * Whether `character` reads and is judged alike by both, within a name,
+ * leading one and ending one, and against a name it could pass for or by a
+ * turn pose as.
  */
 function alike(form: Script, character: string): boolean {
-  return [`Keep${character} It`, `${character}tI peeK`].every(
+  return [`Keep${character} It`, `${character}tI peeK`, `Keep It${character}`].every(
     (name) =>
       readAs(name) === form.readAs(name as never) &&
       poses(name, ["Keep It"]) === form.poses(name as never, ["Keep It"] as never),

@@ -27,12 +27,20 @@
 // It's stricter than For You in two places, on the side of not asking.
 // For You offers a look's choices under To Read too, though it says it
 // asks nothing, where a page offers none on a look not asking. And For You
-// splits its looks at each hour, so it may keep one waiting up to an hour
-// past its expiresAt or its quiet, where a page lapses at the moment. It
-// knows the launcher's six act names only as core's own words say them, so
-// on a machine renaming them (jitsusama.quickshell.launcher.words) a page
-// would offer a choice named as a renamed act, which For You hides: rename
-// none of those six there while a page asks.
+// reads its looks at the hour it last opened or was told them, so it may
+// keep one waiting past its expiresAt or its quiet until it next does,
+// where a page lapses at the moment. It knows the launcher's six act names
+// only as core's own words say them, so on a machine renaming one
+// (jitsusama.quickshell.launcher.words) a page would offer a choice, or
+// link an act, named as the renamed one, which For You refuses, and would
+// fall back to "Open" where For You says the renamed word: local-sites'
+// home module refuses to build such a machine.
+//
+// A page holds a look as its feed last gave it, so while the feed is stale
+// or broken the look may have been answered or cleared since: a page offers
+// a row's choices only while its feed is live, and asks `answering` again at
+// the press rather than trusting a timer set for `lapses` alone, which a
+// suspend makes late.
 //
 // The harness writes version 1 with the second form's fields beside the
 // first's (85PKB2, 22 November 2026), so what happened, why it matters,
@@ -136,7 +144,7 @@ interface Ask {
    * epoch: the first moment it's past its expiresAt or quiet three days
    * after it came, whichever is sooner; null while it doesn't wait or
    * neither is known. A page sets its row asking no more then, since
-   * nothing else tells it.
+   * nothing else tells it, and checks again at the press.
    */
   readonly lapses: number | null;
   /**
