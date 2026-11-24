@@ -358,8 +358,8 @@ type Verdict = Result<Source, Refusal>;
 /// What the ear made of a datagram for every house it could be: each its
 /// report was taken for, the first being whose it is, with the report,
 /// and each house's refusal of it, so one house's refusal isn't left
-/// unsaid while another takes the report (house any round 4's F2, F7, F9
-/// and F13). A stamp refused under a key that signed the report refuses
+/// unsaid while another takes the report (house any round 4's F2, F7
+/// and F9). A stamp refused under a key that signed the report refuses
 /// it for every house, leaving none taken, so a replay meets every stamp.
 #[derive(Debug, Default)]
 struct Verdicts {
@@ -403,6 +403,12 @@ impl Verdicts {
         self.report = self.report.or(other.report);
         self.refused.extend(other.refused);
         self.under_stamps()
+    }
+
+    /// Whether a key among these signed the report: one took it, or its
+    /// stamp refused it.
+    fn signed(&self) -> bool {
+        !self.taken.is_empty() || self.refused.iter().any(|(_, why)| refuses_all(why))
     }
 
     /// These, taken for none where a stamp was refused under a key that
@@ -755,13 +761,20 @@ impl Ear {
                 // refused here too, so a replay meets both stamps (house any
                 // round 3's F1, F11 and F13), and a refusal on either side
                 // is said while the other takes the report (round 4's F2
-                // and F7).
+                // and F7). A mac the address's key didn't make but an
+                // unnamed house's did is that house's leased here, so it's
+                // no house's forgery, said nothing of beside the house's
+                // own verdict (every verdict round 1's F2, F5, F11 and F14).
                 named => {
+                    let others = self.unnamed(&reporters.unnamed, text, at, now_ms);
                     let own = match named {
                         Ok(report) => Verdicts::heard(source, report),
+                        Err(why @ Unheard::Refused(Refused::Forged)) if others.signed() => {
+                            Verdicts::refused((None, why))
+                        }
                         Err(why) => Verdicts::refused((Some(source), why)),
                     };
-                    own.and(self.unnamed(&reporters.unnamed, text, at, now_ms))
+                    own.and(others)
                 }
             },
         };
@@ -816,8 +829,9 @@ impl Ear {
     /// 2's F12 and F15); and every house's refusal of it. A key that can't
     /// be read is its house's, so its report taken again is said (round
     /// 2's F5). A mac malformed or no key's is no house's (round 2's F1),
-    /// but one another house's key made says the two keys differ, so it's
-    /// the house's whose key didn't (round 4's F13). An unsigned report is
+    /// even one another house's key made, since a copy of a key made
+    /// differently can't be told from another house's own key (every
+    /// verdict round 1's F1, F10 and F13). An unsigned report is
     /// refused as no house's too, for a reporter not yet given the key to
     /// be said once a minute (round 1's F21); any other text is a stray,
     /// said nothing of.
@@ -842,7 +856,6 @@ impl Ear {
             Err(_) => return Verdicts::refused((None, Unheard::Ignored)),
         }
         let mut verdicts = Verdicts::default();
-        let mut forged = Vec::new();
         for (network, path) in unnamed {
             let source = Source::House(network.clone());
             match self.signed(text, &source, path, at, now_ms) {
@@ -850,17 +863,10 @@ impl Ear {
                     verdicts.report = Some(report);
                     verdicts.taken.push(source);
                 }
-                Err(why @ Unheard::Refused(Refused::Forged)) => forged.push((source, why)),
+                Err(why @ Unheard::Refused(Refused::Forged)) => verdicts.refused.push((None, why)),
                 Err(why) => verdicts.refused.push((Some(source), why)),
             }
         }
-        let signed =
-            !verdicts.taken.is_empty() || verdicts.refused.iter().any(|(_, why)| refuses_all(why));
-        verdicts.refused.extend(
-            forged
-                .into_iter()
-                .map(|(source, why)| (signed.then_some(source), why)),
-        );
         verdicts.under_stamps()
     }
 
@@ -1821,10 +1827,10 @@ mod tests {
     // Every house's refusal of a datagram is said, by whose it is, while
     // another house takes its report: an unnamed house's unread key beside
     // a keyless or keyed address, an address's own unread key beside an
-    // unnamed house, and a second copy of a key made differently. One no
-    // house's key made goes unsaid beside a house that took the report,
-    // and is no house's where none did (house any round 4's F2, F5, F7,
-    // F9 and F13).
+    // unnamed house. A mac no house's key made, a second house's on a key
+    // of its own included, goes unsaid beside a house that took the
+    // report, and is no house's where none did (house any round 4's F2,
+    // F5, F7 and F9; every verdict round 1's F1, F10 and F13).
     #[test]
     fn every_house_s_refusal_is_said_while_another_takes_the_report() {
         fn says(lines: &[String], words: &[&str]) -> bool {
@@ -1861,7 +1867,7 @@ mod tests {
         let keyless = said(&reporters(Some(None), &[(&one, &missing)]), report);
         let keyed = said(&reporters(Some(Some(&key)), &[(&one, &missing)]), report);
         let unread_own = said(&reporters(Some(Some(&missing)), &[(&one, &key)]), report);
-        let rotated = said(&reporters(None, &[(&one, &key), (&two, &other)]), report);
+        let two_keys = said(&reporters(None, &[(&one, &key), (&two, &other)]), report);
         let plain = said(&reporters(Some(None), &[(&one, &key)]), "0 0");
         let unmade = Ear::default().heard(
             &reporters(None, &[(&one, &key)]),
@@ -1874,7 +1880,6 @@ mod tests {
         let first = "the house's first report";
         let unread_one = format!("the house on {one}");
         let unread_one = unread_one.as_str();
-        let rotated_two = format!("the house on {two}");
         assert!(
             says(&keyless, &[first]) && says(&keyless, &[unread_one, "can't be read"]),
             "an unnamed house's unread key went unsaid beside a keyless address: {keyless:?}"
@@ -1889,8 +1894,8 @@ mod tests {
             "an address's own unread key went unsaid beside an unnamed house: {unread_own:?}"
         );
         assert!(
-            says(&rotated, &[first]) && says(&rotated, &[rotated_two.as_str(), "keys differ"]),
-            "a second copy of the key made differently went unsaid: {rotated:?}"
+            says(&two_keys, &[first]) && !says(&two_keys, &["mac isn't"]),
+            "a second house on a key of its own was said forged: {two_keys:?}"
         );
         assert!(
             says(&plain, &[first]) && !says(&plain, &["unsigned"]),
@@ -1900,6 +1905,75 @@ mod tests {
             unmade,
             Err((None, Unheard::Refused(Refused::Forged))),
             "a well-shaped mac no house's key made was taken as a house's refusal"
+        );
+    }
+
+    // A mac a house's own key didn't make is said forged only when no
+    // house's key made it: not from an address a keyed house names that
+    // an unnamed house was leased, taken or replayed, and not beside a
+    // house's own refusal, while a stray's verdict says nothing in its
+    // place (every verdict round 1's F2, F5, F6, F11 and F14).
+    #[test]
+    fn no_house_s_key_unmade_mac_is_said_beside_one_its_key_made() {
+        fn says(lines: &[String], words: &[&str]) -> bool {
+            lines
+                .iter()
+                .any(|line| words.iter().all(|word| line.contains(word)))
+        }
+        let folder = std::env::temp_dir().join(format!("shaper-unmade-mac-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let key = folder.join("house.key");
+        fs::write(&key, vector_key()).expect("a key");
+        let other = folder.join("other.key");
+        fs::write(&other, (1..33).collect::<Vec<u8>>()).expect("another key");
+        let missing = folder.join("missing.key");
+        let one = "00:00:5e:00:53:01".to_owned();
+        let from: IpAddr = "192.0.2.12".parse().expect("an address");
+        let at = Instant::now();
+        let later = at + Duration::from_secs(1);
+        let report = sign("0 0", STAMP, &vector_key());
+        let leased = Reporters {
+            named: BTreeMap::from([(from, Some(other))]),
+            unnamed: vec![(one.clone(), key.clone())],
+        };
+        let ear = Ear::default();
+        let mut said = Said::default();
+        let taken = ear.verdicts(&leased, from, report.as_bytes(), at, STAMP);
+        let taken = said.of(from, &taken, at);
+        let replayed = ear.verdicts(&leased, from, report.as_bytes(), later, STAMP);
+        let replayed = said.of(from, &replayed, later);
+        let unread = Reporters {
+            named: BTreeMap::new(),
+            unnamed: vec![
+                (one.clone(), missing),
+                ("00:00:5e:00:53:02".to_owned(), key),
+            ],
+        };
+        let forged = sign("0 0", STAMP, &[9; 32]);
+        let unread = Ear::default().verdicts(&unread, from, forged.as_bytes(), at, STAMP);
+        let unread = Said::default().of(from, &unread, at);
+        let _ = fs::remove_dir_all(&folder);
+        let stray = Verdicts::refused((Some(Source::Address(from)), Unheard::Ignored))
+            .and(Verdicts::refused((None, Unheard::Refused(Refused::Forged))));
+        let stray = Said::default().of(from, &stray, at);
+        let house_one = format!("the house on {one}");
+        let house_one = house_one.as_str();
+        assert!(
+            says(&taken, &["the house's first report"]) && !says(&taken, &["mac isn't"]),
+            "a house's report from an address it was leased was said forged: {taken:?}"
+        );
+        assert!(
+            says(&replayed, &[house_one, "sent again"]) && !says(&replayed, &["mac isn't"]),
+            "a replay from a leased address wasn't said as the house's alone: {replayed:?}"
+        );
+        assert!(
+            says(&unread, &[house_one, "can't be read"]) && !says(&unread, &["mac isn't"]),
+            "a forgery beside a house's unread key wasn't left to the key's line: {unread:?}"
+        );
+        assert!(
+            says(&stray, &["mac isn't"]),
+            "a stray's verdict kept a forgery from being said: {stray:?}"
         );
     }
 
