@@ -71,7 +71,9 @@ const SWEARS: [&str; 6] = ["fuck", "shit", "crap", "wtf", "ffs", "damn"];
 
 /// Phrases that tell an agent all is well, each matched as whole words: a
 /// swear said with one is his ease, as on 24 November when he swore while
-/// saying a hang "is bound to happen" and to carry on, not a hurt.
+/// saying a hang "is bound to happen" and to carry on, not a hurt. One
+/// asked, a swear asked, or either said beside giving up, eases nothing;
+/// a fault said with ease is still heard as one.
 const REASSURING: [&str; 10] = [
     "that's fine",
     "that is fine",
@@ -84,6 +86,47 @@ const REASSURING: [&str; 10] = [
     "bound to happen",
     "don't let that stop you",
 ];
+
+/// Phrases that give up on the agent, which no ease beside them softens:
+/// "it's fine, i'll do it myself" is no reassurance.
+const GIVING_UP: [&str; 4] = ["myself", "forget it", "never mind", "whatever"];
+
+/// A message's words, lowered, as whole words with their apostrophes.
+fn words_of(low: &str) -> Vec<&str> {
+    low.split(|c: char| !(c.is_alphanumeric() || c == '\''))
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Whether words swear: a swear not before a word of praise.
+fn swore(each: &[&str]) -> bool {
+    each.iter().enumerate().any(|(at, w)| {
+        (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
+            && !each.get(at + 1).is_some_and(|next| PRAISE.contains(next))
+    })
+}
+
+/// Whether a message swears at what it's about: a swear, in a message
+/// that doesn't put the agent at ease by a sentence not asked, nor asks
+/// with a swear, nor gives up on the agent.
+fn swears(low: &str) -> bool {
+    let each = words_of(low);
+    if !swore(&each) {
+        return false;
+    }
+    let sentences: Vec<(bool, Vec<&str>)> = low
+        .split_inclusive(['.', '!', '?', ';'])
+        .map(|sentence| (sentence.trim_end().ends_with('?'), words_of(sentence)))
+        .collect();
+    let eased = sentences
+        .iter()
+        .any(|(asked, words)| !asked && REASSURING.iter().any(|ease| said(words, ease)));
+    let asked_swearing = sentences
+        .iter()
+        .any(|(asked, words)| *asked && swore(words));
+    let gave_up = GIVING_UP.iter().any(|up| said(&each, up));
+    !eased || asked_swearing || gave_up
+}
 
 /// How soon a message alike to an earlier one is that one said again.
 pub const AGAIN_MS: i64 = 30 * 60_000;
@@ -114,10 +157,7 @@ fn said(each: &[&str], fault: &str) -> bool {
 /// or none.
 pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static str> {
     let low = words.to_lowercase().replace('\u{2019}', "'");
-    let each: Vec<&str> = low
-        .split(|c: char| !(c.is_alphanumeric() || c == '\''))
-        .filter(|w| !w.is_empty())
-        .collect();
+    let each = words_of(&low);
     let mut kinds = Vec::new();
     // A "no" or "wrong" set off by a comma or stop turns down what came
     // before; "no stone unturned" or "nope, i think we just do it" don't.
@@ -128,11 +168,7 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     if opening_no || FAULTS.iter().any(|fault| said(&each, fault)) {
         kinds.push("corrected");
     }
-    let swore = each.iter().enumerate().any(|(at, w)| {
-        (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
-            && !each.get(at + 1).is_some_and(|next| PRAISE.contains(next))
-    }) && !REASSURING.iter().any(|ease| said(&each, ease));
-    if swore {
+    if swears(&low) {
         kinds.push("swore");
     }
     if asking_status(words) {
@@ -284,6 +320,20 @@ mod tests {
             vec!["corrected"],
             "ease spares the swear, not the fault said with it"
         );
+        for ease in REASSURING {
+            let eased = format!("shit, {ease}");
+            assert_eq!(kinds(&eased, AT, &[]), none, "{eased}");
+        }
+        for hurt in [
+            "shit, that's fine?",
+            "that's fine. why the fuck is it slow?",
+            "it's fine, i'll do it myself, fuck this",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "ease elsewhere, asked or beside giving up spared a swear: {hurt}"
+            );
+        }
         assert_eq!(kinds("now do the backlight", AT, &[]), none);
         assert_eq!(kinds("waiting room design looks good", AT, &[]), none);
         assert!(
