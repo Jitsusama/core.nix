@@ -19,7 +19,7 @@
 //! its own, a line of JSON for each pass, and its folder in the repository
 //! where it's not the top; nothing that failed is kept. Subtests run again
 //! copy the pictures from where the last run put them, while those are
-//! there. The files are the keeper's where the machine runs it
+//! still as it left them. The files are the keeper's where the machine runs it
 //! (`keep.rs`), which no session can remove or rewrite, and otherwise in
 //! `nix-offload/passed` under XDG's state folder.
 //! `nix-offload passed forget COMMIT` has a commit's checks built again.
@@ -161,23 +161,32 @@ impl Passed {
     }
 
     /// Where the pictures of subtests run as `run` went when they passed at
-    /// `at`, the newest that's still there, if any is.
+    /// `at`, the newest still holding just what that pass left, if any is.
+    /// The folder is the asker's own `--out`, so a later run into it, at
+    /// another commit or of other subtests, would otherwise be served as
+    /// this pass's pictures; a folder changed since, or kept before its
+    /// pictures were, has the subtests run again.
     pub fn subtests(&self, at: &At, run: &str) -> Option<PathBuf> {
         self.lines(at)
             .iter()
             .rev()
             .filter(|line| line["subtests"].as_str() == Some(run))
-            .filter_map(|line| line["out"].as_str().map(PathBuf::from))
-            .find(|out| out.is_dir())
+            .find_map(|line| {
+                let out = PathBuf::from(line["out"].as_str()?);
+                let kept = line["pictures"].as_str()?;
+                (pictures(&out).as_deref() == Some(kept)).then_some(out)
+            })
     }
 
     /// Keep that subtests run as `run` passed at `at`, their pictures in
-    /// `out`.
+    /// `out`, as they stand now. A folder that can't be read is kept
+    /// without them, so it's never served.
     pub fn keep_subtests(&self, at: &At, run: &str, out: &Path) {
         let line = serde_json::json!({
             "dir": at.dir,
             "subtests": run,
             "out": out.to_string_lossy(),
+            "pictures": pictures(out),
         });
         self.keep(at, &[line]);
     }
@@ -311,6 +320,43 @@ impl Passed {
             );
         }
     }
+}
+
+/// What the folder `out` holds, as a mark that changes when any file in it
+/// is added, removed, resized or written again: each file's path within
+/// it, size and time last written, in order, hashed. None when it can't be
+/// read whole. FNV-1a rather than std's hasher, whose output may change
+/// between releases and would then refuse every kept pass at once.
+fn pictures(out: &Path) -> Option<String> {
+    fn walk(folder: &Path, within: &Path, files: &mut Vec<String>) -> std::io::Result<()> {
+        for entry in fs::read_dir(folder)? {
+            let entry = entry?;
+            let path = entry.path();
+            let kind = entry.file_type()?;
+            let name = within.join(entry.file_name());
+            if kind.is_dir() {
+                walk(&path, &name, files)?;
+            } else {
+                let about = entry.metadata()?;
+                let written = about
+                    .modified()?
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos();
+                files.push(format!("{}\0{}\0{written}", name.display(), about.len()));
+            }
+        }
+        Ok(())
+    }
+    let mut files = Vec::new();
+    walk(out, Path::new(""), &mut files).ok()?;
+    files.sort();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in files.join("\n").bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+    Some(format!("{}:{hash:016x}", files.len()))
 }
 
 /// `nix-offload passed forget COMMIT`: have a commit's checks built again.
@@ -534,8 +580,12 @@ mod tests {
         let (first, second) = (state.path().join("first"), state.path().join("second"));
         fs::create_dir(&first).unwrap();
         passed.keep_subtests(&at, "run a", &first);
-        assert_eq!(passed.subtests(&at, "run a"), Some(first.clone()));
-        assert_eq!(passed.subtests(&at, "run b"), None);
+        assert_eq!(
+            passed.subtests(&at, "run a"),
+            Some(first.clone()),
+            "the one kept"
+        );
+        assert_eq!(passed.subtests(&at, "run b"), None, "no run b passed");
         passed.keep_subtests(&at, "run a", &second);
         assert_eq!(
             passed.subtests(&at, "run a"),
@@ -544,6 +594,70 @@ mod tests {
         );
         fs::remove_dir(&first).unwrap();
         assert_eq!(passed.subtests(&at, "run a"), None, "none is left");
+    }
+
+    #[test]
+    fn pictures_another_run_wrote_since_are_never_served_as_this_pass() {
+        let state = tempfile::tempdir().unwrap();
+        let passed = Passed::under(state.path());
+        let (at, later) = (
+            At::new(COMMIT, None).unwrap(),
+            At::new(&"b".repeat(40), None).unwrap(),
+        );
+        let out = state.path().join("out");
+        fs::create_dir_all(out.join("shots")).unwrap();
+        fs::write(out.join("shots/a.png"), "first").unwrap();
+        passed.keep_subtests(&at, "run a", &out);
+        assert_eq!(
+            passed.subtests(&at, "run a"),
+            Some(out.clone()),
+            "as it passed"
+        );
+
+        // Another commit's run into the same folder, as a gate asking
+        // again with the same --out does.
+        fs::write(out.join("shots/a.png"), "second run").unwrap();
+        passed.keep_subtests(&later, "run a", &out);
+        assert_eq!(
+            passed.subtests(&at, "run a"),
+            None,
+            "the first commit's pass was served the later run's pictures"
+        );
+        assert_eq!(
+            passed.subtests(&later, "run a"),
+            Some(out.clone()),
+            "the later pass"
+        );
+
+        fs::write(out.join("b.png"), "more").unwrap();
+        assert_eq!(
+            passed.subtests(&later, "run a"),
+            None,
+            "a picture added since"
+        );
+    }
+
+    #[test]
+    fn a_pass_kept_without_its_pictures_is_run_again() {
+        let state = tempfile::tempdir().unwrap();
+        let passed = Passed::under(state.path());
+        let at = At::new(COMMIT, None).unwrap();
+        let out = state.path().join("out");
+        fs::create_dir(&out).unwrap();
+        // As every pass was kept before its pictures were marked.
+        passed.keep(
+            &at,
+            &[serde_json::json!({
+                "dir": null,
+                "subtests": "run a",
+                "out": out.to_string_lossy(),
+            })],
+        );
+        assert_eq!(
+            passed.subtests(&at, "run a"),
+            None,
+            "a pass with no mark was served"
+        );
     }
 
     #[test]
