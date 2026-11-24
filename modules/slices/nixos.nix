@@ -205,11 +205,12 @@ let
   # slice only as far as each slice above it is protected. Hard, 24% covers
   # app.slice's 8.1 GiB, session.slice's 4.5 and agents.slice's 2 on a
   # 62 GiB machine, and no more: with memory_recursiveprot a floor its
-  # children don't claim is
-  # shared among them by use, which would hand it to agents' sessions, and
-  # hard floors kept for idle sessions are what ended work from 4 to 6
-  # November. Soft, 38% covers app.slice's 20%, session.slice's 4.5 GiB
-  # and agents.slice's 10%. What the floors below leave unused the kernel shares among the account's other slices.
+  # children don't claim is shared among them by use, which would hand it
+  # to agents' sessions, and hard floors kept for idle sessions are what
+  # ended work from 4 to 6 November. Soft, 38% covers app.slice's 20%,
+  # session.slice's 4.5 GiB and agents.slice's 10% on a machine of about
+  # 56 GiB or more. What the floors below leave unused the kernel shares
+  # among the account's other slices.
   # Work in jobs, background and containers has the rest of memory, and when
   # that runs out, it's what swaps.
   apps = "13%";
