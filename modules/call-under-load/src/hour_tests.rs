@@ -147,6 +147,7 @@ fn call() -> Call {
         got: Some(30.0),
         freezes: Some(0.0),
         frozen_s: Some(0.0),
+        frozen_at: Vec::new(),
         clicks_p50: Some(3.0),
         clicks_p99: Some(9.84),
         heard: true,
