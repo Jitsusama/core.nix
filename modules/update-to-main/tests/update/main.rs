@@ -2470,9 +2470,9 @@ fn a_folder_the_checkout_holds_with_other_contents_is_never_built() {
         );
         checkout.join(path.trim())
     };
-    let held = loose(real);
-    fs::create_dir_all(held.parent().unwrap()).unwrap();
-    fs::copy(loose(other.trim()), &held).unwrap();
+    let impostor = loose(real);
+    fs::create_dir_all(impostor.parent().unwrap()).unwrap();
+    fs::copy(loose(other.trim()), &impostor).unwrap();
     assert!(
         git(&checkout, &["cat-file", "-p", real]).contains("other"),
         "the checkout doesn't hold machine's id with other contents, so the test proves nothing"
