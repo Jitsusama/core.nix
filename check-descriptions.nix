@@ -3533,6 +3533,13 @@
     keep a copy for each folder, so a pairing made in one folder never reaches another; a reload,
     and a moved link, load afresh, and a load begun before a reload caches nothing
   '';
+  pi-hosted-shares-keyed-modules = ''
+    pi built with the host's patches, applied exactly, evaluates a library once for every extension
+    of a package declaring its per-session state keyed and once for each extension of a package
+    without it, so module state never crosses between another package's extensions; a reload
+    reads the library afresh, a load begun before a reload hands a later load nothing it read
+    first and leaves nothing cached once it ends, and a link that moves on lets go of its copy
+  '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
     headers through an auth context, gives each runtime the key, provider headers, model headers
