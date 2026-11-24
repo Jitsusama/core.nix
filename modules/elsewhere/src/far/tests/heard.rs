@@ -574,6 +574,39 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
 }
 
 #[test]
+fn a_far_line_stopped_before_its_run_s_file_leaves_another_run_s_copy() {
+    // Another run of the job writes its run's file, its copy and its names
+    // while this one waits on its files, and this one is stopped there,
+    // before it wrote a run's file of its own.
+    let (step, stopping) = refusing(
+        "sleep",
+        "*",
+        "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+         if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+         echo theirs > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
+         kill -TERM \"$PPID\"; fi",
+    );
+    let (code, err, home) = far_line(
+        NEVER_CROSSING,
+        &[("x", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[(step, &stopping)],
+    );
+    let died_by = std::fs::read_to_string(home.join("signal")).unwrap_or_default();
+    assert_eq!((code, died_by.as_str()), (None, "15"), "it wasn't stopped: {err}");
+    let runs = work(&home);
+    assert!(
+        std::fs::read_to_string(runs.join("1.run")).ok().as_deref() == Some("theirs\n")
+            && runs.join("1/theirs").exists()
+            && runs.join("1.names").exists(),
+        "a stop before its own run's file cleared another run's: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     let (code, err, home) = far_line_in(
         Path::new("drafts"),
