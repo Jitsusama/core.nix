@@ -3400,9 +3400,10 @@ import {
           : `<p class="led"><a class="inline"${a.act === "go" ? " data-go-to" : ""} href="${esc(a.href)}">${esc(a.words)}</a></p>`,
       )
       .join("");
-    // What it asks, whole, said straight after Go to It, since reaching
-    // it is what he came for and a long question must not push the way
-    // there below the fold; its Doing then says only that it waits on him.
+    // What it asks, whole, said straight after its acts, Go to It first,
+    // since reaching it is what he came for and a long question must not
+    // push the way there below the fold; its Doing then says only that it
+    // waits on him.
     const asked = s.standing === "asks" ? askedOf(s) : [];
     const asks = asked.length
       ? `<section class="asked" aria-labelledby="asked-title"><h3 id="asked-title">It Asks You</h3>${asked.map((lines) => `<p>${lines.map(esc).join("<br>")}</p>`).join("")}</section>`

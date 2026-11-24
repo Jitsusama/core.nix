@@ -829,11 +829,20 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     expect(page.locator("#where"), "t on a receptor didn't say it can't talk").to_contain_text(
         "The Launcher can't talk to"
     )
+    # Nor has it a window, and g says so.
+    page.keyboard.press("g")
+    expect(page.locator("#where"), "g on a receptor didn't say it has no window").to_contain_text(
+        "There is no window to go to for"
+    )
     page.keyboard.press("Escape")
     expect(page, "Escape didn't let the cell go").not_to_have_url(re.compile("#cell="))
     page.keyboard.press("t")
     expect(page.locator("#where"), "t with no cell open didn't say so").to_have_text(
         "No cell is open to talk to; a opens the next that needs you."
+    )
+    page.keyboard.press("g")
+    expect(page.locator("#where"), "g with no cell open didn't say so").to_have_text(
+        "No cell is open to go to; a opens the next that needs you."
     )
 
 
@@ -883,8 +892,9 @@ FIRST_ACT = """(() => {
   const act = document.querySelector("#panel-body a, #panel-body button:not(.back)");
   return [act?.textContent, act?.getAttribute("href")];
 })()"""
-# Whether the question comes after Go to It, and each of its paragraphs' line
-# breaks, which an inner text read whitespace-folded would not show.
+# Whether the question comes after Go to It, each of its paragraphs' line
+# breaks, which to_have_text folds away, and whether its lines keep their
+# indentation, as pre-wrap sets them.
 ASKED_SHAPE = """(() => {
   const body = document.querySelector("#panel-body");
   const go = body.querySelector("a[data-go-to]");
@@ -892,7 +902,11 @@ ASKED_SHAPE = """(() => {
   const after = !!go && !!asked
     && !!(go.compareDocumentPosition(asked) & Node.DOCUMENT_POSITION_FOLLOWING);
   const paragraphs = [...body.querySelectorAll(".asked p")];
-  return [after, paragraphs.map((p) => p.querySelectorAll("br").length)];
+  return [
+    after,
+    paragraphs.map((p) => p.querySelectorAll("br").length),
+    paragraphs.map((p) => getComputedStyle(p).whiteSpace),
+  ];
 })()"""
 
 
@@ -904,7 +918,7 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
     body = page.locator("#panel-body")
     expect(body.locator("#panel-title"), "the asking cell's drawer never opened").to_be_visible()
-    # Its inner text, where each line break the drawer keeps reads as one.
+    # Its words, whitespace folded: ASKED_SHAPE counts its line breaks.
     expect(body.locator(".asked p"), "its question wasn't said whole").to_have_text(
         list(ASKED_WHOLE), use_inner_text=True
     )
@@ -912,7 +926,8 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     assert first == ["Go to It", GONE_TO], f"the drawer's first act was {first}"
     shape = page.evaluate(ASKED_SHAPE)
     breaks = [paragraph.count("\n") for paragraph in ASKED_WHOLE]
-    assert shape == [True, breaks], f"after Go to It, and its breaks, were {shape}"
+    kept = ["pre-wrap"] * len(ASKED_WHOLE)
+    assert shape == [True, breaks, kept], f"after Go to It, its breaks and spaces were {shape}"
     # g goes there as the link does, and t still talks rather than goes.
     page.evaluate(TALK_HELD)
     page.locator("#map-view").focus()
@@ -922,6 +937,16 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
     assert talked == f"mycelium:cell/{NEEDING[0]}@kestrel", f"t talked to {talked}"
+    # The tree's g is the tree's alone: it goes to its first row, and never
+    # also to the cell still open.
+    talks = page.evaluate("window.talks")
+    page.locator("#panel-title").press(".")
+    items = page.locator("#tree [role=treeitem]")
+    items.last.focus()
+    page.keyboard.press("g")
+    expect(items.first, "g didn't go to the tree's first").to_be_focused()
+    after = page.evaluate("window.talks")
+    assert after == talks, f"the tree's g also went to the open cell: {after} links, not {talks}"
 
 
 # What new work's line hands the Launcher, said back once the line closes,
