@@ -177,6 +177,10 @@
         # systemd takes a doubled % as one.
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com/a%%40b"'' environment
         && lib.elem ''"CHROME_PATH=/own/100%%/chrome"'' environment
+        # Its host's unit too, so a split of the two can't leave one undoubled.
+        && lib.elem ''"CHROME_PATH=/own/100%%/chrome"'' (
+          lib.toList (services."pi-host-one-${kind}".Service.Environment or [ ])
+        )
         # One conversation keeps a plain pi's pools, not a host's.
         && !(lib.any (lib.hasPrefix ''"PI_CODEMODE_MAX_WORKERS='') environment)
         && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);

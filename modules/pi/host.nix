@@ -160,9 +160,10 @@ let
   # The cost: replacing or dropping the login's GLIBC_TUNABLES loses every
   # tunable it names, not only the allocator's, so a conversation loses any
   # hardening tunable the login sets. To keep one, name it in the realm's
-  # GLIBC_TUNABLES. That reaches the conversation's own process but not its
-  # commands, and replaces the login's whole GLIBC_TUNABLES in both of the
-  # realm's hosts, so a login tunable the hosts need is named there too.
+  # GLIBC_TUNABLES. That reaches the conversation's own process, and from the
+  # harness's pull request 2015 on not its commands, which an older harness
+  # passes it on to. It also replaces the login's whole GLIBC_TUNABLES in both
+  # of the realm's hosts, so a login tunable the hosts need is named there too.
   loginAllocator =
     host:
     let
@@ -576,8 +577,9 @@ in
               only where no other module sets it there too. This loses every
               tunable the login's GLIBC_TUNABLES names, a hardening one
               included. To keep one, name it in the realm's GLIBC_TUNABLES.
-              That reaches the conversation's own process, never its
-              commands, and also replaces the login's whole
+              That reaches the conversation's own process, and from the
+              harness's pull request 2015 on not its commands, which an older
+              harness passes it on to. It also replaces the login's whole
               GLIBC_TUNABLES in both of the realm's hosts, so a login tunable
               the hosts need is named there too. glibc's other MALLOC_
               variables, such as MALLOC_ARENA_MAX, still come from the realm

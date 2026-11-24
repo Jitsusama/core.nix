@@ -3324,10 +3324,11 @@
   pi-conversations-run-apart = ''
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
-    socket in the slot systemd names under the host's runtime folder, with the host's
-    environment, proof, node, frame flag and SSH agent, the browser its account names in
-    place of Chromium where the machine names one, each with its % as written, but a plain
-    pi's pools, its realm's conversation heap, its inspector shut and the variables that load code cleared, glibc's
+    socket in the slot systemd names under the host's runtime folder, with the host's proof,
+    node, frame flag and SSH agent, and the host's environment and the browser its account
+    names in place of Chromium where the machine names one, each of those two with its % as
+    written, but a plain pi's pools, its realm's conversation heap, its inspector shut and the
+    variables that load code cleared, glibc's
     trim threshold fixed at 128 KiB beside its realm's own allocator tuning, unless the realm
     names its own threshold there or in glibc's older variable, whichever of the two neither
     the realm nor the trim sets dropped from the unit, the realm's tuning kept for its hosts too, in
