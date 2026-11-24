@@ -4,8 +4,9 @@
 //! one fewer agrees with it, and reads a full one only when it reaches a
 //! minute before the newest message the last answer read gave, even one
 //! holding it, or to before anything is judged. One that doesn't is asked
-//! again for what was said after a day before then, read when given whole;
-//! else it's deaf until Joel is told, then read on.
+//! for the page before its oldest, which must hold that oldest, and read
+//! when its pages reach back; else it's deaf until Joel is told, then read
+//! on.
 //! Never a result typed in a message, whether after the last one given or
 //! making up the count.
 
@@ -64,17 +65,71 @@ fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> Str
     )
 }
 
-/// Whether `asked` opens a round: for twenty, by the search itself rather
-/// than one narrowed to what was said after a day.
+/// Whether `asked` opens a round: for twenty, and for the newest page
+/// rather than one before another.
 fn opens(asked: &Value) -> bool {
-    asked["limit"] == 20 && !narrowed(asked)
+    asked["limit"] == 20 && asked.get("before").is_none()
 }
 
-/// Whether `asked` is narrowed to what was said after a day.
-fn narrowed(asked: &Value) -> bool {
-    asked["query"]
-        .as_str()
-        .is_some_and(|query| query.contains(" after:"))
+/// A tag search's answer to `asked` from `said`, newest first, as a
+/// gateway keeping to its bounds gives it, cut to `kept` alike for every
+/// ask: those said from its `after` second and to its `before` second, or,
+/// unless `meets`, only before that second, so a page never holds the
+/// oldest of the one after it. Asked with the replies it would add, it
+/// answers in words that can't be read.
+fn bounded(asked: &Value, said: &[(u64, &str)], kept: usize, meets: bool) -> String {
+    if asked["include_context"] != json!(false) {
+        return json!({ "results": "## Messages (" }).to_string();
+    }
+    let second = |key: &str| asked[key].as_str().and_then(|at| at.parse::<u64>().ok());
+    let (after, before) = (second("after"), second("before"));
+    let found: Vec<(u64, &str)> = said
+        .iter()
+        .copied()
+        .filter(|(at, _)| after.is_none_or(|after| *at >= after))
+        .filter(|(at, _)| {
+            before.is_none_or(|before| {
+                if meets {
+                    *at <= before
+                } else {
+                    at.saturating_add(1) < before
+                }
+            })
+        })
+        .collect();
+    tags(asked, &found, kept)
+}
+
+/// The messages a gap's pages find after the first round, newest first,
+/// said from the second a case `began`: the stop, two words the first
+/// page holds, the word read in the first round, one Slack found late in
+/// the minute before it, and an older one.
+fn paged(began: u64, stop: &str) -> [(u64, &str); 6] {
+    [
+        (began - 60, stop),
+        (began - 200, "a newer word"),
+        (began - 250, "a word between"),
+        (began - 300, "a word"),
+        (began - 330, "a word found late"),
+        (began - 400, "an older word"),
+    ]
+}
+
+/// The tag search's answers for a gap read in pages, from the second a
+/// case `began`: its first round finds two words, whole; each round after
+/// keeps to its bounds, cut to three, its pages meeting when `meets`.
+fn in_pages(rounds: &AtomicUsize, asked: &Value, began: u64, meets: bool) -> String {
+    let round = if opens(asked) {
+        rounds.fetch_add(1, Ordering::SeqCst) + 1
+    } else {
+        rounds.load(Ordering::SeqCst)
+    };
+    if round <= 1 {
+        let first = [(began - 300, "a word"), (began - 400, "an older word")];
+        return tags(asked, &first, first.len());
+    }
+    let stop = stop();
+    bounded(asked, &paged(began, &stop), 3, meets)
 }
 
 /// The tag search's answers in two parts: its first round's asks find
@@ -319,8 +374,10 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
         came.journal
     );
     assert!(
-        came.journal.contains("what was said from a minute before"),
-        "the span named starts a minute before the last read: {}",
+        came.journal.contains("what was said from a minute before")
+            && came.journal.contains("gives none older"),
+        "the span named starts a minute before the last read, and a gateway giving the same \
+         page before its oldest is said to give none older: {}",
         came.journal
     );
     assert_eq!(
@@ -330,33 +387,90 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
     );
 }
 
+/// When a case began, in seconds, set by its first ask, so a second
+/// passing mid-case moves no message's time.
+fn began(at: &AtomicU64, now: u64) -> u64 {
+    at.compare_exchange(0, now, Ordering::SeqCst, Ordering::SeqCst)
+        .map_or_else(|began| began, |_| now)
+}
+
 #[test]
-fn a_gap_asked_again_for_the_days_since_and_given_whole_is_read_untold() {
+fn a_gap_read_in_pages_back_to_the_last_read_is_read_untold() {
     static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
     let came = hearing(
         |tool, asked, now| {
+            let began = began(&BEGAN, now);
             if tool != "slack_search_public_and_private" {
-                return said(tool, now);
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                // Can't be read, so a row is told and the case can stop
+                // waiting; the tag's gap is never told.
+                poisoned()
+            } else {
+                in_pages(&TAGS, asked, began, true)
             }
-            // The phrase's search can't be read, so a row is told and the
-            // case can stop waiting; the tag's gap is never told.
-            if asked["query"] == "pineapple" {
-                return poisoned();
+        },
+        &Until {
+            judging: 6,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    assert_eq!(
+        each(&came.said, "verdict"),
+        [
+            "nothing", "nothing", "nothing", "nothing", "nothing", "stop"
+        ],
+        "the two words read whole, then from the pages each word the first page cut and \
+         the one found late, then the stop, each judged once: {}",
+        came.journal
+    );
+    assert!(
+        !came
+            .journal
+            .contains(&format!("search for \"<@{JOEL}>\" can't be read"))
+            && came
+                .journal
+                .contains("read 5 messages in pages, back to the last read"),
+        "read in pages back to the last read, the gap is no deafness and the journal says \
+         so: {}",
+        came.journal
+    );
+    // The last read is the word said 300 seconds before the case began.
+    let began = BEGAN.load(Ordering::SeqCst);
+    let tag = format!("<@{JOEL}>");
+    let bounds: Vec<(Value, Value)> = came
+        .searched
+        .iter()
+        .filter(|asked| asked["query"] == tag.as_str())
+        .map(|asked| (asked["after"].clone(), asked["before"].clone()))
+        .collect();
+    assert!(
+        bounds.contains(&(json!((began - 360).to_string()), Value::Null))
+            && bounds.contains(&(
+                json!((began - 360).to_string()),
+                json!((began - 249).to_string())
+            )),
+        "asked from a minute before the last read, then for the page to the second after \
+         the first page's oldest: {bounds:?}"
+    );
+}
+
+#[test]
+fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                nothing()
+            } else {
+                in_pages(&TAGS, asked, began, false)
             }
-            if !narrowed(asked) {
-                return a_gap(&TAGS, asked, now);
-            }
-            // Asked for the days since, it finds the stop and the words
-            // the gap left out, and gives them all.
-            let stop = stop();
-            let since = [
-                (now - 60, stop.as_str()),
-                (now - 200, "a newer word"),
-                (now - 330, "a word found late"),
-                (now - 300, "a word"),
-                (now - 400, "an older word"),
-            ];
-            tags(asked, &since, since.len())
         },
         &Until {
             judging: 5,
@@ -364,30 +478,22 @@ fn a_gap_asked_again_for_the_days_since_and_given_whole_is_read_untold() {
             read_at: None,
         },
     );
+    let (told, read_on) = told_and_read_on(&came.journal);
+    assert!(
+        came.journal.contains("doesn't hold")
+            && came.journal.contains("the oldest of the one after it")
+            && told.is_some()
+            && read_on > told,
+        "a page that doesn't meet the one after it leaves what lies between unread, so it's \
+         a gap, told, then read on: {}",
+        came.journal
+    );
     assert_eq!(
         each(&came.said, "verdict"),
         ["nothing", "nothing", "nothing", "nothing", "stop"],
-        "the two words read whole, then the stop and the two words the gap left out, each \
-         judged once: {}",
+        "read on, only the first page is judged, never what the page that doesn't meet it \
+         gave: {}",
         came.journal
-    );
-    assert!(
-        !came
-            .journal
-            .contains(&format!("search for \"<@{JOEL}>\" can't be read"))
-            && came.journal.contains("so asked for what was said after "),
-        "read whole for the days since, the gap is no deafness and the journal says so: {}",
-        came.journal
-    );
-    let after = came
-        .limits
-        .iter()
-        .filter_map(|(query, _)| query.as_str())
-        .find_map(|query| query.strip_prefix(&format!("<@{JOEL}> after:")));
-    assert!(
-        after.is_some_and(|day| day.len() == 10 && day.as_bytes()[4] == b'-'),
-        "it's asked as the tag's search after a day: {:?}",
-        came.limits
     );
 }
 

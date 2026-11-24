@@ -424,6 +424,8 @@ struct Came {
     asked: Vec<Value>,
     /// Each search asked, with how many it asked for.
     limits: Vec<(Value, Value)>,
+    /// What each search was asked with, whole.
+    searched: Vec<Value>,
     journal: String,
     wrote_live: bool,
 }
@@ -481,6 +483,15 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
             .and_then(|said| serde_json::from_str(&said).ok())
             .unwrap_or_default()
     };
+    // Its own statement, as a lock taken in the one below would be held to
+    // its end.
+    let asks: Vec<Value> = called
+        .lock()
+        .expect("what was called")
+        .iter()
+        .filter(|(tool, _)| tool == "slack_search_public_and_private")
+        .map(|(_, asked)| asked.clone())
+        .collect();
     let came = Came {
         why: read("waiting.json")["items"][0]["why"]
             .as_str()
@@ -490,13 +501,11 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
         read_at: read("judged.json")["read_at"].as_u64(),
         keys: read("judged.json")["keys"].as_array().map_or(0, Vec::len),
         asked: searches(),
-        limits: called
-            .lock()
-            .expect("what was called")
+        limits: asks
             .iter()
-            .filter(|(tool, _)| tool == "slack_search_public_and_private")
-            .map(|(_, asked)| (asked["query"].clone(), asked["limit"].clone()))
+            .map(|asked| (asked["query"].clone(), asked["limit"].clone()))
             .collect(),
+        searched: asks,
         journal: journal(&home),
         wrote_live: named.exists(),
     };

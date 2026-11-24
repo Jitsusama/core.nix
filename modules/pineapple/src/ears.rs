@@ -30,10 +30,18 @@ const FOUND_LATE: u128 = 60 * 1_000_000;
 /// short, before it's said as one that can't be read.
 const CUTS: usize = 4;
 
-/// How many days before the one the last read was said on a gap's second
-/// search asks after: Slack takes a day as Joel's, up to a day either side
-/// of the one UTC names, and leaves out the day `after:` names.
-const DAYS_BACK: u64 = 3;
+/// How many pages, each before the oldest message of the one after it, a
+/// search reads back through to the last read before what's left is a
+/// gap: five of twenty is a hundred messages since.
+const PAGES: usize = 5;
+
+/// What a gateway's search is asked between, in Slack's whole seconds:
+/// from `after` and to `before`, each kept, as the gateway takes them.
+#[derive(Clone, Copy, Default)]
+struct Span {
+    after: Option<u64>,
+    before: Option<u64>,
+}
 
 /// What a reader hears Slack through.
 pub trait Ears {
@@ -110,11 +118,14 @@ impl Ears for Api<'_> {
 /// only when a second ask for one fewer agrees with it: a typed result
 /// is numbered "of" one count, so the same text can't pass for both, as
 /// it could for one answer the gateway cut short where the real results
-/// were dropped. And one full answer is read only when it reaches back to
-/// the last read. One that doesn't is asked again for only what was said
-/// in the days since, and that answer, given whole, is read. Else it's
+/// were dropped. Each is asked for only what was said from a minute
+/// before the last read, without the replies the gateway would add, which
+/// are what make it cut an answer short. A full one is read only when it
+/// reaches back to the last read; one that doesn't is asked for the page
+/// before its oldest message, which must hold that message, so none
+/// between the two goes unread, up to [`PAGES`] pages. Short of it, it's
 /// deaf until Joel's row says that search can't be read, and is then read
-/// on past what it left unread, as the span between can't be asked for.
+/// on past what it left unread.
 pub struct Through {
     gateway: Gateway,
     /// How many rounds each search's answer, by its query, has left
@@ -166,19 +177,25 @@ impl Through {
     }
 
     /// The text of the gateway's answer to a search for the `limit` newest
-    /// messages `query` finds, in its detailed form, bots' included.
-    fn newest(&mut self, query: &str, limit: usize) -> Result<String, Round> {
-        let said = self.called(
-            "slack_search_public_and_private",
-            &json!({
-                "query": query,
-                "limit": limit,
-                "sort": "timestamp",
-                "sort_dir": "desc",
-                "include_bots": true,
-                "response_format": "detailed",
-            }),
-        )?;
+    /// messages `query` finds in `span`, in its detailed form, bots'
+    /// included, without the replies it would add after each.
+    fn newest(&mut self, query: &str, limit: usize, span: Span) -> Result<String, Round> {
+        let mut asked = json!({
+            "query": query,
+            "limit": limit,
+            "sort": "timestamp",
+            "sort_dir": "desc",
+            "include_bots": true,
+            "include_context": false,
+            "response_format": "detailed",
+        });
+        if let Some(after) = span.after {
+            asked["after"] = json!(after.to_string());
+        }
+        if let Some(before) = span.before {
+            asked["before"] = json!(before.to_string());
+        }
+        let said = self.called("slack_search_public_and_private", &asked)?;
         Ok(inner(&said, "results"))
     }
 
@@ -209,7 +226,7 @@ impl Through {
     /// each count it was cut to: cut short, it's asked again for as many as
     /// it gave, as the gateway cuts by size and an ask for as many as it
     /// gave may be cut again.
-    fn agreed(&mut self, query: &str) -> Result<(Vec<Message>, usize, String), Round> {
+    fn agreed(&mut self, query: &str, span: Span) -> Result<(Vec<Message>, usize, String), Round> {
         // An answer it can't read is no quiet Slack: it isn't heard, and
         // since its cause lasts, it's said as deaf rather than let go.
         let unread = |why: String| {
@@ -217,7 +234,7 @@ impl Through {
             Round::Deaf(Deafness::Unreadable)
         };
         let count = usize::from(COUNT);
-        let mut answer = self.newest(query, count)?;
+        let mut answer = self.newest(query, count, span)?;
         let mut asked = count;
         let mut cuts = Vec::new();
         for _ in 0..CUTS {
@@ -226,14 +243,14 @@ impl Through {
             };
             cuts.push(given.to_string());
             asked = given;
-            answer = self.newest(query, asked)?;
+            answer = self.newest(query, asked, span)?;
         }
         // Each count it was cut to, so a journal shows every cut.
         let cuts = cuts.join(", then ");
         let cut_to = |why: String| cut_to(&cuts, asked, why);
         let found = gateway::found(&answer).map_err(|why| unread(cut_to(why)))?;
         if let Some(fewer) = found.len().checked_sub(1).filter(|fewer| *fewer > 0) {
-            let again = self.newest(query, fewer)?;
+            let again = self.newest(query, fewer, span)?;
             let again = gateway::found(&again)
                 .map_err(|why| unread(cut_to(format!("then asked for one fewer, {why}"))))?;
             if again[..] != found[1..] {
@@ -248,15 +265,93 @@ impl Through {
         Ok((found, asked, cuts))
     }
 
-    /// Every message a search for `query` finds said after a day well
-    /// before the last read, `back_to`, with that day, when the gateway
-    /// gives them whole: none when it finds as many as it may give, or its
-    /// answer can't be read.
-    fn since(&mut self, query: &str, back_to: &str) -> Option<(String, Vec<Message>)> {
-        let day = slack::day_before(back_to, DAYS_BACK)?;
-        let (found, asked, _) = self.agreed(&format!("{query} after:{day}")).ok()?;
-        (asked == usize::from(COUNT) && found.len() < asked).then_some((day, found))
+    /// `found`, a full answer for `query` in `span` that doesn't reach back
+    /// to the last read, `back_to`, with the pages before its oldest message
+    /// added, oldest first, and why it still doesn't reach back to it, if it
+    /// doesn't: each page must hold the oldest message of the one after it,
+    /// so none between the two goes unread, and add some older.
+    fn paged(
+        &mut self,
+        query: &str,
+        mut span: Span,
+        back_to: &str,
+        mut found: Vec<Message>,
+    ) -> Result<(Vec<Message>, Option<String>), Round> {
+        for page in 2..=PAGES {
+            let Some(oldest) = found.first().cloned() else {
+                return Ok((found, None));
+            };
+            if reaches(&oldest.ts, back_to) {
+                return Ok((found, None));
+            }
+            let Some(before) = slack::micros(&oldest.ts)
+                .and_then(seconds)
+                .map(|second| second.saturating_add(1))
+            else {
+                return Ok((
+                    found,
+                    Some("its oldest message has no time to ask before".into()),
+                ));
+            };
+            span.before = Some(before);
+            let (given, asked, cuts) = self.agreed(query, span)?;
+            // What a page that doesn't meet the one after it gives isn't
+            // read, as what was said between the two can't be told read.
+            if !given.contains(&oldest) {
+                let why = format!(
+                    "its page before {before} doesn't hold {:?}, the oldest of the one after it",
+                    oldest.ts
+                );
+                return Ok((found, Some(why)));
+            }
+            let whole = given.len() < asked;
+            let older: Vec<Message> = given
+                .into_iter()
+                .filter(|message| !found.contains(message))
+                .collect();
+            if older.is_empty() && !whole {
+                return Ok((
+                    found,
+                    Some(format!("its page before {before} gives none older")),
+                ));
+            }
+            eprintln!(
+                "<5>the gateway's search for {query:?} read page {page}, before {before}: {} \
+                 more{}",
+                older.len(),
+                if cuts.is_empty() {
+                    String::new()
+                } else {
+                    format!(", cut to {cuts} of {COUNT}")
+                }
+            );
+            found.extend(older);
+            found.sort_by_key(|message| slack::micros(&message.ts));
+            if whole {
+                return Ok((found, None));
+            }
+        }
+        let reached = found
+            .first()
+            .is_none_or(|oldest| reaches(&oldest.ts, back_to));
+        Ok((
+            found,
+            (!reached).then(|| format!("{PAGES} pages don't reach it")),
+        ))
     }
+}
+
+/// Whether a message said at `oldest` lies a minute before the last read,
+/// `back_to`, or more: one said in that minute may be found only later.
+fn reaches(oldest: &str, back_to: &str) -> bool {
+    slack::micros(oldest)
+        .zip(slack::micros(back_to))
+        .is_some_and(|(oldest, back_to)| oldest.saturating_add(FOUND_LATE) <= back_to)
+}
+
+/// Slack's whole seconds in `micros`, as a gateway's search is bounded by.
+fn seconds(micros: u128) -> Option<u64> {
+    u64::try_from(micros / 1_000_000).ok()
 }
 
 /// Why an answer can't be read, saying first each count it was cut to,
@@ -275,50 +370,55 @@ impl Ears for Through {
             eprintln!("<4>the gateway's search for {query:?} can't be read: {why}");
             Round::Deaf(Deafness::Unreadable)
         };
-        let (found, asked, cuts) = self.agreed(query)?;
+        // Only what was said from a minute before the last read is asked
+        // for, as a message said in that minute may be found only later;
+        // with no last read, the newest.
+        let span = Span {
+            after: slack::micros(back_to)
+                .and_then(|back_to| seconds(back_to.saturating_sub(FOUND_LATE))),
+            before: None,
+        };
+        let (found, asked, cuts) = self.agreed(query, span)?;
         let cut = !cuts.is_empty();
         let cut_to = |why: String| cut_to(&cuts, asked, why);
         // Fewer than asked for is every message it finds. A full answer
         // must reach a minute before the last read, even one holding it,
-        // as a message said in that minute may be found only later.
-        if found.len() == asked {
+        // or its pages before must.
+        let (found, short) = if found.len() == asked {
+            self.paged(query, span, back_to, found)?
+        } else {
+            (found, None)
+        };
+        if let Some(short) = short {
             let oldest = found.first().map_or("", |message| message.ts.as_str());
-            let reaches = slack::micros(oldest).zip(slack::micros(back_to));
-            if reaches.is_none_or(|(oldest, back_to)| oldest.saturating_add(FOUND_LATE) > back_to) {
-                let unheard = format!(
-                    "back to {oldest:?}, it leaves unread what was said from a minute before \
-                     {back_to} to then"
-                );
-                if let Some((day, since)) = self.since(query, back_to) {
-                    eprintln!(
-                        "<5>the gateway's search for {query:?}, {}, so asked for what was \
-                         said after {day}: given whole, that's read",
-                        cut_to(unheard)
-                    );
-                    self.gaps.remove(query);
-                    self.told.remove(query);
-                    return Ok(since);
-                }
-                let gaps = self.gaps.entry(query.to_owned()).or_default();
-                *gaps = gaps.saturating_add(1);
-                if *gaps <= deaf::ROUNDS || !self.told.contains(query) {
-                    return Err(unread(cut_to(unheard)));
-                }
-                eprintln!(
-                    "<4>the gateway's search for {query:?}, {}, told in Joel's row, reads on: \
-                     what was said then is never read",
-                    cut_to(unheard)
-                );
+            let unheard = format!(
+                "back to {oldest:?}, it leaves unread what was said from a minute before \
+                 {back_to} to then, as {short}"
+            );
+            let gaps = self.gaps.entry(query.to_owned()).or_default();
+            *gaps = gaps.saturating_add(1);
+            if *gaps <= deaf::ROUNDS || !self.told.contains(query) {
+                return Err(unread(cut_to(unheard)));
             }
-        }
-        self.gaps.remove(query);
-        self.told.remove(query);
-        if cut {
+            eprintln!(
+                "<4>the gateway's search for {query:?}, {}, told in Joel's row, reads on: \
+                 what was said then is never read",
+                cut_to(unheard)
+            );
+        } else if found.len() > asked {
+            eprintln!(
+                "<5>the gateway's search for {query:?} read {} messages in pages, back to the \
+                 last read, at {back_to}",
+                found.len()
+            );
+        } else if cut {
             eprintln!(
                 "<5>the gateway cut its answer for {query:?} to {cuts} of {COUNT}, so it read \
                  the newest {asked}, back to the last read, at {back_to}"
             );
         }
+        self.gaps.remove(query);
+        self.told.remove(query);
         Ok(found)
     }
 

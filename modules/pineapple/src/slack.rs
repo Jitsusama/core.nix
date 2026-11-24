@@ -55,31 +55,6 @@ pub fn micros(ts: &str) -> Option<u128> {
     Some(seconds * 1_000_000 + fraction)
 }
 
-/// The day, as `2026-11-19`, falling `days` before the one UTC says a
-/// timestamp is on, as a search's `after:` names one; none for one that
-/// isn't a timestamp.
-#[must_use]
-pub fn day_before(ts: &str, days: u64) -> Option<String> {
-    let day = i64::try_from(micros(ts)? / 86_400_000_000).ok()?;
-    let day = day.checked_sub(i64::try_from(days).ok()?)?;
-    // Days since 1970 as a date, by Howard Hinnant's reckoning in eras of
-    // 400 years, each starting on 1 March.
-    let since_era_zero = day + 719_468;
-    let era = since_era_zero.div_euclid(146_097);
-    let of_era = since_era_zero.rem_euclid(146_097);
-    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
-    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let month_from_march = (5 * of_year + 2) / 153;
-    let of_month = of_year - (153 * month_from_march + 2) / 5 + 1;
-    let month = if month_from_march < 10 {
-        month_from_march + 3
-    } else {
-        month_from_march - 9
-    };
-    let year = year_of_era + era * 400 + i64::from(month <= 2);
-    Some(format!("{year:04}-{month:02}-{of_month:02}"))
-}
-
 /// The thread a permalink says its message sits in, from its `thread_ts`.
 fn thread_of(link: &str) -> Option<String> {
     let (_, query) = link.split_once('?')?;
@@ -199,32 +174,6 @@ mod tests {
             "a short fraction is tenths"
         );
         assert_eq!(micros("nope"), None, "a word isn't a timestamp");
-    }
-
-    #[test]
-    fn a_day_before_is_counted_back_across_months_and_leap_days() {
-        for (ts, days, day) in [
-            ("0.000000", 0, "1970-01-01"),
-            ("951782400.000000", 0, "2000-02-29"),
-            ("951868799.999999", 0, "2000-02-29"),
-            ("951868800.000000", 1, "2000-02-29"),
-            ("951868800.000000", 0, "2000-03-01"),
-            ("1795400257.073249", 3, "2026-11-20"),
-            ("1795400257.073249", 23, "2026-10-31"),
-            ("1767225600.000000", 1, "2025-12-31"),
-        ] {
-            assert_eq!(
-                day_before(ts, days).as_deref(),
-                Some(day),
-                "{ts} less {days} days"
-            );
-        }
-        assert_eq!(day_before("nope", 3), None, "a word isn't a timestamp");
-        assert_eq!(
-            day_before("0.000000", 1),
-            Some("1969-12-31".to_owned()),
-            "before 1970"
-        );
     }
 
     #[test]
