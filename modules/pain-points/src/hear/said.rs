@@ -67,6 +67,10 @@ pub struct Carried {
     /// until it is taken once the session's cell is known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answered: Option<i64>,
+    /// When he said the message that answer answered, so it takes up only
+    /// what he said from then, not a pain a failed turn left open before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<i64>,
 }
 
 /// His words in a user message's text, and the window attached, or none
@@ -174,6 +178,7 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             }
             if stopped == Some("stop") && carried.acting && !text_of(content).trim().is_empty() {
                 carried.answered = iso_ms(&head.timestamp);
+                carried.asked = carried.earlier.last().map(|(at, _)| *at);
             }
             None
         }

@@ -69,6 +69,22 @@ const SLOW_AFTER: [&str; 11] = [
 /// The starts of words that are swears.
 const SWEARS: [&str; 6] = ["fuck", "shit", "crap", "wtf", "ffs", "damn"];
 
+/// Phrases that tell an agent all is well, each matched as whole words: a
+/// swear said with one is his ease, as on 24 November when he swore while
+/// saying a hang "is bound to happen" and to carry on, not a hurt.
+const REASSURING: [&str; 10] = [
+    "that's fine",
+    "that is fine",
+    "it's fine",
+    "it is fine",
+    "all good",
+    "no worries",
+    "don't worry",
+    "no big deal",
+    "bound to happen",
+    "don't let that stop you",
+];
+
 /// How soon a message alike to an earlier one is that one said again.
 pub const AGAIN_MS: i64 = 30 * 60_000;
 
@@ -115,7 +131,7 @@ pub fn kinds(words: &str, at: i64, earlier: &[(i64, String)]) -> Vec<&'static st
     let swore = each.iter().enumerate().any(|(at, w)| {
         (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
             && !each.get(at + 1).is_some_and(|next| PRAISE.contains(next))
-    });
+    }) && !REASSURING.iter().any(|ease| said(&each, ease));
     if swore {
         kinds.push("swore");
     }
@@ -254,6 +270,20 @@ mod tests {
         let none: Vec<&str> = Vec::new();
         assert_eq!(kinds("I love this page!", AT, &[]), none);
         assert_eq!(kinds("make it look fucking awesome", AT, &[]), none);
+        assert_eq!(
+            kinds(
+                "shit, that hang is bound to happen. that is fine, don't let that stop you",
+                AT,
+                &[]
+            ),
+            none,
+            "a swear said to put him at ease"
+        );
+        assert_eq!(
+            kinds("it's fine but this fucking bar is broken", AT, &[]),
+            vec!["corrected"],
+            "ease spares the swear, not the fault said with it"
+        );
         assert_eq!(kinds("now do the backlight", AT, &[]), none);
         assert_eq!(kinds("waiting room design looks good", AT, &[]), none);
         assert!(
