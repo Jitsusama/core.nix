@@ -69,10 +69,12 @@ enum Look {
 pub fn untested(text: &str, folder: &Path, checkouts: &[String], switches: &str) -> Measure {
     let repos = super::checkouts_of(folder, checkouts);
     let revs = revisions(&repos, &running(switches, &repos));
-    judged(text, |test| match (repos.get(&test.repo), revs.get(&test.repo)) {
-        (Some(path), Some(Some(rev))) => found(path, rev, test),
-        (Some(_), _) => Look::Blind,
-        (None, _) => Look::Unknown,
+    judged(text, |test| {
+        match (repos.get(&test.repo), revs.get(&test.repo)) {
+            (Some(path), Some(Some(rev))) => found(path, rev, test),
+            (Some(_), _) => Look::Blind,
+            (None, _) => Look::Unknown,
+        }
     })
 }
 

@@ -42,7 +42,7 @@ fn a_test_is_named_by_its_repository_path_and_name() {
 fn each_miss_is_judged_by_whether_its_test_runs_here() {
     let ledger = [
         miss("XY9H5C", "cat waits 2 s", None),
-        miss("RCTRF8", "History paused", Some("a test somewhere")),
+        miss("RCTRF8", "History paused", Some("somewhere")),
         miss("QCXZEB", "Super+S", Some("core src/a.rs runs")),
         miss("ZINAWZ", "Reader titles", Some("core src/a.rs gone")),
         miss("88LQC0", "backup notice", Some("world src/a.rs anything")),
@@ -64,7 +64,7 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
         vec![
             format!("cat waits 2 s ({AT}), naming no test · XY9H5C"),
             format!(
-                "History paused ({AT}), its test \"a test somewhere\" isn't REPO PATH NAME \
+                "History paused ({AT}), its test \"somewhere\" isn't REPO PATH NAME \
                  · RCTRF8"
             ),
             format!(
@@ -86,7 +86,8 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
     // An owner's ask isn't closed for a miss the hour couldn't see.
     assert_eq!(m.target, None, "an hour that couldn't look judged");
     assert!(
-        m.says.ends_with("(1 couldn't be looked for, so none is judged)"),
+        m.says
+            .ends_with("(1 couldn't be looked for, so none is judged)"),
         "the miss the hour couldn't look for went unsaid: {}",
         m.says
     );
@@ -176,8 +177,10 @@ fn a_test_is_found_in_its_path_at_the_revision_that_runs() {
         (Some("0000000".to_owned()), None),
         (None, None),
     ] {
-        let runs: BTreeMap<String, String> =
-            runs.map(|rev| ("core".to_owned(), rev)).into_iter().collect();
+        let runs: BTreeMap<String, String> = runs
+            .map(|rev| ("core".to_owned(), rev))
+            .into_iter()
+            .collect();
         let revs = revisions(&repos, &runs);
         assert_eq!(revs["core"], core, "core was read at the wrong revision");
         assert_eq!(
