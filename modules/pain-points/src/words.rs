@@ -173,6 +173,9 @@ fn meaning(text: &str) -> std::collections::BTreeSet<String> {
 /// Whether a user message came from somewhere other than his keys: the
 /// harness, a peer, the launcher's steering, a compaction's carry-on or a
 /// sprouted session's brief, which quotes the ask it was sprouted from.
+/// Such a message opens no turn, so what answers it isn't timed as his
+/// wait either. The sprout openings are the harness's two fixed briefs,
+/// whole, so his own words opening the same way are still heard.
 pub fn automated(text: &str) -> bool {
     let text = text.trim_start();
     [
@@ -187,7 +190,8 @@ pub fn automated(text: &str) -> bool {
         "You are ",
         "Your ",
         "Woken by ",
-        "This session was sprouted",
+        "This session was sprouted, and quest ",
+        "This session was sprouted for quest ",
     ]
     .iter()
     .any(|opening| text.starts_with(opening))
@@ -304,12 +308,20 @@ mod tests {
     fn a_sprouted_sessions_brief_is_automated() {
         let brief = "This session was sprouted, and quest QEST-20261124-MBP857 is made \
                      and loaded for it from the words it was asked with: \"Joel's ask \
-                     (18:12 Tue 24 Nov): 'let's have some agent cells do ...'";
-        assert!(automated(brief), "a sprout's brief was heard as his words");
-        assert!(
-            !automated("this session was sprouted wrong, fix it"),
-            "his own words about a sprout"
-        );
+                     (18:12 Tue 24 Nov): 'let's have some agent cells do extensive \
+                     comparative analysis. identify what opus 5.5 fable 5.2 and neon \
+                     are good or bad at'\"";
+        let ended = "This session was sprouted for quest QEST-20261124-MBP857, which has \
+                     since ended, so its work is done. Take on nothing new; say so in a line.";
+        for (case, text) in [("a sprout's brief", brief), ("an ended sprout's", ended)] {
+            assert!(automated(text), "{case} was heard as his words");
+        }
+        for text in [
+            "This session was sprouted wrong, fix it",
+            "this session was sprouted, and quest names are wrong",
+        ] {
+            assert!(!automated(text), "his own words about a sprout: {text}");
+        }
     }
 
     #[test]
