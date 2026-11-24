@@ -45,6 +45,10 @@ let
   asked =
     if stdenv.buildPlatform.canExecute stdenv.hostPlatform then
       systemd
+    # Source and patches are compared, not postPatch or the build's flags:
+    # nixpkgs' postPatch names each platform's own compiler and readelf, so
+    # it differs between a machine's systemd and a builder's built alike. A
+    # change to run.c's options through them is the hold's blind spot.
     else if
       lib.meta.availableOn stdenv.buildPlatform buildPackages.systemd
       && (buildPackages.systemd.src or null) == (systemd.src or null)
@@ -56,12 +60,18 @@ let
   named = if systemd ? version then "systemd ${systemd.version}" else "one of unknown version";
   unheld =
     "systemd-run's wrapper isn't held to ${named}: the builder can't run "
-    + "it and has no systemd built as it is, so a call it misreads goes unseen";
-  holds = runCommandLocal "systemd-run-options-hold" { nativeBuildInputs = [ jq ]; } ''
-    ${buildPackages.bash}/bin/bash ${./systemd-run-options-hold.sh} ${./systemd-run-options.txt} \
-      ${asked}/bin/systemd-run
-    touch $out
-  '';
+    + "it and has no systemd built as it is, so a call it misreads goes unseen; "
+    + "build it where its systemd runs, or on a builder with one built alike, to hold it";
+  # Only a wrapper something holds has a hold, so reading one never throws.
+  holds =
+    if asked == null then
+      null
+    else
+      runCommandLocal "systemd-run-options-hold" { nativeBuildInputs = [ jq ]; } ''
+        ${buildPackages.bash}/bin/bash ${./systemd-run-options-hold.sh} \
+          ${./systemd-run-options.txt} ${asked}/bin/systemd-run
+        touch $out
+      '';
 in
 lib.hiPrio (writeShellApplication {
   name = "systemd-run";
@@ -70,8 +80,9 @@ lib.hiPrio (writeShellApplication {
   derivationArgs = lib.optionalAttrs (asked != null) { inherit holds; };
   passthru = {
     held = asked != null;
-    inherit holds unheld;
-  };
+    inherit unheld;
+  }
+  // lib.optionalAttrs (asked != null) { inherit holds; };
   text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
     builtins.readFile ./systemd-run.sh
   );

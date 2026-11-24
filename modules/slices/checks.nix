@@ -653,90 +653,6 @@
       "A VPN's service doesn't keep its memory: ${lib.concatStringsSep "; " broken}."
       (broken == [ ]);
 
-  # systemd-run, in front of a stand-in that says what it was given, adds
-  # --slice-inherit for an agent's --user call alone: not Joel's terminal
-  # or launcher, nor a call naming a slice, nor one to the system manager.
-  # One from agents' places, jobs.service and the spawners' scopes in
-  # jobs.slice and pi's host and conversation units in agents.slice, is
-  # given jobs-work.slice instead. Only systemd-run's own options are read,
-  # never the command's, bundled and shortened as its parser takes them, by
-  # a table the wrapper is built only once it holds to the options of the
-  # systemd it wraps, nixpkgs' here, and isn't built without: given another
-  # systemd, as a machine's own patched one, it holds the table to that one,
-  # and a hold over a systemd-run that can't list its options fails its
-  # build, saying so. Cross-built for aarch64 it holds the table to the
-  # builder's own systemd, built as the machine's is; with the machine's
-  # systemd patched, or of no version, it's built unheld and says so for
-  # the machine's warnings, never throwing. Those are read as evaluated.
-  an-agents-run-stays-in-its-slice =
-    let
-      cross = pkgs.pkgsCross.aarch64-multiplatform;
-      crossRun = cross.callPackage ./systemd-run.nix {
-        real = "/x";
-        cgroup = "cgroup";
-      };
-      builders = builtins.unsafeDiscardStringContext (
-        lib.getExe' cross.buildPackages.systemd "systemd-run"
-      );
-      heldToBuilders = crossRun.held && lib.hasInfix builders crossRun.holds.drvAttrs.buildCommand;
-      patchedCross = cross.callPackage ./systemd-run.nix {
-        systemd = cross.systemd.overrideAttrs (old: {
-          patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
-        });
-        real = "/x";
-        cgroup = "cgroup";
-      };
-      versionless = cross.callPackage ./systemd-run.nix {
-        systemd = pkgs.runCommandLocal "a-systemd" { } "mkdir $out";
-        real = "/x";
-        cgroup = "cgroup";
-      };
-      unheld = run: !run.held && !(run.drvAttrs ? holds) && lib.hasInfix "isn't held" run.unheld;
-      # A systemd-run that can't list its options, for the hold to refuse.
-      mute = pkgs.runCommandLocal "a-mute-systemd" { inherit (pkgs.systemd) version; } ''
-        mkdir -p $out/bin
-        printf '#!%s\nexit 1\n' ${pkgs.runtimeShell} >$out/bin/systemd-run
-        chmod +x $out/bin/systemd-run
-      '';
-      refused =
-        pkgs.testers.testBuildFailure
-          (pkgs.callPackage ./systemd-run.nix {
-            systemd = mute;
-            real = "/x";
-            cgroup = "cgroup";
-          }).holds;
-      run = pkgs.callPackage ./systemd-run.nix {
-        real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
-        cgroup = "cgroup";
-      };
-      patched = pkgs.runCommandLocal "a-patched-systemd" {
-        inherit (pkgs.systemd) version;
-      } "mkdir $out";
-      # A regex may not name a store path, so the stand-in's is matched as text.
-      patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
-      heldToPatched = lib.hasInfix patchedRun (
-        (pkgs.callPackage ./systemd-run.nix {
-          systemd = patched;
-          real = "/x";
-          cgroup = "cgroup";
-        }).drvAttrs.holds.drvAttrs.buildCommand or ""
-      );
-    in
-    assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
-    assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
-    assert lib.assertMsg heldToBuilders "a cross-built systemd-run isn't held to the builder's";
-    assert lib.assertMsg (unheld patchedCross) "a cross-built, patched systemd-run is held";
-    assert lib.assertMsg (
-      unheld versionless && lib.hasInfix "unknown version" versionless.unheld
-    ) "a cross-built systemd-run of no version isn't said unheld";
-    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      grep -q "can't list its options" ${refused}/testBuildFailure.log
-      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
-        ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
-        ${pkgs.systemd}/bin/systemd-run
-      touch $out
-    '';
-
   # efficient-cores, on a stand-in sysfs, holds only the efficient cores'
   # ceiling, within each one's own range, frees it to each one's full clock,
   # waits behind another's lock, refuses words it doesn't take, and holds
@@ -799,6 +715,127 @@
 }
 # What follows needs Linux to build or to run, so a Mac leaves it out.
 // onLinux {
+  # systemd-run, in front of a stand-in that says what it was given, adds
+  # --slice-inherit for an agent's --user call alone: not Joel's terminal
+  # or launcher, nor a call naming a slice, nor one to the system manager.
+  # One from agents' places, jobs.service and the spawners' scopes in
+  # jobs.slice and pi's host and conversation units in agents.slice, is
+  # given jobs-work.slice instead. Only systemd-run's own options are read,
+  # never the command's, bundled and shortened as its parser takes them, by
+  # a table the wrapper is built only once it holds to the options of the
+  # systemd it wraps, nixpkgs' here, and isn't built without: given another
+  # systemd, as a machine's own patched one, it holds the table to that one,
+  # and a hold over a systemd-run that can't list its options fails its
+  # build, saying so. Cross-built for aarch64 it holds the table to the
+  # builder's own systemd, built as the machine's is; with the machine's
+  # systemd patched, or of no version, it's built unheld and says so for
+  # the machine's warnings, never throwing, and such a machine warns of it.
+  # Cross-built from a Mac, whose nixpkgs has no systemd, it's unheld too.
+  # Those are read as evaluated, here on Linux, since nixpkgs for a Mac
+  # alone has no systemd to wrap.
+  an-agents-run-stays-in-its-slice =
+    let
+      cross = pkgs.pkgsCross.aarch64-multiplatform;
+      crossRun = cross.callPackage ./systemd-run.nix {
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      builders = builtins.unsafeDiscardStringContext (
+        lib.getExe' cross.buildPackages.systemd "systemd-run"
+      );
+      # The hold the wrapper's own build asks for, not the one it offers.
+      askedOf = crossRun.drvAttrs.holds.drvAttrs.buildCommand or "";
+      heldToBuilders = crossRun.held && lib.hasInfix builders askedOf;
+      patchedCross = cross.callPackage ./systemd-run.nix {
+        systemd = cross.systemd.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+        });
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      versionless = cross.callPackage ./systemd-run.nix {
+        systemd = pkgs.runCommandLocal "a-systemd" { } "mkdir $out";
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      # nixpkgs as a Mac cross-builds an aarch64 machine with, only evaluated.
+      fromAMac = import pkgs.path {
+        localSystem = "aarch64-darwin";
+        crossSystem = "aarch64-linux";
+      };
+      macRun = fromAMac.callPackage ./systemd-run.nix {
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      # A whole machine cross-built from a Mac stops in nixpkgs, on tools its
+      # initrd asks for, before any warning is read, so the machine that
+      # warns is an aarch64 one built here with its systemd patched.
+      patchedWarnings =
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          (
+            { pkgs, ... }:
+            {
+              nixpkgs.buildPlatform = "x86_64-linux";
+              nixpkgs.hostPlatform = "aarch64-linux";
+              systemd.package = pkgs.systemd.overrideAttrs (old: {
+                patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+              });
+            }
+          )
+        ]).config.warnings;
+      unheld = run: !run.held && noHold run && lib.hasInfix "isn't held" run.unheld;
+      # Neither asked for by the wrapper's build nor offered beside it.
+      noHold = run: !(run.drvAttrs ? holds) && !(run ? holds);
+      # A systemd-run that can't list its options, for the hold to refuse.
+      mute = pkgs.runCommandLocal "a-mute-systemd" { inherit (pkgs.systemd) version; } ''
+        mkdir -p $out/bin
+        printf '#!%s\nexit 1\n' ${pkgs.runtimeShell} >$out/bin/systemd-run
+        chmod +x $out/bin/systemd-run
+      '';
+      refused =
+        pkgs.testers.testBuildFailure
+          (pkgs.callPackage ./systemd-run.nix {
+            systemd = mute;
+            real = "/x";
+            cgroup = "cgroup";
+          }).holds;
+      run = pkgs.callPackage ./systemd-run.nix {
+        real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
+        cgroup = "cgroup";
+      };
+      patched = pkgs.runCommandLocal "a-patched-systemd" {
+        inherit (pkgs.systemd) version;
+      } "mkdir $out";
+      # A regex may not name a store path, so the stand-in's is matched as text.
+      patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
+      heldToPatched = lib.hasInfix patchedRun (
+        (pkgs.callPackage ./systemd-run.nix {
+          systemd = patched;
+          real = "/x";
+          cgroup = "cgroup";
+        }).drvAttrs.holds.drvAttrs.buildCommand or ""
+      );
+    in
+    assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
+    assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
+    assert lib.assertMsg heldToBuilders "a cross-built systemd-run isn't held to the builder's";
+    assert lib.assertMsg (unheld patchedCross) "a cross-built, patched systemd-run is held";
+    assert lib.assertMsg (
+      unheld versionless && lib.hasInfix "unknown version" versionless.unheld
+    ) "a cross-built systemd-run of no version isn't said unheld";
+    assert lib.assertMsg (unheld macRun) "a systemd-run cross-built from a Mac is held";
+    assert lib.assertMsg (lib.any (lib.hasInfix "isn't held") patchedWarnings)
+      "a machine whose systemd-run isn't held doesn't warn of it";
+    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      grep -q "can't list its options" ${refused}/testBuildFailure.log
+      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
+        ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
+        ${pkgs.systemd}/bin/systemd-run
+      touch $out
+    '';
+
   # The sorter's tests run as it builds: a busy process group moves after two
   # busy seconds and not one, the shell's group and pi's never move, a busy
   # process inside them moves alone, and a process first seen counts nothing.
