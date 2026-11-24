@@ -31,8 +31,7 @@ alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
 given those commands built, and runs on Linux, where the first builds. It
 reads the scripts Nix wrappers build as well as the crates' programs.
-Every rule but `every-ruff-exception-hides-a-finding` and
-`comments-name-what-exists` is also given to other
+Every rule but `every-ruff-exception-hides-a-finding` is also given to other
 repositories built on core, through `core.lib` in `flake.nix`, each but
 `every-script-finds-what-it-imports` with a waiting list of their own; that
 one judges only what their treefmt hands mypy, so it phases in by their
