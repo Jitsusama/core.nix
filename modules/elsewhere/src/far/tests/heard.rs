@@ -528,16 +528,16 @@ fn a_tree_left_in_several_archives_is_unpacked_from_each() {
 }
 
 #[test]
-fn a_run_s_file_it_lost_the_write_of_is_left_with_its_copy_to_the_winner() {
-    // Another run of the job writes its run's file, its copy and its names
-    // the moment this one has cleared the name, once, so this line's
-    // noclobber write loses.
+fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
+    // Another run of the job has written its run's file, its copy and its
+    // names by the time this one sweeps, a run the sweep keeps, so this
+    // line's noclobber write loses whenever the other's came.
     let (step, winning) = refusing(
-        "rm",
-        "*\" -f \"*.run\" \"*",
-        "if [ ! -e \"$2.won\" ]; then rm \"$@\" && : > \"$2.won\" && echo theirs > \"$2\" && \
-         mkdir -p \"${2%.run}\" && : > \"${2%.run}/theirs\" && : > \"${2%.run}.names\"; \
-         exit 0; fi",
+        "uname",
+        "*",
+        "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+         if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+         echo theirs > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\"; fi",
     );
     let (code, err, home) = far_line(
         Left::Whole,
@@ -561,6 +561,10 @@ fn a_run_s_file_it_lost_the_write_of_is_left_with_its_copy_to_the_winner() {
     assert!(
         runs.join("1/theirs").exists() && runs.join("1.names").exists(),
         "the winner's copy or names were cleared: {err}"
+    );
+    assert!(
+        handover(&home).join(crate::far::TREE).exists(),
+        "the job's tree, which the winner unpacks, was cleared: {err}"
     );
     assert!(
         !runs.join("ran").exists(),

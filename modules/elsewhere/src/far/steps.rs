@@ -117,8 +117,11 @@ done"#
 /// mycelium kills a group still running a short grace after its signal,
 /// and a job's build can hold more files than go in that time, so a
 /// removal cut short or failed leaves the file that lets the next run
-/// here clear it. What lies in the handover is cleared only once no link
-/// the job left stands at it or above it, as `unlinked` makes sure.
+/// here clear it. The copy, what lies beside it and its run's file go
+/// only once this line wrote that file, `mine`: before then, any there
+/// are another run's of the job. What lies in the handover is cleared
+/// only once no link the job left stands at it or above it, as
+/// `unlinked` makes sure.
 pub(super) fn stopping() -> String {
     format!(
         r#"# True once neither the job's handover folder nor either folder above
@@ -141,7 +144,9 @@ unlinked() {{
 stopped() {{
   trap '' HUP INT PIPE TERM
   cd "$HOME" && {{ ! unlinked || rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
-    rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
+    {{ [ -z "$mine" ] || {{
+      rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
+    }}; }}
   trap - "$1"
   kill -s "$1" "$$"
   exit "$2"

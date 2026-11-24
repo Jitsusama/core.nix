@@ -299,6 +299,7 @@ pub fn script(
     format!(
         r#"job={job}
 work={work}
+mine=
 tab=$(printf '\t')
 {crossing}
 {copying}
@@ -312,16 +313,20 @@ say() {{ printf '\n%s\n' "$1"; }}
 # goes first, and noclobber refuses a file, or a link to one, put there
 # meanwhile. A link to a device put there meanwhile is still written
 # through, and one to a pipe holds the far line until something reads it.
-# A run's file this line didn't write, nor the copy beside it, is never
-# cleared: losing its write means another run of the job holds them.
-wrote=
-if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" && rm -f "$work{RUN}" &&
-  (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && wrote=1 &&
+# A plain run's file at its name is another run's of this very job, since
+# a job's number is never used twice and the sweep took a gone run's, so
+# it stands and this line's write loses. A line that lost its write clears
+# nothing that run holds, the copy, its names or the job's tree, and one
+# that never made it leaves the tree to the near side's clearing.
+if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
+  {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
+  (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
   rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
-[ -z "$wrote" ] || rm -f "$work.names"
+[ -z "$mine" ] || rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
-  cd "$HOME" && rm -rf "$job/{TREE}" &&
-    {{ [ -z "$wrote" ] || {{ rm -rf "$work" && rm -f "$work{RUN}"; }}; }}
+  [ -z "$mine" ] || {{
+    cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+  }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
