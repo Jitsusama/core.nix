@@ -1,7 +1,8 @@
-Handles the X11 events read while it waited for a reply before it sleeps.
+Before it sleeps, handles the X11 events xcb read while a request waited.
 
 Backported from upstream's 779151fdfc ("fix: drain X11 events buffered
-during Wayland dispatch"), which no release carries yet.
+during Wayland dispatch"), which no release carries yet, and made on
+flush-when-full.patch, which applies before it.
 
 xcb reads the events that come in while a synchronous request waits for
 its reply, and queues them. Satellite's main loop handles X11 events,
