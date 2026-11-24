@@ -535,16 +535,49 @@ fn a_take_that_isnt_heard_says_why() {
 fn the_daemon_leaves_out_a_take_that_isnt_heard() {
     // One take not heard mustn't end the call or stop its thread: the
     // daemon goes on with no line and no words, as for a take of silence.
+    let mut told = HashSet::new();
+    let failed = || Err("the encoder failed".to_owned());
     assert_eq!(
-        heard_or_left_out(Err("the encoder failed".to_owned())),
+        heard_or_left_out(failed(), &mut told, "call").0,
         (None, Vec::new()),
         "a take that wasn't heard wasn't left out"
     );
     let heard = || (Some("Not yet.".to_owned()), vec![word("Not", 40 * SECOND)]);
     assert_eq!(
-        heard_or_left_out(Ok(heard())),
+        heard_or_left_out(Ok(heard()), &mut told, "call").0,
         heard(),
         "what was heard of a take wasn't kept"
+    );
+}
+
+#[test]
+fn a_call_is_told_once_when_its_takes_arent_heard() {
+    // A model failing on every take of theirs would leave a transcript of
+    // Joel's lines alone that looks whole, so the first take not heard
+    // says why; the rest don't, nor a take heard, nor another call's
+    // once it has been told.
+    let mut told = HashSet::new();
+    let failed = || Err("the encoder failed".to_owned());
+    let heard = || Ok((Some("Not yet.".to_owned()), Vec::new()));
+    assert_eq!(
+        heard_or_left_out(heard(), &mut told, "call").1,
+        None,
+        "a take that was heard was told as not heard"
+    );
+    assert_eq!(
+        heard_or_left_out(failed(), &mut told, "call").1,
+        Some("the encoder failed".to_owned()),
+        "the call's first take not heard wasn't told, with why"
+    );
+    assert_eq!(
+        heard_or_left_out(failed(), &mut told, "call").1,
+        None,
+        "the call was told again of a take not heard"
+    );
+    assert_eq!(
+        heard_or_left_out(failed(), &mut told, "another").1,
+        Some("the encoder failed".to_owned()),
+        "another call wasn't told, since this one was"
     );
 }
 

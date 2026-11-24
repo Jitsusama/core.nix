@@ -262,7 +262,8 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = heard_or_left_out(transcribe_take(parakeet, start, &samples));
+                let heard = transcribe_take(parakeet, start, &samples);
+                let ((text, words), _) = heard_or_left_out(heard, &mut told, &key);
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -350,17 +351,24 @@ pub fn transcribe_take(
     Ok((text, from_call_start(start, words)))
 }
 
-/// What the daemon goes on with from a take `heard`: what was heard, or,
-/// when it wasn't, no text and no words, logged once. One take not heard
-/// mustn't end the call: it's left out, a take of theirs still helps tell
-/// the voices apart, and the next is heard as ever.
+/// What the daemon goes on with from a take of `key`'s `heard`: what was
+/// heard, or, when it wasn't, no text and no words, logged once. One take
+/// not heard mustn't end the call: it's left out, a take of theirs still
+/// helps tell the voices apart, and the next is heard as ever. With it
+/// comes why, the first time one of the call's takes isn't heard, for a
+/// notice to say, so a call whose model fails on every take isn't left
+/// looking whole; `told` holds the calls already told.
 fn heard_or_left_out(
     heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
-) -> (Option<String>, Vec<Word>) {
-    heard.unwrap_or_else(|why| {
+    told: &mut HashSet<String>,
+    key: &str,
+) -> ((Option<String>, Vec<Word>), Option<String>) {
+    let _ = (told, key);
+    let kept = heard.unwrap_or_else(|why| {
         eprintln!("call-transcripts: a take wasn't heard: {why}");
         (None, Vec::new())
-    })
+    });
+    (kept, None)
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,
