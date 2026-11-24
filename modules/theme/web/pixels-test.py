@@ -629,6 +629,30 @@ def test_a_keycap_beside_words_a_clip_leaves_in_sight_passes(tab: Page) -> None:
     assert named(tab, body) == []
 
 
+@pytest.mark.parametrize("clip", ["inset(calc(100% - 0px) 0px 0px)", "circle(0px)"])
+def test_a_keycap_beside_words_a_clip_it_cant_measure_cuts_is_an_icon(tab: Page, clip: str) -> None:
+    """Words under a clip-path of another shape, or a side it can't read, count as unseen."""
+    body = (
+        '<main><p class="keys"><kbd role="button" tabindex="0">?</kbd>'
+        f'<span style="display: inline-block; clip-path: {clip}">lists every key</span>'
+        "</p></main>"
+    )
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "?"'), found
+
+
+def test_a_keycap_under_a_wrapper_marked_keys_is_an_icon(tab: Page) -> None:
+    """Only a line of keys holding the keycap itself lends it the words that follow."""
+    body = (
+        '<main class="keys"><p><kbd role="button" tabindex="0">\u00d7</kbd>'
+        " notifications</p></main>"
+    )
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "\u00d7"'), found
+
+
 def test_a_controls_words_in_a_box_drawn_as_its_children_are_held_to_its_name(
     tab: Page,
 ) -> None:

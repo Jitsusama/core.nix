@@ -7,21 +7,25 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { keyed } from "../keyed.ts";
-import { type Act, type Cell, cells, draw, List, Row } from "./rows.ts";
+import { type Act, type Cell, type Control, cells, draw, inside, List, Row } from "./rows.ts";
 
 /**
- * Draws rows a and b with `before`'s acts, focuses b's second control (or,
- * told `deep`, the control it holds), then draws b afresh with `after`'s
- * acts and, where told, new words for b; and says whether focus landed on
- * b's second control or on b itself.
+ * Draws rows a and b with `before`'s acts, in a list inside `around` where
+ * told, focuses b's second control (or, told `deep`, the control it
+ * holds), then draws b afresh with `after`'s acts and, where told, new
+ * words for b; and says whether focus landed on b's second control, the
+ * one it holds, or b itself.
  */
 function refocused(
   before: readonly Act[],
   after: readonly Act[],
   works = "on b",
-  deep = false,
+  { deep = false, around }: { readonly deep?: boolean; readonly around?: Control } = {},
 ): string {
   const list = new List();
+  if (around !== undefined) {
+    inside(list, around);
+  }
   const rows = (acts: readonly Act[], told: readonly Cell[]) =>
     keyed(list, {
       rows: told,
@@ -36,6 +40,9 @@ function refocused(
   const now = list.ownerDocument.activeElement;
   if (now === list.rows[1]?.children[1]) {
     return "control";
+  }
+  if (deep && now === list.rows[1]?.children[1]?.children[0]) {
+    return "held";
   }
   return now === list.rows[1] ? "row" : "elsewhere";
 }
@@ -148,7 +155,7 @@ it("a control of another kind with the same name and value is another control", 
 it("focus nested deeper than the new drawing goes to the row, however alike the place", () => {
   const copy: Act = { says: "copy", attributes: { href: "#copy" } };
   const held: Act = { says: "", kind: "span", attributes: {}, holds: { ...copy } };
-  assert.equal(refocused(["open", held], ["open", copy], "on b", true), "row");
+  assert.equal(refocused(["open", held], ["open", copy], "on b", { deep: true }), "row");
 });
 
 it("a control going to the same place but marked for another act is another control", () => {
@@ -192,8 +199,17 @@ it("a control whose state changed is still the same control", () => {
     attributes: { name: "pin", value: "b", "aria-pressed": pressed, class: "pin", ...more },
   });
   assert.equal(refocused(["open", toggle("false")], ["open", toggle("true")]), "control");
-  const busy = { disabled: "", "aria-disabled": "true", "aria-invalid": "true" };
+  const busy = { "aria-disabled": "true", "aria-invalid": "true" };
   assert.equal(refocused(["open", toggle("false")], ["open", toggle("false", busy)]), "control");
+});
+
+it("a control now disabled takes no focus, so its row does", () => {
+  const toggle = (more: Record<string, string> = {}): Act => ({
+    says: "pin",
+    kind: "button",
+    attributes: { name: "pin", value: "b", ...more },
+  });
+  assert.equal(refocused(["open", toggle()], ["open", toggle({ disabled: "" })]), "row");
 });
 
 it("a control whose class changed is another control, since a page may key its act on it", () => {
@@ -221,12 +237,52 @@ it("a button sending the same name and value from another form is another contro
     attributes: { action, method: "post" },
     holds: { says: "b", kind: "button", attributes: { name: "id", value: "b" } },
   });
-  // Focus on the button inside lands on it again ("elsewhere" to refocused)
-  // only where its form is the same.
-  assert.equal(refocused(["open", sent("/start")], ["open", sent("/stop")], "on b", true), "row");
+  // Focus on the button inside lands on it again only where its form is the same.
   assert.equal(
-    refocused(["open", sent("/start")], ["open", sent("/start")], "on b", true),
-    "elsewhere",
+    refocused(["open", sent("/start")], ["open", sent("/stop")], "on b", { deep: true }),
+    "row",
+  );
+  assert.equal(
+    refocused(["open", sent("/start")], ["open", sent("/start")], "on b", { deep: true }),
+    "held",
+  );
+});
+
+it("a button whose form sends another hidden value is another control", () => {
+  const sent = (op: string): Act => ({
+    says: "",
+    kind: "form",
+    attributes: { method: "post" },
+    holds: [
+      { says: "b", kind: "button", attributes: { name: "id", value: "b" } },
+      { says: "", kind: "input", attributes: { type: "hidden", name: "op", value: op } },
+    ],
+  });
+  assert.equal(
+    refocused(["open", sent("forget")], ["open", sent("start")], "on b", { deep: true }),
+    "row",
+  );
+  assert.equal(
+    refocused(["open", sent("forget")], ["open", sent("forget")], "on b", { deep: true }),
+    "held",
+  );
+});
+
+it("a list inside a form keeps focus on the same control", () => {
+  const form: Control = {
+    says: "",
+    attributes: { action: "/rows", method: "post" },
+    holds: { says: "", kind: "input", attributes: { type: "hidden", name: "page", value: "2" } },
+  };
+  assert.equal(refocused(["open", "copy"], ["open", "copy"], "on b", { around: form }), "control");
+  const sent = (value: string): Act => ({
+    says: "b",
+    kind: "button",
+    attributes: { name: "id", value },
+  });
+  assert.equal(
+    refocused(["open", sent("b")], ["open", sent("c")], "on b", { around: form }),
+    "row",
   );
 });
 

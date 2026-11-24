@@ -143,7 +143,9 @@ for page in "${out}"/*.html; do
   # passes one. Since no step passes an end, sed's longest match is the
   # first end, however many comments follow. Each is read as a space, so
   # what's either side can't join into a comment's opening; and one never
-  # ended runs to the page's end.
+  # ended runs to the page's end. Only comments opened by <!-- are read so:
+  # a bogus comment (<! or <? alone) and raw text (script, style, textarea,
+  # title) are read as written, so a preload inside one counts.
   ends='\(-\|!--\)*'
   loop="\([^-]\|-[^-]\|--${ends}[^-!>]\|--${ends}![^->]\|--${ends}!-[^-]\)"
   end="--${ends}!\?>"

@@ -60,10 +60,14 @@
     );
   };
   // Text kept for a screen reader alone, clipped to a pixel, is read by
-  // no one's eyes, so its contrast is no one's either.
+  // no one's eyes, so its contrast is no one's either. A box drawn as its
+  // contents alone has no size to clip to.
   const forEarsOnly = (element) => {
     for (let at = element; at !== null && at !== root; at = at.parentElement) {
       const style = getComputedStyle(at);
+      if (style.display === "contents") {
+        continue;
+      }
       const box = at.getBoundingClientRect();
       if (
         style.clipPath.startsWith("inset(50%") ||

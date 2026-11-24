@@ -111,8 +111,12 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
       shown.set(key, item);
     }
   }
-  const focused = holder.ownerDocument?.activeElement ?? null;
+  const page = holder.ownerDocument ?? null;
+  const focused = page?.activeElement ?? null;
   const focus = within(focused, shown);
+  // What it is is read while it's in the page: a control taken out with
+  // its row no longer reaches a form around the list.
+  const known = focus === null || focused === null ? null : knownAs(focused);
 
   // Every row is drawn first, so nothing is touched if one throws.
   const rows: { key: string; item: Item; old: Item | undefined; fresh: boolean }[] = [];
@@ -163,7 +167,7 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   if (focus !== null) {
     const now = rows.find((row) => row.key === focus.key);
     if (now !== undefined) {
-      refocus(focused, focus.path, now.item);
+      refocus({ focused, known, page }, focus.path, now.item);
     }
   }
   return { made, redrawn, kept, removed: stale.length, placed };
@@ -281,19 +285,59 @@ function attributesOf(element: Placed): string[] {
 }
 
 /**
- * A control's markup but its state, which says what it does and how it's
- * heard: where it goes, a target, a download, a page's own data-act and
- * class, its label and title, and the form it sends, by that form's
- * action and method, each told apart.
+ * What a form sends beside `control`: each other named element in it, by
+ * its tag, name and value as written, in order, since a hidden input may
+ * be what carries a form's act. A form around a whole list holds every
+ * row's, so another row drawn sending otherwise sends focus to the row,
+ * which fails safe.
  */
-function markup(control: Placed): string {
-  const form = formOf(control);
-  const sent = form === null ? [] : ["form", form.getAttribute?.("action") ?? ""];
-  return [...sent, form?.getAttribute?.("method") ?? "", ...attributesOf(control)].join("\n");
+function fieldsOf(form: Placed, control: Placed): string[] {
+  const fields: string[] = [];
+  for (const each of Array.from(form.children)) {
+    const name = each.getAttribute?.("name") ?? "";
+    if (each !== control && name !== "") {
+      fields.push(`${each.localName} ${name}=${each.getAttribute?.("value") ?? ""}`);
+    }
+    fields.push(...fieldsOf(each, control));
+  }
+  return fields;
 }
 
 /**
- * Whether `one` is the same control as `other`: the same element with the
+ * A control's markup but its state, which says what it does and how it's
+ * heard: where it goes, a target, a download, a page's own data-act and
+ * class, its label and title, and the form it sends, by that form's own
+ * markup but its state and what else it sends, each told apart.
+ */
+function markup(control: Placed): string {
+  const form = formOf(control);
+  const sent =
+    form === null ? [] : ["form", ...attributesOf(form), "sends", ...fieldsOf(form, control)];
+  return [...sent, "control", ...attributesOf(control)].join("\n");
+}
+
+/** A control as it's known again in a new drawing, read while it's in the page. */
+interface Known {
+  readonly localName: string | undefined;
+  readonly markup: string;
+  readonly does: string | null;
+  readonly words: string;
+  readonly labelled: boolean;
+}
+
+/** What `control` is, to know it again by. */
+function knownAs(control: Placed): Known {
+  return {
+    localName: control.localName,
+    markup: markup(control),
+    does: does(control),
+    words: control.textContent?.trim() ?? "",
+    labelled: (control.getAttribute?.("aria-labelledby") ?? "") !== "",
+  };
+}
+
+/**
+ * Whether `one` is the control `other` was: the same element with the
  * same markup but its state, which then says it does the same, so where
  * the markup says what it does (where it goes, the page's act, its name
  * and value) its words may show the record that just changed. One whose
@@ -303,20 +347,26 @@ function markup(control: Placed): string {
  * read here. A listener no markup shows isn't seen, so a page drawing by
  * key marks each act in its controls' markup.
  */
-function alike(one: Placed, other: Placed | null): boolean {
+function alike(one: Placed, other: Known | null): boolean {
   if (
     other === null ||
     one.localName !== other.localName ||
-    markup(one) !== markup(other) ||
-    (other.getAttribute?.("aria-labelledby") ?? "") !== ""
+    markup(one) !== other.markup ||
+    other.labelled
   ) {
     return false;
   }
-  if (does(other) !== null) {
+  if (other.does !== null) {
     return true;
   }
-  const words = other.textContent?.trim() ?? "";
-  return words !== "" && one.textContent?.trim() === words;
+  return other.words !== "" && one.textContent?.trim() === other.words;
+}
+
+/** Focus before a drawing: what had it, what that was, and where focus is kept. */
+interface Before {
+  readonly focused: Placed | null;
+  readonly known: Known | null;
+  readonly page: { readonly activeElement: Placed | null } | null;
 }
 
 /**
@@ -326,8 +376,10 @@ function alike(one: Placed, other: Placed | null): boolean {
  * alone another control there would take the next press. A place the new
  * drawing doesn't reach all the way down to is another place. A row that
  * takes no focus lets it go, as the page does when a focused element leaves.
+ * A control that won't take focus, as one now disabled won't, hands it to
+ * the row too, rather than let it fall to the page.
  */
-function refocus(focused: Placed | null, path: number[], item: object) {
+function refocus({ focused, known, page }: Before, path: number[], item: object) {
   if (focused !== null && inside(focused, item)) {
     focused.focus?.({ preventScroll: true });
     return;
@@ -344,7 +396,13 @@ function refocus(focused: Placed | null, path: number[], item: object) {
     }
     target = next;
   }
-  (target === item || alike(target, focused) ? target : item).focus?.({ preventScroll: true });
+  if (target !== item && alike(target, known)) {
+    target.focus?.({ preventScroll: true });
+    if (page === null || page.activeElement === target) {
+      return;
+    }
+  }
+  item.focus?.({ preventScroll: true });
 }
 
 export type { Drawing, Drawn, Drew, Holder, Placed };

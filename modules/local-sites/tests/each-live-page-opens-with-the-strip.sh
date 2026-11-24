@@ -159,8 +159,9 @@ builds "${work}/dashes" "a page with an empty comment, <!--->, before its preloa
 # and what follows is live.
 copied "${work}/bang-ended"
 sed -i -e '\|fonts/fraunces.woff2|s|^|<!-- a --!--> |' \
-  -e '\|fonts/monaspace.woff2|s|$| <!-- another --!--!>|' "${work}/bang-ended/index.html"
-builds "${work}/bang-ended" "a page with comments ended --!--> and --!--!> by its preloads"
+  -e '\|fonts/fraunces-italic.woff2|s|^|<!-- b --!--!> |' \
+  -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/bang-ended/index.html"
+builds "${work}/bang-ended" "a page with comments ended --!--> and --!--!> before its preloads"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still

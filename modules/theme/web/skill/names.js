@@ -34,10 +34,14 @@
       at.checkVisibility({ visibilityProperty: true, opacityProperty: true })
     );
   };
-  // Text kept for a screen reader alone, clipped to a pixel, isn't shown.
+  // Text kept for a screen reader alone, clipped to a pixel, isn't shown. A
+  // box drawn as its contents alone has no size to clip to.
   const forEarsOnly = (element) => {
     for (let at = element; at !== null && at !== root; at = at.parentElement) {
       const style = getComputedStyle(at);
+      if (style.display === "contents") {
+        continue;
+      }
       const box = at.getBoundingClientRect();
       if (
         style.clipPath.startsWith("inset(50%") ||
@@ -108,7 +112,7 @@
   // reads its line only in a line of keys, so a mark in a kbd elsewhere is
   // still an icon.
   const capped = (one, all) =>
-    one.closest(".keys") !== null &&
+    one.parentElement?.classList.contains("keys") === true &&
     (one.localName === "kbd" ||
       (one.children.length === 1 &&
         one.firstElementChild.localName === "kbd" &&
@@ -141,11 +145,17 @@
     return text.slice(from, end);
   };
   // What a clip-path inset leaves of a box, `edge`, each side filled as the
-  // shorthand fills it and a percentage taken of the box; null where it's
-  // no inset.
+  // shorthand fills it and a percentage taken of the box; null where it
+  // clips nothing. A clip-path of another shape, or a side this can't read
+  // as a length or a percentage, such as a calc(), leaves nothing, so its
+  // words count as unseen rather than pass unread.
+  const nothing = { top: 0, right: 0, bottom: 0, left: 0 };
   const leftOf = (style, edge) => {
-    if (!style.clipPath.startsWith("inset(")) {
+    if (style.clipPath === "none" || style.clipPath === "") {
       return null;
+    }
+    if (!style.clipPath.startsWith("inset(") || style.clipPath.includes("(", "inset(".length)) {
+      return nothing;
     }
     const [top, right = top, bottom = top, left = right] = style.clipPath
       .slice("inset(".length, style.clipPath.lastIndexOf(")"))
@@ -155,12 +165,13 @@
     const whole = 100;
     const of = (side, length) =>
       side.endsWith("%") ? (Number.parseFloat(side) / whole) * length : Number.parseFloat(side);
-    return {
+    const kept = {
       top: edge.top + of(top, edge.height),
       right: edge.right - of(right, edge.width),
       bottom: edge.bottom - of(bottom, edge.height),
       left: edge.left + of(left, edge.width),
     };
+    return Object.values(kept).every(Number.isFinite) ? kept : nothing;
   };
   // A box cut to nothing by an old clip rectangle with no area, on a box it
   // applies to.

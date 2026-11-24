@@ -1,13 +1,24 @@
 // A list and its rows as keyed meets them in a page, faithful where keyed
-// leans on the DOM: an element taken out of the page takes no focus, and
-// taking out or moving what holds focus drops it to the page. Shared by
-// keyed's drawing tests and its focus tests.
+// leans on the DOM: an element taken out of the page takes no focus, nor
+// does a disabled one, a row taken out has no parent, and taking out or
+// moving what holds focus drops it to the page. Shared by keyed's drawing
+// tests and its focus tests.
 
 import { type Drawn, type Holder, KEY, keyed, type Placed } from "../keyed.ts";
 
-/** Where focus is, as a document keeps it. */
+/** Where focus is, as a document keeps it, and what's in it, from its top. */
 class Page {
   activeElement: Placed | null = null;
+  top: Placed | null = null;
+
+  /** Whether `node` is in the page, under its top. */
+  holds(node: Placed): boolean {
+    let at = node;
+    while (at.parentElement !== null) {
+      at = at.parentElement;
+    }
+    return at === this.top;
+  }
 
   /** Whether focus is `node` or inside it. */
   holdsFocusIn(node: object): boolean {
@@ -28,7 +39,7 @@ interface Control {
   readonly says: string;
   readonly attributes: Readonly<Record<string, string>>;
   readonly kind?: string;
-  readonly holds?: Control;
+  readonly holds?: Control | readonly Control[];
 }
 
 /** One of a row's acts: a link to its name, a control saying nothing, or one told whole. */
@@ -53,8 +64,8 @@ class Inner implements Placed {
     this.textContent = says;
     this.#attributes = told.attributes;
     this.localName = told.kind ?? "a";
-    if (told.holds !== undefined) {
-      this.children.push(new Inner(this, page, told.holds.says, told.holds));
+    for (const held of [told.holds ?? []].flat()) {
+      this.children.push(new Inner(this, page, held.says, held));
     }
   }
 
@@ -67,7 +78,7 @@ class Inner implements Placed {
   }
 
   focus(): void {
-    if (this.parentElement !== null) {
+    if (this.#page.holds(this) && !("disabled" in this.#attributes)) {
       this.#page.activeElement = this;
     }
   }
@@ -82,7 +93,7 @@ class Inner implements Placed {
  */
 class Row implements Drawn, Placed {
   words: string;
-  readonly parentElement = null;
+  parentElement: Placed | null = null;
   readonly localName = "li";
   children: Inner[];
   readonly #attributes = new Map<string, string>();
@@ -141,9 +152,37 @@ class Row implements Drawn, Placed {
   }
 
   focus(): void {
-    if (this.#focusable) {
+    if (this.#focusable && this.#page.holds(this)) {
       this.#page.activeElement = this;
     }
+  }
+}
+
+/** An element around a list, as a form is, holding it and what's told. */
+class Around implements Placed {
+  readonly parentElement = null;
+  readonly children: Placed[];
+  readonly localName: string;
+  readonly #attributes: Readonly<Record<string, string>>;
+
+  constructor(list: List, told: Control) {
+    this.localName = told.kind ?? "form";
+    this.#attributes = told.attributes;
+    const held = [told.holds ?? []].flat();
+    this.children = [
+      list,
+      ...held.map((one) => new Inner(this, list.ownerDocument, one.says, one)),
+    ];
+    list.parentElement = this;
+    list.ownerDocument.top = this;
+  }
+
+  getAttribute(name: string): string | null {
+    return this.#attributes[name] ?? null;
+  }
+
+  getAttributeNames(): string[] {
+    return Object.keys(this.#attributes);
   }
 }
 
@@ -151,10 +190,16 @@ class Row implements Drawn, Placed {
  * A list's element, its rows in order and bare words apart, as the DOM
  * moves them: taking out or moving what holds focus drops it to the page.
  */
-class List implements Holder<Row> {
+class List implements Holder<Row>, Placed {
   readonly rows: Row[] = [];
   readonly words: object[] = [];
   readonly ownerDocument = new Page();
+  readonly localName = "ul";
+  parentElement: Placed | null = null;
+
+  constructor() {
+    this.ownerDocument.top = this;
+  }
 
   get children(): ArrayLike<Row> {
     return this.rows;
@@ -172,6 +217,7 @@ class List implements Holder<Row> {
     }
     const to = before === null ? this.rows.length : this.rows.indexOf(before);
     this.rows.splice(to, 0, node);
+    node.parentElement = this;
     return node;
   }
 
@@ -180,6 +226,7 @@ class List implements Holder<Row> {
     const row = this.rows.indexOf(node as Row);
     if (row >= 0) {
       this.rows.splice(row, 1);
+      (node as Row).parentElement = null;
     } else {
       this.words.splice(this.words.indexOf(node), 1);
     }
@@ -224,4 +271,7 @@ const draw = (list: List, rows: readonly Cell[], moved?: readonly string[]) =>
 const same = (list: List, rows: readonly (Row | undefined)[]): boolean =>
   list.rows.length === rows.length && list.rows.every((row, at) => row === rows[at]);
 
-export { type Act, type Cell, cells, draw, List, loose, Row, same };
+/** `list`, put inside an element drawn as `told`, a form unless told otherwise. */
+const inside = (list: List, told: Control): Around => new Around(list, told);
+
+export { type Act, type Cell, type Control, cells, draw, inside, List, loose, Row, same };
