@@ -436,16 +436,16 @@ it("fits its room to a floor of the most cells and a gap, growing a wider one's 
   assert.ok(sheet.includes(room), `site.css holds no room of ${room}`);
   // The words go where this floor would draw its smallest under the kit's floor for text.
   const cut = Math.ceil((Number(width) * LEAST_PX) / WORD_PX);
-  const words = `@container (max-width: ${cut}px)`;
-  assert.ok(sheet.includes(words), `site.css holds no ${words}`);
-  // A floor skipping cells in more places is wider, and grows its words to match.
+  assert.ok(sheet.includes(`@container (max-width: ${cut}px)`), `site.css cuts no words at ${cut}`);
+  // A floor skipping cells in more places is wider, and site.css grows its words to match.
+  const grows = (px: string) => sheet.includes(`calc(${px} * var(--grown, 1))`);
+  assert.ok(["13px", "14px"].every(grows), "site.css grows no words by --grown");
   const floors = [
     ...[null, "C10", "C55"].map((cursor) => floorAt(LONG, cursor)),
     ...GROWN.map(({ cell }) => floorAt(GROWN, cell)),
   ];
   const widths = floors.map((other) => Number(other.match(VIEWED)?.[1]));
-  const wider = widths.some((each) => each > Number(width));
-  assert.ok(wider, "none drew wider than this");
+  assert.ok(Math.max(...widths) > Number(width), "none drew wider than this");
   // Where words first show, meet fits a floor to the room's height or, if wider, its width.
   for (const [at, other] of floors.entries()) {
     const wide = Math.max(widths[at] ?? 0, Number(width));
