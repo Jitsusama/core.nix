@@ -48,7 +48,9 @@ const WITHIN: i64 = 7 * DAY;
 
 /// How long a finding and what answers it are kept, well past `WITHIN`, so
 /// one left open doesn't leave the count as the mesh lets it go, as if
-/// fixed; one open four weeks is past what an hour's count can move.
+/// fixed. One whose thread holds no landing note or withdrawal is kept
+/// past it too, since nothing could have closed it: a finding closes on
+/// its owner's fix, never on how long it was quiet.
 const KEPT_FOR: i64 = 28 * DAY;
 
 /// How long a finding may stay open before it drags its owner.
@@ -698,18 +700,22 @@ fn genuine(one: &Posted, name: &str) -> bool {
 /// machine wrote them, that went to the group or answers or withdraws a
 /// message kept, or may land or withdraw one; each once, aged from when
 /// it was first written here, none written past `KEPT_FOR` before
-/// `now_ms`, and only a finding or what follows or withdraws it past
-/// `WITHIN`, so a finding left open keeps counting and one withdrawn
-/// stays withdrawn. One sent off the group that may land or withdraw is
-/// kept whether or not what it answers is yet, so one written here before
-/// the finding it answers still counts once that comes.
+/// `now_ms` but a thread nothing has landed on or withdrawn, and only a
+/// finding or what follows or withdraws it past `WITHIN`, so a finding
+/// left open keeps counting and one withdrawn stays withdrawn. One sent
+/// off the group that may land or withdraw is kept whether or not what it
+/// answers is yet, so one written here before the finding it answers
+/// still counts once that comes.
 fn kept_beside(kept: Vec<Posted>, opened: Vec<Posted>, now_ms: i64) -> Vec<Posted> {
+    let settling = |one: &Posted| {
+        one.supersedes.is_some()
+            || (one.re.is_some() && (opens_with(one, LANDED) || opens_with(one, WITHDRAWN)))
+    };
     let mut posted: BTreeMap<String, Posted> =
         kept.into_iter().map(|one| (one.id.clone(), one)).collect();
     for one in opened {
         let answers = |id: &Option<String>| id.as_ref().is_some_and(|id| posted.contains_key(id));
-        let settles = one.supersedes.is_some()
-            || (one.re.is_some() && (opens_with(&one, LANDED) || opens_with(&one, WITHDRAWN)));
+        let settles = settling(&one);
         if one.to.iter().any(|to| to == GROUP)
             || answers(&one.re)
             || answers(&one.supersedes)
@@ -728,10 +734,24 @@ fn kept_beside(kept: Vec<Posted>, opened: Vec<Posted>, now_ms: i64) -> Vec<Poste
         .filter(|one| lineage(&posted, one).any(|id| posted.get(id).is_some_and(is_finding)))
         .map(|one| one.id.clone())
         .collect();
+    let settled: BTreeSet<String> = posted
+        .values()
+        .filter(|&one| settling(one))
+        .flat_map(|one| lineage(&posted, one))
+        .map(str::to_owned)
+        .collect();
+    let unsettled: BTreeSet<String> = posted
+        .values()
+        .filter(|one| {
+            lineage(&posted, one)
+                .any(|id| posted.get(id).is_some_and(is_finding) && !settled.contains(id))
+        })
+        .map(|one| one.id.clone())
+        .collect();
     let mut posted: Vec<Posted> = posted
         .into_values()
         .filter(|one| {
-            one.written >= now_ms - KEPT_FOR * 1000
+            (one.written >= now_ms - KEPT_FOR * 1000 || unsettled.contains(&one.id))
                 && (one.written >= now_ms - WITHIN * 1000 || threaded.contains(&one.id))
         })
         .collect();

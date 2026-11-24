@@ -605,6 +605,8 @@ fn a_finding_is_kept_past_the_mesh_while_its_messages_age_out() {
     let answered = answer(9 * DAY, "A2VLJN", "A2VLJN: looking", &old);
     let chatter = sent(8 * DAY, "WCJQSG", "fyi", &[GROUP], "a week gone");
     let ancient = finding(30 * DAY, "IKQ63G", "IKQ63G: a month gone");
+    let fixed = finding(31 * DAY, "IKQ63G", "IKQ63G: fixed a month ago");
+    let landed = answer(29 * DAY, "A2VLJN", "Landed core #6000.", &fixed);
     // Withdrawn by supersedes alone, which answers nothing by its re.
     let slip = finding(10 * DAY - 1, "CIJMZQ", "CIJMZQ: a slip");
     let taken = Posted {
@@ -612,7 +614,9 @@ fn a_finding_is_kept_past_the_mesh_while_its_messages_age_out() {
         ..sent(9 * DAY, "CIJMZQ", "fyi", &["@P9R1KI"], "CIJMZQ: never mind")
     };
     let kept = vec![
-        ancient,
+        fixed,
+        ancient.clone(),
+        landed,
         old.clone(),
         answered.clone(),
         chatter,
@@ -622,15 +626,20 @@ fn a_finding_is_kept_past_the_mesh_while_its_messages_age_out() {
     let posted = kept_beside(kept, Vec::new(), NOW * 1000);
     assert_eq!(
         posted,
-        [old.clone(), slip, answered, taken],
+        [ancient.clone(), old.clone(), slip, answered, taken],
         "an open finding or its withdrawal left with the mesh's week, chatter stayed past \
-         it, or what is past four weeks was kept"
+         it, or a thread past four weeks was kept though it landed, or let go though \
+         nothing closed it"
     );
     let ids: Vec<String> = open_findings(&posted, "P9R1KI", &known())
         .into_iter()
         .map(|one| one.posted.id)
         .collect();
-    assert_eq!(ids, [old.id], "a finding withdrawn a week ago came back");
+    assert_eq!(
+        ids,
+        [ancient.id, old.id],
+        "a finding withdrawn a week ago came back, or one a month open went"
+    );
 }
 
 #[test]

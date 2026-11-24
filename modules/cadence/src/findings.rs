@@ -1,7 +1,10 @@
 //! The loop's ledger of findings, kept as `findings.jsonl` in cadence's
 //! folder, a line each in the shape the loop's other readings keep theirs
-//! in, so one reader reads them all: each finding a day names stays open, with its owner and the
-//! date its answer is due, until its figure has been back for two days.
+//! in, so one reader reads them all: each finding a day names stays open,
+//! with its owner and the date its answer is due, until its owner has said
+//! what fixed it and its figure has been back for two days. A figure back
+//! alone closes nothing, since a number gone quiet isn't a fix shown: of
+//! 1,282 findings closed by 23 November, 1,088 closed that way.
 //! Each owner is told once a day of what's new for it, in one message,
 //! and a finding still open past its date goes back to its subject's hub
 //! (hubs.rs), or to the orchestrator once where no hub takes it, so
@@ -66,6 +69,14 @@ pub struct Entry {
     /// to each holder once and then to the orchestrator, never round them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub put_to: Vec<String>,
+    /// The date a finding of cadence's own was first back two days
+    /// running, waiting on its owner's word of what fixed it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub back: Option<String>,
+    /// What its owner said fixed it, or why it's expected, with
+    /// `cadence owe --done`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fixed: Option<String>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -98,7 +109,8 @@ pub fn keep(path: &Path, ledger: &[Entry]) -> io::Result<()> {
 }
 
 /// The rule every finding of cadence's closes by.
-const FELL_WHEN: &str = "not found by two days' reads running";
+const FELL_WHEN: &str =
+    "its owner's word of the fix, with `cadence owe --done`, and two days' reads not finding it";
 
 /// The owner of `key`: the address of the longest prefix of it in
 /// `owners`, so `crashes:chrome` can have its own owner beside `crashes`.
@@ -130,8 +142,9 @@ fn holder(
 /// Brings `ledger` up to `day`, whose worse findings are `worse`: one
 /// found again is kept open with the day's words, a new one is opened
 /// with its owner and due a day on, and an open one not found for two
-/// days closes, its figure back. `known` are the sessions the mesh knows,
-/// whose addresses a unit's name may carry.
+/// days closes if its owner said what fixed it, and otherwise is marked
+/// back and told again, to ask for that word. `known` are the sessions
+/// the mesh knows, whose addresses a unit's name may carry.
 pub fn update(
     ledger: &mut Vec<Entry>,
     day: &Day,
@@ -153,7 +166,9 @@ pub fn update(
                 entry.late = false;
                 entry.hub = None;
                 entry.put_to.clear();
+                entry.fixed = None;
             }
+            entry.back = None;
             entry.last.clone_from(&day.date);
             entry.last_to = day.to;
             entry.words.clone_from(&finding.words);
@@ -177,6 +192,8 @@ pub fn update(
                 reopened: 0,
                 hub: None,
                 put_to: Vec::new(),
+                back: None,
+                fixed: None,
             });
         }
     }
@@ -200,10 +217,30 @@ pub fn update(
     // that fired late; a run again the same evening closes nothing. A
     // must its owner filed no day's read finds, so only its owner closes it.
     for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
-        if day.to - entry.last_to >= 2 * DAY - DAY / 2 {
+        if day.to - entry.last_to < 2 * DAY - DAY / 2 {
+            continue;
+        }
+        if entry.fixed.is_some() {
             entry.open = false;
+        } else if entry.back.is_none() {
+            entry.back = Some(day.date.clone());
+            entry.told = None;
         }
     }
+}
+
+/// Says the open finding of cadence's own filed as `key` was fixed by
+/// `says`, the change or why it's expected: it closes at once if its
+/// figure is back, and otherwise once it has been back two days. None when
+/// no such finding is open; whether it closed otherwise.
+pub fn fixed(ledger: &mut [Entry], key: &str, says: &str) -> Option<bool> {
+    let entry = ledger
+        .iter_mut()
+        .rev()
+        .find(|e| e.open && e.kind.is_none() && e.key == key)?;
+    entry.fixed = Some(says.to_owned());
+    entry.open = entry.back.is_none();
+    Some(!entry.open)
 }
 
 /// What each owner is told today: one message for each, of its open
@@ -218,12 +255,17 @@ pub fn tell(ledger: &mut [Entry], date: &str, watcher: Option<&str>) -> Vec<(Str
             continue;
         };
         entry.told = Some(date.to_owned());
+        let back = match &entry.back {
+            Some(back) => format!(", its figure back since {back} but no fix said"),
+            None => String::new(),
+        };
         let words = match &entry.hub {
             Some(subject) => format!(
-                "{}, open since {} and past its date, put to you as a holder of {subject}",
-                entry.words, entry.first
+                "{}: {}, open since {} and past its date{back}, put to you as a holder of \
+                 {subject}",
+                entry.key, entry.words, entry.first
             ),
-            None => entry.words.clone(),
+            None => format!("{}: {}{back}", entry.key, entry.words),
         };
         by_owner.entry(to).or_default().push(words);
     }
@@ -238,8 +280,9 @@ pub fn tell(ledger: &mut [Entry], date: &str, watcher: Option<&str>) -> Vec<(Str
             let text = format!(
                 "cadence day, {date}: the day's read found {} for you, against the days \
                  before.\n{found}\nBy tomorrow's 18:00 read, {answer} the cause and the fix, \
-                 or that it's expected and why. It closes by itself once its figure is back \
-                 two days.",
+                 or that it's expected and why. Each closes only once you've said what fixed \
+                 it, with `cadence owe --done <its key> <the change, or why it's expected>` \
+                 on the machine that found it, and its figure is back two days.",
                 if words.len() == 1 {
                     "one thing".to_owned()
                 } else {
@@ -375,7 +418,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_finding_found_again_stays_one_and_closes_two_days_after_its_last() {
+    fn a_finding_found_again_stays_one_and_waits_two_days_after_its_last() {
         let mut ledger = Vec::new();
         update(
             &mut ledger,
@@ -410,9 +453,70 @@ pub(crate) mod tests {
             "a run again the same evening closed it: {ledger:?}"
         );
         update(&mut ledger, &day("d4", 4 * DAY), &[], &owners());
+        assert_eq!(
+            (ledger[0].open, ledger[0].back.as_deref()),
+            (true, Some("d4")),
+            "a finding two days back closed with no fix said: {ledger:?}"
+        );
+        assert_eq!(
+            fixed(&mut ledger, "crashes:tec", "core #6000"),
+            Some(true),
+            "its owner's fix didn't close a finding already back"
+        );
+        assert!(!ledger[0].open, "it stayed open: {ledger:?}");
+    }
+
+    #[test]
+    fn a_figure_back_alone_asks_its_owner_again_for_the_fix() {
+        let mut ledger = Vec::new();
+        let worse = [found("crashes:tec")];
+        update(&mut ledger, &day("d1", DAY), &worse, &owners());
+        tell(&mut ledger, "d1", None);
+        for at in 3..9 {
+            let date = day(&format!("d{at}"), at * DAY);
+            update(&mut ledger, &date, &[], &owners());
+        }
+        assert_eq!(
+            (ledger[0].open, ledger[0].back.as_deref()),
+            (true, Some("d3")),
+            "a week of its figure back closed it, or moved when it was back: {ledger:?}"
+        );
+        let told = tell(&mut ledger, "d8", None);
         assert!(
-            !ledger[0].open,
-            "a finding two days back stayed open: {ledger:?}"
+            told.len() == 1
+                && told[0].1.contains("its figure back since d3 but no fix said")
+                && told[0].1.contains("cadence owe --done <its key>"),
+            "its owner wasn't asked again, once, how to close it: {told:?}"
+        );
+        assert!(
+            tell(&mut ledger, "d8", None).is_empty(),
+            "its owner was asked twice"
+        );
+    }
+
+    #[test]
+    fn a_fix_said_before_its_figure_is_back_waits_for_it() {
+        let mut ledger = Vec::new();
+        let worse = [found("crashes:tec")];
+        update(&mut ledger, &day("d1", DAY), &worse, &owners());
+        assert_eq!(
+            fixed(&mut ledger, "crashes:tec", "core #6000"),
+            Some(false),
+            "a fix said closed a finding whose figure isn't back"
+        );
+        update(&mut ledger, &day("d2", 2 * DAY), &worse, &owners());
+        update(&mut ledger, &day("d3", 3 * DAY), &[], &owners());
+        assert!(ledger[0].open, "one day back closed it: {ledger:?}");
+        update(&mut ledger, &day("d4", 4 * DAY), &[], &owners());
+        assert_eq!(
+            (ledger[0].open, ledger[0].fixed.as_deref()),
+            (false, Some("core #6000")),
+            "two days back after its fix was said didn't close it: {ledger:?}"
+        );
+        assert_eq!(
+            fixed(&mut ledger, "crashes:tec", "core #6001"),
+            None,
+            "a closed finding took a fix"
         );
     }
 
@@ -426,6 +530,7 @@ pub(crate) mod tests {
             &owners(),
         );
         tell(&mut ledger, "d1", None);
+        fixed(&mut ledger, "crashes:tec", "core #6000");
         update(&mut ledger, &day("d3", 3 * DAY), &[], &owners());
         assert!(!ledger[0].open, "the finding didn't close: {ledger:?}");
         update(
@@ -451,9 +556,14 @@ pub(crate) mod tests {
             "a fix that came back wasn't reopened and counted: {entry:?}"
         );
         assert_eq!(
-            (entry.due, entry.told.as_deref(), entry.late),
-            (6 * DAY, None, false),
-            "a reopened finding wasn't due a day on and told afresh: {entry:?}"
+            (
+                entry.due,
+                entry.told.as_deref(),
+                entry.late,
+                entry.fixed.as_deref()
+            ),
+            (6 * DAY, None, false, None),
+            "a reopened finding wasn't due a day on, told afresh and unfixed: {entry:?}"
         );
     }
 
@@ -497,7 +607,8 @@ pub(crate) mod tests {
             "an owner wasn't told once, or no owner's wasn't the watcher's"
         );
         assert!(
-            told[0].1.contains("2 things") && told[0].1.contains("- crashes:biome got worse."),
+            told[0].1.contains("2 things")
+                && told[0].1.contains("- crashes:biome: crashes:biome got worse."),
             "an owner's message didn't hold both its findings: {}",
             told[0].1
         );
