@@ -99,6 +99,24 @@ pub fn read(path: &Path) -> Vec<Entry> {
         .collect()
 }
 
+/// Holds the ledger at `path` for one writer until what it returns is
+/// dropped: the day, the hour and `cadence owe` each read it, change it
+/// and keep it whole, so one waits for another rather than losing its
+/// change, as an owner's word of a fix would be.
+///
+/// # Errors
+///
+/// When the lock beside the ledger can't be opened or taken.
+pub fn lock(path: &Path) -> io::Result<fs::File> {
+    let held = fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path.with_extension("jsonl.lock"))?;
+    held.lock()?;
+    Ok(held)
+}
+
 /// Keeps `ledger` at `path` whole, so a reader never sees half of it.
 pub fn keep(path: &Path, ledger: &[Entry]) -> io::Result<()> {
     let lines: Vec<String> = ledger
@@ -142,9 +160,10 @@ fn holder(
 /// Brings `ledger` up to `day`, whose worse findings are `worse`: one
 /// found again is kept open with the day's words, a new one is opened
 /// with its owner and due a day on, and an open one not found for two
-/// days closes if its owner said what fixed it, and otherwise is marked
-/// back and told again, to ask for that word. `known` are the sessions
-/// the mesh knows, whose addresses a unit's name may carry.
+/// days closes if its owner said what fixed it since it was last found,
+/// and otherwise is marked back and told again, once, to ask for that
+/// word; one found again forgets a fix said before. `known` are the
+/// sessions the mesh knows, whose addresses a unit's name may carry.
 pub fn update(
     ledger: &mut Vec<Entry>,
     day: &Day,
@@ -166,7 +185,12 @@ pub fn update(
                 entry.late = false;
                 entry.hub = None;
                 entry.put_to.clear();
-                entry.fixed = None;
+            }
+            // A fix said for a figure found worse again didn't hold, so
+            // its owner is asked again, and only a word the figure then
+            // bears out closes it.
+            if entry.fixed.take().is_some() {
+                entry.told = None;
             }
             entry.back = None;
             entry.last.clone_from(&day.date);
@@ -472,25 +496,34 @@ pub(crate) mod tests {
         let worse = [found("crashes:tec")];
         update(&mut ledger, &day("d1", DAY), &worse, &owners());
         tell(&mut ledger, "d1", None);
-        for at in 3..9 {
-            let date = day(&format!("d{at}"), at * DAY);
-            update(&mut ledger, &date, &[], &owners());
+        let mut asked = Vec::new();
+        for at in 2..9 {
+            let date = format!("d{at}");
+            update(&mut ledger, &day(&date, at * DAY), &[], &owners());
+            let told = tell(&mut ledger, &date, None);
+            asked.extend(told.into_iter().map(|(_, text)| text));
         }
         assert_eq!(
             (ledger[0].open, ledger[0].back.as_deref()),
             (true, Some("d3")),
             "a week of its figure back closed it, or moved when it was back: {ledger:?}"
         );
-        let told = tell(&mut ledger, "d8", None);
         assert!(
-            told.len() == 1
-                && told[0].1.contains("its figure back since d3 but no fix said")
-                && told[0].1.contains("cadence owe --done <its key>"),
-            "its owner wasn't asked again, once, how to close it: {told:?}"
+            asked.len() == 1
+                && asked[0].contains("its figure back since d3 but no fix said")
+                && asked[0].contains("cadence owe --done <its key>"),
+            "its owner wasn't asked again, once in the week, how to close it: {asked:?}"
         );
         assert!(
-            tell(&mut ledger, "d8", None).is_empty(),
-            "its owner was asked twice"
+            late(&mut ledger, 9 * DAY).is_empty() && !ledger[0].late,
+            "a finding back, waiting only on its owner's word, went on as late"
+        );
+        update(&mut ledger, &day("d9", 9 * DAY), &worse, &owners());
+        update(&mut ledger, &day("d11", 11 * DAY), &[], &owners());
+        assert_eq!(
+            ledger[0].back.as_deref(),
+            Some("d11"),
+            "found again, it kept the day it was first back"
         );
     }
 
@@ -499,12 +532,20 @@ pub(crate) mod tests {
         let mut ledger = Vec::new();
         let worse = [found("crashes:tec")];
         update(&mut ledger, &day("d1", DAY), &worse, &owners());
+        tell(&mut ledger, "d1", None);
+        fixed(&mut ledger, "crashes:tec", "core #5999");
+        update(&mut ledger, &day("d2", 2 * DAY), &worse, &owners());
+        let told = tell(&mut ledger, "d2", None).len();
+        assert_eq!(
+            (ledger[0].fixed.as_deref(), told),
+            (None, 1),
+            "a fix found worse again was kept, or its owner wasn't asked again"
+        );
         assert_eq!(
             fixed(&mut ledger, "crashes:tec", "core #6000"),
             Some(false),
             "a fix said closed a finding whose figure isn't back"
         );
-        update(&mut ledger, &day("d2", 2 * DAY), &worse, &owners());
         update(&mut ledger, &day("d3", 3 * DAY), &[], &owners());
         assert!(ledger[0].open, "one day back closed it: {ledger:?}");
         update(&mut ledger, &day("d4", 4 * DAY), &[], &owners());

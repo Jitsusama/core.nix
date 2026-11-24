@@ -700,22 +700,20 @@ fn genuine(one: &Posted, name: &str) -> bool {
 /// machine wrote them, that went to the group or answers or withdraws a
 /// message kept, or may land or withdraw one; each once, aged from when
 /// it was first written here, none written past `KEPT_FOR` before
-/// `now_ms` but a thread nothing has landed on or withdrawn, and only a
-/// finding or what follows or withdraws it past `WITHIN`, so a finding
-/// left open keeps counting and one withdrawn stays withdrawn. One sent
+/// `now_ms` but the thread of a finding still counted open with no
+/// landing note, and only a finding or what follows or withdraws it past
+/// `WITHIN`, so a finding left open keeps counting and one withdrawn
+/// stays withdrawn. One sent
 /// off the group that may land or withdraw is kept whether or not what it
 /// answers is yet, so one written here before the finding it answers
 /// still counts once that comes.
 fn kept_beside(kept: Vec<Posted>, opened: Vec<Posted>, now_ms: i64) -> Vec<Posted> {
-    let settling = |one: &Posted| {
-        one.supersedes.is_some()
-            || (one.re.is_some() && (opens_with(one, LANDED) || opens_with(one, WITHDRAWN)))
-    };
     let mut posted: BTreeMap<String, Posted> =
         kept.into_iter().map(|one| (one.id.clone(), one)).collect();
     for one in opened {
         let answers = |id: &Option<String>| id.as_ref().is_some_and(|id| posted.contains_key(id));
-        let settles = settling(&one);
+        let settles = one.supersedes.is_some()
+            || (one.re.is_some() && (opens_with(&one, LANDED) || opens_with(&one, WITHDRAWN)));
         if one.to.iter().any(|to| to == GROUP)
             || answers(&one.re)
             || answers(&one.supersedes)
@@ -734,29 +732,41 @@ fn kept_beside(kept: Vec<Posted>, opened: Vec<Posted>, now_ms: i64) -> Vec<Poste
         .filter(|one| lineage(&posted, one).any(|id| posted.get(id).is_some_and(is_finding)))
         .map(|one| one.id.clone())
         .collect();
-    let settled: BTreeSet<String> = posted
-        .values()
-        .filter(|&one| settling(one))
-        .flat_map(|one| lineage(&posted, one))
-        .map(str::to_owned)
-        .collect();
-    let unsettled: BTreeSet<String> = posted
-        .values()
-        .filter(|one| {
-            lineage(&posted, one)
-                .any(|id| posted.get(id).is_some_and(is_finding) && !settled.contains(id))
-        })
-        .map(|one| one.id.clone())
-        .collect();
+    let held = unlanded(&posted);
     let mut posted: Vec<Posted> = posted
         .into_values()
         .filter(|one| {
-            (one.written >= now_ms - KEPT_FOR * 1000 || unsettled.contains(&one.id))
+            (one.written >= now_ms - KEPT_FOR * 1000 || held.contains(&one.id))
                 && (one.written >= now_ms - WITHIN * 1000 || threaded.contains(&one.id))
         })
         .collect();
     posted.sort_by(by_written);
     posted
+}
+
+/// The messages of `posted` in the whole thread of a finding counted open
+/// with no landing note, as the hour counts them, so its follow-ups and
+/// any landing note on one before it stay beside it. Nothing could have
+/// closed one, so it is kept however old, since a finding closes on its
+/// owner's fix, never on how long it was quiet.
+fn unlanded(posted: &BTreeMap<String, Posted>) -> BTreeSet<String> {
+    let all: Vec<Posted> = posted.values().cloned().collect();
+    let root = |one: &Posted| {
+        ancestors(posted, one)
+            .last()
+            .unwrap_or(one.id.as_str())
+            .to_owned()
+    };
+    let roots: BTreeSet<String> = open_findings(&all, "", &BTreeSet::new())
+        .iter()
+        .filter(|finding| finding.landed.is_empty())
+        .map(|finding| root(&finding.posted))
+        .collect();
+    posted
+        .values()
+        .filter(|one| roots.contains(&root(one)))
+        .map(|one| one.id.clone())
+        .collect()
 }
 
 /// `one`'s own id, the messages it answers, and the one it supersedes with

@@ -42,7 +42,11 @@ pub fn parse(mut args: impl Iterator<Item = String>, zone: &TimeZone) -> Result<
     let key = args.next().ok_or("it needs a key")?;
     if key == "--done" {
         let key = args.next().ok_or("--done needs a key")?;
-        let fix = args.collect::<Vec<_>>().join(" ");
+        let fix: Vec<String> = args.collect();
+        if let Some(flag) = fix.iter().find(|word| word.starts_with("--")) {
+            return Err(format!("--done takes no {flag}: what follows its key is the fix"));
+        }
+        let fix = fix.join(" ");
         let fix = (!fix.trim().is_empty()).then_some(fix);
         return Ok(Asked::Done { key, fix });
     }
@@ -83,7 +87,12 @@ fn due_at(when: &str, zone: &TimeZone) -> Result<i64, String> {
 pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
     let fell_when = format!("its owner's `cadence owe --done {}`", owed.key);
     let evidence = format!("filed by {} with `cadence owe`", owed.owner);
-    if let Some(entry) = ledger.iter_mut().find(|e| e.open && e.key == owed.key) {
+    // A finding of cadence's own under the key stays as it is, so a must
+    // filed over it can't close it without its owner's word of the fix.
+    if let Some(entry) = ledger
+        .iter_mut()
+        .find(|e| e.open && e.key == owed.key && e.kind.is_some())
+    {
         entry.late = entry.late && entry.due == owed.due;
         entry.axis = owed.axis;
         entry.owner = Some(owed.owner);
@@ -136,7 +145,10 @@ pub fn settle(ledger: &mut [Entry], key: &str) -> bool {
 /// since its figure gone quiet shows no fix.
 fn done(ledger: &mut [Entry], key: &str, fix: Option<&str>) -> Result<String, Failure> {
     if settle(ledger, key) {
-        return Ok(format!("cadence: {key} is done"));
+        return Ok(match fix {
+            Some(fix) => format!("cadence: {key} is done, by {fix}"),
+            None => format!("cadence: {key} is done"),
+        });
     }
     let unfiled = || {
         Failure::new(
@@ -169,6 +181,10 @@ pub fn run(args: impl Iterator<Item = String>, now: i64) -> Result<(), Failure> 
     let asked = parse(args, &zone).map_err(|why| wrongly("owe", why))?;
     let (_, _, folder) = folders().map_err(failed)?;
     let kept_at = folder.join("findings.jsonl");
+    let _held = findings::lock(&kept_at).map_err(|err| {
+        Failure::new(Exit::Failed, format!("locking {}", kept_at.display()))
+            .because(err.to_string())
+    })?;
     let mut ledger = findings::read(&kept_at);
     let said = match asked {
         Asked::Owe(owed) => {
@@ -328,6 +344,19 @@ mod tests {
             nowhere.map_err(|f| f.exit),
             Err(Exit::NotFound),
             "a key filed nowhere took a fix"
+        );
+        ledger[0].fixed = None;
+        owe(&mut ledger, owed("crashes:tec", DUE), "d1", DAY);
+        let over = done(&mut ledger, "crashes:tec", None).map_err(|f| f.exit);
+        assert_eq!(
+            (over, ledger[0].open, ledger[0].kind.as_deref()),
+            (Ok("cadence: crashes:tec is done".to_owned()), true, None),
+            "a must filed over a finding's key closed the finding with no fix said"
+        );
+        assert_eq!(
+            asked(&["--done", "crashes:tec", "core #6000", "--axis"]),
+            Err("--done takes no --axis: what follows its key is the fix".to_owned()),
+            "a flag after the key was taken as the fix"
         );
     }
 

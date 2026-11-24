@@ -43,7 +43,7 @@ fn both_ways(one: &str, other: &str) -> [Measure; 2] {
 }
 
 #[test]
-fn each_machine_says_its_busy_and_listening_and_this_ones_busy_are_judged() {
+fn each_machine_says_its_busy_and_listening_and_this_ones_busy_come_first() {
     let work = answer(&[
         session("a", "here", "busy", "busy"),
         session("b", "here", "busy", "busy"),
@@ -63,8 +63,8 @@ fn each_machine_says_its_busy_and_listening_and_this_ones_busy_are_judged() {
     let read = carried(&sessions, &[MACHINES.to_owned()], "here");
     assert_eq!(
         judged(&read),
-        ("3".to_owned(), Some("10".to_owned())),
-        "this machine's busy sessions weren't judged against its most: {}",
+        ("3".to_owned(), None),
+        "this machine's busy sessions were miscounted, or judged: {}",
         read.says
     );
     assert_eq!(
@@ -122,7 +122,7 @@ fn as_lively_a_listing_here_wins_then_one_naming_a_machine() {
     for (one, other, row) in cases {
         for read in both_ways(one, other) {
             assert!(
-                read.behind.iter().any(|r| r == row) && read.target.is_some(),
+                read.behind.iter().any(|r| r == row),
                 "a copy as lively decided where a session counts by realm order: {:?}",
                 read.behind
             );
@@ -131,33 +131,21 @@ fn as_lively_a_listing_here_wins_then_one_naming_a_machine() {
 }
 
 #[test]
-fn this_machine_past_its_most_is_judged_though_a_realm_is_silent() {
-    for (here, target) in [(10, None), (11, Some("10".to_owned()))] {
-        // Busy elsewhere too, so only this machine's count can pass it.
-        let work: Vec<Value> = (0..15)
-            .map(|n| {
-                let machine = if n < here { "here" } else { "mac" };
-                session(&format!("s{n}"), machine, "busy", "busy")
-            })
-            .collect();
-        let sessions = [
-            ("work".to_owned(), answer(&work)),
-            ("personal".to_owned(), String::new()),
-        ];
-        let read = carried(&sessions, &[MACHINES.to_owned()], "here");
-        assert!(
-            judged(&read) == (here.to_string(), target)
-                && read
-                    .says
-                    .contains("the personal realm's node didn't answer"),
-            "a count at or past the most was misjudged beside a silent realm: {}",
-            read.says
-        );
-    }
+fn no_count_here_is_judged_however_many_are_busy() {
+    let busy: Vec<Value> = (0..30)
+        .map(|n| session(&format!("s{n}"), "here", "busy", "busy"))
+        .collect();
+    let read = alone(&busy);
+    assert_eq!(
+        judged(&read),
+        ("30".to_owned(), None),
+        "thirty busy here were judged against a most Joel took back: {}",
+        read.says
+    );
 }
 
 #[test]
-fn a_count_that_may_fall_short_is_left_unjudged_and_says_why() {
+fn a_count_that_may_fall_short_says_why() {
     let work = answer(&[session("a", "here", "busy", "busy")]);
     let sessions = [
         ("work".to_owned(), work.clone()),
@@ -196,7 +184,7 @@ fn a_count_that_may_fall_short_is_left_unjudged_and_says_why() {
 }
 
 #[test]
-fn a_machine_no_node_names_is_unjudged_while_every_busy_session_could_be_here() {
+fn a_machine_no_node_names_is_said_unnamed_whatever_is_busy() {
     let there = [MACHINES.replace("\"here\"", "\"there\"")];
     let unnamed = |busy: usize| {
         let away: Vec<Value> = (0..busy)
@@ -206,10 +194,9 @@ fn a_machine_no_node_names_is_unjudged_while_every_busy_session_could_be_here() 
     };
     let (few, many) = (unnamed(1), unnamed(11));
     assert!(
-        few.target.is_some()
-            && many.target.is_none()
+        few.says.contains("no node names this machine, here")
             && many.says.contains("no node names this machine, here"),
-        "a machine no node names was misjudged: {} / {}",
+        "a machine no node names went unsaid: {} / {}",
         few.says,
         many.says
     );
@@ -241,7 +228,7 @@ fn a_machine_no_node_names_is_unjudged_while_every_busy_session_could_be_here() 
 }
 
 #[test]
-fn sessions_naming_no_machine_are_a_row_among_the_busiest_and_judged_while_few() {
+fn sessions_naming_no_machine_are_a_row_among_the_busiest_and_said() {
     let read = alone(&[
         session("a", "here", "busy", "busy"),
         session("b", "", "busy", "busy"),
@@ -261,22 +248,10 @@ fn sessions_naming_no_machine_are_a_row_among_the_busiest_and_judged_while_few()
     assert_eq!(
         (judged(&read), read.says.as_str()),
         (
-            ("1".to_owned(), Some("10".to_owned())),
+            ("1".to_owned(), None),
             "sessions busy on this machine, of 1 busy on 3 machines (2 busy naming no machine)",
         ),
-        "busy sessions naming no machine, too few to pass the most, left it unjudged"
-    );
-    let crowded: Vec<Value> = (0..11)
-        .map(|n| {
-            let machine = if n < 9 { "here" } else { "" };
-            session(&format!("s{n}"), machine, "busy", "busy")
-        })
-        .collect();
-    let read = alone(&crowded);
-    assert!(
-        read.target.is_none() && read.says.ends_with("(2 busy naming no machine)"),
-        "busy sessions naming no machine that could pass the most were judged: {}",
-        read.says
+        "busy sessions naming no machine went unsaid, or the count was judged"
     );
     let lone = alone(&[
         session("a", "here", "busy", "busy"),
@@ -284,9 +259,9 @@ fn sessions_naming_no_machine_are_a_row_among_the_busiest_and_judged_while_few()
     ]);
     let row = lone.behind.get(1).map(String::as_str);
     assert_eq!(
-        (lone.target.is_some(), row),
-        (true, Some("no machine named: 0 busy, 1 listening")),
-        "a session listening on no machine went unsaid, or left the count unjudged"
+        row,
+        Some("no machine named: 0 busy, 1 listening"),
+        "a session listening on no machine went unsaid"
     );
 }
 
@@ -316,33 +291,4 @@ fn a_session_with_no_id_counts_once_per_listing_and_never_folds_into_another() {
             "a session two realms list by address alone counted twice"
         );
     }
-}
-
-#[test]
-fn nameless_sessions_pass_the_most_alone_only_where_one_realm_answered() {
-    let eleven: Vec<Value> = (0..11).map(|_| nameless("here")).collect();
-    let six: Vec<Value> = (0..6).map(|_| nameless("here")).collect();
-    let one = carried(
-        &[
-            ("work".to_owned(), answer(&eleven)),
-            ("personal".to_owned(), String::new()),
-        ],
-        &[MACHINES.to_owned()],
-        "here",
-    );
-    let two = carried(
-        &[
-            ("work".to_owned(), answer(&six)),
-            ("personal".to_owned(), answer(&six)),
-            ("third".to_owned(), String::new()),
-        ],
-        &[MACHINES.to_owned()],
-        "here",
-    );
-    assert!(
-        one.target.is_some() && two.target.is_none(),
-        "nameless sessions two realms may both list read as surely past: {} / {}",
-        one.says,
-        two.says
-    );
 }
