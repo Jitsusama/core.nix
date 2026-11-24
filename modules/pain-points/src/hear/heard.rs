@@ -16,8 +16,20 @@ const CARRIED_ALIKE: f64 = 0.75;
 /// A ledger's words shorter than this are too short to find inside his.
 const QUOTED_LEAST: usize = 16;
 
-/// How long a pain is kept, and hits are counted over.
+/// How long a pain is kept, and hits are counted over; one sent and not
+/// yet fixed is kept past it, as only its fix running closes it.
 pub const KEPT_MS: i64 = 14 * 86_400_000;
+
+/// A landing its question's thread led to, or one naming its entry: the
+/// commit it merged at, the first of what its note said, which names the
+/// change, and whether it named the entry outright.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Landing {
+    pub commit: String,
+    pub said: String,
+    #[serde(default)]
+    pub by_entry: bool,
+}
 
 /// One pain heard.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,13 +71,43 @@ pub struct Heard {
     /// a switch carried.
     #[serde(default)]
     pub closed_by: Option<String>,
+    /// The short ids of its question's thread so far: each question sent
+    /// of it, and each reply to one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub thread: Vec<String>,
+    /// Whether a question of it held other pains too, which no one landing
+    /// closes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
+    /// Each landing its thread led to, kept until a switch carries one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub landed: Vec<Landing>,
+}
+
+impl Heard {
+    /// Whether it is a miss of ours for his ledger: sent to a cell, said
+    /// where he wasn't in the void, carried by no ledger, and no stall.
+    #[must_use]
+    pub fn is_miss(&self) -> bool {
+        self.to.is_some() && !self.carried && !self.void && !super::stalled::is(self)
+    }
+
+    /// What closed it, as its landing's note said it.
+    #[must_use]
+    pub fn fixed_by(&self) -> Option<&Landing> {
+        let commit = self.closed_by.as_ref()?;
+        self.landed.iter().find(|l| &l.commit == commit)
+    }
 }
 
 /// The words of each line of a ledger. A line carries its pain whether or
-/// not its ask has landed: either way the keeper has it.
+/// not its ask has landed: either way the keeper has it. A line this
+/// listener wrote of a pain it sent carries nothing, or its own pains
+/// would read as carried and leave the count.
 pub fn ledger(text: &str) -> Vec<String> {
     text.lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|line| line.get(super::missed::PAIN).is_none())
         .filter_map(|line| Some(line.get("words")?.as_str()?.to_string()))
         .collect()
 }
@@ -116,6 +158,9 @@ mod tests {
             tries: 0,
             taken_by: None,
             closed_by: None,
+            thread: Vec::new(),
+            shared: false,
+            landed: Vec::new(),
         }
     }
 
@@ -127,6 +172,8 @@ mod tests {
             r#"{"at":"x","words":"no window opened","what":"w","owner":"Z","check":"c"}"#,
             "\n",
             r#"{"at":"x","words":"still open ask","owner":"Z"}"#,
+            "\n",
+            r#"{"at":"x","words":"one this listener sent","owner":"Z","pain":"s/e1"}"#,
             "\nnot json\n"
         );
         assert_eq!(

@@ -321,11 +321,73 @@ fn messages_are_read_from_the_folder_and_its_days_in_order_sent() {
         "t".repeat(usize::try_from(READ_AT_MOST).expect("a size"))
     );
     fs::write(dir.join("36-A-1-ffffffff.json"), big).expect("a big file");
-    let ids: Vec<String> = messages(&dir, 10).into_iter().map(|m| m.id).collect();
+    let read: Vec<(i64, String)> = messages(&dir, 10)
+        .into_iter()
+        .map(|(sent, m)| (sent, m.id))
+        .collect();
     fs::remove_dir_all(&dir).expect("cleaned up");
     assert_eq!(
-        ids,
-        ["20-A-1-bbbbbbbb", "30-A-1-cccccccc"],
+        read,
+        [
+            (20, String::from("20-A-1-bbbbbbbb")),
+            (30, String::from("30-A-1-cccccccc"))
+        ],
         "since 10, in order, with no hidden file, old day, link or big file"
+    );
+}
+
+#[test]
+fn a_landing_naming_the_entry_closes_it_whatever_its_thread() {
+    let mut shared = tuple();
+    shared[0].text.push_str(" and mycelium:cell/OMNOJW#e2");
+    shared.push(message(
+        "6-Z-1-cccccccc",
+        "Z",
+        "#orchestration/wcjqsg",
+        None,
+        "Z landed core #7, merged at 3333333abcd, for #e1",
+    ));
+    assert_eq!(
+        stands("e1", &["e1", "e2"], &shared, true)
+            .closed_by
+            .as_deref(),
+        Some("3333333abcd"),
+        "named outright, a shared question's pain closes"
+    );
+    assert_eq!(
+        stands("e2", &["e1", "e2"], &shared, true),
+        taken("WCJQSG"),
+        "the other it held stays taken"
+    );
+    let unasked = [shared.remove(5)];
+    assert_eq!(
+        stands("e1", &["e1"], &unasked, true).closed_by.as_deref(),
+        Some("3333333abcd"),
+        "a pain whose question was never seen"
+    );
+}
+
+#[test]
+fn a_reading_ends_at_its_newest_and_keeps_what_may_come_late() {
+    let late = |at: i64, short: &str| {
+        let id = format!("{at}-A-1-{short}");
+        (at, message(&id, "A", "@B", None, ""))
+    };
+    let batch = [
+        late(1000, "aaaaaaaa"),
+        late(LATE_AT_MOST_MS + 5000, "bbbbbbbb"),
+    ];
+    let read = read_after(None, 0, 0, &batch);
+    assert_eq!(read.at, LATE_AT_MOST_MS + 5000, "at the newest");
+    assert_eq!(
+        read.seen,
+        [format!("{}-A-1-bbbbbbbb", LATE_AT_MOST_MS + 5000)],
+        "only what may yet have another come before it"
+    );
+    let quiet = read_after(Some(&read), read.at, 10 * LATE_AT_MOST_MS, &[]);
+    assert_eq!(
+        (quiet.at, quiet.seen.len()),
+        (9 * LATE_AT_MOST_MS, 0),
+        "a quiet mesh moves the start on"
     );
 }

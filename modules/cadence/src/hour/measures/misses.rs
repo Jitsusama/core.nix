@@ -421,7 +421,10 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             .map(|check| named(check, repos))
             .unwrap_or_default()
     };
+    // A pain the hearer wrote that the keeper carried into the asks since
+    // is tracked there from then, not twice.
     let open: Vec<(String, String, String)> = lines(text)
+        .filter(|miss| miss["carried"].as_bool() != Some(true))
         .filter_map(|miss| {
             let changes = changes(&miss);
             let elsewhere = miss["machine"].as_str().filter(|machine| {

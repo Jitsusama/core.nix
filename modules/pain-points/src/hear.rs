@@ -4,9 +4,11 @@
 //! (said.rs), and sends each pain no one has yet as a finding to the cell
 //! that was working on it (route.rs), once, ranked by how often he hits
 //! the same thing (heard.rs). His orchestrator's asks and misses ledgers
-//! are read, never written: a pain they carry goes to no one again, and
-//! the keeper of the ledgers hears of each new one. Nothing is ever sent
-//! to the void, and nothing is posted anywhere.
+//! are read: a pain they carry goes to no one again, and
+//! the keeper of the ledgers hears of each new one. Each pain sent is
+//! written into his misses ledger too (missed.rs), and stays open there
+//! and here until a landing a switch carried closes it. Nothing is ever
+//! sent to the void, and nothing is posted anywhere.
 //!
 //! Unlike `read`, which keeps kinds and timings alone, `hear` keeps his
 //! words, since a finding without them can't be acted on. They stay in
@@ -17,17 +19,20 @@
 //! way.
 //!
 //! It writes hour.json each run, for cadence's hourly card: the pains
-//! heard and routed in the last hour, those of the last day still open,
-//! the one he hit most, and the turns that stalled him.
+//! heard and routed in the last hour, those still open however old, the
+//! one he hit most, and the turns that stalled him.
 
+mod counted;
 pub mod heard;
 pub mod landed;
+pub mod missed;
 pub mod route;
 pub mod said;
 pub mod sore;
 pub mod stalled;
 pub mod troubles;
 
+use counted::hour_of;
 use heard::Heard;
 use route::{Cell, Routes};
 use said::Carried;
@@ -42,7 +47,8 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use troubles::{CELLLESS_AT_MOST_MS, cellless_since, troubles};
 
-/// How far back a first run hears, and how long a pain stays open.
+/// How far back a first run hears, and how long a pain whose thread was
+/// never seen waits before it counts as lost.
 pub const DAY_MS: i64 = 86_400_000;
 const HOUR_MS: i64 = 3_600_000;
 
@@ -68,8 +74,10 @@ pub const SEND_TRIES: u32 = 3;
 pub struct Ears {
     pub sessions: PathBuf,
     pub state: PathBuf,
-    /// The asks and misses ledgers, read alone.
+    /// The asks and misses ledgers, read.
     pub ledgers: Vec<PathBuf>,
+    /// The misses ledger, which each pain sent is written into.
+    pub misses: PathBuf,
     /// The void's folder: a session begun there is the void.
     pub void: PathBuf,
     /// The mesh's messages, for the threads of the questions it sent.
@@ -100,13 +108,17 @@ pub struct Hour {
     pub at: i64,
     pub heard: usize,
     pub routed: usize,
-    /// Pains of the last day nobody has taken up, said where he wasn't in
-    /// the void.
+    /// Pains nobody has taken up, however old, said where he wasn't in
+    /// the void; a lost one isn't among them.
     pub open: usize,
+    /// Those past a day nobody took up whose question's thread was never
+    /// seen, which only a landing naming its entry closes.
+    #[serde(default)]
+    pub lost: usize,
     /// Those a peer took up whose fix isn't on the machine yet.
     #[serde(default)]
     pub taken: usize,
-    /// Those a landing a switch carried closed.
+    /// Those of the last day a landing a switch carried closed.
     #[serde(default)]
     pub closed: usize,
     pub worst: Option<String>,
@@ -170,6 +182,7 @@ pub fn listen(
         sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
         state: own,
         ledgers: vec![mission.join("asks.jsonl"), mission.join("misses.jsonl")],
+        misses: mission.join("misses.jsonl"),
         void: take("--void").map_or_else(|| state.join("void"), PathBuf::from),
         messages: take("--messages").map_or_else(
             || state.join("pi/agentic-harness.pi/mesh-workflow/messages"),
@@ -216,12 +229,16 @@ pub fn listen(
 /// The hour in a line for the journal.
 fn said(hour: &Hour) -> String {
     format!(
-        "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open \
-         in the day{}{}{}{}",
+        "pain-points: {} pains heard and {} routed in the hour, {} turns stalled him, {} open\
+         {}{}{}{}{}",
         hour.heard,
         hour.routed,
         hour.stalled,
         hour.open,
+        match hour.lost {
+            0 => String::new(),
+            lost => format!(", {lost} lost, as no thread of theirs was seen"),
+        },
         hour.worst.as_ref().map_or(String::new(), |_| format!(
             "; the most hit, {} times",
             hour.worst_hits
@@ -330,7 +347,9 @@ pub fn hear(
         .unwrap_or_default()
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
-        .filter(|h: &Heard| h.at >= ears.at - heard::KEPT_MS)
+        .filter(|h: &Heard| {
+            h.at >= ears.at - heard::KEPT_MS || (h.is_miss() && h.closed_by.is_none())
+        })
         .collect();
     let ledgers: Vec<String> = ears
         .ledgers
@@ -378,10 +397,19 @@ pub fn hear(
         &mut guarded,
         &heard_at,
     );
-    let unclosed = landed::stand(ears, routes.from.as_deref(), &mut kept);
+    let read = landed::last_read(&ears.state);
+    let stood = landed::stand(ears, routes.from.as_deref(), &mut kept, read.as_ref());
     keep(&heard_at, &kept)?;
+    if let Some(read) = &stood.read {
+        landed::keep_read(&ears.state, read)?;
+    }
+    // A listener nobody set up writes nothing of his.
+    let ledgered = routes
+        .sends()
+        .then(|| missed::write(&ears.misses, &kept, ears.offset_s).err())
+        .flatten();
     let mut hour = hour_of(&kept, ears.at);
-    hour.unclosed = unclosed;
+    hour.unclosed = stood.unclosed;
     let (waiting, given_up) = unsent(&kept, ears.at);
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
@@ -391,6 +419,7 @@ pub fn hear(
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
+    hour.troubles.extend(ledgered);
     crate::write_whole(
         &ears.state.join("hour.json"),
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
@@ -448,6 +477,9 @@ fn hear_logs(
                 tries: 0,
                 taken_by: None,
                 closed_by: None,
+                thread: Vec::new(),
+                shared: false,
+                landed: Vec::new(),
             });
         }
         // An answer read while the node names no cell for the session
@@ -639,43 +671,6 @@ fn note_for_keeper(
         }
     }
     let _ = keep(heard_at, kept);
-}
-
-/// The hour as cadence's card says it. A pain said in the void counts in
-/// none of the day's: no cell was asked of it.
-fn hour_of(kept: &[Heard], at: i64) -> Hour {
-    let in_hour = |t: i64| t >= at - HOUR_MS;
-    let said: Vec<&Heard> = kept.iter().filter(|h| !stalled::is(h)).collect();
-    let day: Vec<&Heard> = said
-        .iter()
-        .copied()
-        .filter(|h| h.at >= at - DAY_MS && !h.carried && !h.void)
-        .collect();
-    let open = |h: &&&Heard| h.closed_by.is_none() && h.taken_by.is_none();
-    let worst = day.iter().filter(open).max_by_key(|h| (h.hits, h.at));
-    Hour {
-        at,
-        heard: said.iter().filter(|h| in_hour(h.at)).count(),
-        stalled: kept
-            .iter()
-            .filter(|h| stalled::is(h) && in_hour(h.at))
-            .count(),
-        routed: kept
-            .iter()
-            .filter(|h| h.routed_at.is_some_and(in_hour))
-            .count(),
-        open: day.iter().filter(open).count(),
-        worst: worst.map(|h| h.words.clone()),
-        worst_hits: worst.map_or(0, |h| h.hits),
-        taken: day
-            .iter()
-            .filter(|h| h.closed_by.is_none() && h.taken_by.is_some())
-            .count(),
-        closed: day.iter().filter(|h| h.closed_by.is_some()).count(),
-        troubles: Vec::new(),
-        cellless_since: None,
-        unclosed: None,
-    }
 }
 
 /// Each session log, by its file's name, written since `since`.

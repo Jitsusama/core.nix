@@ -76,16 +76,17 @@ fn unread(read: &Value, now: i64) -> Option<String> {
 /// the summary is missing, torn, uncounted, undated, stale or ahead, since
 /// a count from a hearer that isn't hearing says nothing. Its own troubles
 /// are all of routing, so they're named beside a count that still holds.
-/// A pain is open for a day unless the ledgers carry it, as the hearer
-/// counts it. Its class comes last, so it takes the drag only once the
-/// rest are in: the hearer routes each pain to its owner itself, and a
+/// A pain is open until someone takes it up, however old, unless the
+/// ledgers carry it, as the hearer counts it; one it calls lost, past a
+/// day with its question's thread never seen, counts with them. Its
+/// class comes last, so it takes the drag only once the rest are in: the hearer routes each pain to its owner itself, and a
 /// drag every hour would keep broken checks and slow merges from theirs.
 #[must_use]
 pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
     let mut measure = Measure {
         key: "pains-open".to_owned(),
         class: Class::Pains,
-        says: "pains Joel said in the last day that nobody has taken up".to_owned(),
+        says: "pains Joel said that nobody has taken up".to_owned(),
         now: 0.0,
         target: Some(0.0),
         owner: owner.to_owned(),
@@ -100,7 +101,14 @@ pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
         return measure;
     };
     let open = read.get("open").and_then(Value::as_u64).unwrap_or_default();
-    measure.now = count(usize::try_from(open).unwrap_or(usize::MAX));
+    let lost = read.get("lost").and_then(Value::as_u64).unwrap_or_default();
+    measure.now = count(usize::try_from(open.saturating_add(lost)).unwrap_or(usize::MAX));
+    if lost > 0 {
+        measure.behind.push(format!(
+            "{lost} lost: past a day, no thread of theirs seen, so only a landing naming its \
+             entry closes one"
+        ));
+    }
     if let Some(why) = unread(&read, now) {
         measure.target = None;
         measure.says = format!("{} (unjudged: {why})", measure.says);
@@ -178,8 +186,19 @@ mod tests {
     fn the_count_says_what_open_means() {
         let m = pains(Some(&summary(NOW - 60, "")), NOW, "WCJQSG");
         assert!(
-            m.says.contains("in the last day") && m.says.contains("nobody has taken up"),
-            "the row didn't say a pain counts only for a day, untaken: {m:?}"
+            !m.says.contains("in the last day") && m.says.contains("nobody has taken up"),
+            "the row didn't say a pain counts until taken up, however old: {m:?}"
+        );
+    }
+
+    #[test]
+    fn a_lost_pain_counts_open_and_says_how_it_closes() {
+        let text = json!({"at": (NOW - 60) * 1000, "open": 2, "lost": 3}).to_string();
+        let m = pains(Some(&text), NOW, "WCJQSG");
+        assert!(m.now > 4.9 && m.now < 5.1, "open and lost both count: {m:?}");
+        assert!(
+            m.behind.iter().any(|b| b.starts_with("3 lost") && b.contains("naming its entry")),
+            "the lost weren't said with how they close: {m:?}"
         );
     }
 
