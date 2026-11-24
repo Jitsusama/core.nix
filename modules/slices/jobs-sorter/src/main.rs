@@ -1450,6 +1450,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             writeback: own.writeback,
         });
     }
+    ranks.fitting.held.clone_from(ranks.holding.scopes());
     fit_floors(
         &mut ranked,
         windows.prefixes,
@@ -1829,6 +1830,8 @@ struct Fitting {
     overrun: HashSet<String>,
     /// Each window's claim at its peak within the minute.
     peaks: budget::Peaks,
+    /// The windows the sorter holds, as of the last look.
+    held: HashSet<PathBuf>,
 }
 
 impl Fitting {
@@ -1883,13 +1886,14 @@ fn claims(
     low: u64,
     prefixes: &[String],
     mine: &[&Path],
+    held: &HashSet<PathBuf>,
     peaks: &mut budget::Peaks,
     now: std::time::Instant,
 ) -> (u64, Vec<(String, u64)>) {
     // Only the windows' floors are taken first: any agent can start a scope here with a floor
     // of max, which would leave the units Joel is at none.
     let scopes = homes(slice, prefixes);
-    let (windows, others): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(slice)
+    let (mut windows, others): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(slice)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -1908,7 +1912,10 @@ fn claims(
     // windows and asking for max would otherwise take their floors. Each window claims what it
     // held at its peak within the minute, so a window paging out doesn't hand the units room it
     // takes back a look later, but never past its floor now: one the sorter has let go claims
-    // its new floor at once.
+    // its new floor at once. The windows the sorter holds take the room first, so scopes only
+    // named as windows can't push them out of it, then the rest by name, so a look's order is
+    // the next one's.
+    windows.sort_by_key(|path| (!held.contains(path), path.clone()));
     let mut left = focus::FLOOR.saturating_mul(u64::try_from(focus::MOST).unwrap_or(u64::MAX));
     let mut kept = Vec::new();
     let mut strays: Vec<(String, u64)> = Vec::new();
@@ -1979,7 +1986,15 @@ fn fit_floors(
             .filter(|&at| ranked[at].path.parent() == Some(slice.as_path()))
             .collect();
         let paths: Vec<&Path> = mine.iter().map(|&at| ranked[at].path.as_path()).collect();
-        let (room, strays) = claims(&slice, low, prefixes, &paths, &mut fitting.peaks, now);
+        let (room, strays) = claims(
+            &slice,
+            low,
+            prefixes,
+            &paths,
+            &fitting.held,
+            &mut fitting.peaks,
+            now,
+        );
         let claimed = strays
             .iter()
             .fold(0u64, |sum, (_, claim)| sum.saturating_add(*claim));
@@ -5210,6 +5225,42 @@ mod tests {
             [2048, 2048],
             "what the window claimed past a window's floor was held for a minute, as a \
              window's own is, though a stray's never is"
+        );
+    }
+
+    #[test]
+    fn the_windows_the_sorter_holds_are_held_first_and_scopes_named_as_windows_after() {
+        const MIB: u64 = 1 << 20;
+        let slice = slice_with(
+            "fit-held-first",
+            8192 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "max"),
+                ("kitty-1-2.scope", 2048 * MIB, "max"),
+                ("kitty-1-3.scope", 2048 * MIB, "max"),
+                ("kitty-1-4.scope", 2048 * MIB, "max"),
+            ],
+        );
+        let held: HashSet<PathBuf> = [slice.join("kitty-1-4.scope")].into();
+        let (_, strays) = claims(
+            &slice,
+            8192 * MIB,
+            &["kitty-".to_owned()],
+            &[],
+            &held,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        let past: Vec<&str> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            past,
+            ["kitty-1-3.scope"],
+            "a window the sorter holds was left past the cap, or the rest weren't taken by name"
         );
     }
 
