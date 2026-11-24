@@ -73,6 +73,7 @@ trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 fresh() {
   rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails
   : > "$work/asked"
+  : > "$work/said"
   : > "$work/waits"
   echo 0 > "$work/main-pid"
 }
@@ -204,7 +205,6 @@ fresh
 # it runs again once with its output in the journal, telling the shell
 # when it was first started.
 touch "$work/kitten-fails"
-: > "$work/said"
 HOME=/home/joel PATH="$stand_ins:$PATH" "$sh" "$script" "$work/kitty.sock" pi-hosted.s-13 pi \
   2> /dev/null || true
 expect "one started with no output says why in the journal, told its first start" \
