@@ -335,7 +335,9 @@ pub const SAID_NONE: &str = "misses-said-none";
 /// as his reassurance, can't name a test, so the owner's word closes it
 /// instead, as a finding closes on its owner's word of why it's expected.
 fn no_miss(miss: &Value) -> bool {
-    miss["none"].as_str().is_some_and(|why| !why.trim().is_empty())
+    miss["none"]
+        .as_str()
+        .is_some_and(|why| !why.trim().is_empty())
 }
 
 /// Takes from `open`, last hour's open misses as the card listed them,
