@@ -163,6 +163,15 @@ QtObject {
         expect("nor keeps a connector the other twin's sessions were given",
             [twinFirst.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: twinFirst, inUse: "Virtual-3" }).output], [["Virtual-3"], "Virtual-3"]);
+        // Nor to another screen's session, though its connector is called
+        // what the twin's was when kept.
+        const panelThere = { "Virtual-1": panel, "Virtual-3": twin, "Virtual-4": twin };
+        const panelAt = { screen: panel, output: "Virtual-1", workspace: 1, column: 1, tile: 1 };
+        const panelFirst = Reopening.givenBy([panelAt],
+            Places.placed([panelAt], panelThere, "Virtual-1", [[]]), early);
+        expect("nor gives way to another screen's session",
+            Places.whereKept(twins[1], twins, panelThere,
+                { given: panelFirst, inUse: "Virtual-1" }).output, "Virtual-4");
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early), inUse: "eDP-1" }).output, "Virtual-4");
