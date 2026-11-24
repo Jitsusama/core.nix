@@ -75,10 +75,12 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
                 "backup notice ({AT}), its test is in world, which cadence has no \
                  checkout of · 88LQC0"
             ),
+            "carried (x), naming no test · WCJQSG".to_owned(),
         ],
-        "a miss was judged wrongly, or one that runs, was carried or unseen was counted"
+        "a miss was judged wrongly, or one that runs or unseen was counted, or one \
+         carried wasn't"
     );
-    assert_eq!(m.now, 4.0, "the count isn't its lines'");
+    assert_eq!(m.now, 5.0, "the count isn't its lines'");
     assert_eq!(
         m.owner, "XY9H5C",
         "the oldest untested miss's owner doesn't lead"

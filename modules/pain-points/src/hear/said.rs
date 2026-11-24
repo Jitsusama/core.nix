@@ -84,6 +84,10 @@ pub struct Carried {
     /// again within it unless he speaks first, opening a turn of his own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub errored: bool,
+    /// The log entry of the message that errored, which pi's retry edits
+    /// out of its context: none when a reading kept before it was named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// Whether a peer's or the harness's message came after that error
     /// with no word yet that pi tries again, so the answer after it, if pi
     /// never does, is theirs.
@@ -155,6 +159,18 @@ struct Head {
     #[serde(default)]
     timestamp: String,
     message: Option<HeadMessage>,
+    /// The entry a context edit changes, and what it puts in its place.
+    #[serde(rename = "targetId", default)]
+    target: Option<String>,
+    #[serde(default)]
+    replacement: Option<Value>,
+}
+
+/// Whether `head` is pi's retry of `carried`'s errored turn: an edit that
+/// drops the message that errored from its context, with nothing in its
+/// place. Any other edit, such as an extension's, isn't one.
+fn retried(head: &Head, carried: &Carried) -> bool {
+    head.replacement.is_none() && (carried.error.is_none() || head.target == carried.error)
 }
 
 #[derive(Deserialize)]
@@ -193,13 +209,16 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
     // the most of a log, is never decoded.
     let head: Head = serde_json::from_str(text).ok()?;
     // pi tries an errored turn again by first editing the error out of its
-    // context, so a peer's or the harness's message before that edit can
-    // still land inside his retry, and one after it does. Only one with no
-    // retry after it starts a turn of its own, answering them, not him.
+    // context, then waiting, so a peer's or the harness's message before
+    // that edit can still land inside his retry, and one after it does.
+    // Only one with no retry after it starts a turn of its own, answering
+    // them, not him. pi writes no edit when it gives up.
     if carried.errored {
         match head.kind.as_str() {
             "custom_message" => carried.crossed = true,
-            "context_edit" => (carried.errored, carried.crossed) = (false, false),
+            "context_edit" if retried(&head, carried) => {
+                (carried.errored, carried.crossed) = (false, false);
+            }
             _ => {}
         }
     }
@@ -243,6 +262,7 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             // A turn ends on any stop but a call for tools, answered or not,
             // or an error, which pi tries again within the same turn.
             carried.errored = stopped == Some("error");
+            carried.error = carried.errored.then(|| head.id.clone());
             if stopped.is_some_and(|stop| !matches!(stop, "toolUse" | "error")) {
                 carried.from = None;
             }
@@ -591,17 +611,33 @@ mod tests {
         let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
         let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
         let asking = called(&["bash"]);
-        let failed = ended("error", "");
+        // The answer that errored has an id of its own, "f", beside the
+        // others' "s", so an edit of the wrong one can't pass as the retry.
+        let failed = ended("error", "").replacen(r#""id":"s""#, r#""id":"f""#, 1);
         let done = ended("stop", "Fixed: the launcher opens again.");
         let peer = r#"{"type":"custom_message","content":"Mesh message"}"#.to_owned();
         // pi's retry edits the errored answer out of its context first.
         let retry = r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned();
+        // An extension may edit another entry, or put text in its place.
+        let other = r#"{"type":"context_edit","targetId":"s","replacement":null}"#.to_owned();
+        let rewrite = r#"{"type":"context_edit","targetId":"f","replacement":"x"}"#.to_owned();
+        assert!(
+            failed.contains(r#""id":"f""#),
+            "the errored answer kept the others' id"
+        );
         let his_answer = vec![(opened, at)];
         for (lines, answers, what) in [
             (
                 vec![&his, &asking, &failed, &peer, &asking, &done],
                 Vec::new(),
                 "a peer's turn after an error pi never tried again",
+            ),
+            (
+                vec![
+                    &his, &asking, &failed, &peer, &other, &rewrite, &asking, &done,
+                ],
+                Vec::new(),
+                "a peer's turn after edits that aren't pi's retry",
             ),
             (
                 vec![&his, &asking, &failed, &peer, &retry, &asking, &done],
@@ -626,9 +662,27 @@ mod tests {
             assert_eq!(carried.answers, answers, "{what} was read wrongly");
         }
         // Read across two runs, parted after the error or the peer's message.
-        for (before, after) in [
-            (vec![&his, &asking, &failed], vec![&peer, &asking, &done]),
-            (vec![&his, &asking, &failed, &peer], vec![&asking, &done]),
+        for (before, after, answers) in [
+            (
+                vec![&his, &asking, &failed],
+                vec![&peer, &asking, &done],
+                Vec::new(),
+            ),
+            (
+                vec![&his, &asking, &failed, &peer],
+                vec![&asking, &done],
+                Vec::new(),
+            ),
+            (
+                vec![&his, &asking, &failed, &peer],
+                vec![&retry, &asking, &done],
+                vec![(opened, at)],
+            ),
+            (
+                vec![&his, &asking, &failed],
+                vec![&retry, &peer, &asking, &done],
+                vec![(opened, at)],
+            ),
         ] {
             let mut midway = Carried::default();
             for text in before {
@@ -640,9 +694,9 @@ mod tests {
                 line(text, &mut back);
             }
             assert_eq!(
-                back.answers,
-                Vec::new(),
-                "a run lost that the turn had errored, or that a peer came after"
+                back.answers, answers,
+                "a run lost that the turn had errored, that a peer came after, or which \
+                 error pi tried again"
             );
         }
     }

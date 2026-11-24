@@ -95,8 +95,10 @@ const REASSURING: [&str; 10] = [
 const GIVING_UP: [&str; 4] = ["do it myself", "do this myself", "forget it", "never mind"];
 
 /// Words that hand the agent a choice before a closing "whatever": "use
-/// whatever" leaves it to the agent rather than giving up on it.
-const LEAVING_IT: [&str; 6] = ["use", "do", "pick", "try", "take", "choose"];
+/// whatever" leaves it to the agent rather than giving up on it. "do
+/// whatever" and "try whatever" are as often resigned, so they still give
+/// up, as a pain sent is cheaper than one lost.
+const LEAVING_IT: [&str; 4] = ["use", "pick", "take", "choose"];
 
 /// Whether a sentence's words give up with a closing "whatever".
 fn whatever_then(words: &[&str]) -> bool {
@@ -415,6 +417,9 @@ mod tests {
             "shit, it's fine. whatever.",
             "shit, it's fine, whatever",
             "shit, it's fine whatever",
+            "shit, it's fine\nwhatever",
+            "shit, no worries, do whatever",
+            "shit, it's fine, try whatever",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
@@ -434,7 +439,8 @@ mod tests {
             "shit, it's fine, i blame myself",
             "shit, that's fine, whatever works for you",
             "shit, it's fine, use whatever",
-            "shit, no worries, do whatever",
+            "shit, no worries, i'll take whatever",
+            "shit, it's fine, you choose whatever",
         ] {
             assert_eq!(
                 kinds(eased, AT, &[]),
