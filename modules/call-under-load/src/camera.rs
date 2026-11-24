@@ -85,6 +85,10 @@ pub enum Fault {
     Restarted,
     /// The machine's camera, or the file naming it, isn't there.
     Missing,
+    /// The machine slept or stalled, so the read was cut short or never
+    /// begun rather than run into the quarter hour before a meeting. It
+    /// says nothing of the camera.
+    Paused,
 }
 
 /// What a check comes to.
@@ -100,9 +104,10 @@ pub enum Outcome {
     /// silent for the whole wait is told at once.
     Again(Fault),
     /// The read ended inside the quarter hour before the meeting or after
-    /// it began, which only a suspend or a stall past its deadlines brings
-    /// about, so it's kept as checked and only journalled: the fault may
-    /// be the pause's, and a notice now would be late.
+    /// it began, or was cut short by a pause with no minute left to look
+    /// again, which only a suspend or a stall brings about. It's kept as
+    /// checked and only journalled: the fault may be the pause's, and a
+    /// notice now would be late or false.
     Late(Fault),
 }
 
@@ -119,11 +124,13 @@ pub fn settled(gave: Result<(), Fault>, start: u64, now: u64) -> Outcome {
     match gave {
         Ok(()) => Outcome::Fine,
         Err(fault) if start < now + UNREAD_MS => Outcome::Late(fault),
-        Err(fault @ (Fault::Restarted | Fault::Missing | Fault::Ended(_)))
+        Err(fault @ (Fault::Restarted | Fault::Missing | Fault::Ended(_) | Fault::Paused))
             if !last_chance(start, now) =>
         {
             Outcome::Again(fault)
         }
+        // A pause says nothing of the camera, so it's never told as dead.
+        Err(Fault::Paused) => Outcome::Late(Fault::Paused),
         Err(fault) => Outcome::Tell(fault),
     }
 }
@@ -135,6 +142,7 @@ impl std::fmt::Display for Fault {
             Fault::Ended(how) => f.write_str(how),
             Fault::Restarted => f.write_str("its relay started again while it was read"),
             Fault::Missing => f.write_str("it isn't there"),
+            Fault::Paused => f.write_str("the machine slept or stalled, so it wasn't read in time"),
         }
     }
 }
@@ -224,6 +232,25 @@ pub fn near(calendar: &Calendar, now: u64) -> Option<&Meeting> {
     calendar.meetings.iter().find(|meeting| {
         meeting.start.saturating_sub(UNREAD_MS) < now + READ_MS && now < meeting.end
     })
+}
+
+/// The latest time a read begun after `now` may end: the quarter hour
+/// before the soonest meeting not yet over. `near` judged the check when it
+/// began, but a suspend or stall since can bring the read itself closer.
+pub fn read_by(calendar: &Calendar, now: u64) -> u64 {
+    calendar
+        .meetings
+        .iter()
+        .filter(|meeting| now < meeting.end)
+        .map(|meeting| meeting.start.saturating_sub(UNREAD_MS))
+        .min()
+        .unwrap_or(u64::MAX)
+}
+
+/// Whether a read begun at `now` ends by `by` even if it takes its whole
+/// wait.
+pub fn in_time(now: u64, by: u64) -> bool {
+    now.saturating_add(WAIT.as_secs() * 1000) <= by
 }
 
 /// The soonest meeting due its check at `now`, of those not in `checked`.
@@ -393,6 +420,7 @@ pub fn told(meeting: &Meeting, now: u64, read: bool, fault: &Fault) -> (String, 
         (true, Fault::Ended(_)) => "The camera couldn't be opened",
         (true, Fault::Restarted) => "The camera gave no picture and had to start again",
         (_, Fault::Missing) => "The camera isn't there",
+        (true, Fault::Paused) => "The camera couldn't be read in time",
         (false, _) => "The camera didn't answer",
     };
     (
@@ -443,7 +471,13 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(Fault::Silent);
+                // Cut by the wall clock alone means the machine slept or
+                // stalled, not that the program gave nothing in its time.
+                return Err(if Instant::now() < until {
+                    Fault::Paused
+                } else {
+                    Fault::Silent
+                });
             }
             Err(error) => return Err(Fault::Ended(error.to_string())),
         }
@@ -452,12 +486,18 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
 
 /// Whether `camera` gives a picture: read when it's a loopback, and
 /// otherwise only asked whether it answers, which a camera another
-/// program holds still does.
-pub fn gives(camera: &Path, read: bool) -> Result<(), Fault> {
+/// program holds still does. A read that couldn't end by `by`, the epoch
+/// milliseconds `read_by` gives, isn't begun.
+pub fn gives(camera: &Path, read: bool, by: u64) -> Result<(), Fault> {
     if !read {
         return within("v4l2-ctl", &asked(camera, false), ANSWER);
     }
     let before = relay_run();
+    // Judged last before the read, since the asks before it can be slow
+    // and a suspend among them would light the camera near the meeting.
+    if !in_time(epoch_ms(), by) {
+        return Err(Fault::Paused);
+    }
     let gave = within("v4l2-ctl", &asked(camera, true), WAIT);
     // A camera silent the whole wait is told whichever run it was on, so
     // the relay isn't asked again and the notice isn't held up.
@@ -465,6 +505,15 @@ pub fn gives(camera: &Path, read: bool) -> Result<(), Fault> {
         return gave;
     }
     judged(gave, before.as_deref(), relay_run().as_deref())
+}
+
+/// The wall clock's time, in milliseconds since the epoch.
+fn epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 #[cfg(test)]
@@ -582,6 +631,33 @@ mod tests {
             start(near(&ended, now)),
             None,
             "a meeting already over kept the camera from its check"
+        );
+    }
+
+    #[test]
+    fn a_read_paused_until_near_a_meeting_is_never_begun() {
+        let now = 100 * MIN_MS;
+        let two = at(&[now - 30 * MIN_MS, now + 25 * MIN_MS, now + 18 * MIN_MS]);
+        let by = read_by(&two, now);
+        assert_eq!(
+            by,
+            now + 3 * MIN_MS,
+            "the read's end wasn't the quarter hour before the soonest meeting not yet over"
+        );
+        assert!(
+            in_time(now, by),
+            "a read begun with its whole wait to spare was refused"
+        );
+        // As after a suspend during the asks before it: a minute and a
+        // second later, the read's wait would reach the quarter hour.
+        assert!(
+            !in_time(now + MIN_MS + 1_000, by),
+            "a read whose wait reached the quarter hour was begun"
+        );
+        assert_eq!(
+            read_by(&at(&[]), now),
+            u64::MAX,
+            "no meeting at all kept a read from beginning"
         );
     }
 
@@ -833,6 +909,16 @@ mod tests {
             settled(Err(Fault::Silent), start, start - UNREAD_MS + 1),
             Outcome::Late(Fault::Silent),
             "a read that ended inside the quarter hour, as across a suspend, was told"
+        );
+        assert_eq!(
+            settled(Err(Fault::Paused), start, early),
+            Outcome::Again(Fault::Paused),
+            "a read cut short by a pause wasn't tried again"
+        );
+        assert_eq!(
+            settled(Err(Fault::Paused), start, last),
+            Outcome::Late(Fault::Paused),
+            "a read cut short by a pause was told to Joel as a dead camera"
         );
         assert!(
             !last_chance(start, early) && last_chance(start, last),
