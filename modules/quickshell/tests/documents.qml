@@ -298,6 +298,38 @@ ShellRoot {
                 borrower.found.words === "plan", borrower.found.words);
             borrower.ended();
             link.wire = null;
+            // One the daemon couldn't answer, gone or not yet there, is
+            // asked again once it says hello, since nothing else asks it
+            // till the next key; one whose search ended since isn't.
+            // Its hello says the daemon stands as it did, so no later case
+            // finds it changed.
+            const stood = { state: link.state, sources: link.sources, offered: link.offered };
+            const hello = () => link.said(JSON.stringify(
+                { id: "hello", state: stood.state, sources: stood.sources, kinds: stood.offered }));
+            borrower.search("road");
+            Expect.expect("asked of no daemon, it's answered with nothing",
+                borrower.asking === "" && borrower.found.words === null,
+                JSON.stringify([borrower.asking, borrower.found.words]));
+            link.wire = { write: line => {}, flush: () => {} };
+            const greeted = link.asked;
+            hello();
+            Expect.expect("and is asked again once the daemon says hello",
+                link.asked === greeted + 1 && borrower.asking === "road",
+                JSON.stringify([link.asked - greeted, borrower.asking]));
+            const again = `find-${link.asked}`;
+            link.awaited[again]({ id: again, words: "road", keys: ["row:calendar:own"] });
+            Expect.expect("its answer taken", borrower.found.words === "road",
+                borrower.found.words);
+            borrower.ended();
+            link.wire = null;
+            borrower.search("rows");
+            borrower.ended();
+            link.wire = { write: line => {}, flush: () => {} };
+            const after = link.asked;
+            hello();
+            Expect.expect("one whose search ended isn't asked again",
+                link.asked === after, link.asked - after);
+            link.wire = null;
             standIn.open = false;
             const closed = documents.tally.rows;
             documents.served.turned();
