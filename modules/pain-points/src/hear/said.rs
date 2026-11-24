@@ -404,6 +404,18 @@ mod tests {
         ] {
             assert_eq!(answered(&lines), None, "{why}");
         }
+    }
+
+    #[test]
+    fn each_answer_is_kept_with_when_he_opened_its_turn() {
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let ran = called(&["bash"]);
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        let peer = user(
+            "m1",
+            "2026-11-16T18:00:07.000Z",
+            "[Mesh message from a peer] a question",
+        );
         let mut carried = Carried::default();
         for text in [&his, &ran, &done] {
             line(text, &mut carried);
@@ -411,7 +423,7 @@ mod tests {
         let kept = serde_json::to_string(&carried).expect("carried writes");
         let back: Carried = serde_json::from_str(&kept).expect("carried reads");
         let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
-        let at = at.expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
         assert_eq!(
             (back.answers, back.from),
             (vec![(opened, at)], None),
