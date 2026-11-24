@@ -2040,6 +2040,14 @@
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
   '';
+  local-sites-refuses-renamed-look-acts = ''
+    local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
+    in place or by a later entry keyed by a list of one set or a set words.json writes as the id
+    by its outPath or __toString, or by a whole entry so written, reading the words as words.json
+    writes them; it names only each act's old and new word though another word is renamed beside
+    them, even to no name, and takes core's own words and ids Words.qml keys as no act: objects,
+    lists of several or none, whichever end holds the act, and a path in the store
+  '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,
     each pattern the homes' readers drop, every byte they refuse included, and each kind a site
@@ -4182,6 +4190,24 @@
   the-apple-silicon-stick-evaluates = ''
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
     evaluates
+  '';
+  the-ask-row-reads-as-for-you = ''
+    the live sites' ask row reads a look as the launcher's For You does, against the launcher's own
+    scripts run in Node: over looks either side of each rule and of every kind and state, which it
+    reads, which wait, what each offers and what follows each, and when it lapses as Looks.js and
+    Now.qml's lookOffers and followsOf give them, what the second form leads with (its parts
+    ended by each stop, closing mark and mark that is neither, none or two, a stop inside, empty,
+    padded or missing) and its act as
+    LookForm.js gives them, and what it links as Now.qml's drawer names its kinds, each kind at a
+    web address; the launcher's
+    act names as Now.qml and core's joined words give them, the last of an id's winning; and the
+    ids local-sites' home module guards as Now.qml lists them
+  '';
+  the-ask-row-reads-each-character-as-for-you = ''
+    the live sites' ask row reads every character, and judges it as posing as one of the
+    launcher's acts, as LookForm.js does: within, leading and ending a name, once and twice,
+    beside a space and after a stop, and in a run after the first; and ends what a look says
+    as LookForm.js does whatever character follows its words, a stop or a closing mark
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one
