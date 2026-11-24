@@ -110,6 +110,8 @@ UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
+# The client's count of what its link to the router took in, as the shaper's recorder reads it.
+RX_BYTES = "/sys/class/net/eth1/statistics/rx_bytes"
 # How long the client may take to boot to its first queues, and the loads to take that in.
 COMING_UP = dt.timedelta(seconds=30)
 FILLING = dt.timedelta(seconds=60)
@@ -618,12 +620,48 @@ def carried(rig: Rig) -> int:
 
     The counter and the clock are read by the shell's builtins, with no command forked between
     them, and the window is divided by its own length rather than taken for a second, as a
-    starved builder stretches it most (call fills round 1's F2, F6, F14 and F16).
+    starved builder stretches it most (call fills round 1's F2, F6, F14 and F16). The clock is
+    the kernel's uptime, in hundredths of a second whatever the locale, which no step of the
+    wall clock moves (call fills round 2's F2, F8 and F12).
     """
-    rx = "/sys/class/net/eth1/statistics/rx_bytes"
-    read = f"read -r a < {rx}; t=${{EPOCHREALTIME/./}}; sleep 1"
-    again = f"read -r b < {rx}; u=${{EPOCHREALTIME/./}}"
-    return int(rig.client.succeed(f"{read}; {again}; echo $(((b - a) * 8000 / (u - t)))"))
+    read = f"read -r a < {RX_BYTES}; read -r t _ < /proc/uptime; sleep 1"
+    again = f"read -r b < {RX_BYTES}; read -r u _ < /proc/uptime"
+    hundredths = "(10#${u/./} - 10#${t/./})"
+    return int(rig.client.succeed(f"{read}; {again}; echo $(((b - a) * 8 / {hundredths} / 10))"))
+
+
+@dataclass
+class Filling:
+    """A wait for the loads to fill the line, and with room, to fill it as far as the room.
+
+    It's met once the client has taken in a few seconds of the line and, with room, once a
+    second carries the room too, as the shaper gives none to a download short of it, or once
+    the shaper already holds the room, as it does from the controller's cut too. A builder too
+    starved for either fails saying so, with its best second, rather than as a hold that never
+    came (#4228; call fills round 1's F1, F5, F13 and F17). A second is sampled only while
+    neither has come, as each sample takes one (call fills round 1's F7 and F18, and round 2's
+    F3, F5 and F11).
+    """
+
+    rig: Rig
+    first: int
+    room: bool
+    best: int = 0
+
+    def __call__(self, last_try: bool) -> bool:
+        """Give whether the wait is met, saying what fell short with the trace on its last try."""
+        given = not self.room or self.rig.room() == ROOM_KBIT
+        if not given and self.best < ROOM_KBIT:
+            self.best = max(self.best, carried(self.rig))
+        given = given or self.best >= ROOM_KBIT
+        now = int(self.rig.client.succeed(f"cat {RX_BYTES}")) - self.first >= FULL_BYTES
+        short = f", carrying {self.best} kbit/s at best of the {ROOM_KBIT} its room needs"
+        return met(
+            self.rig,
+            now=now and given,
+            last_try=last_try,
+            otherwise="the loads never filled the line" + ("" if given else short),
+        )
 
 
 def under_load(
@@ -643,21 +681,16 @@ def under_load(
     as the calls start, so what it counts from there is the hold's alone.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
-    a connection that's full, as a busy afternoon's is, rather than one with room to spare.
-    With room, they run until a second carries the room too, as the shaper gives none to a
-    download short of it, or until the shaper already holds the room, as it does from the
-    controller's cut too: a builder too starved for either fails saying so, with its best
-    second, rather than as a hold that never came (#4228; call fills round 1's F1, F5, F13
-    and F17).
-    They run on until the controller holds the link too, as it has all day on a
-    connection the jobs keep full: a call that starts in the seconds before it does crosses
-    the router's queue as an unshaped one would. The loads stop however the calls end, so a
-    test that fails here leaves the next its own loads to start.
+    a connection that's full, as a busy afternoon's is, rather than one with room to spare,
+    and with room, until the line is filled as far as the room (Filling). They run on until
+    the controller holds the link too, as it has all day on a connection the jobs keep full:
+    a call that starts in the seconds before it does crosses the router's queue as an unshaped
+    one would. The loads stop however the calls end, so a test that fails here leaves the next
+    its own loads to start.
     """
     download = f"{BIN}/cat < /dev/tcp/{FAR}/{SOURCE_PORT} > /dev/null"
     upload = f"{BIN}/cat /dev/zero > /dev/tcp/{FAR}/{SINK_PORT}"
-    rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
-    first = int(rig.client.succeed(rx))
+    first = int(rig.client.succeed(f"cat {RX_BYTES}"))
     rig.since = rig.counted()
     loads = [
         ("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download),
@@ -669,28 +702,7 @@ def under_load(
     try:
         for unit, slice_name, flows, script in loads:
             rig.start(unit, slice_name, flows, script)
-        best = [0]
-
-        def filled(last_try: bool) -> bool:
-            # Sampled only until a second carries the room, as each sample takes a second
-            # (call fills round 1's F7 and F18).
-            if room and best[0] < ROOM_KBIT:
-                best[0] = max(best[0], carried(rig))
-            given = not room or best[0] >= ROOM_KBIT or rig.room() == ROOM_KBIT
-            now = int(rig.client.succeed(rx)) - first >= FULL_BYTES
-            return met(
-                rig,
-                now=now and given,
-                last_try=last_try,
-                otherwise="the loads never filled the line"
-                + (
-                    ""
-                    if given
-                    else f", carrying {best[0]} kbit/s at best of the {ROOM_KBIT} its room needs"
-                ),
-            )
-
-        retry(filled, timeout=FILLING)
+        retry(Filling(rig, first, room), timeout=FILLING)
         retry(
             lambda last_try: met(
                 rig,
