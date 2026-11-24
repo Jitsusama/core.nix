@@ -822,8 +822,11 @@ ShellRoot {
             Expect.expect("with no boot's places known, one kept nowhere opens in a window",
                 started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
                 && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
-            // Its kitty opens the window where Joel is, asked nowhere, so
-            // the walk ends with it rather than waiting out its patience.
+            // With no place kept nor kin, it would open on its screen's
+            // empty workspace, but this stand-in keeps none after 43 as
+            // niri would. So it's asked nowhere, and its kitty opens the
+            // window where Joel is, so the walk ends with it rather than
+            // waiting out its patience.
             const waiting = Sessions.reopening?.waiting;
             if (waiting?.id !== "s-unarranged" || !waiting.classed)
                 return;
@@ -832,7 +835,8 @@ ShellRoot {
                 Expect.fail("no workspace is focused for s-unarranged's window to open on");
                 return;
             }
-            Expect.expect("one with no boot's places known is asked to open nowhere",
+            Expect.expect("one with no place known, its screen with no empty workspace, "
+                + "is asked to open nowhere",
                 !Niri.acts.some(act => act.OpenNextWindowOn?.app_id === waiting.classed),
                 JSON.stringify(Niri.acts));
             opensOnly(91, waiting.classed, joels.id);
@@ -932,16 +936,17 @@ ShellRoot {
             place?.workspace === cornerOn && place?.there === true
             && viewerSpawns("s-cornered").length === 0,
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
-        // Looked at last, once the walk that placed it has settled too. A
-        // move of its window starts with focusing it, and its workspace
-        // would go back to the screen kept by moving to that monitor.
-        Expect.expect("one sent by name to a workspace on another screen than kept stays there",
+        // Looked at once s-cornered's place is kept, so before this walk's
+        // settle pass and the return home of workspaces after it, which a
+        // follow-up waits for. A move of its window starts with focusing
+        // it.
+        Expect.expect("one sent by name to a workspace on another screen than kept "
+            + "isn't moved as it's placed",
             !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93
                 || act.MoveWindowToMonitor?.id === 93
                 || act.FocusWindow?.id === 93
                 || act.ConsumeOrExpelWindowLeft?.id === 93
-                || act.MoveWorkspaceToIndex?.reference?.Id === 44
-                || act.MoveWorkspaceToMonitor?.reference?.Id === 44),
+                || act.MoveWorkspaceToIndex?.reference?.Id === 44),
             JSON.stringify(Niri.acts));
         console.log("a hosted viewer reopens where it was, in "
             + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
