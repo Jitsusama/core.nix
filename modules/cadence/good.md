@@ -177,6 +177,16 @@ where it's read" is taken from the measure's own source. Any other target is cou
 - Over costs him: a check written as a sentence, which no machine can run, so nothing would
   catch the miss coming back.
 
+## Misses Said None
+
+- Measures: `misses-said-none`
+- Target: none, since a pain heard where there was none is the listener's, and each shows a day
+  with its owner's reason so the word that closed it is read.
+- Joel, 11 Nov 18:4x: "we need to learn from all pain points with all the things and be in a
+  constant improvement loop. nothing can be out of spec for this."
+- Over costs him: nothing judged. A real miss closed on a word nobody reads would go quiet, so
+  each reason stays on the card a day.
+
 ## Pains Open
 
 - Measures: `pains-open`
@@ -196,7 +206,8 @@ where it's read" is taken from the measure's own source. Any other target is cou
 ## Slips
 
 - Measures: `slips`, `slips-derived`
-- Target: 0 dates that passed in the last day without landing.
+- Target: 0 dates that passed in the last day without landing, or passed since with no landing,
+  meeting or move from their owner, nor the ask put down.
 - Joel, 11 Nov 16:4x: "i need for you to make faster progress. i don't understand why so much
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.

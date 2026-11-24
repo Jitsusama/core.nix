@@ -402,3 +402,99 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
         let _ = std::fs::remove_dir_all(&home);
     }
 }
+
+#[test]
+fn a_link_to_a_file_put_at_the_list_s_name_after_its_clear_is_never_written_through() {
+    // As one of the job's own processes could, once the list's name is
+    // cleared for its write: for a kind that brings nothing back, and for
+    // one whose list is written in a step of its own, which then can't
+    // write it, and cuts it only where no link stands at its name. A link
+    // to a device is still written through, as at the run's file, and one
+    // put there once the list is written is left to the job's processes
+    // being stopped.
+    // The link stands at the list's name after, so it was put there and
+    // nothing was made in its place.
+    let when = format!("*\" -f \"*/{BROUGHT}\" \"*");
+    let (step, linking) = refusing(
+        "rm",
+        &when,
+        "rm \"$@\"; for last; do :; done && echo kept > \"$HOME/beyond\" && \
+         ln -s \"$HOME/beyond\" \"$last\" && : > \"$HOME/linked\"; exit 0",
+    );
+    // The helper's kind brings back out, so the one bringing nothing is
+    // made so here. Only the one bringing back says it couldn't write
+    // what it brings, so each row is known to have taken its own step.
+    let mut nothing = kind("");
+    nothing.brings_back = Vec::new();
+    let unwritten = "couldn't write down all it brings back";
+    for (kind, run, says) in [
+        (nothing, "true", false),
+        (kind(""), "mkdir out && printf a > out/a", true),
+    ] {
+        let (code, err, home) = far_line(
+            Left::Whole,
+            &[("x", "x")],
+            run,
+            &kind,
+            None,
+            &[(step, &linking)],
+        );
+        let beyond = std::fs::read_to_string(home.join("beyond")).unwrap_or_default();
+        let list = std::fs::symlink_metadata(handover(&home).join(BROUGHT));
+        assert!(
+            home.join("linked").exists()
+                && list.is_ok_and(|list| list.is_symlink())
+                && beyond == "kept\n",
+            "the list, or its cut, was written through a link put at its name, or the link \
+             wasn't left there ({code:?}): {beyond:?} {err}"
+        );
+        assert!(
+            err.contains(unwritten) == says,
+            "the far line {} it couldn't write what it brings back ({code:?}): {err}",
+            if says {
+                "never said"
+            } else {
+                "bringing nothing said"
+            }
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_sort_that_fails_loses_each_path_past_a_link_put_at_the_losses_name() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A sort that fails having written what it sorted, as one stopped part
+    // way does, and a link one of the job's processes puts meanwhile at
+    // the name the losses are listed at. Both names are cleared for the
+    // losses each path then makes, so none is written through the link.
+    // The list's end is what shows the clear: without it, noclobber
+    // refuses the names and the list ends cut. The write through the link
+    // is refused by noclobber alone, which the far line keeps throughout.
+    let (sort, failing) = refusing(
+        "sort",
+        "*\" -u \"*",
+        "sort \"$@\"; echo kept > \"$HOME/beyond\" && rm -f \"$PWD.back.lost\" && \
+         ln -s \"$HOME/beyond\" \"$PWD.back.lost\" && : > \"$HOME/linked\"; exit 1",
+    );
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("x", "x")],
+        "mkdir out && printf a > out/a",
+        &kind,
+        None,
+        &[(sort, &failing)],
+    );
+    let beyond = std::fs::read_to_string(home.join("beyond")).unwrap_or_default();
+    assert!(
+        home.join("linked").exists() && beyond == "kept\n",
+        "the losses were written through a link put at their name ({code:?}): {beyond:?} {err}"
+    );
+    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+    assert!(
+        code == Some(0) && listed == "-\tout\nend\n",
+        "a failed sort didn't lose its path in a list that ended ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

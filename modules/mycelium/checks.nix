@@ -64,6 +64,7 @@ let
       {
         prefix = "agents-";
         budget = "models";
+        also = [ ];
         requests_a_day = 500;
       }
     ];
@@ -74,12 +75,14 @@ let
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
         key = [ "${modelsKey}" ];
+        kind = "models";
       };
       keyless = {
         upstream = "other-relay/agents.sock";
         host = "other.example";
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
+        kind = "models";
       };
     };
   };
@@ -1364,12 +1367,14 @@ in
   # declaration does: an agent runs as the account, so a file in its config
   # folder could raise a machine's cap or send its requests elsewhere. Its
   # names are the locked mycelium's own, read from its source, since the
-  # node refuses a file with a name it doesn't know. A budget with no key
+  # node refuses a file with a name it doesn't know, and its budget kinds
+  # are the lender's words, so a kind core writes is one it takes. A lend
+  # leaving its defaults unsaid is written with them. A budget with no key
   # says none, a further realm's node lends nothing, and what mycelium
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
       (
         let
           # The machine whole, for its own pkgs, and its account.
@@ -1438,8 +1443,20 @@ in
           # field says more than default. So the scan reads every attribute
           # and doc line above the struct, back to a blank line or the end
           # of another item, and throws on any other line there or in the
-          # body, on attributes across that blank line, and on a struct no
-          # longer found, rather than passing what it didn't read.
+          # body, on anything but that end past the blank lines, and on a
+          # struct no longer found, rather than passing what it didn't read.
+          # Past any blank lines over an item's attributes stands the end of
+          # the item before, a line ending ';' or the file's start: never a
+          # comment or an attribute left unread.
+          ended =
+            past:
+            let
+              gap = lib.lists.findFirstIndex (line: line != "") (lib.length past) past;
+              line = lib.elemAt past gap;
+            in
+            gap == lib.length past
+            || line == "}"
+            || lib.hasSuffix ";" line && builtins.match "[[:space:]]*[/#].*" line == null;
           scan =
             lines: struct:
             let
@@ -1451,9 +1468,6 @@ in
               before = lib.reverseList (lib.take from lines);
               reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
               above = lib.take reach before;
-              bounded = reach < lib.length before;
-              bound = lib.elemAt before reach;
-              across = reach + 1 < lib.length before && marked (lib.elemAt before (reach + 1));
               # A derive naming Deserialize itself, not one named like it.
               derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
               deriving = line: builtins.match derive line != null;
@@ -1467,10 +1481,8 @@ in
             in
             if from == null || to == null then
               throw "mycelium's lender has no lines 'struct ${struct} {' to '}'"
-            else if bounded && bound != "" && bound != "}" then
-              fail "has a line over its attributes that is neither blank nor an item's end"
-            else if bounded && bound == "" && across then
-              fail "has attributes across the blank line over it"
+            else if !ended (lib.drop reach before) then
+              fail "has over its attributes, past blank lines, other than an item's end"
             else if
               !lib.all told above
               || !lib.any deriving above
@@ -1525,6 +1537,21 @@ in
               "#[serde(rename_all = \"kebab-case\")]"
               ""
             ])
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              "// A machine lent to."
+              ""
+            ])
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              "  // Its name; its cap;"
+              ""
+            ])
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              ""
+              ""
+            ])
             (changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ])
             (changedVm 2 [ "#[serde(deny_unknown_fields, rename_all = \"kebab-case\")]" ])
             (changedVm 2 [
@@ -1551,6 +1578,7 @@ in
             Vm = {
               prefix = "String";
               budget = "String";
+              also = "Vec<String>";
               requests_a_day = "u64";
             };
             Budget = {
@@ -1559,6 +1587,7 @@ in
               paths = "Vec<String>";
               auth_header = "String";
               key = "Option<Vec<String>>";
+              kind = "Kind";
             };
           };
           # Refused by the assertion whose message starts so, and by it.
@@ -1589,6 +1618,149 @@ in
             !typeRefuses lend
             && lib.all (check: check.assertion) (linux (both // { inherit lend; })).assertions;
           vm = lib.head lending.vms;
+          # The words serde takes for enum Kind in LINES and the one it
+          # takes where none is written: each variant lowercased and the
+          # variant marked default. serde reads them so only while the enum
+          # derives Deserialize with nothing but one lowercase rename over
+          # it, and its body holds only plain variants. So, as the struct
+          # scan does, it reads every attribute and doc line above the enum,
+          # back to a blank line or another item's end, and throws on any
+          # other line there or in the body, rather than passing what it
+          # didn't read.
+          kindScan =
+            lines:
+            let
+              from = lib.lists.findFirstIndex (line: line == "enum Kind {") null lines;
+              rest = lib.drop (from + 1) lines;
+              to = lib.lists.findFirstIndex (line: line == "}") null rest;
+              body = lib.filter (line: !lib.hasPrefix "    ///" line) (lib.take to rest);
+              marked = line: lib.hasPrefix "#[" line || lib.hasPrefix "///" line;
+              before = lib.reverseList (lib.take from lines);
+              reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
+              above = lib.take reach before;
+              derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
+              deriving = line: builtins.match derive line != null;
+              renaming = "#[serde(rename_all = \"lowercase\")]";
+              told = line: lib.hasPrefix "///" line || deriving line || line == renaming;
+              count = wanted: lib.length (lib.filter wanted above);
+              variant = builtins.match "    ([A-Z][A-Za-z]*),";
+              defaulted = "    #[default]";
+              at = lib.lists.findFirstIndex (line: line == defaulted) null body;
+              fail = why: throw "mycelium's enum Kind ${why}, which this check can't read";
+            in
+            if from == null || to == null then
+              throw "mycelium's lender has no lines 'enum Kind {' to '}'"
+            else if !ended (lib.drop reach before) then
+              fail "has over its attributes, past blank lines, other than an item's end"
+            else if !lib.all told above || count deriving != 1 || count (l: l == renaming) != 1 then
+              fail "has over it other than doc lines, a Deserialize derive and a lowercase rename"
+            else if !lib.all (line: line == defaulted || variant line != null) body then
+              fail "has a line in its body other than a doc line, a plain variant or #[default]"
+            else if at == null || variant (lib.elemAt body (at + 1)) == null then
+              fail "has no variant marked default"
+            else
+              {
+                words = map (line: lib.toLower (lib.head (variant line))) (
+                  lib.filter (line: variant line != null) body
+                );
+                unwritten = lib.toLower (lib.head (variant (lib.elemAt body (at + 1))));
+              };
+          kinds = kindScan lines;
+          # An enum laid out as the lender's Kind is, which the scan reads,
+          # and with each change that has serde read it otherwise, or that
+          # the scan can't read, in place of its line AT.
+          plainKind = [
+            "/// What a budget's upstream is."
+            "#[derive(Debug, Default, Deserialize)]"
+            "#[serde(rename_all = \"lowercase\")]"
+            "enum Kind {"
+            "    /// A model relay."
+            "    #[default]"
+            "    Models,"
+            "    Forge,"
+            "}"
+          ];
+          plainKinds = {
+            words = [
+              "models"
+              "forge"
+            ];
+            unwritten = "models";
+          };
+          changedKind = at: lines: lib.take at plainKind ++ lines ++ lib.drop (at + 1) plainKind;
+          unreadKinds = [
+            (changedKind 0 [
+              "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
+              ""
+              "/// What a budget's upstream is."
+            ])
+            (changedKind 0 [
+              "#[serde("
+              "    deny_unknown_fields,"
+              ")]"
+            ])
+            (changedKind 1 [ "#[derive(Debug, Default, DeserializeFromStr)]" ])
+            (changedKind 2 [ "#[serde(rename_all = \"UPPERCASE\")]" ])
+            (changedKind 2 [ ])
+            (changedKind 2 [
+              "#[serde(rename_all = \"lowercase\")]"
+              "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
+            ])
+            (changedKind 3 [ "pub enum Kind {" ])
+            (changedKind 5 [ ])
+            (changedKind 7 [ "    Forge(String)," ])
+            (changedKind 7 [
+              "    #[serde(rename = \"git\")]"
+              "    Forge,"
+            ])
+          ];
+          # lend.nix's budget kind option, as the module takes it.
+          kindOption =
+            let
+              inherit ((import ./lend.nix { inherit lib; }).getSubOptions [ ]) budgets;
+            in
+            (budgets.type.nestedTypes.elemType.getSubOptions [ ]).kind;
+          # A lend leaving also and kind to their defaults, with a forge
+          # budget one machine names beside its models, and the lend the
+          # module must write of it, those defaults filled in as the
+          # lender would take them.
+          forge = {
+            upstream = "forge-relay/agents.sock";
+            host = "forge.example";
+            paths = [ "/git/*" ];
+            auth_header = "authorization";
+          };
+          forging = vm // {
+            prefix = "forgers-";
+            also = [ "forge" ];
+          };
+          unsaid = lending // {
+            vms = [
+              (removeAttrs vm [ "also" ])
+              forging
+            ];
+            budgets = lib.mapAttrs (_: budget: removeAttrs budget [ "kind" ]) lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          filled = lending // {
+            vms = [
+              vm
+              forging
+            ];
+            budgets = lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          writes =
+            lend: written:
+            given (linux (both // { inherit lend; })).systemd.user.services.mycelium
+            == "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON written)}";
+          sorted = lib.sort lib.lessThan;
         in
         evaluates home
         && given home.systemd.user.services.mycelium == holding
@@ -1604,6 +1776,14 @@ in
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
         && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
+        && sorted kindOption.type.functor.payload.values == sorted kinds.words
+        && kindOption.default == kinds.unwritten
+        && writes unsaid filled
+        && kindScan plainKind == plainKinds
+        && lib.all (lines: throws (kindScan lines)) unreadKinds
+        && typeRefuses (withModels {
+          kind = "Forge";
+        })
         && takes (
           lending
           // {
@@ -1624,6 +1804,10 @@ in
         && refuses (
           lending // { vms = [ (vm // { budget = "none"; }) ]; }
         ) "jitsusama.mycelium.lend.vms names a budget"
+        && refuses (
+          lending // { vms = [ (vm // { also = [ "none" ]; }) ]; }
+        ) "jitsusama.mycelium.lend.vms names a budget"
+        && takes (lending // { vms = [ (vm // { also = [ "keyless" ]; }) ]; })
         && refuses (
           lending
           // {
@@ -1745,4 +1929,62 @@ in
         && pinnedOn bareDarwin self.darwinModules.workstation
         && keys bareNixos self.nixosModules.workstation { } == [ ]
       );
+
+  # The words a link key is pinned to, read from the line a machine's system
+  # writes rather than typed again, are ones the locked mycelium takes, so a
+  # renamed action or flag, or one newly required, fails here rather than at
+  # the first link or attach. They're run as sshd runs them for a login, with
+  # no command asked, which the action refuses and keeps, naming the machine
+  # the key is from: so the words parsed whole, past clap's checks that a
+  # --help skips, and reached the action, which links nothing. The words
+  # alone, as the node's flags are, so a Mac's check never builds the Linux
+  # package the line names.
+  mycelium-takes-its-link-key-s-words =
+    let
+      lines =
+        (bareNixos [
+          self.nixosModules.workstation
+          {
+            jitsusama.mycelium = {
+              account = "someone";
+              linkedFrom.personal.one = "ecdsa-sha2-nistp256 AAAAone";
+            };
+          }
+        ]).config.users.users.someone.openssh.authorizedKeys.keys;
+      line =
+        assert lib.assertMsg (lines != [ ]) "a machine linked from one is given no key line";
+        lib.head lines;
+      pinned = builtins.match ''.*command="[^ "]*/bin/mycelium ([^"]*)".*'' (
+        builtins.unsafeDiscardStringContext line
+      );
+      words = lib.filter (word: word != "") (lib.splitString " " (lib.head pinned));
+      locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      mycelium = lib.getExe (locked.overrideAttrs { doCheck = false; });
+    in
+    assert lib.assertMsg (pinned != null) "no link key line pins mycelium: ${line}";
+    # Kept in Nix because the locked mycelium and the words its key line
+    # pins come from this evaluation, and a script of its own would only be
+    # handed them back as words.
+    pkgs.runCommandLocal "mycelium-takes-its-link-key-s-words" { } ''
+      mkdir -p home state/mycelium
+      ended=0
+      env -u SSH_ORIGINAL_COMMAND HOME="$PWD/home" XDG_STATE_HOME="$PWD/state" \
+        timeout -k 10 60 ${mycelium} ${lib.escapeShellArgs words} < /dev/null > said 2> told \
+        || ended=$?
+      # mycelium's errors end 1, its refusal among them, and clap's refusal
+      # of the words 2; the record kept below says which error it was.
+      case $ended in
+        1) ;;
+        0) echo "mycelium took a login on its link key's words"; exit 1 ;;
+        124) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
+        *) echo "mycelium ended $ended on a login on its link key's words"; cat told; exit 1 ;;
+      esac
+      kept=state/mycelium/refused-keys.jsonl
+      grep '"asked":null' "$kept" 2> /dev/null | grep -q '"from":"one"' || {
+        echo "mycelium didn't take its link key's words:" ${lib.escapeShellArgs words}
+        cat told
+        exit 1
+      }
+      touch $out
+    '';
 }

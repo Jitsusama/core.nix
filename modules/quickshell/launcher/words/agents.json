@@ -259,6 +259,7 @@
         "empty": "say what the work is: a link or a few words",
         "unplaced": "that folder isn't a whole path",
         "actRepository": "start it In one of your repositories, or From a Link with its whole link",
+        "askedWhere": "pick where it starts below; your words go with it",
         "actPlaced": "once one of those can take it, say it again",
         "actNode": "once the node is running again, say it again",
         "busy": "still starting the last one; once that's done, say it again, or follow a page's link again",

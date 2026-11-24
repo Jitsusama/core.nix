@@ -620,6 +620,11 @@
     and a near name keep rtkit's own answer with no grant logged, and agents' places are still
     refused
   '';
+  call-transcripts-hears-echoed-meetings-as-well-as-it-did = ''
+    three AMI meetings laid out as calls, the far end heard again in Joel's microphone 20 dB down
+    as speakers with no echo cancelling would, are written down with no more of their words wrong
+    than the ceiling the last measurement set
+  '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
     down with no more of their words wrong than the ceiling the last measurement set
@@ -1078,6 +1083,28 @@
     which page; and so does a sheet esbuild refuses, warns on or crashes on, or a sheet or a
     script keeping a comment, saying which; and the sheets a site, the kit and the theme build
     reach a page without their comments, and a site's scripts without one marked to stay
+  '';
+  heads-are-the-kits = ''
+    every live page off the waiting list opens with the kit's head as the web-design skill's
+    sites.md writes it, read as a browser parses it, raw text and SVG left open included, with
+    what's hidden, shut, a popover never shown or styled out by its own style's display,
+    visibility or an opacity of nothing, as a browser keeps each declaration, left undrawn and
+    what's inert unheard: its one banner, holding none,
+    by tag or role, inside no other and in no section by tag or role, its title the first
+    heading of any level, each part drawn and heard, an eyebrow of two phrases drawn and heard
+    split by the kit's one dot, the title, a lede, the standing line and the quiet row in that
+    order and nothing else, only the standing line's polite status live as ARIA reads it and
+    nothing around the head live, the quiet row opening with its key line, and the kit's
+    head.css linked by its own path in the page's head as an untitled sheet every screen
+    applies, with no base anywhere and each skip link, drawn or not, on a line of its own
+    before the head; a page still waiting
+    passes until it
+    keeps to the head, then fails until it's taken off the list, which no page joins; every
+    page core's own modules mount on the realm workstation the checks build is judged, a mount
+    not built with localSite from a path in the tree, or naming no page but the shared kit,
+    failing for the reason each of its rules, run over localSite itself,
+    is seen to; Home is the page the home is
+    built from; and the gate passes sites.md's own head and names each way a page strays from it
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
@@ -1743,7 +1770,7 @@
   '';
   inlyne-says-the-file-it-shows = ''
     inlyne keeps the file it shows, read by its Recent's command as its process and whole path, and
-    nothing once q closes it, clearing what a killed one left
+    nothing once ZZ closes it, clearing what a killed one left
   '';
   inlyne-says-the-files-it-opens = ''
     inlyne says each file it's started with to the desktop's list of files opened lately, then runs
@@ -2333,6 +2360,13 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
+  mycelium-takes-its-link-key-s-words = ''
+    the words a link key pins mycelium to, read from the line a machine's system writes, are ones
+    the locked mycelium takes: run as sshd runs them for a login, with no command asked, they
+    parse whole and reach the action, which refuses the login and keeps the refusal naming the
+    machine the key is from, so a renamed or newly required action or flag fails the check rather
+    than the first link or attach
+  '';
   mycelium-map-check-answers-soon = ''
     mycelium-map-check says what its last reading found and when, with the day if not today, then
     that it's looking again, before a stand-in for its browser test opens; it keeps each answer
@@ -2442,16 +2476,21 @@
     the worker machines it made as that file in the Nix store, rather than one in the account's
     config folder, its fields exactly those the locked mycelium's lender parses the file into, by
     name and type, from structs that derive Deserialize with only deny_unknown_fields over them
-    and no field attribute but default, which a scan shown to refuse eight other layouts reads,
-    and the lender joins a relative upstream onto its runtime folder; a budget with no key is
-    written with none, a further realm's node and a machine lending nothing are given no lend, a
-    Mac's lend is refused by a message naming it and its node given none,
-    plain prefixes and dotted paths and key packages are taken, and a lend with no realm, naming a
-    budget it lacks, with a prefix that is empty, starts another, either way round, or is named
-    twice, a key that is empty or whose program is outside the store, climbs out of it with .. or
-    is named as text no package keeps alive, a whole upstream or one with a dot part, a host with
-    a scheme, a header holding a space, or a path of / or /* alone or holding .. is refused, each
-    by its own message or the option's type
+    and no field attribute but default, which a scan shown to refuse eleven other layouts reads,
+    and the lender joins a relative upstream onto its runtime folder; the budget kinds the lend
+    takes, and the one it writes where none is said, are the lowercased variants of the lender's
+    Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
+    rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
+    leaving a machine's also and a budget's kind unsaid is written with them filled in as the
+    lender takes them, beside a forge budget a machine names; a budget with no key is written with
+    none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
+    refused by a message naming it and its node given none, plain prefixes and dotted paths and
+    key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that
+    is empty, starts another, either way round, or is named twice, a key that is empty or whose
+    program is outside the store, climbs out of it with .. or is named as text no package keeps
+    alive, a whole upstream or one with a dot part, a host with a scheme, a header holding a
+    space, a budget of a kind the lender lacks, or a path of / or /* alone or holding .. is
+    refused, each by its own message or the option's type
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
@@ -3096,6 +3135,11 @@
     the harness's config takes a machine's declared settings at a switch, on Linux and a Mac, keeps
     every key already there, is left alone where none are declared, and a bad file doesn't stop it
   '';
+  pi-keeps-closed-logs-compressed = ''
+    pi's closed session logs are rewritten compressed each night in background.slice, catching up a
+    night missed while off, over pi's sessions folder only where there is one, with no I/O class
+    of their own and three hours before their clock ends them, and never on a Mac
+  '';
   pi-keeps-its-own-settings = ''
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
@@ -3137,6 +3181,10 @@
   pi-loads-its-packages = ''
     pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
     after them rather than in their place, and pi is given each git package as its current link
+  '';
+  pi-log-compression-passes-over-other-file-systems = ''
+    the nightly rewrite of pi's logs ends at once off btrfs, saying there's nothing to compress,
+    rather than failing
   '';
   pi-measures-each-day-in-the-background = ''
     the harness's measure runs each morning in background.slice with the store's node, catching up on
@@ -3419,17 +3467,20 @@
   '';
   pixels-probe-holds-every-pixel = ''
     the web-design skill's pixels probe, and its words and names probes beside it, in headless
-    Chromium at a phone's width, names a page wider than its window and what reaches past it while passing a part in its own scroller, a
-    part arriving over the words that shifts the page past 0.1 while passing one whose box was
-    kept, text under 12 px, scaled or transformed, a drawing's label under 12 px unless marked
-    data-enlarges and under 9 px even then, as the drawing's scale sets it, while passing words
-    for the ear alone or a style hides, and a control whose name doesn't start with the words
-    it shows or that shows a mark alone, labelled or not, while passing a keycap named for its
-    key and a picture named by its label, and words under 4.5:1 on the ground under them, or
-    3:1 at 24 px or bold at 18.66, faded as the browser composites each opacity, on a dark
-    page's canvas, with a gradient at its worst colour between its stops and a placeholder or
-    a style's words in their own fill, giving the faintest and how many more, and words on a
-    picture, through a filter or a blend, or over too many grounds named
+    Chromium at a phone's width, names a page wider than its window and what reaches past it
+    while passing a part in its own scroller, a part arriving over the words that shifts the
+    page past 0.1 while passing one whose box was kept, text under 12 px, scaled or
+    transformed, a drawing's label under 12 px unless marked data-enlarges and under 9 px even
+    then, as the drawing's scale sets it, while passing words for the ear alone or a style
+    hides, and a control whose name doesn't start with the words it shows or that shows a mark
+    alone, labelled or not, while passing a keycap named for its key, a keycap its line of keys
+    says the work of, and a picture named by its label, and words under 4.5:1 on the ground
+    under them, or 3:1 at 24 px or bold at 18.66, faded as the browser composites each
+    opacity, on a dark page's canvas, its style's or its head's, with each covering or tiled
+    gradient layer at its worst colour between its stops but for a hard one, and a placeholder
+    or a style's words in their own fill, giving the faintest and how many more, and words on
+    a picture, through a filter, a blend, a mask or a stroke, drawn by a shadow alone, or over
+    too many grounds named
   '';
   platform-profiles-reach-the-legacy-file = ''
     every profile Dell's driver offers, the XPS 14's SoC slider takes too
@@ -5244,7 +5295,7 @@
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
-    however it's assigned or taking the Brio's seat tag off as the sharing's rule does, as a
+    by any of udev's assignments or taking the Brio's seat tag off as the sharing's rule does, as a
     search with each pattern shown to find its line says, and starts at every boot, and at a
     switch bringing it in, the give-back of a Brio a relay held, so the seat opens the Brio itself
     while its relay gives no picture
@@ -5254,10 +5305,14 @@
     Brio's nodes and never another camera a relay holds, even of its maker or model number, never
     triggers with no device, bounds each wait on udev to a second or more and to fit twice, and
     every wait together once, within its unit's limit, ends well when udev refuses a replay, never
-    settles, loses the Brio's record or can't be read, adds the Brio back when its unit's timeout
-    ends the run, says a Brio unplugged midway is the seat's once plugged in, and says it gave the
-    Brio back only when udev's record of every node shows it tagged for the seat and unmarked,
-    warning with the way out otherwise
+    settles, hasn't handled the arrival yet, loses the Brio's record or can't be read, adds the
+    Brio back when its unit's timeout ends the run, says a Brio unplugged midway is the seat's once
+    plugged in, says it gave the Brio back only when udev's record of every node shows it tagged
+    for the seat and unmarked, and that the seat has it only when udev recorded every camera,
+    warning with the way out, named for its nodes, otherwise, waits out adds the boot still has
+    queued rather than calling them lost, points at udevadm's own words for an add it refused,
+    and warns nothing, udevadm included, on a machine with no camera, a boot whose adds came late
+    or a run that went right
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the

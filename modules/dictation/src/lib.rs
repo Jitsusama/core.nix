@@ -16,6 +16,7 @@
 
 pub mod cache;
 pub mod daemon;
+pub mod echo;
 pub mod genai;
 pub mod graph;
 pub mod language;

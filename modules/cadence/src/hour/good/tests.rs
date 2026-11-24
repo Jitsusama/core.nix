@@ -45,14 +45,19 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::mapped(None, "", "OWNER"),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
+    shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the
-    // hour gives them; a family's by one of its keys.
+    // hour gives them, each target read where the hour holds it; a
+    // family's by one of its keys.
     let at_most = [
         ("misses", 0.0),
         (measures::UNTESTED, 0.0),
         (measures::FINDINGS, 0.0),
         ("broken", 0.0),
-        ("mycelium-to-lock", 60.0),
+        (measures::locked::KEY, measures::locked::AT_MOST_MIN),
+        (measures::wifi::KEY, measures::wifi::TARGET),
+        (measures::apps::UNREAD, measures::apps::LOST),
         ("reports-unasked", 0.0),
         ("map-cells", 0.0),
         ("cells-idle", 0.0),
@@ -62,16 +67,16 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         ("quests-parked-past-start", 0.0),
         (measures::rounds::KEY, measures::rounds::TARGET),
         ("rounds-past-five-fixed-nothing:#6372", 5.0),
-        ("queue:world-walks", 60.0),
-        ("queue:builds", 120.0),
-        ("queue:sends", 120.0),
-        ("queue:trains", 1200.0),
         ("merge-to-on", 18.0),
         ("commit-to-merge", 20.0),
         ("apps:launcher-open", 50.0),
         ("clean:core:long-files", 0.0),
     ];
     shown.extend(at_most.map(|(key, most)| held(key, Some(most))));
+    for queue in measures::queues::ALL {
+        let key = format!("{}{}", measures::queues::QUEUE, queue.key);
+        shown.push(held(&key, Some(queue.target)));
+    }
     let unjudged = ["landed", "balance", measures::spent::KEY];
     shown.extend(unjudged.map(|key| held(key, None)));
     let undefined = undefined(&shown);

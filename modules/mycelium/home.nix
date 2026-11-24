@@ -674,8 +674,12 @@ in
           message = "jitsusama.mycelium.lend is set on a Mac, where model-relay, the upstream a lend is built for, doesn't run, and nothing shows a fenced agent can't bind the upstream in the node's runtime folder and take the key: lend from Linux.";
         }
         {
-          assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;
-          message = "jitsusama.mycelium.lend.vms names a budget jitsusama.mycelium.lend.budgets doesn't hold.";
+          assertion =
+            cfg.lend != null
+            -> lib.all (
+              vm: lib.all (budget: cfg.lend.budgets ? ${budget}) ([ vm.budget ] ++ vm.also)
+            ) cfg.lend.vms;
+          message = "jitsusama.mycelium.lend.vms names a budget, in budget or also, jitsusama.mycelium.lend.budgets doesn't hold.";
         }
         {
           # mycelium refuses a machine whose name starts as two prefixes do,

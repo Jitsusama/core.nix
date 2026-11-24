@@ -371,3 +371,19 @@ fn the_worst_queue_is_the_one_furthest_past_its_target() {
         "every queue in asks nothing"
     );
 }
+
+#[test]
+fn every_queue_the_card_reads_is_one_the_definition_of_good_is_checked_against() {
+    let read = Records {
+        outcomes: Some(""),
+        sends: None,
+        landed: Some(""),
+        aboard: Some(&[]),
+    };
+    let read: Vec<String> = queues(&read, NOW).into_iter().map(|m| m.key).collect();
+    let all: Vec<String> = ALL.iter().map(|q| format!("{QUEUE}{}", q.key)).collect();
+    assert_eq!(
+        read, all,
+        "a queue the card reads isn't in ALL, so the page's test never checks its target"
+    );
+}

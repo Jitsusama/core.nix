@@ -138,12 +138,21 @@ fn read_in(
     if same(read).is_empty() {
         // A range round that read the head itself, from a base that's no
         // commit on main, is told apart from no round at all: asking the
-        // same range again reads from the same base.
-        let ranged = rounds.iter().any(|read| read.commit == commit);
-        Err(if ranged {
-            seen::read_from_no_base(short(commit))
-        } else {
+        // same range again reads from the same base. A rebased head, read
+        // by no round itself, is left to `seen::unread`, since what could
+        // be its change was searched above.
+        let mut bases: Vec<String> = rounds
+            .iter()
+            .filter(|read| read.commit == commit)
+            .map(|read| seen::base_named(read.from.as_deref().unwrap_or_default()))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        bases.sort();
+        Err(if bases.is_empty() {
             seen::unread(short(commit))
+        } else {
+            seen::read_from_no_base(short(commit), &bases.join(", "))
         })
     } else {
         Ok(())
@@ -577,10 +586,24 @@ mod tests {
     // the same base; one no round read is refused as unread.
     #[test]
     fn a_head_read_only_from_no_base_is_told_apart_from_one_unread() {
-        let rounds = HashSet::from([round("ddd", Some("off")), round("ddd", Some(""))]);
+        let off = "0123456789abcdef0123456789abcdef01234567";
+        let rounds = HashSet::from([
+            round("ddd", Some(off)),
+            round("ddd", Some(off)),
+            round("ddd", Some("")),
+            round("ddd", Some("origin/release-2026")),
+            round("eee", Some("elsewhere")),
+        ]);
         let on_main = |base: &str| base == "main";
         let refused = read_in("ddd", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
-        assert_eq!(refused, seen::read_from_no_base("ddd"));
+        // A commit id is named short and once, a ref whole, a base that
+        // was no commit id as such, and another commit's base not at all.
+        assert!(
+            refused
+                .contains("read from: 0123456789ab, no commit id recorded, origin/release-2026)"),
+            "the bases it read from weren't named: {refused}"
+        );
+        assert!(!refused.contains("elsewhere"), "{refused}");
         let unread = read_in("ccc", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
         assert_eq!(unread, seen::unread("ccc"));
     }

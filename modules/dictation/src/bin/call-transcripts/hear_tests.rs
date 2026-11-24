@@ -117,6 +117,7 @@ fn word(text: &str, at: usize) -> Word {
     Word {
         text: text.to_owned(),
         at,
+        level: 0.0,
     }
 }
 
@@ -215,125 +216,10 @@ fn ada_then_bo() -> Writing {
     writing
 }
 
-/// A line of Joel's from `from` to `to` seconds into the call.
-fn joels(from: usize, to: usize, text: &str) -> Line {
-    Line {
-        start: from * SECOND,
-        end: to * SECOND,
-        text: text.to_owned(),
-        ..line(Side::Mine, from, None)
-    }
-}
-
-/// What of Joel's `writing`'s transcript holds, as its file is read.
-fn joels_written(writing: &Writing) -> Vec<String> {
-    transcript::read(&transcript_of(writing, "Joel", None, None), "Joel")
-        .into_iter()
-        .filter(|line| line.side == Side::Mine)
-        .map(|line| line.text)
-        .collect()
-}
-
-/// `ada_then_bo` told apart, with Joel saying Bo's part back as his own
-/// answer, 47 s in, where he'd be taken for its echo if judged against
-/// the part alone.
-fn answered() -> Writing {
-    let mut writing = ada_then_bo();
-    let answer = joels(47, 48, "Not yet.");
-    writing.lines.push(answer.clone());
-    give_voices(&mut writing, None);
-    let bo = writing.lines[1].voice;
-    assert!(
-        said_by(&writing).contains(&("Not yet.", bo)),
-        "the take wasn't split, so the answer is never judged near Bo's part alone"
-    );
-    assert!(
-        transcript::echoes(&answer, &writing.lines),
-        "the answer isn't an echo of Bo's part alone, so keeping it shows nothing"
-    );
-    writing
-}
-
-#[test]
-fn joels_answer_to_one_part_of_a_split_take_is_written() {
-    assert_eq!(
-        joels_written(&answered()),
-        ["Not yet."],
-        "Joel's answer was taken for an echo of Bo's part, not judged against the whole take"
-    );
-}
-
-#[test]
-fn joels_echoes_of_their_takes_are_left_out_of_what_is_written() {
-    let mut writing = ada_then_bo();
-    // Bo again, straight after, in a take of his own.
-    hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
-    // Joel's microphone hearing the split take across its cut, and Bo's
-    // short take, then Joel saying something of his own.
-    let across = joels(43, 48, "It today, not yet.");
-    writing.lines.push(across.clone());
-    writing.lines.push(joels(49, 51, "Sounds good."));
-    writing.lines.push(joels(60, 61, "Right."));
-    give_voices(&mut writing, None);
-    let bo = writing.lines[1].voice;
-    assert!(
-        said_by(&writing).contains(&("Not yet.", bo)),
-        "the take wasn't split, so its echo across the cut shows nothing"
-    );
-    assert!(
-        !transcript::echoes(&across, &writing.lines),
-        "the echo across the cut is one of a part's, so leaving it out shows nothing"
-    );
-    assert_eq!(
-        joels_written(&writing),
-        ["Right."],
-        "an echo of the split take, or of Bo's take after it, was written as Joel's"
-    );
-}
-
-#[test]
-fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
-    let folder = tempfile::tempdir().unwrap();
-    let file = folder.path().join("transcript.md");
-    std::fs::write(&file, transcript_of(&answered(), "Joel", None, None)).unwrap();
-    let mut call = in_meet(&["Ada", "Bo"]);
-    call.folder = folder.path().join("call:e1");
-    call.transcript = Some(file);
-    let book = Shared::new(Book::default());
-    book.lock().put(call);
-    // Taken up from the file, Bo's part is a line of its own with no
-    // pieces to join it to Ada's, and with voices read back nothing since
-    // is grouped. Ada says more, heard on Joel's side as an echo.
-    let mut writing = resumed(&book, "call:e1", "Joel");
-    let read_back = &writing.lines[..writing.read];
-    let answer = read_back
-        .iter()
-        .find(|line| line.side == Side::Mine)
-        .unwrap();
-    assert!(
-        transcript::echoes(answer, read_back),
-        "Joel's answer, read back, isn't an echo of Bo's part, so keeping it shows nothing"
-    );
-    // Joel's side hears Bo's part again, the restart having cut his
-    // recording there, so it's an echo of a line read back. A line read
-    // back ends where it starts, 46 s in, so it's heard within the echo's
-    // slack of that.
-    let again = joels(48, 49, "Not yet.");
-    assert!(
-        transcript::echoes(&again, &writing.lines[..writing.read]),
-        "Bo's part heard again isn't an echo of it, so leaving it out shows nothing"
-    );
-    writing.lines.push(again);
-    hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
-    writing.lines.push(joels(80, 81, "Right."));
-    give_voices(&mut writing, None);
-    assert_eq!(
-        joels_written(&writing),
-        ["Not yet."],
-        "Joel's answer, written before the restart, was judged again against Bo's part alone, \
-         or an echo heard since, of a line read back or of Ada's, wasn't"
-    );
-}
+/// What of Joel's side is written once the others' echo is left out,
+/// built on the calls above.
+#[path = "hear_echo_tests.rs"]
+mod echoes;
 
 #[test]
 fn a_takes_pieces_are_timed_from_the_call_and_a_failing_one_left_out() {
@@ -573,11 +459,10 @@ fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
     );
 }
 
-/// A take heard as scripted: these words for theirs and this text for
-/// Joel's, each given once, and a failure for what isn't scripted.
+/// A take heard as scripted: these words, given once, and a failure for
+/// a take after it.
 struct Scripted {
     words: Option<Vec<Word>>,
-    text: Option<String>,
 }
 
 /// What's `heard`, with timings no case reads, or a failure if nothing.
@@ -596,10 +481,6 @@ impl Hears for Scripted {
         took(self.words.take())
     }
 
-    fn text(&mut self, _: &[f32]) -> Result<(String, Timings), String> {
-        took(self.text.take())
-    }
-
     fn device(&self) -> &'static str {
         "CPU"
     }
@@ -611,11 +492,9 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
     // are timed from the call's, so words left unmoved 40 s in would all
     // fall in the take's first piece, and a later voice would get none.
     let start = 40 * SECOND;
-    let mut scripted = Scripted {
-        words: Some(vec![word("Not", 0), word("yet.", 4 * SECOND)]),
-        text: None,
-    };
-    let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]).unwrap();
+    let said = vec![word("Not", 0), word("yet.", 4 * SECOND)];
+    let mut scripted = Scripted { words: Some(said) };
+    let (text, words) = transcribe_take(&mut scripted, start, &[]).unwrap();
     assert_eq!(
         text.as_deref(),
         Some("Not yet."),
@@ -641,36 +520,14 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
 }
 
 #[test]
-fn joels_take_is_kept_as_spelled_with_no_words() {
-    let mut scripted = Scripted {
-        words: None,
-        text: Some(" Done. ".to_owned()),
-    };
-    assert_eq!(
-        transcribe_take(&mut scripted, Side::Mine, 40 * SECOND, &[]),
-        Ok((Some("Done.".to_owned()), Vec::new())),
-        "Joel's text wasn't kept as Parakeet spelled it, without words"
-    );
-}
-
-#[test]
 fn a_take_that_isnt_heard_says_why() {
-    // The `transcribe` subcommand stops on why, so a check can't pass on
-    // a failing model; the daemon leaves the take out (the next case).
-    let mut failing = Scripted {
-        words: None,
-        text: None,
-    };
-    let why = Err("the encoder failed".to_owned());
+    // Either side's take is heard by its words, so one case holds both;
+    // the daemon leaves the take out (the next case).
+    let mut failing = Scripted { words: None };
     assert_eq!(
-        transcribe_take(&mut failing, Side::Theirs, 40 * SECOND, &[]),
-        why,
-        "a take of theirs that wasn't heard didn't say why"
-    );
-    assert_eq!(
-        transcribe_take(&mut failing, Side::Mine, 40 * SECOND, &[]),
-        why,
-        "a take of Joel's that wasn't heard didn't say why"
+        transcribe_take(&mut failing, 40 * SECOND, &[]),
+        Err("the encoder failed".to_owned()),
+        "a take that wasn't heard didn't say why"
     );
 }
 
