@@ -404,11 +404,16 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
 }
 
 #[test]
-fn a_link_put_at_the_list_s_name_after_its_clear_is_never_written_through() {
+fn a_link_to_a_file_put_at_the_list_s_name_after_its_clear_is_never_written_through() {
     // As one of the job's own processes could, once the list's name is
     // cleared for its write: for a kind that brings nothing back, and for
     // one whose list is written in a step of its own, which then can't
-    // write it, and cuts it only where no link stands at its name.
+    // write it, and cuts it only where no link stands at its name. A link
+    // to a device is still written through, as at the run's file, and one
+    // put there once the list is written is left to the job's processes
+    // being stopped.
+    // The link stands at the list's name after, so it was put there and
+    // nothing was made in its place.
     let when = format!("*\" -f \"*/{BROUGHT}\" \"*");
     let (step, linking) = refusing(
         "rm",
@@ -419,11 +424,11 @@ fn a_link_put_at_the_list_s_name_after_its_clear_is_never_written_through() {
     let mut bringing = kind("");
     bringing.brings_back = vec!["out".into()];
     for (kind, run, said) in [
-        (kind(""), "true", ""),
+        (kind(""), "true", None),
         (
             bringing,
             "mkdir out && printf a > out/a",
-            "couldn't write down all it brings back",
+            Some("couldn't write down all it brings back"),
         ),
     ] {
         let (code, err, home) = far_line(
@@ -435,13 +440,16 @@ fn a_link_put_at_the_list_s_name_after_its_clear_is_never_written_through() {
             &[(step, &linking)],
         );
         let beyond = std::fs::read_to_string(home.join("beyond")).unwrap_or_default();
+        let list = std::fs::symlink_metadata(handover(&home).join(BROUGHT));
         assert!(
-            home.join("linked").exists() && beyond == "kept\n",
-            "the list, or its cut, was written through a link put at its name ({code:?}): \
-             {beyond:?} {err}"
+            home.join("linked").exists()
+                && list.is_ok_and(|list| list.is_symlink())
+                && beyond == "kept\n",
+            "the list, or its cut, was written through a link put at its name, or the link \
+             wasn't left there ({code:?}): {beyond:?} {err}"
         );
         assert!(
-            err.contains(said),
+            said.is_none_or(|said| err.contains(said)),
             "the far line didn't say it couldn't write its list ({code:?}): {err}"
         );
         let _ = std::fs::remove_dir_all(&home);
@@ -456,6 +464,9 @@ fn a_sort_that_fails_loses_each_path_past_a_link_put_at_the_losses_name() {
     // way does, and a link one of the job's processes puts meanwhile at
     // the name the losses are listed at. Both names are cleared for the
     // losses each path then makes, so none is written through the link.
+    // The list's end is what shows the clear: without it, noclobber
+    // refuses the names and the list ends cut. The write through the link
+    // is refused by noclobber alone, which the far line keeps throughout.
     let (sort, failing) = refusing(
         "sort",
         "*\" -u \"*",
