@@ -1649,7 +1649,10 @@ fn give_ranks_by(
                 .own_hard
                 .saturating_add(u64::try_from(before).unwrap_or(u64::MAX) * holds::HARD);
         }
-        if !hosts.changed(&name, &unit.rank) {
+        // A failing unit is asked again each look though its rank is the one it was set: capped
+        // at what it keeps while failing, it may never differ, and would never land.
+        let failing = hosts.kept(&name).is_some();
+        if !failing && !hosts.changed(&name, &unit.rank) {
             continue;
         }
         // A unit this sorter never set may keep what a call before left it, which its memory.min
@@ -1693,9 +1696,10 @@ fn give_ranks_by(
             }
             Err(why) => {
                 // Only a unit not failing already: one that was is counted in the shares at what
-                // it keeps.
-                kept_back |= unit.signs.held < before && hosts.kept(&name).is_none();
+                // it keeps. What it keeps is read once `fail` has noted it, which for a unit this
+                // sorter never set is what the kernel says, not the none it was known to hold.
                 hosts.fail(&name, kept);
+                kept_back |= !failing && unit.signs.held < hosts.last_held(&name);
                 if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!("{why}");
                 }
@@ -3855,6 +3859,53 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_host_whose_gain_failed_is_asked_again_until_it_lands() {
+        let units = [Path::new("/cg/agents.slice/a.service").to_path_buf()];
+        // Three pis hold every hard floor while Joel is at a, so a is ranked with none.
+        let mut full = holds::Holding::default();
+        for pi in 1..=focus::MOST {
+            full.done(
+                Path::new(&format!("/cg/agents.slice/mycelium-pi-{pi}.scope")),
+                Some(holds::HARD),
+            );
+        }
+        let mut hosts = hosts::Hosts::default();
+        let mut kernel = HashMap::new();
+        let viewers = ["a.service"];
+        hard_look(&full, &mut hosts, &mut kernel, &units, &viewers, |_| true);
+        // The pis give theirs back and a's call to gain one fails once; capped at what it keeps
+        // while failing, its rank no longer differs from the one it was set, yet it must be
+        // asked again, or it never leaves failing and never gains its floor.
+        let empty = holds::Holding::default();
+        hard_look(&empty, &mut hosts, &mut kernel, &units, &viewers, |_| false);
+        for _ in 0..2 {
+            hard_look(&empty, &mut hosts, &mut kernel, &units, &viewers, |_| true);
+        }
+        assert_eq!(
+            kernel.get("a.service"),
+            Some(&1),
+            "a's floor never landed once its calls did: {kernel:?}"
+        );
+    }
+
+    #[test]
+    fn a_restarted_sorters_failed_give_back_holds_back_those_after_it() {
+        let units = ["a.service", "b.service"].map(|unit| Path::new("/cg/agents.slice").join(unit));
+        let holding = holds::Holding::default();
+        // A sorter just started never set a, whose memory.min can't be read here, so it counts
+        // as keeping all three the kernel may hold, as one before it may have left them.
+        let mut hosts = hosts::Hosts::default();
+        let mut kernel = HashMap::from([("a.service".to_owned(), focus::MOST)]);
+        let viewers = ["b.service"; 3];
+        hard_look(&holding, &mut hosts, &mut kernel, &units, &viewers, |unit| unit != "a.service");
+        let kept: usize = kernel.values().sum();
+        assert!(
+            kept <= focus::MOST,
+            "{kept} hard floors hold once a restarted sorter's give-back from a failed: {kernel:?}"
+        );
     }
 
     fn settings() -> Settings {
