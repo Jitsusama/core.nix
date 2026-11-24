@@ -211,7 +211,9 @@
       # Tuple's stream says each line of the runtime folder's stream as
       # it's written; `new` opens a room, and every other command is kept.
       # A camera stop is refused, as Tuple refuses one, once the test has
-      # written `refuses` beside the stream.
+      # written `refuses` beside the stream. Kept in Nix because it names
+      # coreutils' tail by its store path, the build sandbox having no PATH
+      # to find it on, and it's a stand-in of a few lines, not a program.
       tuple = pkgs.writeShellScript "tuple" ''
         if [ "$3 $4" = "state follow" ]; then
           exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
