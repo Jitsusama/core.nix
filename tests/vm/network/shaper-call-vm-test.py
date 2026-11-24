@@ -352,11 +352,12 @@ class Rig:
                 f" (made {made} of {HANDSHAKES} times, {said[name]}, with the IFB dropping"
                 f" {dropped} in the calls' tins, {stopped(made, failed, over, down)})"
             )
-        # A server that heard a connect and never answered fails its call as iperf3's own
-        # error, so the counts say whose failing it was.
+        # A call unanswered with nothing lost on the way fails as iperf3's own error, the
+        # counts beside it saying whether the server left a connect unanswered or the client
+        # never took a reply that came.
         for name in failed:
             if unanswered(results[name]):
-                results[name]["error"] += f" ({said[name]}, so no reply was lost)"
+                results[name]["error"] += f" ({said[name]}, so no datagram was lost between them)"
         return results
 
     def handshakes(self, machine: BaseMachine, way: str = "heard") -> dict[str, int]:
