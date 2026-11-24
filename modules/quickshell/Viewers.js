@@ -53,6 +53,11 @@ const ASKED_FOR = 15 * 60 * 1000;
 // left, it opens at once, or ASKED_FOR runs from then if it can't yet.
 function viewersDue(kept, sessions, now, screen) {
     const { workspaces, since, away } = screen ?? {};
+    // Whether a session's window is open: as niri lists it where the
+    // shell trusts that list (Sessions.qml's listedNow), so one the
+    // windows daemon's index alone still names, as in a gap of its, is
+    // no viewer open.
+    const listed = screen?.listed ?? (window => Boolean(window));
     const open = [];
     const still = {};
     for (const id of Object.keys(kept)) {
@@ -73,7 +78,7 @@ function viewersDue(kept, sessions, now, screen) {
             const asked = place.asked === true;
             const stale = asked && !(now - place.at <= ASKED_FOR);
             const woke = stale ? { kept: null, into: null }
-                : sleeperDue(place, sleeper, now, workspaces ?? {});
+                : sleeperDue(place, sleeper, now, workspaces ?? {}, listed);
             if (woke.into !== null && asked && (sleeper.held || viewable)) {
                 open.push({ session: sleeper, into: woke.into });
             } else if (woke.into !== null && asked) {
@@ -83,7 +88,7 @@ function viewersDue(kept, sessions, now, screen) {
             }
         } else if (now - place.at > KEPT_FOR) {
             // Lapsed, its session most likely never moved.
-        } else if (session?.window) {
+        } else if (listed(session?.window)) {
             // Its viewer is open, so its place is done with.
         } else if (place.asked === true || waitingWords({ view: place.waiting }) !== null) {
             const words = waitingWords({ view: place.waiting }) !== null;
@@ -140,7 +145,7 @@ function viewersDue(kept, sessions, now, screen) {
 // the host has parked it, and lapses as any place does; once seen it's
 // kept however long it sleeps. One whose viewer is open again, by Go To
 // or by waking, is let go.
-function sleeperDue(place, session, now, workspaces) {
+function sleeperDue(place, session, now, workspaces, listed) {
     const kept = { kept: place, into: null };
     if (session === undefined) {
         return place.asleep === true || now - place.at <= KEPT_FOR ? kept
@@ -152,7 +157,7 @@ function sleeperDue(place, session, now, workspaces) {
     if (place.asleep !== true) {
         return now - place.at > KEPT_FOR ? { kept: null, into: null } : kept;
     }
-    if (session.window) {
+    if (listed(session.window)) {
         return { kept: null, into: null };
     }
     const into = viewerPlace(place, workspaces);

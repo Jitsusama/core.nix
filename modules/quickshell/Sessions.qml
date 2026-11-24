@@ -2070,9 +2070,12 @@ Singleton {
         const joels = Niri.workspace();
         const into = opens ?? (next.unplaced === true && joels
             ? { workspace: joels.id, column: null } : null);
-        if (session?.window || into === null) {
+        // Open only as niri lists it, where its list is trusted, so one
+        // the windows daemon's index alone still names isn't taken as open.
+        const open = root.listedNow(session?.window);
+        if (open || into === null) {
             console.info(`sessions: ${id}'s viewer not opened, since `
-                + (session?.window ? "it is open" : next.unplaced === true
+                + (open ? "it is open" : next.unplaced === true
                     ? "it has nowhere to open" : `none was kept at ${root.keptSaid(at)}`));
             reopenNext();
             return;
@@ -2775,7 +2778,8 @@ Singleton {
         if (Object.keys(keptPlaces).length === 0)
             return;
         const due = Viewers.viewersDue(keptPlaces, running.concat(parked), Date.now(),
-            { workspaces: Niri.workspaces, since: startedAt, away: Away.now });
+            { workspaces: Niri.workspaces, since: startedAt, away: Away.now,
+                listed: window => root.listedNow(window) });
         // One waiting for its host, asked of moments ago, stays kept.
         const kept = due.kept;
         for (const one of due.open) {
