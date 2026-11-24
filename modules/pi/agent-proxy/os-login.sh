@@ -9,9 +9,13 @@
 #
 #   pi-agent-proxy-os-login register|remove PUBLIC-KEY-FILE
 #
-# It registers only the key the proxy beside the file holds, asked of
-# the proxy's own socket, so neither a previous proxy's key left in the
-# file nor one written there by anything else is ever registered.
+# It registers only the key the proxy beside the file lists under its
+# own OS Login comment, asked of the proxy's own socket, and only while
+# the file names that key; what it hands gcloud is the proxy's line,
+# copied to a file of its own, so neither a previous proxy's key left in
+# the file, nor another key the proxy holds, such as the builders', nor
+# one written there by anything else is ever registered. A removal takes
+# out only a key whose file carries the proxy's comment.
 #
 # It runs the gcloud on the user manager's PATH, the one the person's
 # login was made with. A machine with no gcloud, or a gcloud with no
@@ -66,15 +70,24 @@ cloud() {
   timeout "$bound" gcloud compute os-login ssh-keys "$@" --quiet --verbosity=error
 }
 
-# Whether the proxy whose socket sits beside the key lists the key in
-# the file: the key is the file's second field, and the proxy lists it
-# whole, without the time it was made.
+# The proxy lists its OS Login key under this comment alone, without
+# the time it was made, which the file's comment adds (src/os_login.rs).
+comment="pi-agent-proxy OS Login"
+# The key, as kind and blob, that the proxy whose socket sits beside
+# the file lists under its comment, when it lists exactly one and the
+# file names the same; nothing otherwise.
 agent=${key%/*}/agent.sock
 held() {
-  local kind blob rest listed
+  local kind blob rest listed line own=
   read -r kind blob rest <"$key" || return 1
   listed=$(SSH_AUTH_SOCK=$agent timeout 10 ssh-add -L 2>/dev/null) || return 1
-  [[ -n $blob && $listed == *"$kind $blob "* ]]
+  while IFS= read -r line; do
+    [[ $line == *" $comment" ]] || continue
+    [[ -z $own ]] || return 1
+    own=${line% "$comment"}
+  done <<<"$listed"
+  [[ -n $blob && $own == "$kind $blob" ]] || return 1
+  echo "$own"
 }
 if ! command -v gcloud >/dev/null; then
   echo "<4>pi-agent-proxy-os-login: no gcloud on the user manager's PATH, so agents' OS Login" \
@@ -87,37 +100,53 @@ fi
 # another; so a register waits a few seconds for the proxy to hold the
 # key in the file.
 if [[ $mode == register ]]; then
+  own=
   for _ in {1..25}; do
-    [[ -s $key ]] && held && break
+    if [[ -s $key ]] && own=$(held); then
+      break
+    fi
     sleep 0.2 # The proxy writes its key in this while.
   done
-  if ! [[ -s $key ]] || ! held; then
+  if [[ -z $own ]]; then
     echo "pi-agent-proxy-os-login: the proxy holds no key at $key, so it does nothing"
     exit 0
   fi
+  # gcloud and ssh-keygen read the proxy's line from a file only this
+  # run writes, so the key's file changing after the check changes
+  # nothing that's registered.
+  sent=$(mktemp)
+  trap 'rm -f "$sent"' EXIT
+  echo "$own $comment" >"$sent"
 elif [[ ! -s $key ]]; then
   echo "pi-agent-proxy-os-login: no key at $key, so it does nothing"
   exit 0
+else
+  read -r _ _ rest <"$key" || rest=
+  if [[ $rest != "$comment"* ]]; then
+    echo "pi-agent-proxy-os-login: the key at $key isn't the proxy's, so it does nothing"
+    exit 0
+  fi
+  sent=$key
 fi
 # A gcloud that can't say fails as one with no login would: either way
 # there's nothing to register with.
-login=$(timeout 60 gcloud config get-value account --quiet 2>/dev/null) || login=
+login=$(timeout "$bound" gcloud config get-value account --quiet 2>/dev/null) || login=
 if [[ -z $login ]]; then
   echo "<4>pi-agent-proxy-os-login: gcloud has no login, so agents' OS Login logins fail;" \
     "gcloud auth login gives it one"
   exit 0
 fi
 # ssh-keygen says the bits, the fingerprint, then the comment.
-fingerprint=$(ssh-keygen -lf "$key")
+fingerprint=$(ssh-keygen -lf "$sent")
 fingerprint=${fingerprint#* }
 fingerprint=${fingerprint%% *}
 
 if [[ $mode == register ]]; then
   # update moves the end of a key already there; add puts in one that
   # isn't, as each new proxy's is, or one that lapsed.
-  if cloud update --key-file="$key" --ttl=12h >/dev/null 2>&1; then
+  if cloud update --key-file="$sent" --ttl=12h >/dev/null 2>&1; then
     echo "pi-agent-proxy-os-login: $fingerprint renewed for 12 hours"
-  elif cloud add --key-file="$key" --ttl=12h >/dev/null; then
+  elif cloud add --key-file="$sent" --ttl=12h >/dev/null; then
     echo "pi-agent-proxy-os-login: $fingerprint registered for 12 hours"
   else
     echo "<3>pi-agent-proxy-os-login: $fingerprint couldn't be registered; trying again soon," \
@@ -127,7 +156,7 @@ if [[ $mode == register ]]; then
 else
   # The file stays, so no event of its going reaches the path unit as
   # the next proxy writes its own; that next key replaces it.
-  if cloud remove --key-file="$key" >/dev/null; then
+  if cloud remove --key-file="$sent" >/dev/null; then
     echo "pi-agent-proxy-os-login: $fingerprint removed"
   else
     echo "pi-agent-proxy-os-login: $fingerprint couldn't be removed; it lapses within 12 hours"

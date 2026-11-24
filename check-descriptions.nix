@@ -4848,9 +4848,10 @@
     key it writes, once the proxy lists it, for twelve hours, and again as the desktop starts,
     renews it each quarter hour by the wall clock, every call bounded and a removal's tighter,
     tries a failed registration again from half a minute on, never giving up, and removes it as
-    the proxy stops, keeping the file; only while the proxy runs is it registered or renewed, and
-    never a key in the file the proxy doesn't hold; no gcloud, no gcloud login or a gcloud that
-    can't say is warned of and passed over; the machine's ssh offers it to compute.* hosts alone;
+    the proxy stops, keeping the file; only while the proxy runs is it registered or renewed, from
+    the one line the proxy lists under its OS Login comment, copied aside, never a key in the file
+    the proxy doesn't hold or holds for another use, and only a key whose file is the proxy's is
+    removed; no gcloud, no gcloud login or a gcloud that can't say is warned of and passed over; the machine's ssh offers it to compute.* hosts alone;
     and with no known-hosts file named, there's no such key
   '';
   pi-agent-proxy-signs-only-logins = ''

@@ -1540,11 +1540,21 @@ fn makes_no_os_login_key_when_it_cant_listen() {
 
 #[test]
 fn cant_be_read_by_another_process_of_the_account() {
-    let proxy = Proxy::os_login("undumpable", "", "");
+    let mut proxy = Proxy::os_login("undumpable", "", "");
     let mem = format!("/proc/{}/mem", proxy.child.id());
 
+    // A refusal of any other kind, or a proxy already gone, would pass
+    // without its memory being kept from the account.
+    let refused = fs::File::open(&mem)
+        .map(|_| ())
+        .map_err(|error| error.kind());
     assert!(
-        fs::File::open(&mem).is_err(),
+        matches!(proxy.child.try_wait(), Ok(None)),
+        "the proxy still runs as its memory is read"
+    );
+    assert_eq!(
+        refused,
+        Err(std::io::ErrorKind::PermissionDenied),
         "its memory, holding the OS Login key, can't be opened by the account"
     );
 }

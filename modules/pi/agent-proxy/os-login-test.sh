@@ -6,7 +6,8 @@
 # failures said, every call bounded, and no gcloud, no gcloud login, a
 # gcloud that can't say, no key or a key the proxy doesn't hold passing
 # over with a word; a key the proxy comes to hold within its wait is
-# registered.
+# registered, another key it holds never is, what gcloud reads is the
+# proxy's own line, and a key that isn't the proxy's is never removed.
 #
 #   os-login-test.sh PATH-TO-pi-agent-proxy-os-login
 
@@ -18,10 +19,14 @@ mkdir "$work/bin"
 # its login unless told it has none, fails an update while no key is
 # there, as gcloud's own update.py does, and fails everything while told
 # to fail. The script's own PATH comes first, so what started it is read
-# from /proc rather than by standing in for timeout.
+# from /proc rather than by standing in for timeout. It writes down the
+# key it's handed, as gcloud reads it.
 cat >"$work/bin/gcloud" <<EOF
 #!$BASH
 echo "\$*" >>"$work/asked"
+for arg; do
+  [[ \$arg != --key-file=* ]] || cat "\${arg#--key-file=}" >>"$work/sent"
+done
 mapfile -d '' parent </proc/\$PPID/cmdline
 echo "\${parent[0]##*/} \${parent[*]:1}" >>"$work/started-by"
 if [[ \$1 == config ]]; then
@@ -49,8 +54,17 @@ hold() {
 hold_none() {
   SSH_AUTH_SOCK=$work/agent.sock ssh-add -qD 2>/dev/null
 }
-ssh-keygen -q -t ed25519 -N '' -C 'pi-agent-proxy OS Login 1' -f "$work/key"
+# The proxy lists its key under its comment alone, and its file adds the
+# time the key was made.
+make_key() {
+  local kind blob
+  ssh-keygen -q -t ed25519 -N '' -C "$2" -f "$work/$1"
+  read -r kind blob _ <"$work/$1.pub"
+  echo "$kind $blob $2${3:+ $3}" >"$work/$1.pub"
+}
+make_key key 'pi-agent-proxy OS Login' 1
 key=$work/key.pub
+read -r _ blob _ <"$key"
 hold "$work/key"
 fails=0
 fail() {
@@ -60,26 +74,30 @@ fail() {
 # Only the stand-in and the tools the script needs are on its PATH, so a
 # real gcloud here never answers in the stand-in's place.
 mkdir "$work/tools"
-for tool in ssh-keygen ssh-add timeout sleep cp cat; do
+for tool in ssh-keygen ssh-add timeout sleep cp cat mktemp rm; do
   found=$(command -v "$tool")
   ln -s "$found" "$work/tools/$tool"
 done
 run() {
   PATH=$work/bin:$work/tools "$register" "$@" >"$work/said" 2>&1
 }
+# A call asked of gcloud, as a pattern, since a register hands it a file
+# of its own.
 asked() {
-  grep -qxF "compute os-login ssh-keys $1 --quiet --verbosity=error" "$work/asked"
+  grep -qxE "compute os-login ssh-keys $1 --quiet --verbosity=error" "$work/asked"
 }
 
 run register "$key" || fail "failed registering a new key"
 grep -q "registered for 12 hours" "$work/said" || fail "didn't say it registered a new key"
-asked "add --key-file=$key --ttl=12h" || fail "didn't add a new key for twelve hours"
+asked "add --key-file=[^ ]+ --ttl=12h" || fail "didn't add a new key for twelve hours"
+grep -qxF "ssh-ed25519 $blob pi-agent-proxy OS Login" "$work/sent" ||
+  fail "didn't hand gcloud the proxy's own line"
 
 touch "$work/there"
 : >"$work/asked"
 run register "$key" || fail "failed renewing a key"
 grep -q "renewed for 12 hours" "$work/said" || fail "didn't say it renewed a key"
-asked "update --key-file=$key --ttl=12h" || fail "didn't renew the key for twelve hours"
+asked "update --key-file=[^ ]+ --ttl=12h" || fail "didn't renew the key for twelve hours"
 grep -q "ssh-keys add" "$work/asked" && fail "added a key already there"
 
 touch "$work/failing"
@@ -103,7 +121,7 @@ grep -q "^EXIT" "$work/said" || fail "said no help"
 
 # A previous proxy's key, left in the file, is one the proxy now running
 # doesn't hold.
-ssh-keygen -q -t ed25519 -N '' -C 'pi-agent-proxy OS Login 2' -f "$work/other"
+make_key other 'pi-agent-proxy OS Login' 2
 hold_none
 hold "$work/other"
 : >"$work/asked"
@@ -121,7 +139,34 @@ hold_none
 holding=$!
 run register "$key" || fail "failed with a key the proxy came to hold"
 wait "$holding"
-asked "update --key-file=$key --ttl=12h" || fail "didn't wait for the proxy to hold its key"
+asked "update --key-file=[^ ]+ --ttl=12h" || fail "didn't wait for the proxy to hold its key"
+
+# Another key the proxy holds, the builders' among them, is never
+# registered, even with a file naming it beside the proxy's socket.
+make_key builders 'nix-offload builders'
+hold_none
+hold "$work/builders"
+: >"$work/asked"
+run register "$work/builders.pub" || fail "failed with a key that isn't the proxy's own"
+grep -q "ssh-keys" "$work/asked" && fail "registered a key the proxy holds that isn't its own"
+
+# Nor is a key held beside another under the proxy's comment, as no
+# proxy lists; the other comes first, since the agent lists in order.
+make_key twin 'pi-agent-proxy OS Login' 3
+hold_none
+hold "$work/twin"
+hold "$work/key"
+: >"$work/asked"
+run register "$key" || fail "failed with two keys under the proxy's comment"
+grep -q "ssh-keys" "$work/asked" && fail "registered one of two keys under the proxy's comment"
+hold_none
+hold "$work/key"
+
+# A removal never takes out a key whose file isn't the proxy's, such as
+# the person's own.
+: >"$work/asked"
+run remove "$work/builders.pub" || fail "failed with a key that isn't the proxy's to remove"
+grep -q "ssh-keys" "$work/asked" && fail "removed a key that isn't the proxy's"
 
 : >"$work/asked"
 run register "$work/absent.pub" || fail "failed with no key"
