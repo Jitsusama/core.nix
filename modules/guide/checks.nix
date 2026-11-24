@@ -228,7 +228,7 @@ onLinux {
 
   # A Mac writes sticks too, through its own raw disks and cache, and no
   # check runs on a Mac, so clippy reads the guide as macOS would compile it.
-  guide-compiles-for-macos =
-    (compilesForMacos "guide-compiles-for-macos" (pkgs.callPackage ./package.nix { })).overrideAttrs
-      { doInstallCheck = false; };
+  guide-compiles-for-macos = compilesForMacos "guide-compiles-for-macos" (
+    pkgs.callPackage ./package.nix { }
+  );
 }
