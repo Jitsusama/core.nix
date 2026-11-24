@@ -1456,7 +1456,7 @@ in
             in
             gap == lib.length past
             || line == "}"
-            || lib.hasSuffix ";" line && !lib.hasPrefix "/" line && !lib.hasPrefix "#" line;
+            || lib.hasSuffix ";" line && builtins.match "[[:space:]]*[/#].*" line == null;
           scan =
             lines: struct:
             let
@@ -1540,6 +1540,16 @@ in
             (changedVm 0 [
               "#[serde(rename_all = \"kebab-case\")]"
               "// A machine lent to."
+              ""
+            ])
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              "  // Its name; its cap;"
+              ""
+            ])
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              ""
               ""
             ])
             (changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ])
