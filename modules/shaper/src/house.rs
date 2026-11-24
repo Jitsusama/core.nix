@@ -279,9 +279,9 @@ pub struct Reporters {
     pub named: BTreeMap<IpAddr, Option<PathBuf>>,
     /// Each keyed house that names no address, by its network, with its
     /// key file: a report from an address no house names, or one its
-    /// house refuses or ignores, is taken for the first of these whose
-    /// key signed it, so its key alone says who sent it, wherever its
-    /// address moves.
+    /// house refuses or ignores, is taken for every one of these whose
+    /// key signed it and whose stamp takes it, so its key alone says who
+    /// sent it, wherever its address moves.
     pub unnamed: Vec<(String, PathBuf)>,
 }
 
@@ -355,8 +355,8 @@ type Verdict = Result<Source, Refusal>;
 
 /// How much `why` says of a report the houses naming no address all
 /// refused: a key that can't be read says more than a mac no key made.
-/// A stamp refused under a key that signed it says most, and ends the
-/// search (`Ear::unnamed`).
+/// A stamp refused under a key that signed it says most, and refuses the
+/// report for every house (`Ear::unnamed`).
 fn telling(why: &Unheard) -> u8 {
     match why {
         Unheard::Ignored => 0,
@@ -637,13 +637,16 @@ impl Ear {
                 }
             },
             Some(Some(path)) => match self.signed(text, &source, path, at, now_ms) {
-                Ok(report) => {
-                    let mut sources = vec![source];
-                    if let Ok((houses, _)) = self.unnamed(&reporters.unnamed, text, at, now_ms) {
-                        sources.extend(houses);
+                // A report an unnamed house on this key took elsewhere is
+                // refused here too, so a replay meets both stamps (house any
+                // round 3's F1, F11 and F13).
+                Ok(report) => match self.unnamed(&reporters.unnamed, text, at, now_ms) {
+                    Ok((houses, _)) => Ok(([vec![source], houses].concat(), report)),
+                    Err(stamped @ (_, Unheard::Refused(Refused::Stale | Refused::Repeated))) => {
+                        Err(stamped)
                     }
-                    Ok((sources, report))
-                }
+                    Err(_) => Ok((vec![source], report)),
+                },
                 Err(why @ Unheard::Refused(Refused::Stale | Refused::Repeated)) => {
                     Err((Some(source), why))
                 }
@@ -1479,10 +1482,10 @@ mod tests {
         let moved_on = ear.take(&reporters, elsewhere, next.as_bytes(), later, STAMP + 1_000);
         let forgery = sign("0 0", STAMP + 2_000, &[9; 32]);
         let forged = ear.take(&reporters, moved, forgery.as_bytes(), later, STAMP + 2_000);
-        // A mac of another length is said forged too (house any round 2's
-        // F1).
+        // A mac of another length is said forged too, as no house's (house
+        // any round 2's F1; round 3's F10).
         let long = format!("0 0 {} {}", STAMP + 2_000, "ab".repeat(32));
-        let misshapen = ear.take(&reporters, moved, long.as_bytes(), later, STAMP + 2_000);
+        let misshapen = ear.heard(&reporters, moved, long.as_bytes(), later, STAMP + 2_000);
         let stray = ear.take(&reporters, moved, b"not a report", later, STAMP);
         let unsigned = ear.take(&reporters, moved, b"0 0", later, STAMP);
         let keyless = ear.take(&reporters, named, b"0 0", at, STAMP);
@@ -1511,7 +1514,7 @@ mod tests {
             (forged, misshapen),
             (
                 Err(Unheard::Refused(Refused::Forged)),
-                Err(Unheard::Refused(Refused::Forged))
+                Err((None, Unheard::Refused(Refused::Forged)))
             ),
             "a report under no house's key, or with a mac of another length, wasn't forged"
         );
@@ -1589,8 +1592,6 @@ mod tests {
         fs::create_dir_all(&folder).expect("a folder");
         let key = folder.join("house.key");
         fs::write(&key, vector_key()).expect("a key");
-        let other = folder.join("other.key");
-        fs::write(&other, (1..33).collect::<Vec<u8>>()).expect("another key");
         let first = Source::House("00:00:5e:00:53:01".to_owned());
         let second = "00:00:5e:00:53:02".to_owned();
         let shared = Reporters {
@@ -1603,16 +1604,6 @@ mod tests {
         let first_alone = Reporters {
             named: BTreeMap::new(),
             unnamed: shared.unnamed[..1].to_vec(),
-        };
-        // A key that can't be read, then a mac no key made: the first says
-        // more, and is its house's (house any round 1's F5; round 2's F5
-        // and F6).
-        let unread = Reporters {
-            named: BTreeMap::new(),
-            unnamed: vec![
-                ("00:00:5e:00:53:01".to_owned(), folder.join("missing.key")),
-                (second.clone(), other),
-            ],
         };
         let from: IpAddr = "192.0.2.12".parse().expect("an address");
         let at = Instant::now();
@@ -1629,8 +1620,6 @@ mod tests {
         let _ = one_first.heard(&first_alone, from, report.as_bytes(), at, STAMP);
         let met = one_first.heard(&shared, from, report.as_bytes(), at, STAMP);
         let _ = one_first.heard(&shared, from, next.as_bytes(), later, STAMP + 1_000);
-        let forgery = sign("0 0", STAMP, &[9; 32]);
-        let unkeyed = ear.heard(&unread, from, forgery.as_bytes(), at, STAMP);
         let _ = fs::remove_dir_all(&folder);
         let both = (Ok(first.clone()), Ok(first.clone()));
         assert_eq!(
@@ -1660,9 +1649,72 @@ mod tests {
             None,
             "a replay one house's stamp refused was taken by another holding its key"
         );
+    }
+
+    // A key that can't be read says more than a mac no key made, in either
+    // order, and is its house's; neither outweighs a stamp refused, so a
+    // replay one house refuses isn't taken by another whose stamp lags
+    // (house any round 1's F5; round 2's F5 and F6; round 3's F4, F7 and
+    // F9).
+    #[test]
+    fn the_most_telling_refusal_is_kept_in_either_order() {
+        fn houses(unnamed: &[(&String, &PathBuf)]) -> Reporters {
+            Reporters {
+                named: BTreeMap::new(),
+                unnamed: unnamed
+                    .iter()
+                    .map(|(network, path)| ((*network).clone(), (*path).clone()))
+                    .collect(),
+            }
+        }
+        let folder = std::env::temp_dir().join(format!("shaper-telling-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let key = folder.join("house.key");
+        fs::write(&key, vector_key()).expect("a key");
+        let other = folder.join("other.key");
+        fs::write(&other, (1..33).collect::<Vec<u8>>()).expect("another key");
+        let missing = folder.join("missing.key");
+        let [one, two, three] = ["01", "02", "03"].map(|n| format!("00:00:5e:00:53:{n}"));
+        let from: IpAddr = "192.0.2.12".parse().expect("an address");
+        let at = Instant::now();
+        let forgery = sign("0 0", STAMP, &[9; 32]);
+        let report = sign("0 0", STAMP, &vector_key());
+        let ear = Ear::default();
+        let unread_first = ear.heard(
+            &houses(&[(&one, &missing), (&two, &other)]),
+            from,
+            forgery.as_bytes(),
+            at,
+            STAMP,
+        );
+        let unread_last = ear.heard(
+            &houses(&[(&one, &other), (&two, &missing)]),
+            from,
+            forgery.as_bytes(),
+            at,
+            STAMP,
+        );
+        let _ = ear.heard(&houses(&[(&one, &key)]), from, report.as_bytes(), at, STAMP);
+        let lagging = houses(&[(&one, &key), (&two, &key), (&three, &missing)]);
+        let replayed = ear.heard(&lagging, from, report.as_bytes(), at, STAMP);
+        let _ = fs::remove_dir_all(&folder);
+        let unkeyed = |verdict: &Verdict, whose: &String| match verdict {
+            Err((Some(Source::House(network)), Unheard::Unkeyed(_))) => network == whose,
+            _ => false,
+        };
         assert!(
-            matches!(&unkeyed, Err((Some(house), Unheard::Unkeyed(_))) if *house == first),
-            "a key that can't be read wasn't said first, as its house's: {unkeyed:?}"
+            unkeyed(&unread_first, &one) && unkeyed(&unread_last, &two),
+            "a key that can't be read wasn't said over a mac no key made, as its house's: \
+             {unread_first:?}, {unread_last:?}"
+        );
+        assert_eq!(
+            replayed,
+            Err((
+                Some(Source::House(one)),
+                Unheard::Refused(Refused::Repeated)
+            )),
+            "a key that can't be read outweighed a stamp refused, letting a replay through"
         );
     }
 
@@ -1681,34 +1733,37 @@ mod tests {
         let house = Source::House("00:00:5e:00:53:01".to_owned());
         let reporters = Reporters {
             named: BTreeMap::from([(keyless, None), (keyed, Some(other))]),
-            unnamed: vec![("00:00:5e:00:53:01".to_owned(), key.clone())],
+            unnamed: vec![("00:00:5e:00:53:01".to_owned(), key)],
         };
-        // The named house holds the unnamed one's key: a replay its stamp
-        // refuses is its own, and stamped for the unnamed house too, and a
-        // forgery is its own (house any round 2's F3, F9 and F12).
-        let one_key = Reporters {
-            named: BTreeMap::from([(keyed, Some(key))]),
-            unnamed: reporters.unnamed.clone(),
-        };
-        let elsewhere: IpAddr = "192.0.2.13".parse().expect("an address");
         let ear = Ear::default();
         let at = Instant::now();
         let later = at + Duration::from_secs(1);
+        let latest = at + Duration::from_secs(2);
         let first = sign("0 0", STAMP, &vector_key());
         let next = sign("250000 1000", STAMP + 1_000, &vector_key());
+        let third = sign("500000 2000", STAMP + 2_000, &vector_key());
         let own = sign("0 0", STAMP, &named_key);
-        let shared = Ear::default();
-        let shared_taken = shared.heard(&one_key, keyed, first.as_bytes(), at, STAMP);
-        let shared_again = shared.heard(&one_key, keyed, first.as_bytes(), at, STAMP);
-        let shared_elsewhere = shared.heard(&one_key, elsewhere, first.as_bytes(), at, STAMP);
-        let forgery = sign("0 0", STAMP + 1_000, &[9; 32]);
-        let forged = shared.heard(&one_key, keyed, forgery.as_bytes(), later, STAMP + 1_000);
         let from_keyless = ear.heard(&reporters, keyless, first.as_bytes(), at, STAMP);
+        let keyless_again = ear.heard(&reporters, keyless, first.as_bytes(), at, STAMP);
         let from_keyed = ear.heard(&reporters, keyed, next.as_bytes(), later, STAMP + 1_000);
+        // The keyless house hears the signed reports beside the house
+        // naming none (house any round 3's F3 and F8).
+        let _ = ear.heard(&reporters, keyless, third.as_bytes(), latest, STAMP + 2_000);
         let own_taken = ear.heard(&reporters, keyed, own.as_bytes(), at, STAMP);
         let own_again = ear.heard(&reporters, keyed, own.as_bytes(), at, STAMP);
         let plain = ear.heard(&reporters, keyless, b"0 0", at, STAMP);
         let _ = fs::remove_dir_all(&folder);
+        let rate = Some((2_000.0, Duration::ZERO));
+        assert_eq!(
+            (ear.sent(keyless, latest), ear.sent(house.clone(), latest)),
+            (rate, rate),
+            "signed reports from a keyless house's address weren't both houses'"
+        );
+        assert_eq!(
+            keyless_again,
+            Err((Some(house.clone()), Unheard::Refused(Refused::Repeated))),
+            "a replay from a keyless house's address wasn't refused on the house's stamp"
+        );
         assert_eq!(
             from_keyless,
             Ok(house.clone()),
@@ -1734,6 +1789,62 @@ mod tests {
             plain,
             Ok(Source::Address(keyless)),
             "a keyless house's unsigned report went unheard beside a house naming no address"
+        );
+    }
+
+    // The named house holds the unnamed one's key: each hears what the
+    // other's address sends, a replay either stamp refuses is refused at
+    // both addresses, and a forgery is the named address's own (house any
+    // round 2's F3, F9 and F12; round 3's F1, F8, F11 and F13).
+    #[test]
+    fn a_named_house_on_a_house_s_key_meets_its_stamp_both_ways() {
+        let folder = std::env::temp_dir().join(format!("shaper-both-ways-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let key = folder.join("house.key");
+        fs::write(&key, vector_key()).expect("a key");
+        let keyed: IpAddr = "192.0.2.8".parse().expect("an address");
+        let elsewhere: IpAddr = "192.0.2.13".parse().expect("an address");
+        let house = Source::House("00:00:5e:00:53:01".to_owned());
+        let one_key = Reporters {
+            named: BTreeMap::from([(keyed, Some(key.clone()))]),
+            unnamed: vec![("00:00:5e:00:53:01".to_owned(), key)],
+        };
+        let at = Instant::now();
+        let later = at + Duration::from_secs(1);
+        let latest = at + Duration::from_secs(2);
+        let first = sign("0 0", STAMP, &vector_key());
+        let next = sign("250000 1000", STAMP + 1_000, &vector_key());
+        let third = sign("500000 2000", STAMP + 2_000, &vector_key());
+        let forgery = sign("0 0", STAMP + 1_000, &[9; 32]);
+        let shared = Ear::default();
+        let shared_taken = shared.heard(&one_key, keyed, first.as_bytes(), at, STAMP);
+        let shared_again = shared.heard(&one_key, keyed, first.as_bytes(), at, STAMP);
+        let shared_elsewhere = shared.heard(&one_key, elsewhere, first.as_bytes(), at, STAMP);
+        let shared_next = shared.heard(&one_key, keyed, next.as_bytes(), later, STAMP + 1_000);
+        let forged = shared.heard(&one_key, keyed, forgery.as_bytes(), later, STAMP + 1_000);
+        let third_elsewhere =
+            shared.heard(&one_key, elsewhere, third.as_bytes(), latest, STAMP + 2_000);
+        let third_again = shared.heard(&one_key, keyed, third.as_bytes(), latest, STAMP + 2_000);
+        let _ = fs::remove_dir_all(&folder);
+        let rate = Some((2_000.0, Duration::ZERO));
+        assert_eq!(
+            (shared_next, third_elsewhere),
+            (Ok(Source::Address(keyed)), Ok(house.clone())),
+            "reports under the shared key went unheard"
+        );
+        assert_eq!(
+            (
+                shared.sent(keyed, later),
+                shared.sent(house.clone(), latest)
+            ),
+            (rate, rate),
+            "reports at the named address weren't the unnamed house's too"
+        );
+        assert_eq!(
+            third_again,
+            Err((Some(house.clone()), Unheard::Refused(Refused::Repeated))),
+            "a report the unnamed house took was taken again at the named address"
         );
         let address = Some(Source::Address(keyed));
         assert_eq!(

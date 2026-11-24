@@ -55,6 +55,10 @@ COMING_UP = dt.timedelta(seconds=60)
 HOLDING = dt.timedelta(seconds=60)
 QUIETING = dt.timedelta(seconds=15)
 CLIMBING = dt.timedelta(seconds=120)
+# How long the shaper leaves an address's refusals unsaid once it says
+# one, as src/house.rs's SAID_APART does; a stamp refused while the
+# clocks settle at boot quiets the forgeries' first refusal for as long.
+SAID_APART = dt.timedelta(seconds=60)
 # Where the house's other machine forges its reports from while its
 # reporter is stopped: the first address it sent from, which it keeps once
 # its route moves. Signed under another key, in step on their own
@@ -65,8 +69,8 @@ WRONG_KEY = "not the house's key, but 32 b!!!"
 # What the shaper says of a report whose mac isn't the house's key's.
 FORGED = "mac isn't the house's key's"
 # The most times the shaper may say forged reports held nothing while they
-# come for up to QUIETING and CLIMBING: once a minute, and once more if a
-# minute's turn falls in. src/house.rs's tests hold it to once a minute.
+# come for up to SAID_APART, QUIETING and CLIMBING: once a minute, and once
+# more if a minute's turn falls in. src/house.rs's tests hold it to once a minute.
 REFUSALS_SAID = 4
 # The key both machines are moved to, and the file each holds it in.
 NEXT_KEY = "the house's next key, 32 bytes!!"
@@ -245,7 +249,7 @@ done
     try:
         rig.client.wait_until_succeeds(
             f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "{FORGED}")" -gt {refused}',
-            timeout=QUIETING,
+            timeout=SAID_APART + QUIETING,
         )
         climbs(rig)
         journal = rig.journal()
