@@ -4229,6 +4229,22 @@ pub fn to_second(first: Option<f64>, second: &Second) -> bool {
     })
 }
 
+/// Whether both lent builders are full, so what isn't a VM test may go
+/// to an idle VM builder: the first full and the second standing at least
+/// as full as [`FULL`]. One unlent is asked for instead, and one that
+/// can't be read is no full one.
+pub fn both_full(first: Option<f64>, second: &Second) -> bool {
+    first.is_some_and(|first| first >= FULL)
+        && matches!(second, Second::Stands(Some(second)) if *second >= FULL)
+}
+
+/// Whether a VM builder with no VM tests sent or waiting is idle enough to
+/// take what overflows full lent builders, by its CPU pressure: under half
+/// of [`FULL`], so the VM tests that come after still find it quick.
+pub fn takes_spill(pressure: Option<f64>) -> bool {
+    pressure.is_some_and(|pressure| pressure < FULL / 2.0)
+}
+
 /// Whether a pid runs, as signal 0 says.
 fn runs(pid: i32) -> bool {
     // SAFETY: signal 0 only asks whether the process exists.
@@ -9519,6 +9535,47 @@ mod tests {
         assert_eq!(pressure_of(read), Some(48.10));
         assert_eq!(pressure_of("full avg60=3.00\n"), None);
         assert_eq!(pressure_of(""), None);
+    }
+
+    #[test]
+    fn builds_spill_only_while_both_lent_builders_stand_full() {
+        assert!(
+            both_full(Some(FULL), &Second::Stands(Some(FULL))),
+            "two full builders must let builds spill"
+        );
+        assert!(
+            !both_full(Some(FULL - 1.0), &Second::Stands(Some(90.0))),
+            "a first with room must keep its builds"
+        );
+        assert!(
+            !both_full(Some(90.0), &Second::Stands(Some(FULL - 1.0))),
+            "a second with room must take them"
+        );
+        assert!(
+            !both_full(Some(90.0), &Second::Unlent),
+            "an unlent second must be asked for, not spilled past"
+        );
+        assert!(
+            !both_full(Some(90.0), &Second::Stands(None)),
+            "a second that can't be read must not count as full"
+        );
+        assert!(
+            !both_full(None, &Second::Stands(Some(90.0))),
+            "a first that can't be read must not count as full"
+        );
+    }
+
+    #[test]
+    fn only_a_quiet_vm_builder_takes_a_spill() {
+        assert!(
+            takes_spill(Some(0.0)),
+            "an idle VM builder must take a spill"
+        );
+        assert!(
+            !takes_spill(Some(FULL / 2.0)),
+            "one half as busy as full must not"
+        );
+        assert!(!takes_spill(None), "one that can't be read must not");
     }
 
     #[test]
