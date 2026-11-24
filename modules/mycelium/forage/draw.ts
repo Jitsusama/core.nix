@@ -68,7 +68,7 @@ const STAGES: { readonly [stage: string]: string } = {
 /** The floor's measures, in its own units: a cell's room, the ground and each branch's drop. */
 const FLOOR = {
   room: 30,
-  /** The room left where the floor skips cells of its list, holding a mark. */
+  /** The room left, holding a mark, where the floor skips cells of its list it doesn't fold. */
   gap: 24,
   margin: 24,
   ground: 52,
@@ -363,10 +363,22 @@ interface Placing {
 /**
  * Where each cell `floor` draws sits, by its place among those drawn and its
  * depth, with a gap's room wherever it skips cells of its list: before its
- * first, between two, or after its last.
+ * first, between two, or after its last. Cells skipped between two that all
+ * grew from the first of them are folded under it, with no gap, so a cell's
+ * brood drawn apart by their own broods reads as one row, as the tree it is.
  */
 function placed(floor: Floor): Placing {
   const place = new Map(floor.of.map((each, at) => [each.cell, at]));
+  const { line } = kinOf(floor.of, grewFrom);
+  const none = new Set<number>();
+  const folded = (from: number, to: number): boolean => {
+    for (let at = from; at < to; at += 1) {
+      if (!line(at, none, floor.of.length).includes(from - 1)) {
+        return false;
+      }
+    }
+    return true;
+  };
   const cells: Placing["cells"][number][] = [];
   const gaps: number[] = [];
   let end = FLOOR.margin;
@@ -377,7 +389,7 @@ function placed(floor: Floor): Placing {
   };
   for (const forage of floor.drawn) {
     const at = place.get(forage.cell) ?? next;
-    if (at > next) {
+    if (at > next && (cells.length === 0 || !folded(next, at))) {
       skip();
     }
     const y = FLOOR.hypha + Math.min(forage.depth, FLOOR.steps) * FLOOR.drop;

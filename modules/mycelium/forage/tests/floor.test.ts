@@ -275,6 +275,33 @@ it("cuts a line only for the booked part of a mixed brood", () => {
   assert.deepEqual(compartments(floorAt(mixed, "C39")), span(2, 49));
 });
 
+/**
+ * A top cell, C00, that booked 24 cells, each of which booked 7 more, read
+ * as the list reads a tree, then seven more top cells: 200 in all.
+ */
+const FAMILY: readonly Forage[] = Array.from({ length: 200 }, (_, at) => {
+  const under = (at - 1) % 8;
+  if (at === 0 || at > 192) {
+    return forage(named(at));
+  }
+  return under === 0
+    ? forage(named(at), { startedBy: "C00", booked: true, depth: 1 })
+    : forage(named(at), { startedBy: named(at - under), booked: true, depth: 2 });
+});
+
+it("folds the cells skipped under a cell they grew from, marking only a gap that leaves it", () => {
+  const cut = "\u2026";
+  const floor = floorAt(FAMILY, "C00");
+  const children = Array.from({ length: 20 }, (_, at) => named(33 + at * 8));
+  // C00 and its nearest 27, then the rest of its brood, each with its own
+  // 7 folded under it. C28 to C32 grew from C25, not from C27, so that gap
+  // is marked, as is the one past C185 that leaves C00's tree.
+  assert.deepEqual(along(floor), [...span(0, 27), cut, ...children, cut]);
+  // Two gaps' room, as wide as a long list's around a cell in its middle.
+  assert.ok(floor.startsWith('<svg viewBox="0 0 1536 '), floor);
+  assert.equal(runs(floor), 3);
+});
+
 /** A top cell, C00, then a ring of 59 claimed starts: C01 started by C59, each other by the one before. */
 const RING: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
   at === 0

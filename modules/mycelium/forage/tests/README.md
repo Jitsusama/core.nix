@@ -42,7 +42,8 @@ run by Node's own test runner when the local sites build the page.
   line cut, however shallow, to leave the cells booked as grown from it
   up to half the floor, and kept whole when they only claim it; a ring
   longer than the room filling it cut at its top; an ellipsis wherever the floor
-  skips cells of its list, and none on a list that fits; the cells the
+  skips cells of its list, none on a list that fits, and none between two
+  where all it skips grew from the first, folded under it; the cells the
   node's book holds started before those only claimed; that a step draws
   the floor again only for a cell it leaves off or one that grew a cell it
   leaves off, no cursor at all not among them; that a live
