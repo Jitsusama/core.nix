@@ -122,6 +122,13 @@ export const within = (promise, message, ms = 10_000) => {
   });
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 };
+/** Called before a load that may hold its package's turn is begun: waits
+ * as `within` does, but only until 8 seconds from that call, so a wait that
+ * only the 10-second bound on a held turn would end fails instead. */
+export const beforeTheBound = () => {
+  const deadline = Date.now() + 8000;
+  return (promise, message) => within(promise, message, Math.max(1, deadline - Date.now()));
+};
 /** Whether `promise` is still pending once `ms` have passed. */
 export const pendingAfter = (promise, ms) =>
   Promise.race([
@@ -255,16 +262,14 @@ export const stalledPackage = (where) => {
   return { entries, counts };
 };
 /** Hangs a load of `hangs`, queues one of `behind`, then lets go as `what`
- * does and expects the queued load to end within `ms` of the hung load
- * reaching its hang, evaluating afresh what the hung load had finished.
- * `ms` ends before a turn held 10 seconds lets the queued load go on, so
+ * does and expects the queued load to end before the bound on a held turn
+ * could let it go on, evaluating afresh what the hung load had finished, so
  * only `letGo` can end the wait. */
 export const heldUpUntil = async (what, [hangs, behind], letGo) => {
-  const ms = 8000;
   const hangGate = gate("hang");
+  const inTime = beforeTheBound();
   const hanging = open(`${what}-hanging`, [hangs]);
   await hangGate.reached;
-  const deadline = Date.now() + ms;
   const waiting = open(`${what}-waiting`, [behind]);
   assert.equal(
     await pendingAfter(waiting, 200),
@@ -272,10 +277,9 @@ export const heldUpUntil = async (what, [hangs, behind], letGo) => {
     `a load didn't wait behind one that never ends, before ${what}`,
   );
   await letGo();
-  const released = await within(
+  const released = await inTime(
     waiting,
     `${what} didn't let go of a load waiting behind one that never ends`,
-    Math.max(1, deadline - Date.now()),
   );
   assert.equal(await released("behind-version"), "behind", `a load ${what} let go of failed`);
   assert.equal(

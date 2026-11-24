@@ -20,6 +20,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   aPackage,
+  beforeTheBound,
   afresh,
   cached,
   clearExtensionCache,
@@ -126,6 +127,7 @@ const race = ["race", "later"].map((name) => {
 });
 const slowGate = gate("slow");
 const lastGate = gate("last");
+const inTime = beforeTheBound();
 const early = open("early", [race[0]]);
 await slowGate.reached;
 slowGate.putAway();
@@ -134,7 +136,7 @@ racer("after");
 slowGate.open();
 await lastGate.reached;
 lastGate.putAway();
-const during = await within(
+const during = await inTime(
   open("during", [race[0]]),
   "a load after a reload waited for one from before it",
 );

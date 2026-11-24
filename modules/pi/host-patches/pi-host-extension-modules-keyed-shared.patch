@@ -15,8 +15,10 @@ seconds gives up its turn, and until it ends, the loads after it import
 so too, each giving up its turn as it goes on; nothing kept is let go of,
 and once it ends, it is kept and loads share again. A failed load forgets each module it was first to import, however
 deep, and keeps those another extension was first to import as it ran.
-A factory is kept only from a load through modules still its package's,
-so none from a copy a link has moved off, or from modules let go of. An
+A factory is kept only from a load given modules still its package's,
+so none from a copy a link has moved off, or from modules let go of. One
+sent on unshared while a load ran past ten seconds is kept, with modules
+of its own, as every keyed factory was before modules were shared. An
 import an extension makes as it runs takes no turn, as within one
 extension today, so one that throws stays unfinished in the package's
 cache until a reload.
@@ -29,7 +31,7 @@ cache until a reload.
 +		if (keyed) keyedRoots.add(folder);
  	} else {
  		const parent = path.dirname(folder);
-@@ -237,18 +238,198 @@
+@@ -237,18 +238,200 @@
  // package keeps a copy for each folder.
  function sharedFileOf(extensionPath: string): string | undefined {
 -	let file: string;
@@ -59,8 +61,8 @@ cache until a reload.
 -	if (before !== undefined && before !== file) sharedFactories.delete(before);
 -	sharedFiles.set(extensionPath, file);
 -	return file;
-+}
-+
+ }
+ 
 +// pi-host: a keyed package's extensions share the modules they import, too.
 +// jiti gives each import of an extension a module cache of its own, so a
 +// library its extensions share was evaluated once for each extension
@@ -82,9 +84,11 @@ cache until a reload.
 +// first to import, so none it finished keeps what one that threw left
 +// behind, and keeps those another extension was first to import as it ran; jiti records only the
 +// first, so one it finished that another extension was handed meanwhile is
-+// forgotten too. A factory is kept only from a load through modules that
++// forgotten too. A factory is kept only from a load given modules that
 +// are still its package's, so none from a copy a link moved off, or from
-+// modules let go of, is kept. An import an extension makes as it runs goes
++// modules let go of, is kept. One sent on unshared while a load ran past
++// TURN_HELD_MS is kept, with modules of its own, as every keyed factory was
++// before modules were shared. An import an extension makes as it runs goes
 +// in the same cache but takes no turn, as jiti has it within one extension:
 +// it can be given a module still being evaluated, and one that throws stays
 +// unfinished in the cache, now for the package's other extensions too, until
@@ -104,8 +108,8 @@ cache until a reload.
 +	overdue: boolean;
 +	// Starts each load still waiting for its turn.
 +	waiting: Set<() => void>;
- }
- 
++}
++
 +// How long a load may hold its package's turn before the loads after it
 +// go on unshared: long past what evaluating one extension takes.
 +const TURN_HELD_MS = 10_000;
@@ -235,7 +239,7 @@ cache until a reload.
 +
  function cachedFactoryOf(extensionPath: string, cacheToken: ExtensionCacheToken): ExtensionFactory | undefined {
  	const shared = sharedFileOf(extensionPath);
-@@ -257,6 +438,18 @@
+@@ -257,6 +440,18 @@
  }
  
 -function cacheFactory(extensionPath: string, cacheToken: ExtensionCacheToken, factory: ExtensionFactory): void {
@@ -255,7 +259,7 @@ cache until a reload.
 +	if (through !== undefined && packageModules.get(through.root) !== through) return;
  	if (shared !== undefined) sharedFactories.set(shared, factory);
  	else cacheToken.cache.set(extensionPath, new WeakRef(factory));
-@@ -265,4 +458,7 @@
+@@ -265,4 +460,7 @@
  export function clearExtensionCache(): void {
  	extensionCaches.length = 0;
 +	for (const modules of packageModules.values()) dropModules(modules);
@@ -263,7 +267,7 @@ cache until a reload.
 +	keyedRoots.clear();
  	sharedFactories.clear();
  	sharedFiles.clear();
-@@ -700,4 +896,7 @@
+@@ -700,4 +898,7 @@
  	}
  
 +	// pi-host: a shared extension loads through its package's modules.
@@ -271,7 +275,7 @@ cache until a reload.
 +	const modules = shared === undefined ? undefined : packageModulesOf(shared);
  	const createJitiImpl = await getCreateJiti();
  	// Compiled binaries and the bundled Node distribution use embedded modules.
-@@ -714,5 +913,9 @@
+@@ -714,5 +915,9 @@
  	});
  
 -	const module = await jiti.import(canonicalizePath(extensionPath), { default: true });
@@ -282,7 +286,7 @@ cache until a reload.
 +			: await jiti.import(canonicalizePath(extensionPath), { default: true });
  	const factory = module as ExtensionFactory;
  	if (typeof factory !== "function") {
-@@ -720,5 +923,5 @@
+@@ -720,5 +925,5 @@
  	}
  	if (isCurrentCacheToken(cacheToken)) {
 -		cacheFactory(extensionPath, cacheToken, factory);
