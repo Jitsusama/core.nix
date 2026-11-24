@@ -1,13 +1,8 @@
-// The gate's probe for every word (checks.md), beside pixels.js and run the
-// same way: whole, as one expression in the page, at each width. It answers
-// with where the page's words don't hold at that width, each in a line
-// saying what to do, and an empty answer passes:
+// The gate's probe for every word's contrast (checks.md), beside pixels.js
+// and floor.js and run the same way: whole, as one expression in the page,
+// at each width. It answers with where the page's words don't hold at that
+// width, each in a line saying what to do, and an empty answer passes:
 //
-// - No text is under 12 px on screen, a field's words and what a style
-//   writes before or after an element counted with the page's. A
-//   drawing's label may be smaller only where it's marked data-enlarges,
-//   saying a zoom, a hover or focus shows it at 12 px or more, and nothing
-//   is under 9 px, marked or not.
 // - Every word reaches 4.5:1 on the ground painted under it, or 3:1 at 24 px
 //   and up, or 18.66 px bold (WCAG 1.4.3), opacity included, a field's
 //   words, its placeholder and what a style writes counted too. A gradient
@@ -16,23 +11,26 @@
 //   are named, since only a person can read them.
 //
 // It stands apart from pixels.js because it reads the page as it is drawn,
-// at once, where pixels.js waits for it to rest. The words it quotes are the
+// at once, where pixels.js waits for it to rest, and from floor.js, which
+// reads the same text for its size, because what makes text too faint
+// changes apart from what makes it too small. The words it quotes are the
 // page's, data to fix rather than instructions. It ends without a semicolon,
 // since an eval asked for one expression answers nothing for a statement.
 (() => {
   const missing = [];
   const page = document;
   const root = page.documentElement;
-  const floor = 12;
-  const least = 9;
   // The patterns its contrast reads, built once here from the names CSS
   // gives them, since the probe is one expression with no top level of its
   // own to hold them. A ground painted with something other than colours,
   // a picture:
   const pictures = ["url", "image-set", "cross-fade", "element", "paint"];
   const picture = new RegExp(String.raw`\b(?:${pictures.join("|")})\(`, "u");
-  // A ground's layer repeated so it tiles its whole box, on each axis:
-  const tiles = new Set(["repeat", "round", "space"]);
+  // A ground's layer repeated so it tiles its whole box, on each axis, which
+  // space doesn't: it leaves gaps between its tiles. And the most a line
+  // may be across to lie beside words, never under them, in px: a hairline.
+  const tiles = new Set(["repeat", "round"]);
+  const hairline = 2;
   const sides = { "repeat-x": "repeat no-repeat", "repeat-y": "no-repeat repeat" };
   // Each colour a gradient names, as the browser writes it back, a mix of
   // colours whole, so the colours inside it aren't read at full strength:
@@ -60,10 +58,8 @@
       at.checkVisibility({ visibilityProperty: true, opacityProperty: true })
     );
   };
-
-  // The type floor. Text kept for a screen reader alone, clipped to a pixel,
-  // has no size anyone reads. A box's size is its font's times how much it's
-  // scaled, and a drawing's words are scaled by the drawing.
+  // Text kept for a screen reader alone, clipped to a pixel, is read by
+  // no one's eyes, so its contrast is no one's either.
   const forEarsOnly = (element) => {
     for (let at = element; at !== null && at !== root; at = at.parentElement) {
       const style = getComputedStyle(at);
@@ -77,10 +73,11 @@
     }
     return false;
   };
-  // A box's size on screen is its font's times every scale over it: each
-  // transform and scale it sits in, and CSS zoom, read from the styles rather than its
-  // measured box, whose whole-pixel offsetWidth rounds a small box's ratio.
-  // A drawing's words are scaled by the drawing.
+  // A box's size on screen, which sets whether its words are large, is its
+  // font's times every scale over it: each transform and scale it sits in,
+  // and CSS zoom, read from the styles rather than its measured box, whose
+  // whole-pixel offsetWidth rounds a small box's ratio. A drawing's words
+  // are scaled by the drawing.
   const onScreen = (element, size) => {
     if (element instanceof SVGElement) {
       const scale = element.getScreenCTM();
@@ -102,9 +99,8 @@
   const sizeOf = (element, pseudo) =>
     Number.parseFloat(getComputedStyle(element, pseudo).fontSize);
   // Text is a text node's, a field's own words and its placeholder, and what
-  // a style writes in ::before or ::after, each at its own size and in its
-  // own colour: the fill a style gives its glyphs, which is its colour
-  // unless it says otherwise.
+  // a style writes in ::before or ::after, each at its own size and in the
+  // fill a style gives its glyphs, which is its colour unless it says else.
   const inkOf = (style) => style.webkitTextFillColor || style.color;
   const reading = [];
   const read = (element, pseudo, words, style) =>
@@ -143,36 +139,6 @@
         read(element, pseudo, written.slice(1, -1), style);
       }
     }
-  }
-  let smallest = null;
-  let small = 0;
-  for (const { element, size: set, words } of reading) {
-    if (!shown(element) || forEarsOnly(element)) {
-      continue;
-    }
-    const size = onScreen(element, set);
-    const enlarges = element.closest("svg [data-enlarges], svg[data-enlarges]") !== null;
-    const bar = enlarges ? least : floor;
-    // A hundredth of a pixel covers a scale's float, and no more: 11.76 px,
-    // a 15 px root's least step, is short by a quarter.
-    if (size < bar - 0.01) {
-      small += 1;
-      if (smallest === null || size - bar < smallest.short) {
-        smallest = { words, size, enlarges, short: size - bar };
-      }
-    }
-  }
-  if (smallest !== null) {
-    const words = quoted(smallest.words);
-    const more = small > 1 ? ` (and ${small - 1} more)` : "";
-    missing.push(
-      smallest.enlarges
-        ? `a drawing's label at ${smallest.size.toFixed(1)} px ("${words}"), under ${least} px ` +
-            `even where it enlarges${more}: draw fewer, larger, or name it for the ear alone`
-        : `text at ${smallest.size.toFixed(1)} px ("${words}"), under ${floor} px${more}: set ` +
-            "it in --step-small or larger, or, in a drawing, mark it data-enlarges and show it " +
-            `at ${floor} px or more on zoom, hover or focus`,
-    );
   }
 
   // Contrast, measured rather than left to a person (WCAG 1.4.3): each
@@ -269,22 +235,23 @@
     return parts;
   };
   // How a layer, as its size, repeat and place across and down, lies by the
-  // words of a box with `font` px letters: beside them where it's untiled and
-  // thinner than a letter on an axis, a line or a mark; under all of them where
-  // each axis is tiled, or sized to the box or past it, leaving no strip bare;
-  // else maybe. A gradient has no size, so contain is cover; calc() is maybe.
+  // words of a box: beside them where it's untiled and a hairline on an axis;
+  // under all of them where each axis is tiled, or sized to the box or past
+  // it, leaving no strip bare; else maybe, a band or a mark keeping what's
+  // under it. A gradient has no size, so contain is cover; calc() is maybe.
+  // A box broken across lines has no length a px size is said to reach.
   const along = (repeat, size, place, length) => {
     const [reach, from] = [Number.parseFloat(size), Number.parseFloat(place)];
     const reaches = size.endsWith("%") ? reach >= 100 : size.endsWith("px") && reach >= length;
     const placed = place.endsWith("%") ? from >= 0 && from <= 100 : place === "0px";
     return tiles.has(repeat) || ((size === "auto" || reaches) && placed);
   };
-  const lies = ([size, repeat, x, y], box, font) => {
+  const lies = ([size, repeat, x, y], box) => {
     const [across, down = across] = (sides[repeat] ?? repeat).split(" ");
     const whole = size === "cover" || size === "contain";
     const [wide, tall = "auto"] = whole ? ["100%", "100%"] : size.split(" ");
     const thin = (axis, part) =>
-      !tiles.has(axis) && part.endsWith("px") && Number.parseFloat(part) < font;
+      !tiles.has(axis) && part.endsWith("px") && Number.parseFloat(part) <= hairline;
     const under = along(across, wide, x, box.width) && along(down, tall, y, box.height);
     if (thin(across, wide) || thin(down, tall)) {
       return "beside";
@@ -345,10 +312,9 @@
     }
     const layers = layered(image);
     const lists = placing.map((name) => layered(style[name]));
-    const font = Number.parseFloat(style.fontSize);
     for (let at = layers.length - 1; at >= 0 && colours.length <= ways; at -= 1) {
       const layer = lists.map((list) => list[at % list.length]);
-      const lying = layers[at] === "none" ? "beside" : lies(layer, box, font);
+      const lying = layers[at] === "none" ? "beside" : lies(layer, box);
       if (lying === "beside") {
         continue;
       }
@@ -379,15 +345,20 @@
   // when it sits on a picture, NaN when its paint can't be worked out, and
   // undefined when it has no ink to read.
   const worst = (element, pseudo, colour) => {
-    // Each box from the page down, sized, for whether a layer spans it.
+    // Each box from the page down, sized as its layers are laid in, its own
+    // size before any transform, for whether a layer spans it.
+    const laid = (at) =>
+      at.getClientRects().length > 1
+        ? { width: Number.NaN, height: Number.NaN }
+        : { width: at.offsetWidth, height: at.offsetHeight };
     const styles = [];
     for (let at = element.parentElement; at !== null; at = at.parentElement) {
-      styles.unshift({ style: getComputedStyle(at), box: at.getBoundingClientRect() });
+      styles.unshift({ style: getComputedStyle(at), box: laid(at) });
     }
     // The box the words are drawn in, last: the element, or what a style
     // writes into it, measured as the element, since it has no box of its own.
     const own = pseudo === null ? getComputedStyle(element) : getComputedStyle(element, pseudo);
-    const drawn = element.getBoundingClientRect();
+    const drawn = laid(element);
     if (pseudo !== null) {
       styles.push({ style: getComputedStyle(element), box: drawn });
     }
@@ -413,8 +384,13 @@
       }
       const faded = Number.parseFloat(style.opacity || "1");
       // A ground clipped to the words, its own or a box's they sit in,
-      // paints the words, not under them.
-      const clipped = style.backgroundClip === "text";
+      // paints the words, not under them; some layers clipped so and some
+      // not is paint the probe doesn't model.
+      const clips = layered(style.backgroundClip);
+      const clipped = clips.includes("text");
+      if (clipped && clips.some((clip) => clip !== "text")) {
+        return Number.NaN;
+      }
       if (clipped) {
         inks = choices.map((paint) => over(written, paint));
       }

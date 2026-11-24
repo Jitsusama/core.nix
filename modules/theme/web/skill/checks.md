@@ -36,10 +36,10 @@ through axe-core and its own console.
    freshly loaded, since it counts every shift since the load and would
    count the folds layout.js opens as the page's own: the page no wider than
    its window (a part wider than it scrolls in a scroller of its own) and a
-   layout shift under 0.1 as it arrives. Run `words.js` beside it: no text
+   layout shift under 0.1 as it arrives. Run `floor.js` beside it: no text
    under 12 px on screen, a drawing's label under 12 px only where it's
    marked `data-enlarges` and a zoom, hover or focus shows it at 12 px or
-   more, nothing under 9 px, and every word at 4.5:1 or more on the ground
+   more, nothing under 9 px. Run `words.js` too: every word at 4.5:1 or more on the ground
    painted under it, 3:1 at 24 px or 18.66 px bold, with any opacity it
    sits in faded as the browser fades it, a placeholder and a style's words
    counted too (WCAG 1.4.3), so axe's cases left to a person are measured.

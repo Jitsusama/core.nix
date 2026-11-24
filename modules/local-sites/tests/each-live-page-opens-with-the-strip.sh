@@ -131,6 +131,10 @@ copied "${work}/unended"
 sed -i '\|fonts/monaspace.woff2|s|^|<!-- |' "${work}/unended/index.html"
 refused "${work}/unended" "index.html doesn't preload monaspace.woff2" \
   "a page preloading its mono only in a comment never ended"
+copied "${work}/banged"
+sed -i '\|fonts/monaspace.woff2|{s|^|<!-- a --!- b |;s|$| -->|}' "${work}/banged/index.html"
+refused "${work}/banged" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono only in a comment holding --! before its end"
 
 # A comment HTML ends at --!>, or at once as <!--> or <!--->, hides nothing
 # after it, though another comment follows the preloads.
@@ -146,6 +150,12 @@ copied "${work}/dashes"
 sed -i -e '\|fonts/fraunces.woff2|s|^|<!---> |' \
   -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/dashes/index.html"
 builds "${work}/dashes" "a page with an empty comment, <!--->, before its preloads"
+
+# Inside a comment already open, <!--> ends it, so what follows is live.
+copied "${work}/nested"
+sed -i -e '\|fonts/fraunces.woff2|s|^|<!-- old <!--> |' \
+  -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/nested/index.html"
+builds "${work}/nested" "a page whose comment ends at an inner <!--> before its preloads"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still

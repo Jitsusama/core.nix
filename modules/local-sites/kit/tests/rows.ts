@@ -20,10 +20,15 @@ class Page {
   }
 }
 
-/** A control drawn with words and attributes of its own, as a page's button or link is. */
+/**
+ * A control drawn with words and attributes of its own, as a page's button or
+ * link is: a link unless told its element, holding another where told.
+ */
 interface Control {
   readonly says: string;
   readonly attributes: Readonly<Record<string, string>>;
+  readonly kind?: string;
+  readonly holds?: Control;
 }
 
 /** One of a row's acts: a link to its name, a control saying nothing, or one told whole. */
@@ -37,21 +42,20 @@ type Act = string | null | Control;
 class Inner implements Placed {
   parentElement: Placed | null;
   readonly children: Placed[] = [];
-  readonly localName = "a";
+  readonly localName: string;
   readonly textContent: string;
   readonly #page: Page;
   readonly #attributes: Readonly<Record<string, string>>;
 
-  constructor(
-    parent: Placed,
-    page: Page,
-    says: string,
-    attributes: Readonly<Record<string, string>>,
-  ) {
+  constructor(parent: Placed, page: Page, says: string, told: Omit<Control, "says">) {
     this.parentElement = parent;
     this.#page = page;
     this.textContent = says;
-    this.#attributes = attributes;
+    this.#attributes = told.attributes;
+    this.localName = told.kind ?? "a";
+    if (told.holds !== undefined) {
+      this.children.push(new Inner(this, page, told.holds.says, told.holds));
+    }
   }
 
   getAttribute(name: string): string | null {
@@ -114,12 +118,13 @@ class Row implements Drawn, Placed {
   #links(): Inner[] {
     return this.#acts.map((act) => {
       if (act === null) {
-        return new Inner(this, this.#page, "", {});
+        return new Inner(this, this.#page, "", { attributes: {} });
       }
       if (typeof act === "string") {
-        return new Inner(this, this.#page, `${act} ${this.words}`, { href: `#${act}` });
+        const attributes = { href: `#${act}` };
+        return new Inner(this, this.#page, `${act} ${this.words}`, { attributes });
       }
-      return new Inner(this, this.#page, `${act.says} ${this.words}`, act.attributes);
+      return new Inner(this, this.#page, `${act.says} ${this.words}`, act);
     });
   }
 

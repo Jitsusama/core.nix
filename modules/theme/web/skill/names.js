@@ -93,47 +93,89 @@
     }
     return element.getAttribute("aria-label");
   };
+  const acting =
+    "button, a[href], summary, [role=button], [role=link], [role=tab], [role=menuitem], " +
+    "[role=option], [role=switch], [role=checkbox], [role=radio]";
   // A keycap the kit makes pressable sits in a line of keys that says what
-  // it does, as "? lists every key" does: the words on screen that follow it
-  // there, up to the next keycap, are the word beside its mark, so long as
-  // one says more than a joining word such as "or". A comment, or words kept
-  // for a screen reader, aren't on screen. A button holding only a keycap
-  // reads the line it sits in the same way.
-  const capped = (control, all) =>
-    control.localName === "kbd" ||
-    (control.children.length === 1 &&
-      control.firstElementChild.localName === "kbd" &&
-      control.firstElementChild.textContent.trim() === all.trim());
+  // it does, as "? lists every key" does: the words a person sees that follow
+  // it there, up to the next keycap or control, are the word beside its mark,
+  // cut at the line's first comma or sentence end, so "opens Now, and" says
+  // "opens Now", with no joining word such as "or" left trailing, so long as
+  // one says more. A comment, words kept for a screen reader, and words in
+  // no ink, at no size or off the page's start aren't seen. A button holding
+  // only a keycap reads its line the same way, but only in a line of keys,
+  // so an icon wrapped in a kbd is still an icon.
+  const capped = (one, all) =>
+    one.localName === "kbd" ||
+    (one.closest(".keys") !== null &&
+      one.children.length === 1 &&
+      one.firstElementChild.localName === "kbd" &&
+      one.firstElementChild.textContent.trim() === all.trim());
   const joining = new Set(["a", "an", "and", "or", "the", "then", "to"]);
+  // How opaque an ink is, as the browser computes a colour: an alpha after
+  // a slash, or rgba's fourth number, else whole.
+  const alpha = (ink) => {
+    if (ink === "transparent") {
+      return 0;
+    }
+    if (ink.includes("/")) {
+      return Number.parseFloat(ink.slice(ink.lastIndexOf("/") + 1));
+    }
+    return ink.startsWith("rgba(") ? Number.parseFloat(ink.slice(ink.lastIndexOf(",") + 1)) : 1;
+  };
+  // A line's words up to where its sense ends, at a comma or a stop.
+  const sense = (text) => {
+    let end = text.length;
+    for (const stop of ",.;:!?") {
+      const at = text.indexOf(stop);
+      end = at >= 0 && at < end ? at : end;
+    }
+    return text.slice(0, end);
+  };
+  const seen = (element) => {
+    if (!shown(element) || forEarsOnly(element)) {
+      return false;
+    }
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return (
+      Number.parseFloat(style.fontSize) > 0 &&
+      alpha(style.webkitTextFillColor || style.color) > 0 &&
+      box.right + window.scrollX > 0 &&
+      box.bottom + window.scrollY > 0
+    );
+  };
   const onScreen = (element) => {
     const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const words = [];
     for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-      if (shown(node.parentElement) && !forEarsOnly(node.parentElement)) {
+      if (seen(node.parentElement)) {
         words.push(node.textContent);
       }
     }
     return words.join(" ");
   };
-  const follows = (control) => {
+  const follows = (one) => {
     const words = [];
-    for (let at = control.nextSibling; at !== null; at = at.nextSibling) {
+    const loose = one.parentElement !== null && seen(one.parentElement);
+    for (let at = one.nextSibling; at !== null; at = at.nextSibling) {
       if (at.nodeType === Node.TEXT_NODE) {
-        words.push(at.textContent);
+        words.push(loose ? at.textContent : "");
       } else if (at.nodeType === Node.ELEMENT_NODE) {
-        if (at.localName === "kbd" || at.querySelector("kbd") !== null) {
+        const stops = `kbd, ${acting}`;
+        if (at.matches(stops) || at.querySelector(stops) !== null) {
           break;
         }
         words.push(onScreen(at));
       }
     }
-    const line = said(words.join(" "));
+    const line = said(sense(words.join(" ")));
+    while (line.length > 0 && joining.has(line[line.length - 1])) {
+      line.pop();
+    }
     return line.some((word) => !joining.has(word)) ? line : [];
   };
-  const controls = page.querySelectorAll(
-    "button, a[href], summary, [role=button], [role=link], [role=tab], [role=menuitem], " +
-      "[role=option], [role=switch], [role=checkbox], [role=radio]",
-  );
+  const controls = page.querySelectorAll(acting);
   // A name left empty is no name: the browser names the control by its
   // words, as if the markup gave none, so it starts with them. A mark alone
   // is named however it's named, since dropping its label leaves the mark

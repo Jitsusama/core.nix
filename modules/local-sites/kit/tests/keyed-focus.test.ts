@@ -10,11 +10,17 @@ import { keyed } from "../keyed.ts";
 import { type Act, type Cell, cells, draw, List, Row } from "./rows.ts";
 
 /**
- * Draws rows a and b with `before`'s acts, focuses b's second control, then
- * draws b afresh with `after`'s acts and, where told, new words for b; and
- * says whether focus landed on b's second control or on b itself.
+ * Draws rows a and b with `before`'s acts, focuses b's second control (or,
+ * told `deep`, the control it holds), then draws b afresh with `after`'s
+ * acts and, where told, new words for b; and says whether focus landed on
+ * b's second control or on b itself.
  */
-function refocused(before: readonly Act[], after: readonly Act[], works = "on b"): string {
+function refocused(
+  before: readonly Act[],
+  after: readonly Act[],
+  works = "on b",
+  deep = false,
+): string {
   const list = new List();
   const rows = (acts: readonly Act[], told: readonly Cell[]) =>
     keyed(list, {
@@ -24,7 +30,8 @@ function refocused(before: readonly Act[], after: readonly Act[], works = "on b"
       moved: ["b"],
     });
   rows(before, cells("a", "b"));
-  list.rows[1]?.children[1]?.focus();
+  const second = list.rows[1]?.children[1];
+  (deep ? second?.children[0] : second)?.focus?.();
   rows(after, [...cells("a"), { key: "b", works }]);
   const now = list.ownerDocument.activeElement;
   if (now === list.rows[1]?.children[1]) {
@@ -120,6 +127,29 @@ it("a control whose markup says nothing of itself keeps focus only by the same w
 it("a control saying nothing of itself is never taken for one that does", () => {
   assert.equal(refocused([bare("open"), bare("copy")], ["open", "copy"]), "row");
   assert.equal(refocused(["open", "copy"], [bare("open"), bare("copy")]), "row");
+});
+
+it("a control told apart only by what it's heard as is another control", () => {
+  const heard = (label: string): Act => ({ says: "copy", attributes: { "aria-label": label } });
+  const [path, link] = [heard("copy its path"), heard("copy its link")];
+  assert.equal(refocused([path, link], [link, path]), "row");
+  assert.equal(refocused([path, link], [path, link]), "control");
+});
+
+it("a control of another kind with the same name and value is another control", () => {
+  const sent = (kind: string): Act => ({
+    says: "copy",
+    kind,
+    attributes: { name: "act", value: "copy" },
+  });
+  assert.equal(refocused(["open", sent("a")], ["open", sent("button")]), "row");
+});
+
+it("focus nested deeper than the new drawing goes to the row", () => {
+  const copy: Act = { says: "copy", attributes: { href: "#copy" } };
+  const held: Act = { says: "", kind: "span", attributes: {}, holds: { ...copy } };
+  const flat: Act = { says: "copy", kind: "span", attributes: { href: "#copy" } };
+  assert.equal(refocused(["open", held], ["open", flat], "on b", true), "row");
 });
 
 it("focus on a control saying nothing of itself goes to the row, not its likeness", () => {

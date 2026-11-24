@@ -234,11 +234,19 @@ function does(control: Placed): string | null {
   return name !== "" && value !== "" ? `name ${name} ${value}` : null;
 }
 
+/** What a control is heard as apart from its words, which tells two alike. */
+function heard(control: Placed): string {
+  return ["aria-label", "aria-labelledby", "title"]
+    .map((name) => control.getAttribute?.(name) ?? "")
+    .join("\n");
+}
+
 /**
  * Whether `one` is the same control as `other`: the same element doing the
  * same, judged by where it goes or its name, since its words may show the
  * record that just changed. One whose markup says neither is judged by its
- * words, and one with no words either is no control `one` can be known as.
+ * words and what it's heard as, and one with no words is no control `one`
+ * can be known as.
  */
 function alike(one: Placed, other: Placed | null): boolean {
   if (other === null || one.localName !== other.localName) {
@@ -249,7 +257,12 @@ function alike(one: Placed, other: Placed | null): boolean {
     return does(one) === did;
   }
   const words = other.textContent?.trim() ?? "";
-  return words !== "" && does(one) === null && one.textContent?.trim() === words;
+  return (
+    words !== "" &&
+    does(one) === null &&
+    one.textContent?.trim() === words &&
+    heard(one) === heard(other)
+  );
 }
 
 /**
