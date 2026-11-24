@@ -70,6 +70,7 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
+mod stamped;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
@@ -736,22 +737,15 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
     }
 }
 
-/// Run the gate in `checkout`, its words going to `log`: how it ended.
+/// Run the gate in `checkout`, its words going to `log`, each line stamped
+/// with its time into the gate: how it ended.
 fn gate(checkout: &Path, log: &Path) -> Gated {
-    let Ok(words) = fs::File::create(log) else {
-        return Gated::Red;
-    };
-    let Ok(errors) = words.try_clone() else {
-        return Gated::Red;
-    };
-    let ran = Command::new("nix-offload")
+    let mut command = Command::new("nix-offload");
+    command
         .args(["there", "--lent-only", "--changed"])
         .current_dir(checkout)
-        .env_remove("SSH_AUTH_SOCK")
-        .stdout(words)
-        .stderr(errors)
-        .status();
-    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
+        .env_remove("SSH_AUTH_SOCK");
+    stamped::run(command, log).map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
 }
 
 /// `owner/name` of the repository at `url`.
