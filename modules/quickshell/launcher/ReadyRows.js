@@ -257,14 +257,6 @@ function inside(keys, held, parent) {
     return keys.filter(key => (rowOf(held[key])?.parent ?? "") === parent);
 }
 
-// The keys of the rows `made` holds that sit inside another, each row as
-// `served` gives it by key: those a place makes only once a step into
-// their parent shows them, let go as the launcher closes, so the emoji of
-// every group stepped into aren't held for the shell's life.
-function madeInside(made, served) {
-    return Object.keys(made).filter(key => (served(key)?.parent ?? "") !== "");
-}
-
 // What the row of `key` and its parts are made of, as text: its record,
 // the drawer it names apart, and the records of the rows inside it, which
 // are its parts where it steps in. The same text says its parts are as they

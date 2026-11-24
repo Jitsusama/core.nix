@@ -313,7 +313,7 @@ Scope {
     // place is kept on, so a list of them shown last goes only once four
     // more have been; its view keeps only each row's mark, never the row.
     function letGoInside() {
-        for (const key of Ready.madeInside(made, served)) {
+        for (const key of Beneath.madeInside(made, served)) {
             delete madeOf[made[key]?.key];
             delete made[key];
             delete madeFrom[key];

@@ -66,7 +66,7 @@ QtObject {
     }
 
     // The rows made inside others, which a place lets go as the launcher
-    // closes, its own rows kept (ReadyRows.qml's letGoInside).
+    // closes, its own rows kept (ReadyRows.qml's letGoInside, Beneath.js's madeInside).
     function madeInside() {
         const rows = {
             group: { name: "Animals" },
@@ -76,7 +76,7 @@ QtObject {
         };
         const made = { group: {}, cat: {}, loose: {}, typed: null, gone: {} };
         Expect.same("only those inside another, made or made as nothing, are let go",
-            Ready.madeInside(made, key => rows[key] ?? null), ["cat", "typed"]);
+            Beneath.madeInside(made, key => rows[key] ?? null), ["cat", "typed"]);
     }
 
     // What Emoji lists while the history's answer to a key is asked
