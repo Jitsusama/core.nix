@@ -6,8 +6,8 @@ its name holds once it's read, which needs its client's desktop entry. What it a
 no machine is modules/quickshell/tests/launcher-on-niri-test.py's, on a nested niri in seconds;
 only its shots are here.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -569,7 +569,7 @@ def test_every_name_a_thing_had_still_finds_it(desktop: Desktop) -> None:
     # The words the account's launcher reads, as built: read here, since
     # carried back through the machine's shell they came back broken under
     # load (the net, 17 Nov). Only this area's values carry them
-    # (tests/desktop.nix), so the shared Values doesn't name them: naming
+    # (tests/desktop/desktop.nix), so the shared Values doesn't name them: naming
     # them there would move every desktop test for this one.
     words = json.loads(Path(cast("dict[str, str]", desktop.values)["words"]).read_text())
     kept = [

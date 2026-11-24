@@ -11,7 +11,7 @@
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
-import type { Held } from "../../local-sites/kit/records.ts";
+import type { Held, Moved } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
@@ -37,15 +37,32 @@ const sky = found("#sky", HTMLDivElement);
 const asof = found("#asof", HTMLSpanElement);
 const keys = found("#keys", HTMLDialogElement);
 const listTitle = found("#murmurs-title", HTMLHeadingElement);
+const quiet = found("#quiet", HTMLParagraphElement);
+const dusk = found(".dusk", HTMLElement);
+const legend = found("#sky-says", HTMLParagraphElement);
+// The crest the page opens on, kept to stand in for a flock while nothing's murmured,
+// so a quiet day shows the page's emblem rather than a bare band of sky.
+const crest = sky.innerHTML;
 
 let murmurs: readonly Murmur[] = [];
 let unread: readonly string[] = [];
 let standing: Standing | undefined;
-// The last thing the watch couldn't read, said until it reads another.
+// The last thing the watch couldn't read, said until the node's records come
+// whole again: a line the page couldn't take may have been a change, which
+// nothing tells again, so a later change can't stand for what it lost.
 let heard: string | undefined;
-// Whether the node has given any records yet, so a refusal before the first
-// never leaves the page saying it's still asking.
+// Whether `heard` came with the reading now being taken: the kit says a
+// reading's keyless records in the same task as the reading, so that reading
+// keeps the problem and only a later whole one clears it. The sites' server
+// passes no keyless record, so a problem here is a line it sent garbled.
+let heardNow = false;
+// Whether the watch has told any records yet, so ages are redrawn only once
+// there are some, and "live" told after them stands for them.
 let given = false;
+// Whether the records held are ones the node gave while its watch was live.
+// A watch the sites' server never reached tells a reader no records, then
+// that it's broken, and an empty list from it says nothing of the node's day.
+let fromLive = false;
 let cursor: string | null = null;
 // Whether the list holds only the murmurs still in the air, as the
 // headline's second count asks.
@@ -61,13 +78,20 @@ function now(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+/** What the page couldn't read, said in the standing line. */
+function troubles(): readonly string[] {
+  return [...unread, ...(heard === undefined ? [] : [heard])];
+}
+
 /** Says whether what's drawn is live, and what couldn't be read. */
 function sayWhen(): void {
-  const problems = [...unread, ...(heard === undefined ? [] : [heard])];
+  const problems = troubles();
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
   asof.setAttribute("data-state", standing?.state ?? "connecting");
-  if (!given && standing?.state === "broken") {
+  // A broken node the page never heard live has said nothing, whatever empty
+  // list the server held for it.
+  if (!fromLive && murmurs.length === 0 && standing?.state === "broken") {
     title.textContent = "Nothing to hear yet.";
     ledeLine.textContent =
       "The mycelium node didn't say what its sessions murmur; the line below says why.";
@@ -100,16 +124,51 @@ function select(bringIntoView = false): void {
   }
 }
 
+/**
+ * Shows the list while it has rows, and the quiet line once the node, while live,
+ * has said there are none and nothing it told went unread, since the standing line
+ * then says so. A node that goes broken or stale keeps the line, as it keeps a list,
+ * since the standing line then says the page is how it stood; an empty list told
+ * while it wasn't live claims no quiet day. A list with no rows is no listbox, since
+ * a listbox must hold options.
+ */
+function showList(any: boolean): void {
+  list.hidden = !any;
+  quiet.hidden = any || !fromLive || troubles().length > 0;
+  if (any) {
+    // Only a listbox may be labelled, so its name comes and goes with its role.
+    list.setAttribute("role", "listbox");
+    list.setAttribute("aria-labelledby", listTitle.id);
+    list.tabIndex = 0;
+  } else {
+    list.removeAttribute("role");
+    list.removeAttribute("aria-labelledby");
+    list.removeAttribute("tabindex");
+  }
+}
+
 function draw(): void {
+  // With nothing left in the air the list shows every murmur: the filter would
+  // otherwise hide each settled one, leaving an empty list the quiet line would
+  // call a quiet day.
+  airOnly = airOnly && murmurs.some((each) => each.settled === null);
   const rows = shown();
   if (!rows.some((each) => each.key === cursor)) {
     cursor = rows[0]?.key ?? null;
   }
   const at = now();
   list.innerHTML = rows.map((each) => murmurRow(each, at)).join("");
-  // Once the node has spoken the sky is its murmurs, so when the last one
-  // goes the flock goes with it and the wire is left bare.
-  sky.innerHTML = skyOf(murmurs, cursor);
+  showList(rows.length > 0);
+  // Once the node has spoken the sky is its murmurs; when the last one goes the
+  // flock goes with it, and the crest comes back with nothing to describe.
+  const empty = murmurs.length === 0;
+  sky.innerHTML = empty ? crest : skyOf(murmurs, cursor);
+  if (empty) {
+    dusk.setAttribute("aria-hidden", "true");
+  } else {
+    dusk.removeAttribute("aria-hidden");
+  }
+  legend.hidden = empty;
   listTitle.innerHTML = airOnly ? "The murmurs <em>still in the air</em>" : "The <em>murmurs</em>";
   select();
 }
@@ -129,8 +188,14 @@ function sayWhole(): void {
   ledeLine.textContent = lede(murmurs);
 }
 
-function heardAll(held: Held): void {
+function heardAll(held: Held, moved: Moved): void {
   given = true;
+  if (moved.whole) {
+    fromLive = standing?.state === "live";
+    if (!heardNow) {
+      heard = undefined;
+    }
+  }
   ({ murmurs, unread } = murmursOf(held));
   sayWhole();
   sayWhen();
@@ -143,11 +208,26 @@ follow(
     moved: heardAll,
     stands: (state) => {
       standing = state;
+      // A server tells a joining reader the records it holds, then how its watch
+      // stands, so records told before "live" are the live node's too.
+      const live = given && state.state === "live";
+      const drawn = fromLive;
+      fromLive ||= live;
       sayWhen();
+      if (fromLive !== drawn) {
+        draw();
+      }
     },
     problem: (what) => {
       heard = what;
+      heardNow = true;
+      // Any reading it came with is taken in this task, before this runs.
+      queueMicrotask(() => {
+        heardNow = false;
+      });
       sayWhen();
+      // A line that isn't an answer brings no reading to draw the quiet line again.
+      draw();
     },
   },
 );

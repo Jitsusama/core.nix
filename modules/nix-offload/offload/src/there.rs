@@ -158,7 +158,7 @@ impl Alone {
     /// How its command is sent far.
     fn wrap(self) -> fn(&str) -> String {
         match self {
-            Alone::Ends => far,
+            Alone::Ends => far_saying_where,
             Alone::GoesOn => outliving,
         }
     }
@@ -3256,16 +3256,59 @@ const GRACE: u32 = 300;
 /// November three of one Mac's 516 such claims named its daemons, so a
 /// watcher would hold that run for callers long gone.
 pub fn far(command: &str) -> String {
-    far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"), false)
+    far_within(
+        command,
+        &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"),
+        Far::Asks,
+    )
 }
 
-/// `command` as `far` sends it, ending once its caller has been gone 15
-/// seconds, or `NIX_OFFLOAD_RUN_GRACE`'s: a command run with `--run` builds
-/// nothing another run could wait on, so there's nothing to keep it for,
-/// and a suite left running holds a builder others wait for.
-pub fn far_brief(command: &str) -> String {
-    far_within(command, "${NIX_OFFLOAD_RUN_GRACE:-15}", false)
+/// `command` as `far` sends it, saying as it starts and as it ends which
+/// machine it runs on ([`Far::Runs`]): for a build or a run a person
+/// reads, where `far` is for the asks a lender makes every minute.
+pub fn far_saying_where(command: &str) -> String {
+    far_within(
+        command,
+        &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"),
+        Far::Runs,
+    )
 }
+
+/// `command` as `far_saying_where` sends it, ending once its caller has
+/// been gone 15 seconds, or `NIX_OFFLOAD_RUN_GRACE`'s: a command run with
+/// `--run` builds nothing another run could wait on, so there's nothing to
+/// keep it for, and a suite left running holds a builder others wait for.
+/// A lost link reattaches by sending again, so each reattach says where
+/// the run is too.
+pub fn far_brief(command: &str) -> String {
+    far_within(command, "${NIX_OFFLOAD_RUN_GRACE:-15}", Far::Runs)
+}
+
+/// What a command sent far is, for what its shell says of itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Far {
+    /// An ask, as a lender's of its builder's load, which says nothing.
+    Asks,
+    /// A build or a run, which says as it starts and as it ends which
+    /// machine it runs on, by that machine's own name: a lender's builder
+    /// lines name its alias, which each new instance takes over, so a log
+    /// that names only the alias can't say which instance a run was on.
+    Runs,
+    /// A run as `Runs` says, that runs to its end even once every caller
+    /// is gone ([`outliving`]).
+    Outlives,
+}
+
+/// What a run's far shell says as it starts, to its stderr: the machine's
+/// own name, which on a lent builder is its instance's. It's said in a
+/// shell of its own, as the end is, so a caller already gone ends that
+/// shell rather than the one about to run the command.
+const RUNNING_ON: &str = "(echo \"nix-offload: running on $(uname -n)\" >&2);";
+
+/// What it says as it ends, in its `EXIT` trap, with the status it ends
+/// with. It's said in a shell of its own, so a caller gone, whose stderr
+/// no longer takes it, ends that shell rather than the trap.
+const RAN_ON: &str = "(echo \"nix-offload: ran on $(uname -n), ending $ended\" >&2);";
 
 /// How long, at most, a run asked to outlive its callers goes on alone: as
 /// long as a builder lives.
@@ -3280,7 +3323,7 @@ pub fn outliving(command: &str) -> String {
     far_within(
         command,
         &format!("${{NIX_OFFLOAD_OUTLIVE:-{OUTLIVE}}}"),
-        true,
+        Far::Outlives,
     )
 }
 
@@ -3308,12 +3351,18 @@ pub fn outlives_on(store: &str, scratch: &Path, ssh: &str) -> bool {
 }
 
 /// `far`'s wrapper, ending what's left once no caller has lived for `grace`
-/// seconds, as the far shell reads them. One `outlives` names itself for
+/// seconds, as the far shell reads them. A run, as `far_saying_where`
+/// makes it, says where it runs, and one that outlives its callers names itself for
 /// `OUTLIVING_ASKED` while it runs.
-fn far_within(command: &str, grace: &str, outlives: bool) -> String {
+fn far_within(command: &str, grace: &str, far: Far) -> String {
     let named_for = crate::running::stable_digest(&[command.as_bytes()]);
     let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{named_for:016x}");
-    let (named, unnamed) = if outlives {
+    let (running_on, ran_on) = if far == Far::Asks {
+        ("", "")
+    } else {
+        (RUNNING_ON, RAN_ON)
+    };
+    let (named, unnamed) = if far == Far::Outlives {
         (
             "outliving=\"${TMPDIR:-/tmp}/nix-offload-outliving-$$\"; : > \"$outliving\"; ",
             "rm -f \"$outliving\"; ",
@@ -3340,8 +3389,8 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          </dev/null >/dev/null 2>&1 & \
          {ROOM_SAID} saying=$!; \
          nix_offload_given() {{ kill $saying 2>/dev/null; {unnamed}rm -f \"$claims/$PPID\"; rmdir \"$claims\" 2>/dev/null; }}; \
-         trap 'ended=$?; nix_offload_given || :; exit $ended' EXIT; \
-         trap 'exit 143' HUP TERM; {command}"
+         trap 'ended=$?; nix_offload_given || :; {ran_on} exit $ended' EXIT; \
+         trap 'exit 143' HUP TERM; {running_on} {command}"
     )
 }
 
@@ -3581,11 +3630,12 @@ pub fn on(
     scratch: &Path,
     ssh: &str,
 ) -> Result<Ran, String> {
-    on_with(lent, sending, bring, scratch, ssh, far)
+    on_with(lent, sending, bring, scratch, ssh, far_saying_where)
 }
 
-/// Builds as `on` does, with the command sent as `wrap` makes it: `far`,
-/// or `outliving` for a run asked to outlive its caller.
+/// Builds as `on` does, with the command sent as `wrap` makes it:
+/// `far_saying_where`, or `outliving` for a run asked to outlive its
+/// caller.
 pub fn on_with(
     lent: &Builder,
     sending: &Sending,
@@ -3661,7 +3711,13 @@ fn captured_on(
     let (mut command, known, said) = reach(lent, scratch, ssh)?;
     command
         .arg(&lent.host)
-        .arg(far(&sending.command))
+        // Only a run passed on as it comes says where it runs: one whose
+        // print is kept is an ask, read by its caller, not a person.
+        .arg(if tee {
+            far_saying_where(&sending.command)
+        } else {
+            far(&sending.command)
+        })
         .stdout(Stdio::piped());
     // A changed-checks turn (`changed/turns.rs`) is held for as long as
     // its run lives, and a run killed alone frees it at once: ended with
@@ -4501,7 +4557,7 @@ fn system_of(attribute: &str) -> Option<&str> {
 pub fn shared<'a>(
     asked: &Asked,
     nearby: &'a [Nearby],
-    answers: impl Fn(&str) -> bool,
+    answers: impl Fn(&Nearby) -> bool,
 ) -> (Vec<(&'a Nearby, Asked)>, Option<Asked>) {
     // An applied function or an output copied back goes the lent way,
     // which knows them, and derivations too: they may hold what only the
@@ -4523,7 +4579,7 @@ pub fn shared<'a>(
                 .any(|attribute| machine.takes(attribute))
         })
         .filter(|machine| {
-            let answering = answers(&machine.address);
+            let answering = answers(machine);
             // Said, so a machine nearby that builds nothing for a while
             // is seen to be away rather than thought idle.
             if !answering {
@@ -4711,7 +4767,9 @@ pub const VM_ROOM: usize = 4;
 /// While it waits, a run goes to the first of `others`, the other VM
 /// builders, that has room and nothing waiting, and says which it went to:
 /// a run's split is decided as it starts, so on 4 November ten runs waited
-/// 51 minutes on the first while the second sat idle.
+/// 51 minutes on the first while the second sat idle. Past
+/// [`ASKS_AFTER`], it asks one given back to stand again, while what
+/// waits passes the room of those coming ([`ask_for_room`]).
 ///
 /// A `bulk` run lets every run that isn't go before it, those waiting
 /// and those coming while it waits, and they wait for no bulk run: the
@@ -4758,6 +4816,8 @@ fn admitted_holding<'a>(
     // waited for room before a hand-over is still held its full time.
     let mut held = std::time::Duration::ZERO;
     let mut holding_since: Option<std::time::Instant> = None;
+    let came = std::time::Instant::now();
+    let mut asked: Option<Want> = None;
     loop {
         let was_holding = holding_since.take();
         // A builder root doesn't vouch for takes no room, so a run isn't
@@ -4847,6 +4907,11 @@ fn admitted_holding<'a>(
             drop(place);
             return (other, Some(claimed), held);
         }
+        // A run given `--never-ask` asks no lender for anything, room
+        // included, so it only waits for the builders already standing.
+        if waiting.asks && asked.is_none() && came.elapsed() >= ASKS_AFTER {
+            asked = ask_for_room(dir, others, room);
+        }
         if !said {
             let queue = match before {
                 0 => String::new(),
@@ -4864,6 +4929,46 @@ fn admitted_holding<'a>(
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
+}
+
+/// How long a run waits for room before it asks a VM builder that was
+/// given back to stand again, as [`ask_for_room`] does.
+const ASKS_AFTER: std::time::Duration = std::time::Duration::from_mins(1);
+
+/// Asks one of `others` to stand for the runs waiting for room, by a
+/// [`Want`] held while this run waits, if [`to_ask`] names one; says so.
+/// A builder given back stood again only for a run that asked as it
+/// began, so runs coming once the standing ones were full waited beside
+/// lanes nobody asked for: at 15:45 on 23 November 17 parts waited on
+/// three VM builders, while two given back at 15:13 and 15:20 stayed down.
+fn ask_for_room(dir: &Path, others: &[&Path], room: usize) -> Option<Want> {
+    let lane = to_ask(dir, others, room)?;
+    let want = wanting(lane)?;
+    eprintln!(
+        "nix-offload: the standing VM builders are full, so this asks {} to stand for the \
+         runs waiting",
+        lane.display()
+    );
+    Some(want)
+}
+
+/// Of `others`, the first nobody stands up or asks for, if the VM tests
+/// waiting on `dir` and on them pass the `room` of the cold builders
+/// already standing or asked for: one more is asked for only while those
+/// coming can't take what waits.
+fn to_ask<'a>(dir: &Path, others: &[&'a Path], room: usize) -> Option<&'a Path> {
+    let lanes = || std::iter::once(dir).chain(others.iter().copied());
+    let waits: usize = lanes().map(waiting).sum();
+    let rising = lanes()
+        .filter(|lane| !warm(lane) && (coming(lane) || wanted(lane)))
+        .count();
+    if waits <= rising * room {
+        return None;
+    }
+    others
+        .iter()
+        .copied()
+        .find(|other| !coming(other) && !wanted(other))
 }
 
 /// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
@@ -5114,6 +5219,18 @@ pub fn featured(asked: &Asked, nix: &str) -> BTreeSet<String> {
 /// Whether a lender runs for `dir`, as its `lender` file says.
 pub fn lends(dir: &Path) -> bool {
     lender_stands(dir)
+}
+
+/// The file whose being in a VM lender's folder keeps its lane for the
+/// runs that name the folder, so none other spills onto it: the machine
+/// declares it, as for a bare metal lane whose builder costs about 21
+/// times an n2 lane's for the same four builds.
+pub const NAMED_ONLY: &str = "named-only";
+
+/// Whether `dir`'s lane takes only the runs that name it, as its
+/// [`NAMED_ONLY`] file says.
+pub fn named_only(dir: &Path) -> bool {
+    dir.join(NAMED_ONLY).exists()
 }
 
 /// The file a VM lender keeps in its folder while the builder it has just
@@ -5544,7 +5661,7 @@ fn sent_nearby(
     let mut reached = reaching(ssh, &said);
     reached
         .arg(&machine.host)
-        .arg(far(&in_turn_nearby(&command)));
+        .arg(far_saying_where(&in_turn_nearby(&command)));
     let unrun = |error: std::io::Error| format!("couldn't run {ssh}: {error}");
     let status = if asked.print {
         // What a machine nearby built comes here only signed by a key Nix
@@ -7289,6 +7406,48 @@ mod tests {
         );
     }
 
+    // On 23 November a lent builder's alias was taken over by a new
+    // instance mid-trial, and no log could say which instance a run was
+    // on. A build says its machine's own name as it starts and as it ends,
+    // with how it ended, in sh and zsh alike, and leaves what it prints
+    // alone; an ask says neither, since a lender makes one every minute.
+    #[test]
+    fn a_build_says_which_machine_it_runs_on_and_an_ask_says_nothing() {
+        let named = Command::new("uname").arg("-n").output().unwrap();
+        let machine = String::from_utf8_lossy(&named.stdout).trim().to_owned();
+        for shell in ["dash", "zsh"] {
+            for (sent, says) in [
+                (far_saying_where("echo ran; exit 3"), true),
+                (far_brief("echo ran; exit 3"), true),
+                (far("echo ran; exit 3"), false),
+            ] {
+                let folder = tempfile::tempdir().unwrap();
+                let (out, err) = (folder.path().join("out"), folder.path().join("err"));
+                let ran = Command::new(shell)
+                    .args(["-c", &sent])
+                    .process_group(0)
+                    .stdout(fs::File::create(&out).unwrap())
+                    .stderr(fs::File::create(&err).unwrap())
+                    .status()
+                    .unwrap();
+                let said = fs::read_to_string(&err).unwrap_or_default();
+                assert_eq!(ran.code(), Some(3), "{shell} said: {said}");
+                assert_eq!(
+                    fs::read_to_string(&out).unwrap(),
+                    "ran\n",
+                    "{shell} changed what the run printed: {said}"
+                );
+                let started = said.contains(&format!("nix-offload: running on {machine}\n"));
+                let ended = said.contains(&format!("nix-offload: ran on {machine}, ending 3\n"));
+                assert_eq!(
+                    (started, ended),
+                    (says, says),
+                    "{shell} said where it ran, or didn't, against what was asked: {said}"
+                );
+            }
+        }
+    }
+
     /// The boot this machine's shells name a turn's holder in.
     fn this_boot() -> String {
         let read = Command::new("sh").args(["-c", BOOT_READ]).output().unwrap();
@@ -8422,7 +8581,8 @@ mod tests {
         assert_eq!(ran.map(|ran| ran.status), Some(0));
         assert_eq!(
             fs::read_to_string(&sent).unwrap(),
-            far(&in_turn_nearby(&asked.command()))
+            far_saying_where(&in_turn_nearby(&asked.command())),
+            "a build sent nearby waits for a turn and says which machine it runs on"
         );
     }
 
@@ -8985,6 +9145,68 @@ mod tests {
         );
     }
 
+    /// VM builder folders `names` under a folder of their own, with `waits`
+    /// VM tests waiting for room in the first, by the place it gives.
+    fn lanes_waiting(names: &[&str], waits: usize) -> (tempfile::TempDir, Vec<PathBuf>, Claim) {
+        let folder = tempfile::tempdir().unwrap();
+        let dirs: Vec<PathBuf> = names.iter().map(|name| folder.path().join(name)).collect();
+        for dir in &dirs {
+            fs::create_dir(dir).unwrap();
+        }
+        let place = queued(&dirs[0], waits, Rank::Plain).expect("a place");
+        (folder, dirs, place)
+    }
+
+    #[test]
+    fn a_run_waiting_past_the_coming_room_asks_a_lane_nobody_asked() {
+        let (_folder, dirs, _place) = lanes_waiting(&["vm-3", "vm-8", "vm-12"], 4);
+        let others = [dirs[1].as_path(), dirs[2].as_path()];
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            Some(dirs[1].as_path()),
+            "4 VM tests waiting with no lane coming asked none, or not the first"
+        );
+        fs::write(dirs[1].join("lending"), "a-builder\n").unwrap();
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            None,
+            "a lane standing up for 4 waiting wasn't room enough"
+        );
+    }
+
+    #[test]
+    fn a_run_asks_past_lanes_coming_or_asked_for() {
+        let (_folder, dirs, _place) = lanes_waiting(&["vm-3", "vm-8", "vm-12", "vm-14"], 12);
+        fs::write(dirs[1].join("lending"), "a-builder\n").unwrap();
+        let asked = wanting(&dirs[2]).expect("a want");
+        let others = [dirs[1].as_path(), dirs[2].as_path(), dirs[3].as_path()];
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            Some(dirs[3].as_path()),
+            "12 waiting past two lanes coming didn't ask the third, the one nobody had"
+        );
+        let more = wanting(&dirs[3]).expect("a want");
+        assert_eq!(
+            to_ask(&dirs[0], &others, VM_ROOM),
+            None,
+            "a lane was asked for with room coming for all 12"
+        );
+        drop((asked, more));
+    }
+
+    #[test]
+    fn a_run_asks_nothing_while_none_waits() {
+        let folder = tempfile::tempdir().unwrap();
+        let (dir, other) = (folder.path().join("vm-3"), folder.path().join("vm-8"));
+        fs::create_dir(&dir).unwrap();
+        fs::create_dir(&other).unwrap();
+        assert_eq!(
+            to_ask(&dir, &[other.as_path()], VM_ROOM),
+            None,
+            "a lane was asked for with nothing waiting"
+        );
+    }
+
     #[test]
     fn a_want_whose_build_ended_is_taken_away() {
         let folder = tempfile::tempdir().unwrap();
@@ -9293,7 +9515,7 @@ mod tests {
         // every build it would never take shouldn't wait out.
         let machines = [mac()];
         let probed = std::cell::Cell::new(0);
-        let answers = |_: &str| {
+        let answers = |_: &crate::there::Nearby| {
             probed.set(probed.get() + 1);
             true
         };

@@ -461,12 +461,23 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 /**
+ * A purpose that shows nothing: spaces and breaks, controls, the characters
+ * Unicode says draw nothing by default (a zero-width space, a word joiner, a
+ * soft hyphen, a Hangul filler, a variation selector) and the blank braille
+ * cell, which a pasted or written purpose can carry and `trim` leaves. The
+ * marks written before a number, such as the end of an ayah, show a glyph,
+ * so a purpose of them is written.
+ */
+const SAYS_NOTHING = /^[\s\p{Cc}\p{Default_Ignorable_Code_Point}\u2800]*$/u;
+
+/**
  * Whether `forage` has no purpose written yet: what the headline counts,
- * the lede names, the floor draws hollow and the view of cells without
- * purpose takes in, so none of them can disagree with another.
+ * the lede names, the row and the floor show hollow and the view of cells
+ * without purpose takes in, so none of them can disagree with another. A
+ * purpose that shows nothing says nothing, so it counts as unwritten.
  */
 function unwritten(forage: Forage): boolean {
-  return forage.purpose === "";
+  return SAYS_NOTHING.test(forage.purpose);
 }
 
 /**

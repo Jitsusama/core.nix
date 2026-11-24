@@ -1,6 +1,6 @@
 """Agents' Spec on the whole launcher, over the cadence-spec daemon itself, on niri.
 
-modules/quickshell/checks/spec.nix runs this through pytest inside tests/nested-niri.sh, with
+modules/quickshell/checks/spec.nix runs this through pytest inside tests/lib/nested-niri.sh, with
 Spec's place as the account's cadence module gives it, and cadence-spec serving what a
 stand-in for cadence prints from a file here. On 18 November Spec was listed twice in Agents,
 as its part and among Agents' own rows, and the cursor moved between the two as each read

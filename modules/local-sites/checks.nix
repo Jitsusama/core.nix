@@ -550,6 +550,7 @@ in
   # read in headless Chromium through the server beside a stand-in node
   # (modules/mycelium/murmurs/tests/murmurs-reads-live-test.py): live with
   # every murmur drawn newest first and counted, one said, settled or gone,
+  # a quiet node said in a line with no empty list or bare sky,
   # one it can't read said, broken while the node is away with the murmurs
   # kept and live once it's back, stale once the server goes with them kept,
   # words drawn as words and never as markup, its keys and a tap on those its

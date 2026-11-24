@@ -35,10 +35,10 @@
 </head>
 <body>
 
-<a class="skip" href="#murmurs">Skip to the murmurs</a>
+<a class="skip" href="#main">Skip to the murmurs</a>
 
 <header class="hero">
-  <figure class="dusk" aria-label="The murmurs as a flock, as the list below says them" aria-describedby="sky-says">
+  <figure class="dusk" aria-label="The murmurs as a flock, as the list below says them" aria-describedby="sky-says" aria-hidden="true">
     <div id="sky" class="drawn">
     <svg class="crest" viewBox="0 0 240 96" aria-hidden="true">
     <path class="wire" d="M4 82C80 88 160 88 236 82"/>
@@ -76,8 +76,9 @@
 <main id="main" class="work">
   <section class="whole-list" aria-labelledby="murmurs-title">
     <h2 id="murmurs-title" class="part">The <em>murmurs</em></h2>
-    <p id="sky-says" class="legend">A bird in flight is a murmur still in the air, gathered with the cell that said it; a hairline runs to each tied quest whose cell murmurs here too, and a bird on the wire has been settled.</p>
-    <div class="murmurs" id="murmurs" role="listbox" aria-labelledby="murmurs-title" tabindex="0"></div>
+    <p id="sky-says" class="legend" hidden>A bird in flight is a murmur still in the air, gathered with the cell that said it; a hairline runs to each tied quest whose cell murmurs here too, and a bird on the wire has been settled.</p>
+    <div class="murmurs" id="murmurs" hidden></div>
+    <p id="quiet" class="quiet" hidden>Nothing murmured in the last day. A murmur shows here once a cell says one, with <code>mycelium web</code> in a terminal.</p>
     <noscript><p class="hint">The murmurs are drawn in the browser, live from the mycelium node; without scripts, read <a href="index.md">the page as text</a>, or type <code>mycelium web</code> in a terminal.</p></noscript>
   </section>
 </main>

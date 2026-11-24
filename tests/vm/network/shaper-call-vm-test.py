@@ -24,6 +24,8 @@ import pytest
 from test_driver.machine import retry
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from test_driver.machine import BaseMachine
 
 # A JSON object as tc, iperf3 or the shaper gives it, whose fields the test reads as it finds them.
@@ -101,6 +103,9 @@ CALL_TINS = slice(TINS.index("video"), None)
 # having heard both connects. Either is a handshake lost, which the counters read as lost
 # coming down when the server heard more connects than replies reached the client, and going
 # up otherwise.
+# The error alone is any early read failure, so a handshake counts as lost only where the
+# counters show one missing: a connect the client sent that the server never heard, or one
+# it heard that no reply reached the client for.
 UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
@@ -297,6 +302,7 @@ class Rig:
         for made in range(1, HANDSHAKES + 1):
             before = self.downs()
             connects, replies = self.handshakes(self.server), self.handshakes(self.client)
+            asked = self.handshakes(self.client, "sent")
             walked = self.path()
             results = self.hold(held, seconds)
             now = self.path()
@@ -308,7 +314,15 @@ class Rig:
             dropped = sum(self.downs()[CALL_TINS]) - sum(before[CALL_TINS])
             heard = {name: n - connects[name] for name, n in self.handshakes(self.server).items()}
             came = {name: n - replies[name] for name, n in self.handshakes(self.client).items()}
-            lost = [name for name in held if unanswered(results[name])]
+            sent = {
+                name: n - asked[name] for name, n in self.handshakes(self.client, "sent").items()
+            }
+            lost = [
+                name
+                for name in held
+                if unanswered(results[name])
+                and (sent[name] > heard[name] or heard[name] > came[name])
+            ]
             failed = [name for name in held if "error" in results[name] and name not in lost]
             # iperf3 connects a call's streams one after another and stops at the first left
             # unanswered, so a reply came for every connect heard only when the failing one
@@ -334,9 +348,10 @@ class Rig:
             )
         return results
 
-    def handshakes(self, machine: BaseMachine) -> dict[str, int]:
-        """Give how many call handshake datagrams a machine has received, by call."""
-        return {name: counted(machine, "handshakes", name) for name in CALLS}
+    def handshakes(self, machine: BaseMachine, way: str = "heard") -> dict[str, int]:
+        """Give how many call handshake datagrams a machine has received, or sent, by call."""
+        suffix = "" if way == "heard" else f"_{way}"
+        return {name: counted(machine, "handshakes", f"{name}{suffix}") for name in CALLS}
 
     def path(self) -> dict[str, dict[str, list[int]]]:
         """Give how many of each call's datagrams each machine on its path has met, each way.
@@ -551,6 +566,13 @@ def received(result: Json, way: str) -> Json:
     return summary
 
 
+def written(result: Json, way: str) -> int:
+    """Give how many datagrams a call's sender wrote one way: `up` to the server, `down` back."""
+    end: Json = result.get("end", {})
+    summary: Json = end.get("sum_sent" if way == "up" else "sum_sent_bidir_reverse", {})
+    return int(summary.get("packets", 0))
+
+
 def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
     """Give whether a wait is met, saying otherwise with the trace on its last try."""
     if last_try and not now:
@@ -564,13 +586,15 @@ def under_load(
     app_uploads: int = 0,
     names: list[str] | None = None,
     room: bool = False,
+    held: Callable[[], None] | None = None,
 ) -> dict[str, dict[str, int]]:
     """Hold the calls named, both unless named, while the jobs and an app fill the connection.
 
     What each call lost each way before its receiving socket is given, as the machines on its
     path counted it, and where each was met is printed. With app_uploads, the app uploads too,
     filling Joel's lane rather than the agents'. With room, the calls wait for the shaper to
-    hold the download under the line for a call that's on.
+    hold the download under the line for a call that's on, and held is called once it does,
+    as the calls start, so what it counts from there is the hold's alone.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
@@ -625,6 +649,8 @@ def under_load(
                 timeout=FILLING,
             )
             rig.watch()
+            if held:
+                held()
         results = rig.calls(names)
         if room:
             # Every second from the hold's start until the calls ended, the shaper said its
@@ -645,6 +671,8 @@ def under_load(
         rig.client.execute("systemctl stop room-watch")
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
+        # Printed before a failure, so the call that failed keeps where its datagrams went.
+        print(f"the {name} call's datagrams, as each machine met them: {result['path']}")
         # The messages are made only on a failure, so the trace is taken only then.
         assert "error" not in result, f"the {name} call failed: {result['error']}\n{rig.trace()}"
         lost[name] = {}
@@ -656,8 +684,19 @@ def under_load(
             )
             seen = result["path"][way]
             read = int(summary["packets"]) - int(summary["lost_packets"])
+            wrote = written(result, way)
             steps = ", ".join(f"the {m} {n}" for m, n in zip(order, seen, strict=True))
-            print(f"the {name} call's datagrams {way}, as met: {steps}, iperf3 {read}")
+            print(
+                f"the {name} call's datagrams {way}, as met: {steps},"
+                f" iperf3 wrote {wrote} and read {read}"
+            )
+            # The first machine's counter meets each datagram as iperf3 writes it, before
+            # any queue, so one past what iperf3 wrote took in datagrams not the call's,
+            # which would read as more lost than was.
+            assert seen[0] <= wrote, (
+                f"the first machine counted more of the {name} call's datagrams {way} than"
+                f" iperf3 wrote, so its counter took in others: {steps}, iperf3 wrote {wrote}"
+            )
             # Every datagram iperf3 read passed each machine, so a count under it is a
             # counter that missed the call, which would read as nothing lost.
             assert min(seen) >= read, (
@@ -675,9 +714,11 @@ def held_for_a_call(turned: bool, kbit: int | None, room: int | None) -> bool:
     """Give whether a watched second held the download for a call.
 
     Turned through the IFB, its CAKE at the room or under, and the shaper saying its room
-    held it, so a cut of the controller's own under the room can't stand in for it.
+    held it, so a cut of the controller's own under the room can't stand in for it. The
+    shaper leaves CAKE at a rate it already set while the one it would set is within a
+    hundredth of it (src/main.rs's `apply`), so CAKE may read up to ROOM_KBIT / 0.99.
     """
-    return turned and kbit is not None and kbit <= ROOM_KBIT and room == ROOM_KBIT
+    return turned and kbit is not None and kbit * 99 <= ROOM_KBIT * 100 and room == ROOM_KBIT
 
 
 def unanswered(result: Json) -> bool:
@@ -750,8 +791,9 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
 def test_a_call_loses_little(rig: Rig) -> None:
     """Under a full connection both ways, each call loses a hundredth at most coming down.
 
-    The bar counts what was lost from the server to the client's input hook; what overflows
-    the client's socket, which a starved builder causes, is only printed.
+    The bar counts what was lost from the server to the client's input hook, so not all the
+    call missed: what overflows the client's socket, a reader falling behind, as one starved
+    of the builder's CPU does, is only printed. Every queue of the shaper's is before the hook.
 
     A call is on, as Joel's would be, so the shaper holds the download under the line's
     declared 90 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
@@ -760,16 +802,23 @@ def test_a_call_loses_little(rig: Rig) -> None:
     one run in fifty.
     """
     ifb = rig.ifb()
-    before = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
-    router_before = rig.router_drops()
+    before: dict[str, list[int]] = {}
+    router_before: list[int] = []
+
+    def held() -> None:
+        # From the hold's start, so the seconds the loads filled the line before it, when
+        # the router's queue stood as it would with no call on, aren't counted against it.
+        before.update({dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]})
+        router_before.append(rig.router_drops())
+
     try:
         rig.client.succeed(f"touch {CALL_FLAG}")
-        lost = under_load(rig, room=True)
+        lost = under_load(rig, room=True, held=held)
     finally:
         # A call left on would put the next tests' calls in the video tin by the flag alone.
         rig.client.succeed(f"rm -f {CALL_FLAG}")
     after = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
-    router = rig.router_drops() - router_before
+    router = rig.router_drops() - router_before[0]
     dropped = {
         dev: dict(
             zip(TINS, (a - b for a, b in zip(after[dev], before[dev], strict=True)), strict=True)
@@ -785,8 +834,9 @@ def test_a_call_loses_little(rig: Rig) -> None:
                 f" over {DOWN_MOST}; dropped by tin: {dropped}, by the router {router}\n{trace}"
             )
     # Held under the line, the download's excess is dropped in the IFB's CAKE rather than
-    # the router's queue, which the hold keeps short: with the IFB dropping less, the queue
-    # stood in the router whatever the IFB's rate read.
+    # the router's queue, which the hold keeps short: with the IFB dropping less while it
+    # held, the queue stood in the router whatever the IFB's rate read. Counted from the
+    # hold's start to the loads' stop (download round 3's F2, F9 and F13).
     ifb_dropped = sum(dropped[ifb].values())
     assert ifb_dropped > router, (
         f"the IFB dropped {ifb_dropped} of the download, the router's queue {router}: {dropped}"
@@ -797,7 +847,16 @@ def test_a_call_loses_little(rig: Rig) -> None:
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat | grep -q 'no longer held for a call'", timeout=HEARING
     )
-    assert rig.room() is None, "the shaper said its room held the download once the call ended"
+    # The status is written after the journal's line in the same step, so it's waited on.
+    retry(
+        lambda last_try: met(
+            rig,
+            now=rig.room() is None,
+            last_try=last_try,
+            otherwise="the shaper said its room held the download once the call ended",
+        ),
+        timeout=HEARING,
+    )
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat | sed -n '/no longer held for a call/,$p'"
         " | grep -q 'goes straight in'",

@@ -37,6 +37,7 @@ import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "PlaceRow.js" as PlaceRow
+import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
 import "../pieces/Holding.js" as Holding
 
@@ -946,7 +947,11 @@ Provider {
         };
         const row = member({
             thing: true,
-            key: `on:waiting:${WaitingOnYou.identity(each)}`,
+            // Under `item:`, since its identity is its quest and id as its
+            // session wrote them, and a quest named want, done, came, try or
+            // screen would otherwise take the key of a want's row, or
+            // another's of For You's own.
+            key: `on:waiting:item:${WaitingOnYou.identity(each)}`,
             // What it is and where it's from, which For You filters by; not
             // `kind`, which a row says beside its side (Choice.qml).
             forYou: { kind: "do", source: "needs-you" },
@@ -1150,8 +1155,13 @@ Provider {
     function lookSettled(file, text, was, answer) {
         if (answer?.done === true)
             return;
-        console.warn(`Now: the to-do daemon didn't settle ${file} (${answer?.error?.message
-            ?? "not there to ask"}), so its look stands as it was`);
+        // A look's file is named for what Joel wrote, and the daemon's words
+        // may quote it, so they're said by letters and as errorShown says them.
+        const why = answer?.error === undefined ? "not there to ask"
+            : Presented.errorShown(answer.error, Options.reports);
+        const named = Presented.typedShown(file, Options.reports);
+        console.warn(`Now: the to-do daemon didn't settle ${named} (${why}),`
+            + " so its look stands as it was");
         if (looksSettling[file]?.text !== text)
             return;
         delete looksSettling[file];
@@ -1240,18 +1250,20 @@ Provider {
     // its window, which a terminal's Open already is, offered as Agents
     // offers it: where it has a window, or is parked and wakes into one;
     // then Explain It, which says what the cell works on in a sentence or
-    // two (explainAct), where the machine has Ask's pi to answer it. None
-    // while no cell is held for it, or Agents isn't there to talk through.
+    // two and, where it waits on Joel, which act on the row answers it
+    // (explainAct), where the machine has Ask's pi to answer it: Talk and Go
+    // To, which reach the cell. A look's own choices and Open answer the
+    // look, not what the cell asks now, which may be another question, and
+    // Clear It answers nothing. None while no cell is held for it, or
+    // Agents isn't there to talk through.
     function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
             return [];
         const talk = [talkTo(cell)].filter(act => act !== null);
-        const explain = source("ask") === null ? []
-            : [explainAct(`verb:on:waiting:explain:on:look:${one.id}`, cell)];
         const reachable = agents.windowedOf(cell) || !!Sessions.parkedAs(cell.address);
-        return one.kind === "terminal" || !reachable ? talk.concat(explain) : talk.concat([thing({
+        const acts = one.kind === "terminal" || !reachable ? talk : talk.concat([thing({
             // Under Go To's own word, so the : line names it as a want's is.
             key: `verb:on:waiting:go:on:look:${one.id}`,
             verb: Words.verb("verb:on:waiting:go"),
@@ -1261,15 +1273,19 @@ Provider {
             side: cell.title,
             later: true,
             run: () => provider.goToCell(one)
-        })], explain);
+        })]);
+        return source("ask") === null ? acts : acts.concat([explainAct(
+            `verb:on:waiting:explain:on:look:${one.id}`, cell, acts.map(act => act.name))]);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
     // what the session works on, why and how it stands, its answer then
     // standing in the act's place (Explainer.qml), so Joel needn't open a
     // session to know what a short line is about (WCJQSG, 2026-11-17).
-    function explainAct(key, cell) {
-        const shown = explainer.shown(key);
+    // `beside` names the acts on its row, which its answer may point to,
+    // so it goes once they change (Explainer.qml's shown).
+    function explainAct(key, cell, beside) {
+        const shown = explainer.shown(key, beside);
         return thing(Object.assign({
             key: key,
             verb: Words.verb("verb:on:waiting:explain"),
@@ -1279,7 +1295,7 @@ Provider {
             side: cell.title,
             stays: true,
             changes: false,
-            run: () => explainer.explain(key, cell.address)
+            run: () => explainer.explain(key, cell.address, beside)
         }, shown === null ? {} : {
             name: shown.name,
             reads: shown.reads,

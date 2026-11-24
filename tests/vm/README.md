@@ -24,7 +24,7 @@ They are grouped by what they prove, a folder an area:
 | `programs/` | a program Joel runs saying what it has open, as Chrome its tabs    |
 | `screens/`  | the shell as screens go and come: its places, and the launcher     |
 
-One VM test isn't here yet, the desktop's: it is `../desktop.nix`, with its
+One VM test isn't here yet, the desktop's: it is `../desktop/desktop.nix`, with its
 areas in `../desktop/`, and moves here as its owner frees it. Shared helpers are
 in `../lib/`, and stand-ins several tests use are in `../stand-ins/`,
 each saying what it stands in for. A check that needs no VM goes beside

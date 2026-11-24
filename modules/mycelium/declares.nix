@@ -81,6 +81,21 @@ rec {
         default = false;
         description = "Whether work on this machine costs money.";
       };
+      # A Mac's pi in pi-fence's launcher can't reach its own state, so a
+      # session started there for a fenced kind runs bare once pi lays
+      # its own sandbox profile round each command it runs.
+      piFencesItself = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Whether pi here lays its own fence round each command it runs, as
+          a Mac's pi does from the harness that fences each command with a
+          sandbox profile, so a fenced or strict session starts as pi alone
+          rather than within the fence's launcher. Then only the commands pi
+          runs are fenced, not pi's own reads and calls. Refused on Linux,
+          where pi lays no such fence.
+        '';
+      };
       taints = lib.mkOption {
         type = lib.types.listOf taint;
         default = [ ];
@@ -140,7 +155,9 @@ rec {
           a Mac's strict reads the home folder but what pi's fence hides,
           where Linux's reads only what it lists, and it writes the account's
           temporary folder, yet both say strict. So a carry from Linux to a
-          Mac lands looser in what it may read and write.
+          Mac lands looser in what it may read and write. On a Mac declaring
+          piFencesItself, the kind fences only the commands pi runs, while
+          pi's own reads, writes and calls stand outside it.
         '';
       };
     };

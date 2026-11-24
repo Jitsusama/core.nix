@@ -141,10 +141,12 @@ pub fn plain_quest(quest: &str) -> bool {
     )
 }
 
-/// Whether `session` is a mesh address, six capitals and digits.
+/// Whether `session` is a mesh address: six capitals and digits, as a
+/// quest's cell is named, or eight, as a session apart from its quest's
+/// cell is, such as one carried to another machine.
 #[must_use]
 pub fn plain_session(session: &str) -> bool {
-    session.len() == 6
+    matches!(session.len(), 6 | 8)
         && session
             .bytes()
             .all(|byte| byte.is_ascii_digit() || byte.is_ascii_uppercase())
@@ -453,6 +455,19 @@ mod tests {
         ];
         for text in refused {
             assert!(Request::parse(&text).is_err(), "{text} should be refused");
+        }
+    }
+
+    #[test]
+    fn a_session_of_six_or_eight_is_a_mesh_address() {
+        for address in ["SK1FF0", "95A8DFEB"] {
+            assert!(plain_session(address), "{address} should be a mesh address");
+        }
+        for strange in ["SK1FF", "SK1FF0A", "95A8DFEB0", "95a8dfeb", "95A8-FEB", ""] {
+            assert!(
+                !plain_session(strange),
+                "{strange:?} shouldn't be a mesh address"
+            );
         }
     }
 

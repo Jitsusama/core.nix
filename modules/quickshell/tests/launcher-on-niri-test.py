@@ -1,7 +1,7 @@
 """The launcher answers what's typed, on the account's whole shell on niri.
 
-modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts once a run. Each case here needs only the launcher or the
+modules/quickshell/checks/core.nix runs this through pytest inside tests/lib/nested-niri.sh, with
+the shell launcher_on_niri.py starts once a run. Each case here needs only the launcher or the
 notices, what they're typed and what they draw, so none boots a machine; a case needing the
 machine's battery, lights, services, other programs or niri's binds pressed stays in
 tests/desktop/. Every test starts with the
@@ -21,7 +21,6 @@ import os
 import re
 import shlex
 import shutil
-import signal
 import socket
 import subprocess
 import threading
@@ -541,7 +540,7 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # the cursor far above. Both are held to the whole run's count, since what's laid first
     # this deep is itself past whole_least. G lands each time on the end of what's laid, the
     # run's end as far as it's laid, so this is also the case for go()'s showing or laying more
-    # and moving again, whose edges are cased in Qt's engine (DrawerPage.runReach).
+    # and moving again, whose edges and steps are cased in Qt's engine (DrawerRun.walk).
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l G")
     shell.launcher_until(
         lambda shown: (
@@ -1416,27 +1415,6 @@ def test_return_typed_with_the_text_acts_on_what_it_found(shell: Shell) -> None:
     shell.close_launcher()
 
 
-def notices_daemon() -> int:
-    """Give the notices daemon's process, started by modules/quickshell/tests/notices-beside.sh."""
-    for named in Path("/proc").glob("[0-9]*/comm"):
-        with contextlib.suppress(OSError):
-            if named.read_text().strip() == "notices":
-                return int(named.parent.name)
-    failed = "no notices daemon runs beside the shell"
-    raise AssertionError(failed)
-
-
-@contextlib.contextmanager
-def notices_stopped() -> Iterator[None]:
-    """Hold the notices daemon stopped while what's done inside it runs, so it answers late."""
-    daemon = notices_daemon()
-    os.kill(daemon, signal.SIGSTOP)
-    try:
-        yield
-    finally:
-        os.kill(daemon, signal.SIGCONT)
-
-
 # How many letters a search gathers each place's rows from, so a notice is found at home.
 GATHERED_FROM = 2
 
@@ -1487,7 +1465,7 @@ def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shel
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     since = shell.mark()
-    with notices_stopped():
+    with launcher_on_niri.notices_stopped():
         shell.type_in("windows", selecting="windows")
         shell.reported("listed without answers", lambda rest: rest == "", since)
         shown = shell.showing()

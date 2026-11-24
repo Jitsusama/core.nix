@@ -14,12 +14,16 @@ import { cellLink } from "../../local-sites/kit/cell.ts";
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
 import {
+  type Brood,
+  byBook,
   cellOrAway,
   claimedCell,
   escaped,
+  kinOf,
   namedOf,
   splitSaid,
   startedBy,
+  starts,
   startsSaid,
 } from "./lineage.ts";
 import {
@@ -64,6 +68,8 @@ const STAGES: { readonly [stage: string]: string } = {
 /** The floor's measures, in its own units: a cell's room, the ground and each branch's drop. */
 const FLOOR = {
   room: 30,
+  /** The room left where the floor skips cells of its list, holding a mark. */
+  gap: 24,
   margin: 24,
   ground: 52,
   hypha: 78,
@@ -213,107 +219,54 @@ ${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
 `;
 }
 
-/** How the cells of `forages` grew from each other, by their places in it. */
-interface Kin {
-  /**
-   * The cell at `start` and each it grew from, up to `most` of them, once
-   * round a ring, stopping at a cell `known` holds, as each cell there came
-   * with those it grew from.
-   */
-  readonly line: (start: number, known: ReadonlySet<number>, most: number) => readonly number[];
-  /** The cells that grew from the cell at `parent`, in the list's order. */
-  readonly children: (parent: number) => readonly number[];
-}
-
-function kinOf(forages: readonly Forage[]): Kin {
-  const here = new Set(forages.map((each) => each.cell));
-  const index = new Map(forages.map((each, place) => [each.cell, place]));
-  const from = forages.map((each) => {
-    const by = grewFrom(each, here);
-    return by === undefined ? undefined : index.get(by);
-  });
-  const line = (start: number, known: ReadonlySet<number>, most: number): readonly number[] => {
-    const found: number[] = [];
-    const seen = new Set<number>();
-    let at: number | undefined = start;
-    while (at !== undefined && !known.has(at) && !seen.has(at) && found.length < most) {
-      found.push(at);
-      seen.add(at);
-      at = from[at];
-    }
-    return found;
-  };
-  const children = (parent: number): readonly number[] =>
-    from.flatMap((by, place) => (by === parent ? [place] : []));
-  return { line, children };
-}
-
-/** The places of a list `length` long, from `centre` outward, nearest first. */
-function* outward(centre: number, length: number): Generator<number> {
-  for (let step = 0; step < length; step += 1) {
-    if (centre + step < length) {
-      yield centre + step;
-    }
-    if (step > 0 && centre - step >= 0) {
-      yield centre - step;
-    }
-  }
-}
-
-/** The places `drawn` tries in turn: `first`, then outward from `centre`. */
-function* starts(first: readonly number[], centre: number, length: number): Generator<number> {
-  yield* first;
-  yield* outward(centre, length);
-}
+/** The children of no cell, as when the floor is drawn around none on its list. */
+const BARREN: Brood = { booked: [], claimed: [] };
 
 /**
  * The cells the floor draws, in the list's order: every one when they fit.
  * Past that, it draws `around`, then the cells that grew from it, then the
  * cells nearest it, so the floor follows the cursor down a list longer
  * than it holds. Each comes with every cell it grew from, or not at all, so
- * no branch drawn hangs from a starter that isn't; only a line deeper than
- * the floor holds is cut at its top, as the nearest of it beats none. With
- * no `around` on the list, that's the list's first, as the list puts each
- * cell after its starter, but for a ring cut by the floor's last place.
+ * no branch drawn hangs from a starter that isn't. Only `around`'s own line
+ * is cut at its top, as the nearest of it beats none: whenever it's longer
+ * than the room left once the cells the node's book holds as grown from
+ * `around` have theirs, up to half the floor, so a line shallower than the
+ * floor is cut too when enough booked cells grew from its cell. Cells that
+ * only claim to have grown from it come after, in whatever room is left.
+ * When no whole line fits the room left, as in a ring of starts longer
+ * than it, the floor is filled with lines cut at their tops. With no
+ * `around` on the list, that's the list's first, as the list puts each cell
+ * after its starter, but for a ring cut by the floor's last place.
  */
 function drawn(forages: readonly Forage[], around: string | null): readonly Forage[] {
   // Only a shortcut: on a list that fits, the walk below draws it whole too.
   if (forages.length <= FLOOR.most) {
     return forages;
   }
-  const { line, children } = kinOf(forages);
+  const { line, children } = kinOf(forages, grewFrom);
   const found = forages.findIndex((each) => each.cell === around);
-  const first = found < 0 ? [] : [found, ...bookedFirst(forages, children(found))];
+  const { booked, claimed } = found < 0 ? BARREN : byBook(forages, children(found), grewClaimed);
+  const reach = FLOOR.most - Math.min(booked.length, FLOOR.most / 2);
+  const first = found < 0 ? [] : [found, ...booked, ...claimed];
   const chosen = new Set<number>();
-  for (const start of starts(first, Math.max(found, 0), forages.length)) {
-    // A line one longer than the room left can't fit, so it stops there; only
-    // the first may fill the floor, cut at its top.
-    const room = FLOOR.most - chosen.size;
-    const wanted = line(start, chosen, chosen.size === 0 ? room : room + 1);
-    if (wanted.length <= room) {
-      for (const each of wanted) {
-        chosen.add(each);
+  for (const whole of [true, false]) {
+    for (const start of starts(first, Math.max(found, 0), forages.length)) {
+      if (chosen.size === FLOOR.most) {
+        break;
       }
-    }
-    if (chosen.size === FLOOR.most) {
-      break;
+      // A whole line one longer than the room left can't fit, so it stops
+      // there; the first, and each once no whole one fits, is cut at its top.
+      const room = FLOOR.most - chosen.size;
+      const most = chosen.size === 0 ? reach : room + (whole ? 1 : 0);
+      const wanted = line(start, chosen, most);
+      if (wanted.length <= room) {
+        for (const each of wanted) {
+          chosen.add(each);
+        }
+      }
     }
   }
   return [...chosen].sort((one, other) => one - other).flatMap((each) => forages[each] ?? []);
-}
-
-/**
- * The places `kids` of `forages`, those the node's book holds first, so
- * cells that only claim to have grown from one can't crowd its booked
- * starts off the floor.
- */
-function bookedFirst(forages: readonly Forage[], kids: readonly number[]): readonly number[] {
-  const here = new Set(forages.map((each) => each.cell));
-  const claimed = (place: number): boolean => {
-    const kid = forages[place];
-    return kid === undefined || grewClaimed(kid, here);
-  };
-  return [...kids.filter((place) => !claimed(place)), ...kids.filter(claimed)];
 }
 
 /**
@@ -390,15 +343,44 @@ function floorAfter(forages: readonly Forage[], shown: Floor, cursor: string | n
   return floorStepped(floorFor(forages, around), cursor);
 }
 
-/** Where each cell `floor` draws sits, by its place among those drawn and its depth. */
-function placed(
-  floor: Floor,
-): readonly { readonly forage: Forage; readonly x: number; readonly y: number }[] {
-  return floor.drawn.map((forage, at) => ({
-    forage,
-    x: FLOOR.margin + at * FLOOR.room + FLOOR.room / 2,
-    y: FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop,
-  }));
+/** Where `floor` draws each of its cells, and where it skips cells of its list. */
+interface Placing {
+  readonly cells: readonly { readonly forage: Forage; readonly x: number; readonly y: number }[];
+  /** The middle of each gap, where cells of the list between those drawn are left off. */
+  readonly gaps: readonly number[];
+  /** Where the last room ends. */
+  readonly end: number;
+}
+
+/**
+ * Where each cell `floor` draws sits, by its place among those drawn and its
+ * depth, with a gap's room wherever it skips cells of its list: before its
+ * first, between two, or after its last.
+ */
+function placed(floor: Floor): Placing {
+  const place = new Map(floor.of.map((each, at) => [each.cell, at]));
+  const cells: Placing["cells"][number][] = [];
+  const gaps: number[] = [];
+  let end = FLOOR.margin;
+  let next = 0;
+  const skip = (): void => {
+    gaps.push(end + FLOOR.gap / 2);
+    end += FLOOR.gap;
+  };
+  for (const forage of floor.drawn) {
+    const at = place.get(forage.cell) ?? next;
+    if (at > next) {
+      skip();
+    }
+    const y = FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop;
+    cells.push({ forage, x: end + FLOOR.room / 2, y });
+    end += FLOOR.room;
+    next = at + 1;
+  }
+  if (cells.length > 0 && next < floor.of.length) {
+    skip();
+  }
+  return { cells, gaps, end };
 }
 
 /** The cap over a cell whose plans have landed steps, its gills lit as they land. */
@@ -424,13 +406,29 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  */
 function floorOf(floor: Floor, cursor: string | null, substrate: string): string {
   const forages = floor.of;
-  const cells = placed(floor);
-  const width = Math.max(FLOOR.margin * 2 + cells.length * FLOOR.room, 320);
+  const { cells, gaps, end } = placed(floor);
+  const width = Math.max(end + FLOOR.margin, 320);
   const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
   const height = deepest + 40;
   const at = new Map(cells.map((each) => [each.forage.cell, each]));
   const here = new Set(forages.map((each) => each.cell));
-  const main = `<path class="hypha" d="M${FLOOR.margin / 2} ${FLOOR.hypha}H${width - FLOOR.margin / 2}"/>`;
+  // The main line breaks at each gap, where a mark stands for the cells left off.
+  // It still runs to the middle of each margin, so a gap before the first cell
+  // drawn or after the last leaves a dash beyond its mark: the list goes on.
+  const stops = [
+    FLOOR.margin / 2,
+    ...gaps.flatMap((gap) => [gap - FLOOR.gap / 2, gap + FLOOR.gap / 2]),
+    width - FLOOR.margin / 2,
+  ];
+  const runs = stops.flatMap((from, place) =>
+    place % 2 === 0 ? [`M${from} ${FLOOR.hypha}H${stops[place + 1] ?? from}`] : [],
+  );
+  const main = `<path class="hypha" d="${runs.join("")}"/>`;
+  const skipped = gaps
+    .map(
+      (gap) => `<text class="gap" x="${gap}" y="${FLOOR.hypha + 1}" text-anchor="middle">…</text>`,
+    )
+    .join("");
   const branches = cells
     .map(({ forage, x, y }) => {
       const by = grewFrom(forage, here);
@@ -473,7 +471,7 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
       : "";
   return `<svg viewBox="0 0 ${width} ${height}" style="--w:${width * FLOOR.scale}px" aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
-${main}${branches}${joins}${caps}${compartments}
+${main}${skipped}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}
 </svg>`;
 }

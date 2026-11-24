@@ -295,6 +295,10 @@ fn gather(
     )));
     let apps = fs::read_to_string(state_home.join(measures::apps::FILE)).ok();
     all.extend(measures::apps::apps(apps.as_deref(), now));
+    let wifid = measures::wifi::journal(now);
+    let wifid: Vec<&str> = wifid.iter().map(String::as_str).collect();
+    let wifid = command("journalctl", &wifid).ok();
+    all.push(measures::wifi::video(wifid.as_deref(), &TimeZone::system()));
     // The balance service names a day's file by the date here, so read yesterday's too.
     let day = |at| text(&state_home.join(format!("mycelium/balance/{}.jsonl", today(at))));
     let minutes = [day(now - DAY), day(now)].join("\n");

@@ -186,7 +186,7 @@ let
 
   # The account's shell on its real niri, with its own configuration,
   # nested in a headless sway in the sandbox rather than in a machine
-  # (tests/nested-niri.sh): a command run against it, which starts the
+  # (tests/lib/nested-niri.sh): a command run against it, which starts the
   # shell from the folder its root is in, as quickshell, and logs to logs.
   # The account says what its shell does, as the desktop test's does, and
   # counts as away after so many seconds of nothing typed or moved. Its
@@ -292,7 +292,7 @@ let
         )}
         ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
         ${lib.optionalString (size != null) "export NESTED_SIZE=${size}"}
-        ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           ${lib.getExe pkgs.bash} ${../tests/notices-beside.sh} ${command}
         touch $out
       '';
@@ -470,12 +470,14 @@ let
   # Now itself in Quickshell, offscreen, `test` its shell.qml, with the
   # margin's pieces, the agents' waiting list, the weather and the calendar
   # stood in, and Location.qml's own, reading whereabouts over its socket.
-  # `before` readies the home a case needs, before the shell starts.
+  # `before` readies the home a case needs, before the shell starts, and
+  # `after` reads what the shell said, in said.log, once it has passed.
   nowShown =
     {
       name,
       test,
       before ? "",
+      after ? "",
     }:
     let
       facts = singleton "Facts.qml" ''
@@ -562,7 +564,16 @@ let
       export FONTCONFIG_FILE=${noFonts}
       ${before}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      ${
+        if after == "" then
+          "timeout 60 ${qs} -p shell.qml"
+        else
+          ''
+            timeout 60 ${qs} -p shell.qml > said.log 2>&1 || { cat said.log; exit 1; }
+            cat said.log
+            ${after}
+          ''
+      }
       touch $out
     '';
 in

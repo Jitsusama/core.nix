@@ -1,16 +1,19 @@
 # shellcheck shell=bash disable=SC2154 # $MYCELIUM_ASKED comes from the check, in quickshell/checks/home.nix.
 # A stand-in for mycelium as Explain It asks it, `mycelium --realm <realm>
 # cells <ADDRESS> -o json`, for tests/explainer.qml: it writes down each
-# asking in $MYCELIUM_ASKED, says HARBOR's session, answers SLOW's late,
+# asking in $MYCELIUM_ASKED, says HARBOR's session and WANTS's, which asks
+# the person something, answers SLOW's late,
 # never answers HANG, can't say DOWN, finds only another session by
 # TITLED's title words, and knows no other, saying so as mycelium does.
 printf '%s\n' "$*" >> "$MYCELIUM_ASKED"
 cell() {
   printf '{"kind":"cell","type":"session","name":"%s","title":"%s",' "$1" "$2"
+  if [ -n "${3:-}" ]; then printf '"asks":"%s",' "$3"; fi
   printf '"quest":"QEST-20261116-HARBOR","cwd":"/home/j/src/rows","repo":"rows"}\n'
 }
 case "$4" in
   HARBOR) cell HARBOR "Tidy the Rows" ;;
+  WANTS) cell WANTS "Light the Rows" "Which tide?" ;;
   # A node slow to answer: the test asks another meanwhile.
   SLOW) sleep 1 && cell SLOW "Slow Work" ;;
   # A node that never answers, past the explainer's patience.

@@ -1,10 +1,18 @@
-// How a cell's panel names the cells it grew from and into: each linked to
-// its row when it is drawn here, else said not to stand here, and each tie
-// the node's book doesn't hold hedged as claimed, held to the cell it
-// hedges so no line opens with a comma or a bracket. Every word read from
-// a record is escaped before it reaches the page.
+// How the cells grew from and into each other: the lines the floor walks
+// up from a cell to those it grew from, and how a cell's panel names them,
+// each linked to its row when it is drawn here, else said not to stand
+// here, and each tie the node's book doesn't hold hedged as claimed, held
+// to the cell it hedges so no line opens with a comma or a bracket. Every
+// word read from a record is escaped before it reaches the page.
 
 import type { Forage } from "./model.ts";
+
+/**
+ * How the model reads a tie between cells, among those `here`: the walk
+ * below is handed it rather than importing it, as the model reads its
+ * joins through this module, and modules in a cycle load in no sure order.
+ */
+type Tie<T> = (forage: Forage, here: ReadonlySet<string>) => T;
 
 // The escaper lives here rather than in a module of its own, since each
 // module is one more file a first visit asks for, against the page's budget.
@@ -154,4 +162,96 @@ function splitSaid(forage: Forage, here: ReadonlySet<string>): string {
   return cellsStarted(forage.splitInto, (cell) => namedOrAway(cell, here), true);
 }
 
-export { cellOrAway, claimedCell, escaped, namedOf, splitSaid, startedBy, startsSaid };
+/** How the cells of `forages` grew from each other, by their places in it. */
+interface Kin {
+  /**
+   * The cell at `start` and each it grew from, up to `most` of them, once
+   * round a ring, stopping at a cell `known` holds, as each cell there came
+   * with those it grew from.
+   */
+  readonly line: (start: number, known: ReadonlySet<number>, most: number) => readonly number[];
+  /** The cells that grew from the cell at `parent`, in the list's order. */
+  readonly children: (parent: number) => readonly number[];
+}
+
+/** How the cells of `forages` grew from each other, each from the cell `grewFrom` says. */
+function kinOf(forages: readonly Forage[], grewFrom: Tie<string | undefined>): Kin {
+  const here = new Set(forages.map((each) => each.cell));
+  const index = new Map(forages.map((each, place) => [each.cell, place]));
+  const from = forages.map((each) => {
+    const by = grewFrom(each, here);
+    return by === undefined ? undefined : index.get(by);
+  });
+  const line = (start: number, known: ReadonlySet<number>, most: number): readonly number[] => {
+    const found: number[] = [];
+    const seen = new Set<number>();
+    let at: number | undefined = start;
+    while (at !== undefined && !known.has(at) && !seen.has(at) && found.length < most) {
+      found.push(at);
+      seen.add(at);
+      at = from[at];
+    }
+    return found;
+  };
+  const children = (parent: number): readonly number[] =>
+    from.flatMap((by, place) => (by === parent ? [place] : []));
+  return { line, children };
+}
+
+/** The places of a list `length` long, from `centre` outward, nearest first. */
+function* outward(centre: number, length: number): Generator<number> {
+  for (let step = 0; step < length; step += 1) {
+    if (centre + step < length) {
+      yield centre + step;
+    }
+    if (step > 0 && centre - step >= 0) {
+      yield centre - step;
+    }
+  }
+}
+
+/** The places the floor tries in turn: `first`, then outward from `centre`. */
+function* starts(first: readonly number[], centre: number, length: number): Generator<number> {
+  yield* first;
+  yield* outward(centre, length);
+}
+
+/** The places of a cell's children, split by whether the node's book holds their start. */
+interface Brood {
+  /** Those whose start the node's book holds, in the list's order. */
+  readonly booked: readonly number[];
+  /** Those that only claim it, as `grewClaimed` says, in the list's order. */
+  readonly claimed: readonly number[];
+}
+
+/**
+ * The places `kids` of `forages`, split into those the node's book holds
+ * and those only claimed, so cells that only claim to have grown from one
+ * can't crowd its booked starts, or the line it grew from, off the floor.
+ */
+function byBook(
+  forages: readonly Forage[],
+  kids: readonly number[],
+  grewClaimed: Tie<boolean>,
+): Brood {
+  const here = new Set(forages.map((each) => each.cell));
+  const claimed = (place: number): boolean => {
+    const kid = forages[place];
+    return kid === undefined || grewClaimed(kid, here);
+  };
+  return { booked: kids.filter((place) => !claimed(place)), claimed: kids.filter(claimed) };
+}
+
+export type { Brood, Kin };
+export {
+  byBook,
+  cellOrAway,
+  claimedCell,
+  escaped,
+  kinOf,
+  namedOf,
+  splitSaid,
+  startedBy,
+  starts,
+  startsSaid,
+};

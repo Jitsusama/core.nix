@@ -28,9 +28,16 @@ a terminal, `mycelium forage` gathers the realm's.
   on until you step to another it draws: that cell, as many of the cells
   that grew straight from it as fit (those the node's book holds first) and those
   nearest it in the list, each with every cell it grew from, so no
-  branch is left hanging. Only that cell's own line, when deeper than
-  48, is cut at its top; another line longer than the room left is left
-  off. A list that grows past 48 is drawn around the cell you're on. As
+  branch is left hanging. Only that cell's own line is cut at its top,
+  whenever it's longer than the room left once the cells the node's book
+  holds as grown from it have theirs, up to half the floor, so even a
+  line shorter than 48 is cut when enough of them grew from its cell.
+  Cells that only claim to have grown from it take what room is left.
+  Another line longer than the room left is left off, unless none fits,
+  as in a ring of starts longer than the room, when the
+  floor is filled with lines cut at their tops. Where it skips cells of
+  the list, before, between or after those it draws, the main line breaks
+  at an ellipsis. A list that grows past 48 is drawn around the cell you're on. As
   records arrive over a list past 48, or a find narrows the list, it
   stays drawn around the same cell, though a cell added or ended near it
   shifts the cells beside it. It draws again around the cell you're on when it
@@ -44,7 +51,7 @@ a terminal, `mycelium forage` gathers the realm's.
   purpose while that find holds you on a cell with one lets go of it too:
   nothing is ringed, and the floor stays where it was, since the cell
   still lasts. Once every cell has gone, the floor holds the page's crest
-  again.
+  again, until a cell is heard again.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you

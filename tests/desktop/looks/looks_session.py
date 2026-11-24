@@ -1,8 +1,8 @@
 """What the desktop test's looks areas share.
 
 Joel's scales, the card's and the drawer's measures, the scales as a fixture, and the helpers more
-than one looks area measures with. tests/desktop.nix gives it to the looks areas' driver beside
-desktop_session.py, and to pytest as a plugin beside it too, so each area finds the fixture
+than one looks area measures with. tests/desktop/desktop.nix gives it to the looks areas' driver
+beside desktop_session.py, and to pytest as a plugin beside it too, so each area finds the fixture
 without importing it, and imports the helpers it uses.
 """
 

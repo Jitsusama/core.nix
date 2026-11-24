@@ -17,8 +17,8 @@ out windows and kept places on the one desktop the area boots, with the helpers 
 back shared between them: split, each part would boot a machine of its own to read the same
 shell.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -67,7 +67,8 @@ def handing(desktop: Desktop, sessions: list[dict[str, Any]]) -> None:
 def presents(desktop: Desktop, session: str, address: str, said: dict[str, Any]) -> None:
     """Say a reopened stand-in's record, as pi says its own once it starts.
 
-    The stand-in wrote its process and kitty window by its session (tests/pi-stand-in.sh).
+    The stand-in wrote its process and kitty window by its session
+    (tests/stand-ins/pi-stand-in.sh).
     """
     # Its kitty's socket and window when kitty says them, else none: a session is known to
     # run here by its process alone.

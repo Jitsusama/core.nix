@@ -113,8 +113,26 @@ pub fn markdown_naming(
     note: Option<&str>,
     guesses: Option<&str>,
 ) -> String {
+    let heard: Vec<Line> = lines
+        .iter()
+        .filter(|line| !echoes(line, lines))
+        .cloned()
+        .collect();
+    markdown_unechoed(&heard, me, them, note, guesses)
+}
+
+/// `markdown_naming` of `lines` whose echoes are already left out, as
+/// call-transcripts leaves them out against each take of theirs whole
+/// where it splits one by voice.
+pub fn markdown_unechoed(
+    lines: &[Line],
+    me: &str,
+    them: Option<&str>,
+    note: Option<&str>,
+    guesses: Option<&str>,
+) -> String {
     let named = them.filter(|them| *them != me);
-    let mut heard: Vec<&Line> = lines.iter().filter(|line| !echoes(line, lines)).collect();
+    let mut heard: Vec<&Line> = lines.iter().collect();
     heard.sort_by_key(|line| line.start);
     let name_of = |line: &Line| {
         line.name
@@ -531,6 +549,29 @@ mod tests {
             .filter(|line| line.side == Side::Mine)
             .map(|line| line.text)
             .collect()
+    }
+
+    #[test]
+    fn lines_whose_echoes_are_left_out_are_written_as_they_are() {
+        let lines = [
+            line(Side::Theirs, 10, "Not yet."),
+            line(Side::Mine, 11, "Not yet."),
+        ];
+        assert!(
+            kept(&lines).is_empty(),
+            "this case's line of Joel's isn't an echo"
+        );
+        let written = markdown_unechoed(&lines, "Joel", None, None, None);
+        let joels: Vec<String> = read(&written, "Joel")
+            .into_iter()
+            .filter(|line| line.side == Side::Mine)
+            .map(|line| line.text)
+            .collect();
+        assert_eq!(
+            joels,
+            ["Not yet."],
+            "a line already judged was judged again"
+        );
     }
 
     #[test]

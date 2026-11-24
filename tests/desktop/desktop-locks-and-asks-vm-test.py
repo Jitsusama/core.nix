@@ -3,8 +3,8 @@
 Here the desktop locks and asks: the lock screen and what lets it go, polkit's prompt and the
 askpass.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it: unlocked, the shell running, nothing of its
 own still open, so any test runs alone.
 """
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 # Where lock-screen and the shell say whether the screens are locked.
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
-# The file that makes the lock's next password check stall (tests/desktop.nix).
+# The file that makes the lock's next password check stall (tests/desktop/desktop.nix).
 STALLS = "/run/lock-stalls/once"
 
 

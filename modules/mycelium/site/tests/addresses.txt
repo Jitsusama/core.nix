@@ -1,0 +1,36 @@
+# Cases of a mesh address, one a line; ./README.md says how they read.
+is T
+is 9
+is TERN02
+is 1C8A2F0E
+is ABCDEFGHIJKL
+is MNOPQRSTUVWX
+is YZ
+is 123456789012
+is TERN\u{30}2
+not
+not tern02
+not Tern02
+not TERN-02
+not TERN_02
+not TERN.02
+not TERN 02
+not  TERN02
+not TERN02\u{20}
+not TERN\u{9}02
+not TERN02\u{A}
+not TERN02\u{A}&words=x
+not T\u{0}
+not T\u{7F}
+not TERN\u{200B}02
+not T/
+not T:
+not T@
+not T[
+not ABCDEFGHIJKLM
+not X&words=Y
+not calls@kestrel
+not TERN02#look:1
+not ÉTERN
+not ＴＥＲＮ
+not ٢٣

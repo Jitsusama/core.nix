@@ -1509,7 +1509,7 @@ works the same way everywhere.
   | Kind               | With nothing typed                            | Where                             |
   | ------------------ | --------------------------------------------- | --------------------------------- |
   | A fixed set        | the order it was designed in                  | home, a thing's parts, its acts   |
-  | Things returned to | open or favourite first, the last act, A to Z | Programs, People                  |
+  | Things returned to | open or favourite first, his last act, A to Z | Programs, People, Code            |
   | A stream           | newest first                                  | Recent, Notices, Clipboard, mail  |
   | Live states        | how each stands, then when it started         | Sessions, Windows, devices, Wi-Fi |
   | Amounts            | the worst first                               | Processor, Memory, Traffic, disks |
@@ -1517,7 +1517,10 @@ works the same way everywhere.
   | A search           | the same letters land on the same row         | everywhere typed                  |
 
   A to Z is only ever the last tie, or the order of many peers alike, as
-  a large folder's files.
+  a large folder's files. Open and last act are Joel's own: in the rows
+  the programs daemon serves, an agent's window opens no program of his,
+  and Code goes by the folder he was in last, as zoxide heard it, never
+  by git's last write.
 - **Under what it belongs to, a step in.** A session orchestrated by
   another sits right under it, its mark and its name a mark's column
   in, so its mark stands where the name above it starts, and two steps

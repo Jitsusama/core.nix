@@ -16,7 +16,8 @@ use crate::owe::{self, Owed};
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_for_good, held_unseen, rounds,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, apps, drag, held_for_good, held_unseen,
+    rounds,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -265,11 +266,20 @@ fn routed(class: Class) -> bool {
 /// turns, so a clean one waits for its zone. A measure that couldn't be
 /// read says nothing, so it closes none. A merge whose rounds past five
 /// caught nothing is back in once its line is gone, the merge a day old,
-/// unless the rounds measure couldn't read the review record.
+/// unless the rounds measure couldn't read the review record. A figure of
+/// his apps gone from an hour that read their file whole was renamed or
+/// dropped by its owner, so it's back in, as nothing would bring it back.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if key.starts_with(rounds::FRUITLESS) {
         return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
+    }
+    // An unread file leaves only its one line, never a figure, so a drag
+    // isn't closed while its figure can't be seen; a figure written with no
+    // reading is still its figure, unjudged. His apps aren't routed, so a
+    // figure's drag is filed under its key alone.
+    if key.starts_with(apps::FIGURE) && !measures.iter().any(|m| m.key == key) {
+        return measures.iter().any(|m| m.key.starts_with(apps::FIGURE));
     }
     // The ask for a check closes once the check merged and only a measure
     // holds the miss; that hold is its own finding, closing once judged.
@@ -811,6 +821,34 @@ mod tests {
             file(&mut ledger, &[found], "2026-11-21", 19_000).is_empty()
                 && ledger.iter().all(|e| !e.open),
             "a finding held for good was put to its owner, or its drag stayed open to go late"
+        );
+    }
+
+    #[test]
+    fn a_drag_on_a_figure_of_his_apps_renamed_closes_once_their_file_is_read() {
+        let old = measure("apps:wait per wakeup", Class::Apps, 9.0, Some(2.0));
+        let renamed = measure("apps:wait per 10 s", Class::Apps, 1.0, Some(2.0));
+        let unread = measure("apps-under-load", Class::Apps, 1.0, Some(6.0));
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[old], "2026-11-22", 1000);
+        assert!(ledger[0].open, "the figure past its target wasn't filed");
+        file(&mut ledger, &[unread], "2026-11-22", 4600);
+        assert!(
+            ledger[0].open,
+            "a drag closed while its apps' file went unread"
+        );
+        let written_unread = measure("apps:wait per wakeup", Class::Apps, 0.0, None);
+        let unread_figure = [written_unread, renamed.clone()];
+        file(&mut ledger, &unread_figure, "2026-11-22", 5800);
+        assert!(
+            ledger[0].open,
+            "a drag closed while its figure was written with no reading"
+        );
+        let longer = measure("apps:wait per wakeup p99", Class::Apps, 1.0, Some(2.0));
+        file(&mut ledger, &[longer, renamed], "2026-11-22", 8200);
+        assert!(
+            !ledger[0].open,
+            "a drag on a figure gone from a file read whole stayed open for good"
         );
     }
 

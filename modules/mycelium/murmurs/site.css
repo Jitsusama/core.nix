@@ -257,6 +257,15 @@ code {
   font-style: italic;
 }
 
+/* A quiet day is said in one line where the rows would start, on the same rule. */
+.quiet {
+  margin: 0;
+  padding: var(--items) var(--mark);
+  border-block-start: 1px solid var(--rule);
+  color: var(--text);
+  font-style: italic;
+}
+
 /* A murmur's row: its mark in the gutter, then its words as the line to
    read, who said it and when under that, and how it settled last. */
 .murmurs {

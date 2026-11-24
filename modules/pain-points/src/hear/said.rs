@@ -5,7 +5,10 @@
 //! steer), which pi opens with a bracketed line naming him; anything else
 //! opening with a bracket, or as words.rs knows the harness's and the
 //! mesh's text, is not his. What he had attached, the window he was
-//! looking at, is kept apart from his words.
+//! looking at, is kept apart from his words. It also says when the agent
+//! answered him: a turn that ran a tool since his last message and ended
+//! speaking, which is how a session's own cell takes up a pain he said
+//! to it.
 
 use crate::pi::iso_ms;
 use crate::words::automated;
@@ -54,6 +57,16 @@ pub struct Carried {
     pub tools: Vec<String>,
     pub failed: Vec<String>,
     pub earlier: Vec<(i64, String)>,
+    /// Whether the agent ran a tool since his last message with nobody
+    /// else's between, and no turn of it errored or was cut short: a turn
+    /// answering a peer or the harness, or one after a failed turn, isn't
+    /// an answer to him.
+    #[serde(default)]
+    pub acting: bool,
+    /// When the agent last answered him, in milliseconds since 1970, kept
+    /// until it is taken once the session's cell is known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answered: Option<i64>,
 }
 
 /// His words in a user message's text, and the window attached, or none
@@ -137,15 +150,31 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
     match message.role.as_str() {
         "assistant" => {
             let full: Value = serde_json::from_str(text).ok()?;
-            let calls = full.pointer("/message/content").and_then(Value::as_array)?;
+            let content = full.pointer("/message/content")?;
             carried.tools.extend(
-                calls
+                content
+                    .as_array()?
                     .iter()
                     .filter(|b| b.get("type").and_then(Value::as_str) == Some("toolCall"))
                     .filter_map(|b| b.get("name").and_then(Value::as_str))
                     .map(str::to_string),
             );
             keep_last(&mut carried.tools, TOOLS_KEPT);
+            let acted = content
+                .as_array()?
+                .iter()
+                .any(|b| b.get("type").and_then(Value::as_str) == Some("toolCall"));
+            // A turn that errored, or that he or the harness stopped, said
+            // nothing to him, and one that only talked did nothing about
+            // what hurt; either leaves the pain open.
+            let stopped = full.pointer("/message/stopReason").and_then(Value::as_str);
+            match stopped {
+                Some("error" | "aborted") => carried.acting = false,
+                _ => carried.acting |= acted,
+            }
+            if stopped == Some("stop") && carried.acting && !text_of(content).trim().is_empty() {
+                carried.answered = iso_ms(&head.timestamp);
+            }
             None
         }
         "toolResult" => {
@@ -158,6 +187,9 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             None
         }
         "user" => {
+            // His message starts a new turn, and anyone else's is a turn
+            // that answers them, not him.
+            carried.acting = false;
             let full: Value = serde_json::from_str(text).ok()?;
             let (words, looking_at) = his(&text_of(full.pointer("/message/content")?))?;
             let at = iso_ms(&head.timestamp)?;
@@ -270,6 +302,99 @@ mod tests {
         assert_eq!(said.failed, vec!["edit"]);
         assert!(carried.tools.is_empty(), "his message starts a new turn");
         assert_eq!(carried.earlier, vec![(said.at, said.words.clone())]);
+    }
+
+    /// The agent's message ending its turn as `stop`, saying `text`.
+    fn ended(stop: &str, text: &str) -> String {
+        serde_json::json!({
+            "type": "message", "id": "s", "parentId": "r",
+            "timestamp": "2026-11-16T18:00:09.000Z",
+            "message": {"role": "assistant", "stopReason": stop,
+                        "content": [{"type": "text", "text": text}], "timestamp": 0}
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_turn_that_acted_and_ended_speaking_answered_him() {
+        let at = iso_ms("2026-11-16T18:00:09.000Z");
+        let answered = |lines: &[String]| {
+            let mut carried = Carried::default();
+            let mut when = None;
+            for text in lines {
+                line(text, &mut carried);
+                when = carried.answered.take().or(when);
+            }
+            when
+        };
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let ran = called(&["bash"]);
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        let peer = user(
+            "m1",
+            "2026-11-16T18:00:07.000Z",
+            "[Mesh message from a peer] a question",
+        );
+        assert_eq!(answered(&[his.clone(), ran.clone(), done.clone()]), at);
+        assert_eq!(
+            answered(&[his.clone(), ran.clone(), ran.clone(), done.clone()]),
+            at,
+            "a turn of several tool calls answered him"
+        );
+        for (lines, why) in [
+            (
+                vec![his.clone(), done.clone()],
+                "a turn that only talked did nothing about it",
+            ),
+            (
+                vec![ran.clone(), his.clone(), done.clone()],
+                "tools run before he spoke aren't an answer to him",
+            ),
+            (
+                vec![his.clone(), ran.clone(), ended("error", "overloaded")],
+                "a turn that errored said nothing to him",
+            ),
+            (
+                vec![his.clone(), ran.clone(), peer.clone(), done.clone()],
+                "a turn answering a peer's message didn't answer him",
+            ),
+            (
+                vec![
+                    his.clone(),
+                    ran.clone(),
+                    ended("error", "overloaded"),
+                    done.clone(),
+                ],
+                "a turn that only talked after a failed one did nothing about it",
+            ),
+            (
+                vec![his.clone(), ran.clone(), ended("aborted", "")],
+                "a turn stopped partway said nothing to him",
+            ),
+            (
+                vec![his.clone(), ran.clone(), ended("stop", "  ")],
+                "a turn that ended saying nothing said nothing",
+            ),
+        ] {
+            assert_eq!(answered(&lines), None, "{why}");
+        }
+        let carried = Carried {
+            answered: at,
+            ..Carried::default()
+        };
+        let kept = serde_json::to_string(&carried).expect("carried writes");
+        let back: Carried = serde_json::from_str(&kept).expect("carried reads");
+        assert_eq!(
+            back.answered, at,
+            "an answer is kept until the session's cell is known"
+        );
+        let old: Carried = serde_json::from_str(r#"{"tools": [], "failed": [], "earlier": []}"#)
+            .expect("a reading kept before answers reads");
+        assert_eq!(
+            old,
+            Carried::default(),
+            "a reading kept before answers reads as none"
+        );
     }
 
     #[test]

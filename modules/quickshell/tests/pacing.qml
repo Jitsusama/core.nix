@@ -24,6 +24,7 @@
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
+import "ChangesPresented.js" as ChangesPresented
 import "Collector.js" as Collector
 import "Flash.js" as Flash
 import "Makings.js" as Makings
@@ -777,17 +778,17 @@ QtObject {
     // A daemon's changes are timed from the first line the draw shows,
     // and said a place a line as the launcher closes (Y2YBTS, 2026-11-11).
     function presenting(failures) {
-        const first = Presented.heard({}, "quests", 1000);
-        const later = Presented.heard(first, "quests", 1100);
+        const first = ChangesPresented.heard({}, "quests", 1000);
+        const later = ChangesPresented.heard(first, "quests", 1100);
         check(failures, "a change waiting on a draw is timed from its first line",
             later.quests, 1000);
         check(failures, "which an earlier line still moves back",
-            Presented.heard(later, "quests", 900).quests, 900);
-        const both = Presented.heard(later, "windows", 1200);
+            ChangesPresented.heard(later, "quests", 900).quests, 900);
+        const both = ChangesPresented.heard(later, "windows", 1200);
         check(failures, "each place waits apart", JSON.stringify(both),
             '{"quests":1000,"windows":1200}');
         check(failures, "a place drawn waits no more",
-            JSON.stringify(Presented.drawn(both, "quests")), '{"windows":1200}');
+            JSON.stringify(ChangesPresented.drawn(both, "quests")), '{"windows":1200}');
         check(failures, "nor is what waited changed", JSON.stringify(both),
             '{"quests":1000,"windows":1200}');
 
@@ -810,7 +811,7 @@ QtObject {
         check(failures, "each key's time is kept in the order pressed",
             JSON.stringify(Presented.eachTook([{ from: 10, at: 60 }, { from: 0, at: 30.6 }])),
             "[31,50]");
-        const said = Presented.changesSaid([
+        const said = ChangesPresented.changesSaid([
             { place: "windows", from: 100, at: 130 },
             { place: "quests", from: 0, at: 70 },
             { place: "windows", from: 200, at: 290 }
@@ -820,14 +821,14 @@ QtObject {
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms\n"
             + "launcher: 2 changes in windows presented a median 30 ms from the line, "
             + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms");
-        check(failures, "none presented says nothing", Presented.changesSaid([]).length, 0);
+        check(failures, "none presented says nothing", ChangesPresented.changesSaid([]).length, 0);
         // Joel's 20 changes in machine took a median 36 ms, 6 past 50, and
         // nothing said whether they waited in the shell or after their
         // frame began (2026-11-11). Each part is said over the changes
         // stamped with it, as a key's is, and how long each waited on the
         // pace before its refresh began, which Windows' 190 ms in the shell
         // was (2026-11-12).
-        const parted = Presented.changesSaid([
+        const parted = ChangesPresented.changesSaid([
             { place: "machine", from: 0, heard: 5, refreshed: 7, begun: 15, at: 40 },
             { place: "machine", from: 100, heard: 102, refreshed: 122, begun: 130, at: 190 },
             { place: "machine", from: 200, at: 230 },
@@ -847,7 +848,7 @@ QtObject {
         // refresh (H6EDLC, Super+N, 2026-11-19). Each place is said its own
         // way, so a place with none held beside it says no hold.
         // The longest hold comes after a shorter one, so the first isn't it.
-        const heldApart = Presented.changesSaid([
+        const heldApart = ChangesPresented.changesSaid([
             { place: "machine", from: 100, heard: 102, held: 110, refreshed: 122, begun: 130,
                 at: 190 },
             { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
@@ -869,18 +870,18 @@ QtObject {
         // heard of nothing held for nothing, and none while nothing holds, as
         // once home's found (Launcher.qml's refreshDue and refreshed).
         const heardOf = { machine: 5, windows: 8 };
-        const firstHeld = Presented.heldFrom({}, heardOf,
+        const firstHeld = ChangesPresented.heldFrom({}, heardOf,
             { places: ["machine", "quests"], at: 10, holding: true });
-        const heldAgain = Presented.heldFrom(firstHeld, heardOf,
+        const heldAgain = ChangesPresented.heldFrom(firstHeld, heardOf,
             { places: ["machine", "windows"], at: 30, holding: true });
-        const heldNone = Presented.heldFrom(firstHeld, heardOf,
+        const heldNone = ChangesPresented.heldFrom(firstHeld, heardOf,
             { places: ["windows"], at: 40, holding: false });
         check(failures, "a hold holds those heard from when it was first due",
             [firstHeld, heldAgain, heldNone].map(one => JSON.stringify(one)).join(" "),
             '{"machine":10} {"machine":10,"windows":30} {"machine":10}');
         // An earlier line come late takes its place's change after the hold
         // began, so it's held from when it was heard, never a wait below none.
-        const heardLate = Presented.changesSaid([
+        const heardLate = ChangesPresented.changesSaid([
             { place: "machine", from: 0, heard: 20, held: 10, refreshed: 40, begun: 48, at: 70 }
         ]);
         check(failures, "a change heard after its hold began waits on no pace",
@@ -893,7 +894,7 @@ QtObject {
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many
         // it set going, most first, then by name.
-        const whose = Presented.changesSaid([
+        const whose = ChangesPresented.changesSaid([
             { place: "on", from: 0, at: 60, by: "wifi" },
             { place: "on", from: 100, at: 170, by: "machine" },
             { place: "on", from: 200, at: 260, by: "machine" },
@@ -1125,14 +1126,23 @@ QtObject {
             Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
             "window:kitty");
         // An act's lines name it by its key, whose verbs are its daemon's
-        // own words, as agents' close or a calendar's no, but a part not
-        // shaped as one may be a path or a name.
+        // own words, as agents' close or a calendar's no, but a part after
+        // its kind may be a device's, a network's or a person's name, which
+        // its shape can't tell from an act, so only a known act is said.
         check(failures, "an act's key keeps its verb with reports off",
             Presented.keyShown("verb:wifi-join", false), "verb:wifi-join");
-        check(failures, "and each part after it shaped as a kind's word",
+        check(failures, "and an act after it that the daemons name",
             Presented.keyShown("verb:agent:close", false), "verb:agent:close");
-        check(failures, "up to the first that isn't",
-            Presented.keyShown("verb:disk:nvme0:/home/joel", false), "verb:disk:nvme0");
+        check(failures, "but not a device's name",
+            Presented.keyShown("verb:disk:nvme0:/home/joel", false), "verb:disk");
+        check(failures, "nor a lowercase network's, shaped as a kind's word",
+            Presented.keyShown("verb:wifi-join:eduroam", false), "verb:wifi-join");
+        check(failures, "nor an id that starts with a letter",
+            Presented.keyShown("verb:agent:f3a7:close", false), "verb:agent");
+        check(failures, "and a kind's word past 32 letters is no kind",
+            Presented.keyShown(`verb:${"a".repeat(33)}`, false), "verb");
+        check(failures, "and the launcher's own id is said to 64 letters",
+            Presented.keyShown(`place:${"x".repeat(80)}`, false), `place:${"x".repeat(58)}`);
         check(failures, "nor anything after that",
             Presented.keyShown("verb:agent:7f3a:close", false), "verb:agent");
         check(failures, "and a verb that isn't a kind's word is said as verb",
@@ -1161,6 +1171,21 @@ QtObject {
         check(failures, "and both whole while they're on",
             Presented.typedInSaid("door", "wifi:Harbour House", true),
             '"door" typed in "wifi:Harbour House"');
+        // A key listed before its places answered, and one answering after, say
+        // what was typed as typedShown does: by its letters with reports off,
+        // and quoted while they're on, so a quote typed can't end the line.
+        check(failures, "a key listed without a place says its letters with reports off",
+            Presented.listedWithoutSaid('door "x', ["wifi", "notices"], 8, false),
+            "7 letters listed without wifi, notices, which hadn't answered in 8 ms");
+        check(failures, "and its words quoted while they're on",
+            Presented.listedWithoutSaid('door "x', ["wifi"], 8, true),
+            '"door \\"x" listed without wifi, which hadn\'t answered in 8 ms');
+        check(failures, "a place answering late says the key's letters with reports off",
+            Presented.answeredLateSaid("wifi", 'door "x', { late: 23, waited: 8, whole: false }),
+            "wifi answered 7 letters 23 ms after its key, past the 8 ms its list waited");
+        check(failures, "and its words quoted while they're on",
+            Presented.answeredLateSaid("wifi", 'door "x', { late: 23, waited: 8, whole: true }),
+            'wifi answered "door \\"x" 23 ms after its key, past the 8 ms its list waited');
         // An act's key is said bare while reports are on, as the desktop's
         // tests read it, but a calendar's words in it still can't end the line,
         // nor can a key the launcher says whole with them off.
@@ -1172,8 +1197,8 @@ QtObject {
             Presented.actShown("displays:night-light", false), "displays:night-light");
         check(failures, "but a window's by its app, as its row is",
             Presented.actShown("window:Firefox:Inbox", false), "window:Firefox");
-        check(failures, "even where its title is shaped as a kind's word",
-            Presented.actShown("window:kitty:inbox", false), "window:kitty");
+        check(failures, "and one with no title by its kind, even where its app is an act's word",
+            Presented.actShown("window:mail", false), "window");
         check(failures, "and a record's by its kind, whatever its network's name is shaped as",
             Presented.actShown("row:wifi:network:eduroam", false), "wifi");
         check(failures, "and a daemon's own act no further than its act",
@@ -1181,6 +1206,10 @@ QtObject {
         check(failures, "and a key of one word, which may be a record's name, as a row",
             Presented.actShown("eduroam", false), "row");
         check(failures, "as is an act with no key", Presented.actShown(undefined, false), "row");
+        check(failures, "and one whose second part is a name, not an act, by its kind alone",
+            Presented.actShown("wifi:eduroam", false), "wifi");
+        check(failures, "but by its kind where what follows isn't an act, as a person's name",
+            Presented.actShown("person:ada", false), "person");
         check(failures, "and a verb no further than keyShown says it",
             Presented.actShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
         check(failures, "and the launcher's own whole",
@@ -1205,8 +1234,11 @@ QtObject {
             Presented.refusalShown("couldn't dim Harbour", "unread", false), "unread, 20 letters");
         check(failures, "or the letters alone where no code came with it",
             Presented.refusalShown("couldn't dim Harbour", "", false), "20 letters");
-        check(failures, "and its words quoted while they're on",
-            Presented.refusalShown("no\nlauncher: x", "unread", true), '"no\\nlauncher: x"');
+        check(failures, "and its code and words quoted while they're on",
+            Presented.refusalShown("no\nlauncher: x", "unread", true),
+            'unread, "no\\nlauncher: x"');
+        check(failures, "or its words alone where no code came with them",
+            Presented.refusalShown("no", "", true), '"no"');
         check(failures, "or that no answer came", Presented.codeShown(null), "no answer");
         // A daemon's error says its codes whole, being no one's words, and
         // its words by how many letters, since they can name a row.
@@ -1224,6 +1256,66 @@ QtObject {
         check(failures, "its line ends that JSON leaves raw escaped",
             Presented.errorShown({ said: "a\u2028launcher: b" }, true),
             '{"said":"a\\u2028launcher: b"}');
+        // A program holding a power profile names itself, so with reports
+        // off its id is said as a window's app is.
+        check(failures, "a program's id is said whole with reports off where it's an app's name",
+            Presented.appShown("org.gnome.Software", false), "org.gnome.Software");
+        check(failures, "but as app where it's words of its own",
+            Presented.appShown("Backing up Harbour", false), "app");
+        check(failures, "or nothing", Presented.appShown(undefined, false), "app");
+        check(failures, "and whole while they're on",
+            Presented.appShown("Backing up Harbour", true), "Backing up Harbour");
+        check(failures, "its line breaks escaped, so an id can't forge a line",
+            Presented.appShown("a\nlauncher: b", true), "a\\nlauncher: b");
+        // A link from outside is a page's words, so its line says whom it
+        // named by kind and how many letters with reports off.
+        check(failures, "a link's session is said by its kind and letters with reports off",
+            Presented.whomShown({ to: "session", address: "LISTEN" }, false),
+            "session, 6 letters");
+        check(failures, "as is a network's name",
+            Presented.whomShown({ to: "network", name: "core-nix" }, false),
+            "network, 8 letters");
+        check(failures, "and a name nothing has",
+            Presented.whomShown({ to: "none", said: "Harbour" }, false), "none, 7 letters");
+        check(failures, "and the void by its kind alone, naming nothing",
+            Presented.whomShown({ to: "void" }, false), "void");
+        check(failures, "and whole while they're on, its line breaks escaped",
+            Presented.whomShown({ to: "none", said: "a\u2028launcher: b" }, true),
+            '{"to":"none","said":"a\\u2028launcher: b"}');
+        // New work a link offers names the session it's from, as talking to one does.
+        check(failures, "new work's session is said by its letters with reports off",
+            Presented.whenceShown("LISTEN", false), "from a session, 6 letters");
+        check(failures, "and whole while they're on",
+            Presented.whenceShown("LISTEN", true), "from LISTEN");
+        // Sprouting.js gives only a session address, but this line says
+        // what it's given, so one with a break can't forge another.
+        check(failures, "and its line breaks escaped, so a session's can't forge a line",
+            Presented.whenceShown("A\nB", true), "from A\\nB");
+        check(failures, "and the breaks JSON leaves bare escaped too",
+            Presented.whenceShown("A\u2028launcher: B", true), "from A\\u2028launcher: B");
+        check(failures, "and one naming no session here as that with reports off",
+            Presented.whenceShown(undefined, false), "from no session here");
+        check(failures, "and on", Presented.whenceShown(undefined, true), "from no session here");
+        // A walk's rows are named by sources, so with reports off each is
+        // said by its kind, as a drawer's row is.
+        const walked = [{ name: "Networks", key: "place:networks" },
+            { name: "Harbour House", key: "wifi:Harbour House" }, { name: "Join" }];
+        check(failures, "a walk's rows are said by their kinds with reports off",
+            Presented.pathShown(walked, false), "place:networks \u203a wifi \u203a answer");
+        check(failures, "and quoted whole while they're on, so a name can't forge a line",
+            Presented.pathShown([{ name: "a\nlauncher: b" }], true), '"a\\nlauncher: b"');
+        check(failures, "and a key said whole with reports off has its line breaks escaped",
+            Presented.pathShown([{ key: "place:a\nlauncher: b" }], false),
+            "place:a\\nlauncher: b");
+        // The shell's own failure may quote what it failed on.
+        check(failures, "the shell's failure is said by its kind with reports off",
+            Presented.failureShown(new SyntaxError("Unexpected token Harbour"), false),
+            "SyntaxError");
+        check(failures, "and a thrown word that isn't one by its letters",
+            Presented.failureShown("Harbour", false), "7 letters");
+        check(failures, "and whole while they're on, its line breaks escaped",
+            Presented.failureShown(new Error("a\nlauncher: b"), true),
+            '"Error: a\\nlauncher: b"');
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

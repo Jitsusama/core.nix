@@ -147,6 +147,14 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
+  a-machines-unfree-names-join-cores-on-darwin = ''
+    an unfree package a Mac names for itself is allowed beside those core names, and the Mac
+    workstation, with every module core gives a Mac, still refuses one nobody names
+  '';
+  a-machines-unfree-names-join-cores-on-nixos = ''
+    an unfree package a NixOS machine names for itself is allowed beside those core names, and
+    the NixOS workstation, with every module its role brings, still refuses one nobody names
+  '';
   a-macs-sessions-come-back-in-each-realm = ''
     a Mac whose account joins realms runs sessions-come-back as its login starts and each
     minute, on mycelium and every realm it joins, and a Mac in no realm runs none
@@ -385,6 +393,14 @@
     every NixOS account's activation switches its units with an sd-switch that reads each job's
     end as it comes, so a switch of more than 64 jobs doesn't hang waiting for a reply
   '';
+  a-disks-writeback-throttle-is-the-machines = ''
+    each disk a machine names in jitsusama.slices.writebackThrottle has a unit, started at boot,
+    by a switch and as the disk appears, that sets its writeback throttle's goal, each its own,
+    and gives the kernel's back as it stops; a machine naming none has no such unit, and a name
+    that isn't a disk's plain one, or a disk io.cost shares, is refused while another disk beside
+    io.cost's is not. Whether the goal reaches the disk is the switch's to show, where a unit
+    whose name reaches no throttle fails
+  '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
     the call comes from jobs.service, a pi-spawner scope or a pi host's or conversation's unit,
@@ -585,6 +601,13 @@
   '';
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
+  '';
+  sound-takes-real-time-before-the-seat = ''
+    PipeWire's three units, each tuning chain and each service PipeWire wants in session.slice,
+    by name in the account's session.slice or app.slice and nothing below them, are granted
+    rtkit's real time and high priority before the seat has a session, each grant logged with
+    what it runs, while an app's scope, the system's units, another service and a near name keep
+    rtkit's own answer with no grant logged, and agents' places are still refused
   '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
@@ -843,6 +866,10 @@
   collector-stays-in-the-background = ''
     the collector runs in background.slice, restarts when it fails, and has a runtime folder for
     its socket
+  '';
+  comments-name-what-exists = ''
+    every comment naming a path from a top folder names what's there, as code-health's stale-paths
+    measure reads them, but those still waiting on their owners
   '';
   commands-agree = ''
     every command core's crates build keeps docs/commands.md's convention: built on the terminal
@@ -1374,6 +1401,12 @@
     the clock's start on a later run, and fails on a table it can't copy once the rest are kept;
     answers JSON of facts and names with every key in every record; and finds a boot by any way
     its id is written, refusing what isn't an id
+  '';
+  firmware-installs-once-for-each-sure = ''
+    Firmware's step asking if Joel's sure asks the machine daemon to install on that device once,
+    its row drawn at once as installing, and neither that row nor the step the daemon then serves
+    offers a second Return anything to run, so pressing it again only closes the launcher; and
+    Firmware answers again once its watch is answered whole, so rows the daemon already held show
   '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
@@ -1936,11 +1969,6 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
-  local-name-answers-by-a-job = ''
-    a Mac with a local name runs a root job advertising it as a workstation by that name, on
-    port 9, with macOS's own dns-sd, from its start and again whenever it ends, saying what
-    dns-sd says in its log, and a Mac with none advertises nothing
-  '';
   local-name-comes-back = ''
     a Mac macOS renamed gets its declared local name back, said once with what it was, at most
     once in five minutes by the time its stamp holds, a time still to come counting as old; a
@@ -1955,16 +1983,12 @@
     minute, finding its tools only in macOS's own folders and saying what it does in its log,
     and a Mac with none runs nothing
   '';
-  local-name-logs-are-rotated = ''
-    a Mac with a local name has newsyslog move aside, past 512 KB, the two logs its local-name
-    jobs write, by the jobs' own paths, keeping three of each and sending no signal, and a Mac
-    with none adds nothing to newsyslog
-  '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
-    daemon's records held as its watch tells them, a feed's watch saying connecting, live, broken
-    or stale and since when, every line it can't read reported, a document's reader stepping
-    from part to part, every step held at its list's ends, and g pressed twice going to the top
+    daemon's records held as its watch tells them and each answer said whole or a change, a feed's
+    watch saying connecting, live, broken or stale and since when, every line it can't read
+    reported, a document's reader stepping from part to part, every step held at its list's ends,
+    and g pressed twice going to the top
   '';
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
@@ -2172,8 +2196,9 @@
     and as Play From the Start does, from its start
   '';
   mycelium-node-takes-its-flags = ''
-    the mycelium core locks takes every flag a workstation's node is started with, so a flag
-    can't reach the node's service before the mycelium that reads it
+    the mycelium core locks takes every flag a workstation's node is started with, each with a
+    value where its line gives one and none where it doesn't, so a flag can't reach the node's
+    service before the mycelium that reads it
   '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
@@ -2188,8 +2213,23 @@
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
     the home realm's node writes how it would ease the machine, asking the harness to park
-    sessions and making its carries only where told to, and a further realm's doesn't; one
-    naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
+    sessions and making its carries only where told to, on Linux and a Mac alike, and a further
+    realm's doesn't; one naming none runs it dialling nothing, and one in no realm has neither a
+    realm nor a node
+  '';
+  mycelium-carry-guards-match-its-lock = ''
+    the mycelium core locks has a line of code matching each of carry-guards.nix's patterns, so
+    a lock moving to one that wrote either guard in another form fails here rather than every
+    machine on core's lock ceasing to carry
+  '';
+  mycelium-carries-only-with-its-guards = ''
+    a workstation's node is told to carry only where the mycelium it is built from has a line of
+    code, not a line comment, for each guard that keeps the person's and the leading sessions,
+    each tried alone and with neither file there, and a node built from one writing both in
+    forms the patterns accept carries; where one is missing the switch warns once, in the
+    system's warnings on Linux and a Mac, naming that mycelium and only the files lacking one
+    and how, rather than refusing the machine, and a machine that doesn't carry or runs no node
+    is never warned
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
@@ -2317,14 +2357,15 @@
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
     call is on there through a-call-is-on alone, what a held session outlives, whether work
-    costs money, its taints, its agents by realm, the fences its agent sessions run in) has it
-    written where mycelium reads it, in mycelium's words; a fence it doesn't say is left out, the
-    doors a fence accepts for another machine are written only when named and refused for a
-    machine no realm could name, a fenced or strict one says its system's launcher for an
-    agent's run, which runs pi's strict profile, and an unfenced one none, no fence says a
-    launcher when agents' runs are turned off, a machine of either system declaring every fence
-    evaluates, one declaring nothing has no file, and agents in a realm it doesn't join are
-    refused
+    costs money, its taints, its agents by realm, the fences its agent sessions run in, whether
+    pi fences each command itself) has it written where mycelium reads it, in mycelium's words;
+    a fence it doesn't say is left out, pi_fences_itself is written only when a Mac says so,
+    beside its fences and their launcher, and refused on Linux, the doors a fence accepts for
+    another machine are written only when named and refused for a machine no realm could name,
+    a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
+    profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
+    off, a machine of either system declaring every fence evaluates, one declaring nothing has
+    no file, and agents in a realm it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3047,7 +3088,8 @@
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
     clears, rather than on a host's thread; left running through a switch for up to two hours,
-    skipped where the harness isn't installed, and never on a Mac
+    made to give memory back past 1.5 GiB with no hard limit, its own or its slices', to kill it
+    at, skipped where the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -3166,8 +3208,8 @@
     place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, glibc's
     trim threshold fixed at 128 KiB beside its realm's own allocator tuning, unless the realm
-    names its own threshold there or in glibc's older variable, neither read from the login
-    where neither the realm nor the unit sets it, the realm's tuning kept for its hosts too, in
+    names its own threshold there or in glibc's older variable, whichever of the two neither
+    the realm nor the trim sets dropped from the unit, the realm's tuning kept for its hosts too, in
     agents.slice slowed past 12 GB, no core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
@@ -4010,14 +4052,16 @@
   murmurs-site-reads-live = ''
     the murmurs page, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: every murmur
-    drawn newest first and counted, one said, settled or gone, one it can't read said while the rest
-    draw, broken while the node is away with the murmurs kept and live once it's back, stale once
-    the server goes with them kept, a murmur's words drawn as words and never as markup, j, k, g, G
-    and ? answering, a tap on a key its head shows doing what typing it does, the web-design skill's
-    page checks passing at a phone's width and a desk's in both looks, a first visit within its
-    budget of files, bytes and elements, both visits reaching only the sites' server and the second
-    answered unchanged, a tab whose renderer dies before its first reading opened once more and
-    said, and nothing logged
+    drawn newest first and counted, one said, settled or gone, a quiet node said in a line with no
+    empty list or bare sky, again once its last murmur goes and never while a record goes unread,
+    a node the server never reached said unheard and never quiet, in a second tab too,
+    one it can't read said while the rest draw, broken while the node is away with the murmurs
+    kept and live once it's back, stale once the server goes with them kept, a murmur's words
+    drawn as words and never as markup, j, k, g, G and ? answering, a tap on a key its head shows
+    doing what typing it does, the web-design skill's page checks passing at a phone's width and a
+    desk's in both looks, a first visit within its budget of files, bytes and elements, both visits
+    reaching only the sites' server and the second answered unchanged, a tab whose renderer dies
+    before its first reading opened once more and said, and nothing logged
   '';
   start-new-work-asks-only-a-sprout = ''
     Start New Work asks the realm's node only a sprout of the trimmed words or link, after --,
@@ -4235,6 +4279,11 @@
   the-drawer-over-the-card-meets-it-square = ''
     a floating surface over another, as the launcher's drawer over its card on a narrow screen,
     meets it with a square foot and region, its top and the card's foot staying round
+  '';
+  the-drawer-search-keeps-pace = ''
+    a drawer's search over 100 long lines of hyphenated names finds all 800 places within six
+    times the same lines with no joiners take, and those within twelve times the plainest search,
+    in the fastest of five processes
   '';
   the-ergodox-command-reaches-the-board = ''
     `ergodox` writes each command whole to the board's channel alone, and nothing for --help or a
@@ -4656,6 +4705,19 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
+  the-launcher-says-a-lagging-keys-kind-on-niri = ''
+    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
+    Return, out by - and in by a word and a space by its arrow and how many letters its row's name
+    has, never the name; a key listed without the notices' answer, and their answer late, say
+    what was typed by how many letters; and a program's lagging drawer is said by its row's kind,
+    never the program's id
+  '';
+  the-launcher-says-asks-from-outside-by-kind-on-niri = ''
+    on niri with reports off, a link to a session, a network, a machine or a repository says in
+    the journal the words it was given by how many letters, a catalogue run and a terminal's do
+    say the rows they walked by kind, never whole, and a terminal's do that fails says only its
+    error's name
+  '';
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
@@ -4828,10 +4890,11 @@
   '';
   the-launcher-puts-back-a-look-it-couldnt-write = ''
     a look cleared in For You shows cleared in the act's own frame, and when its file can't be
-    written is put back as it read, its failure said in the journal, the shut launcher keeping
-    the looks it read, the daemon's word on one it settled, the same look written its own way,
-    leaves the text the act showed, and a served look whose session is gone is never settled and
-    Now tells the launcher once that it's gone
+    written is put back as it read, its failure said in the journal with reports off by the
+    file's letters and the daemon's code, never their words, the shut launcher keeping the looks
+    it read, the daemon's word on one it settled, the same look written its own way, leaves the
+    text the act showed, and a served look whose session is gone is never settled and Now tells
+    the launcher once that it's gone
   '';
   the-launcher-reads-spec-from-its-daemon = ''
     the launcher's Spec reads what the cadence-spec daemon serves: the head as the daemon says it,
@@ -5064,6 +5127,11 @@
     loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
     lists the Brio only while that file is there, and the Brio's own watch writes in the hidden
     folder, never beside it
+  '';
+  the-mx-brio-is-the-seats = ''
+    a graphical machine runs no relay on the MX Brio, has no udev rule taking the seat's tag off
+    it, and gives the seat back a Brio a relay held, so the seat opens the Brio itself while its
+    relay gives no picture
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
@@ -6231,6 +6299,17 @@
   '';
   vm-first-passes-clippy = ''
     clippy finds nothing in vm-first or its tests
+  '';
+  chunks-are-given-back-each-night = ''
+    the root's empty data chunks are given back from a oneshot unit on a 03:00 timer that starts
+    with the machine and isn't caught up on, bounded to two hours and weighted behind other work in
+    the background slice
+  '';
+  chunks-are-given-back-only-while-short = ''
+    Btrfs's data chunks are balanced only from 01:00 to 06:00 and while too little of the disk is
+    in no chunk, each step ended at 06:00, stopping at the first step that frees enough, going past
+    a step that fails, stopping at half-full chunks, and failing when the disk stays short or its
+    usage can't be read
   '';
   swap-file-grows-only-when-it-may = ''
     a swap file smaller than asked for grows as the machine starts, and one in use, holding a

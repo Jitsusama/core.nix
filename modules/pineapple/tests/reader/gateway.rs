@@ -463,11 +463,13 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
         Some(&named),
     );
     let began = Instant::now();
-    while !(waiting.exists()
-        && decisions_in(&own).len() >= until.judging
-        && searches().len() >= until.asks)
+    // A row told may be taken away again once Slack is heard, so it's
+    // waited on as having been told.
+    let mut told = false;
+    while !(told && decisions_in(&own).len() >= until.judging && searches().len() >= until.asks)
         && began.elapsed() < PATIENCE
     {
+        told |= waiting.exists();
         // The reader goes round every tenth of a second in a case.
         thread::sleep(Duration::from_millis(20));
     }

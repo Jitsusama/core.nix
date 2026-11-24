@@ -211,10 +211,10 @@ function shown(name, now, option) {
 // ran it (`held`), so a refusal is said where the line was; { journal }
 // once Joel has typed on, so a late one never writes over what he's
 // doing, said in the journal instead as Presented.refusalShown says it:
-// `refusal`'s `code` whole, the daemon's, and its words quoted only where
-// its `whole` is true, as while reports are on, else by how many letters
-// they held, so a caller that gives neither keeps them out too; and null
-// where it has no words.
+// `refusal`'s `code` whole, the daemon's, in both modes, and its words
+// quoted only where its `whole` is true, as while reports are on, else by
+// how many letters they held, so a caller that gives neither keeps them
+// out too; and null where it has no words.
 function later(option, words, held, refusal = {}) {
     if (words === "") {
         return null;

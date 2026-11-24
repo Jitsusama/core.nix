@@ -52,16 +52,16 @@ function twinsOf(at, moment) {
     return on.includes(at.output) ? on.filter(output => output !== at.output) : [];
 }
 
-// connectorOf (given `inUse`), but not a twin's (twinsOf) nor one `given` a twin this pass
-// (`{ at, output }` each), so with only those connected `at`'s is gone; as kept with none said.
+// Where a place kept at `at` is now, `output`, connectorOf's (given `inUse`) but not a twin's
+// (twinsOf) nor one `given` a twin this pass (`{ at, output }` each), so with only those connected
+// `at`'s is gone, or as kept with no screen said; and the note it carries (`away`, of awayOf).
 function whereKept(at, moment, screens, { given, inUse } = {}) {
     const twins = twinsOf(at, moment);
     const taken = twins.concat((given ?? []).filter(was => twins.includes(was.at.output)).map(was => was.output));
     const found = Object.keys(screens).length > 0 ? connectorOf(at, screens, inUse) : at.output;
-    if (found === undefined || found === at.output || !taken.includes(found)) {
-        return found;
-    }
-    return Object.keys(screens).find(name => screens[name] === at.screen && !taken.includes(name));
+    const output = found === undefined || found === at.output || !taken.includes(found) ? found
+        : Object.keys(screens).find(name => screens[name] === at.screen && !taken.includes(name));
+    return { output, away: awayOf(at, output, moment, screens) };
 }
 
 // The note (homeward's) a place kept at `at` and found on `output` (whereKept) carries, or null:
@@ -87,17 +87,16 @@ function awayOf(at, output, moment, screens) {
 // (of `moments`, each place's boot's) given a connector of its own. `screens` is connected's;
 // with none, as before niri says any, or no screen in use, a gone one is left as it was kept.
 function placed(places, screens, inUse, moments) {
-    const known = Object.keys(screens ?? {}).length > 0;
     const given = [];
     const pass = { given, inUse };
     const found = places.map((at, index) => {
         if (!at) {
             return null;
         }
-        const output = known ? whereKept(at, moments?.[index], screens, pass) : at.output;
+        const { output, away } = whereKept(at, moments?.[index], screens ?? {}, pass);
         given.push({ at, output });
         const gone = output === undefined ? at.screen || at.output : undefined;
-        return { at, index, output, gone };
+        return { at, output, gone, away };
     });
     let last = 0;
     for (const one of found) {
@@ -105,11 +104,8 @@ function placed(places, screens, inUse, moments) {
             last = Math.max(last, one.at.workspace);
         }
     }
-    const goneScreens = found
-        .filter(one => one?.gone !== undefined)
-        .map(one => one.gone)
-        .filter((gone, at, all) => all.indexOf(gone) === at)
-        .sort();
+    const goneScreens = [...new Set(found.map(one => one?.gone))]
+        .filter(gone => gone !== undefined).sort();
     const after = {};
     for (const gone of goneScreens) {
         after[gone] = last;
@@ -123,20 +119,22 @@ function placed(places, screens, inUse, moments) {
         if (one === null) {
             return null;
         }
-        const away = known ? awayOf(one.at, one.output, moments?.[one.index], screens) : null;
-        if (one.output !== undefined) {
-            return Object.assign({}, one.at, { output: one.output }, away ? { away } : {});
+        const { at, output, gone, away } = one;
+        if (output !== undefined) {
+            return Object.assign({}, at, { output }, away ? { away } : {});
         }
         if (inUse === null || inUse === undefined) {
-            return Object.assign({}, one.at);
+            return Object.assign({}, at);
         }
-        const workspace = after[one.gone] + one.at.workspace;
-        return Object.assign({}, one.at, { output: inUse, workspace, away });
+        const workspace = after[gone] + at.workspace;
+        return Object.assign({}, at, { output: inUse, workspace, away });
     });
 }
 
 // Of `screens` (screensOf), those niri lists a workspace on, all while it lists none, then, once
-// any is said, each other it lists as "", not heard: heard apart, they can be stale (22 Nov).
+// any is said, each other it lists as "", not heard: heard apart, either can be stale
+// (vm-screens-keep-places, 21 and 22 Nov). One screensOf left out as off is one so too: niri
+// moves an off screen's workspaces off it, so only a stale list still puts one there.
 function connected(screens, workspaces) {
     const listed = new Set((workspaces ?? []).map(each => each.output));
     const said = Object.keys(screens ?? {});
@@ -200,10 +198,10 @@ function homeward(away, screens, workspaces) {
 // 2026-11-18). `claimed` are those taken just now by a sibling that was
 // another screen as it left, so two alike back on new connectors take one
 // each. Where it sits now doesn't count, so one Joel moves while it waits
-// stays where he put it.
+// stays where he put it. One noted for no screen ("") has none to go to.
 function wayBack(one, screen, screens, claimed) {
     const alike = Object.keys(screens ?? {})
-        .filter(name => screens[name] === screen || name === screen)
+        .filter(name => screen !== "" && (screens[name] === screen || name === screen))
         .sort();
     if (alike.includes(one.output)) {
         return one.output;

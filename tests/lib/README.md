@@ -35,6 +35,7 @@ For other checks:
 | `shell-folder-lint.{nix,sh}` | qmllint over a check's laid-out shell, against Quickshell's types |
 | `says-what-it-has-open.sh`   | a program opened on a file, asked what it has open                |
 | `shell-says.sh`              | a check's wait for what the shell it started says in its log      |
+| `nested-niri.sh`             | a command run on a real niri, nested in a headless sway           |
 | `page.nix`                   | the smallest PDF a viewer opens, for checks that open documents   |
 | `bare-nixos.nix`             | the least NixOS machine, as a module a check adds others to       |
 | `bare-darwin.nix`            | the least nix-darwin machine, as a module a check adds others to  |

@@ -51,7 +51,7 @@ needs another fails in its checks rather than on a machine.
 `core.lib.bareNixosModule` and `core.lib.bareDarwinModule` are the least
 machine of each class, with one account, `someone`, for the check to add the
 module to. They are for checks only, never a machine's base: they allow
-unfree packages and nobody logs in to the account. Their platform and state
+the unfree packages core names and nobody logs in to the account. Their platform and state
 versions are weaker than a checked module's own default, and so are the
 NixOS one's boot loader and disk and the Mac one's primary user.
 `core.lib.evaluates` is a check that a machine evaluates and no module
@@ -121,6 +121,16 @@ home-manager.users.jitsusama.jitsusama.niri.outputs."eDP-1" = [
   "scale 2"
   "position x=560 y=1440"
 ];
+```
+
+An unfree package is allowed only by name, so a machine that installs one of
+its own names it in its system configuration, even when its home
+configuration installs it, since home-manager uses the system's nixpkgs. The
+name is the one `lib.getName` gives, the package's `pname`, and the lists
+from every module join:
+
+```nix
+nixpkgs.config.allowUnfreePackages = [ "google-chrome" ];
 ```
 
 ## Applying It

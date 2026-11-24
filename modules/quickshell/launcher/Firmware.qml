@@ -144,4 +144,17 @@ Provider {
             }
         }
     }
+
+    // A watch's whole answer is heard before the link counts it answered,
+    // so Firmware answers again once it does: a shell started while the
+    // daemon already held fwupd's headline stayed at its waiting answer
+    // until fwupd next told it something.
+    Connections {
+        target: ready.link
+
+        function onAnsweredChanged() {
+            if (ready.link.answered && provider.seen)
+                provider.answered();
+        }
+    }
 }

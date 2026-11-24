@@ -359,6 +359,10 @@ struct Shaped {
     /// The share of their split agents straight on the link are held to,
     /// while the VPN's flow waits beside what they send.
     agents_share: f64,
+    /// The share agents' class was split at when last changed, which the
+    /// queues hold until the next split changes it, up to a second later
+    /// or never, so a trace says the share the class holds.
+    split_agents_share: f64,
     /// The packets the upload's CAKE had dropped when last read, and what
     /// it and the VPNs riding the link dropped since the controller was
     /// last told, and when that was.
@@ -423,6 +427,9 @@ impl Shaped {
         if split.moved_from(&self.split, rate) {
             let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
             self.split = self.split.after(split, took);
+            if took {
+                self.split_agents_share = self.agents_share;
+            }
         }
         self.split.vpn
     }
@@ -439,12 +446,15 @@ impl Shaped {
         let split = self.lanes.at(float(self.applied.0));
         let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
         self.split = self.split.after(split, took);
+        if took {
+            self.split_agents_share = 1.0;
+        }
     }
 
     /// The shares this link's queues are held to now, as a trace says them
     /// (`applied_held`).
     fn held(&self) -> trace::Held {
-        applied_held((self.vpn_share, self.agents_share), &self.split)
+        applied_held((self.vpn_share, self.split_agents_share), &self.split)
     }
 
     /// Reads the upload's CAKE: what it has sent, as CAKE counts it, since
@@ -460,10 +470,8 @@ impl Shaped {
             let (queued, reads) = &mut self.queued_reads;
             *queued += u32::from(held::queued(self.holding.map(|(was, _)| was), now));
             *reads += 1;
-            let sent = |(h, at): (held::Holding, Instant)| (h.agents_sent, at);
-            let going = sent_kbit(self.holding.map(sent), Some(sent(read))).unwrap_or(0);
             let assured = lanes::agents_assured(&self.split);
-            self.ahead_us += held::ahead_us(now, self.applied.0, assured, going);
+            self.ahead_us += ahead_of(self.holding, read, self.applied.0, assured);
             self.holding = Some(read);
         }
         if let Some(now) = up.as_deref().and_then(held::drops) {
@@ -496,6 +504,26 @@ impl Shaped {
             }
         })
     }
+}
+
+/// What a read of the upload's queues, `read`, adds to the VPN's wait, in
+/// microseconds (`held::ahead_us`), on a link applied at `link` kbit/s
+/// whose agents are assured `agents_assured`: agents go at what their lane
+/// sent since the read before, `was`, or not at all with none.
+fn ahead_of(
+    was: Option<(held::Holding, Instant)>,
+    read: (held::Holding, Instant),
+    link: u64,
+    agents_assured: u64,
+) -> u64 {
+    let sent = |(h, at): (held::Holding, Instant)| (h.agents_sent, at);
+    let agents_going = sent_kbit(was.map(sent), Some(sent(read))).unwrap_or(0);
+    let rates = held::Rates {
+        link,
+        agents_assured,
+        agents_going,
+    };
+    held::ahead_us(read.0, rates)
 }
 
 /// What the upload's CAKE sent between two good reads, in kbit/s, over
@@ -692,6 +720,7 @@ fn start(
         vpn_reads: (0, 0),
         vpn_share: 1.0,
         agents_share: 1.0,
+        split_agents_share: 1.0,
         drops: None,
         dropped: 0,
         told_at: None,
@@ -725,21 +754,25 @@ fn install(
     down: u64,
     straight: bool,
 ) -> bool {
-    let (Some(held), Some(back)) = (queues_of(link), queues_of(ifb)) else {
+    let seen = queues_of(link).zip(queues_of(ifb));
+    let seen = seen
+        .as_ref()
+        .map(|(held, back)| (held.as_str(), back.as_str()));
+    let (Some(adopt), Some((held, back))) = (adopts(seen), seen) else {
         return false;
     };
-    let turned = if lanes::laned(&held) && qdisc::ours(&back) {
+    let turned = if adopt {
         eprintln!("taking back the queues {link} kept through a restart");
         // tc complains of a queue with no filters to take off, which is
         // nothing to tell.
-        for clear in lanes::unfiltered(link, &held)
+        for clear in lanes::unfiltered(link, held)
             .iter()
-            .chain(&lanes::unfiltered(ifb, &back))
+            .chain(&lanes::unfiltered(ifb, back))
         {
             let _ = sh(clear);
         }
         run_all(lanes::adopt(link, ifb, (up, split), down));
-        qdisc::turned(&held)
+        qdisc::turned(held)
     } else {
         let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
         let _ = sh(&qdisc::unturn(link));
@@ -784,6 +817,9 @@ struct Pinner {
     written: Option<String>,
     boot: String,
     asked_at: Option<(Instant, u64)>,
+    /// Since when the primary uplink's router has named no network, so a
+    /// pin kept through that lets go once it lasts `pin::APART`.
+    unnamed_since: Option<Instant>,
 }
 
 impl Pinner {
@@ -819,6 +855,7 @@ impl Pinner {
             written,
             boot: boot.trim().to_owned(),
             asked_at,
+            unnamed_since: None,
         }
     }
 
@@ -876,6 +913,17 @@ impl Pinner {
         {
             eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
         }
+        let since = self.unnamed_since.unwrap_or(now);
+        self.unnamed_since = uplink
+            .filter(|&(_, network)| pin::unnamed(network))
+            .map(|_| since);
+        if self
+            .unnamed_since
+            .is_some_and(|at| now.saturating_duration_since(at) >= pin::APART)
+            && let Some(first) = self.pinning.unheard(now)
+        {
+            eprintln!("{}", pin::let_go(first, pin::UNNAMED));
+        }
         while let Ok((end, read)) = self.read.try_recv() {
             let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
             let from = now + pin::settle(&timeout.unwrap_or_default());
@@ -896,9 +944,7 @@ impl Pinner {
             eprintln!("{}", pin::said(moved.was, first, &self.last));
         }
         if let Some((link, _)) = uplink
-            && self
-                .looked
-                .is_none_or(|at| now - at >= Duration::from_secs(5))
+            && self.looked.is_none_or(|at| now - at >= pin::LOOK)
         {
             self.looked = Some(now);
             let counted = sh(&words(&format!(
@@ -908,7 +954,7 @@ impl Pinner {
                 Some(retried) => {
                     self.unread = false;
                     if let Some((pin::Moved { was: Some(first) }, times)) =
-                        self.pinning.heed(retried)
+                        self.pinning.heed(retried, now)
                     {
                         eprintln!("{}", pin::dropped(first, times));
                     }
@@ -954,6 +1000,33 @@ fn instant_of(at: u64) -> Option<Instant> {
     Instant::now().checked_sub(SystemTime::now().duration_since(then).ok()?)
 }
 
+/// Whether `install` takes back the queues it read on a link and its IFB,
+/// `seen`: lanes and our IFB there, as a restart leaves them, are taken
+/// back; anything else is replaced. A read that failed gives nothing, so
+/// nothing is changed.
+fn adopts(seen: Option<(&str, &str)>) -> Option<bool> {
+    seen.map(|(held, back)| lanes::laned(held) && qdisc::ours(back))
+}
+
+/// Whether look puts back a link's queues it read, with its IFB's, as
+/// `seen`: once the lanes, our IFB, or the turn a download that isn't
+/// `straight` needs, are gone. A read that failed gives false, leaving the
+/// queues as they are until one answers, rather than taking them down to
+/// put them back.
+fn queues_gone(seen: Option<(&str, &str)>, straight: bool) -> bool {
+    seen.is_some_and(|(held, back)| {
+        !lanes::laned(held) || !(straight || qdisc::turned(held)) || !qdisc::ours(back)
+    })
+}
+
+/// Whether a VPN counts as taken up, so a restart's sweep may go: one with
+/// no link to ride, or its index unread, only once it's gone, since it's
+/// let go meanwhile; one that rides once its queues were read, since one
+/// whose read failed is left as it was.
+fn vpn_taken_up(rides: bool, there: bool, read: bool) -> bool {
+    if rides { read } else { !there }
+}
+
 /// Runs each command, saying what failed, and gives whether all went.
 fn run_all(commands: Vec<Vec<String>>) -> bool {
     let mut fine = true;
@@ -994,6 +1067,34 @@ fn routes_seen(
 /// the rest, as would every link while none is.
 fn may_sweep<V>(read: bool, order: Option<&[String]>, shaped: &BTreeMap<String, V>) -> bool {
     read && !shaped.is_empty() && order.is_some_and(|o| o.iter().all(|n| shaped.contains_key(n)))
+}
+
+/// The link the VPNs ride after a look that read `order`, the routed links
+/// best first, from the links taken up, `shaped`, and the one they rode,
+/// `was`. The first routed link once it's taken up; while it isn't yet,
+/// the one they rode if it still routes and is shaped, since moving them
+/// tears their queues down, and if it doesn't, the first routed link that
+/// is shaped, so they never ride a link that's gone while another serves.
+/// With none of those, or no routes read, the one they rode.
+fn primary_after<V>(
+    order: Option<&[String]>,
+    shaped: &BTreeMap<String, V>,
+    was: Option<String>,
+) -> Option<String> {
+    let Some(order) = order else {
+        return was;
+    };
+    let taken = |name: &&String| shaped.contains_key(*name);
+    if let Some(first) = order.first().filter(taken) {
+        return Some(first.clone());
+    }
+    if was
+        .as_ref()
+        .is_some_and(|w| order.contains(w) && shaped.contains_key(w))
+    {
+        return was;
+    }
+    order.iter().find(taken).cloned().or(was)
 }
 
 /// The links the shaper holds and what each reaches without the router.
@@ -1075,7 +1176,9 @@ impl Call {
     /// Takes a-call-is-on's answer at `now`, none where it couldn't tell,
     /// and gives the journal's line when whether a call is on changes.
     /// What was last known stands through answers missed for under
-    /// `CALL_UNSURE`, and a call is taken to have ended after that.
+    /// `CALL_UNSURE`, and a call is taken to have ended after that. The
+    /// pin's rounds, held off meanwhile, are said to go again once it
+    /// answers that no call is on (download hold round 3's F4).
     fn answered(&mut self, on: Option<bool>, now: Instant) -> Option<&'static str> {
         let Some(on) = on else {
             let since = *self.unsure.get_or_insert(now);
@@ -1084,12 +1187,17 @@ impl Call {
             }
             self.on = false;
             self.unheard = true;
-            return Some("a-call-is-on hasn't answered for a minute, so no call is taken to be on");
+            return Some(
+                "a-call-is-on hasn't answered for a minute, so no call is taken to be on, \
+                 and the VPN's pin starts no round of probes until it answers",
+            );
         };
         self.unsure = None;
-        self.unheard = false;
+        let was_unheard = std::mem::take(&mut self.unheard);
         if on == self.on {
-            return None;
+            return was_unheard.then_some(
+                "a-call-is-on answers again with no call on, so the pin's rounds go again",
+            );
         }
         self.on = on;
         Some(if on {
@@ -1240,12 +1348,8 @@ fn run(options: &Options) -> Result<(), Failure> {
             // not taken up yet, since letting them go would tear them down.
             if let Some(order) = &order {
                 follow_leaders(&mut shaped, order);
-                primary = order
-                    .first()
-                    .filter(|f| shaped.contains_key(*f))
-                    .cloned()
-                    .or(primary);
             }
+            primary = primary_after(order.as_deref(), &shaped, primary);
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
             let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
             // A restart left the old shaper's queues; once this one has
@@ -1543,9 +1647,7 @@ fn follow_vpns(
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
         let (Some((up, down, straight)), Some(index)) = (base, index) else {
-            // A VPN that is there isn't taken up, with no link to ride or
-            // its index unread.
-            every_read &= !dir.exists();
+            every_read &= vpn_taken_up(false, dir.exists(), false);
             let_vpn_go(applied, name, &dir);
             continue;
         };
@@ -1559,10 +1661,8 @@ fn follow_vpns(
         }
         let same_ifb = was.is_some_and(|v| v.ifb == ifb);
         let (was_up, was_down) = (was.map(|v| v.up), was.map(|v| v.down).filter(|_| same_ifb));
-        // A read that failed leaves the VPN's queues as they are until one
-        // answers.
         let (Some(json), Some(back)) = (queues_of(name), queues_of(&ifb)) else {
-            every_read = false;
+            every_read &= vpn_taken_up(true, true, false);
             continue;
         };
         let mut kept = Vpn {
@@ -1646,15 +1746,11 @@ fn look(
                 }
             }
             Some(s) => {
-                // A read that failed leaves the link's queues as they are
-                // until one answers, rather than taking them down to put
-                // them back.
                 let seen = queues_of(&s.uplink.name).zip(queues_of(&s.ifb));
-                if let Some((json, ifb)) = seen
-                    && (!lanes::laned(&json)
-                        || !(s.download.straight() || qdisc::turned(&json))
-                        || !qdisc::ours(&ifb))
-                {
+                let seen = seen
+                    .as_ref()
+                    .map(|(held, back)| (held.as_str(), back.as_str()));
+                if queues_gone(seen, s.download.straight()) {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
                     s.split = s.lanes.at(float(s.up.rate));
@@ -1806,7 +1902,7 @@ fn step_links(
             // A follower takes its leader's rates, so a hold it had as
             // leader ends rather than coming back unchecked once it leads
             // again (download hold round 1's F3).
-            if let (_, Some(said)) = s.room.step(name, false, None, None) {
+            if let (_, Some(said)) = s.room.step(name, &s.network, false, (None, false), None) {
                 eprintln!("{said}");
             }
             continue;
@@ -1817,9 +1913,16 @@ fn step_links(
         );
         let its = carried.as_ref().filter(|(link, _)| link == name);
         let declared = lines.get(&s.network).copied();
-        let (room, said) = s
-            .room
-            .step(name, calling, its.map(|&(_, kbit)| kbit), declared);
+        // The controller's own cut of this link's download, which it
+        // makes only on a line it judged full.
+        let cut = held && rates.down.is_some();
+        let (room, said) = s.room.step(
+            name,
+            &s.network,
+            calling,
+            (its.map(|&(_, kbit)| kbit), cut),
+            declared,
+        );
         if let Some(said) = said {
             eprintln!("{said}");
         }
@@ -1849,7 +1952,8 @@ fn held_shares(
 /// given, and agents' only while the split caps their lane, which it does
 /// only while they wait straight (src/lanes.rs). A hold climbing back while
 /// they don't caps nothing, so a trace saying it would read as a hold that
-/// wasn't there.
+/// wasn't there. Agents' is the share asked: where their part of the floor
+/// is more, the class holds them to the floor, above it.
 fn applied_held((vpn, agents): (f64, f64), split: &lanes::Split) -> trace::Held {
     trace::Held {
         vpn,
@@ -1858,6 +1962,7 @@ fn applied_held((vpn, agents): (f64, f64), split: &lanes::Split) -> trace::Held 
         } else {
             1.0
         },
+        unsent: split.unsent,
     }
 }
 
@@ -2440,7 +2545,27 @@ mod tests {
             up: None,
             down: Some(50_000),
         };
+        // The upload held alone holds the link, but leaves its download
+        // straight unless a call's room holds it (download hold round 3's F8).
+        let up = replay::Rates {
+            up: Some(5_000),
+            down: None,
+        };
         let cases = [
+            (
+                "the upload held, no call",
+                up,
+                2_000_000,
+                None,
+                (2_000_000, State::Holding, true),
+            ),
+            (
+                "the upload held, a call on",
+                up,
+                2_000_000,
+                Some(81_000),
+                (81_000, State::Holding, false),
+            ),
             (
                 "no call, no cut",
                 none,
@@ -2505,8 +2630,11 @@ mod tests {
         assert!(call.on, "answers missed under a minute ended the call");
         assert_eq!(
             call.answered(None, at(62)),
-            Some("a-call-is-on hasn't answered for a minute, so no call is taken to be on"),
-            "a minute unanswered didn't end the call"
+            Some(
+                "a-call-is-on hasn't answered for a minute, so no call is taken to be on, \
+                 and the VPN's pin starts no round of probes until it answers"
+            ),
+            "a minute unanswered didn't end the call, or didn't say the pin waits"
         );
         assert!(!call.on, "the call was said ended but kept");
         assert!(
@@ -2516,12 +2644,17 @@ mod tests {
         assert_eq!(call.answered(None, at(64)), None, "no call ended twice");
         assert_eq!(
             call.answered(Some(false), at(65)),
-            None,
-            "no call said twice"
+            Some("a-call-is-on answers again with no call on, so the pin's rounds go again"),
+            "the pin's rounds went again unsaid"
         );
         assert!(
             !call.may_be_on(),
             "an answer of no call kept the pin's rounds off"
+        );
+        assert_eq!(
+            call.answered(Some(false), at(67)),
+            None,
+            "no call said twice"
         );
 
         // An answer starts the count over.
@@ -2579,7 +2712,8 @@ mod tests {
             applied_held((0.6, 0.4), &split(Some(900.0))),
             trace::Held {
                 vpn: 0.6,
-                agents: 0.4
+                agents: 0.4,
+                unsent: false,
             },
             "each share where it's taken, by name, and not the cap"
         );
@@ -2587,9 +2721,18 @@ mod tests {
             applied_held((0.6, 0.4), &split(None)),
             trace::Held {
                 vpn: 0.6,
-                agents: 1.0
+                agents: 1.0,
+                unsent: false,
             },
             "agents' share with their lane uncapped held nothing"
+        );
+        let refused = lanes::Split {
+            unsent: true,
+            ..split(Some(900.0))
+        };
+        assert!(
+            applied_held((0.6, 0.4), &refused).unsent,
+            "shares from a split tc refused weren't said unsent"
         );
         let (vpn, agents) = held_shares((true, false, false), (0.6, 0.4));
         assert_eq!(
@@ -3099,6 +3242,210 @@ mod tests {
         );
     }
 
+    // The VPNs move to the first routed link once it's taken up, stay on
+    // theirs while it waits or the routes are unread, and leave a link
+    // that's gone for another that serves (round 6's F66, F67 and F69).
+    #[test]
+    fn the_vpns_ride_the_first_link_taken_up_and_never_one_gone() {
+        let shaped = |names: &[&str]| -> BTreeMap<String, u8> {
+            names.iter().map(|n| ((*n).to_string(), 0)).collect()
+        };
+        let order =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|n| (*n).to_string()).collect() };
+        let was = Some("wlan0".to_string());
+        let both = shaped(&["eth0", "wlan0"]);
+        let cases = [
+            (
+                Some(order(&["eth0", "wlan0"])),
+                both.clone(),
+                "eth0",
+                "the first taken up",
+            ),
+            (
+                Some(order(&["eth0", "wlan0"])),
+                shaped(&["wlan0"]),
+                "wlan0",
+                "the first waiting, theirs still routed",
+            ),
+            (None, shaped(&["eth0"]), "wlan0", "the routes unread"),
+            (
+                Some(order(&["eth0", "usb0"])),
+                shaped(&["wlan0", "usb0"]),
+                "usb0",
+                "theirs gone and the first waiting, another routed and shaped",
+            ),
+            (
+                Some(order(&["eth0"])),
+                shaped(&["wlan0"]),
+                "wlan0",
+                "theirs gone with nothing else shaped",
+            ),
+        ];
+        for (order, shaped, rides, why) in cases {
+            assert_eq!(
+                primary_after(order.as_deref(), &shaped, was.clone()).as_deref(),
+                Some(rides),
+                "the VPNs rode the wrong link with {why}"
+            );
+        }
+        assert_eq!(
+            primary_after(Some(&order(&[])[..]), &shaped(&[]), None),
+            None,
+            "the VPNs were given a link with none routed or shaped"
+        );
+    }
+
+    // A read's wait takes agents' rate from what their lane sent since the
+    // read before, so a busy lane holding little still takes its assurance
+    // ahead of the VPN (traces round 5's F2 and F3, round 4's F1).
+    #[test]
+    fn a_reads_wait_takes_agents_going_from_what_their_lane_sent() {
+        let start = Instant::now();
+        let holding = |agents_sent: u64| held::Holding {
+            held: 12_600,
+            before_the_vpn: 12_500,
+            agents_sent,
+            ..held::Holding::default()
+        };
+        let read =
+            |agents_sent: u64, ms: u64| (holding(agents_sent), start + Duration::from_millis(ms));
+        assert_eq!(
+            ahead_of(None, read(1_000, 0), 10_000, 2_500),
+            10_080,
+            "with no read before, agents' 100 bytes took more than themselves"
+        );
+        assert_eq!(
+            ahead_of(Some(read(1_000, 0)), read(63_500, 200), 10_000, 2_500),
+            13_333,
+            "agents sending 2.5 Mbit/s over 200 ms didn't take their assurance ahead of the VPN"
+        );
+        assert_eq!(
+            ahead_of(Some(read(1_000, 0)), read(1_000, 200), 10_000, 2_500),
+            10_080,
+            "agents that sent nothing since the read before were taken for going"
+        );
+    }
+
+    // The lanes on a link, turned, and our IFB, as the shaper leaves them.
+    const LANED: &str = r#"[{"kind":"htb","handle":"1:","root":true},
+        {"kind":"cake","handle":"2:","parent":"1:3"},
+        {"kind":"fq_codel","handle":"4:","parent":"1:4"},
+        {"kind":"cake","handle":"5:","parent":"1:5"},
+        {"kind":"ingress","handle":"ffff:","parent":"ffff:fff1"}]"#;
+    const UNTURNED: &str = r#"[{"kind":"htb","handle":"1:","root":true},
+        {"kind":"cake","handle":"2:","parent":"1:3"},
+        {"kind":"fq_codel","handle":"4:","parent":"1:4"},
+        {"kind":"cake","handle":"5:","parent":"1:5"}]"#;
+    const OUR_IFB: &str = r#"[{"kind":"htb","handle":"1:","root":true},
+        {"kind":"cake","handle":"2:","parent":"1:2"}]"#;
+    const THE_KERNELS: &str = r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#;
+
+    // A read that failed changes nothing: install leaves the link, look
+    // doesn't put its queues back, and its VPN isn't counted taken up
+    // (round 5's F58 and F59).
+    #[test]
+    fn a_read_that_failed_leaves_the_queues_as_they_are() {
+        assert_eq!(
+            adopts(None),
+            None,
+            "install changed a link it couldn't read"
+        );
+        assert!(
+            !queues_gone(None, false),
+            "look put back queues it couldn't read"
+        );
+        assert!(
+            !queues_gone(None, true),
+            "look put back a straight link it couldn't read"
+        );
+        assert!(
+            !vpn_taken_up(true, true, false),
+            "a VPN whose queues couldn't be read let the sweep go"
+        );
+    }
+
+    // A restart's queues are taken back; anything else is replaced.
+    #[test]
+    fn install_takes_back_only_lanes_beside_our_ifb() {
+        let cases = [
+            ((LANED, OUR_IFB), Some(true), "a restart's lanes and IFB"),
+            (
+                (UNTURNED, OUR_IFB),
+                Some(true),
+                "a restart's lanes unturned",
+            ),
+            ((THE_KERNELS, OUR_IFB), Some(false), "the kernel's queue"),
+            ((LANED, THE_KERNELS), Some(false), "an IFB not ours"),
+        ];
+        for (seen, adopted, why) in cases {
+            assert_eq!(
+                adopts(Some(seen)),
+                adopted,
+                "install chose wrongly for {why}"
+            );
+        }
+    }
+
+    // Look puts queues back once the lanes, the IFB or a needed turn are
+    // gone, and leaves them while all are there.
+    #[test]
+    fn look_puts_back_only_queues_that_are_gone() {
+        let cases = [
+            ((LANED, OUR_IFB), false, false, "all there"),
+            (
+                (UNTURNED, OUR_IFB),
+                true,
+                false,
+                "a straight download unturned",
+            ),
+            ((UNTURNED, OUR_IFB), false, true, "the turn gone"),
+            ((THE_KERNELS, OUR_IFB), false, true, "the lanes gone"),
+            ((LANED, THE_KERNELS), false, true, "the IFB's queues gone"),
+        ];
+        for (seen, straight, gone, why) in cases {
+            assert_eq!(
+                queues_gone(Some(seen), straight),
+                gone,
+                "look chose wrongly with {why}"
+            );
+        }
+    }
+
+    // A VPN holds a restart's sweep back while it's there and not taken
+    // up, and never once it's gone.
+    #[test]
+    fn a_vpn_holds_the_sweep_only_while_its_there_and_not_taken_up() {
+        assert!(
+            vpn_taken_up(true, true, true),
+            "a VPN whose queues were read"
+        );
+        assert!(
+            vpn_taken_up(false, false, false),
+            "a VPN gone held the sweep"
+        );
+        assert!(
+            !vpn_taken_up(false, true, false),
+            "a VPN there with no link to ride let the sweep go"
+        );
+    }
+
+    // A command that fails is said on one line, its own lines joined, so
+    // the journal reads it as one failure (round 6's F68).
+    #[test]
+    fn a_failed_command_is_said_on_one_line() {
+        let script = |text: &str| vec!["sh".to_string(), "-c".to_string(), text.to_string()];
+        assert_eq!(
+            sh(&script("echo one >&2; echo two >&2; exit 1")),
+            Err("sh -c echo one >&2; echo two >&2; exit 1: one two".to_string()),
+            "a failed command's lines weren't joined after its words"
+        );
+        assert_eq!(
+            sh(&script("echo fine")),
+            Ok("fine\n".to_string()),
+            "a command's answer wasn't given as it said it"
+        );
+    }
+
     // The house's ceiling and the network's own both hold a link, the
     // lower of the two, and either alone holds it by itself.
     #[test]
@@ -3227,7 +3574,10 @@ mod tests {
     // A house whose other machine moves to its cable is heard from either
     // address while each is fresh, and the one saying the most holds,
     // wherever it is in the list and however fresh, so a report saying
-    // less, forged or late, never loosens the hold (house round 3).
+    // less from the other address never loosens the hold (house round 3).
+    // One from the same address replaces what it said, forged or not:
+    // unsigned, a report is only as good as the address it comes from
+    // (house round 5).
     #[test]
     fn a_house_is_held_by_the_most_any_of_its_fresh_addresses_says() {
         let wifi: std::net::IpAddr = "192.0.2.7".parse().expect("an address");

@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
+import { floorFor, floorOf, forageRow, panelOf } from "../draw.ts";
 import {
   cursorAfter,
   type Forage,
@@ -24,14 +25,6 @@ const VIEWED = foragesOf(
 const cellsOf = (forages: readonly Forage[], sought: string, hollowOnly: boolean): string[] =>
   shownBy(forages, sought, hollowOnly).map((each) => each.cell);
 
-/** Where the cursor on `cursor` rests once the list shows what `sought` finds in its view. */
-const restsOn = (
-  forages: readonly Forage[],
-  cursor: string | null,
-  sought: string,
-  hollowOnly: boolean,
-): string | null => cursorAfter(forages, sought, hollowOnly, cursor);
-
 it("the list shows what the find holds in its view, every cell or those without purpose", () => {
   assert.deepEqual(cellsOf(VIEWED, "", false), ["KESTRL", "OSPREY", "SKIFFS"]);
   assert.deepEqual(cellsOf(VIEWED, "", true), ["OSPREY"]);
@@ -45,46 +38,69 @@ it("the list shows what the find holds in its view, every cell or those without 
   assert.equal(inView(osprey, true), true);
 });
 
-it("the view of cells without purpose takes in the cells the headline and lede count", () => {
-  const unwrittenCells = VIEWED.filter(unwritten).map((each) => each.cell);
-  assert.deepEqual(unwrittenCells, ["OSPREY"]);
-  assert.deepEqual(cellsOf(VIEWED, "", true), unwrittenCells);
-  assert.equal(headline(VIEWED).without, unwrittenCells.length);
-  assert.ok(lede(VIEWED).startsWith("OSPREY has no purpose written yet."), lede(VIEWED));
+it("a purpose showing nothing is unwritten to the view, headline, lede, row, panel and floor", () => {
+  // OSPREY's purpose is spaces and breaks, and SKIFFS's characters that draw nothing.
+  const blank = foragesOf(
+    told([
+      forage("KESTRL"),
+      forage("OSPREY", { purpose: " \n\t" }),
+      forage("SKIFFS", { purpose: "\u200b\u2060\u00ad\u3164\ufe0f\u2800\u0085" }),
+    ]),
+  ).forages;
+  const unwrittenCells = blank.filter(unwritten).map((each) => each.cell);
+  assert.deepEqual(unwrittenCells, ["OSPREY", "SKIFFS"]);
+  assert.deepEqual(cellsOf(blank, "", true), unwrittenCells);
+  assert.equal(headline(blank).without, unwrittenCells.length);
+  assert.ok(lede(blank).startsWith("OSPREY and SKIFFS have no purpose"), lede(blank));
+  const floor = floorOf(floorFor(blank, null), null, "kestrel");
+  for (const each of blank.filter(unwritten)) {
+    const row = forageRow(each);
+    assert.ok(row.includes("No purpose written yet."), row);
+    assert.ok(!row.includes("data-said-by"), row);
+    const panel = panelOf(each, new Set(), []);
+    assert.ok(panel.includes('<p class="lead quiet">No purpose written yet.</p>'), panel);
+    assert.ok(floor.includes(`<rect class="hollow" data-cell="${each.cell}"`), floor);
+  }
+  // A word beside them, or a mark written before a number, shows.
+  const [kestrel] = blank;
+  assert.ok(kestrel);
+  for (const purpose of ["a\u200b", "\u06dd"]) {
+    assert.equal(unwritten({ ...kestrel, purpose }), false, purpose);
+  }
 });
 
 it("the cursor stays while the list shows it, else goes to its first row", () => {
-  assert.equal(restsOn(VIEWED, "SKIFFS", "", false), "SKIFFS");
-  assert.equal(restsOn(VIEWED, "SKIFFS", "sk", false), "SKIFFS");
+  assert.equal(cursorAfter(VIEWED, "", false, "SKIFFS"), "SKIFFS");
+  assert.equal(cursorAfter(VIEWED, "sk", false, "SKIFFS"), "SKIFFS");
   // A find that hides the cursor's cell moves it to the find's first match.
-  assert.equal(restsOn(VIEWED, "KESTRL", "sk", false), "SKIFFS");
+  assert.equal(cursorAfter(VIEWED, "sk", false, "KESTRL"), "SKIFFS");
   // The view of cells without purpose moves it to the cell it shows.
-  assert.equal(restsOn(VIEWED, "KESTRL", "", true), "OSPREY");
+  assert.equal(cursorAfter(VIEWED, "", true, "KESTRL"), "OSPREY");
   // No cursor rests on the list's first row.
-  assert.equal(restsOn(VIEWED, null, "", false), "KESTRL");
+  assert.equal(cursorAfter(VIEWED, "", false, null), "KESTRL");
 });
 
 it("a find matching nothing keeps the cursor while its cell lasts and the view takes it in", () => {
-  assert.equal(restsOn(VIEWED, "KESTRL", "zzq", false), "KESTRL");
+  assert.equal(cursorAfter(VIEWED, "zzq", false, "KESTRL"), "KESTRL");
   // In the view of cells without purpose too, so ending the find there finds it again.
-  assert.equal(restsOn(VIEWED, "OSPREY", "zzq", true), "OSPREY");
+  assert.equal(cursorAfter(VIEWED, "zzq", true, "OSPREY"), "OSPREY");
   // A cell that ends meanwhile takes the cursor with it.
   const ended = VIEWED.filter((each) => each.cell !== "KESTRL");
-  assert.equal(restsOn(ended, "KESTRL", "zzq", false), null);
+  assert.equal(cursorAfter(ended, "zzq", false, "KESTRL"), null);
   // So does every cell ending, find or not.
-  assert.equal(restsOn([], "KESTRL", "", false), null);
-  assert.equal(restsOn([], "KESTRL", "zzq", false), null);
+  assert.equal(cursorAfter([], "", false, "KESTRL"), null);
+  assert.equal(cursorAfter([], "zzq", false, "KESTRL"), null);
   // With no cursor, an empty list keeps none.
-  assert.equal(restsOn(VIEWED, null, "zzq", false), null);
+  assert.equal(cursorAfter(VIEWED, "zzq", false, null), null);
 });
 
 it("a cell the view of cells without purpose no longer takes in takes the cursor", () => {
   // A record writes OSPREY's purpose while a find matching nothing hides it.
   const written = foragesOf(told([forage("KESTRL"), forage("OSPREY"), forage("SKIFFS")])).forages;
-  assert.equal(restsOn(written, "OSPREY", "zzq", true), null);
+  assert.equal(cursorAfter(written, "zzq", true, "OSPREY"), null);
   // And while the find matches it, or there's no find, with nothing else in the view.
-  assert.equal(restsOn(written, "OSPREY", "osp", true), null);
-  assert.equal(restsOn(written, "OSPREY", "", true), null);
+  assert.equal(cursorAfter(written, "osp", true, "OSPREY"), null);
+  assert.equal(cursorAfter(written, "", true, "OSPREY"), null);
   // Opening that view while a find matching nothing holds a cell with purpose drops it too.
-  assert.equal(restsOn(VIEWED, "KESTRL", "zzq", true), null);
+  assert.equal(cursorAfter(VIEWED, "zzq", true, "KESTRL"), null);
 });

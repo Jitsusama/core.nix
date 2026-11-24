@@ -19,6 +19,7 @@ nixpkgs.lib.nixosSystem {
     core.nixosModules.chrome
     core.nixosModules.guide
     core.nixosModules.inlyne
+    core.nixosModules.mx-brio
     core.nixosModules.update-to-main
     (
       { config, ... }:

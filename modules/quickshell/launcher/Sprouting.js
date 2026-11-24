@@ -337,11 +337,58 @@ function settled(openings, found, now, patience) {
     return { late, up, waiting };
 }
 
-// What the act that ran says of how it ended, in `said`'s words: one the node
-// started with no holder's id can't be found to open, so it promises none.
+// The refusals Joel can meet that one act of the launcher's gets past, by
+// the node's or the agents daemon's words, each with the key of that act's
+// words in `said` and, for one naming the command line's act, what to cut
+// from its end so only the launcher's is said. As mycelium 8f1b0e66 says
+// them, in its sprout.rs's folder and its node's placement: one needing a
+// repository, begun at home, or naming a folder not here is started In one
+// of his repositories, or from the work's whole link, which names its own;
+// one placed nowhere, whose words say each machine's reasons (needs it
+// lacks, reach, room, its time), is said again once one of those can take
+// it. One whose node's socket is missing or refuses, as the agents
+// daemon's sprout.rs says from Rust's own words for the two, is said again
+// once the node runs; any other failure to reach it isn't a node that's
+// down. A refusal none of these knows is told in its own words alone.
+const ACTS = [
+    { says: /^it needs a repository to work in, /u, cut: /: say which, as `[^`]*`$/u,
+        act: "actRepository" },
+    { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
+        act: "actRepository" },
+    { says: / isn't a folder here$/u, cut: null, act: "actRepository" },
+    { says: /^nowhere: /u, cut: null, act: "actPlaced" },
+    { says: /^the node couldn't be reached: (?:No such file or directory|Connection refused) /u,
+        cut: null, act: "actNode" }
+];
+
+// The keys of the words each known refusal's act is said in (ACTS), so a
+// test can hold them to the words Joel reads.
+function refusalActs() {
+    return ACTS.map(one => one.act);
+}
+
+// The refusal `why` as Joel is told it, in `said`'s words: ending with the
+// act that gets past it (ACTS), or as it is when none is known, its words
+// are missing, or the command line's act to cut isn't where it's cut from,
+// since saying both acts is worse than saying the node's alone. The
+// journal keeps `why` as it was said.
+function acted(why, said) {
+    const words = String(why ?? "");
+    const known = ACTS.find(one => one.says.test(words));
+    const act = String(said?.[known?.act] ?? "");
+    if (known === undefined || act === "" || (known.cut !== null && !known.cut.test(words))) {
+        return words;
+    }
+    const cut = known.cut === null ? words : words.replace(known.cut, "");
+    return `${cut}; ${act}`;
+}
+
+// What the act that ran says of how it ended, in `said`'s words: one
+// refused ends with what gets past it (acted), and one the node started
+// with no holder's id can't be found to open, so it promises none.
 function told(how, said) {
     if (!how.started) {
-        return how.why;
+        return how.unanswered === true ? how.why : acted(how.why, said);
     }
     const words = how.held === "" ? said.unheld : said.started;
     return String(words ?? "").replace("{machine}", how.machine);

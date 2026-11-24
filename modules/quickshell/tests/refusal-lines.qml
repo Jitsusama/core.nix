@@ -1,8 +1,8 @@
 // Drives the real ReadyRows.qml, through Wi-Fi's place (launcher/Wireless.qml), to each line
 // its journal says of a daemon's refusal: an act that shuts the launcher refused, one withheld,
 // what an act asks besides refused, words typed in a row that the daemon didn't answer, a
-// search of the whole place it can't make, a search finding a row not served yet, and an act
-// of Wi-Fi's own refused. Each
+// search of the whole place it can't make, a search finding a row not served yet, an act
+// of Wi-Fi's own refused, and a copy whose words are asked at Return, refused. Each
 // refusal names a network in the daemon's own words, as "couldn't join Harbour House" would,
 // and the check around it reads the shell's output, with reports off, for each line saying how
 // many letters rather than the words (Y2YBTS, 2026-11-20, 41ca61c4). What's told on screen
@@ -61,9 +61,14 @@ ShellRoot {
     }
 
     // The cases run once ReadyRows' daemon is loaded, which its LazyLoader may do after the
-    // shell starts.
+    // shell starts, and nothing here waits forever: a daemon that never loads fails, by name.
     property bool begun: false
     Component.onCompleted: begin()
+    Timer {
+        running: !root.begun
+        interval: 30000
+        onTriggered: Expect.fail("never came: ReadyRows' daemon loaded")
+    }
     Connections {
         target: wireless.served
         function onLinkChanged() {
@@ -85,6 +90,7 @@ ShellRoot {
             searchRefused();
             foundUnserved();
             wifiRefused();
+            copyRefused();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error} at ${error.stack}`);
@@ -146,5 +152,16 @@ ShellRoot {
         wireless.actOn({ ask: "act", act: "forget", network: "Harbour House" }, []);
         refuse(said => said.act === "forget",
             { code: "gone", said: "Harbour House went" });
+    }
+
+    // A copy whose words its daemon gives only at Return, refused in its words, its key naming
+    // the network, so its line says the act and the daemon's code alone.
+    function copyRefused() {
+        wireless.served.copyAsked(root.key, { key: "verb:wifi-copy:Harbour House",
+            copy: { ask: { ask: "copy", network: "Harbour House" } } });
+        refuse(said => said.ask === "copy",
+            { code: "locked", said: "couldn't copy Harbour House's password" });
+        Expect.same("a copy refused is told on screen in the daemon's words",
+            standIn.toldWhys.slice(-1), ["couldn't copy Harbour House's password"]);
     }
 }

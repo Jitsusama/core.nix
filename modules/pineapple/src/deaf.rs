@@ -81,12 +81,40 @@ pub enum Change {
     Keep,
 }
 
+/// How one search has fared, round by round: whether it's deaf, as
+/// settled once a state has held [`ROUNDS`] rounds in a row, so a blip
+/// either way leaves it as it was.
+#[derive(Clone, Copy, Debug, Default)]
+struct Fared {
+    deaf: bool,
+    last: bool,
+    run: u32,
+}
+
+impl Fared {
+    fn round(&mut self, deaf: bool) {
+        self.run = if self.last == deaf {
+            self.run.saturating_add(1)
+        } else {
+            1
+        };
+        self.last = deaf;
+        if self.run >= ROUNDS {
+            self.deaf = deaf;
+        }
+    }
+}
+
 /// The rounds read nothing in a row, and whether Joel was told, and why.
 #[derive(Debug)]
 pub struct Deaf {
     rounds: u32,
     /// The last round's why, and how many rounds in a row gave it.
     held: Option<(Deafness, u32)>,
+    /// Each search on its own, so one deaf every round is told whatever
+    /// its partner does.
+    phrase: Fared,
+    tag: Fared,
     told: Option<Deafness>,
     /// When this time of not hearing was first told, in milliseconds,
     /// which names its row, so each time is a row For You hasn't seen.
@@ -110,6 +138,8 @@ impl Deaf {
         Deaf {
             rounds: 0,
             held: None,
+            phrase: Fared::default(),
+            tag: Fared::default(),
             told: None,
             since: None,
             left: true,
@@ -132,16 +162,39 @@ impl Deaf {
         }
     }
 
+    /// Whether the row standing tells Joel that `search` can't be read,
+    /// written rather than only meant.
+    #[must_use]
+    pub fn tells(&self, search: Search) -> bool {
+        self.told
+            .is_some_and(|told| told == Deafness::Unreadable || told == Deafness::Unread(search))
+    }
+
+    /// What the searches' own settled states say, when neither sign-in
+    /// cause decides the round.
+    fn settled(&self) -> Option<Deafness> {
+        match (self.phrase.deaf, self.tag.deaf) {
+            (true, true) => Some(Deafness::Unreadable),
+            (true, false) => Some(Deafness::Unread(Search::Phrase)),
+            (false, true) => Some(Deafness::Unread(Search::Tag)),
+            (false, false) => None,
+        }
+    }
+
     /// What `round`, at `at` in milliseconds, changes. Joel is told once
-    /// [`ROUNDS`] in a row are deaf, again only when why changes and the
-    /// new why has held as many, so a blip is no row of its own, and
-    /// untold once a round reads Slack whole. A change of why starts a
-    /// time of its own, so it isn't hidden under a row Joel marked done.
+    /// [`ROUNDS`] in a row are deaf, and again only when what's deaf has
+    /// held as many in its new shape, so a blip is no row of its own, and
+    /// untold once a round reads Slack whole. Each search is counted on
+    /// its own, so one deaf every round is told even while its partner
+    /// flickers. A change of why starts a time of its own, so it isn't
+    /// hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
         match round {
             Round::Heard => {
                 self.rounds = 0;
                 self.held = None;
+                self.phrase = Fared::default();
+                self.tag = Fared::default();
                 self.since = None;
                 let left = std::mem::take(&mut self.left);
                 if self.told.take().is_some() || left {
@@ -157,10 +210,26 @@ impl Deaf {
                     _ => 1,
                 };
                 self.held = Some((why, held));
-                let changed = self.told.is_some();
-                if self.rounds < ROUNDS || self.told == Some(why) || (changed && held < ROUNDS) {
+                // A sign-in's cause reads neither search, so each counts
+                // as heard of nothing it says.
+                let whole = matches!(why, Deafness::Refused | Deafness::NoSignIn);
+                let covers =
+                    |search| why == Deafness::Unreadable || why == Deafness::Unread(search);
+                self.phrase.round(!whole && covers(Search::Phrase));
+                self.tag.round(!whole && covers(Search::Tag));
+                let lasting = if whole {
+                    (held >= ROUNDS).then_some(why)
+                } else {
+                    self.settled()
+                };
+                let tell = match self.told {
+                    None => (self.rounds >= ROUNDS).then(|| lasting.unwrap_or(why)),
+                    Some(told) => lasting.filter(|lasting| *lasting != told),
+                };
+                let Some(why) = tell else {
                     return Change::Keep;
-                }
+                };
+                let changed = self.told.is_some();
                 // For You keeps a row Joel marked done gone by name, and
                 // a sign-in's signal marks one done whether it mended it
                 // or not. So a row told for another why, narrower, wider

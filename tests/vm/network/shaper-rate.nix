@@ -36,6 +36,12 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       self.nixosModules.slices
       self.nixosModules.shaper
     ];
+    # On one core a loaded builder starved the client: on 21 November its
+    # queues sent under the shaper's limit with data waiting, the kernel said
+    # "htb: too many events!", and the shaper, reading what was carried,
+    # cut again under the floor (net log b18b11bc). A second core keeps the
+    # client sending what its queues let through.
+    virtualisation.cores = 2;
     networking.useDHCP = false;
     networking.defaultGateway = {
       address = "192.168.1.2";
