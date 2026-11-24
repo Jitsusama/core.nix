@@ -650,7 +650,8 @@
     call-under-load counts a call's frame rates by frame slots, its freezes per ten minutes,
     whether the far end heard its sound, the share it made up, its jitter and packets lost, and
     why when it heard none or counted only part, keeps a run ten minutes from any meeting and
-    refuses a stale calendar, takes Chrome's and Slack's waits from lag-watch's last hour, sets
+    refuses a stale calendar, takes Chrome's and Slack's waits and time blocked from lag-watch's
+    last hour, saying why when the kernel keeps none, sets
     the launcher's openings during the run against the same span before it, writes the hour
     in the shape cadence reads, and sums Joel's own calls' sending threads' waits for a CPU
     into a line the hour reads and no test run is taken for, and checks the camera once
@@ -1858,9 +1859,10 @@
     for memory, names in a word the wait felt most, whose it was and since when trouble has lasted,
     finds the threads it watches by name, of niri only the one its socket names, names in a call
     the worst-waiting thread of Tuple's daemon and of Chrome apart, Chrome's only while a page
-    records the microphone, and in an idle window nothing,
-    reads a stand-in's named thread from the kernel, sums each generation by its load, and answers
-    now and report as text for Joel or as JSON named by its schema
+    records the microphone, and in an idle window nothing, says the most an app's thread was
+    blocked in the kernel, its hidden tabs' counted from where they rested, and none where the
+    kernel keeps none, reads a stand-in's named thread from the kernel, sums each generation by
+    its load, and answers now and report as text for Joel or as JSON named by its schema
   '';
   last-seconds-keeps-its-ring = ''
     last-seconds reads back each record as it was written and never a torn, flipped or zeroed

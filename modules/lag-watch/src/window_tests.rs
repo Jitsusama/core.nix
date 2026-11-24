@@ -425,6 +425,47 @@ fn a_tab_shown_in_a_window_is_counted_from_where_it_rested_hidden() {
     assert!((chrome.worst_us - 2_000.0).abs() < 1e-9, "{chrome:?}");
 }
 
+#[test]
+fn an_app_s_threads_blocked_in_the_kernel_say_the_most_one_was() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    for s in [&mut then, &mut now] {
+        ran(s, "slack-ui", "slack", 0, 0);
+        ran(s, "slack-ui", "Compositor", 0, 0);
+    }
+    let thread = |s: &Snapshot, name: &str| {
+        s.threads
+            .keys()
+            .find(|t| t.name == name)
+            .expect("the thread was made above")
+            .clone()
+    };
+    then.blocked.insert(thread(&then, "slack"), 1_000_000_000);
+    then.blocked.insert(thread(&then, "Compositor"), 5_000_000);
+    // 350 ms blocked in the window, and 100 ms.
+    now.blocked.insert(thread(&now, "slack"), 1_350_000_000);
+    now.blocked.insert(thread(&now, "Compositor"), 105_000_000);
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    assert_eq!(
+        w.waits["slack-ui"].blocked_ms,
+        Some(350.0),
+        "the most a thread was blocked wasn't the window's"
+    );
+    // niri, whose time blocked isn't kept here, says none and writes none.
+    assert_eq!(
+        w.waits["niri"].blocked_ms, None,
+        "a time blocked not kept was said"
+    );
+    let line: serde_json::Value = serde_json::to_value(&w).unwrap();
+    assert!(
+        line["waits"]["niri"].get("blocked_ms").is_none(),
+        "a time blocked not kept was written: {line}"
+    );
+    // A row written before it was kept reads as none kept.
+    let old: Wait = serde_json::from_str(r#"{"mean_us": 1.0, "worst_us": 2.0}"#).unwrap();
+    assert_eq!(old.blocked_ms, None, "an old row read as blocked");
+}
+
 fn sched(wait_ns: u64, slices: u64) -> Sched {
     Sched {
         run_ns: 0,

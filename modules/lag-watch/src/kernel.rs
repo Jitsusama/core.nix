@@ -88,6 +88,26 @@ pub fn sched(text: &str) -> Option<Sched> {
     })
 }
 
+/// How long a thread has been blocked in the kernel, in nanoseconds, from
+/// its `sched`: asleep where nothing but the kernel could wake it, on a
+/// lock, a page read back or reclaim, which no wait for a CPU shows. The
+/// kernel keeps it only while `kernel.sched_schedstats` is on, and prints
+/// it in milliseconds; none where it isn't kept.
+pub fn blocked(text: &str) -> Option<u64> {
+    let ms: f64 = text.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.trim()
+            .ends_with("sum_block_runtime")
+            .then(|| value.trim().parse().ok())?
+    })?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "milliseconds a thread has lived, held at zero or more, are far below 2⁶⁴ ns"
+    )]
+    Some((ms.max(0.0) * 1e6).round() as u64)
+}
+
 /// What one cgroup holds: its stalls of each kind and its memory's harm.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Group {
@@ -402,6 +422,24 @@ pub mod tests {
             })
         );
         assert_eq!(sched(""), None);
+    }
+
+    #[test]
+    fn a_sched_file_gives_the_time_blocked_only_while_it_is_kept() {
+        let kept = "Chrome_ChildIOT (7, #threads: 30)\n\
+                    ----------------------------------------\n\
+                    se.sum_exec_runtime          :          1.019739\n\
+                    stats.sum_sleep_runtime      :       9000.000000\n\
+                    stats.sum_block_runtime      :        842.500125\n\
+                    stats.block_max              :        300.000000\n";
+        assert_eq!(
+            blocked(kept),
+            Some(842_500_125),
+            "the time blocked wasn't read from its line"
+        );
+        let unkept = "cat (7, #threads: 1)\n\
+                      se.sum_exec_runtime          :          1.019739\n";
+        assert_eq!(blocked(unkept), None, "a file without it read as blocked");
     }
 
     /// Writes `text` to a stand-in kernel file, making its folders.

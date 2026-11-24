@@ -22,6 +22,11 @@ pub struct Waits {
     pub lowered: usize,
     /// How many windows had a process of it nobody watched.
     pub unwatched: usize,
+    /// The p99 of each window's most any one thread was blocked in the
+    /// kernel, in ms: on a lock, a page read back or reclaim.
+    pub blocked_p99: Option<f64>,
+    /// How many windows kept that time; none where the kernel doesn't.
+    pub blocked_windows: usize,
 }
 
 /// The waits of the app lag-watch labels `label` over the hour before the
@@ -87,6 +92,7 @@ pub fn of(lines: &str, label: &str, began: u64, longest: u64, ran: &[Ran]) -> Wa
             .any(|&(from, to)| ended > from && ended <= to + WINDOW)
     };
     let mut worst = Vec::new();
+    let mut blocked = Vec::new();
     let mut found = Waits::default();
     for window in lines
         .lines()
@@ -99,11 +105,16 @@ pub fn of(lines: &str, label: &str, began: u64, longest: u64, ran: &[Ran]) -> Wa
         if let Some(us) = window["waits"][label]["worst_us"].as_f64() {
             worst.push(us / 1000.0);
         }
+        if let Some(ms) = window["waits"][label]["blocked_ms"].as_f64() {
+            blocked.push(ms);
+        }
         found.lowered += usize::from(window["lowered"][label].as_u64().unwrap_or(0) > 0);
         found.unwatched += usize::from(window["unwatched"][label].as_u64().unwrap_or(0) > 0);
     }
     found.windows = worst.len();
     found.worst_p99 = percentile(&worst, 99);
+    found.blocked_windows = blocked.len();
+    found.blocked_p99 = percentile(&blocked, 99);
     found
 }
 
@@ -136,6 +147,31 @@ mod tests {
         assert_eq!(
             of(&lines.join("\n"), "chrome-ui", now, 0, &[]).worst_p99,
             Some(30.0)
+        );
+    }
+
+    #[test]
+    fn the_hour_s_windows_give_the_p99_of_the_most_a_thread_was_blocked() {
+        let now = 100_000;
+        let mut lines: Vec<String> = (1..=99)
+            .map(|i| {
+                let mut w: Value =
+                    serde_json::from_str(&window(now - i * 10, Some(1_000.0))).unwrap();
+                w["waits"]["chrome-ui"]["blocked_ms"] = json!(12.0);
+                w.to_string()
+            })
+            .collect();
+        // A window from before the time was kept counts toward the waits alone.
+        lines.push(window(now - 5, Some(1_000.0)));
+        let waits = of(&lines.join("\n"), "chrome-ui", now, 0, &[]);
+        assert_eq!(
+            (waits.blocked_windows, waits.blocked_p99),
+            (99, Some(12.0)),
+            "the windows' time blocked wasn't read"
+        );
+        assert_eq!(
+            waits.windows, 100,
+            "a window without the time blocked was dropped"
         );
     }
 
