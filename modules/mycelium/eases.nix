@@ -9,10 +9,10 @@
 }:
 let
   cfg = config.jitsusama.mycelium;
-  guards = import ./carry-guards.nix { inherit lib; };
+  carryGuards = import ./carry-guards.nix { inherit lib; };
   # The node carries only where the source it's built from keeps the
   # person's and the leading sessions (carry-guards.nix).
-  carries = cfg.easesCarry && guards.keepsTheLed mycelium;
+  carries = cfg.easesCarry && carryGuards.keepsTheLed mycelium;
 in
 {
   options = {
@@ -45,11 +45,12 @@ in
         say which, and reads its limits back from what it keeps, so a
         restart lifts none. The two that keep the person's and the leading
         sessions came in mycelium's #381: where the source the node is built
-        from has no line of code for either, the node isn't told to carry and the switch warns, rather
-        than the machine refusing to update. Off, the node only writes what
-        it would do. To stop at once, set it false and switch, which
-        restarts the node; a carry it already asked for is the harness's, so
-        it goes on, and the sessions it carried stay where they went.
+        from has no line of code for either, the node isn't told to carry
+        and the switch warns, rather than the machine refusing to update.
+        Off, the node only writes what it would do. To stop at once, set it
+        false and switch, which restarts the node; a carry it already asked
+        for is the harness's, so it goes on, and the sessions it carried
+        stay where they went.
       '';
     };
   };
@@ -73,5 +74,7 @@ in
   # machine updating, kernel and fixes too, over one flag the node can go
   # without. Only where a home realm runs a node, since elsewhere no node
   # is told anything.
-  warnings = lib.optional (cfg.realm != null && cfg.easesCarry && !carries) (guards.missing mycelium);
+  warnings = lib.optional (cfg.realm != null && cfg.easesCarry && !carries) (
+    carryGuards.missing mycelium
+  );
 }
