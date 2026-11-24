@@ -13,7 +13,8 @@ run by Node's own test runner when the local sites build the page.
   when nothing here started it.
 - `cursor.test.ts` tries which cells the list shows in its view, every
   cell or those without purpose (the cells the headline and lede count,
-  a purpose of only spaces among them), and where the cursor rests on them:
+  and the row, panel and floor show so, a purpose of only spaces or
+  characters that draw nothing among them), and where the cursor rests on them:
   kept while shown, else on the first row, and through a find matching
   nothing while its cell lasts and the view takes it in, there too; a
   cell that ends, or that the view no longer takes in, takes it along.
@@ -37,9 +38,10 @@ run by Node's own test runner when the local sites build the page.
   drawn around, the cells that grew straight from that one and those nearest it,
   each with every cell it grew from, once round a ring, so a booked start
   far down the list still draws solid, and a line deeper than the floor
-  cut at its top, but stopped at a cell already drawn, and leaving the
-  cells that grew from its cell up to half the floor; a ring longer than
-  the room filling it cut at its top; an ellipsis wherever the floor
+  cut at its top, but stopped at a cell already drawn; the open cell's
+  line cut, however shallow, to leave the cells booked as grown from it
+  up to half the floor, and kept whole when they only claim it; a ring
+  longer than the room filling it cut at its top; an ellipsis wherever the floor
   skips cells of its list, and none on a list that fits; the cells the
   node's book holds started before those only claimed; that a step draws
   the floor again only for a cell it leaves off or one that grew a cell it

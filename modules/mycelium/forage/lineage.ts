@@ -216,27 +216,35 @@ function* starts(first: readonly number[], centre: number, length: number): Gene
   yield* outward(centre, length);
 }
 
+/** The places of a cell's children, split by whether the node's book holds their start. */
+interface Brood {
+  /** Those whose start the node's book holds, in the list's order. */
+  readonly booked: readonly number[];
+  /** Those that only claim it, as `grewClaimed` says, in the list's order. */
+  readonly claimed: readonly number[];
+}
+
 /**
- * The places `kids` of `forages`, those the node's book holds first, so
- * cells that only claim to have grown from one, as `grewClaimed` says,
- * can't crowd its booked starts off the floor.
+ * The places `kids` of `forages`, split into those the node's book holds
+ * and those only claimed, so cells that only claim to have grown from one
+ * can't crowd its booked starts, or the line it grew from, off the floor.
  */
-function bookedFirst(
+function byBook(
   forages: readonly Forage[],
   kids: readonly number[],
   grewClaimed: Tie<boolean>,
-): readonly number[] {
+): Brood {
   const here = new Set(forages.map((each) => each.cell));
   const claimed = (place: number): boolean => {
     const kid = forages[place];
     return kid === undefined || grewClaimed(kid, here);
   };
-  return [...kids.filter((place) => !claimed(place)), ...kids.filter(claimed)];
+  return { booked: kids.filter((place) => !claimed(place)), claimed: kids.filter(claimed) };
 }
 
-export type { Kin };
+export type { Brood, Kin };
 export {
-  bookedFirst,
+  byBook,
   cellOrAway,
   claimedCell,
   escaped,

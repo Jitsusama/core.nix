@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
+import { floorFor, floorOf, forageRow, panelOf } from "../draw.ts";
 import {
   cursorAfter,
   type Forage,
@@ -37,15 +38,35 @@ it("the list shows what the find holds in its view, every cell or those without 
   assert.equal(inView(osprey, true), true);
 });
 
-it("a purpose of only spaces is unwritten to the view, the headline and the lede alike", () => {
+it("a purpose showing nothing is unwritten to the view, headline, lede, row, panel and floor", () => {
+  // OSPREY's purpose is spaces and breaks, and SKIFFS's characters that draw nothing.
   const blank = foragesOf(
-    told([forage("KESTRL"), forage("OSPREY", { purpose: " \n\t" }), forage("SKIFFS")]),
+    told([
+      forage("KESTRL"),
+      forage("OSPREY", { purpose: " \n\t" }),
+      forage("SKIFFS", { purpose: "\u200b\u2060\u00ad\u3164\ufe0f\u2800\u0085" }),
+    ]),
   ).forages;
   const unwrittenCells = blank.filter(unwritten).map((each) => each.cell);
-  assert.deepEqual(unwrittenCells, ["OSPREY"]);
+  assert.deepEqual(unwrittenCells, ["OSPREY", "SKIFFS"]);
   assert.deepEqual(cellsOf(blank, "", true), unwrittenCells);
   assert.equal(headline(blank).without, unwrittenCells.length);
-  assert.ok(lede(blank).startsWith("OSPREY has no purpose written yet."), lede(blank));
+  assert.ok(lede(blank).startsWith("OSPREY and SKIFFS have no purpose"), lede(blank));
+  const floor = floorOf(floorFor(blank, null), null, "kestrel");
+  for (const each of blank.filter(unwritten)) {
+    const row = forageRow(each);
+    assert.ok(row.includes("No purpose written yet."), row);
+    assert.ok(!row.includes("data-said-by"), row);
+    const panel = panelOf(each, new Set(), []);
+    assert.ok(panel.includes('<p class="lead quiet">No purpose written yet.</p>'), panel);
+    assert.ok(floor.includes(`<rect class="hollow" data-cell="${each.cell}"`), floor);
+  }
+  // A word beside them, or a mark written before a number, shows.
+  const [kestrel] = blank;
+  assert.ok(kestrel);
+  for (const purpose of ["a\u200b", "\u06dd"]) {
+    assert.equal(unwritten({ ...kestrel, purpose }), false, purpose);
+  }
 });
 
 it("the cursor stays while the list shows it, else goes to its first row", () => {
