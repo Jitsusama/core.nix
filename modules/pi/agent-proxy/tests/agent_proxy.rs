@@ -1220,20 +1220,171 @@ fn refuses_an_agents_key_to_an_os_login_host() {
 }
 
 #[test]
-fn refuses_an_os_login_host_reached_through_a_forwarded_agent() {
+fn keeps_a_told_host_told_though_gcloud_knows_it() {
     let (instance, blob) = host(5);
-    let proxy = Proxy::os_login("os-login-forwarded", "", &known("compute.1", &instance));
-    let mut client = proxy.client();
-    let session = b"an instance's session";
+    let proxy = Proxy::os_login(
+        "told-first",
+        &hosts_file(&[&instance]),
+        &known("compute.1", &instance),
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a told instance's session";
+    let (mut client, taken) = bound(&proxy, &instance, &blob, session);
+    assert!(taken, "the instance's binding is taken");
 
     send(
         &mut client,
-        &bind(&blob, session, &signed(&instance, session), true),
+        &sign(&key_blob, &login_as(session, &key_blob, OS_LOGIN_USER)),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the OS Login key is refused to a host --hosts names"
+    );
+    send(
+        &mut client,
+        &sign(LOGIN_KEY, &login_as(session, LOGIN_KEY, OS_LOGIN_USER)),
+    );
+    let answer = receive(&mut client).expect("an answer");
+    assert_eq!(
+        answer.first(),
+        Some(&SIGN_RESPONSE),
+        "the agent's key signs for it, as before gcloud knew it"
+    );
+}
+
+#[test]
+fn refuses_the_builders_key_to_an_os_login_host() {
+    let (builders, key) = builders();
+    let (instance, blob) = host(5);
+    let (builder, _) = host(3);
+    let proxy = Proxy::launch(
+        "builders-os-login",
+        "",
+        Some((&builders, &machine("nix-offload", &builder))),
+        Some(&known("compute.1", &instance)),
+        Behind::Signing,
+    );
+    let session = b"an instance's session";
+    let (mut client, taken) = bound(&proxy, &instance, &blob, session);
+    assert!(taken, "the instance's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key, &login_as(session, &key, b"nix-offload")),
     );
 
     assert_eq!(
         receive(&mut client),
         Some(vec![FAILURE]),
-        "a forwarded binding is refused"
+        "the builders' key is refused to an OS Login host"
     );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=not-lent "),
+        "the refusal says the host isn't lent: {lines:?}"
+    );
+}
+
+#[test]
+fn refuses_the_os_login_key_to_a_lent_builder() {
+    let (builders, _) = builders();
+    let (instance, _) = host(5);
+    let (builder, blob) = host(3);
+    let proxy = Proxy::launch(
+        "os-login-lent",
+        "",
+        Some((&builders, &machine("nix-offload", &builder))),
+        Some(&known("compute.1", &instance)),
+        Behind::Signing,
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(taken, "the lent builder's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key_blob, &login_as(session, &key_blob, b"nix-offload")),
+    );
+
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the OS Login key is refused to a lent builder"
+    );
+    let lines = proxy.lines();
+    assert!(
+        lines[0].contains("why=not-os-login "),
+        "the refusal says the host isn't an OS Login one: {lines:?}"
+    );
+}
+
+#[test]
+fn knows_no_os_login_host_while_gcloud_has_reached_none() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("no-known-hosts", "", &known("compute.1", &instance));
+    fs::remove_file(proxy.dir.join("known_hosts")).expect("the known hosts go");
+
+    let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
+
+    assert!(
+        !taken,
+        "with no known-hosts file, no host is an OS Login one"
+    );
+    let mut client = proxy.client();
+    send(&mut client, &[REQUEST_IDENTITIES]);
+    assert_eq!(
+        receive(&mut client).and_then(|answer| answer.first().copied()),
+        Some(IDENTITIES_ANSWER),
+        "and the proxy still answers"
+    );
+}
+
+#[test]
+fn goes_on_without_an_os_login_key_it_cant_write() {
+    let (allowed, blob) = host(1);
+    let dir =
+        std::env::temp_dir().join(format!("pi-agent-proxy-unwritable-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("a folder for the test");
+    let upstream = dir.join("upstream.sock");
+    fake_agent(&upstream, Arc::new(AtomicUsize::new(0)));
+    fs::write(dir.join("hosts"), hosts_file(&[&allowed])).expect("the hosts file is written");
+    let socket = dir.join("proxy.sock");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        .arg("--hosts")
+        .arg(dir.join("hosts"))
+        .arg("--upstream")
+        .arg(&upstream)
+        .arg("--socket")
+        .arg(&socket)
+        .arg("--os-login")
+        .arg(dir.join("absent"))
+        .arg("--os-login-hosts")
+        .arg(dir.join("known_hosts"))
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("the proxy starts");
+    let started = Instant::now();
+    while !socket.exists() {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the proxy never bound its socket, so a key it couldn't write stopped it"
+        );
+        // A short poll for the socket the proxy binds as it starts.
+        thread::sleep(Duration::from_millis(5));
+    }
+    let mut client = UnixStream::connect(&socket).expect("a client reaches the proxy");
+    let session = b"a told host's session";
+    send(
+        &mut client,
+        &bind(&blob, session, &signed(&allowed, session), false),
+    );
+    let taken = receive(&mut client) == Some(vec![SUCCESS]);
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_dir_all(&dir);
+
+    assert!(taken, "a told host's session is still taken");
 }

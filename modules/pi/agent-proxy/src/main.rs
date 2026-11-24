@@ -238,16 +238,30 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
     }
     let hosts = hosts.ok_or_else(|| cli::wrongly("--hosts is needed"))?;
     let os_login = match (os_login_folder, os_login_hosts) {
-        (Some(folder), Some(known)) => Some(OsLogin::start(&folder, known).map_err(|error| {
-            Failure::new(
-                Exit::Failed,
-                format!(
-                    "pi-agent-proxy couldn't make its OS Login key in {}",
+        // A key it can't make costs only the OS Login logins: the agents'
+        // hosts and the builders' logins it signs too go on, unless it was
+        // asked for nothing else.
+        (Some(folder), Some(known)) => match OsLogin::start(&folder, known) {
+            Ok(os_login) => Some(os_login),
+            Err(error) if upstreams.is_empty() && key.is_none() => {
+                return Err(Failure::new(
+                    Exit::Failed,
+                    format!(
+                        "pi-agent-proxy couldn't make its OS Login key in {}",
+                        folder.display()
+                    ),
+                )
+                .because(error.to_string()));
+            }
+            Err(error) => {
+                eprintln!(
+                    "pi-agent-proxy: couldn't make its OS Login key in {}, so it signs no OS \
+                     Login logins: {error}",
                     folder.display()
-                ),
-            )
-            .because(error.to_string())
-        })?),
+                );
+                None
+            }
+        },
         (None, None) => None,
         _ => {
             return Err(cli::wrongly("--os-login and --os-login-hosts go together"));

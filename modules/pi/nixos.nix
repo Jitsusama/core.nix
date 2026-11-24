@@ -10,10 +10,19 @@
 # the person's and gcloud's to write. A machine where no proxy runs, or
 # none has written its key, has no such file, and ssh passes over an
 # IdentityFile the config names that isn't there without a word. The
-# person's own ssh offers their key first, as gcloud names it.
+# person's own ssh offers their key first, as gcloud names it; only when
+# that fails does ssh say it can't load this one, which its own agent
+# doesn't hold. A host named compute. otherwise gains only the offer: the
+# proxy signs with the key for nothing but an instance gcloud knows.
+#
+# A login gcloud makes to an instance's address rather than through IAP
+# names the address, so it isn't offered there; agents reach instances
+# through IAP. The block ends with `Host *`, so whatever another module
+# adds after it applies to every host, as it would have without it.
 {
   programs.ssh.extraConfig = ''
     Host compute.*
       IdentityFile /run/user/%i/pi-agent/os-login.pub
+    Host *
   '';
 }

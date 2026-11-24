@@ -536,6 +536,9 @@ in
       # Taken out of the person's profile as the proxy stops, since the
       # key's private half goes with it.
       Service.ExecStopPost = lib.mkIf osLogin "-${lib.getExe osLoginRegister} remove ${osLoginKey}";
+      # The OS Login key is held only in its memory, so no crash writes
+      # that memory out.
+      Service.LimitCORE = lib.mkIf osLogin 0;
       # Started with the session rather than by the first ssh, where it
       # makes an OS Login key, so the key's public half is there for an
       # agent's first ssh to offer.
@@ -543,12 +546,18 @@ in
     };
 
     # The proxy's OS Login key goes into the person's profile each time it
-    # makes one, and its twelve hours are renewed every four while it runs.
+    # makes one, and its twelve hours are renewed each quarter hour while
+    # it runs. The renewal is by the wall clock, whose timers fire on
+    # waking, since the profile's twelve hours run while a laptop sleeps;
+    # and a registration that failed, as before the network is up, is
+    # tried again at the next.
     systemd.user.services.pi-agent-proxy-os-login = lib.mkIf osLogin {
       Unit.Description = "Put pi's agent proxy's OS Login key in the person's login profile";
       Service = {
         Type = "oneshot";
         ExecStart = "${lib.getExe osLoginRegister} register ${osLoginKey}";
+        # Each gcloud call is bounded at a minute; this bounds the whole.
+        TimeoutStartSec = "3min";
       };
     };
     systemd.user.paths.pi-agent-proxy-os-login = lib.mkIf osLogin {
@@ -559,8 +568,8 @@ in
     systemd.user.timers.pi-agent-proxy-os-login = lib.mkIf osLogin {
       Unit.Description = "Renew pi's agent proxy's OS Login key before it lapses";
       Timer = {
-        OnActiveSec = "4h";
-        OnUnitActiveSec = "4h";
+        OnCalendar = "*:0/15";
+        Persistent = true;
       };
       Install.WantedBy = [ "timers.target" ];
     };

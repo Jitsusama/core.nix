@@ -18,7 +18,10 @@
 //! (`--os-login-hosts`), read afresh at each binding, since gcloud adds
 //! each instance's key as it first reaches it, taken from the cloud's
 //! own record of that instance where the cloud has one. Other keys never
-//! sign for such a host, nor that key for any other.
+//! sign for such a host, nor that key for any other. A host `--hosts`
+//! names, or a builder lent, stays what it was though gcloud knows it
+//! too: the person named it, so the agents' keys and the builders' still
+//! sign for it as before, and this key doesn't.
 
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -41,6 +44,12 @@ pub const COMMENT: &str = "pi-agent-proxy OS Login";
 /// with, before the instance's number.
 const INSTANCE: &str = "compute.";
 
+/// The most of the known-hosts file read at a binding. gcloud's grows by
+/// a line of about a hundred bytes an instance, so this is tens of
+/// thousands of instances, and a file grown past it can't stall the
+/// binding every agent waits on.
+const MOST_KNOWN: u64 = 8 * 1024 * 1024;
+
 /// The key the proxy made, and the known-hosts file naming the hosts it
 /// signs logins to with it.
 pub struct OsLogin {
@@ -56,8 +65,8 @@ impl OsLogin {
     /// # Errors
     ///
     /// When the kernel gives no randomness, or the folder can't be
-    /// written: the proxy then doesn't start, rather than run without the
-    /// logins it was asked to sign.
+    /// written: the proxy then signs no OS Login logins, and goes on
+    /// with the rest.
     pub fn start(folder: &Path, known: PathBuf) -> io::Result<Self> {
         let mut seed = [0; 32];
         File::open("/dev/urandom")?.read_exact(&mut seed)?;
@@ -84,13 +93,20 @@ impl OsLogin {
     }
 
     /// Whether `host` is an OS Login host: the key of an instance the
-    /// known-hosts file names. A file that can't be read names none.
+    /// known-hosts file names. A file that can't be read, as on a machine
+    /// whose gcloud has reached none, names none; past [`MOST_KNOWN`],
+    /// only what comes before it is read.
     pub fn knows(&self, host: &KeyData) -> bool {
         let Ok(wanted) = PublicKey::from(host.clone()).to_openssh() else {
             return false;
         };
-        fs::read_to_string(&self.known)
-            .is_ok_and(|text| text.lines().any(|line| names_instance(line, &wanted)))
+        let mut text = Vec::new();
+        let read =
+            File::open(&self.known).and_then(|file| file.take(MOST_KNOWN).read_to_end(&mut text));
+        read.is_ok()
+            && String::from_utf8_lossy(&text)
+                .lines()
+                .any(|line| names_instance(line, &wanted))
     }
 
     /// The key's signature over `data`, in the agent protocol's shape.

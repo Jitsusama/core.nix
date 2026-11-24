@@ -79,9 +79,12 @@
 
   # Where the proxy runs, it makes a key for the OS Login hosts gcloud
   # knows, starting with the session so the key is there for an agent's
-  # first ssh; the account's gcloud registers each key it writes, renews it
-  # every four hours and takes it out as the proxy stops; and the machine's
-  # ssh offers it to every compute.<id> host. Null known hosts turns it off.
+  # first ssh, and never dumping its memory; the account's gcloud registers
+  # each key it writes, renews it each quarter hour by the wall clock, so a
+  # night asleep doesn't leave it lapsed, bounded so none hangs, and takes
+  # it out as the proxy stops; and the machine's ssh offers it to every
+  # compute.<id> host, and its block ends so what follows reaches every
+  # host. Null known hosts turns it off.
   # The registering script is run against a stand-in gcloud
   # (os-login-test.sh).
   pi-agent-proxy-reaches-os-login-hosts =
@@ -116,7 +119,7 @@
       offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
       wired =
         holds "pi-agent-proxy-reaches-os-login-hosts-wired"
-          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts, or one with them null, isn't started with the session, its key isn't registered when written, renewed every four hours or removed as it stops, or the machine's ssh doesn't offer it to compute.* hosts."
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts, or one with them null, isn't started with the session, its key isn't registered when written, renewed each quarter hour by the wall clock within a bound, or removed as it stops, may dump its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
           (
             lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
             && lib.toList proxy.Install.WantedBy == [ "default.target" ]
@@ -127,8 +130,11 @@
               lib.toList home.systemd.user.paths.pi-agent-proxy-os-login.Path.PathChanged == [
                 "%t/pi-agent/os-login.pub"
               ]
-            && home.systemd.user.timers.pi-agent-proxy-os-login.Timer.OnUnitActiveSec == "4h"
-            && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub" machine.config.programs.ssh.extraConfig
+            && home.systemd.user.timers.pi-agent-proxy-os-login.Timer.OnCalendar == "*:0/15"
+            && home.systemd.user.timers.pi-agent-proxy-os-login.Timer.Persistent
+            && home.systemd.user.services.pi-agent-proxy-os-login.Service.TimeoutStartSec == "3min"
+            && proxy.Service.LimitCORE == 0
+            && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub\nHost *\n" machine.config.programs.ssh.extraConfig
             && !(lib.hasInfix "--os-login" offStart)
             && !(off.systemd.user.services ? pi-agent-proxy-os-login)
             && !(off.systemd.user.paths ? pi-agent-proxy-os-login)
@@ -156,7 +162,8 @@
   # that isn't lent, not to a standing builder, not once a builder leaves
   # root's file, and no agent's key for a lent builder; a key made in
   # memory listed last and signing only for an OS Login host gcloud's
-  # known hosts name, and no other key for one; an agent
+  # known hosts name, neither told nor lent, and no other key for one,
+  # the proxy going on without it when it can't be written; an agent
   # behind that never answers given up on; and each login signed and each
   # refusal said in one line of a fixed shape, with its host, its reason
   # as a word from a fixed set, and the session the client claims.
