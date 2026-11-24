@@ -1,6 +1,6 @@
 # The checks of local-sites, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
-{
+args@{
   account,
   bareNixos,
   holds,
@@ -64,30 +64,12 @@ let
     };
   };
 in
-{
+# The ask row's checks change with the kit's ask.ts and the launcher's look
+# code alone, so they sit beside it.
+import ./ask-checks.nix args
+// {
   # The kit typechecks and its tests pass as it builds (kit/tests).
   local-sites-kit-holds = sites.kit;
-
-  # The kit's ask row reads a look as the launcher's For You does, against
-  # the launcher's own scripts run in Node, so either side's change fails it
-  # (tests/ask-as-for-you.test.ts). It's a check of its own so the kit, and
-  # every site built on it, isn't built again at each launcher edit.
-  the-ask-row-reads-as-for-you =
-    let
-      launcher = ../quickshell/launcher;
-    in
-    pkgs.runCommandLocal "the-ask-row-reads-as-for-you" { } ''
-      cp -r ${./kit} kit
-      mkdir tests
-      cp ${./tests/ask-as-for-you.test.ts} tests/ask-as-for-you.test.ts
-      LOOK_FORM=${launcher + "/LookForm.js"} LOOKS=${launcher + "/Looks.js"} \
-        FOR_YOU=${launcher + "/ForYou.js"} ORDER=${launcher + "/Order.js"} \
-        NOW_QML=${launcher + "/Now.qml"} ON_WORDS=${launcher + "/words/on.json"} \
-        AGENT_WORDS=${launcher + "/words/agents.json"} \
-        LOOK_ACTS=${pkgs.writeText "look-acts.json" (builtins.toJSON (import ./look-acts.nix))} \
-        ${lib.getExe pkgs.nodejs} --test --test-reporter=spec tests/ask-as-for-you.test.ts
-      touch $out
-    '';
 
   # The system page typechecks on the kit and builds, its tests passing
   # (modules/system/site/tests). Its page's theme is no part of what it

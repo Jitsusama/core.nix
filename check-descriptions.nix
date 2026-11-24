@@ -1999,6 +1999,10 @@
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
   '';
+  local-sites-refuses-renamed-look-acts = ''
+    local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
+    in place or by a later entry, naming the act's old and new word, and takes core's own words
+  '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,
     each pattern the homes' readers drop, every byte they refuse included, and each kind a site
@@ -4126,11 +4130,15 @@
     the live sites' ask row reads a look as the launcher's For You does, against the launcher's own
     scripts run in Node: over looks either side of each rule and of every kind and state, which it
     reads, which wait, what each offers and what follows each, and when it lapses as Looks.js and
-    Now.qml's lookOffers and followsOf give them, what it links as Now.qml's drawer names its
-    kinds, and its act as LookForm.js takes it; every character read and judged as posing as
-    LookForm.js does, within, leading and ending a name, once and twice; and the launcher's act
-    names as Now.qml and core's own words give them, and the acts local-sites' home module guards
-    as Now.qml lists them
+    Now.qml's lookOffers and followsOf give them, what the second form leads with and its act as
+    LookForm.js gives them, and what it links as Now.qml's drawer names its kinds; the launcher's
+    act names as Now.qml and core's joined words give them, the last of an id's winning; and the
+    ids local-sites' home module guards as Now.qml lists them
+  '';
+  the-ask-row-reads-each-character-as-for-you = ''
+    the live sites' ask row reads every character, and judges it as posing as one of the
+    launcher's acts, as LookForm.js does: within, leading and ending a name, once and twice, and
+    beside a space and after a stop
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one

@@ -144,7 +144,10 @@ interface Ask {
    * epoch: the first moment it's past its expiresAt or quiet three days
    * after it came, whichever is sooner; null while it doesn't wait or
    * neither is known. A page sets its row asking no more then, since
-   * nothing else tells it, and checks again at the press.
+   * nothing else tells it, and checks again at the press. An expiry may
+   * stand further off than a browser's timer waits (2^31 - 1 ms, about 25
+   * days, past which it fires at once), so a page waits at most that long
+   * and asks `asked` again when its timer fires.
    */
   readonly lapses: number | null;
   /**

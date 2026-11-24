@@ -543,9 +543,8 @@ in
   # what it serves can be read without finding its path in the store.
   config.xdg.configFile."local-sites/local-sites.json".source = served;
 
-  # A row the home lists with nothing mounted at its path would send Joel
-  # to a page that isn't there.
   config.assertions = [
+    # A machine renaming the launcher's acts on a look (renamedActs above).
     {
       assertion = renamedActs == [ ];
       message = lib.concatStrings [
@@ -557,6 +556,8 @@ in
         "so a page would offer a choice For You refuses: keep core's names for them"
       ];
     }
+    # A row the home lists with nothing mounted at its path would send Joel
+    # to a page that isn't there.
     {
       assertion = unmounted == [ ];
       message = lib.concatStrings [
