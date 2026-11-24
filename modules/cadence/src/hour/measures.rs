@@ -18,7 +18,7 @@ mod broken;
 mod card;
 mod carried;
 mod cells;
-mod locked;
+pub mod locked;
 mod misses;
 mod owner;
 mod pains;

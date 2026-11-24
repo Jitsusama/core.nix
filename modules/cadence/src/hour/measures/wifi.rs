@@ -33,7 +33,7 @@ const LATE_PERCENT: f64 = 1.0;
 
 /// How many held minutes an hour may have: two, since each line covers
 /// the two minutes before it, so one bad moment shows in two running.
-const TARGET: f64 = 2.0;
+pub const TARGET: f64 = 2.0;
 
 const SAYS: &str = "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it \
                     past 1 s, this hour";
