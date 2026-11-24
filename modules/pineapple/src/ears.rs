@@ -154,8 +154,12 @@ pub struct Through {
     /// about to read on past, and says whether it was written: a gap is
     /// read on only once it is, so the last read never moves past a span
     /// untold, through a restart too.
-    record: Box<dyn FnMut(&str, Skipped) -> bool>,
+    record: Record,
 }
+
+/// Writes the row saying what a search, by its query, reads on past, and
+/// says whether it was written.
+pub type Record = Box<dyn FnMut(&str, Skipped) -> bool>;
 
 /// What a search read on past, so never read: from a minute before the
 /// last read to the oldest message its answer gave, each in microseconds
@@ -172,7 +176,7 @@ impl Through {
     /// Reading Slack through `gateway`, with `record` writing the row that
     /// says what a search reads on past, and saying whether it was.
     #[must_use]
-    pub fn new(gateway: Gateway, record: Box<dyn FnMut(&str, Skipped) -> bool>) -> Through {
+    pub fn new(gateway: Gateway, record: Record) -> Through {
         Through {
             gateway,
             gaps: HashMap::new(),
