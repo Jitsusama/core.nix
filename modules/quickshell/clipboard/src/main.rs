@@ -1382,7 +1382,7 @@ fn worded(vocabulary: &Path) -> Result<Words, String> {
 }
 
 /// Emoji's rows, from the list `--emoji` names, or none without one,
-/// their groups' counts grouped with the comma and the full stop (`Words::figure` over
+/// their groups' counts grouped with the comma (`Words::figure` over
 /// `Numbers::default()`), since this daemon is given no account's number marks.
 fn emoji_rows(list: Option<&Path>, words: &Words) -> Result<Vec<Value>, String> {
     list.map_or_else(

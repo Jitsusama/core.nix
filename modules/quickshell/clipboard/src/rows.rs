@@ -30,7 +30,9 @@ const BYTES: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
 
 /// The clipboard's words, as the launcher's vocabulary says them
 /// (modules/quickshell/launcher/words/launcher.json, the `clipboard`
-/// thing's `said`), and how the account writes numbers.
+/// thing's `said`), and the number marks it was given: the daemon gives
+/// `Numbers::default()`'s comma and full stop (main.rs's `worded`), since
+/// it's given no account's.
 #[derive(Debug, Default)]
 pub struct Words {
     said: BTreeMap<String, String>,
@@ -78,8 +80,8 @@ impl Words {
         self.fill(if count == 1 { one } else { many }, &[("count", &figure)])
     }
 
-    /// A count in figures, grouped as the launcher groups them: an emoji
-    /// group's side.
+    /// A count in figures, grouped with the marks the words were given: an
+    /// emoji group's side.
     pub fn figure(&self, count: usize) -> String {
         #[expect(
             clippy::cast_precision_loss,

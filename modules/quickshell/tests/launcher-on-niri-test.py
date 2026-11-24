@@ -2679,7 +2679,7 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
     # drawer. Its title is held first, so a list that leads with another fails as itself.
     assert title == "Grinning face", f"Unicode's first emoji isn't the grinning face: {drawer}"
     assert drawer["facts"] == ["Keywords"], f"its keywords went unnamed or missing: {drawer}"
-    assert "grin" in drawer["values"][0].split(", "), f"its keywords were lost: {drawer}"
+    assert "grin" in str(drawer["values"][0] or "").split(", "), f"its keywords were lost: {drawer}"
     since = shell.mark()
     shell.send_chars("j")
     shell.launcher_until(functools.partial(drawer_moved, title))
