@@ -2,8 +2,9 @@
 //! what it refuses before the job runs, and what it takes away when it is
 //! stopped.
 
-use super::{Left, far_run, handover, said, scratch, work};
-use crate::far::{BACK, Heard, TREE, archive, relay};
+use super::crossing::refusing;
+use super::{Left, far_line, far_run, handover, kind, said, scratch, work};
+use crate::far::{BACK, Heard, LEFT, TREE, archive, relay};
 use std::path::Path;
 
 #[test]
@@ -170,6 +171,49 @@ fn a_folder_closed_to_its_owner_is_opened_so_its_files_are_checked_and_taken_awa
 }
 
 #[test]
+fn an_archive_that_isn_t_plain_ustar_is_refused_before_it_is_read() {
+    let made = scratch("not-plain");
+    std::fs::write(made.join("a"), "inside").unwrap();
+    let archive = std::process::Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
+        .args(["--format", "ustar", "-cf", "-", "-C"])
+        .arg(&made)
+        .arg("a")
+        .output()
+        .unwrap();
+    assert!(archive.status.success(), "tar made no archive");
+    let _ = std::fs::remove_dir_all(&made);
+    assert_eq!(
+        &archive.stdout[257..265],
+        b"ustar\x0000",
+        "tar wrote no ustar header"
+    );
+    // GNU's magic in place of ustar's, which every tar still unpacks, as
+    // it does a compressed archive, and ustar's with its NUL moved, which
+    // only a byte-for-byte reading refuses; the sum is made again over
+    // the header with the sum's own field as spaces.
+    for magic in [b"ustar  \0", b"ustar00\0"] {
+        let mut bytes = archive.stdout.clone();
+        bytes[257..265].copy_from_slice(magic);
+        bytes[148..156].copy_from_slice(b"        ");
+        let sum: u32 = bytes[..512].iter().map(|&byte| u32::from(byte)).sum();
+        bytes[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
+        let text = String::from_utf8(bytes).unwrap();
+        let list = format!("{}\t0.tar\nend\n", text.len());
+        let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
+        assert!(
+            code == Some(77) && err.contains("0.tar isn't a plain one"),
+            "an archive with the magic {magic:?} wasn't refused ({code:?}): {err}"
+        );
+        assert!(
+            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
+            "a job ran over an archive that isn't plain, or its copy was left"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
 fn every_archive_is_unpacked_in_turn_into_one_tree() {
     let made = scratch("several");
     std::fs::create_dir_all(made.join("in/d")).unwrap();
@@ -315,4 +359,91 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_copy_whose_job_closed_a_folder_in_it_is_taken_away_whole() {
+    // Closed to its owner, with a file under it, so nothing there can be
+    // taken away unopened: once the job ends, and once it is stopped.
+    let rows = [
+        ("true", "ended", (Some(0), "")),
+        ("kill -TERM $PPID", "stopped", (None, "15")),
+    ];
+    for (end, how, ending) in rows {
+        let (code, err, home) = far_run(
+            Left::Whole,
+            &[("a", "1")],
+            &format!("mkdir -p d/e && : > d/e/f && chmod 0 d/e d && : > ../ran && {end}"),
+        );
+        let copy = work(&home).join("1");
+        let left = copy.exists() || work(&home).join("1.run").exists();
+        for closed in [copy.join("d"), copy.join("d/e")] {
+            let _ = std::fs::set_permissions(
+                &closed,
+                std::os::unix::fs::PermissionsExt::from_mode(0o755),
+            );
+        }
+        assert!(
+            work(&home).join("ran").exists(),
+            "the job never closed its folder ({how}, {code:?}): {err}"
+        );
+        let died_by = std::fs::read_to_string(home.join("signal")).unwrap_or_default();
+        assert_eq!(
+            (code, died_by.as_str()),
+            ending,
+            "the far line wasn't {how}: {err}"
+        );
+        assert!(
+            !left,
+            "a copy whose job closed a folder in it stayed once the far line {how}: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn the_archives_unpacked_are_the_very_ones_their_list_named_when_checked() {
+    // The list rewritten as the first archive's names are read, its first
+    // line kept to the byte, so a read carrying on in the file meets a
+    // second line, naming an archive no check saw.
+    let made = scratch("unpacking-reread");
+    let mut texts = Vec::new();
+    for name in ["a", "smuggled"] {
+        let (tree, into) = (made.join(name), made.join(format!("{name}.out")));
+        std::fs::create_dir_all(&tree).unwrap();
+        std::fs::create_dir_all(&into).unwrap();
+        std::fs::write(tree.join(name), name).unwrap();
+        archive::write(&tree, [name], &into, 1 << 20, u64::MAX).unwrap();
+        texts.push(String::from_utf8(std::fs::read(into.join("0.tar")).unwrap()).unwrap());
+    }
+    let _ = std::fs::remove_dir_all(&made);
+    let (tar, rewriting) = refusing(
+        "tar",
+        "*\" -tf \"*/0.tar\" \"*",
+        &format!(
+            "[ -e \"$HOME/rewrote\" ] || {{ left=\"${{2%/*/*}}/{LEFT}\" && \
+             first=$(head -n 1 \"$left\") && \
+             printf '%s\\n9\\t5.tar\\nend\\n' \"$first\" > \"$left\" && \
+             : > \"$HOME/rewrote\"; }}"
+        ),
+    );
+    let list = format!("{}\t0.tar\nend\n", texts[0].len());
+    let (code, err, home) = far_line(
+        Left::Listed(&list),
+        &[("0.tar", &texts[0]), ("5.tar", &texts[1])],
+        "ls > ../seen",
+        &kind(""),
+        None,
+        &[(tar, &rewriting)],
+    );
+    assert!(
+        home.join("rewrote").exists(),
+        "the list was never rewritten ({code:?}): {err}"
+    );
+    let seen = std::fs::read_to_string(work(&home).join("seen")).unwrap_or_default();
+    assert!(
+        code == Some(0) && seen == "a\n",
+        "the far line unpacked what its checked list didn't name ({code:?}): {seen:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
