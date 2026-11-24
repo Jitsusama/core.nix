@@ -2200,7 +2200,7 @@ Singleton {
             steer(session.address, { text: carryOn, id: `carry-on-${Date.now()}-${id}` });
             return;
         }
-        wake(session);
+        wake(session, true);
         if (telling)
             carryOnLater(next.one, next.kept);
     }
@@ -2842,48 +2842,44 @@ Singleton {
             + (said !== null ? "; its press is told" : ""));
         if (said !== null)
             unhosted(said, "untaken");
-        waitedOnNoMore(named, "no sessions kitty took it", false);
+        waitedOnNoMore(named, "no sessions kitty took it");
     }
     // Reopen Them All's walk waits on viewer `named` no more once its
     // window came refused (heardWindow) or no kitty took it (untaken),
     // since none can come for that ask: it goes on as its patience would,
     // rather than 30 s later, viewer after viewer; at its pace and as the
     // machine has room (reopenSoon), as a refusal can come within moments
-    // of the ask. One refused is kept late, as a pid read right yet makes
-    // its window the one come; one no kitty took can't come, so it's kept
-    // neither late nor begun (`comes` false), and Reopen Them All pressed
-    // again asks for it rather than taking it as asked already. The
-    // script waits a minute for the kitty's answer, past the walk's 30 s
-    // patience, so one no kitty took may be late already (lateUntaken).
-    function waitedOnNoMore(named, why, comes) {
-        if (comes === false)
-            lateUntaken(named);
+    // of the ask. It's kept neither late nor begun: nothing would take it
+    // out of either, so the walk could never end, and Reopen Them All
+    // pressed again asks for it rather than taking it as asked already,
+    // as refusedOwn holds off asking while a refused window is listed.
+    // The script waits a minute for the kitty's answer, past the walk's
+    // 30 s patience, so one no kitty took may be late already (lateGivenUp).
+    function waitedOnNoMore(named, why) {
+        lateGivenUp(named, why);
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened !== null || waiting.classed !== named)
             return;
         console.info(`sessions: ${waiting.id}'s viewer waited on no more, as ${why}`);
-        if (comes === false)
-            reopening.begun = reopening.begun.filter(id => id !== waiting.id);
-        else
-            reopening.late.push(waiting);
+        reopening.begun = reopening.begun.filter(id => id !== waiting.id);
         reopening.waiting = null;
         reopenPatience.stop();
         reopenSoon();
     }
-    // A viewer no kitty took that the walk's patience already gave up on
-    // is kept neither late nor begun: no window can come to end it, so it
-    // would keep the walk from ending and a press from asking again. With
+    // A viewer no kitty took, or whose window came refused, that the walk's
+    // patience already gave up on is kept neither late nor begun: no
+    // window of its own can come to end it, so it would keep the walk from
+    // ending and a press from asking again. With
     // it gone the walk ends if nothing else is left, as one come late does,
     // and as that one, never behind the lock, where niri refuses every move
     // reopenDone's put-back asks: the lock's end settles it (placeBehind).
-    function lateUntaken(named) {
+    function lateGivenUp(named, why) {
         const going = reopening;
         const gone = going?.late.filter(one => one.classed === named && one.opened === null)
             ?? [];
         if (gone.length === 0)
             return;
-        console.info(`sessions: ${named}, given up on, is late no more, as no sessions kitty `
-            + "took it");
+        console.info(`sessions: ${named}, given up on, is late no more, as ${why}`);
         going.late = going.late.filter(one => !gone.includes(one));
         going.begun = going.begun.filter(id => !gone.some(one => one.id === id));
         if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
@@ -3088,7 +3084,7 @@ Singleton {
             unhosted(said, "disowned");
         }
         if (own)
-            waitedOnNoMore(named, "its window wasn't the sessions kitty's", true);
+            waitedOnNoMore(named, "its window wasn't the sessions kitty's");
     }
     // Each window heardWindow refused, by niri's id, journalled once, so a
     // stray window or a pid read wrong is seen rather than a viewer that
@@ -3797,25 +3793,32 @@ Singleton {
     // (keepPlaceAsleep), on Joel's own workspace too since he asked for it,
     // or where niri opens one when no place was kept. One a holder keeps
     // has its place marked asked, since every caller here is Joel's own
-    // act (a quest's Return, a Go To), so its window opens there as it
+    // act (a quest's Return, a Go To) or the walk's, which marks it too
+    // (wakeReopened), so its window opens there as it
     // wakes (Viewers.viewersDue); a wake nobody here asked for, the node's
     // or a restart's, opens none.
-    function wake(session) {
+    // `unasked` for the walk's wake (wakeReopened), which a handover makes
+    // too, with Joel nowhere near: it's said to no one and takes no focus.
+    function wake(session, unasked) {
         if (wokenByViewing(session)) {
             readKittyPid();
             const id = String(session.presence?.session ?? "");
             const into = sleptPlace(id);
+            const named = viewerOf(session.presence);
+            const pressed = unasked !== true;
+            // Joel's press, said as Go To's is: refused (disowned), keeping
+            // where it slept for the press that can open it once that
+            // window closes; held back while its viewer comes (heldBack);
+            // or told if no kitty takes it (untaken).
+            if (pressed && disowned(named, session))
+                return;
             if (keptPlaces[id] !== undefined) {
                 const kept = Object.assign({}, keptPlaces);
                 delete kept[id];
                 keepPlaces(kept);
             }
-            // Joel's press, said as Go To's is: refused (disowned), held
-            // back while its viewer comes (heldBack), or told if no kitty
-            // takes it (untaken).
-            const named = viewerOf(session.presence);
-            if (!disowned(named, session) && !heldBack(session.address, named, session))
-                view(session, into, true);
+            if (!pressed || !heldBack(session.address, named, session))
+                view(session, into, pressed);
             return;
         }
         const id = String(session?.presence?.session ?? "");

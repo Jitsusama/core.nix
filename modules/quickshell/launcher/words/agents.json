@@ -327,7 +327,7 @@
         "unviewableHost": "started in its host \u00b7 its host has a name it can't be viewed under",
         "unowned": "opening its own \u00b7 a window another program drew holds its name",
         "disowned": "not asked again \u00b7 till the window that came, not seen as its own, closes",
-        "untaken": "its window didn't open when asked \u00b7 nothing asks for it again by itself",
+        "untaken": "its window didn't open when asked \u00b7 that ask is over",
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
         "refused": "{act} refused, {why}",
