@@ -13,7 +13,11 @@ collectClosed), from its allocatorStats, which only the detailed log keeps at de
 Each closing's line also says what jemalloc holds, found by name in Quickshell's process, so a
 Quickshell whose jemalloc stopped answering to that name is caught here, where it really runs.
 The shell's Qt makes the heap anonymous memory, so each of its pages is held once
-(qtdeclarative-heap-held-once.patch), and the shell's own maps must show no memfd of it.
+(qtdeclarative-heap-held-once.patch), and the shell's own maps must show no memfd of it. And
+some closing must lend resident free pages back, and the kernel must then say it holds some of the
+shell lent, so a launcher that stopped lending, or a heap the kernel won't take lent (memory not
+anonymous refuses it), is caught here; that lending keeps the pages until the kernel needs them,
+rather than giving them back, is the heap test's lendsBack to hold.
 """
 
 from __future__ import annotations
@@ -97,6 +101,17 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         said = shell.log.read_text(errors="replace")
         jemalloc = re.search(r"collected after closing.*; jemalloc \d+ MB in use", said)
         assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
+        lendings = re.findall(
+            r" (\d+) MB of free pages lent in \d+ ms,"
+            r" the kernel holding (-?\d+) MB of the shell lent",
+            said,
+        )
+        lent = [int(each) for each, _ in lendings]
+        held = [int(each) for _, each in lendings]
+        assert any(lent), f"no closing lent its heap's free pages back: {lent}\n{shell.tail()}"
+        assert any(each > 0 for each in held), (
+            f"the kernel held nothing of the shell lent after any closing: {held}\n{shell.tail()}"
+        )
         assert shell.process, "the shell's process was never started"
         maps = Path(f"/proc/{shell.process.pid}/maps").read_text().splitlines()
         memfds = [line for line in maps if "/memfd:JSGCHeap" in line]
