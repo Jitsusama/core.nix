@@ -3,7 +3,36 @@
 //! they take.
 
 use super::scratch;
-use crate::far::{LARGEST_FILE, LEFT, TREE, archive, leave, left, tracked};
+use crate::far::{Folders, LARGEST_FILE, LEFT, TREE, archive, leave, left, tracked};
+
+#[test]
+fn a_name_is_the_tree_s_own_only_through_folders_never_through_a_link() {
+    let root = scratch("own-folders");
+    std::fs::create_dir_all(root.join("a/b")).unwrap();
+    std::fs::write(root.join("file"), "").unwrap();
+    // A link to a folder of the tree's own is refused as well: only the
+    // folder itself is looked at, never where a link leads.
+    std::os::unix::fs::symlink(root.join("a"), root.join("d")).unwrap();
+    std::os::unix::fs::symlink(root.join("a/b"), root.join("a/c")).unwrap();
+    let mut folders = Folders::default();
+    for (path, own) in [
+        ("top", true),
+        ("a/b/f", true),
+        ("a/b/f", true),
+        ("d/f", false),
+        ("a/c/f", false),
+        ("gone/f", false),
+        ("file/f", false),
+    ] {
+        assert_eq!(
+            folders.own(&root, path),
+            own,
+            "{path} read as own: {}",
+            !own
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
 
 #[test]
 fn a_tracked_name_outside_the_tree_is_refused_though_it_reads_as_hidden() {
@@ -28,6 +57,13 @@ fn a_tracked_name_outside_the_tree_is_refused_though_it_reads_as_hidden() {
         Ok(false),
         "an excluded file wasn't kept home"
     );
+    // One that travels, but that no list could carry, is refused.
+    for path in ["a\tb", "src/a\nb"] {
+        assert!(
+            tracked(path, &[]).is_err_and(|why| why.contains("a tab or a newline")),
+            "{path:?} wasn't refused for what no list carries"
+        );
+    }
     assert_eq!(
         tracked("src/lib.rs", &[]),
         Ok(true),
