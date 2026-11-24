@@ -4033,6 +4033,35 @@ mod tests {
     }
 
     #[test]
+    fn a_give_back_is_asked_before_a_gain_whichever_unit_comes_first() {
+        // b, which gains every floor, comes before a, which gives them back, as systemd may
+        // list them: were b asked first, it would take them while a's give-back fails.
+        let units = ["b.service", "a.service"].map(|unit| Path::new("/cg/agents.slice").join(unit));
+        let holding = holds::Holding::default();
+        let mut hosts = hosts::Hosts::default();
+        let mut kernel = HashMap::new();
+        let viewers = ["a.service"; 3];
+        hard_look(&holding, &mut hosts, &mut kernel, &units, &viewers, |_| {
+            true
+        });
+        let viewers = ["b.service"; 3];
+        hard_look(
+            &holding,
+            &mut hosts,
+            &mut kernel,
+            &units,
+            &viewers,
+            |unit| unit != "a.service",
+        );
+        let kept: usize = kernel.values().sum();
+        assert!(
+            kept <= focus::MOST,
+            "{kept} hard floors hold once b, listed first, gains while a's give-back fails: \
+             {kernel:?}"
+        );
+    }
+
+    #[test]
     fn a_host_whose_gain_failed_is_asked_again_until_it_lands() {
         let units = [Path::new("/cg/agents.slice/a.service").to_path_buf()];
         // Three pis hold every hard floor while Joel is at a, so a is ranked with none.
