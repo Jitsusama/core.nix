@@ -73,10 +73,11 @@ fn copy(from: impl Read, to: &Mutex<File>, began: Instant) {
     }
 }
 
-/// How a line said `seconds` into the gate opens: its minutes and seconds,
-/// padded so that a gate's lines align for its first 16 hours.
+/// How a line said `seconds` into the gate opens: its minutes and seconds.
+/// The minutes go unpadded, as the commands' rules ask of a width set by
+/// hand, so a gate's lines shift a column only at its 10th minute.
 fn stamp(seconds: u64) -> String {
-    format!("[{:>3}:{:02}] ", seconds / 60, seconds % 60)
+    format!("[{}:{:02}] ", seconds / 60, seconds % 60)
 }
 
 #[cfg(test)]
@@ -84,18 +85,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_stamp_says_minutes_and_seconds_aligned() {
-        assert_eq!(stamp(0), "[  0:00] ", "the first second's stamp");
-        assert_eq!(
-            stamp(1_573),
-            "[ 26:13] ",
-            "a stamp past the 26 minutes seen"
-        );
-        assert_eq!(
-            stamp(59_999),
-            "[999:59] ",
-            "the last stamp that keeps its width"
-        );
+    fn a_stamp_says_minutes_and_seconds() {
+        assert_eq!(stamp(0), "[0:00] ", "the first second's stamp");
+        assert_eq!(stamp(1_573), "[26:13] ", "a stamp past the 26 minutes seen");
+        assert_eq!(stamp(6_000), "[100:00] ", "a stamp past 99 minutes");
     }
 
     // Both streams reach the log, every line stamped and whole, and the
@@ -117,7 +110,7 @@ mod tests {
         lines.sort_unstable();
         assert_eq!(
             lines,
-            ["[  0:00] erred", "[  0:00] no newline", "[  0:00] said"],
+            ["[0:00] erred", "[0:00] no newline", "[0:00] said"],
             "the log wasn't each line stamped once: {words}"
         );
     }
