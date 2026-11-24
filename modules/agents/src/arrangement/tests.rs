@@ -1,3 +1,9 @@
+//! The arrangement's cases, apart from its code.
+//!
+//! Long because each is one rule of where a window goes back, when its
+//! place is let go, and when the daemon wakes to keep it, on the private
+//! parts it reads, which a split by rule would only make each share again.
+
 use super::*;
 
 fn held(records: &Value) -> Held {
