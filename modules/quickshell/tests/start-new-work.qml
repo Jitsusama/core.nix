@@ -618,6 +618,41 @@ QtObject {
                 [Object.assign({}, earlier, { summary: "Start a Session" })], open), ["busy"]);
         Expect.same("with no notices heard, it's the ends alone",
             Sprouting.noticed(["busy"], "Start New Work", undefined, undefined), ["busy"]);
+        Expect.same("one whose body is empty leads with no blank line",
+            Sprouting.noticed(["busy"], "Start New Work",
+                [Object.assign({}, earlier, { body: "" })], open), ["busy"]);
+        const slack = { id: 9, app: "Slack", summary: "Start New Work", body: "hi",
+            read: false };
+        const readStart = Object.assign({}, earlier, { id: 8, body: "old", read: true });
+        Expect.same("the open one leads though newer notices stand before it",
+            Sprouting.noticed(["busy"], "Start New Work", [slack, readStart, earlier],
+                { 7: {}, 8: {}, 9: {} }), ["cut", "busy"]);
+        Expect.same("a leading body, plain in the history, is made markup again once",
+            Sprouting.noticeBody(Sprouting.noticed(["busy"], "Start New Work",
+                [Object.assign({}, earlier, { body: "a & <b>" })], open)),
+            "a &amp; &lt;b&gt;\nbusy");
+
+        // A notice Agents sent leads the next until the history holds it, since the
+        // daemon folds it into the next though the history can't yet say it's open.
+        const sent = Sprouting.sentOf(["cut", "busy"], "Start New Work", [slack, earlier],
+            1000);
+        Expect.same("what's sent keeps the ids its summary's notices had then",
+            sent.ids, [7]);
+        Expect.same("sent and not yet heard, its ends lead the next",
+            Sprouting.unheard(sent, [slack, earlier], 2000), ["cut", "busy"]);
+        Expect.same("heard, the history says what leads",
+            Sprouting.unheard(sent, [Object.assign({}, earlier, { id: 10 }), earlier],
+                2000), null);
+        Expect.same("heard behind another program's newer notice, it's heard all the same",
+            Sprouting.unheard(sent, [Object.assign({}, slack, { id: 11 }),
+                Object.assign({}, earlier, { id: 10 }), earlier], 2000), null);
+        Expect.same("another program's newer notice isn't the one sent",
+            Sprouting.unheard(sent, [Object.assign({}, slack, { id: 11 }), earlier], 2000),
+            ["cut", "busy"]);
+        Expect.same("never heard in ten seconds, it was never sent, and leads no more",
+            Sprouting.unheard(sent, [earlier], 11000), null);
+        Expect.same("with nothing sent, nothing leads",
+            Sprouting.unheard(null, [earlier], 2000), null);
 
         // The starts the agents daemon keeps ended and untold: one this shell never heard
         // the end of is told once it has stood kept a moment, first seen at `seen`, and each

@@ -509,3 +509,31 @@ function noticed(ends, summary, history, live) {
         && notice.body !== "");
     return open === undefined ? ends : [open.body].concat(ends);
 }
+
+// How long a notice Agents sent may take to come back in Notices' history
+// before it's taken as never sent (notify-send failed), so it leads no more.
+const SENT_MS = 10_000;
+
+// What Agents sent as a notice of `ends` under `summary` at `now`, with the
+// ids its summary's notices had in the history then, so `unheard` knows the
+// one sent from those before it.
+function sentOf(ends, summary, history, now) {
+    const ids = (history ?? []).filter(notice => notice.app === "Agents"
+        && notice.summary === summary).map(notice => notice.id);
+    return { ends, summary, ids, at: now };
+}
+
+// The ends of the notice Agents last sent (`sent`, from sentOf) while the
+// history doesn't yet hold it: no notice of Agents' under its summary but
+// those it had then, and sent within SENT_MS. Until the notices daemon's
+// answer comes back, the history can't say the sent one is open, though
+// the daemon will fold it into the next all the same; null once it's heard,
+// when `noticed` says what leads.
+function unheard(sent, history, now) {
+    if (sent === null || sent === undefined || now - sent.at >= SENT_MS) {
+        return null;
+    }
+    const heard = (history ?? []).some(notice => notice.app === "Agents"
+        && notice.summary === sent.summary && !sent.ids.includes(notice.id));
+    return heard ? null : sent.ends;
+}
