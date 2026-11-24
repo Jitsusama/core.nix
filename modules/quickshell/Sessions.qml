@@ -2834,9 +2834,9 @@ Singleton {
             return;
         const said = pressedFor[named] ?? null;
         forgetAsk(named);
-        console.info(`sessions: no sessions kitty took ${named}, so `
-            + (said !== null ? "its press is told, and the next asks afresh"
-                : "nothing asks again until a press does, the shell having asked by itself"));
+        console.info(`sessions: no sessions kitty took ${named}, so it's no longer taken as `
+            + "opening, and the next ask, a press's or a kept place's, asks afresh"
+            + (said !== null ? "; its press is told" : ""));
         if (said !== null)
             unhosted(said, "untaken");
         waitedOnNoMore(named, "no sessions kitty took it");
@@ -2845,7 +2845,8 @@ Singleton {
     // window came refused (heardWindow) or no kitty took it (untaken),
     // since none can come for that ask: it goes on as its patience would,
     // the viewer kept late should one come yet, rather than 30 s later,
-    // viewer after viewer.
+    // viewer after viewer; at its pace and as the machine has room
+    // (reopenSoon), as a refusal can come within moments of the ask.
     function waitedOnNoMore(named, why) {
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened !== null || waiting.classed !== named)
@@ -2854,7 +2855,7 @@ Singleton {
         reopening.late.push(waiting);
         reopening.waiting = null;
         reopenPatience.stop();
-        reopenNext();
+        reopenSoon();
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
@@ -3037,6 +3038,15 @@ Singleton {
             refusedAsks = Object.assign({}, refusedAsks, { [named]: true });
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
+        // The press waiting on it is told, as one no kitty took is
+        // (untaken), since a press is never met with nothing.
+        const said = own ? pressedFor[named] ?? null : null;
+        if (said !== null) {
+            const pressed = Object.assign({}, pressedFor);
+            delete pressed[named];
+            pressedFor = pressed;
+            unhosted(said, "disowned");
+        }
         if (own)
             waitedOnNoMore(named, "its window wasn't the sessions kitty's");
     }
