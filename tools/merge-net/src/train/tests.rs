@@ -173,6 +173,41 @@ fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
     }
 }
 
+/// changed-checks builds a check main quarantines alone, and its failure
+/// blocks nothing, though nix still says its builder failed: an untaken
+/// gate whose only failures are those says nothing of its riders.
+#[test]
+fn a_failure_main_quarantines_leaves_an_untaken_gate_unsent() {
+    let excused = "error: Cannot build '/nix/store/x-the-cat-sits.drv'.\n       Reason: builder \
+                   failed with exit code 1.\nerror: Cannot build '/nix/store/y-the-launcher-part-3\
+                   .drv'.\n       Reason: builder failed with exit code 1.\nchanged-checks: \
+                   the-cat-sits failed, but main quarantines it (#6065 owns it), so it blocks \
+                   nothing\nchanged-checks: the-launcher failed, but main quarantines test_a, so \
+                   it blocks nothing\n";
+    assert_eq!(
+        gated(Some(75), excused),
+        Gated::Unsent,
+        "a quarantined check's failure, or its part's, made an untaken gate red"
+    );
+    let beside = format!(
+        "{excused}error: Cannot build '/nix/store/z-the-cat-sits-too.drv'.\n       Reason: \
+         builder failed with exit code 1.\n"
+    );
+    assert_eq!(
+        gated(Some(75), &beside),
+        Gated::Red,
+        "a check only named like a quarantined one is no excused failure"
+    );
+    let unexcused = "error: Cannot build '/nix/store/x-the-cat-sits.drv'.\n       Reason: builder \
+                     failed with exit code 1.\nchanged-checks: the-cat-sits failed in test_b, \
+                     which main's quarantine doesn't hold, so it blocks the change\n";
+    assert_eq!(
+        gated(Some(75), unexcused),
+        Gated::Red,
+        "a failure the quarantine doesn't excuse is red"
+    );
+}
+
 /// A builder's words can hold any byte, and nix-offload sets aside a
 /// replay onto a newer main that failed, running the change again on its
 /// own base: the gate is read by what its last run said.
