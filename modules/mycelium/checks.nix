@@ -1754,4 +1754,62 @@ in
         && pinnedOn bareDarwin self.darwinModules.workstation
         && keys bareNixos self.nixosModules.workstation { } == [ ]
       );
+
+  # The words a link key is pinned to, read from the line a machine's system
+  # writes rather than typed again, are ones the locked mycelium takes, so a
+  # renamed action or flag, or one newly required, fails here rather than at
+  # the first link or attach. They're run as sshd runs them for a login, with
+  # no command asked, which the action refuses and keeps, naming the machine
+  # the key is from: so the words parsed whole, past clap's checks that a
+  # --help skips, and reached the action, which links nothing. The words
+  # alone, as the node's flags are, so a Mac's check never builds the Linux
+  # package the line names.
+  mycelium-takes-its-link-key-s-words =
+    let
+      lines =
+        (bareNixos [
+          self.nixosModules.workstation
+          {
+            jitsusama.mycelium = {
+              account = "someone";
+              linkedFrom.personal.one = "ecdsa-sha2-nistp256 AAAAone";
+            };
+          }
+        ]).config.users.users.someone.openssh.authorizedKeys.keys;
+      line =
+        assert lib.assertMsg (lines != [ ]) "a machine linked from one is given no key line";
+        lib.head lines;
+      pinned = builtins.match ''.*command="[^ "]*/bin/mycelium ([^"]*)".*'' (
+        builtins.unsafeDiscardStringContext line
+      );
+      words = lib.filter (word: word != "") (lib.splitString " " (lib.head pinned));
+      locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      mycelium = lib.getExe (locked.overrideAttrs { doCheck = false; });
+    in
+    assert lib.assertMsg (pinned != null) "no link key line pins mycelium: ${line}";
+    # Kept in Nix because the locked mycelium and the words its key line
+    # pins come from this evaluation, and a script of its own would only be
+    # handed them back as words.
+    pkgs.runCommandLocal "mycelium-takes-its-link-key-s-words" { } ''
+      mkdir -p home state/mycelium
+      ended=0
+      env -u SSH_ORIGINAL_COMMAND HOME="$PWD/home" XDG_STATE_HOME="$PWD/state" \
+        timeout -k 10 60 ${mycelium} ${lib.escapeShellArgs words} < /dev/null > said 2> told \
+        || ended=$?
+      # mycelium's errors end 1, its refusal among them, and clap's refusal
+      # of the words 2; the record kept below says which error it was.
+      case $ended in
+        1) ;;
+        0) echo "mycelium took a login on its link key's words"; exit 1 ;;
+        124) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
+        *) echo "mycelium ended $ended on a login on its link key's words"; cat told; exit 1 ;;
+      esac
+      kept=state/mycelium/refused-keys.jsonl
+      grep '"asked":null' "$kept" 2> /dev/null | grep -q '"from":"one"' || {
+        echo "mycelium didn't take its link key's words:" ${lib.escapeShellArgs words}
+        cat told
+        exit 1
+      }
+      touch $out
+    '';
 }
