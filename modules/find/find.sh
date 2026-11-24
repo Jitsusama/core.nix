@@ -4,15 +4,19 @@
 # about, when a search starts above one. Opening one makes macOS ask whether
 # the searcher may read it, and an agent's find of the home folder asked over
 # and over, since ripgrep and fd read the ignore file and find never does.
-# A folder left out is still listed, as find lists it from its parent without
-# opening it, and find says on stderr that it left folders out, so an empty
+# A folder left out is still tested and listed, as find lists it from its
+# parent without opening it, unless the expression would open it (-empty, or
+# an -exec, -execdir, -ok or -okdir given it), when it isn't listed at all.
+# Either way find says on stderr that it left folders unsearched, so an empty
 # answer never reads as nothing there.
 # A search naming a guarded folder, or starting inside one, still searches it,
 # as with ripgrep and fd. A search find can't prune runs as given: one going
 # depth first (-d or -depth alone, or -delete), one whose -mindepth lies past a
-# guarded folder, one with options spelled other than apart (-xf, -f/path), and
-# /usr/bin/find run by its path. One following links (-L) leaves out only the
-# folders it reaches by their own names.
+# guarded folder, and one with -f joined to another option or to its path
+# (-xf, -f/path). Nor does it reach /usr/bin/find run by its path, or another
+# find ahead of it on PATH, as a dev shell's is. One following links (-L)
+# leaves out only the folders it reaches by their own names, and a search of /
+# guards only the home folder's, not what /Volumes mounts.
 # usage: find.sh <find> <ignore file> <data volume> [find's arguments...]
 set -euo pipefail
 
@@ -45,8 +49,9 @@ EOF
 fi
 args=("$@")
 
-# What find says when it left a folder out, so the searcher knows to name it.
-note='find: left out the folders macOS asks about; name one to search it'
+# What find says when it left a folder unsearched, so an answer missing what's
+# in one isn't read as whole.
+note='find: left the folders macOS asks about unsearched'
 
 # find's options come first, then the paths, then the expression. Only the
 # options macOS's find takes are read, each apart: -f takes a path of its own,
@@ -88,8 +93,12 @@ starts+=(${paths[@]+"${paths[@]}"})
 
 # macOS's -depth followed by a number tests a file's depth and walks as ever;
 # alone, as -d, it goes depth first. find tests nothing above -mindepth, so a
-# guarded folder there is never pruned.
+# guarded folder there is never pruned. A command an -exec runs is its own
+# words, read no further than its ; or {} +, so its -d is never find's. -empty
+# reads a folder to test it, and a command given a folder may open it, so
+# either opens a guarded folder it's run on.
 acts=false
+opens=false
 mindepth=0
 for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}
@@ -102,8 +111,19 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
         mindepth=${next}
       fi
       ;;
-    -print | -print0 | -printf | -fprint | -fprint0 | -fprintf | -ls | -fls | -exec | -execdir \
-      | -ok | -okdir | -quit) acts=true ;;
+    -empty) opens=true ;;
+    -exec | -execdir | -ok | -okdir)
+      acts=true
+      opens=true
+      at=$((at + 1))
+      while [ "${at}" -lt "${#expression[@]}" ]; do
+        word=${expression[at]}
+        [ "${word}" = ';' ] && break
+        [ "${word}" = + ] && [ "${expression[at - 1]}" = '{}' ] && break
+        at=$((at + 1))
+      done
+      ;;
+    -print | -print0 | -printf | -fprint | -fprint0 | -fprintf | -ls | -fls) acts=true ;;
     *) ;;
   esac
 done
@@ -178,14 +198,23 @@ fi
 echo "${note}" >&2
 # What the search printed by itself, it still prints: an expression with no
 # action of its own is given -print, as find gives it. A pruned folder is
-# still tested and listed, once, without find opening it.
+# still tested and listed, once, without find opening it, unless testing it
+# would open it. -prune stands for true, as POSIX makes it, since macOS's
+# find may lack -true.
 shown=(-print)
 if [ "${acts}" = true ]; then
   shown=()
 fi
-if [ ${#expression[@]} -eq 0 ]; then
-  expression=(-true)
+tested=()
+if [ ${#expression[@]} -gt 0 ]; then
+  tested=('(' "${expression[@]}" ')')
+fi
+listed=()
+if [ "${opens}" = false ] && [ ${#tested[@]} -gt 0 ]; then
+  listed=('(' "${tested[@]}" ${shown[@]+"${shown[@]}"} -o -prune ')')
+elif [ "${opens}" = false ]; then
+  listed=(${shown[@]+"${shown[@]}"})
 fi
 exec "${find}" ${options[@]+"${options[@]}"} ${paths[@]+"${paths[@]}"} \
-  '(' "${prunes[@]}" ')' -prune '(' '(' "${expression[@]}" ')' ${shown[@]+"${shown[@]}"} \
-  -o -true ')' -o '(' "${expression[@]}" ')' ${shown[@]+"${shown[@]}"}
+  '(' "${prunes[@]}" ')' -prune ${listed[@]+"${listed[@]}"} \
+  -o ${tested[@]+"${tested[@]}"} ${shown[@]+"${shown[@]}"}

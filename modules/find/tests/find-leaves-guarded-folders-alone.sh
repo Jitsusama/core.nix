@@ -2,8 +2,10 @@
 # Checks that the Mac's find, searching a home folder from the home folder,
 # from Library or from above both it and the data volume's second name for it,
 # run there or given the path from elsewhere, never opens the folders the
-# ignore file guards, still lists them, says it left them out, and finds
-# everything else, folders in a project named like a guarded one included.
+# ignore file guards, still lists them, says it left them unsearched, and
+# finds everything else, folders in a project named like a guarded one
+# included; an expression that would open one, -empty or an -exec, isn't
+# given it.
 # Each guarded folder is made unreadable, so opening it is an error find
 # reports. The find it runs, run alone, reports them, so the check can fail. A
 # search naming a guarded folder, or starting inside one, still searches it,
@@ -27,7 +29,7 @@ data=${work}/data
 said=${work}/said
 stand=$(mktemp -d)
 trap 'chmod -R u+rwx "${work}"; rm -rf "${work}" "${stand}"' EXIT
-note='find: left out the folders macOS asks about; name one to search it'
+note='find: left the folders macOS asks about unsearched'
 
 # The folders the ignore file guards, each with a needle in it, in the home
 # folder and under the data volume's name for it.
@@ -169,6 +171,19 @@ if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF 'seen ./Library/Logs/needle' 
   echo "${who} with -exec lost its action or printed more: ${found} $(<"${said}")" >&2
   exit 1
 fi
+# An -exec's own -d is its command's, never find's, and neither it nor
+# -empty is run on a guarded folder, which either would open.
+found=$(search "${home}" -type d -exec ls -d '{}' +)
+if [[ $(<"${said}") != "${note}" ]] || grep -qxF "${home}/Desktop" <<<"${found}" \
+  || ! grep -qxF "${home}/Library/Logs" <<<"${found}"; then
+  echo "${who} gave a guarded folder to -exec ls -d: ${found} $(<"${said}")" >&2
+  exit 1
+fi
+found=$(search "${home}" -type d -empty)
+if [[ $(<"${said}") != "${note}" ]] || grep -qxF "${home}/Desktop" <<<"${found}"; then
+  echo "${who} tested a guarded folder with -empty: ${found} $(<"${said}")" >&2
+  exit 1
+fi
 found=$(search "${home}" -type f -o -name nothing)
 if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
   echo "${who} with an expression joined by -o lost a match: ${found} $(<"${said}")" >&2
@@ -187,7 +202,7 @@ fi
 for given in -depth '-mindepth 3'; do
   # shellcheck disable=SC2086 # Each is split into its words, as typed.
   search "${home}" ${given} -name needle >/dev/null
-  if ! grep -q 'ermission denied' "${said}"; then
+  if ! grep -q 'ermission denied' "${said}" || grep -qF "${note}" "${said}"; then
     echo "${who} with ${given} didn't run as given: $(<"${said}")" >&2
     exit 1
   fi
@@ -219,7 +234,7 @@ done
 how=inside
 named "${home}"
 found=$(wrapped "${home}" Documents -name needle 2>"${said}")
-if ! grep -qxF Documents/repo/needle <<<"${found}"; then
+if ! grep -qxF Documents/repo/needle <<<"${found}" || grep -qF "${note}" "${said}"; then
   echo "${who} naming Documents no longer searched it: ${found}" >&2
   exit 1
 fi
@@ -246,6 +261,7 @@ chmod +x "${stand}/find"
 real=${stand}/find
 given() {
   said=$(wrapped "${stand}" "$@" 2>/dev/null)
+  typed=$(printf '%s\n' "$@")
 }
 given "${home}/" -name x
 if ! grep -qE '[^/]//Desktop$' <<<"${said}" || ! grep -qE '[^/]/Desktop$' <<<"${said}"; then
@@ -258,16 +274,20 @@ if ! grep -qxF "/${home#/}/Desktop" <<<"${said//\\/}" \
   echo "/ isn't pruned by both the home folder's names: ${said}" >&2
   exit 1
 fi
-for args in depth-test f-path dashes shallow; do
+# Each pruned search keeps its options and start first, as typed.
+for args in depth-test f-path dashes shallow option exec-d; do
   case ${args} in
-    depth-test) given "${home}" -depth 2 -name x ;;
-    f-path) given -f "${home}" -name x ;;
-    dashes) given -- "${home}" -name x ;;
-    shallow) given "${home}" -mindepth 1 -name x ;;
-    *) ;;
+    depth-test) lead=("${home}") && given "${home}" -depth 2 -name x ;;
+    f-path) lead=(-f "${home}") && given -f "${home}" -name x ;;
+    dashes) lead=(-- "${home}") && given -- "${home}" -name x ;;
+    shallow) lead=("${home}") && given "${home}" -mindepth 1 -name x ;;
+    option) lead=(-x "${home}") && given -x "${home}" -name x ;;
+    exec-d) lead=("${home}") && given "${home}" -type d -exec ls -d '{}' + ;;
+    *) lead=() ;;
   esac
-  if ! grep -qxF -- -prune <<<"${said}"; then
-    echo "a search with ${args} wasn't pruned: ${said}" >&2
+  leading=$(printf '%s\n' "${lead[@]}" '(')
+  if ! grep -qxF -- -prune <<<"${said}" || [[ ${said} != "${leading}"$'\n'* ]]; then
+    echo "a search with ${args} wasn't pruned as typed: ${said}" >&2
     exit 1
   fi
 done
@@ -278,7 +298,7 @@ for args in depth-primary depth-option deep; do
     deep) given "${home}" -mindepth 2 -name x ;;
     *) ;;
   esac
-  if grep -qxF -- -prune <<<"${said}"; then
+  if [ "${said}" != "${typed}" ]; then
     echo "a search with ${args} wasn't given as typed: ${said}" >&2
     exit 1
   fi

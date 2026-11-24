@@ -23,9 +23,19 @@ onLinux {
   find-leaves-guarded-folders-alone =
     let
       finds = machine: lib.filter (package: package.name == "find") (account machine).home.packages;
-      # Compared as text alone, as a match may not name the store.
-      runs = builtins.unsafeDiscardStringContext "${./find.sh} /usr/bin/find ${../ripgrep/ignore}";
-      text = find: builtins.unsafeDiscardStringContext (find.text or "");
+      # Compared as words alone, as a match may not name the store, nor read
+      # the line home.nix breaks; find.sh takes all four, the data volume
+      # too, before what the searcher typed.
+      words =
+        text:
+        lib.concatStringsSep " " (
+          lib.filter (word: word != "" && word != "\\") (
+            lib.splitString " " (
+              builtins.replaceStrings [ "\n" ] [ " " ] (builtins.unsafeDiscardStringContext text)
+            )
+          )
+        );
+      runs = words "${./find.sh} /usr/bin/find ${../ripgrep/ignore} /System/Volumes/Data \"$@\"";
       lines = lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
         lib.splitString "\n" (builtins.readFile ../ripgrep/ignore)
       );
@@ -34,9 +44,9 @@ onLinux {
     assert lib.assertMsg (
       finds macWorkstation != [ ]
     ) "A Mac's account runs macOS's find, which opens the folders macOS asks about.";
-    assert lib.assertMsg (lib.all (find: lib.hasInfix runs (text find)) (
+    assert lib.assertMsg (lib.all (find: lib.hasInfix runs (words (find.text or ""))) (
       finds macWorkstation
-    )) "A Mac's find doesn't run find.sh with macOS's find and the ignore file.";
+    )) "A Mac's find doesn't run find.sh with macOS's find, the ignore file and the data volume.";
     assert lib.assertMsg (finds workstation == [ ]) "A Linux account runs the Mac's find.";
     assert lib.assertMsg (
       unread == [ ]
