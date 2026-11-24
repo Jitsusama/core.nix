@@ -1667,6 +1667,25 @@ mod tests {
             }),
             "and counted from there, so the next hour's line comes an hour on"
         );
+        let behind =
+            |was: &Unwritten, why: &str, at: u64| write_heard(path, Some(why), Some(was), at).1;
+        assert_eq!(
+            behind(&first, "gone", 1_000).map(|left| left.since),
+            Some(1_000),
+            "failing another way past the step, it's never behind since a time to come, \
+             which would read as 0 s behind for as long as the clock stepped"
+        );
+        let long = Unwritten {
+            why: "full".into(),
+            since: 1_000_000,
+            said: 20_000_000,
+        };
+        assert_eq!(
+            behind(&long, "full", 18_000_000).map(|left| left.since),
+            Some(1_000_000),
+            "a step back to after it fell behind keeps when it fell behind, so how long \
+             reads no shorter than the step makes it"
+        );
     }
 
     #[test]
