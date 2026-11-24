@@ -279,7 +279,7 @@ function ended(answer, said) {
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
         return answer.error.code === "unanswered" ? { started: false, unanswered: true, why }
-            : { started: false, why };
+            : { started: false, why, refusal: String(answer.error.refusal ?? "") };
     }
     return { started: false, why: String(said.unread ?? "") };
 }
@@ -337,11 +337,112 @@ function settled(openings, found, now, patience) {
     return { late, up, waiting };
 }
 
-// What the act that ran says of how it ended, in `said`'s words: one the node
-// started with no holder's id can't be found to open, so it promises none.
+// What opens a placement refusal, and a machine's reason in one that waiting
+// never changes, as mayYetTake reads them.
+const PLACED_NOWHERE = /^nowhere: /u;
+const NEVER_TAKES = /^\S+ (?:lacks|isn't) |, (?:lacks|isn't) /u;
+
+// The refusals Joel can meet that one act of the launcher's gets past, by
+// the node's or the agents daemon's words, each with the key of that act's
+// words in `said` and, for one naming the command line's act, what to cut
+// from its end so only the launcher's is said. As mycelium 8f1b0e66 says
+// them, in its sprout.rs's folder and its node's placement: one needing a
+// repository, begun at home, or naming a folder not here is started In one
+// of his repositories, or from the work's whole link, which names its own;
+// one placed nowhere, whose words say each machine's reasons (needs it
+// lacks, reach, room, its time), is said again once one of those can take
+// it, unless each lacks what the work needs or isn't the machine it names,
+// which waiting never changes (mayYetTake); one placed nowhere now, as the
+// node's nowhere_now says one a machine out of reach would take, is said
+// again so too. One whose node's socket is
+// missing or refuses, as the agents daemon's sprout.rs says from Rust's own
+// words for the two, is said again once the node runs; any other failure to
+// reach it isn't a node that's down. A refusal none of these knows is told in its own words alone.
+const ACTS = [
+    { says: /^it needs a repository to work in, /u,
+        cut: /: say which, as `[^`]*`(?:; `mycelium places` lists the places)?$/u,
+        act: "actRepository" },
+    { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
+        act: "actRepository" },
+    { says: / isn't a folder here$/u, cut: null, act: "actRepository" },
+    { says: /^nowhere: /u, cut: null, act: "actPlaced", only: mayYetTake },
+    { says: /^nowhere now, though a machine out of reach would do: /u, cut: null,
+        act: "actPlaced" },
+    { says: /^the node couldn't be reached: (?:No such file or directory|Connection refused) /u,
+        cut: null, act: "actNode" }
+];
+
+// Whether a placement refusal's `words` name a machine that may yet take
+// the work: one whose reasons, as mycelium's placement says them
+// ("skiff lacks system macos; tern is out of reach"), include none that
+// waiting never changes, a need it lacks or a name it isn't. A realm that
+// knows no machine has none.
+function mayYetTake(words) {
+    return words.replace(PLACED_NOWHERE, "").split("; ")
+        .some(miss => miss !== "the realm knows no machine" && !NEVER_TAKES.test(miss));
+}
+
+// The keys of the words each known refusal's act is said in (ACTS), so a
+// test can hold them to the words Joel reads.
+function refusalActs() {
+    return ACTS.map(one => one.act);
+}
+
+// The refusal `why` as Joel is told it, in `said`'s words: ending with the
+// act that gets past it (ACTS), or as it is when none is known, its words
+// are missing, or the command line's act to cut isn't where it's cut from,
+// since saying both acts is worse than saying the node's alone. The
+// journal keeps `why` as it was said.
+function acted(why, said) {
+    const words = String(why ?? "");
+    const known = ACTS.find(one => one.says.test(words));
+    const act = String(said?.[known?.act] ?? "");
+    if (known === undefined || act === "" || (known.cut !== null && !known.cut.test(words))
+        || (known.only !== undefined && !known.only(words))) {
+        return words;
+    }
+    const cut = known.cut === null ? words : words.replace(known.cut, "");
+    return `${cut}; ${act}`;
+}
+
+// Whether a start that ended `how` asks Joel where it starts: one refused
+// for want of a repository, which a folder Start New Work lists gets past,
+// so he's stepped back to them, his words carried to the one he picks
+// (Joel, 24 November, of a link refused so: "the UI was crap").
+const unplacedBy = why =>
+    ACTS.find(one => one.act === "actRepository" && one.says.test(String(why ?? "")));
+function asksWhere(how) {
+    return how?.started === false && how.unanswered !== true
+        && (how.refusal === "needs_folder" || unplacedBy(how.why) !== undefined);
+}
+
+// Whether `launcher` may step Joel back to pick where act `key` starts: he's
+// still in its emptied field, no key since his Return (`letters` its
+// lettersAt then), and `folders` are listed to pick from.
+function stepsBack(launcher, key, letters, folders) {
+    return launcher?.open === true && launcher.asking?.key === key
+        && launcher.lettersAt === letters && folders > 0;
+}
+
+// How a start that asks where is told, in `said`'s words: the refusal, the
+// command line's act cut, then that his words go with the folder he picks;
+// as `told` says it where those words are missing or the cut isn't there.
+function toldWhere(how, said) {
+    const words = String(how.why ?? "");
+    const known = unplacedBy(words);
+    const where = String(said?.askedWhere ?? "");
+    if (where === "" || (known?.cut && !known.cut.test(words))) {
+        return told(how, said);
+    }
+    return `${known?.cut ? words.replace(known.cut, "") : words}; ${where}`;
+}
+
+// What the act that ran says of how it ended, in `said`'s words: one
+// refused ends with what gets past it (acted), and one the node started
+// with no holder's id can't be found to open, so it promises none.
 function told(how, said) {
     if (!how.started) {
-        return how.why;
+        return how.unanswered === true ? how.why : acted(how.why, said);
     }
     const words = how.held === "" ? said.unheld : said.started;
     return String(words ?? "").replace("{machine}", how.machine);

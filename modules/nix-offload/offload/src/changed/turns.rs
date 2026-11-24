@@ -36,8 +36,11 @@ pub enum Turn {
 /// at once, so it goes to the next builder, a warm VM builder among them,
 /// which keeps its own four and isn't counted. The machine's turn is
 /// taken first and the builder's only while it's held, so no two runs
-/// each wait on the other's. A turn that can't be had at all, its folder
-/// unwritable, is said, and the run goes on without one.
+/// each wait on the other's. A turn whose file can't be used is said and
+/// left out, as the uplink's are, so the run waits on the rest; one that
+/// can't be had at all, its folder unwritable or none of its files usable,
+/// is said, and the run goes on without it, keeping whichever of the two
+/// can be had, so neither limit lifts the other.
 pub fn sending(turns: &Path, host: &str, moves: bool, counted: bool) -> Turn {
     taken(turns, host, moves, counted).unwrap_or_else(|error| {
         eprintln!("nix-offload: couldn't wait for a turn at sending this: {error}");
@@ -49,32 +52,94 @@ pub fn sending(turns: &Path, host: &str, moves: bool, counted: bool) -> Turn {
 fn taken(turns: &Path, host: &str, moves: bool, counted: bool) -> io::Result<Turn> {
     fs::create_dir_all(turns)?;
     let mut held = Vec::new();
+    let mut machines = None;
     if counted {
-        held.push(match free(turns, "changed", AT_ONCE)? {
-            Some(turn) => turn,
-            None if moves => return Ok(Turn::Full),
-            None => {
-                eprintln!(
-                    "nix-offload: {AT_ONCE} changed-checks runs already go out from this machine, \
-                 so this waits its turn"
-                );
-                waited(turns, "changed", AT_ONCE)?
-            }
-        });
+        let full = format!("{AT_ONCE} changed-checks runs already go out from this machine");
+        match turn_of(turns, ("changed", AT_ONCE), moves, &full) {
+            Ok(Some(turn)) => held.push(turn),
+            Ok(None) => return Ok(Turn::Full),
+            // The builder's turn is still taken, so its four still hold
+            // where only the machine's eight can't.
+            Err(error) => machines = Some(error),
+        }
     }
     let name = format!("changed-{host}");
-    held.push(match free(turns, &name, EACH)? {
-        Some(turn) => turn,
-        None if moves => return Ok(Turn::Full),
-        None => {
-            eprintln!(
-                "nix-offload: {host} already runs {EACH} of this machine's changed-checks runs, \
-                 so this waits its turn"
-            );
-            waited(turns, &name, EACH)?
+    let full = format!("{host} already runs {EACH} of this machine's changed-checks runs");
+    let builders = match turn_of(turns, (&name, EACH), moves, &full) {
+        Ok(Some(turn)) => {
+            held.push(turn);
+            None
         }
-    });
+        Ok(None) => {
+            if let Some(line) = unhad(host, counted, machines.as_ref(), None) {
+                eprintln!("nix-offload: {line}");
+            }
+            return Ok(Turn::Full);
+        }
+        Err(error) => Some(error),
+    };
+    if let Some(line) = unhad(host, counted, machines.as_ref(), builders.as_ref()) {
+        eprintln!("nix-offload: {line}");
+    }
     Ok(Turn::Had(held))
+}
+
+/// What a run to `host`, `counted` among the machine's or not, says when
+/// the machine's turns or the builder's can't be had, why each couldn't
+/// given; said once, after both are known, so it never says one counts a
+/// run that the next line says nothing counts. Nothing when both could.
+fn unhad(
+    host: &str,
+    counted: bool,
+    machines: Option<&io::Error>,
+    builders: Option<&io::Error>,
+) -> Option<String> {
+    Some(match (machines, builders) {
+        (None, None) => return None,
+        (Some(machines), None) => format!(
+            "this machine's turns can't be had ({machines}), so this run is counted only by \
+             its builder's"
+        ),
+        (None, Some(builders)) if counted => format!(
+            "{host}'s turns can't be had ({builders}), so this run holds only the machine's"
+        ),
+        (None, Some(builders)) => {
+            format!("{host}'s turns can't be had ({builders}), so this run goes on without one")
+        }
+        (Some(machines), Some(builders)) => format!(
+            "neither this machine's turns ({machines}) nor {host}'s ({builders}) can be had, \
+             so this run goes on without one"
+        ),
+    })
+}
+
+/// One of the `count` turns named `name`, waited for while all are held,
+/// saying so as `full` says it, unless the run `moves`, when none is
+/// given; turns whose files can't be used are said once and left out.
+fn turn_of(
+    turns: &Path,
+    (name, count): (&str, u32),
+    moves: bool,
+    full: &str,
+) -> io::Result<Option<fs::File>> {
+    let (turn, unusable) = free(turns, name, count)?;
+    match turn {
+        Some(turn) => Ok(Some(turn)),
+        None if moves => Ok(None),
+        None => {
+            // Said only as it waits, as the uplink's are, so a run that
+            // takes a free turn or moves on says nothing of a wait.
+            if !unusable.is_empty() {
+                eprintln!(
+                    "nix-offload: not every turn named {name} can be used ({}), so this waits \
+                     on the rest",
+                    unusable.join("; ")
+                );
+            }
+            eprintln!("nix-offload: {full}, so this waits its turn");
+            waited(turns, name, count).map(Some)
+        }
+    }
 }
 
 /// One of `count` turns named `name` once one is free, looking again
@@ -82,7 +147,7 @@ fn taken(turns: &Path, host: &str, moves: bool, counted: bool) -> io::Result<Tur
 /// takes its turn.
 fn waited(turns: &Path, name: &str, count: u32) -> io::Result<fs::File> {
     loop {
-        if let Some(turn) = free(turns, name, count)? {
+        if let (Some(turn), _) = free(turns, name, count)? {
             return Ok(turn);
         }
         // A run holds its turn for minutes, so half a second's lag in
@@ -91,22 +156,37 @@ fn waited(turns: &Path, name: &str, count: u32) -> io::Result<fs::File> {
     }
 }
 
-/// One of `count` turns named `name`, locked, if any is free: a turn is
-/// a file's lock, so a run that dies gives its turn back with it.
-fn free(turns: &Path, name: &str, count: u32) -> io::Result<Option<fs::File>> {
+/// One of `count` turns named `name`, locked, if any is free, and why each
+/// turn whose file couldn't be used couldn't: a turn is a file's lock, so
+/// a run that dies gives its turn back with it. A turn's file is opened as
+/// the uplink's are (`there::open_turn`), so none that's a link, a FIFO or
+/// another file's second name is used. One bad file is left out rather
+/// than ending the look, so the turns after it are still tried; only when
+/// none can be used is it an error: ended at the first, one link among
+/// them lifted the whole limit for every run while it stayed.
+fn free(turns: &Path, name: &str, count: u32) -> io::Result<(Option<fs::File>, Vec<String>)> {
+    let mut unusable = Vec::new();
     for turn in 1..=count {
-        let file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(turns.join(format!("{name}-{turn}")))?;
+        let at = turns.join(format!("{name}-{turn}"));
+        let file = match crate::there::open_turn(&at, true) {
+            Ok(file) => file,
+            Err(why) => {
+                unusable.push(why);
+                continue;
+            }
+        };
         match file.try_lock() {
-            Ok(()) => return Ok(Some(file)),
+            Ok(()) => return Ok((Some(file), unusable)),
             Err(fs::TryLockError::WouldBlock) => {}
-            Err(fs::TryLockError::Error(error)) => return Err(error),
+            Err(fs::TryLockError::Error(error)) => {
+                unusable.push(format!("{}: {error}", at.display()));
+            }
         }
     }
-    Ok(None)
+    if unusable.len() == count as usize {
+        return Err(io::Error::other(unusable.join("; ")));
+    }
+    Ok((None, unusable))
 }
 
 #[cfg(test)]
@@ -242,6 +322,166 @@ mod tests {
             "a ninth run that may move wasn't told the machine's turns are out"
         );
         drop(held);
+    }
+
+    // A link among the turns is left out, never followed, and the run
+    // waits on the rest, rather than going out counted by nothing; a
+    // builder whose every turn is unusable leaves the run the machine's.
+    #[test]
+    fn a_turn_that_cant_be_used_is_left_out_and_the_rest_still_count() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        std::os::unix::fs::symlink(&elsewhere, turns.path().join("changed-builder-1")).unwrap();
+        let held: Vec<_> = (1..EACH)
+            .map(|_| sending(turns.path(), "builder", false, true))
+            .collect();
+        assert!(
+            held.iter()
+                .all(|turn| matches!(turn, Turn::Had(files) if files.len() == 2)),
+            "a run lost its turns to one link among them: {held:?}"
+        );
+        assert!(
+            matches!(sending(turns.path(), "builder", true, true), Turn::Full),
+            "a run went beside the three turns held, past the link"
+        );
+        assert!(!elsewhere.exists(), "the link was followed");
+        drop(held);
+        for turn in 1..=EACH {
+            let at = turns.path().join(format!("changed-gone-{turn}"));
+            std::os::unix::fs::symlink(&elsewhere, at).unwrap();
+        }
+        assert!(
+            matches!(
+                sending(turns.path(), "gone", false, true),
+                Turn::Had(files) if files.len() == 1
+            ),
+            "a run to a builder whose turns are all unusable lost the machine's"
+        );
+        assert!(
+            matches!(
+                sending(turns.path(), "gone", false, false),
+                Turn::Had(files) if files.is_empty()
+            ),
+            "an uncounted run to a builder whose turns are all unusable held a turn"
+        );
+    }
+
+    // With a link among a builder's turns and the rest held, a run waits,
+    // rather than going out or giving up, and takes the turn given back.
+    #[test]
+    fn a_run_waits_past_a_link_for_a_turn_given_back() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        std::os::unix::fs::symlink(&elsewhere, turns.path().join("changed-builder-1")).unwrap();
+        let mut held: Vec<_> = (1..EACH)
+            .map(|_| sending(turns.path(), "builder", false, true))
+            .collect();
+        let (told, heard) = std::sync::mpsc::channel();
+        let path = turns.path().to_owned();
+        let waiting = thread::spawn(move || {
+            let turn = sending(&path, "builder", false, true);
+            let _ = told.send(matches!(&turn, Turn::Had(files) if files.len() == 2));
+            turn
+        });
+        assert!(
+            heard.recv_timeout(Duration::from_secs(1)).is_err(),
+            "a run past a link went out beside three held turns"
+        );
+        held.pop();
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(10)),
+            Ok(true),
+            "a waiting run didn't take the turn given back, with the machine's"
+        );
+        drop(waiting.join());
+        assert!(!elsewhere.exists(), "the link was followed");
+    }
+
+    // Where none of the machine's eight can be used, a run is still
+    // counted by its builder's four, which still hold.
+    #[test]
+    fn a_machine_whose_turns_are_all_unusable_still_counts_each_builders_four() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        for turn in 1..=AT_ONCE {
+            let at = turns.path().join(format!("changed-{turn}"));
+            std::os::unix::fs::symlink(&elsewhere, at).unwrap();
+        }
+        let held: Vec<_> = (0..EACH)
+            .map(|_| sending(turns.path(), "builder", false, true))
+            .collect();
+        assert!(
+            held.iter()
+                .all(|turn| matches!(turn, Turn::Had(files) if files.len() == 1)),
+            "a run lost its builder's turn to the machine's links: {held:?}"
+        );
+        assert!(
+            matches!(sending(turns.path(), "builder", true, true), Turn::Full),
+            "a fifth run went to a builder running four"
+        );
+        drop(held);
+    }
+
+    // Where neither side's turns can be had, a counted run goes on with
+    // none, rather than waiting for ever or giving up.
+    #[test]
+    fn a_counted_run_whose_every_turn_is_unusable_goes_on_without_one() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        let names = (1..=AT_ONCE)
+            .map(|turn| format!("changed-{turn}"))
+            .chain((1..=EACH).map(|turn| format!("changed-builder-{turn}")));
+        for name in names {
+            std::os::unix::fs::symlink(&elsewhere, turns.path().join(name)).unwrap();
+        }
+        assert!(
+            matches!(
+                sending(turns.path(), "builder", false, true),
+                Turn::Had(files) if files.is_empty()
+            ),
+            "a counted run whose every turn is unusable held one, or none was given"
+        );
+        assert!(!elsewhere.exists(), "a link was followed");
+    }
+
+    // Each side that can't be had is said once, in one line that holds
+    // with the other side's, so no line says a run is counted by what the
+    // next says can't be had.
+    #[test]
+    fn a_turn_that_cant_be_had_is_said_once_with_what_still_counts() {
+        let (machines, builders) = (io::Error::other("m"), io::Error::other("b"));
+        let said = |counted, machines, builders| unhad("builder", counted, machines, builders);
+        assert_eq!(
+            said(true, None, None),
+            None,
+            "a run with both turns said one"
+        );
+        assert_eq!(
+            said(true, Some(&machines), None).as_deref(),
+            Some(
+                "this machine's turns can't be had (m), so this run is counted only by its \
+                 builder's"
+            ),
+            "a run without the machine's turn didn't say its builder's still counts"
+        );
+        assert_eq!(
+            said(true, None, Some(&builders)).as_deref(),
+            Some("builder's turns can't be had (b), so this run holds only the machine's"),
+            "a counted run without its builder's turn didn't say the machine's holds"
+        );
+        assert_eq!(
+            said(false, None, Some(&builders)).as_deref(),
+            Some("builder's turns can't be had (b), so this run goes on without one"),
+            "an uncounted run without its builder's turn said something holds it"
+        );
+        assert_eq!(
+            said(true, Some(&machines), Some(&builders)).as_deref(),
+            Some(
+                "neither this machine's turns (m) nor builder's (b) can be had, so this run \
+                 goes on without one"
+            ),
+            "a run with neither turn didn't say so in one line"
+        );
     }
 
     #[test]

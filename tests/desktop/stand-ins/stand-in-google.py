@@ -769,7 +769,7 @@ def keep(account: Account, shell: socket.socket) -> None:
 def google_rows(meetings: object, held: object, search: object = None) -> object:
     """Give Calendar's ready records, or a search's answer, as the program makes them now."""
     asked = {"meetings": meetings, "held": held, "now": int(time.time() * 1000)}
-    # The program and its words are the VM's own, from Nix (tests/desktop.nix).
+    # The program and its words are the VM's own, from Nix (tests/desktop/desktop.nix).
     made = subprocess.run(
         [sys.argv[2], sys.argv[3]],
         input=json.dumps(asked | ({"search": search} if search is not None else {})),

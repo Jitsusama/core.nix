@@ -23,9 +23,10 @@
 # why if one isn't held or the seat can still open it. The run doesn't fail
 # for it: a machine that updates itself goes back a generation when a unit
 # fails, undoing every other change, and going back can't give the Brio
-# back. Nothing here is undone by a switch to a generation without the
-# sharing: udev keeps the record these rules gave the Brio, so it stays
-# closed to the seat, with no relay, until it's replugged.
+# back. A switch to a generation without the sharing doesn't undo this by
+# itself, since udev keeps the record these rules gave the Brio; a
+# graphical machine's ../mx-brio-seat/give-back.sh replays its arrival so
+# the seat has it again, and elsewhere it stays closed until it's replugged.
 
 # Whether the facts udev gives a node say the seat may be handed it.
 the_seats() {

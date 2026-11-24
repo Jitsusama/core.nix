@@ -1,7 +1,7 @@
 """An agent's row in the launcher does, on Return, the act its state makes harmless, on niri.
 
-modules/quickshell/checks/agents.nix runs this through pytest in tests/nested-niri.sh. The sessions
-are the realm's own mycelium node's, which reads the presence records laid here as pi lays
+modules/quickshell/checks/agents.nix runs this through pytest in tests/lib/nested-niri.sh. The
+sessions are the realm's own mycelium node's, which reads the presence records laid here as pi lays
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
@@ -46,7 +46,6 @@ import socket
 import subprocess
 import time
 from datetime import UTC, datetime, timedelta
-from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -4044,159 +4043,6 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
-# How long before Return a session's work turns, in seconds, is how long the nudge's line took
-# from its file to what the launcher shows that very turn, the same way through the node and
-# Now, and AHEAD more. A fixed lead couldn't follow the builders: a turn took about 0.85 s to the
-# shell on 18 November and under 0.3 s on 21 November, when every turn of one run was heard
-# before Return, and the same lead was heard 14 to 345 ms after Return's work from one turn to
-# the next (2026-11-19). Return's own key takes a while to be worked, so AHEAD starts half of
-# Pacing.keyed's 50 ms early and is steered: each turn heard after Return moves it earlier by as
-# much as it was late, and each heard before moves it later by AHEAD_BACK, twice as far for
-# each such turn in a row, within AHEAD_MOST, so the turns close in on the race on a builder
-# fast or slow. The way's time counts the poll that sees it too, which only steering earns
-# back, so the steps back grow rather than leave a slow poll beyond their reach. The launcher
-# says a turn only within a second of Return's work, so one heard a second or more after reads
-# as one heard before; AHEAD_LEAST keeps the lead within half a second of the way, from which a
-# turn would need half a second longer than the nudge took to read so, past the 331 ms the same
-# lead's turns spread over on 19 November.
-FIRST_AHEAD = -0.025
-AHEAD_BACK = 0.04
-AHEAD_LEAST = -0.5
-AHEAD_MOST = 1.0
-
-
-def steered(ahead: float, back: float, late: int | None) -> tuple[float, float]:
-    """AHEAD and the next step back after a turn heard `late` ms after Return, or None."""
-    if late is None:
-        ahead, back = ahead - back, back * 2
-    else:
-        ahead, back = ahead + (late - KEYED_WITHIN / 2) / 1000, AHEAD_BACK
-    return min(max(ahead, AHEAD_LEAST), AHEAD_MOST), back
-
-
-# How many turns the case lays at most, and how many heard beside Return are enough.
-TURNS = 36
-ENOUGH_BESIDE = 3
-# How long the shell says nothing more of a turn before the turn is taken as told.
-TOLD_QUIET = 1.0
-# Within how long of a key's work the launcher owns a change as the key's, Launcher.qml's
-# keyedWithin, and how it says one it heard after a key but didn't draw as the key's act: Now's,
-# or the notices' a turn updates a session's notice in, which Now no longer says when it moves
-# nothing For You shows (2026-11-19). Since the fix, the notices' path says nothing as it moves
-# nothing, so Now's own, heard from the same turn, is what shows the turn landed beside Return;
-# that the case reaches the notices' path there is shown by its failing with Now's fix taken out.
-KEYED_WITHIN = 50
-HEARD_AFTER = re.compile(r"heard (?:on|notices) (\d+) ms after a key's work")
-
-
-def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell) -> None:
-    """A session's work turning just after Return into For You, moving none of it, draws nothing.
-
-    Joel's journal said "what Return changed in on took 76 ms to its frame: its work took 13 ms;
-    work told it 63 ms after the key" on 15 November, after 73 of 81 steps into For You. Now last
-    said what it shows with nothing held below it, as its home rows moved; the first session line
-    after Return asked again with For You held, read its rows too, and so said Now changed though
-    no row had. The launcher made the very rows again, drew them and timed them as Return's act.
-    Now comparing what For You shows is tests/now-moment.qml's; this is the path, the realm's
-    node to Now to the launcher, a line laid each turn as long before Return as that way takes
-    until one lands beside it.
-    """
-    # A session asking Joel a question is a row in For You, and its work turns each time.
-    asking = {
-        "state": "listening",
-        "wants": {"kind": "question", "since": datetime.now(UTC).isoformat(), "said": "Which?"},
-    }
-    lay("TICKER", "Ticking Quest", {**asking, "busy": False})
-    # What the shell said of each lead's turn, and the leads whose turn it heard within
-    # KEYED_WITHIN of Return's work and rightly didn't draw as its act, so the case is seen to
-    # reach the race it's about rather than pass with every turn told early or late.
-    told: dict[str, list[str]] = {}
-    beside: list[float] = []
-    try:
-        shell.as_account(shell.ipc("collection", "on"))
-        shell.launcher_ready()
-        shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
-        shell.normal()
-        ahead = FIRST_AHEAD
-        back = AHEAD_BACK
-        for turn in range(TURNS):
-            # Another session asking, or done asking, moves For You's own row, so Now says what
-            # it shows with nothing held below it, as Joel's home rows had before each step in.
-            ask = asking if turn % 2 == 0 else {"state": "busy", "busy": True}
-            was = shell.showing()["seen"]["sides"][0]
-            laid = time.monotonic()
-            lay("NUDGER", "Nudging Quest", ask)
-            shell.launcher_until(partial(moved, was))
-            way = time.monotonic() - laid
-            # No lead is laid after Return, so one AHEAD would put after it is laid as none.
-            lead = max(0.0, way + ahead)
-            key = f"turn {turn}, {lead:.3f} s before ({way:.3f} s way, {ahead:+.3f} s ahead)"
-            shell.down_to("For You")
-            step = {
-                "kind": "tool",
-                "name": "bash",
-                "detail": f"turn {turn}",
-                "since": datetime.now(UTC).isoformat(),
-            }
-            lay(
-                "TICKER",
-                "Ticking Quest",
-                {**asking, "busy": turn % 2 == 0, "step": f"bash turn {turn}", "stepDetail": step},
-            )
-            time.sleep(lead)
-            since = shell.mark()
-            shell.send_key("ret")
-            shell.launcher_until(lambda shown: shown["held"] == ["now", "For You"])
-            said = told_quietly(shell, since)
-            shown = [report for report in said if report.startswith("act shown in on")]
-            # What the shell said of each act and change it heard, the act's "act moved in on"
-            # with it, so a failure says what was drawn: the one on 16 November said only that
-            # something was. The launcher's whole state is left out.
-            heard = [report for report in said if report.startswith(("act ", "heard "))]
-            assert not shown, f"{key} was drawn as Return's act: {heard}"
-            told[key] = heard
-            after = [int(found[1]) for report in said if (found := HEARD_AFTER.match(report))]
-            if any(ago < KEYED_WITHIN for ago in after):
-                beside.append(lead)
-            shell.send_chars("-")
-            shell.launcher_until(lambda shown: shown["held"] == ["now"])
-            if len(beside) >= ENOUGH_BESIDE:
-                break
-            # Only a turn that moves a row is heard, every other one, so only those steer. Each
-            # steers from no further back than its own way: below it, steps would move AHEAD
-            # but not the lead, spending turns climbing back. Floored on a turn that doesn't
-            # steer, a way shorter than most would put AHEAD later with nothing to bring it back.
-            if turn % 2 == 0:
-                ahead, back = steered(max(ahead, -way), back, min(after, default=None))
-        print(f"turns heard within {KEYED_WITHIN} ms of Return, by their leads: {beside}")
-        assert beside, (
-            f"no turn was heard within {KEYED_WITHIN} ms of Return (one heard before it, or a "
-            f"second or more after, says nothing): {told}"
-        )
-    finally:
-        shell.close_launcher()
-        lay("TICKER", "Ticking Quest", {"state": "idle"}, closed=True)
-        lay("NUDGER", "Nudging Quest", {"state": "idle"}, closed=True)
-
-
-def moved(was: str, shown: Json) -> bool:
-    """Whether For You's own row says otherwise than it did, `was`."""
-    return bool(shown["seen"]["sides"][0] != was)
-
-
-def told_quietly(shell: Shell, since: int) -> list[str]:
-    """Give what the shell said since the mark, once it says nothing more for a while."""
-    said, mark = shell.said_since(since)
-    quiet = time.monotonic()
-    while time.monotonic() - quiet < TOLD_QUIET:
-        time.sleep(0.1)
-        more, mark = shell.said_since(mark)
-        if more:
-            said += more
-            quiet = time.monotonic()
-    return said
-
-
 # The carries the node ordered, as it keeps them (mycelium's carry::ordered), in its state.
 CARRIES = STATE / "mycelium/carries.jsonl"
 
@@ -4309,52 +4155,80 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.reported(f"not become {arrived['is']}: ", bool, since)
 
 
-def in_to_read(shell: Shell) -> None:
-    """Open For You and step into To Read, where what asks nothing of Joel waits."""
-    in_for_you(shell)
-    shell.launcher_until(lambda shown: "To Read" in shown["rows"])
-    shell.down_to("To Read")
-    shell.step_in()
-    shell.launcher_until(lambda shown: shown["held"] == ["now", "For You", "To Read"])
+# How long For You's rows must stand unchanged before they count as made, and how long they
+# may take to: For You is made again as Agents' rows are, which had drawn a carry within a
+# poll of Carried serving it, but a loaded builder can be slower than any one watch.
+FOR_YOU_STILL = 3
+FOR_YOU_MADE = 30
 
 
-def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
+def for_you_made(shell: Shell) -> list[str]:
+    """Wait until For You's rows have stood unchanged a while, and give them."""
+    deadline = time.monotonic() + FOR_YOU_MADE
+    rows, still_since = cast("list[str]", shell.showing()["rows"]), time.monotonic()
+    while time.monotonic() - still_since < FOR_YOU_STILL:
+        assert time.monotonic() < deadline, f"For You never stopped changing: {rows}"
+        time.sleep(0.2)
+        now = cast("list[str]", shell.showing()["rows"])
+        if now != rows:
+            rows, still_since = now, time.monotonic()
+    return rows
+
+
+def quest_listed(quest: Json) -> str:
+    """Add a quest to what the harness keeps of its quests, giving the file as it was before."""
+    listed = WORKFLOW / "quests.json"
+    before = listed.read_text()
+    quests = json.loads(before)
+    quests["quests"].append(quest)
+    laid = listed.with_suffix(".tmp")
+    laid.write_text(json.dumps(quests))
+    laid.rename(listed)
+    return before
+
+
+def test_a_carry_asks_nothing_so_it_stays_out_of_for_you_and_goes_by_its_quest(
     shell: Shell,
 ) -> None:
-    """A carry under way is a thing to read in For You, and goes from it once it arrives.
+    """A carry under way is in Agents' Carried by its quest's title, and never in For You.
 
-    Only one about to go or on its way is there, never one arrived (DCU5J4, item 3).
+    It asks nothing of Joel: five in To Read read "A Session on Its Way" hours after they went
+    (Joel, 2026-11-23 21:52: "how does it provide me with anything useful?"). A carried
+    session runs elsewhere under another id, so no row of the tree's names it; its quest does.
     """
-    kept(
-        ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
-        ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
-    )
+    before = quest_listed(
+        {"id": "QEST-20261107-AFLOAT", "address": "AFLOAT", "title": "Afloat Quest",
+         "status": "active"}
+    )  # fmt: skip
     try:
-        # Served first, so a For You without them is For You's own miss: these two, not the
+        kept(
+            ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
+            ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
+        )
+        # Served first, so a For You holding them is For You's own miss: these two, not the
         # case before's, which the node may not yet have read gone.
         in_agents(shell)
         shell.launcher_until(lambda shown: "Carried" in shown["rows"])
         shell.down_to("Carried")
         shell.launcher_until(lambda shown: shown["selected"]["side"] == "2 on their way")
+        shell.step_in()
+        # Afloat Quest's session runs nowhere yet, so only its quest names its carry.
+        shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Afloat Quest"])
         shell.close_launcher()
-        in_to_read(shell)
-        # Afloat Quest's session runs nowhere yet, so its carry is on its way.
-        shell.launcher_until(
-            lambda shown: {"Paused Quest", "A Session on Its Way"} <= set(shown["rows"])
-        )
-        shell.close_launcher()
-        lay("AFLOAT", "Afloat Quest", {"orchestratedBy": "BOSSES", "state": "listening"})
-        in_to_read(shell)
-        shell.launcher_until(
-            lambda shown: (
-                "Paused Quest" in shown["rows"]
-                and "A Session on Its Way" not in shown["rows"]
-                and "Afloat Quest" not in shown["rows"]
-            )
-        )
+        in_for_you(shell)
+        rows = for_you_made(shell)
+        # To Read holds the looks that ask nothing too, so only a carry's name in it fails.
+        if "To Read" in rows:
+            shell.down_to("To Read")
+            shell.step_in()
+            rows = for_you_made(shell)
+        carries = {"Afloat Quest", "A Session on Its Way"} & set(rows)
+        assert not carries, f"a carry stood in For You: {rows}"
     finally:
         CARRIES.unlink(missing_ok=True)
-        lay("AFLOAT", "Afloat Quest", {"state": "idle"}, closed=True)
+        laid = (WORKFLOW / "quests.json").with_suffix(".tmp")
+        laid.write_text(before)
+        laid.rename(WORKFLOW / "quests.json")
         touched("LISTEN")
 
 

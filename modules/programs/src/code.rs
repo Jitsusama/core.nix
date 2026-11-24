@@ -34,11 +34,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use programs::{code_rows, command, pull, repositories, switch, tend};
+use programs::{code_rows, command, pull, repositories, switch, tend, visited};
 use repos::model::Record;
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
@@ -57,6 +57,13 @@ const AT_ONCE: usize = 4;
 /// How long a count stands before a watch beginning counts again, so the
 /// launcher opened and closed in a run counts each checkout once.
 const FRESH: Duration = Duration::from_secs(10);
+
+/// How long a pass waits for zoxide's database to be read, past which
+/// nothing orders Code, and then for its folders and the checkouts' to be
+/// resolved, past which they're counted as written: a database or folder
+/// on a mount that no longer answers would otherwise hold every pass
+/// after it, and the order costs only a link's worth of being wrong.
+const RESOLVING: Duration = Duration::from_secs(2);
 
 /// Hears each watch begin or end, on a thread of its own, and has `ahead`
 /// list what the watches name then. daemon-serve says so with every
@@ -80,6 +87,9 @@ pub struct Code {
     roots: Vec<PathBuf>,
     home: Option<PathBuf>,
     machine: String,
+    /// zoxide's database, whose visits order the repositories by when
+    /// Joel was last in each (visited.rs).
+    visited: Option<PathBuf>,
     words: code_rows::Words,
     /// What Pull's answer says.
     pulled: pull::Words,
@@ -96,6 +106,21 @@ pub struct Code {
     /// Whether the disk is to be read again, asked while a read was under
     /// way, which may have read it before what moved it.
     wanted: AtomicBool,
+    /// How many reads of zoxide's database, and apart from them how many
+    /// resolutions of its folders, ran past `RESOLVING` and haven't ended,
+    /// so no pass starts another of the same while one is held. Counted
+    /// apart, so a folder on a stuck mount leaves the visits ordering Code
+    /// as written, and a stuck database leaves nothing to resolve anyway.
+    late_reads: Arc<AtomicUsize>,
+    late: Arc<AtomicUsize>,
+    /// The number the next pass making Code's rows is given, under
+    /// `found`'s lock as it holds or reads the repositories it orders, and
+    /// the latest whose rows were taken, kept under the daemon's lock: a
+    /// pass numbered before the one last taken lets its rows go, so no
+    /// order read before another is taken after it, and no lock is held
+    /// while the disk is read.
+    passes: AtomicU64,
+    taken: AtomicU64,
     /// The checkouts a Pull, a switch or a tending is under way in, so a
     /// second waits for none and none races another.
     busy: Mutex<BTreeSet<String>>,
@@ -109,6 +134,9 @@ pub struct Code {
     counted_at: Mutex<Option<Instant>>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
+    /// The repositories the last read found, so a watch beginning can make
+    /// their rows again with zoxide's visits as they stand, walking no root.
+    found: Mutex<Option<Arc<Record>>>,
     /// The files listed of each Open a File by Name row ahead, and the
     /// branches of each Switch Branch row ahead, by its key.
     listed: Mutex<BTreeMap<String, Vec<Value>>>,
@@ -117,7 +145,9 @@ pub struct Code {
 impl Code {
     /// Code's settings from the environment: the folders `REPOS_ROOTS`
     /// names, colon-separated as PATH is, else ~/src, as repos itself reads
-    /// them.
+    /// them, and zoxide's database where `PROGRAMS_VISITED` names it. With
+    /// none named, as on an account without zoxide, no visit orders Code,
+    /// so a database zoxide left behind can't hold the order still.
     pub fn new(home: &str, vocabulary: &serde_json::Value) -> Code {
         let home = (!home.is_empty()).then(|| PathBuf::from(home));
         let mut roots: Vec<PathBuf> = std::env::var("REPOS_ROOTS")
@@ -129,10 +159,14 @@ impl Code {
         if roots.is_empty() {
             roots.extend(home.as_ref().map(|home| home.join("src")));
         }
+        let visited = std::env::var_os("PROGRAMS_VISITED")
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from);
         Code {
             roots,
             home,
             machine: terminal_kit::environment::machine(),
+            visited,
             words: code_rows::Words::read(vocabulary),
             pulled: pull::Words::read(vocabulary),
             switched: switch::Words::read(vocabulary),
@@ -140,11 +174,16 @@ impl Code {
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
+            late_reads: Arc::new(AtomicUsize::new(0)),
+            late: Arc::new(AtomicUsize::new(0)),
+            passes: AtomicU64::new(1),
+            taken: AtomicU64::new(0),
             busy: Mutex::new(BTreeSet::new()),
             listing: Mutex::new(()),
             uncommitted: Mutex::new(BTreeMap::new()),
             counted_at: Mutex::new(None),
             made: Mutex::new(Vec::new()),
+            found: Mutex::new(None),
             listed: Mutex::new(BTreeMap::new()),
         }
     }
@@ -166,12 +205,66 @@ impl Code {
         record
     }
 
-    /// Code's rows from `record`, with the uncommitted files last counted,
-    /// and the rows inside them.
-    fn made(&self, record: &Record) -> Vec<Value> {
+    /// Holds `record` as the repositories last found, answering the number
+    /// of the pass that orders them. Numbered under the lock that holds
+    /// it, as `latest` is, so a pass on an older record is never numbered
+    /// after one on a newer.
+    fn hold(&self, record: &Arc<Record>) -> u64 {
+        let mut found = lock(&self.found);
+        *found = Some(Arc::clone(record));
+        self.passes.fetch_add(1, Ordering::SeqCst)
+    }
+
+    /// The repositories last found, if any, with the number of the pass
+    /// that orders them, taken under the same lock as `hold` takes its.
+    fn latest(&self) -> Option<(Arc<Record>, u64)> {
+        let found = lock(&self.found);
+        let record = Arc::clone(found.as_ref()?);
+        Some((record, self.passes.fetch_add(1, Ordering::SeqCst)))
+    }
+
+    /// When Joel was last in each repository of `record`, by its key, from
+    /// zoxide's visits as they stand, read once a pass. It reads the disk,
+    /// so it runs before the daemon's lock is taken: the database `within`
+    /// `RESOLVING`, past which nothing orders Code and the log says why,
+    /// and then its folders and the checkouts' resolved to their real
+    /// paths, past which both are counted as written.
+    fn last_visits(&self, record: &Arc<Record>) -> BTreeMap<String, u64> {
+        let Some(database) = self.visited.clone() else {
+            return BTreeMap::new();
+        };
+        // Read on a thread of its own too, so a database on a mount that
+        // stopped answering holds that thread, never the watch.
+        let reading = database.clone();
+        let read = visited::within(RESOLVING, &self.late_reads, move || {
+            visited::visits_in(&reading)
+        });
+        let Some(written) = read else {
+            visited::late(&database, RESOLVING);
+            return BTreeMap::new();
+        };
+        visited::answered(&database);
+        // None read leaves nothing to resolve.
+        if written.is_empty() {
+            return BTreeMap::new();
+        }
+        let resolving = Arc::clone(record);
+        let visits = written.clone();
+        let resolved = visited::within(RESOLVING, &self.late, move || {
+            let places = code_rows::places(&resolving);
+            let visits = visited::resolved(visits, |folder| code_rows::placed(&places, folder));
+            code_rows::last_visits(&places, &visits)
+        });
+        resolved
+            .unwrap_or_else(|| code_rows::last_visits(&code_rows::written_places(record), &written))
+    }
+
+    /// Code's rows from `record`, with the uncommitted files last counted
+    /// and when Joel was `last` in each, and the rows inside them.
+    fn made(&self, record: &Record, last: &BTreeMap<String, u64>) -> Vec<Value> {
         let uncommitted = lock(&self.uncommitted).clone();
         let home = self.home.as_deref();
-        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted);
+        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, last);
         rows.extend(code_rows::inside(record, &self.words));
         rows
     }
@@ -243,14 +336,21 @@ fn kept(held: &BTreeMap<String, u32>, counted: Vec<(&str, Option<u32>)>) -> BTre
 
 /// As a watch of Code's rows begins: the first ever reads the disk on
 /// this thread, outside the lock, so its answer holds them; any later one
-/// is answered from the rows held, and the disk read again behind it.
+/// is answered from the repositories last found, their rows made again
+/// with zoxide's visits as they stand, so the order Joel's last `cd` gave
+/// is in the answer, and the roots walked again behind it.
 pub fn begin(shared: &Arc<Shared>) {
-    if shared.code.read_once.load(Ordering::Acquire) {
+    let code = &shared.code;
+    if code.read_once.load(Ordering::Acquire) {
+        if let Some((record, pass)) = code.latest() {
+            ordered(shared, &record, pass);
+        }
         again(shared);
         return;
     }
-    let rows = shared.code.made(&shared.code.record());
-    take(shared, &mut lock(&shared.daemon), rows);
+    let record = Arc::new(code.record());
+    let pass = code.hold(&record);
+    ordered(shared, &record, pass);
     // Counted behind its answer, which never waits on git.
     again(shared);
 }
@@ -272,10 +372,15 @@ fn again(shared: &Arc<Shared>) {
         loop {
             while code.wanted.swap(false, Ordering::SeqCst) {
                 // Served before counting, so nothing read waits on git.
-                let record = code.record();
-                take(&shared, &mut lock(&shared.daemon), code.made(&record));
-                if code.count(&record) {
-                    take(&shared, &mut lock(&shared.daemon), code.made(&record));
+                let record = Arc::new(code.record());
+                let pass = code.hold(&record);
+                ordered(&shared, &record, pass);
+                // Counting takes a while, so its rows are ordered by the
+                // visits as they stand once it ends, not as they stood.
+                if code.count(&record)
+                    && let Some((record, pass)) = code.latest()
+                {
+                    ordered(&shared, &record, pass);
                 }
             }
             code.reading.store(false, Ordering::SeqCst);
@@ -285,6 +390,29 @@ fn again(shared: &Arc<Shared>) {
             }
         }
     });
+}
+
+/// Takes `record`'s rows ordered by zoxide's visits as they stand, made
+/// with every lock let go, unless a pass numbered after `pass` has taken
+/// its rows already, so no order read before another is taken after it.
+fn ordered(shared: &Shared, record: &Arc<Record>, pass: u64) {
+    let code = &shared.code;
+    let rows = code.made(record, &code.last_visits(record));
+    let mut daemon = lock(&shared.daemon);
+    if newest(&code.taken, pass) {
+        take(shared, &mut daemon, rows);
+    }
+}
+
+/// Whether `pass` began after every pass `taken` says was taken, marking
+/// it taken if so. Called with the daemon's lock held, so two passes
+/// never both read `taken` before either marks it.
+fn newest(taken: &AtomicU64, pass: u64) -> bool {
+    if taken.load(Ordering::SeqCst) > pass {
+        return false;
+    }
+    taken.store(pass, Ordering::SeqCst);
+    true
 }
 
 /// Keeps the rows read, telling each watch only what moved.
@@ -386,8 +514,22 @@ fn list(shared: &Shared, stale: &[String]) {
 /// service a switch restarts, and niri, which spawned it, gives its window
 /// the keys. Answered at once and asked on a thread of its own, as a
 /// kitty tab's acts are (tabs.rs), so no other ask waits on niri.
-pub fn terminal(id: &Value, folder: &str) -> Value {
-    kitty(id, folder, &[], "terminal")
+pub fn terminal(shared: &Shared, id: &Value, folder: &str) -> Value {
+    kitty(id, folder, &[], "terminal", found(shared, folder))
+}
+
+/// Whether `folder` is a checkout or tree the last read found, so zoxide
+/// hears only of a folder Code offered Joel, not any path an ask names.
+fn found(shared: &Shared, folder: &str) -> bool {
+    lock(&shared.code.found).as_deref().is_some_and(|record| {
+        record
+            .repositories
+            .iter()
+            .flat_map(|repository| &repository.checkouts)
+            .any(|checkout| {
+                checkout.path == folder || checkout.trees.iter().any(|tree| tree.path == folder)
+            })
+    })
 }
 
 /// What Edit Here runs in its kitty: Neovim on the checkout, with its
@@ -401,13 +543,20 @@ const EDIT: &str = r#"cd -- "$0" && { eval "$(direnv export bash)"; exec nvim .;
 /// Edit Here on a repository's row: the kitty New Terminal Here starts,
 /// running Neovim in it, so kitty goes when Neovim ends, as an editor's
 /// window does.
-pub fn edit(id: &Value, folder: &str) -> Value {
-    kitty(id, folder, &["bash", "-c", EDIT, folder], "editor")
+pub fn edit(shared: &Shared, id: &Value, folder: &str) -> Value {
+    let program = ["bash", "-c", EDIT, folder];
+    kitty(id, folder, &program, "editor", found(shared, folder))
 }
 
 /// Has niri start kitty in `folder`, running `program` there if any, and
-/// answers that `what` was asked for.
-fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Value {
+/// answers that `what` was asked for. Once niri has taken the spawn,
+/// zoxide hears of the folder where `PROGRAMS_ZOXIDE` names it, since Joel
+/// asked for it and a shell started in a folder tells zoxide nothing until
+/// its first `cd`, so Code's order and kitty's Recent move by this act of
+/// his too. niri answers before kitty is up, so a kitty that then fails
+/// still counts as his visit: he asked to be there. Only a folder `found`
+/// says Code offered is told.
+fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str, found: bool) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [
         niri.as_str(),
@@ -423,9 +572,20 @@ fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Valu
     .chain(program)
     .map(|&word| word.to_owned())
     .collect();
+    let zoxide = std::env::var("PROGRAMS_ZOXIDE")
+        .ok()
+        .filter(|zoxide| found && !zoxide.is_empty());
+    let folder = folder.to_owned();
     std::thread::spawn(move || {
         if let Err(why) = command::run(&argv) {
             eprintln!("no {what} was started: {why}");
+            return;
+        }
+        if let Some(zoxide) = zoxide {
+            let add = [zoxide, "add".to_owned(), "--".to_owned(), folder];
+            if let Err(why) = command::run(&add) {
+                eprintln!("zoxide didn't hear of the {what}'s folder: {why}");
+            }
         }
     });
     serde_json::json!({"id": id, "asked": what})
@@ -563,42 +723,4 @@ fn branches(shared: &Shared, path: &str) -> Option<Vec<Value>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_count_git_couldnt_read_keeps_the_last_and_one_no_longer_counted_goes() {
-        let held = BTreeMap::from([
-            ("/src/a".to_owned(), 2),
-            ("/src/b".to_owned(), 3),
-            ("/src/gone".to_owned(), 4),
-        ]);
-        let counted = vec![("/src/a", Some(0)), ("/src/b", None), ("/src/new", None)];
-        assert_eq!(
-            kept(&held, counted),
-            BTreeMap::from([("/src/a".to_owned(), 0), ("/src/b".to_owned(), 3)]),
-            "a count git couldn't read wasn't kept at its last, or one no longer counted stayed"
-        );
-    }
-
-    /// A checkout already held is refused, the first hold kept, and let
-    /// go once it ends. Asked on a thread of its own, so a hold that
-    /// locks itself fails the case rather than hanging it.
-    #[test]
-    fn a_checkout_held_refuses_another_and_keeps_its_hold() {
-        let (told, heard) = mpsc::channel();
-        std::thread::spawn(move || {
-            let code = Code::new("", &Value::Null);
-            let first = Holding::take(&code, "/src/alpha");
-            let second = Holding::take(&code, "/src/alpha").is_some();
-            let kept = lock(&code.busy).contains("/src/alpha");
-            drop(first);
-            let freed = Holding::take(&code, "/src/alpha").is_some();
-            told.send((second, kept, freed)).unwrap();
-        });
-        let said = heard
-            .recv_timeout(Duration::from_secs(5))
-            .expect("a second hold on a held checkout never came back");
-        assert_eq!(said, (false, true, true));
-    }
-}
+mod tests;

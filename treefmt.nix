@@ -145,6 +145,8 @@ in
       python.pillow
       # The local sites' page tests drive Chromium with it.
       python.playwright
+      # The live pages' heads gate parses each page as a browser does with it.
+      python.selectolax
       # The desktop test's window named as Tuple's.
       python.xlib
     ]
@@ -153,16 +155,15 @@ in
     ++ pkgs.lib.optional pkgs.stdenv.hostPlatform.isLinux python.evdev;
 
   # What the live sites' page tests share, which each page's test imports
-  # by name, as their checks put the folder on Python's path.
-  # niri's stand-in client too, which the windows daemon's prompt check
-  # imports beside niri's own checks. And the nested niri's driver, which
-  # the two shell cases still in tests/ import from outside its folder, and
-  # the tests folder's glossary reader and its replaced names, which the
-  # shell's cases import as their checks copy them in beside them. And what
-  # the sites' VM tests share, which each imports as its driver's plugin,
-  # and what the desktop test's areas share, with how they wait on what's
-  # reported, which those in its launcher and looks folders import from the
-  # folder above.
+  # by name, as their checks put the folder on Python's path. niri's
+  # stand-in client too, which the windows daemon's prompt check imports
+  # beside niri's own checks. And the nested niri's driver, which the
+  # shell's niri cases import, and the tests folder's glossary reader and
+  # its replaced names, which the shell's cases import as their checks copy
+  # them in beside them. And what the sites' VM tests share, which each
+  # imports as its driver's plugin, and what the desktop test's areas share,
+  # with how they wait on what's reported, which those in its launcher and
+  # looks folders import from the folder above.
   # Each is named alone, so an edit to a file beside them rebuilds no mypy.
   jitsusama.mypy.paths = [
     ./modules/local-sites/tests

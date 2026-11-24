@@ -10,13 +10,21 @@
 pub enum Why {
     /// No queue has stood on this network yet, so nothing holds it.
     Unmeasured,
+    /// It was held on this network, and let go since: an idle spell left
+    /// no line to hold to, the queue was another machine's, or it started
+    /// over. Nothing holds it until a queue stands again.
+    LetGo,
     /// No reflector has answered for a while, so nothing measures a queue.
     Unanswered,
     /// The guard sent it back to its base three times in a row, and left
     /// it unlimited a while.
     GaveUp,
-    /// Nothing stands, and it holds or climbs where it may.
-    Clear,
+    /// Nothing stands, and it holds or climbs where it may; `probing`
+    /// while it looks past its hold for a few seconds for more room, as a
+    /// stay's first probe does at a tenth over, so a rate over the line's
+    /// doesn't read as a hold above it (23 November, 23:54: "12.5 Mb/s of
+    /// 12.0 Mb/s").
+    Clear { probing: bool },
     /// The line's own delay stood this long, in ms, and it was cut; eased
     /// once the cut drained it.
     Line { delay_ms: f64, eased: bool },
@@ -63,9 +71,10 @@ impl Why {
     pub fn kind(self) -> &'static str {
         match self {
             Why::Unmeasured => "unmeasured",
+            Why::LetGo => "let-go",
             Why::Unanswered => "unanswered",
             Why::GaveUp => "gave-up",
-            Why::Clear => "clear",
+            Why::Clear { .. } => "clear",
             Why::Line { .. } => "line",
             Why::Vpn { .. } => "vpn",
             Why::Far { .. } => "far",
@@ -88,6 +97,10 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
     let held = format!("held so for {}", plural(for_s));
     match why {
         Why::Unmeasured => format!("Upload {rate}: no queue has stood on this network yet."),
+        Why::LetGo => format!(
+            "Upload {rate}: no queue has stood since its last hold let go, {} ago.",
+            plural(for_s)
+        ),
         Why::Unanswered => {
             format!("Upload {rate}: no reflector answers, so nothing measures a queue.")
         }
@@ -95,16 +108,21 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             "Upload {rate}: three returns in a row found no queue a cut drains, so it's left \
              alone a while."
         ),
-        Why::Clear => match anchor {
-            Some(anchor) => {
-                format!(
-                    "Upload {rate} of {}, the line's rate: clear for {}.",
+        Why::Clear { probing } => {
+            let looking = if probing {
+                ", looking past its hold a few seconds for more room"
+            } else {
+                ""
+            };
+            match anchor {
+                Some(anchor) => format!(
+                    "Upload {rate} of {}, the line's rate{looking}: clear for {}.",
                     mbit(anchor),
                     plural(for_s)
-                )
+                ),
+                None => format!("Upload {rate}{looking}: clear for {}.", plural(for_s)),
             }
-            None => format!("Upload {rate}: clear for {}.", plural(for_s)),
-        },
+        }
         Why::Line { delay_ms, eased } => format!(
             "Upload {rate}: the line's delay stood {delay_ms:.0} ms, so it was cut{}; {held}.",
             if eased { ", and that eased it" } else { "" }
@@ -227,9 +245,11 @@ pub fn ceiling(link: &str, up: u64) -> String {
 /// A share in whole percent, rounded down, as the status and a trace say
 /// it: a hold under one never reads as 100%. Rounded down from a billionth
 /// over, since a double keeps a share such as 0.29 as 28.999... percent,
-/// which would otherwise read a percent tighter than it was.
+/// which would otherwise read a percent tighter than it was; a share that
+/// billionth carries to 100 is still under one, so it reads 99.
 pub fn percent(share: f64) -> f64 {
-    (share * 100.0 + 1e-9).floor()
+    let whole = (share * 100.0 + 1e-9).floor();
+    if share < 1.0 { whole.min(99.0) } else { whole }
 }
 
 fn lossless(kbit: u64) -> f64 {
@@ -265,12 +285,31 @@ mod tests {
     #[test]
     fn a_clear_upload_says_its_rate_against_the_line_and_for_how_long() {
         assert_eq!(
-            say(Why::Clear, Some(10_800), Some(12_000.0), 754.0),
+            say(
+                Why::Clear { probing: false },
+                Some(10_800),
+                Some(12_000.0),
+                754.0
+            ),
             "Upload 10.8 Mb/s of 12.0 Mb/s, the line's rate: clear for 12 min."
         );
         assert_eq!(
-            say(Why::Clear, Some(10_800), None, 42.0),
+            say(Why::Clear { probing: false }, Some(10_800), None, 42.0),
             "Upload 10.8 Mb/s: clear for 42 s."
+        );
+    }
+
+    #[test]
+    fn a_probe_past_the_line_says_it_looks_for_room_rather_than_holds_there() {
+        assert_eq!(
+            say(
+                Why::Clear { probing: true },
+                Some(12_505),
+                Some(12_000.0),
+                60.0
+            ),
+            "Upload 12.5 Mb/s of 12.0 Mb/s, the line's rate, looking past its hold a few \
+             seconds for more room: clear for 1 min."
         );
     }
 
@@ -376,6 +415,7 @@ mod tests {
             (0.58, 58.0),
             (0.814, 81.0),
             (0.996, 99.0),
+            (1.0 - 1e-12, 99.0),
             (1.0, 100.0),
         ] {
             let said = percent(share);
@@ -393,9 +433,10 @@ mod tests {
     fn each_kind_of_reason_keeps_a_word_of_its_own() {
         let kinds = [
             (Why::Unmeasured, "unmeasured"),
+            (Why::LetGo, "let-go"),
             (Why::Unanswered, "unanswered"),
             (Why::GaveUp, "gave-up"),
-            (Why::Clear, "clear"),
+            (Why::Clear { probing: false }, "clear"),
             (
                 Why::Line {
                     delay_ms: 1.0,
@@ -493,7 +534,12 @@ mod tests {
         // taken back each time (16 times on 16 November).
         let clear = Reason {
             up: Some(10_800),
-            said: say(Why::Clear, Some(10_800), Some(12_000.0), 5.0),
+            said: say(
+                Why::Clear { probing: false },
+                Some(10_800),
+                Some(12_000.0),
+                5.0,
+            ),
         };
         assert_eq!(
             holding("wlp0s20f3", Some(10_800), None, Some(&clear)),
@@ -581,7 +627,7 @@ mod tests {
     fn a_hold_of_the_download_alone_is_not_given_the_upload_s_reason() {
         let clear = Reason {
             up: None,
-            said: say(Why::Clear, None, Some(12_000.0), 5.0),
+            said: say(Why::Clear { probing: false }, None, Some(12_000.0), 5.0),
         };
         assert_eq!(
             holding("wlp0s20f3", None, Some(80_000), Some(&clear)),
@@ -594,6 +640,11 @@ mod tests {
         assert_eq!(
             say(Why::Unmeasured, None, None, 0.0),
             "Upload unlimited: no queue has stood on this network yet."
+        );
+        assert_eq!(
+            say(Why::LetGo, None, None, 240.0),
+            "Upload unlimited: no queue has stood since its last hold let go, 4 min ago.",
+            "an upload let go after a hold read as one never held"
         );
     }
 

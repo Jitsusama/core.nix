@@ -5,10 +5,18 @@
 //! steer), which pi opens with a bracketed line naming him; anything else
 //! opening with a bracket, or as words.rs knows the harness's and the
 //! mesh's text, is not his. What he had attached, the window he was
-//! looking at, is kept apart from his words.
+//! looking at, is kept apart from his words. It also says when the agent
+//! answered him: a turn he opened, nobody else's message between, that ran
+//! a tool and ended speaking, with when he opened it, which is how a
+//! session's own cell takes up a pain he said to it.
+//!
+//! Long because whose turn an answer ends is decided by one reading of
+//! the log's lines, and its tests walk each way a turn is crossed, errs,
+//! retries or splits across runs beside it.
 
 use crate::pi::iso_ms;
 use crate::words::automated;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -18,6 +26,9 @@ const TOOLS_KEPT: usize = 4;
 /// How many of his own last messages a session keeps, to hear one said
 /// again.
 const EARLIER_KEPT: usize = 4;
+
+/// How many answers a session keeps while no cell is known to take them.
+const ANSWERS_KEPT: usize = 32;
 
 /// The openings of a message pi delivered from outside its window, when
 /// the one sending it was Joel.
@@ -54,19 +65,63 @@ pub struct Carried {
     pub tools: Vec<String>,
     pub failed: Vec<String>,
     pub earlier: Vec<(i64, String)>,
+    /// Whether the agent ran a tool since his last message with nobody
+    /// else's between, and no turn of it errored or was cut short: a turn
+    /// answering a peer or the harness, or one after a failed turn, isn't
+    /// an answer to him.
+    #[serde(default)]
+    pub acting: bool,
+    /// An answer a reading kept before answers held what they answered,
+    /// in milliseconds since 1970, taken as it was then: every pain said
+    /// in the session before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answered: Option<i64>,
+    /// When he said the message the kept `answered` answered, as a reading
+    /// kept it before `answers`: its pains from then on are taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<i64>,
+    /// When he opened the turn under way, by his first message since the
+    /// last turn ended: none once it ends, or once someone else's message
+    /// makes the turn theirs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<i64>,
+    /// Whether the turn under way last stopped on an error, which pi tries
+    /// again within it unless he speaks first, opening a turn of his own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub errored: bool,
+    /// The log entry of the message that errored, which pi's retry edits
+    /// out of its context: none when a reading kept before it was named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Whether a peer's or the harness's message came after that error
+    /// with no word yet that pi tries again, so the answer after it, if pi
+    /// never does, is theirs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub crossed: bool,
+    /// Each answer to him not yet taken, as when his turn opened and when
+    /// it was answered, kept until the session's cell is known, so every
+    /// answer in one reading takes what it answered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<(i64, i64)>,
+}
+
+impl Carried {
+    /// Forgets the error the turn stopped on, once pi tries again or he
+    /// speaks, and any message that came after it.
+    fn past_error(&mut self) {
+        (self.errored, self.crossed, self.error) = (false, false, None);
+    }
 }
 
 /// His words in a user message's text, and the window attached, or none
 /// when someone else sent it.
 pub fn his(text: &str) -> Option<(String, Option<String>)> {
     let text = text.trim();
-    let body = if text.starts_with('[') {
-        if !HIS_OPENINGS.iter().any(|opening| text.starts_with(opening)) {
-            return None;
-        }
-        &text[text.find(']')? + 1..]
-    } else if automated(text) {
+    if others(text) {
         return None;
+    }
+    let body = if text.starts_with('[') {
+        &text[text.find(']')? + 1..]
     } else {
         text
     };
@@ -86,6 +141,27 @@ pub fn his(text: &str) -> Option<(String, Option<String>)> {
     Some((words.to_string(), window))
 }
 
+/// His message at `at` in `carried`'s turn: it opens the turn where none is
+/// under way, or where the last stopped on an error he spoke after rather
+/// than waiting for pi to try it again.
+fn opened(carried: &mut Carried, at: i64) {
+    if carried.errored {
+        carried.from = Some(at);
+    } else {
+        carried.from.get_or_insert(at);
+    }
+}
+
+/// Whether a user message's trimmed `text` is someone else's: a peer's or
+/// the harness's, by its opening or as automated text.
+fn others(text: &str) -> bool {
+    if text.starts_with('[') {
+        !HIS_OPENINGS.iter().any(|opening| text.starts_with(opening))
+    } else {
+        automated(text)
+    }
+}
+
 /// A log line's parts that say whose it is, read without its content.
 #[derive(Deserialize)]
 struct Head {
@@ -96,6 +172,21 @@ struct Head {
     #[serde(default)]
     timestamp: String,
     message: Option<HeadMessage>,
+    /// The entry a context edit changes, and whether it puts anything in
+    /// its place, read without decoding what.
+    #[serde(rename = "targetId", default)]
+    target: Option<String>,
+    #[serde(default)]
+    replacement: Option<IgnoredAny>,
+}
+
+/// Whether `head` is pi's retry of `carried`'s errored turn: an edit that
+/// drops the message that errored from its context, with nothing in its
+/// place, as pi's `_omitRecoveryAttempt` writes before a retry's wait or
+/// an overflow's compaction. Any other edit, such as an extension's, isn't
+/// one.
+fn retried(head: &Head, carried: &Carried) -> bool {
+    head.replacement.is_none() && (carried.error.is_none() || head.target == carried.error)
 }
 
 #[derive(Deserialize)]
@@ -133,19 +224,62 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
     // A tool's result is read for its name alone, so its output, often
     // the most of a log, is never decoded.
     let head: Head = serde_json::from_str(text).ok()?;
+    // pi tries an errored turn again by first editing the error out of its
+    // context, then waiting, so a peer's or the harness's message before
+    // that edit can still land inside his retry, and one after it does.
+    // Only one with no retry after it starts a turn of its own, answering
+    // them, not him. pi writes no edit when it gives up.
+    if carried.errored {
+        match head.kind.as_str() {
+            "custom_message" => carried.crossed = true,
+            "context_edit" if retried(&head, carried) => carried.past_error(),
+            _ => {}
+        }
+    }
     let message = head.message.filter(|_| head.kind == "message")?;
     match message.role.as_str() {
         "assistant" => {
+            if std::mem::take(&mut carried.crossed) {
+                carried.from = None;
+            }
             let full: Value = serde_json::from_str(text).ok()?;
-            let calls = full.pointer("/message/content").and_then(Value::as_array)?;
+            let content = full.pointer("/message/content")?;
             carried.tools.extend(
-                calls
+                content
+                    .as_array()?
                     .iter()
                     .filter(|b| b.get("type").and_then(Value::as_str) == Some("toolCall"))
                     .filter_map(|b| b.get("name").and_then(Value::as_str))
                     .map(str::to_string),
             );
             keep_last(&mut carried.tools, TOOLS_KEPT);
+            let acted = content
+                .as_array()?
+                .iter()
+                .any(|b| b.get("type").and_then(Value::as_str) == Some("toolCall"));
+            // A turn that errored, or that he or the harness stopped, said
+            // nothing to him, and one that only talked did nothing about
+            // what hurt; either leaves the pain open.
+            let stopped = full.pointer("/message/stopReason").and_then(Value::as_str);
+            match stopped {
+                Some("error" | "aborted") => carried.acting = false,
+                _ => carried.acting |= acted,
+            }
+            if stopped == Some("stop")
+                && carried.acting
+                && !text_of(content).trim().is_empty()
+                && let (Some(from), Some(at)) = (carried.from, iso_ms(&head.timestamp))
+            {
+                carried.answers.push((from, at));
+                keep_last(&mut carried.answers, ANSWERS_KEPT);
+            }
+            // A turn ends on any stop but a call for tools, answered or not,
+            // or an error, which pi tries again within the same turn.
+            carried.errored = stopped == Some("error");
+            carried.error = (carried.errored && !head.id.is_empty()).then(|| head.id.clone());
+            if stopped.is_some_and(|stop| !matches!(stop, "toolUse" | "error")) {
+                carried.from = None;
+            }
             None
         }
         "toolResult" => {
@@ -158,9 +292,29 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             None
         }
         "user" => {
+            // His message starts a new turn, and anyone else's is a turn
+            // that answers them, not him.
+            carried.acting = false;
             let full: Value = serde_json::from_str(text).ok()?;
-            let (words, looking_at) = his(&text_of(full.pointer("/message/content")?))?;
-            let at = iso_ms(&head.timestamp)?;
+            let content = full
+                .pointer("/message/content")
+                .map(text_of)
+                .unwrap_or_default();
+            let at = iso_ms(&head.timestamp);
+            let Some((words, looking_at)) = his(&content) else {
+                // Only someone else's message makes the turn theirs: one of
+                // his with no words, such as a screenshot alone, opens his.
+                if others(content.trim()) {
+                    carried.from = None;
+                } else if let Some(at) = at {
+                    opened(carried, at);
+                }
+                carried.past_error();
+                return None;
+            };
+            let at = at?;
+            opened(carried, at);
+            carried.past_error();
             let said = Said {
                 entry: head.id,
                 at,
@@ -270,6 +424,379 @@ mod tests {
         assert_eq!(said.failed, vec!["edit"]);
         assert!(carried.tools.is_empty(), "his message starts a new turn");
         assert_eq!(carried.earlier, vec![(said.at, said.words.clone())]);
+    }
+
+    /// The agent's message ending its turn as `stop`, saying `text`.
+    fn ended(stop: &str, text: &str) -> String {
+        serde_json::json!({
+            "type": "message", "id": "s", "parentId": "r",
+            "timestamp": "2026-11-16T18:00:09.000Z",
+            "message": {"role": "assistant", "stopReason": stop,
+                        "content": [{"type": "text", "text": text}], "timestamp": 0}
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_turn_that_acted_and_ended_speaking_answered_him() {
+        let at = iso_ms("2026-11-16T18:00:09.000Z");
+        let answered = |lines: &[String]| {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            carried.answers.last().map(|&(_, at)| at)
+        };
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let ran = called(&["bash"]);
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        let peer = user(
+            "m1",
+            "2026-11-16T18:00:07.000Z",
+            "[Mesh message from a peer] a question",
+        );
+        assert_eq!(answered(&[his.clone(), ran.clone(), done.clone()]), at);
+        assert_eq!(
+            answered(&[his.clone(), ran.clone(), ran.clone(), done.clone()]),
+            at,
+            "a turn of several tool calls answered him"
+        );
+        for (lines, why) in [
+            (
+                vec![his.clone(), done.clone()],
+                "a turn that only talked did nothing about it",
+            ),
+            (
+                vec![ran.clone(), his.clone(), done.clone()],
+                "tools run before he spoke aren't an answer to him",
+            ),
+            (
+                vec![his.clone(), ran.clone(), ended("error", "overloaded")],
+                "a turn that errored said nothing to him",
+            ),
+            (
+                vec![his.clone(), ran.clone(), peer.clone(), done.clone()],
+                "a turn answering a peer's message didn't answer him",
+            ),
+            (
+                vec![
+                    his.clone(),
+                    ran.clone(),
+                    ended("error", "overloaded"),
+                    done.clone(),
+                ],
+                "a turn that only talked after a failed one did nothing about it",
+            ),
+            (
+                vec![his.clone(), ran.clone(), ended("aborted", "")],
+                "a turn stopped partway said nothing to him",
+            ),
+            (
+                vec![his.clone(), ran.clone(), ended("stop", "  ")],
+                "a turn that ended saying nothing said nothing",
+            ),
+        ] {
+            assert_eq!(answered(&lines), None, "{why}");
+        }
+    }
+
+    #[test]
+    fn each_answer_is_kept_with_when_he_opened_its_turn() {
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let ran = called(&["bash"]);
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        let peer = user(
+            "m1",
+            "2026-11-16T18:00:07.000Z",
+            "[Mesh message from a peer] a question",
+        );
+        let mut carried = Carried::default();
+        for text in [&his, &ran, &done] {
+            line(text, &mut carried);
+        }
+        let kept = serde_json::to_string(&carried).expect("carried writes");
+        let back: Carried = serde_json::from_str(&kept).expect("carried reads");
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        assert_eq!(
+            (back.answers, back.from),
+            (vec![(opened, at)], None),
+            "an answer is kept with when his turn opened until the session's cell is known"
+        );
+        let windows = |lines: &[&String]| {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            carried.answers
+        };
+        let steer = user("e2", "2026-11-16T18:00:06.000Z", "and the bar too");
+        let again = user("e3", "2026-11-16T18:00:08.000Z", "now the dock");
+        assert_eq!(
+            windows(&[&his, &steer, &ran, &done, &again, &ran, &done]),
+            vec![
+                (opened, at),
+                (iso_ms("2026-11-16T18:00:08.000Z").expect("a time"), at),
+            ],
+            "a turn he steered wasn't answered from its opening, or one answer hid another"
+        );
+        assert_eq!(
+            windows(&[&his, &peer, &ran, &done]),
+            Vec::new(),
+            "a turn a peer's message made theirs answered him"
+        );
+        let old: Carried = serde_json::from_str(r#"{"tools": [], "failed": [], "earlier": []}"#)
+            .expect("a reading kept before answers reads");
+        assert_eq!(
+            old,
+            Carried::default(),
+            "a reading kept before answers reads as none"
+        );
+    }
+
+    #[test]
+    fn his_turn_lasts_through_calls_for_tools_retries_and_his_wordless_messages() {
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let asking = serde_json::json!({
+            "type": "message", "id": "a", "parentId": "p",
+            "timestamp": "2026-11-16T18:00:06.000Z",
+            "message": {"role": "assistant", "stopReason": "toolUse", "timestamp": 0,
+                        "content": [{"type": "toolCall", "id": "c", "name": "bash",
+                                     "arguments": {}}]}
+        })
+        .to_string();
+        let failed = ended("error", "");
+        let shot = serde_json::json!({
+            "type": "message", "id": "e2", "parentId": "p",
+            "timestamp": "2026-11-16T18:00:07.000Z",
+            "message": {"role": "user", "content": [{"type": "image", "data": "x"}],
+                        "timestamp": 0}
+        })
+        .to_string();
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        for (lines, what) in [
+            (vec![&his, &asking, &done], "a call for tools"),
+            (
+                vec![&his, &asking, &failed, &asking, &done],
+                "pi's retry after an error",
+            ),
+            (
+                vec![&his, &shot, &asking, &done],
+                "a screenshot of his alone",
+            ),
+        ] {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            assert_eq!(
+                carried.answers,
+                vec![(opened, at)],
+                "{what} ended his turn, or gave it away"
+            );
+        }
+        // Read across two runs, parted after a call for tools or an error.
+        for (before, after) in [
+            (vec![&his, &asking], vec![&done]),
+            (vec![&his, &asking, &failed], vec![&asking, &done]),
+        ] {
+            let mut midway = Carried::default();
+            for text in before {
+                line(text, &mut midway);
+            }
+            let kept = serde_json::to_string(&midway).expect("carried writes");
+            let mut back: Carried = serde_json::from_str(&kept).expect("carried reads");
+            for text in after {
+                line(text, &mut back);
+            }
+            assert_eq!(
+                back.answers,
+                vec![(opened, at)],
+                "a turn read across two runs lost when he opened it"
+            );
+        }
+    }
+
+    #[test]
+    fn a_peers_message_after_an_error_takes_the_turn_unless_pi_tries_again() {
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let asking = called(&["bash"]);
+        // The answer that errored has an id of its own, "f", beside the
+        // others' "s", so an edit of the wrong one can't pass as the retry.
+        let failed = ended("error", "").replacen(r#""id":"s""#, r#""id":"f""#, 1);
+        let done = ended("stop", "Fixed: the launcher opens again.");
+        let peer = r#"{"type":"custom_message","content":"Mesh message"}"#.to_owned();
+        // pi's retry edits the errored answer out of its context first.
+        let retry = r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned();
+        // An extension may edit another entry, or put text in its place.
+        let other = r#"{"type":"context_edit","targetId":"s","replacement":null}"#.to_owned();
+        let rewrite = r#"{"type":"context_edit","targetId":"f","replacement":"x"}"#.to_owned();
+        assert!(
+            failed.contains(r#""id":"f""#),
+            "the errored answer kept the others' id"
+        );
+        let his_answer = vec![(opened, at)];
+        for (lines, answers, what) in [
+            (
+                vec![&his, &asking, &failed, &peer, &asking, &done],
+                Vec::new(),
+                "a peer's turn after an error pi never tried again",
+            ),
+            (
+                vec![
+                    &his, &asking, &failed, &peer, &other, &rewrite, &asking, &done,
+                ],
+                Vec::new(),
+                "a peer's turn after edits that aren't pi's retry",
+            ),
+            (
+                vec![&his, &asking, &failed, &peer, &retry, &asking, &done],
+                his_answer.clone(),
+                "a peer's message before pi's retry",
+            ),
+            (
+                vec![&his, &asking, &failed, &retry, &peer, &asking, &done],
+                his_answer.clone(),
+                "a peer's message during pi's retry",
+            ),
+            (
+                vec![&his, &asking, &peer, &asking, &done],
+                his_answer,
+                "a peer's message mid-turn with no error",
+            ),
+        ] {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            assert_eq!(carried.answers, answers, "{what} was read wrongly");
+        }
+        // Read across two runs, parted after the error or the peer's message.
+        for (before, after, answers) in [
+            (
+                vec![&his, &asking, &failed],
+                vec![&peer, &asking, &done],
+                Vec::new(),
+            ),
+            (
+                vec![&his, &asking, &failed, &peer],
+                vec![&asking, &done],
+                Vec::new(),
+            ),
+            // Only the errored entry kept across runs tells this from a retry.
+            (
+                vec![&his, &asking, &failed, &peer],
+                vec![&other, &asking, &done],
+                Vec::new(),
+            ),
+            (
+                vec![&his, &asking, &failed, &peer],
+                vec![&retry, &asking, &done],
+                vec![(opened, at)],
+            ),
+            (
+                vec![&his, &asking, &failed],
+                vec![&retry, &peer, &asking, &done],
+                vec![(opened, at)],
+            ),
+        ] {
+            let mut midway = Carried::default();
+            for text in before {
+                line(text, &mut midway);
+            }
+            let kept = serde_json::to_string(&midway).expect("carried writes");
+            let mut back: Carried = serde_json::from_str(&kept).expect("carried reads");
+            for text in after {
+                line(text, &mut back);
+            }
+            assert_eq!(
+                back.answers, answers,
+                "a run lost that the turn had errored, that a peer came after, or which \
+                 error pi tried again"
+            );
+        }
+    }
+
+    #[test]
+    fn a_reading_kept_before_errors_were_named_takes_any_bare_edit_as_the_retry() {
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let edit = r#"{"type":"context_edit","targetId":"s","replacement":null}"#.to_owned();
+        let rewrite = r#"{"type":"context_edit","targetId":"s","replacement":"x"}"#.to_owned();
+        let fresh = || -> Carried {
+            serde_json::from_value(serde_json::json!({
+                "tools": [], "failed": [], "earlier": [], "from": opened,
+                "errored": true, "crossed": true
+            }))
+            .expect("a reading kept before")
+        };
+        for (first, answers, what) in [
+            (edit, vec![(opened, at)], "lost his retry"),
+            (
+                rewrite,
+                Vec::new(),
+                "took an edit with text in its place as the retry",
+            ),
+        ] {
+            let mut kept = fresh();
+            for text in [first, called(&["bash"]), ended("stop", "Fixed.")] {
+                line(&text, &mut kept);
+            }
+            assert_eq!(
+                kept.answers, answers,
+                "a reading kept before the errored entry was named {what}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_error_is_known_by_its_entry_until_his_turn_moves_past_it() {
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let asking = called(&["bash"]);
+        let failed = ended("error", "");
+        let peer = r#"{"type":"custom_message","content":"Mesh message"}"#.to_owned();
+        let edit = r#"{"type":"context_edit","targetId":"x","replacement":null}"#.to_owned();
+        // An errored line with no id names nothing, so any bare edit is its
+        // retry, as for a reading kept before ids were.
+        let nameless = failed.replacen(r#""id":"s","#, "", 1);
+        let mut carried = Carried::default();
+        for text in [&his, &asking, &nameless] {
+            line(text, &mut carried);
+        }
+        assert!(
+            carried.errored && carried.error.is_none(),
+            "an errored line with no id was named: {carried:?}"
+        );
+        for text in [&peer, &edit, &asking, &ended("stop", "Fixed.")] {
+            line(text, &mut carried);
+        }
+        assert_eq!(
+            carried.answers,
+            vec![(opened, at)],
+            "a bare edit after a nameless error wasn't his retry"
+        );
+        // His own message moves past the error, and forgets its entry.
+        let mut carried = Carried::default();
+        for text in [&his, &asking, &failed] {
+            line(text, &mut carried);
+        }
+        assert_eq!(
+            carried.error.as_deref(),
+            Some("s"),
+            "the errored entry wasn't kept"
+        );
+        let again = user("e2", "2026-11-16T18:00:10.000Z", "hello?");
+        line(&again, &mut carried);
+        assert!(
+            !carried.errored && !carried.crossed && carried.error.is_none(),
+            "his message left the error behind it: {carried:?}"
+        );
     }
 
     #[test]

@@ -3,8 +3,8 @@
 Here the launcher reads, answers and tidies mail, counts what in Slack wants Joel, and finds
 people, docs and Search Slack.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -721,7 +721,7 @@ def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_
         desktop.reported("pages ", lambda rest: rest == said, since)
 
     # The stand-in Pages source keeps a page for Grace and is still finding
-    # it (desktop/stand-ins/people-pages.qml).
+    # it (tests/desktop/stand-ins/people-pages.qml).
     say("looking")
     desktop.answer("grace hopper")
     desktop.launcher_until(
@@ -764,7 +764,7 @@ def test_a_search_ends_with_a_sources_last_row_which_lights_in_place_once_found(
         desktop.reported("search ends ", lambda rest: rest == said, since)
 
     # The stand-in source ends each search with Look Further, still asking
-    # (desktop/stand-ins/search-ends.qml), as Search Slack does.
+    # (tests/desktop/stand-ins/search-ends.qml), as Search Slack does.
     say("asking")
     # Silenced again however it ends, so no later search ends with it.
     try:
@@ -837,7 +837,7 @@ def test_slack_is_asked_about_a_person_through_the_people_daemon_alone(
 
     The shell ran a slack-people of its own beside the daemon's, so Slack was asked twice
     about everyone People lists (2026-11-02). The daemon runs the stand-in in its place
-    (desktop/stand-ins/people-slack.sh), which knows Crowd Person 1234 once it's signed in.
+    (tests/desktop/stand-ins/people-slack.sh), which knows Crowd Person 1234 once it's signed in.
     """
     machine = desktop.machine
     closed = desktop.in_session(LAUNCHER_OPEN)

@@ -313,6 +313,27 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
 }
 
 #[test]
+fn the_far_line_is_told_the_bytes_the_job_s_archives_take() {
+    let realm = Realm::new(true);
+    realm.tracked("Spec.tla", &"s".repeat(300_000));
+    let output = realm.check(&[], "true");
+    assert!(
+        output.status.success(),
+        "the far job failed: {:?}",
+        said(&output)
+    );
+    // One ustar archive: its header, the file padded to its blocks, and
+    // the two blocks that close it. A far line told any other size, none
+    // at all among them, would end a slow crossing at the wrong second.
+    let archived = 512 + 300_000_u64.div_ceil(512) * 512 + 1024;
+    let asked = realm.asked();
+    assert!(
+        asked.contains(&format!("\nbytes={archived}\n")),
+        "the far line wasn't told the {archived} bytes its archives take: {asked}"
+    );
+}
+
+#[test]
 fn a_job_clears_what_runs_here_left_but_never_a_folder_a_run_holds() {
     let realm = Realm::new(true);
     realm.tracked("Spec.tla", "spec\n");
@@ -378,6 +399,26 @@ fn nothing_travels_but_the_job_s_tracked_files() {
         out.trim(),
         "Spec.tla",
         "something but the tracked work reached the far machine: {out}"
+    );
+}
+
+#[test]
+fn a_tracked_file_under_a_folder_now_a_link_stays_home() {
+    let realm = Realm::new(true);
+    realm.tracked("Spec.tla", "spec\n");
+    realm.tracked("lib/x.ts", "source\n");
+    let outside = realm.root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("x.ts"), "secret\n").unwrap();
+    fs::remove_dir_all(realm.folder().join("lib")).unwrap();
+    std::os::unix::fs::symlink(&outside, realm.folder().join("lib")).unwrap();
+    let output = realm.check(&[], "find . -name x.ts; ls");
+    let (out, err) = said(&output);
+    assert!(output.status.success(), "the far job failed: {err}");
+    assert_eq!(
+        out.trim(),
+        "Spec.tla",
+        "a file was read through a folder now a link: {out}"
     );
 }
 

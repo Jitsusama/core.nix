@@ -25,9 +25,14 @@ draws them.
   asks for, and where the cursor lands for one drawn, one past those
   drawn, and one the page doesn't have, and when the records that may
   name it are still coming, overdue or all in.
+- `away.test.ts` tries how the page reads with many machines out of
+  reach at once: counted apart in the headline, no pier or section of
+  their own, named together after those in reach with when each was
+  last heard, one look between them, a place to go to them, and where
+  an address for one lands.
 - `page.test.ts` tries that the page preloads every module of its own
   that it reaches only through another, so its first draw comes whole.
-- Node's own test runner runs all six as the local sites build the
+- Node's own test runner runs all seven as the local sites build the
   page, so `system-site-holds` fails when one does.
 - `reads-live-test.py` reads the page Nix builds in a headless browser, beside
   a stand-in daemon holding `system.json`: the page as the records change,

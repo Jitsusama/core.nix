@@ -2,7 +2,7 @@
 // the launcher and the map link to: the machine it names, and the row the
 // cursor lands on for it once the page is drawn.
 
-import { MACHINES_DRAWN, MORE_ROW, machineRow } from "./draw.ts";
+import { AWAY_MORE_ROW, AWAY_NAMED, MACHINES_DRAWN, MORE_ROW, machineRow } from "./draw.ts";
 import type { System } from "./model.ts";
 
 /** The page's address for a machine, its name still encoded. */
@@ -78,10 +78,26 @@ function askedOf(hash: string): string | undefined {
 }
 
 /**
- * Where the cursor lands for `name`, among `machines` in the order they are
- * drawn, as the `records` that may name it stand.
+ * Where the cursor lands for `name`, among `machines` in reach in the order
+ * they are drawn, or `away`, those out of reach, each a row of its own, as
+ * the `records` that may name it stand.
  */
-function landingOf(machines: readonly string[], name: string, records: Records): Landing {
+function landingOf(
+  machines: readonly string[],
+  name: string,
+  records: Records,
+  away: readonly string[] = [],
+): Landing {
+  const gone = away.indexOf(name);
+  if (gone >= AWAY_NAMED) {
+    return {
+      row: AWAY_MORE_ROW,
+      note: `${name} is out of reach, past the first ${AWAY_NAMED} named here; the map has it.`,
+    };
+  }
+  if (gone >= 0) {
+    return { row: machineRow(name) };
+  }
   const at = machines.indexOf(name);
   if (at < 0 && records === "coming") {
     return { waits: true };

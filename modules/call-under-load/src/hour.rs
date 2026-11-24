@@ -22,6 +22,27 @@ const HEARD: &str = "call sound heard and counted";
 /// reads it as the p99 of every wakeup.
 const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// Each app's figure for the time a drawing thread was blocked in the
+/// kernel: the p99 across the hour's 10 s windows of the most any one was.
+const CHROME_BLOCKED: &str = "Chrome most blocked per 10 s p99 ms";
+const SLACK_BLOCKED: &str = "Slack most blocked per 10 s p99 ms";
+/// Joel's own calls' figure, in ms of waiting per second.
+const REAL: &str = "real call sending wait p99 ms per s";
+/// How many of them the watch couldn't read.
+const REAL_BLIND: &str = "real calls with no sending thread found";
+/// How long since the watch last could tell whether a call was on.
+const REAL_WATCH: &str = "real call watch minutes since it could tell";
+/// Past this many minutes, the watch has stopped or can't tell.
+const WATCH_LATE: f64 = 10.0;
+/// The most the watch's minutes read: a day, so one that never could tell
+/// reads as that rather than minutes since 1970.
+const DAY_MINUTES: u64 = 24 * 60;
+/// How far, in tenths, a figure may sit past a whole tenth and still be
+/// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
+/// times carry error near 1e-8 ms, far inside it, and the page's clock
+/// steps by at least 5 microseconds. A wait from lag-watch can sit 10 ns
+/// past a tenth and read as on it, which no reader could tell apart.
+const NOISE: f64 = 1e-4;
 
 /// What stands in for Joel's voice, said beside the sound's figures. The
 /// far end plays on this machine too, under the same load, so what it
@@ -57,9 +78,9 @@ fn measure(
     let tenth = |x: f64| {
         let tenths = x * 10.0;
         let whole = if lower_is_better {
-            (tenths - 1e-9).ceil()
+            (tenths - NOISE).ceil()
         } else {
-            (tenths + 1e-9).floor()
+            (tenths + NOISE).floor()
         };
         (whole + 0.0) / 10.0
     };
@@ -90,6 +111,21 @@ fn left_out(app: &str, waits: &Waits) -> Vec<String> {
         ));
     }
     said
+}
+
+/// What an app's time blocked stands for, or why it's unread.
+fn kept_blocked(app: &str, waits: &Waits) -> Vec<String> {
+    if waits.blocked_windows == 0 {
+        return vec![format!(
+            "Joel's {app}: unread, since the kernel keeps no time blocked without \
+             kernel.sched_schedstats"
+        )];
+    }
+    vec![format!(
+        "Joel's {app}: each 10 s window's most any drawing thread was blocked in the kernel, \
+         on a lock, a page read back or reclaim, from lag-watch, {} windows",
+        waits.blocked_windows
+    )]
 }
 
 /// The call's sound as four figures, each saying what stood in for Joel's
@@ -231,6 +267,22 @@ pub fn measures(
             true,
             left_out("Slack", slack),
         ),
+        // Past 50 ms blocked in ten seconds, the click's own target, a
+        // window could have missed several frames running.
+        measure(
+            CHROME_BLOCKED,
+            chrome.blocked_p99,
+            50.0,
+            true,
+            kept_blocked("Chrome", chrome),
+        ),
+        measure(
+            SLACK_BLOCKED,
+            slack.blocked_p99,
+            50.0,
+            true,
+            kept_blocked("Slack", slack),
+        ),
         launcher,
     ]);
     all
@@ -252,259 +304,143 @@ pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::R
         .map(|m| (m.measure.to_string(), json!(m.now)))
         .collect();
     let line = json!({"at": at, "run": run, "measures": figures});
-    let mut history = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder.join("history.jsonl"))?;
-    writeln!(history, "{line}")
+    append(&folder.join("history.jsonl"), &line)
+}
+
+/// Adds one line to the history, as a single write, so the hour's run
+/// and the call watch can't interleave their lines.
+pub fn append(history: &Path, line: &Value) -> io::Result<()> {
+    if let Some(folder) = history.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(history)?;
+    file.write_all(format!("{line}\n").as_bytes())
+}
+
+/// Joel's own calls' figures, as of `at`: the worst of their sending
+/// threads' p99 wait for a CPU, from the calls `heard` names, with the
+/// load and the thread behind it said, unread when no call was ever
+/// watched; how many calls since `since`, the last hour written, the watch
+/// couldn't read in a call app it found; and how long since the watch,
+/// which said `clear`, last could tell whether a call was on.
+pub fn real(calls: &[crate::watch::Real], since: u64, clear: Option<u64>, at: u64) -> Vec<Measure> {
+    let p99 = |call: &&crate::watch::Real| call.sending_p99.unwrap_or(0.0);
+    let worst = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .max_by(|a, b| p99(a).total_cmp(&p99(b)));
+    let read = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .count();
+    let heard = calls.iter().filter(|call| !appless(call)).count();
+    let mut behind = vec![format!(
+        "Joel's own calls, {read} of {heard} read: the p99 of each 5 s tick's slowest sending \
+         thread's wait for a CPU per second, in his call apps, which in a call under 8 \
+         minutes is its worst tick",
+    )];
+    if let Some(call) = worst {
+        behind.push(format!(
+            "the worst ended {} min ago, {} of its {} ticks read, {} of them past {} ms/s or \
+             load {}, its 15-minute load up to {:.0}, its slowest thread {}",
+            at.saturating_sub(call.ended) / 60,
+            call.read,
+            call.ticks,
+            call.flagged,
+            crate::watch::LATE_MS,
+            crate::watch::HEAVY,
+            call.load15_max,
+            call.worst_who.as_deref().unwrap_or("unread"),
+        ));
+        if call.unsure {
+            behind.push("it was closed when a-call-is-on couldn't tell for 3 min".to_string());
+        }
+        if call.cut {
+            behind.push("it was cut short when the watch stopped".to_string());
+        }
+    }
+    vec![
+        measure(
+            REAL,
+            worst.and_then(|call| call.sending_p99),
+            crate::watch::LATE_MS,
+            true,
+            behind,
+        ),
+        blind(calls, since, at),
+        watched(clear, at),
+    ]
+}
+
+/// Whether the watch found none of his call apps open during a call it
+/// couldn't read: the microphone in use outside a call, or a call in a
+/// browser his terminal started, which isn't watched.
+fn appless(call: &crate::watch::Real) -> bool {
+    call.apps.is_empty() && call.sending_p99.is_none()
+}
+
+/// How many calls that ended after `since` the watch couldn't read in a
+/// call app it found, each said with when it ended and in which apps, so
+/// one such call files a fault for its own hour and not for the day its
+/// figure stands. One with no call app open is said, and not counted.
+fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
+    let fresh: Vec<&crate::watch::Real> = calls
+        .iter()
+        .filter(|call| call.ended > since && call.sending_p99.is_none())
+        .collect();
+    let (none_open, unread): (Vec<_>, Vec<_>) = fresh.into_iter().partition(|c| appless(c));
+    let mut behind = vec![
+        "Joel's calls since the last hour with a call app open but no sending thread read, \
+         so their waits are unread; a call in Tuple or Zoom, whose threads aren't named as \
+         Chromium's, reads so, as does the microphone in use outside a call while one is open"
+            .to_string(),
+    ];
+    behind.extend(unread.iter().map(|call| {
+        format!(
+            "one ended {} min ago, in {}",
+            at.saturating_sub(call.ended) / 60,
+            call.apps.join(" and ")
+        )
+    }));
+    if !none_open.is_empty() {
+        behind.push(format!(
+            "{} with no call app of his open, left out: the microphone in use outside a call, \
+             or a call in a browser his terminal started",
+            none_open.len()
+        ));
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a count of calls is far below f64's exact range"
+    )]
+    let count = unread.len() as f64;
+    measure(REAL_BLIND, Some(count), 0.0, true, behind)
+}
+
+/// How many minutes since the watch last could tell whether a call was on,
+/// at most a day, so a watch that stopped, never started or hung files a
+/// fault rather than reading as a day with no calls. One that never said
+/// reads as a day. The hour itself runs only when a-call-is-on can tell,
+/// so this shows a watch that can't only once the hour can.
+fn watched(clear: Option<u64>, at: u64) -> Measure {
+    let cap = DAY_MINUTES;
+    let minutes = clear.map_or(cap, |clear| (at.saturating_sub(clear) / 60).min(cap));
+    let behind = if clear.is_none() {
+        "the watch has never said when it could tell: it hasn't run".to_string()
+    } else {
+        format!(
+            "the watch asks every 30 s; past {WATCH_LATE:.0} min it has stopped, hung or can't \
+             tell, and a day or more reads as {cap}"
+        )
+    };
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a day's minutes are far below f64's exact range"
+    )]
+    let minutes = minutes as f64;
+    measure(REAL_WATCH, Some(minutes), WATCH_LATE, true, vec![behind])
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_figure_is_rounded_toward_its_worse_side() {
-        let now = |x: f64, lower_is_better: bool| {
-            measure("x", Some(x), 30.0, lower_is_better, vec![]).now
-        };
-        assert_eq!(
-            now(30.04, true),
-            Some(30.1),
-            "30.04 ms showed on a 30 ms target"
-        );
-        assert_eq!(
-            now(29.96, false),
-            Some(29.9),
-            "29.96 fps showed on a 30 fps target"
-        );
-        assert_eq!(now(1.1, true), Some(1.1), "a whole tenth moved up");
-        assert_eq!(now(28.8, false), Some(28.8), "a whole tenth moved down");
-        // Float error leaves 0.1 * 3 just over 0.3 and 1 - 0.9 just under
-        // 0.1; the nudge keeps each on its tenth.
-        assert_eq!(now(0.1 * 3.0, true), Some(0.3), "float error moved up");
-        assert_eq!(now(1.0 - 0.9, false), Some(0.1), "float error moved down");
-        assert_eq!(now(f64::NAN, true), None, "NaN read as a figure");
-        let none = now(0.0, true).unwrap_or(f64::NAN);
-        assert!(
-            none == 0.0 && none.is_sign_positive(),
-            "no wait is 0, not -0: {none}"
-        );
-    }
-
-    fn call() -> Call {
-        Call {
-            camera: Some(30.0),
-            sent: Some(29.96),
-            got: Some(30.0),
-            freezes: Some(0.0),
-            frozen_s: Some(0.0),
-            clicks_p50: Some(3.0),
-            clicks_p99: Some(9.84),
-            heard: true,
-            concealed: Some(0.42),
-            jitter_p99: Some(24.0),
-            lost: Some(3.0),
-            sound_why: None,
-            samples: 140,
-        }
-    }
-
-    #[test]
-    fn every_figure_says_which_way_is_better_and_who_owns_it() {
-        let chrome = Waits {
-            worst_p99: Some(19.66),
-            windows: 360,
-            lowered: 12,
-            unwatched: 0,
-        };
-        let all = measures(
-            &call(),
-            "a fake camera",
-            &chrome,
-            &Waits::default(),
-            &[20.0, 31.0],
-            Some("journalctl ended with code 1: no"),
-        );
-        assert_eq!(all.len(), 12);
-        let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
-        for (name, now, target) in [
-            (HEARD, 1.0, 1.0),
-            // 0.42% made up shows as 0.5, rounded toward the worse side.
-            ("call sound concealed %", 0.5, 1.0),
-            ("call sound jitter p99 ms", 24.0, 30.0),
-            ("call sound packets lost", 3.0, 0.0),
-        ] {
-            assert_eq!(
-                (named(name).now, named(name).target),
-                (Some(now), target),
-                "{name} reads the wrong figure or target"
-            );
-            assert_eq!(
-                named(name).behind[1],
-                SOUND,
-                "{name} doesn't say what it heard"
-            );
-        }
-        // 29.96 fps sent is short of 30, so it shows as 29.9, never on target.
-        assert_eq!(named("call sent fps p10").now, Some(29.9));
-        // A figure read the wrong way passes cadence at any value.
-        for m in &all {
-            let higher = m.measure.contains(" fps ") || m.measure == HEARD;
-            assert_eq!(
-                m.lower_is_better,
-                !higher,
-                "{} reads as {} is better",
-                m.measure,
-                if m.lower_is_better { "lower" } else { "higher" }
-            );
-        }
-        assert_eq!(named(CHROME_WAIT).now, Some(19.7));
-        let behind = &named(CHROME_WAIT).behind;
-        assert!(
-            behind[1].contains("12 windows"),
-            "Chrome's wait doesn't say how many windows it read: {behind:?}"
-        );
-        assert_eq!(named(SLACK_WAIT).now, None);
-        assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
-        assert_eq!(named("launcher open ms p99").now, Some(31.0));
-        assert_eq!(
-            named("launcher open ms p99").behind[1],
-            "the shell's journal wasn't read whole: journalctl ended with code 1: no",
-            "an unread journal is said beside the figure cadence reads"
-        );
-        assert_eq!(named("call freezes per 10 min").behind[1], "a fake camera");
-    }
-
-    #[test]
-    fn a_journal_read_whole_adds_nothing_to_the_launcher_s_note() {
-        let all = measures(
-            &call(),
-            "a fake camera",
-            &Waits::default(),
-            &Waits::default(),
-            &[20.0, 31.0],
-            None,
-        );
-        let launcher = all
-            .iter()
-            .find(|m| m.measure == "launcher open ms p99")
-            .unwrap();
-        assert_eq!(launcher.now, Some(31.0));
-        assert_eq!(
-            launcher.behind,
-            ["2 openings in the last hour, chord or ask to on screen"]
-        );
-    }
-
-    #[test]
-    fn sound_that_went_unheard_says_why_beside_each_of_its_figures() {
-        let unheard = Call {
-            heard: false,
-            concealed: None,
-            jitter_p99: None,
-            lost: None,
-            sound_why: Some("the far end's playing was refused: NotAllowedError".to_string()),
-            ..call()
-        };
-        let all = measures(
-            &unheard,
-            "a fake camera",
-            &Waits::default(),
-            &Waits::default(),
-            &[],
-            None,
-        );
-        let sound: Vec<&Measure> = all
-            .iter()
-            .filter(|m| m.measure.starts_with("call sound "))
-            .collect();
-        assert_eq!(sound.len(), 4, "the sound's figures aren't all named");
-        for m in sound {
-            assert_eq!(
-                m.behind.last().map(String::as_str),
-                Some("unheard: the far end's playing was refused: NotAllowedError"),
-                "{} doesn't say why it's missing",
-                m.measure
-            );
-        }
-        let heard = all.iter().find(|m| m.measure == HEARD);
-        assert_eq!(
-            heard.map(|m| m.now),
-            Some(Some(0.0)),
-            "a call that heard nothing reads 0, which cadence files, not a null it drops"
-        );
-    }
-
-    #[test]
-    fn sound_heard_but_not_all_counted_files_why_on_a_figure_cadence_reads() {
-        let why = "the far end's counts started again partway, so what it made up and lost \
-                   can't be told";
-        let restarted = Call {
-            heard: true,
-            concealed: None,
-            lost: None,
-            sound_why: Some(why.to_string()),
-            ..call()
-        };
-        let all = measures(
-            &restarted,
-            "a fake camera",
-            &Waits::default(),
-            &Waits::default(),
-            &[],
-            None,
-        );
-        let heard = all.iter().find(|m| m.measure == HEARD);
-        assert_eq!(
-            heard.map(|m| m.now),
-            Some(Some(0.0)),
-            "sound partly counted reads 0, past its target, so cadence files it"
-        );
-        assert_eq!(
-            heard.and_then(|m| m.behind.last()).map(String::as_str),
-            Some(format!("heard, but: {why}").as_str()),
-            "the filed figure carries why"
-        );
-    }
-
-    #[test]
-    fn the_hour_is_written_in_cadence_s_shape_and_the_run_kept_beside_it() {
-        let root =
-            std::env::temp_dir().join(format!("call-under-load-hour-{}", std::process::id()));
-        let all = measures(
-            &call(),
-            "a fake camera",
-            &Waits::default(),
-            &Waits::default(),
-            &[],
-            None,
-        );
-        write(&root, 1_795_200_000, &all, &json!({"took_s": 190})).unwrap();
-        write(&root, 1_795_203_600, &all, &json!({"took_s": 191})).unwrap();
-        let hour: Value =
-            serde_json::from_slice(&fs::read(root.join("hour.json")).unwrap()).unwrap();
-        let history = fs::read_to_string(root.join("history.jsonl")).unwrap();
-        let parts = fs::read_dir(&root).unwrap().count();
-        fs::remove_dir_all(&root).unwrap();
-        assert_eq!(hour["at"], 1_795_203_600);
-        assert_eq!(
-            hour["run"],
-            json!({"took_s": 191}),
-            "the newest run beside the hour"
-        );
-        let first = &hour["measures"][0];
-        for key in [
-            "measure",
-            "now",
-            "target",
-            "lower_is_better",
-            "owner",
-            "behind",
-        ] {
-            assert!(first.get(key).is_some(), "{key} missing from {first}");
-        }
-        assert_eq!(history.lines().count(), 2);
-        assert_eq!(parts, 2, "only hour.json and history.jsonl are left");
-    }
-}
+#[path = "hour_tests.rs"]
+mod tests;

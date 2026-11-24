@@ -32,6 +32,7 @@ use serde_json::{Map, Value, json};
 use crate::file;
 use crate::served::PLACE;
 use crate::session::{Lives, Session};
+use crate::windows::UNTOLD;
 
 /// The kind it's served as.
 pub const KIND: &str = "arrangement";
@@ -39,6 +40,16 @@ pub const KIND: &str = "arrangement";
 /// How long the windows stay still before their places are kept, as the
 /// shell waited.
 pub const STILL: Duration = Duration::from_secs(2);
+
+/// How long a session runs on here with no window before its place is let
+/// go, so Reopen Them All brings it back with none, as it had. A boot's end
+/// closes each window before its session ends, user@ given 5 s to stop
+/// (modules/systemd/nixos.nix), and a hosted session's viewer stays open
+/// through its host's stop of up to 150 s (modules/pi/host.nix), so a
+/// window gone for longer was closed while the boot ran on: after the
+/// 10:05 restart on 2026-11-21, six sessions whose windows had been
+/// closed hours before came back in windows.
+pub const CLOSED_FOR: Duration = Duration::from_secs(180);
 
 /// Each lit screen's connector and what the screen is, from the windows
 /// daemon's Screens rows, each sent whole under `row` and holding what
@@ -104,15 +115,31 @@ impl Desk<'_> {
         );
         place.insert("output".into(), json!(output));
         place.insert("workspace".into(), workspace["idx"].clone());
+        // Named workspaces, an orchestrator's, come back from a boot in
+        // another order, so the name says where it goes better than the
+        // number (Reopening.js's namedBack).
+        if let Some(name) = workspace["name"].as_str().filter(|name| !name.is_empty()) {
+            place.insert("workspaceName".into(), json!(name));
+        }
         place.insert("column".into(), json!(column));
         place.insert("tile".into(), json!(tile));
         Some(place)
     }
 }
 
+/// What's kept of a session whose window can't be placed: one floating, on
+/// a workspace niri hasn't listed, or one its kitty draws beside another
+/// (windows.rs's [`UNTOLD`]). It has a window all the same, so Reopen Them
+/// All brings it back in one rather than taking it for one with none
+/// (Reopening.js's broughtBack).
+fn unplaced() -> Value {
+    json!({"unplaced": true})
+}
+
 /// Where each running session here sits now, by pi's id for it: its window
 /// as `paired` names it by the session's address (the `agent-window`
 /// records), and whether it leads one of the sessions running or parked.
+/// One with a window that can't be placed is kept as [`unplaced`].
 pub fn now<'a>(
     sessions: impl Iterator<Item = Session<'a>> + Clone,
     paired: &[Value],
@@ -129,11 +156,19 @@ pub fn now<'a>(
         .iter()
         .filter_map(|one| Some((one["address"].as_str()?, one["window"].as_str()?)))
         .collect();
+    let untold = untold_of(paired);
     sessions
         .filter(|one| one.here() && one.lives() == Lives::Running)
         .filter_map(|one| {
             let id = one.presence()?.get("session")?.as_str()?;
-            let window = desk.windows.get(windows.get(one.address())?)?;
+            let window = windows
+                .get(one.address())
+                .and_then(|window| desk.windows.get(window));
+            let Some(window) = window else {
+                return untold
+                    .contains(one.address())
+                    .then(|| (id.to_owned(), unplaced()));
+            };
             let addresses = one.presence()?.get("addresses").and_then(Value::as_array);
             let leads = addresses.map_or_else(
                 || leaders.contains(&one.address().to_uppercase()),
@@ -143,7 +178,9 @@ pub fn now<'a>(
                         .any(|address| leaders.contains(&address.to_uppercase()))
                 },
             );
-            let mut place = desk.at(window, Map::new())?;
+            let Some(mut place) = desk.at(window, Map::new()) else {
+                return Some((id.to_owned(), unplaced()));
+            };
             place.insert("leads".into(), json!(leads));
             // The orchestrator it sits under, so Reopen Them All puts it
             // back on that one's workspace whatever number the workspace
@@ -158,6 +195,119 @@ pub fn now<'a>(
             Some((id.to_owned(), Value::Object(place)))
         })
         .collect()
+}
+
+/// The sessions running here with no window, by pi's id, as a keep sees
+/// them.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Windowless {
+    /// Those whose window was closed by hand, so their places go.
+    pub closed: HashSet<String>,
+    /// Those whose window can't be said to be closed by hand, so their
+    /// places stay as they are.
+    pub unsure: HashSet<String>,
+    /// Every session the node has said, wherever and however it stands,
+    /// so one it hasn't, as before its sessions are heard, keeps its mark.
+    pub heard: HashSet<String>,
+}
+
+/// A session's id, as pi's presence says it.
+fn id_of(one: Session) -> Option<String> {
+    one.presence()
+        .and_then(|presence| presence.get("session"))
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+/// What a place is marked while its window is gone with every other its
+/// terminal drew, as a crash takes them, until it shows again: one of
+/// those opened again doesn't make the rest closed by hand.
+const ORPHANED: &str = "orphaned";
+
+/// The addresses whose window windows.rs couldn't tell from another's.
+fn untold_of(paired: &[Value]) -> HashSet<&str> {
+    paired
+        .iter()
+        .filter(|one| one[UNTOLD] == true)
+        .filter_map(|one| one["address"].as_str())
+        .collect()
+}
+
+/// The terminal a session opened with an app id is drawn in: the sessions
+/// kitty, as Sessions.qml's inSessions opens each, every viewer too. No
+/// kitty's socket is named so.
+const SESSIONS_KITTY: &str = "the sessions kitty";
+
+/// The sessions running here now with no window, by pi's id: none paired
+/// with it, or one niri no longer lists. One whose window windows.rs
+/// couldn't tell from another's isn't among them. One is closed by hand
+/// only while another session its terminal draws still shows: every
+/// window one terminal drew gone at once is that terminal or niri gone,
+/// as a crash takes them, so those are unsure. The terminal is the
+/// sessions kitty for one opened with an app id, else the kitty its pair
+/// names, else, for a held one, the sessions kitty.
+pub fn unwindowed<'a>(
+    sessions: impl Iterator<Item = Session<'a>>,
+    paired: &[Value],
+    desk: &Desk<'_>,
+) -> Windowless {
+    let windows: HashMap<&str, &str> = paired
+        .iter()
+        .filter_map(|one| Some((one["address"].as_str()?, one["window"].as_str()?)))
+        .collect();
+    let kitties: HashMap<&str, &str> = paired
+        .iter()
+        .filter_map(|one| Some((one["address"].as_str()?, one["kitty"]["within"].as_str()?)))
+        .collect();
+    let untold = untold_of(paired);
+    let sessions: Vec<Session> = sessions.collect();
+    let running: Vec<Session> = sessions
+        .iter()
+        .copied()
+        .filter(|one| one.here() && one.lives() == Lives::Running)
+        .collect();
+    let shown = |one: &Session| {
+        windows
+            .get(one.address())
+            .is_some_and(|window| desk.windows.get(window).is_some())
+    };
+    // A held pi draws in the sessions kitty too, its app id going with its
+    // window, as the node says no window once it's closed.
+    let terminal = |one: &Session| {
+        if one.opened().is_empty() {
+            kitties
+                .get(one.address())
+                .copied()
+                .or_else(|| (!one.0["held"].is_null()).then_some(SESSIONS_KITTY))
+        } else {
+            Some(SESSIONS_KITTY)
+        }
+    };
+    // A terminal no kitty is known for lights nothing: windows.rs pairs a
+    // plain pi's window only through its kitty, so it can't be told whose.
+    let lit: HashSet<&str> = running
+        .iter()
+        .filter(|one| shown(one))
+        .filter_map(terminal)
+        .collect();
+    let mut seen = Windowless {
+        heard: sessions.iter().copied().filter_map(id_of).collect(),
+        ..Windowless::default()
+    };
+    for one in running
+        .iter()
+        .filter(|one| !shown(one) && !untold.contains(one.address()))
+    {
+        let Some(id) = id_of(*one) else {
+            continue;
+        };
+        if terminal(one).is_some_and(|its| lit.contains(its)) {
+            seen.closed.insert(id);
+        } else {
+            seen.unsure.insert(id);
+        }
+    }
+    seen
 }
 
 /// Every tiled window but kitty's, whose windows are sessions or a
@@ -241,8 +391,16 @@ impl Arrangement {
             .find(|kept| *kept != boot)
     }
 
-    /// The places kept once `now` and `others` are, this boot's added to
-    /// what it kept already, so one that's ended keeps its place.
+    /// The places kept once `now` and `others` are at `at` (ms since the
+    /// epoch), this boot's added to what it kept already, so one that's
+    /// ended keeps its place, and one now [`unplaced`] keeps the place it
+    /// had. One `unwindowed` closed, running on with its window closed by
+    /// hand, is marked `closed` when first seen so, and let go once it has
+    /// been for [`CLOSED_FOR`]; one unsure keeps its place, a mark set
+    /// before running its course, since its window went as its whole
+    /// terminal did, and one with none is marked [`ORPHANED`], never then
+    /// taken as closed until it shows again. A marker for a window with no
+    /// place never stands over a place this boot or the one restored has.
     #[must_use]
     pub fn kept(
         &self,
@@ -250,6 +408,8 @@ impl Arrangement {
         restoring: &str,
         now: Map<String, Value>,
         others: Vec<Value>,
+        unwindowed: &Windowless,
+        at: u64,
     ) -> Self {
         let mut this = self
             .boots
@@ -257,7 +417,67 @@ impl Arrangement {
             .and_then(Value::as_object)
             .cloned()
             .unwrap_or_default();
-        this.extend(now);
+        this.retain(|id, place| {
+            let Some(place) = place.as_object_mut() else {
+                return !unwindowed.closed.contains(id);
+            };
+            closed_from(place, at);
+            // One in a window again keeps its place as it was kept, unmarked.
+            // One heard parked, ended or elsewhere keeps a closed mark and
+            // lets its place go once that's due, since the host parks an
+            // idle one minutes after Joel closes its window, or sooner while
+            // short of memory. Its orphaned mark stays as well, since the
+            // host parks idle ones soonest while short of memory, as a crash
+            // taking every viewer most often is, and one woken windowless
+            // later would read as closed by hand. One not heard, as before
+            // the node's sessions are, keeps its marks.
+            let windowless = unwindowed.closed.contains(id) || unwindowed.unsure.contains(id);
+            if now.contains_key(id) {
+                place.remove("closed");
+                place.remove(ORPHANED);
+                return true;
+            }
+            if !windowless && unwindowed.heard.contains(id) {
+                return place
+                    .get("closed")
+                    .and_then(Value::as_u64)
+                    .is_none_or(|closed| held(closed, at));
+            }
+            if unwindowed.unsure.contains(id) && !place.contains_key("closed") {
+                place.insert(ORPHANED.to_owned(), json!(true));
+            }
+            let closed = if unwindowed.closed.contains(id) && !place.contains_key(ORPHANED) {
+                place.entry("closed").or_insert_with(|| json!(at)).as_u64()
+            } else {
+                place.get("closed").and_then(Value::as_u64)
+            };
+            closed.is_none_or(|closed| held(closed, at))
+        });
+        let restored = self
+            .before(boot, restoring)
+            .and_then(|before| self.boots.get(before))
+            .and_then(Value::as_object);
+        for (id, place) in now {
+            let placed_before = restored
+                .and_then(|those| those.get(&id))
+                .filter(|there| there.get("unplaced").is_none());
+            if place["unplaced"] == true && this.contains_key(&id) {
+                continue;
+            }
+            // One with no place now that the boot being restored placed
+            // keeps that place here too, unmarked, so it goes back there all
+            // this boot and the boot after this one still has a place for it.
+            if let (true, Some(there)) = (place["unplaced"] == true, placed_before) {
+                let mut there = there.clone();
+                if let Some(marks) = there.as_object_mut() {
+                    marks.remove("closed");
+                    marks.remove(ORPHANED);
+                }
+                this.insert(id, there);
+                continue;
+            }
+            this.insert(id, place);
+        }
         let mut kept = Self::default();
         kept.boots.insert(boot.to_owned(), Value::Object(this));
         kept.others.insert(boot.to_owned(), Value::Array(others));
@@ -270,6 +490,40 @@ impl Arrangement {
             }
         }
         kept
+    }
+
+    /// It with `boot`'s places closed by hand for [`CLOSED_FOR`] by `at`
+    /// let go, and nothing else changed, for while no window is listed to
+    /// work the rest out from: a place closed before the last window went
+    /// still goes when due, never reopened at the next boot. A mark
+    /// stamped ahead of `at` counts from `at`, as [`Self::kept`] has it.
+    #[must_use]
+    pub fn let_go(&self, boot: &str, at: u64) -> Self {
+        let mut kept = self.clone();
+        if let Some(Value::Object(places)) = kept.boots.get_mut(boot) {
+            // The same rules as kept()'s, so a place goes on one schedule
+            // whether or not a window is listed.
+            places.retain(|_, place| {
+                place
+                    .as_object_mut()
+                    .and_then(|place| closed_from(place, at))
+                    .is_none_or(|closed| held(closed, at))
+            });
+        }
+        kept
+    }
+
+    /// When, in ms since the epoch, the first of `boot`'s places marked
+    /// closed is to be let go, or none while none is.
+    #[must_use]
+    pub fn let_go_at(&self, boot: &str) -> Option<u64> {
+        self.boots
+            .get(boot)?
+            .as_object()?
+            .values()
+            .filter_map(|place| place["closed"].as_u64())
+            .min()
+            .map(|closed| closed.saturating_add(closed_for()))
     }
 
     /// The sessions the boot being restored kept a place of, by pi's id.
@@ -298,11 +552,57 @@ impl Arrangement {
     }
 }
 
+/// [`CLOSED_FOR`] in ms, as places are stamped.
+fn closed_for() -> u64 {
+    u64::try_from(CLOSED_FOR.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// When `place`'s closed mark counts from at `at`, if it has one. A mark
+/// stamped ahead of `at`, as after the wall clock stepped back, is
+/// stamped `at`, so its place goes a boot's end from here, never held
+/// for as long as the clock stepped. So is one that isn't an integer of
+/// ms, as only a hand edit leaves (serde and the shell's JSON both write
+/// a whole time as one), which would otherwise hold it for good; but
+/// one set to null or false, as a hand edit clearing it leaves, is no
+/// mark, and is taken off.
+fn closed_from(place: &mut Map<String, Value>, at: u64) -> Option<u64> {
+    let closed = match place.get("closed")? {
+        Value::Null | Value::Bool(false) => {
+            place.remove("closed");
+            return None;
+        }
+        closed => closed.as_u64().unwrap_or(u64::MAX),
+    };
+    if closed > at {
+        place.insert("closed".to_owned(), json!(at));
+        return Some(at);
+    }
+    Some(closed)
+}
+
+/// Whether a place closed by hand at `closed` is still held at `at`.
+fn held(closed: u64, at: u64) -> bool {
+    at.saturating_sub(closed) < closed_for()
+}
+
+/// How long from `now` until the places are kept again for the first
+/// closed to be let go at `let_go`, both in ms since the epoch: never
+/// sooner than [`STILL`], so one already past can't wake the daemon at
+/// once over and over.
+#[must_use]
+pub fn again_in(let_go: u64, now: u64) -> Duration {
+    Duration::from_millis(let_go.saturating_sub(now)).max(STILL)
+}
+
 /// When the windows were last seen to move, so their places are kept only
-/// once they've been still [`STILL`].
+/// once they've been still [`STILL`], and when a place closed is to be let
+/// go, so it's kept again then though nothing moves; and when a write that
+/// doesn't hang on them is to be tried again, still or not.
 #[derive(Debug, Default)]
 pub struct Still {
     moved: Option<Instant>,
+    again: Option<Instant>,
+    retry: Option<Instant>,
 }
 
 impl Still {
@@ -311,252 +611,58 @@ impl Still {
         self.moved = Some(at);
     }
 
-    /// How long from `at` until they've been still long enough, or none
-    /// while nothing waits to be kept.
+    /// How long from `at` until they've been still long enough, or a
+    /// write is to be tried again (`retry`), whichever is sooner, or none
+    /// while nothing waits. A place to let go while they move waits until
+    /// they're still, when keeping them asks again.
     pub fn wait(&self, at: Instant) -> Option<Duration> {
-        self.moved
-            .map(|moved| (moved + STILL).saturating_duration_since(at))
+        let kept = self.moved.map(|moved| moved + STILL).or(self.again);
+        match (kept, self.retry) {
+            (Some(kept), Some(retry)) => Some(kept.min(retry)),
+            (kept, retry) => kept.or(retry),
+        }
+        .map(|due| due.saturating_duration_since(at))
+    }
+
+    /// A write that doesn't hang on where windows are, as of kept places,
+    /// is to be tried again at `at`, or sooner if that's asked already,
+    /// whether or not they're still then.
+    pub fn retry(&mut self, at: Instant) {
+        self.retry = Some(self.retry.map_or(at, |retry| retry.min(at)));
+    }
+
+    /// Whether the write asked by `retry` is due at `at`, after which
+    /// nothing is to be tried until it's asked again.
+    pub fn retried(&mut self, at: Instant) -> bool {
+        let due = self.retry.is_some_and(|retry| retry <= at);
+        if due {
+            self.retry = None;
+        }
+        due
+    }
+
+    /// Its places are to be kept again at `at`, as a place closed is let
+    /// go then, or sooner if that's asked already: a write tried again
+    /// soon never puts off a let-go due first, nor the other way round.
+    pub fn again(&mut self, at: Instant) {
+        self.again = Some(self.again.map_or(at, |again| again.min(at)));
     }
 
     /// Whether they've been still long enough at `at`, after which nothing
     /// waits until they move again.
     pub fn due(&mut self, at: Instant) -> bool {
-        let due = self.wait(at) == Some(Duration::ZERO);
+        let due = self
+            .moved
+            .map(|moved| moved + STILL)
+            .or(self.again)
+            .is_some_and(|kept| kept <= at);
         if due {
             self.moved = None;
+            self.again = None;
         }
         due
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn held(records: &Value) -> Held {
-        let mut held = Held::default();
-        held.took(&json!({ "records": records }));
-        held
-    }
-
-    fn desk_parts() -> (Held, Held, HashMap<String, String>) {
-        let windows = held(&json!([
-            {"key": "window:7", "id": 7, "app_id": "kitty", "opened": "pi-session.7",
-             "workspace": 1, "column": 2, "down": 1, "floating": false},
-            {"key": "window:3", "id": 3, "app_id": "google-chrome", "title": "Charts - Chrome",
-             "workspace": 2, "column": 1, "down": 1, "floating": false},
-            {"key": "window:5", "id": 5, "app_id": "slack", "title": "Slack",
-             "workspace": 2, "column": null, "down": null, "floating": true},
-            {"key": "window:9", "id": 9, "app_id": "kitty", "opened": "pi-session.9",
-             "workspace": 1, "column": 1, "down": 2, "floating": false}
-        ]));
-        let workspaces = held(&json!([
-            {"key": "workspace:1", "id": 1, "idx": 3, "output": "DP-4"},
-            {"key": "workspace:2", "id": 2, "idx": 1, "output": "eDP-1"}
-        ]));
-        // Each as the windows daemon sends it: the row whole, under `row`.
-        let screens = screens(&held(&json!([
-            {"key": "row:displays:display:DP-4", "kind": "row", "row": {"held": {
-             "output": "DP-4", "screen": "HP Inc. HP Z27k G3 CN41", "standing": "lit"}}},
-            {"key": "row:displays:display:eDP-1", "kind": "row", "row": {"held": {
-             "output": "eDP-1", "screen": "LG Display 0x07C6", "standing": "dark"}}},
-            {"key": "row:displays:display:HDMI-1", "kind": "row", "row": {"held": {
-             "output": "HDMI-1", "screen": "Dell U2720", "standing": "off"}}},
-            {"key": "row:displays:answer:scale:DP-4", "kind": "row", "row": {"held": {
-             "output": "DP-4", "part": "scale"}}},
-            {"key": "row:displays:display:DP-9", "kind": "row", "row": {"held": {
-             "output": "DP-9"}}},
-            {"key": "row:displays:off", "kind": "row", "row": {"held": {}}}
-        ])));
-        (windows, workspaces, screens)
-    }
-
-    fn session(address: &str, id: &str, standing: &str, under: &str) -> Value {
-        json!({"key": format!("session:{address}"), "standing": standing, "here": true,
-               "presence": {"addresses": [address], "session": id, "orchestratedBy": under}})
-    }
-
-    #[test]
-    fn only_screens_laid_out_are_named_by_what_they_are() {
-        let (_, _, screens) = desk_parts();
-        assert_eq!(
-            screens,
-            HashMap::from([
-                ("DP-4".into(), "HP Inc. HP Z27k G3 CN41".into()),
-                ("eDP-1".into(), "LG Display 0x07C6".into()),
-            ]),
-            "a screen that's off or says not what it is, and rows that aren't screens, are left out"
-        );
-    }
-
-    #[test]
-    fn each_running_session_here_is_kept_where_its_window_sits() {
-        let (windows, workspaces, screens) = desk_parts();
-        let desk = Desk {
-            windows: &windows,
-            workspaces: &workspaces,
-            screens: &screens,
-        };
-        let records = [
-            session("LEAD", "s-lead", "running", ""),
-            session("KELP", "s-kelp", "running", "lead"),
-            session("GONE", "s-gone", "closed", ""),
-            session("LOST", "s-lost", "running", ""),
-        ];
-        let paired = [
-            json!({"address": "LEAD", "window": "window:9"}),
-            json!({"address": "KELP", "window": "window:7"}),
-            json!({"address": "GONE", "window": "window:3"}),
-            json!({"address": "LOST", "window": null}),
-        ];
-        let kept = now(records.iter().map(Session), &paired, &desk);
-        assert_eq!(
-            Value::Object(kept),
-            json!({
-                "s-lead": {"screen": "HP Inc. HP Z27k G3 CN41", "output": "DP-4",
-                           "workspace": 3, "column": 1, "tile": 2, "leads": true},
-                "s-kelp": {"screen": "HP Inc. HP Z27k G3 CN41", "output": "DP-4",
-                           "workspace": 3, "column": 2, "tile": 1, "leads": false,
-                           "under": "LEAD"}
-            }),
-            "one leading another says so, and one under another names it; a closed one and \
-             one with no window aren't kept"
-        );
-    }
-
-    #[test]
-    fn other_tiled_windows_are_kept_by_program_and_title_oldest_first() {
-        let (windows, workspaces, screens) = desk_parts();
-        let desk = Desk {
-            windows: &windows,
-            workspaces: &workspaces,
-            screens: &screens,
-        };
-        assert_eq!(
-            others(&desk),
-            [json!({"app": "google-chrome", "title": "Charts - Chrome",
-                    "screen": "LG Display 0x07C6", "output": "eDP-1",
-                    "workspace": 1, "column": 1, "tile": 1})],
-            "kitty's windows and a floating one aren't kept"
-        );
-    }
-
-    #[test]
-    fn this_boots_places_join_those_kept_and_the_boot_before_stays() {
-        let kept = Arrangement::of(&json!({"v": 1,
-            "boots": {"this": {"s-ended": {"column": 4}}, "last": {"s-old": {"column": 1}},
-                      "older": {"s-older": {"column": 2}}},
-            "others": {"last": [{"app": "slack"}]}}));
-        let now = Map::from_iter([("s-new".to_owned(), json!({"column": 3}))]);
-        let after = kept.kept("this", "last", now, vec![json!({"app": "chrome"})]);
-        assert_eq!(
-            after.said(),
-            json!({"v": 1,
-                "boots": {"this": {"s-ended": {"column": 4}, "s-new": {"column": 3}},
-                          "last": {"s-old": {"column": 1}}},
-                "others": {"this": [{"app": "chrome"}], "last": [{"app": "slack"}]}}),
-            "one ended keeps its place, the boot being restored stays, an older one goes"
-        );
-        assert_eq!(
-            after.arranged("last"),
-            HashSet::from(["s-old".to_owned()]),
-            "the boot being restored kept a place of these"
-        );
-        assert_eq!(
-            Arrangement::of(&json!({"v": 2, "boots": {}})),
-            Arrangement::default(),
-            "another version is kept as none"
-        );
-    }
-
-    #[test]
-    fn the_boot_before_is_the_one_restored_else_the_other_kept() {
-        let kept = Arrangement::of(&json!({"v": 1, "boots": {"this": {}, "last": {}}}));
-        assert_eq!(
-            kept.before("this", ""),
-            Some("last"),
-            "none restoring: the other"
-        );
-        assert_eq!(
-            kept.before("this", "this"),
-            Some("last"),
-            "this boot is never before"
-        );
-        assert_eq!(
-            kept.before("this", "never"),
-            Some("last"),
-            "one not kept isn't it"
-        );
-        assert_eq!(
-            Arrangement::default().before("this", ""),
-            None,
-            "none kept, none"
-        );
-    }
-
-    #[test]
-    fn places_are_kept_once_the_windows_are_still() {
-        let start = Instant::now();
-        let mut still = Still::default();
-        assert_eq!(still.wait(start), None, "nothing moved, nothing waits");
-        still.moved(start);
-        let half = Duration::from_millis(500);
-        assert_eq!(
-            still.wait(start + half),
-            Some(Duration::from_millis(1500)),
-            "the rest of the wait"
-        );
-        assert!(
-            !still.due(start + Duration::from_secs(1)),
-            "not still long enough"
-        );
-        still.moved(start + Duration::from_secs(1));
-        assert!(!still.due(start + STILL), "a move starts the wait again");
-        assert!(
-            still.due(start + Duration::from_secs(3)),
-            "still long enough"
-        );
-        assert_eq!(
-            still.wait(start + Duration::from_secs(4)),
-            None,
-            "kept, nothing waits"
-        );
-    }
-
-    #[test]
-    fn what_the_shell_kept_is_read_from_its_newest_folder() {
-        let shells =
-            std::env::temp_dir().join(format!("agents-arrangement-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&shells);
-        let older = shells.join("older");
-        let newer = shells.join("newer");
-        fs::create_dir_all(&older).expect("a shell's folder");
-        fs::create_dir_all(&newer).expect("another's");
-        fs::write(
-            older.join("session-arrangement.json"),
-            json!({"v": 1, "boots": {"a": {}}}).to_string(),
-        )
-        .expect("the older is written");
-        std::thread::sleep(Duration::from_millis(20));
-        fs::write(
-            newer.join("session-arrangement.json"),
-            json!({"v": 1, "boots": {"b": {}}}).to_string(),
-        )
-        .expect("the newer is written");
-        let read = Arrangement::from_shell(&shells);
-        assert_eq!(
-            read.boots.keys().collect::<Vec<_>>(),
-            ["b"],
-            "the newest one's"
-        );
-        let kept = shells.join("agents").join("arrangement.json");
-        read.write(&kept).expect("it's kept");
-        assert_eq!(Arrangement::read(&kept), Some(read), "and read back whole");
-        assert_eq!(
-            Arrangement::from_shell(&shells.join("none")),
-            Arrangement::default(),
-            "no shell, nothing kept"
-        );
-        let _ = fs::remove_dir_all(&shells);
-    }
-}
+mod tests;

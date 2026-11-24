@@ -6,7 +6,7 @@
 # Joel answers back; the transcript must hold the three turns in order and
 # nothing of the other program's. The daemon runs as the service does,
 # with a stand-in for the summarizer's model, which a VM can't run
-# (stand-in-summarizer.py): it's started once the call is written, holds
+# (tests/vm/sound/stand-in-summarizer.py): it's started once the call is written, holds
 # a delay on sleep, is ended when another call starts, writing nothing,
 # and is started again once that call ends, and its summary holds the
 # call's own words; a notice says it's ready, which a stand-in for the

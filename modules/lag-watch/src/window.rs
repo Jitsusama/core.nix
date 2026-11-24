@@ -60,6 +60,11 @@ pub struct Snapshot {
     /// What each thread's schedstat gained, since the snapshot before, in
     /// reads that can't be waits (`book`), left out of its waits.
     pub booked: BTreeMap<Thread, Sched>,
+    /// How long each app thread had been blocked in the kernel, in
+    /// nanoseconds, hidden tabs' too (`kernel::blocked`): a count since it
+    /// began, so a window reads what it gained. Empty where the kernel
+    /// doesn't keep it.
+    pub blocked: BTreeMap<Thread, u64>,
 }
 
 /// How far past the time between two reads a thread's wait may run and
@@ -131,6 +136,11 @@ pub struct Wait {
     /// (`book`), so a gap in what's counted shows.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub doubted: u64,
+    /// The most any of its threads was blocked in the kernel in the window,
+    /// in milliseconds: on a lock, a page read back or reclaim, which no
+    /// wait for a CPU shows. None where it isn't kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blocked_ms: Option<f64>,
 }
 
 #[expect(
@@ -419,6 +429,7 @@ fn turns_waited(
     now: &Snapshot,
 ) -> (BTreeMap<String, Wait>, BTreeMap<String, Worst>) {
     let mut waits: BTreeMap<String, (u64, u64, f64, u64)> = BTreeMap::new();
+    let mut blocked: BTreeMap<&str, u64> = BTreeMap::new();
     let mut call: BTreeMap<String, Worst> = BTreeMap::new();
     let mut call_doubted: BTreeMap<&str, u64> = BTreeMap::new();
     for (key, s) in &now.threads {
@@ -459,6 +470,10 @@ fn turns_waited(
             entry.2 = entry.2.max(float(wait) / float(slices) / 1000.0);
         }
         entry.3 += doubted;
+        if let (Some(was), Some(is)) = (then.blocked.get(key), now.blocked.get(key)) {
+            let most = blocked.entry(key.label).or_default();
+            *most = (*most).max(is.saturating_sub(*was));
+        }
     }
     for (label, doubted) in call_doubted {
         if let Some(worst) = call.get_mut(label) {
@@ -473,12 +488,14 @@ fn turns_waited(
             } else {
                 0.0
             };
+            let blocked_ms = blocked.get(label.as_str()).map(|&ns| float(ns) / 1e6);
             (
                 label,
                 Wait {
                     mean_us,
                     worst_us: worst,
                     doubted,
+                    blocked_ms,
                 },
             )
         })

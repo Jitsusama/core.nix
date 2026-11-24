@@ -57,7 +57,12 @@ const CAPITAL = /([A-Z])/g;
 const STOP = /\.$/;
 
 // Devices are live states (Order.live), and each heard stands alike here,
-// one Joel might pair, so the strongest heard comes first.
+// one Joel might pair, so the strongest heard comes first. Unlike Wi-Fi's
+// networks, these are heard afresh each time Nearby opens, so no order
+// could be known before he looks. And Return on one trusts it, so it may
+// connect again unasked and, as a keyboard, type: by name, a stranger's
+// device called "!" would head the list from across the wall. By signal it
+// must at least be the loudest, which a device beside him most often is.
 const strongest = Order.live({
     stands: () => 0,
     // biome-ignore lint/suspicious/noThenProperty: Order.live's next measure, not a promise's.

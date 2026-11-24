@@ -7,7 +7,13 @@ that broke it before the rule came in. A list only shrinks: fixing a file takes
 it off, and nothing new goes on. `every-lock-agrees-with-its-manifests`,
 `every-ruff-exception-hides-a-finding` and
 `every-script-finds-what-it-imports` have no list, since nothing broke them
-when they came in. `checks.nix` runs all thirteen on core itself.
+when they came in. `comments-name-what-exists` has no `.py`: code-health's
+stale-paths measure says what breaks it, so the figure it counts each hour and
+the check held at each change are one rule, and its
+`comments-name-what-exists.sh` first sees that measure refuse a planted tree
+both ways, for a comment naming what isn't there and a waiting line nothing
+matches, each named.
+`checks.nix` runs all fourteen on core itself.
 Many entries because each rule keeps its three files side by side, where a
 reader opening one finds the others, rather than in a folder of its own.
 `every-script-finds-what-it-imports` first sees itself fail a planted tree
@@ -51,6 +57,7 @@ removal shows in their treefmt check once they take core.
 | `every-script-finds-what-it-imports`             | each folder's scripts pass mypy handed to it alone            |
 | `daemons-agree`                                  | every daemon keeps docs/daemons.md's convention               |
 | `commands-agree`                                 | every command keeps docs/commands.md's convention             |
+| `comments-name-what-exists`                      | a comment's path from a top folder names what's there         |
 
 merge-net knows a `<rule>-waiting.nix` here by its path: when main moves one
 under a change it's merging, it reruns only that rule's check rather than

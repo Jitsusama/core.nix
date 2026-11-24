@@ -18,8 +18,8 @@ let
   harness = fetchFromGitHub {
     owner = "Jitsusama";
     repo = "agentic-harness.pi";
-    rev = "53426e4b17edcd72ddf0edebca374ae4a7b06229";
-    hash = "sha256-NXaM4jqo+YEoTCgXGbyXEUilsmmXL5M5el/hE+ymUis=";
+    rev = "209da838798ad54e63ce67d9d5662ce94531b535";
+    hash = "sha256-cZ9Rc0MfhigrYEgW0PiqLFaYnW55a97Ru/VaH7lbh2Y=";
   };
   # The census (`pi-fence census`) loads yaml, the one package anything
   # pi-fence runs takes at run time; its other imports are only types. It

@@ -5,8 +5,8 @@ in Asks: Joel's own yes releases the value into the one command asked for, his r
 a yes walked through the launcher's IPC, which any process running as him reaches, releases
 nothing, as does one after an agent's run or walk onto Asks came between his Escape and his move.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. It proves the wiring alone, one path through each
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. It proves the wiring alone, one path through each
 connection. How long a line must be shown, a digest that changed, a command that ends first and
 what the fence hides are the passwords daemon's own tests' (modules/passwords/tests/asks), which
 run a stand-in bubblewrap; this test sends one file it empties, Docker's settings, through the
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
 
     from desktop_session import Desktop
 
-# The one reference the machine lists (tests/desktop.nix's released), and the stand-in value op
-# gives for it (desktop/stand-ins/op-stand-in.sh).
+# The one reference the machine lists (tests/desktop/desktop.nix's released), and the stand-in value
+# op gives for it (tests/desktop/stand-ins/op-stand-in.sh).
 RELEASED = "op://Keeping/Lighthouse Console/password"
 STAND_IN = "stand-in-password"
 # Where agents put their asks up, and the daemon its answers.

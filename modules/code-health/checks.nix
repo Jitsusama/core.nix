@@ -19,8 +19,10 @@
   # its name and a repository keeping no quarantine has no figure for it,
   # each point a daemon waits on is counted by its daemon and a repository
   # holding no daemons to docs/daemons.md has no figure for it, git's batch
-  # answer is split by its sizes, a repository's ref and folder go to it,
-  # the day's file is the form cadence reads, and the hour's holds each
+  # answer is split by its sizes, a repository's ref and folder go to it, a
+  # folder on the disk is read as git's tree would hold it and what the
+  # stale-paths measure finds there is held to a waiting list by file and
+  # path, the day's file is the form cadence reads, and the hour's holds each
   # measure against its target, the hour before and its owner. As the
   # quality standard has them, it names each lint rule a config turns off,
   # each file nothing reaches, each folder that says nothing of what it

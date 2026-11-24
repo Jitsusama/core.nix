@@ -78,6 +78,8 @@
         "says": "is short of processor, has a filling disk, 135 GB free, booted 3 hours ago after a firmware error, runs 4 busy and 5 idle sessions",
         "side": ["booted 3 hours ago after a firmware error"],
         "ties": {
+          "reached": true,
+          "heard_at": null,
           "cells": { "busy": 4, "idle": 5, "ended": 2 },
           "network": [
             { "device": "mac:0a", "by": "2.4 GHz", "point": "Hall", "bars": 4, "room_mbps": 180 }
@@ -112,6 +114,8 @@
         "says": "says its code wants a look, runs 2 busy and 4 idle sessions",
         "side": ["code wants a look"],
         "ties": {
+          "reached": true,
+          "heard_at": null,
           "cells": { "busy": 2, "idle": 4, "ended": 0 },
           "network": [{ "device": "mac:0b", "by": "wired", "point": "Den", "room_mbps": 900 }],
           "code": null,

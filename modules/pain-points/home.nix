@@ -13,9 +13,10 @@
 # finding to the cell that was working on it through the machine's
 # mycelium socket alone (src/hear.rs says how), though a send's words sit
 # in mycelium's command line while it runs. It reads the asks and
-# misses ledgers and never writes them, never sends to the void, and
-# sends nothing until routes.json, beside its state, names who it sends
-# as. It reads the mesh's messages for who took each pain up, and asks
+# misses ledgers, and writes into the misses ledger alone a line for each
+# pain it sent, with his words, kept until its fix runs; it never sends
+# to the void, and sends and writes nothing until routes.json, beside its
+# state, names who it sends as. It reads the mesh's messages for who took each pain up, and asks
 # git, of the core cadence keeps fetched, whether the landing that
 # answered one is in the core integration last switched to.
 {
@@ -79,7 +80,12 @@ in
       # What it keeps holds his own words, so only his account reads it.
       StateDirectoryMode = "0700";
       ProtectHome = "read-only";
-      ReadWritePaths = "%S/pain-points";
+      # The misses ledger's folder, where it writes each pain it sent; one
+      # not made yet leaves the unit starting, its write a trouble said.
+      ReadWritePaths = [
+        "%S/pain-points"
+        "-%S/mission"
+      ];
       # The mycelium's socket is a file under the runtime folder, which a
       # network namespace of its own leaves reachable while keeping it off
       # every network.

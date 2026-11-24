@@ -671,7 +671,9 @@ pub fn evaluated(
     fs::create_dir_all(scratch).map_err(|error| format!("{}: {error}", scratch.display()))?;
     let said = there::mine(scratch, "evaluator-ssh.log");
     let mut command = there::reaching(ssh, &said);
-    command.arg(host).arg(there::far(&sending.command));
+    command
+        .arg(host)
+        .arg(there::far_saying_where(&sending.command));
     command.stdout(Stdio::piped());
     // The far side ends once its ssh does, but an ssh whose caller was
     // ended went on alone: on 8 November two sat under the account's

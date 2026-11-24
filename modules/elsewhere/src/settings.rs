@@ -271,7 +271,7 @@ mod tests {
                 "the scratch {scratch:?} was refused as {problem}"
             );
         }
-        for scratch in [".elsewhere-runs", "..."] {
+        for scratch in [".elsewhere-runs", "...", "..x"] {
             let text = serde_json::json!({ "scratch": scratch }).to_string();
             assert_eq!(
                 read(&text).map(|settings| settings.scratch),

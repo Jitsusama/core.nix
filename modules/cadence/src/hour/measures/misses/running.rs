@@ -17,7 +17,11 @@ use conversations::conversations;
 use hosts::hosts;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::{OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -145,10 +149,14 @@ pub fn unrun(
         };
         let path = path.to_string_lossy();
         let key = format!("{} #{}", change.repo, change.number);
+        let rev = revs.get(&change.repo).map(String::as_str);
+        let walked = merge_judged(&change.repo, rev, &path, change.number);
+        let left = walked.is_err();
+        let merge = walked.ok().flatten();
         let why = judge(
             &change.repo,
-            revs.get(&change.repo).map(String::as_str),
-            merge_of(&path, change.number).as_deref(),
+            rev,
+            merge.as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
             |sha| {
@@ -190,6 +198,9 @@ pub fn unrun(
                 })
             },
         );
+        // A walk left at its time says so, since its owner can't find a
+        // merge that is there, only wait for a quieter hour.
+        let why = said_of_walk(why, left);
         keep_unseen(&firsts, &mut now_firsts, &key, why);
         if let Some(why) = why {
             unrun.insert(change.clone(), why);
@@ -201,27 +212,40 @@ pub fn unrun(
         .chain(&ran)
         .cloned()
         .collect();
-    if now_ran != ran
-        && let Err(error) = serde_json::to_string(&now_ran)
-            .map_err(std::io::Error::from)
-            .and_then(|kept| write_whole(&ran_at, &kept))
-    {
-        eprintln!(
-            "cadence: keeping what runs in {}: {error}",
-            ran_at.display()
-        );
-    }
-    if now_firsts != firsts
-        && let Err(error) = serde_json::to_string(&now_firsts)
-            .map_err(std::io::Error::from)
-            .and_then(|kept| write_whole(&firsts_at, &kept))
-    {
-        eprintln!(
-            "cadence: keeping when changes were installed in {}: {error}",
-            firsts_at.display()
-        );
-    }
+    keep_changed(&ran_at, &ran, &now_ran, "what runs");
+    keep_changed(
+        &firsts_at,
+        &firsts,
+        &now_firsts,
+        "when changes were installed",
+    );
     unrun
+}
+
+/// Writes `now` whole to `at` where it differs from `was`, what an hour
+/// read there, saying `what` it couldn't keep.
+fn keep_changed<T: serde::Serialize + PartialEq>(at: &Path, was: &T, now: &T, what: &str) {
+    if now != was
+        && let Err(error) = serde_json::to_string(now)
+            .map_err(std::io::Error::from)
+            .and_then(|kept| write_whole(at, &kept))
+    {
+        eprintln!("cadence: keeping {what} in {}: {error}", at.display());
+    }
+}
+
+/// Why a change merged here is held open when no merge of it is on main.
+const UNFOUND: &str = "cadence can't find its merge";
+
+/// Why a change is held open when its walk for its merge was left at its
+/// time, as on a loaded machine: the hour's own blindness, as `UNSEEN`
+/// begins it, so the change's owner isn't asked about it.
+const LEFT: &str = "cadence can't walk main to its merge in the time it has";
+
+/// `why`, said as the walk running out of time where it was `left` and
+/// found no merge.
+fn said_of_walk(why: Option<&'static str>, left: bool) -> Option<&'static str> {
+    why.map(|why| if left && why == UNFOUND { LEFT } else { why })
 }
 
 /// Why the harness installed doesn't hold a change, which ends the time
@@ -332,7 +356,7 @@ fn judge(
         return Some("cadence can't see what runs here");
     };
     let Some(sha) = merge else {
-        return Some("cadence can't find its merge");
+        return Some(UNFOUND);
     };
     match carries(sha, rev) {
         None => return Some("cadence can't find the revision running here"),
@@ -464,7 +488,7 @@ fn is_rev(text: &str) -> bool {
 /// The revision running here of each repository cadence follows: the last
 /// switch's, while the system it built still runs, each that core pins, and
 /// the harness installed.
-fn running(switches: &str, repos: &Checkouts) -> BTreeMap<String, String> {
+pub(super) fn running(switches: &str, repos: &Checkouts) -> BTreeMap<String, String> {
     let last = switches
         .lines()
         .rev()
@@ -556,28 +580,120 @@ fn installed() -> Option<String> {
     is_rev(&name).then_some(name)
 }
 
+/// `merge_of`, only where `judge` reads it, since a merge that isn't found
+/// costs a walk to main's root.
+fn merge_judged(
+    repo: &str,
+    rev: Option<&str>,
+    path: &str,
+    number: u64,
+) -> Result<Option<String>, Duration> {
+    if rev.is_some() && RUN_HERE.contains(&repo) {
+        merge_of(path, number)
+    } else {
+        Ok(None)
+    }
+}
+
 /// The commit on `path`'s main that merged pull request `number`, by its
 /// subject as `merged_numbers` reads it, since git's grep matches a line of
-/// any commit's body too.
-fn merge_of(path: &str, number: u64) -> Option<String> {
-    let merged = format!("--grep=^Merge pull request #{number} from ");
-    let squashed = format!("--grep=\\(#{number}\\)\\s*$");
-    let found = command(
-        "git",
-        &[
-            "-C",
-            path,
-            "log",
-            "--first-parent",
-            "--format=%H %s",
-            "-E",
-            &merged,
-            &squashed,
-            main_of(path),
-        ],
-    )
-    .ok()?;
-    subject_merging(&found, number)
+/// any commit's body too. The log is read as it comes and left at the first
+/// merge found, since git would otherwise read every commit's message to
+/// main's root: at 05:10 on 23 November, World's #2511610 had an hour's
+/// run reading 920 MB/s at 3.7 GB for over ten minutes, every hour, on a
+/// machine already short of memory.
+fn merge_of(path: &str, number: u64) -> Result<Option<String>, Duration> {
+    let first = *WALKS_FROM.get_or_init(Instant::now);
+    let left = WALKS_FOR.saturating_sub(first.elapsed());
+    // Once the run's time is spent, no git is started only to be stopped.
+    if left.is_zero() {
+        eprintln!("cadence: no time left this run to walk {path} for #{number}'s merge");
+        return Err(left);
+    }
+    merge_within(path, number, WALK_FOR.min(left))
+}
+
+/// When this run's first walk for a merge began, so every walk after it
+/// shares `WALKS_FOR`.
+static WALKS_FROM: OnceLock<Instant> = OnceLock::new();
+
+/// How long all of a run's walks for merges may read together: one hour
+/// may hold several merges not yet on main, and walks run one after
+/// another under the hour's half-hour limit.
+const WALKS_FOR: Duration = Duration::from_secs(300);
+
+/// How long a walk for a merge reads before it's left: a merge not yet on
+/// main is walked for to its root, which took 41 s on an idle machine and
+/// many minutes on a loaded one, every hour. A merge not found in time
+/// reads as one cadence ran out of time for, which keeps its miss open,
+/// never closed.
+const WALK_FOR: Duration = Duration::from_secs(60);
+
+/// `merge_of`, left once `within` has passed, which it then answers as
+/// its error. The log is read on a thread of its own, so a walk with
+/// nothing to say for a while can still be left at its time.
+fn merge_within(path: &str, number: u64, within: Duration) -> Result<Option<String>, Duration> {
+    let mut log = match walk(path, number).spawn() {
+        Ok(log) => log,
+        Err(e) => {
+            eprintln!("cadence: can't walk {path} for #{number}'s merge: {e}");
+            return Ok(None);
+        }
+    };
+    let (sent, found) = mpsc::channel();
+    if let Some(out) = log.stdout.take() {
+        std::thread::spawn(move || {
+            // Read as bytes, since a subject that isn't UTF-8 above the
+            // merge would otherwise end the read before it.
+            let merge = BufReader::new(out)
+                .split(b'\n')
+                .map_while(Result::ok)
+                .find_map(|line| subject_merging(&String::from_utf8_lossy(&line), number));
+            sent.send(merge).ok();
+        });
+    }
+    // Said, since a merge read unfound keeps its miss open on the card. A
+    // reader that ended without a word read nothing, not out of time.
+    let merge = match found.recv_timeout(within) {
+        Ok(merge) => Ok(merge),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!("cadence: #{number}'s merge walk in {path} left at {within:?}");
+            Err(within)
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            eprintln!("cadence: #{number}'s merge walk in {path} ended unread");
+            Ok(None)
+        }
+    };
+    // A walk that already ended has nothing to stop, and one stopped here is
+    // only reaped, so neither result says anything the merge found doesn't;
+    // its end closes the pipe, which ends the reading thread too.
+    log.kill().ok();
+    log.wait().ok();
+    merge
+}
+
+/// The walk down `path`'s main for the merge of `number`. Each record is
+/// flushed as it's found, since an inherited `GIT_FLUSH=0` would hold the
+/// merge in git's buffer until the walk reached main's root.
+fn walk(path: &str, number: u64) -> Command {
+    let mut git = Command::new("git");
+    git.args([
+        "-C",
+        path,
+        "log",
+        "--first-parent",
+        "--format=%H %s",
+        "-E",
+        &format!("--grep=^Merge pull request #{number} from "),
+        &format!("--grep=\\(#{number}\\)\\s*$"),
+        main_of(path),
+    ])
+    .env("GIT_FLUSH", "1")
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null());
+    git
 }
 
 /// The newest of `found`, each `SHA SUBJECT`, whose subject says it merged

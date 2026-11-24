@@ -18,6 +18,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "ReadyRows.js" as Ready
+import "EmojiDrawer.js" as Drawer
 
 Provider {
     id: provider
@@ -40,12 +41,18 @@ Provider {
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
         place: "emoji"
         make: (row, key) => provider.made(row, key)
+        drawerMaker: row => Drawer.made(row, provider.drawerWords)
         maker: provider
         onSearched: words => provider.foundMore(
             Date.now() - Math.max(provider.askedAt, ready.typedAt) < provider.freshFor)
     }
     property real askedAt: 0
     readonly property int freshFor: 50
+    // What an emoji's drawer names its lines, made from its row as it's drawn (EmojiDrawer.js).
+    readonly property var drawerWords: ({
+        keywords: Words.name("emoji:keywords"),
+        code: Words.name("emoji:code")
+    })
 
     // What its row and its head say of the history that pastes emoji.
     readonly property string pressing: Pasting.pressing

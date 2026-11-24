@@ -16,7 +16,7 @@
 {
   # Spec reads what the cadence-spec daemon itself serves, run here over a
   # stand-in for cadence printing two axes, one out of spec with a reading
-  # inside it (../../cadence/tests/served-stand-in.sh): the head as the
+  # inside it (modules/cadence/tests/served-stand-in.sh): the head as the
   # daemon says it with the alert glyph, which Agents' Spec row shows, the
   # axes in the order served, each a step in, and the out axis's reading
   # inside it (modules/quickshell/tests/spec-served.qml).
@@ -34,6 +34,7 @@
       ${copied [
         "Daemon.qml"
         "Fuzzy.js"
+        "Options.qml"
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"

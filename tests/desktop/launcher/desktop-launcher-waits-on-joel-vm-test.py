@@ -3,8 +3,8 @@
 Here the launcher's Now and For You hold what waits on Joel, its agents list the sessions,
 and Super+Tab puts a pi window waiting on him next.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -466,7 +466,7 @@ def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(
 
     With no sign-in to read, a reader up would rightly tell For You it can't hear Slack, and
     Now would lead with that rather than what each test writes (servesTheSafeWord in
-    tests/desktop.nix). Said once here, so a reader back up names itself rather than showing
+    tests/desktop/desktop.nix). Said once here, so a reader back up names itself rather than showing
     as other tests timing out behind its row.
 
     The unit must be loaded, since systemd calls a unit it doesn't know inactive too. Its
@@ -480,7 +480,7 @@ def test_the_safe_words_slack_reader_stays_down_and_tells_for_you_nothing(
     )
     assert unit["ActiveState"] == "inactive", (
         f"the safe word's Slack reader is {unit['ActiveState']}, not down; servesTheSafeWord "
-        "in tests/desktop.nix is what holds it down here"
+        "in tests/desktop/desktop.nix is what holds it down here"
     )
     told = desktop.as_account(f"ls {MISSION}/waiting/pineapple.json 2>/dev/null || true")
     assert not told.strip(), (

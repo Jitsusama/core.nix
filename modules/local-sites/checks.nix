@@ -1,6 +1,6 @@
 # The checks of local-sites, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
-{
+args@{
   account,
   bareNixos,
   holds,
@@ -64,7 +64,10 @@ let
     };
   };
 in
-{
+# The ask row's checks change with the kit's ask.ts and the launcher's look
+# code alone, so they sit beside it.
+import ./ask-checks.nix args
+// {
   # The kit typechecks and its tests pass as it builds (kit/tests).
   local-sites-kit-holds = sites.kit;
 
@@ -104,6 +107,20 @@ in
         }
         touch $out
       '';
+
+  # Every live page off the waiting list opens with the kit's head as
+  # sites.md writes it: one header holding its first heading, its parts in
+  # their order and nothing else, an eyebrow of two phrases, only the
+  # standing line's status live, a key line in the quiet row, and the kit's
+  # head.css linked; a page still waiting passes until it keeps to the head,
+  # then fails until it's taken off, and no page joins the list; every page
+  # a machine in a realm mounts is judged; and the gate passes sites.md's own
+  # head and names each way a page strays from it (tests/heads.py,
+  # tests/heads-test.py). Its pages and waiting list are in heads.nix.
+  heads-are-the-kits = import ./heads.nix {
+    inherit lib pkgs;
+    inherit (inRealm.jitsusama.local-sites) mounts;
+  };
 
   # The forage page typechecks on the kit and builds, its tests passing
   # (modules/mycelium/forage/tests), on the same plain looks.
@@ -487,7 +504,7 @@ in
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
           WEB_KIT = "${webKit}";
-          HOME_SOURCES = "${./home}";
+          HOME_SOURCES = "${import ./home-source.nix}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";
@@ -550,6 +567,7 @@ in
   # read in headless Chromium through the server beside a stand-in node
   # (modules/mycelium/murmurs/tests/murmurs-reads-live-test.py): live with
   # every murmur drawn newest first and counted, one said, settled or gone,
+  # a quiet node said in a line with no empty list or bare sky,
   # one it can't read said, broken while the node is away with the murmurs
   # kept and live once it's back, stale once the server goes with them kept,
   # words drawn as words and never as markup, its keys and a tap on those its
@@ -592,10 +610,14 @@ in
   # (modules/mycelium/forage/tests/forage-reads-live-test.py): live with
   # every cell drawn in order, a started or split cell under the one it grew
   # from, what waits on its person and the plan furthest to go in its lede,
-  # plans, quest, needs and splits in its panel, its keys, a purpose written
-  # followed and drawn as words, a wait answered, a cell going, broken while
-  # the node is away and live once it's back, stale once the server goes
-  # with its cells kept, within its budget, and the web-design skill's page
+  # plans, quest, needs and splits in its panel, its keys, on 60 cells the
+  # floor following the cursor past its first 48 and a find matching nothing
+  # keeping it, a cell opened by its link, a purpose written followed and
+  # drawn as words, a wait answered, a cell going and the crest drawn again
+  # once every cell has, broken while the node is away and live once it's
+  # back, stale once the server goes with its cells kept, a first visit
+  # holding still at a phone's width and a desk's and a long link never
+  # widening the page, within its budget, and the web-design skill's page
   # checks passing at two widths in both looks with nothing logged. The
   # node's feed is the one home.nix declares for a machine in a realm, so
   # dropping a field the page draws (cell, machine, quest, purpose, status,

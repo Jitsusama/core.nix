@@ -484,6 +484,28 @@ QtObject {
 
         afterLeaving(check);
         thrownAs(check);
+        answeredAs(check);
+    }
+
+    // What the launcher's showing call answers, each told to `check`: the
+    // state as it's read, or JSON naming what threw, as the desktop tests
+    // read it (tests/desktop/heard.py's shown), said for the journal too.
+    function answeredAs(check) {
+        const said = [];
+        const say = threw => said.push(threw);
+        check("a state read is answered as it came, nothing said",
+            JSON.stringify([Held.answered(() => '{"open":true}', say), said]),
+            JSON.stringify(['{"open":true}', []]));
+        const broke = Object.assign(Object.create(TypeError.prototype), {
+            message: "joel's secret", stack: "showing@file:///Launcher.qml:10021\nf@x:1"
+        });
+        const threw = "TypeError: thrown at showing@file:///Launcher.qml:10021";
+        check("a read that threw answers what threw as JSON, said once, never its message",
+            JSON.stringify([Held.answered(() => { throw broke; }, say), said]),
+            JSON.stringify([JSON.stringify({ threw }), [threw]]));
+        check("as does a thrown string",
+            Held.answered(() => { throw "joel's secret"; }, () => {}),
+            JSON.stringify({ threw: "Error: string thrown" }));
     }
 
     // A throw caught as a source refreshes, as the journal says it, each

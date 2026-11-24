@@ -1,3 +1,6 @@
+// The order Joel's own visits give the rows, apart.
+mod visits;
+
 use super::*;
 use repos::model::{
     Change, Checks, ChecksState, Count, Head, Remote, Review, SCHEMA, Tree, TreeKind, Upstream,
@@ -26,9 +29,9 @@ fn words() -> Words {
 }
 
 /// The rows as they're made where no checkout's uncommitted files were
-/// counted.
+/// counted and zoxide saw no folder.
 fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
-    super::rows(record, home, words, &BTreeMap::new())
+    super::rows(record, home, words, &BTreeMap::new(), &BTreeMap::new())
 }
 
 fn tree(path: &str, present: bool) -> Tree {
@@ -220,7 +223,13 @@ fn a_checkout_with_files_not_committed_says_how_many_after_how_far_apart() {
         ahead: 1,
     }));
     let uncommitted = BTreeMap::from([("/home/j/src/core.nix".to_owned(), 2)]);
-    let rows = super::rows(&record(vec![repository]), None, &words(), &uncommitted);
+    let rows = super::rows(
+        &record(vec![repository]),
+        None,
+        &words(),
+        &uncommitted,
+        &BTreeMap::new(),
+    );
     assert_eq!(
         rows[0]["side"],
         json!([
@@ -238,7 +247,14 @@ fn a_checkout_with_files_not_committed_says_how_many_after_how_far_apart() {
 fn none_uncommitted_uncounted_bare_or_another_checkouts_says_nothing_and_many_say_100_plus() {
     let said_of = |repository: Repository, path: &str, count: u32| {
         let uncommitted = BTreeMap::from([(path.to_owned(), count)]);
-        super::rows(&record(vec![repository]), None, &words(), &uncommitted)[0]["side"][0].clone()
+        super::rows(
+            &record(vec![repository]),
+            None,
+            &words(),
+            &uncommitted,
+            &BTreeMap::new(),
+        )[0]["side"][0]
+            .clone()
     };
     let said = |path: &str, count: u32| said_of(core(), path, count);
     let trees = json!({"said": "3 trees"});

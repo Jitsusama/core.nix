@@ -17,6 +17,7 @@ use serde::Deserialize;
 
 use crate::mesh::{Mesh, Presence};
 use crate::revive::{self, Gate, Held, Holder, Hosting, Memory, Seen, Verdict};
+use crate::watch::down;
 
 /// What reviving is told: whom to watch and tell, and how a session is
 /// started, as the words a login shell runs, before `--session <id>`.
@@ -385,18 +386,27 @@ pub fn is_host(pid: u32) -> bool {
 }
 
 /// What the machine's node holds, by `mycelium holds`, or none when it
-/// doesn't answer.
+/// doesn't answer within the deadline every ask of a node keeps, so a
+/// node stalled on a peer can't hold the tick before its watches run.
+/// Why it didn't answer is said, since a session is then judged held by
+/// the processes here alone.
 fn node_holders(realm: Option<&str>) -> Option<Vec<Holder>> {
-    let mut ask = Command::new("mycelium");
-    if let Some(realm) = realm {
-        ask.args(["--realm", realm]);
-    }
-    let out = ask
-        .arg("holds")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
-    Some(revive::holders(&String::from_utf8_lossy(&out.stdout)))
+    let args = match realm {
+        Some(realm) => vec!["--realm", realm, "holds"],
+        None => vec!["holds"],
+    };
+    let said = down::answer("mycelium", &args, down::ASK_WITHIN)
+        .map_err(|error| {
+            let whose = match realm {
+                Some(realm) => format!("the {realm} realm's"),
+                None => "the node's".to_owned(),
+            };
+            println!(
+                "{whose} holds unread, so a session's holders are read from processes: {error}"
+            );
+        })
+        .ok()?;
+    Some(revive::holders(&said))
 }
 
 /// Closes every kitty window left showing `session` dead before it is

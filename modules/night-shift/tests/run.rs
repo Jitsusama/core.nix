@@ -364,9 +364,13 @@ fn a_night_job_told_to_wait_takes_the_turn_once_it_is_free() {
     let output = waiting.wait_with_output().unwrap();
     assert!(output.status.success(), "{}", said(&output));
     assert!(machine.path("ran").exists(), "{}", said(&output));
+    // The holder left no note, so the kernel's holder, this test, is named.
+    let holder = format!(
+        "waiting for the turn, which process {} has",
+        std::process::id()
+    );
     assert!(
-        said(&output).contains("waiting for the turn, which a job that doesn't say has")
-            && said(&output).contains("has the turn after"),
+        said(&output).contains(&holder) && said(&output).contains("has the turn after"),
         "{}",
         said(&output)
     );

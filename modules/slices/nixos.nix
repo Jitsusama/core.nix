@@ -147,15 +147,13 @@ let
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
   efficientCores = pkgs.callPackage ./efficient-cores.nix { };
-  diskOrder = pkgs.writeShellApplication {
-    name = "disk-order";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.findutils
-      pkgs.gnugrep
-    ];
-    text = builtins.readFile ./disk-order.sh;
-  };
+  diskOrder = pkgs.callPackage ./disk-order.nix { };
+  writebackThrottle = config.jitsusama.slices.writebackThrottle;
+  # A name that isn't a disk's plain one makes no unit, so the assertion
+  # below refuses it in its own words rather than a unit's type failing.
+  plainDisk = disk: builtins.match "[a-z0-9]+" disk != null;
+  throttled = lib.filterAttrs (disk: _: plainDisk disk) writebackThrottle;
+  writebackGoal = pkgs.callPackage ./writeback-goal.nix { };
 
   # The programs Joel works in, and agents' sessions beside them, keep their
   # memory while a build fills the rest. With a build taking all but 2 GiB
@@ -188,12 +186,21 @@ let
   # 5.9 GiB with 1.1 more in swap and had reached 13.8, most of it Chrome's
   # and the editor's files read in, and the shell held 2.5 GiB with 1.7 in
   # swap and had reached 5.3. The floors held less than either used, so what
-  # Joel reached for next came back from swap. app.slice's floor is 13%,
-  # 8.1 GiB, and soft as well as hard, so the kernel keeps what it holds
-  # past the floor while it finds anything else. The sessions held 19.9 GiB
+  # Joel reached for next came back from swap. app.slice's floor was 13%,
+  # 8.1 GiB, soft as well as hard, so the kernel kept what it held past
+  # the floor while it found anything else. The sessions held 19.9 GiB
   # with 16.5 in swap, and their floor is 10%, 6.2 GiB, enough to back the
   # floors of the windows Joel is at (jobs-sorter's focus.rs), which a
   # child keeps only as far as its slice has one.
+  # On 23 November at 22:35 a call froze 13 times in ten minutes while
+  # app.slice read back up to 32,246 pages a ten seconds that reclaim had
+  # just taken, its refaults, against under 20 before it. At 23:05 the
+  # slice held 7.9 GiB, its floor's worth, with 4.7 GiB more in swap,
+  # Slack three quarters of its own there. So
+  # app.slice's soft floor is 20%, 12.4 GiB, what it held in all, and its
+  # hard floor stays 13%: the kernel keeps the rest while it finds anything
+  # outside to take, and gives it back before it ends anything, where a
+  # hard one would end work as from 4 to 6 November.
   # Every slice above claims both kinds of floor, since the kernel protects a
   # slice only as far as each slice above it is protected. Hard, 24% covers
   # app.slice's 8.1 GiB, session.slice's 4.5 and agents.slice's 2 on a
@@ -201,11 +208,12 @@ let
   # children don't claim is
   # shared among them by use, which would hand it to agents' sessions, and
   # hard floors kept for idle sessions are what ended work from 4 to 6
-  # November. Soft, 31% covers those and agents.slice's 10%. What the floors
-  # below leave unused the kernel shares among the account's other slices.
+  # November. Soft, 38% covers app.slice's 20%, session.slice's 4.5 GiB
+  # and agents.slice's 10%. What the floors below leave unused the kernel shares among the account's other slices.
   # Work in jobs, background and containers has the rest of memory, and when
   # that runs out, it's what swaps.
   apps = "13%";
+  appsSoft = "20%";
   agents = "10%";
   # agents.slice's hard floor backs the kitty drawing every session's window
   # (512M, below) and the 512M hard floor jobs-sorter gives the pi or the
@@ -242,13 +250,13 @@ let
   # 7.1, each slice under its own ceiling, while 2 GiB was free and 26 in
   # swap. kswapd gave up, and every program that needed a page reclaimed
   # one itself, the shell among them, which froze. The sessions' 42%, 26
-  # GiB, jobs' 26% and shared's 10% sum with Joel's floors, app.slice's 13%
-  # and session.slice's 7%, to 98% of memory, agents.slice's own 2 GiB hard
+  # GiB, jobs' 26% and shared's 10% sum with Joel's hard floors, app.slice's
+  # 13% and session.slice's 7%, to 98% of memory, agents.slice's own 2 GiB hard
   # floor inside its 42%, so a burst in any of them reclaims its own pages
   # first.
   agentsHigh = "42%";
   account = "24%";
-  above = "31%";
+  above = "38%";
 
   # The system's own services a call or the desktop waits on keep a soft
   # floor each, about twice what each held: the journal every program
@@ -335,7 +343,9 @@ let
     "user@"
   ]
   ++ lib.attrNames systemFloors
-  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks);
+  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks)
+  ++ map (disk: "disk-writeback-${disk}") (lib.attrNames throttled);
+  systemdRun = pkgs.callPackage ./systemd-run.nix { systemd = config.systemd.package; };
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -435,7 +445,34 @@ in
     );
   };
 
+  options.jitsusama.slices.writebackThrottle = lib.mkOption {
+    description = ''
+      The kernel's writeback throttle's latency goal on each disk named, by
+      its name under /sys/block, in microseconds; 0 turns the throttle off.
+      It's set as a switch brings it in and as the disk appears, and a
+      switch without it gives back the goal the disk had before its first
+      goal, so one stood down before, by BFQ or by io.cost, stays down.
+      Where nothing whole was recorded, as after a boot, it's the kernel's
+      default, 2 ms on a solid disk, set by hand; io.cost added to that disk
+      later still stands it down, since disk-order turns it off as it
+      starts. A name that reaches no throttle, such as a partition's, fails
+      its unit. The name is the kernel's, which follows the order disks are found in: on a machine
+      with two of a kind, the goal can land on the other one. A disk
+      io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
+      already turns its throttle off and giving it back would turn it on.
+    '';
+    default = { };
+    example = {
+      nvme0n1 = 0;
+    };
+    type = lib.types.attrsOf lib.types.ints.unsigned;
+  };
+
   config = {
+    # A wrapper whose table nothing could hold is said where evaluation
+    # reports, not only traced, so core.lib.evaluates refuses such a machine.
+    warnings = lib.optional (!systemdRun.held) systemdRun.unheld;
+
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.
@@ -448,6 +485,15 @@ in
           "jitsusama.slices.agentsMayRepeat names ${unit}, "
           + "which isn't one system unit's whole name, or is one run0 makes.";
       }) config.jitsusama.slices.agentsMayRepeat
+      # The name goes into units' names and a path under /sys/block, so it's
+      # a plain name, never a pattern or a path; and it's never a disk
+      # io.cost shares, whose throttle the unit's stop would turn back on.
+      ++ lib.mapAttrsToList (disk: _: {
+        assertion = plainDisk disk && !(disks ? ${disk});
+        message =
+          "jitsusama.slices.writebackThrottle names ${disk}, which isn't a disk's plain "
+          + "name, or is a disk io.cost shares, which turns its throttle off already.";
+      }) writebackThrottle
       # The floor below makes the service whatever it's named, so a name no
       # service runs would make an empty unit and protect nothing.
       ++ map (name: {
@@ -477,10 +523,11 @@ in
       }) vpnServices;
 
     # A unit an agent starts with systemd-run stays in the agent's slice,
-    # rather than landing among Joel's apps, as systemd-run.sh says.
-    environment.systemPackages = [
-      (pkgs.callPackage ./systemd-run.nix { real = "${config.systemd.package}/bin/systemd-run"; })
-    ];
+    # rather than landing among Joel's apps, as systemd-run.sh says. It reads
+    # calls by the options of the systemd the machine runs, held to them as
+    # it's built where the builder can run that systemd or has one built as
+    # it is, and warned of where it can't.
+    environment.systemPackages = [ systemdRun ];
 
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
@@ -499,7 +546,7 @@ in
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       MemoryMin = apps;
-      MemoryLow = apps;
+      MemoryLow = appsSoft;
     };
 
     # Agents' sessions, pi in a window of kitty's each, beside the apps
@@ -766,6 +813,45 @@ in
         };
       }
     ) disks
+    # The throttle holds writeback back once a disk's reads take longer than
+    # its goal, whoever writes. Under the 08:35 test call on 23 November the
+    # call's threads were most often found asleep unwakeable in rq_qos_wait,
+    # which the throttle and io.latency's targets both sleep in, and
+    # blk-wbt's frames were among the samples; turning the throttle off on
+    # one machine tells the two apart, so a machine sets it rather than core.
+    # A unit, rather than a udev rule, since a switch replays no disk's
+    # event: starting it sets the goal, and stopping it, as a switch without
+    # it does, gives back what the disk had before its first goal this boot,
+    # or the kernel's default goal where nothing was recorded.
+    // lib.mapAttrs' (
+      disk: goal:
+      lib.nameValuePair "disk-writeback-${disk}" {
+        description = "Holds ${disk}'s writeback to the machine's goal";
+        wantedBy = [
+          "multi-user.target"
+          "dev-${disk}.device"
+        ];
+        after = [ "dev-${disk}.device" ];
+        # No condition on the disk being there: a name that reaches no
+        # throttle fails the unit, which a switch reports, rather than
+        # skipping it unseen while an A/B measures nothing.
+        unitConfig.StopPropagatedFrom = "dev-${disk}.device";
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = lib.escapeShellArgs [
+            (lib.getExe writebackGoal)
+            disk
+            (toString goal)
+          ];
+          ExecStop = lib.escapeShellArgs [
+            (lib.getExe writebackGoal)
+            disk
+            "kernel"
+          ];
+        };
+      }
+    ) throttled
     # A VPN is never one of the services above, which the assertions refuse,
     # since its settings would replace theirs here rather than join them.
     // lib.genAttrs vpnServices (_: {

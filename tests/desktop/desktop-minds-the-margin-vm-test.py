@@ -3,8 +3,8 @@
 Here the margin shows what stands: keeping awake, cameras, tokens running out, do not
 disturb, waiting, the microphone, dictation, what's playing and caps lock.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone. Long
 because the lid's sleep needs its letting go said step by step, and splitting the margin's
 things into another area would boot another machine to prove a few lines of wiring each.
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 BESIDE_THE_MIDDLE = 2
 
 # How long the same wait lasts before the VM's margin marks it, in seconds,
-# as tests/desktop.nix sets the Lag piece's `lasts`.
+# as tests/desktop/desktop.nix sets the Lag piece's `lasts`.
 LAG_LASTS = 3600
 
 # The scales Joel's screens are seen at, which a design's shots are judged at.
@@ -52,7 +52,7 @@ JOELS_SCALES = ("1.5", "2")
 # Whether Keep Awake holds something, and whether it holds the lid.
 HELD = "systemd-inhibit --list --no-pager | grep -F 'Keep Awake'"
 LID_HELD = f"{HELD} | grep -q handle-lid-switch"
-# The stand-in sleep adds a line to this file each time (tests/desktop.nix).
+# The stand-in sleep adds a line to this file each time (tests/desktop/desktop.nix).
 ASLEEP = "test -e /run/suspended"
 # logind sees the lid open and no sleep is coming, queued or running. The sleep unit's state
 # is read, since is-active calls a oneshot still running "activating".
@@ -608,7 +608,7 @@ def test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly(desktop: Deskto
         f" --after-cursor={shlex.quote(since)}"
     )
     assert not re.search(r"holds margin [^\n]*\blag\b", said), "a moment's wait showed"
-    # As long as the VM's Lag waits for (tests/desktop.nix's hour) it
+    # As long as the VM's Lag waits for (tests/desktop/desktop.nix's hour) it
     # does, left on, so muted. A run that began that long ago is another
     # run, so the last one ends first.
     with desktop.told("heard lag nothing"):

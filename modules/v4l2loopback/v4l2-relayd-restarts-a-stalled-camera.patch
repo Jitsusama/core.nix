@@ -8,22 +8,29 @@ late. The camera was left running with nothing asking it for frames,
 and nothing noticed until the service was restarted by hand. An error
 on the camera's pipeline leaves a waiting client the same way.
 
-A client that has waited 10 s with no frame now gets the camera's
-pipeline made again, and if that gives none either, the relay ends for
-its service to start it afresh. A main loop blocked for 90 s ends it
-too. Each says so on standard error.
+A client that has waited 90 s for a first frame now gets the camera's
+pipeline made again, and one whose frames stopped gets it after 10 s.
+Not sooner before the first: the camera's first frame can follow its
+start by 40 s under load, its capture buffers given out only as the
+kernel compacts memory for them, and a pipeline made again starts that
+wait over, so a shorter wait never gives a frame. A setup longer than
+90 s still never would. If the pipeline made again gives none either,
+the relay ends for its service to start it afresh. A main loop blocked
+for 90 s ends it too. Each says so on standard error.
 
 --- a/src/v4l2-relayd.c
 +++ b/src/v4l2-relayd.c
-@@ -59,6 +59,24 @@
+@@ -59,6 +59,26 @@
  static GstElement *output_pipeline = NULL;
  static GstElement *splash_pipeline = NULL;
  
 +/* How long a client may wait with no frame before the input pipeline is
-+ * made again, how often that's looked at, and how long the main loop may
-+ * stay blocked, as in a camera that won't stop, before the relay ends so
-+ * its service starts it afresh. */
-+#define STALL_SECONDS 10
++ * made again: long for a camera still setting up, short once frames have
++ * come. How often that's looked at, and how long the main loop may stay
++ * blocked, as in a camera that won't stop, before the relay ends so its
++ * service starts it afresh. */
++#define STALL_SECONDS 90
++#define FLOWING_SECONDS 10
 +#define STALL_CHECK_SECONDS 2
 +#define HUNG_SECONDS 90
 +
@@ -40,7 +47,7 @@ too. Each says so on standard error.
  static gboolean    backend_pipeline_bus_call (GstBus      *bus,
                                                GstMessage  *msg,
                                                gpointer     data);
-@@ -172,6 +190,12 @@
+@@ -172,6 +192,12 @@
  
    sample = gst_app_sink_pull_sample (appsink);
    buffer = gst_sample_get_buffer (sample);
@@ -53,7 +60,7 @@ too. Each says so on standard error.
    /* gst_app_src_push_buffer wants to take the ownership of the buffer,
     * so it must hold an additional reference first. */
    gst_buffer_ref (buffer);
-@@ -273,16 +297,82 @@
+@@ -273,16 +299,84 @@
    return splash_pipeline;
  }
  
@@ -87,7 +94,8 @@ too. Each says so on standard error.
 +  if (g_atomic_int_get (&input_framed))
 +    input_remade = 0;
 +  if (!input_wanted ||
-+      now_seconds () - g_atomic_int_get (&input_heard) < STALL_SECONDS)
++      now_seconds () - g_atomic_int_get (&input_heard) <
++      (g_atomic_int_get (&input_framed) ? FLOWING_SECONDS : STALL_SECONDS))
 +    return G_SOURCE_CONTINUE;
 +  if (input_remade > 0) {
 +    g_printerr ("v4l2-relayd: the camera still gives no frames; "
@@ -98,7 +106,8 @@ too. Each says so on standard error.
 +  }
 +  input_remade++;
 +  g_printerr ("v4l2-relayd: a client waited %d s with no frame from the "
-+              "camera; starting it again\n", STALL_SECONDS);
++              "camera; starting it again\n",
++              now_seconds () - g_atomic_int_get (&input_heard));
 +  if (input_pipeline != NULL) {
 +    gst_element_set_state (input_pipeline, GST_STATE_NULL);
 +    if (input_bus_watch_id > 0)
@@ -136,7 +145,7 @@ too. Each says so on standard error.
    if (input_pipeline != NULL)
      gst_element_set_state (input_pipeline, GST_STATE_NULL);
    if (input_pipeline != NULL)
-@@ -460,6 +550,10 @@
+@@ -460,6 +554,10 @@
    output_pipeline = output_pipeline_create ();
    gst_element_set_state (output_pipeline, GST_STATE_PLAYING);
  

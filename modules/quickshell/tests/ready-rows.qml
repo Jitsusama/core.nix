@@ -14,6 +14,7 @@ import "launcher/ReadyRows.js" as Ready
 import "launcher/ActForms.js" as Forms
 import "launcher/Moved.js" as Moved
 import "launcher/Beneath.js" as Beneath
+import "launcher/EmojiDrawer.js" as EmojiDrawer
 import "Expect.js" as Expect
 
 QtObject {
@@ -308,6 +309,35 @@ QtObject {
             Ready.drawerServed({ drawer: "drawer:wifi:gone" }, held), null);
         Expect.same("a drawer of the row's own is its own",
             Ready.drawerServed({ drawer: { title: "Own" } }, held), { title: "Own" });
+        Expect.same("a row saying only that it has a drawer has the one its place makes of it",
+            Ready.drawerServed({ drawer: true, name: "Grin" }, held, row => ({ title: row.name })),
+            { title: "Grin" });
+        Expect.same("one whose place makes none has none",
+            Ready.drawerServed({ drawer: true }, held), null);
+
+        // An emoji's drawer, made by the shell from the row the clipboard's history serves
+        // (launcher/EmojiDrawer.js), as it served each one beside its row until 2026-11-23.
+        const drawerWords = { keywords: "Keywords", code: "Code Points" };
+        const technologist = {
+            name: "Woman technologist",
+            keywords: ["coder", "software"],
+            drawer: true,
+            held: { emoji: "\u{1F469}\u200D\u{1F4BB}", group: "People & Body" }
+        };
+        Expect.same("an emoji's drawer says its group, its name, its keywords and its code points",
+            EmojiDrawer.made(technologist, drawerWords), {
+                eyebrow: "People & Body",
+                eyebrowNames: true,
+                title: "Woman technologist",
+                facts: [{ name: "Keywords", said: "coder, software", words: true }],
+                nerd: [{ label: "Code Points", value: "U+1F469 U+200D U+1F4BB" }]
+            });
+        Expect.same("one with no keywords says none",
+            EmojiDrawer.made({ name: "Melting face", keywords: [],
+                held: { emoji: "\u{1FAE0}", group: "Smileys & Emotion" } }, drawerWords).facts,
+            []);
+        Expect.same("a code point under four hex digits is padded to four, as a keycap's",
+            EmojiDrawer.points("#\uFE0F\u20E3"), "U+0023 U+FE0F U+20E3");
 
         // What a row's parts are made of, so a closing makes again only the
         // spots of a row whose stamp moved (launcher/Spots.js).

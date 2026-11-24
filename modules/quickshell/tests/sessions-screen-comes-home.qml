@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 // Unplugs the monitor and plugs it back in under Sessions
 // (modules/quickshell/Sessions.qml), with niri stood in
-// (stand-ins/hosted-reopen-niri.qml): the laptop's screen with Joel's
+// (modules/quickshell/tests/stand-ins/hosted-reopen-niri.qml): the laptop's screen with Joel's
 // window on its one workspace, and the monitor's two. niri sends the monitor's two workspaces to
 // the laptop's screen, and the shell hears the screens as niri said them
 // before, the monitor still among them, and sends nothing to it until

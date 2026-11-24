@@ -6,6 +6,7 @@ a site's compiled imports land.
 
 | File          | What it holds                                                 |
 | ------------- | ------------------------------------------------------------- |
+| `ask.ts`      | a look read for its ask row, and the answers it may send      |
 | `cell.ts`     | a cell's link to the launcher, and the cell a link names      |
 | `document.ts` | a document's parts, its keys and its switch, wired on load    |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
@@ -20,6 +21,7 @@ a site's compiled imports land.
 | `theme.ts`    | the theme switch, on real radios, and the look it keeps       |
 | `switch.css`  | the switch's styles                                           |
 | `head.css`    | the head every page opens with, and an empty place's sentence |
+| `ask.css`     | the ask row's styles                                          |
 | `tests/`      | each of them tried against a stand-in socket and clock        |
 
 The `tests/` folder holds a test for each script but `theme.ts` and

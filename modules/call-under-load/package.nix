@@ -1,7 +1,8 @@
 # call-under-load, built from this directory, its tests run as it builds,
 # with the call's page in share/ and on its path what a run starts:
 # Weston for the near end's display, a-call-is-on for Joel's calls,
-# journalctl for the launcher's openings and Chromium for the call. Not
+# journalctl for the launcher's openings and Chromium for the call, and
+# for the camera's check before a meeting v4l2-ctl and notify-send. Not
 # Google Chrome: a managed machine's Chrome enrols every fresh profile
 # with its owner's management, and Chromium reads none of Chrome's
 # policies. It takes its shape from
@@ -11,9 +12,11 @@
   lib,
   callPackage,
   chromium,
+  libnotify,
   makeWrapper,
   rustPlatform,
   systemd,
+  v4l-utils,
   weston,
 }:
 let
@@ -42,7 +45,9 @@ rustPlatform.buildRustPackage rec {
       lib.makeBinPath [
         calls
         chromium
+        libnotify
         systemd
+        v4l-utils
         weston
       ]
     }

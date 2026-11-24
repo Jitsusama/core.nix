@@ -19,7 +19,8 @@ let
   inherit (pkgs) lib;
 
   # Starts only while the uplink reaches 10.0.0.53, then runs until
-  # stopped, or checks whether it could (network-revive-stand-in.sh).
+  # stopped, or checks whether it could
+  # (tests/vm/network/network-revive-stand-in.sh).
   standIn = pkgs.writeShellScript "stand-in" ''
     export PATH=${
       lib.makeBinPath [

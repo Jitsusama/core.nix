@@ -19,6 +19,7 @@ import "Found.js" as Found
 import "ReadyRows.js" as Ready
 import "ActForms.js" as Forms
 import "Moved.js" as Moved
+import "Presented.js" as Presented
 import "Beneath.js" as Beneath
 import "../Confirm.js" as Confirm
 import "../Fuzzy.js" as Fuzzy
@@ -79,6 +80,10 @@ Scope {
     // A place's own make of an act, `(key, act, row)` to its row, else null: Agents' Talk
     // asks for words before its ask is sent, which no served act form says.
     property var actMade: null
+    // A place's own make of a row's drawer, `(row)` to its drawer, for a row saying only
+    // `drawer: true` as its row holds all its drawer says: Emoji's, so 1,914 drawers aren't
+    // held for the one shown (EmojiDrawer.js).
+    property var drawerMaker: null
     // Whether a row's acts come before the rows inside it among its verbs, the first of those
     // set apart, as a Wi-Fi network's Connect It and Forget It come before its Signal, so it
     // always holds its parts (2026-11-13); otherwise a row stepping into rows holds only those.
@@ -451,7 +456,7 @@ Scope {
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `
-                    + `minute on: ${JSON.stringify(answer.error)}`);
+                    + `minute on: ${Presented.errorShown(answer.error, Options.reports)}`);
             searchless = true;
             searchlessAt = Date.now();
             searched(words);
@@ -493,12 +498,13 @@ Scope {
         if (typedAsking !== `${within}\n${words}`)
             return;
         typedAsking = "";
-        console.info(`launcher: ${place} answered "${words}" typed in ${within} `
+        const typed = Presented.typedInSaid(words, within, Options.reports);
+        console.info(`launcher: ${place} answered ${typed} `
             + `${Date.now() - typedAt} ms after its key`);
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
-            console.warn(`launcher: ${place}'s daemon didn't answer "${words}" typed in `
-                + `${within}: ${JSON.stringify(answer?.error ?? null)}`);
+            console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `
+                + `${Presented.errorShown(answer?.error ?? null, Options.reports)}`);
         const records = refused ? {} : answer.rows ?? {};
         for (const key of Object.keys(typedHeld)) {
             if (!(key in records) && !(key in held))
@@ -535,7 +541,9 @@ Scope {
                 out.push(row);
             } else if (!(key in unserved)) {
                 unserved[key] = true;
-                console.warn(`launcher: ${place}'s search found ${key}, which isn't served yet`);
+                // Quoted, as a drawer's row is, since a search's key is a daemon's.
+                const found = Presented.quoted(Presented.rowShown({ key }, Options.reports));
+                console.warn(`launcher: ${place}'s search found ${found}, which isn't served yet`);
             }
         }
         return out;
@@ -587,7 +595,7 @@ Scope {
             Qt.callLater(() => {
                 ready.drawersAhead = near;
             });
-        return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
+        return Ready.drawerOf(Ready.drawerServed(row, held, drawerMaker), Date.now(), timeWords);
     }
 
     // A drawer naming its row's acts by their words, Return's by its mark, never making one a row
@@ -856,7 +864,7 @@ Scope {
             const why = Forms.misformed(one);
             if (why !== "" && !(one.key in misformed)) {
                 misformed[one.key] = true;
-                console.info(`launcher: ${one.key} refused: ${why}`);
+                console.info(`launcher: ${actSaid(one)} refused: ${why}`);
             }
         }
         const named = {};
@@ -975,13 +983,33 @@ Scope {
         }
     }
 
+    // An act as its lines in the journal say it: by its key with reports on, and
+    // otherwise by its verb alone (Presented.actShown), since what follows may be
+    // an agent's id or a calendar's words.
+    function actSaid(one) {
+        return Presented.actShown(one.key, Options.reports);
+    }
+
+    // Why an act was refused or withheld, as its line in the journal says it: quoted
+    // with reports on, and otherwise by how many letters, as typed words are
+    // (Presented.typedShown), since a daemon's words can name a row (Y2YBTS,
+    // 2026-11-20, 41ca61c4). With them off, a refusal's `answer` gives its code, or
+    // that none came, beside the count (Presented.codeShown), so the line still
+    // tells a daemon refusing from one gone. A code, no one's words, is said whole,
+    // by the rule the : line's late refusals are said by (Presented.refusalShown).
+    function whySaid(why, answer) {
+        const code = answer === undefined ? "" : Presented.codeShown(answer);
+        return Presented.refusalShown(why, code, Options.reports);
+    }
+
     // An open whose program went between its rows being listed and Return opens nothing and says
     // so as a refused ask does, on the next opening, since the launcher has gone by then; nothing
     // was done, so nothing else it asks is sent.
     function notOpened(key, one, why) {
         const row = served(key);
         const shown = row?.thing ?? key;
-        console.info(`launcher: ${one.key} opened nothing, its ${Ready.openedIn(one)} gone`);
+        const gone = Presented.quoted(Ready.openedIn(one)).slice(1, -1);
+        console.info(`launcher: ${actSaid(one)} opened nothing, its ${gone} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
         maker?.refused(shown, why);
     }
@@ -1015,7 +1043,7 @@ Scope {
         const name = toldName(key);
         const yanked = launcher?.yankedAlone;
         if (launcher && (launcher.open !== true || Array.isArray(launcher.walkTold))) {
-            console.info(`launcher: ${one.key} asked nothing: walked, or the launcher's shut`);
+            console.info(`launcher: ${actSaid(one)} asked nothing: walked, or the launcher's shut`);
             launcher.toldNot(name, "copy", words.onlyOpen ?? "");
             return;
         }
@@ -1028,16 +1056,16 @@ Scope {
             copyWait.stop();
             copyWaiting = null;
             if (launcher && launcher.open !== true) {
-                console.info(`launcher: ${one.key} copied nothing: the launcher closed first`);
+                console.info(`launcher: ${actSaid(one)} copied nothing: the launcher closed first`);
                 launcher.toldNot(name, "copy", words.closedFirst ?? "");
                 return;
             }
             if (launcher && Forms.movedOn(stood, Forms.standing(launcher, clipped))) {
-                console.info(`launcher: ${one.key} copied nothing: moved on first`);
+                console.info(`launcher: ${actSaid(one)} copied nothing: moved on first`);
                 launcher.toldNot(name, "copy", words.movedOn ?? "");
                 return;
             }
-            console.info(`launcher: ${one.key} copied`);
+            console.info(`launcher: ${actSaid(one)} copied`);
             Quickshell.clipboardText = copy;
             alsoAsked(one);
             if (typeof yanked === "function")
@@ -1048,8 +1076,7 @@ Scope {
             copyWait.stop();
             copyWaiting = null;
             const why = Ready.refusal(answer, words);
-            const code = answer?.error?.code ?? "no answer";
-            console.info(`launcher: ${one.key} refused: ${code}`);
+            console.info(`launcher: ${actSaid(one)} refused: ${Presented.codeShown(answer)}`);
             launcher?.toldNot(name, "copy", why);
         });
         // Ended at once, as with no connection, it has no wait left to end.
@@ -1099,7 +1126,7 @@ Scope {
         link.ask(also, answer => {
             const why = Ready.refusal(answer, Words.field.becoming ?? {});
             if (why !== "")
-                console.info(`launcher: ${one.key}'s also refused: ${why}`);
+                console.info(`launcher: ${actSaid(one)}'s also refused: ${whySaid(why, answer)}`);
         });
     }
 
@@ -1110,7 +1137,7 @@ Scope {
     function withheld(key, one) {
         const why = (typeof whyWithheld === "function" ? whyWithheld(key) : undefined)
             ?? Words.field.becoming?.keyed ?? "";
-        console.info(`launcher: ${one.key} withheld: ${why}`);
+        console.info(`launcher: ${actSaid(one)} withheld: ${whySaid(why)}`);
         maker?.launcher?.toldNot(toldName(key), one.ask.act ?? verbOf(one), why);
     }
 
@@ -1120,8 +1147,8 @@ Scope {
     // launcher, in the daemon's words, so nothing fails silently.
     function shut(key, one) {
         const name = toldName(key);
-        const refused = why => {
-            console.info(`launcher: ${one.key} refused: ${why}`);
+        const refused = (why, answer) => {
+            console.info(`launcher: ${actSaid(one)} refused: ${whySaid(why, answer)}`);
             maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
         };
         const words = Words.field.becoming ?? {};
@@ -1131,13 +1158,13 @@ Scope {
             return;
         }
         if (!link) {
-            refused(Ready.refusal(null, words));
+            refused(Ready.refusal(null, words), null);
             return;
         }
         link.ask(ask, answer => {
             const why = Ready.refusal(answer, words);
             if (why !== "")
-                refused(why);
+                refused(why, answer);
         });
     }
 
@@ -1220,8 +1247,7 @@ Scope {
                 return;
             const why = Ready.refusal(answer, words);
             if (why !== "") {
-                const code = answer?.error?.refused ?? answer?.error?.code ?? "no answer";
-                console.info(`launcher: ${one.key} refused: ${code}`);
+                console.info(`launcher: ${actSaid(one)} refused: ${Presented.codeShown(answer)}`);
                 said(key, why);
                 return;
             }

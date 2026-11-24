@@ -4,7 +4,7 @@
 //! work reads which merges, checks, dates or quests the count is made of
 //! without opening the files it came from.
 
-use super::measures::{Class, Measure, rounds, spent};
+use super::measures::{Class, Measure, SAID_NONE, queues, rounds, spent};
 
 /// How many of the things behind a figure the card names before it
 /// counts the rest.
@@ -19,9 +19,12 @@ pub fn figure(x: f64) -> String {
     }
 }
 
-/// One measure's line: its mark, what it says, its figure and target.
+/// One measure's line: its mark, what it says, its figure and target. An
+/// unjudged queue has no figure, quiet or unread, so it reads its words
+/// alone, which say why.
 fn line(m: &Measure) -> String {
     match m.target {
+        None if m.key.starts_with(queues::QUEUE) => format!("· {}", m.says),
         None => format!("· {}: {}, unjudged", m.says, figure(m.now)),
         Some(target) => {
             let mark = if m.past().is_some() { "✕" } else { "✓" };
@@ -43,10 +46,12 @@ fn line(m: &Measure) -> String {
 /// by owner, for the orchestrator to send on without reading the mesh.
 /// The spend measure's lines each end with a quest instead, in its own
 /// order, and are named though it is never judged, since they are what
-/// it is for. The merges past five rounds are named whatever the median
-/// reads, each with what its rounds past five caught, as WCJQSG asked.
+/// it is for; so are the misses said none, each with its owner's reason,
+/// since the card shows them for that reason to be read. The merges past
+/// five rounds are named whatever the median reads, each with what its
+/// rounds past five caught, as WCJQSG asked.
 fn behind(m: &Measure) -> Vec<String> {
-    if m.key == spent::KEY {
+    if m.key == spent::KEY || m.key == SAID_NONE {
         return m.behind.iter().map(|line| format!("  {line}")).collect();
     }
     let named_within = m.key == rounds::KEY;
@@ -111,6 +116,28 @@ pub fn shown_lines(class: Class, of_class: &[&Measure]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_quiet_or_unread_queue_reads_its_words_with_no_figure() {
+        let read = queues::Records {
+            outcomes: Some(""),
+            sends: None,
+            landed: Some(""),
+            aboard: Some(&[]),
+        };
+        let measures = queues::queues(&read, 1_795_262_400);
+        let shown = shown_lines(Class::Queues, &measures.iter().collect::<Vec<_>>());
+        assert_eq!(
+            shown,
+            [
+                "· seconds waiting for a World git turn: none through in a day",
+                "· seconds waiting for a build on this machine: none through in a day",
+                "· p90 seconds waiting for a VM run's builder (its record unread)",
+                "· seconds waiting for core's merge train, aboard: none through in a day",
+            ],
+            "a queue with no figure read as a measured 0"
+        );
+    }
 
     fn measure(class: Class, now: f64, behind: &[&str]) -> Measure {
         Measure {
@@ -229,6 +256,20 @@ mod tests {
             shown_lines(Class::Cells, &[&unread]).len(),
             1,
             "a cell measure left unjudged, its read untrusted, named what's behind it"
+        );
+    }
+
+    #[test]
+    fn a_miss_said_none_is_named_with_its_reason_unjudged() {
+        let said = Measure {
+            key: SAID_NONE.to_owned(),
+            target: None,
+            ..measure(Class::Cells, 1.0, &["fine · IKQ63G: he was reassuring"])
+        };
+        assert_eq!(
+            shown_lines(Class::Cells, &[&said])[1..],
+            ["  fine · IKQ63G: he was reassuring"],
+            "a miss said none was shown without its owner's reason"
         );
     }
 

@@ -30,12 +30,12 @@ const BYTES: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
 
 /// The clipboard's words, as the launcher's vocabulary says them
 /// (modules/quickshell/launcher/words/launcher.json, the `clipboard`
-/// thing's `said`), the names of what Emoji's drawers say (its things under
-/// `emoji:`, in emoji.json), and how the account writes numbers.
+/// thing's `said`), and the number marks it was given: the daemon gives
+/// `Numbers::default()`'s comma and full stop (main.rs's `worded`), since
+/// it's given no account's.
 #[derive(Debug, Default)]
 pub struct Words {
     said: BTreeMap<String, String>,
-    names: BTreeMap<String, String>,
     numbers: Numbers,
 }
 
@@ -44,29 +44,16 @@ impl Words {
     /// names no clipboard, and an error where it isn't JSON.
     pub fn from_vocabulary(text: &str, numbers: Numbers) -> serde_json::Result<Self> {
         let vocabulary: Value = serde_json::from_str(text)?;
-        let things = || vocabulary["things"].as_array().into_iter().flatten();
-        let names = things()
-            .filter_map(|thing| {
-                let id = thing["id"].as_str().filter(|id| id.starts_with("emoji:"))?;
-                Some((id.to_owned(), thing["name"].as_str()?.to_owned()))
-            })
-            .collect();
-        let said = things()
+        let said = vocabulary["things"]
+            .as_array()
+            .into_iter()
+            .flatten()
             .filter(|thing| thing["id"] == THING)
             .filter_map(|thing| thing["said"].as_object())
             .flatten()
             .filter_map(|(key, word)| Some((key.clone(), word.as_str()?.to_owned())))
             .collect();
-        Ok(Words {
-            said,
-            names,
-            numbers,
-        })
-    }
-
-    /// What the vocabulary names a thing, or nothing for one it lacks.
-    pub fn name(&self, id: &str) -> &str {
-        self.names.get(id).map_or("", String::as_str)
+        Ok(Words { said, numbers })
     }
 
     /// The words a key says, each `{part}` filled, or none for a key it
@@ -93,8 +80,8 @@ impl Words {
         self.fill(if count == 1 { one } else { many }, &[("count", &figure)])
     }
 
-    /// A count in figures, grouped as the launcher groups them: an emoji
-    /// group's side.
+    /// A count in figures, grouped with the marks the words were given: an
+    /// emoji group's side.
     pub fn figure(&self, count: usize) -> String {
         #[expect(
             clippy::cast_precision_loss,

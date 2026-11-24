@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 /// How long before and after a meeting the call keeps clear.
 const CLEAR_MS: u64 = 10 * 60 * 1000;
 /// How old the calendar's last read may be before it's trusted no more.
-const STALE_MS: u64 = 60 * 60 * 1000;
+pub const STALE_MS: u64 = 60 * 60 * 1000;
 
 /// What `a-call-is-on` said.
 #[derive(Debug, PartialEq, Eq)]
