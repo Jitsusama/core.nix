@@ -144,7 +144,10 @@ let
     name: package:
     let
       overlaid = pkgs.extend arguments.rust-overlay.overlays.default;
-      toolchain = overlaid.rust-bin.stable.latest.minimal.override {
+      # The Rust nixpkgs builds with, so this judges by the same clippy as
+      # a crate's Linux clippy check rather than a newer one with lints of
+      # its own.
+      toolchain = overlaid.rust-bin.stable.${pkgs.rustc.version}.minimal.override {
         targets = [ "aarch64-apple-darwin" ];
         extensions = [ "clippy" ];
       };
