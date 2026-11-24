@@ -636,26 +636,40 @@ mod tests {
         let mut inputs = Inputs::default();
         let mut still = Still::default();
         let start = Instant::now();
+        let ten = Duration::from_secs(10);
         inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
         inputs.keep_when_still(&mut still, &paths, start);
-        let wait = still.wait(start);
-        assert!(
-            wait.is_some_and(
-                |wait| wait > Duration::from_secs(9) && wait <= Duration::from_secs(10)
-            ),
-            "a failed write asks to be woken in 10 s, though no window moved: {wait:?}"
+        assert_eq!(
+            still.wait(start),
+            Some(ten),
+            "a failed write asks to be woken in 10 s, though no window moved"
+        );
+        let woken = start + ten;
+        inputs.keep_when_still(&mut still, &paths, woken);
+        assert_eq!(
+            (inputs.kept_places_unwritten.is_some(), still.wait(woken)),
+            (true, Some(ten)),
+            "failing again when woken, it asks to be woken 10 s on again"
+        );
+        // Windows moving all the while: kept places don't hang on where
+        // they are, so their try isn't put off until they're still.
+        still.moved(woken + Duration::from_secs(9));
+        assert_eq!(
+            still.wait(woken + Duration::from_secs(9)),
+            Some(Duration::from_secs(1)),
+            "windows moving put off no try of the kept places"
         );
         fs::remove_file(folder.join("agents")).expect("the way cleared");
-        let woken = start + wait.unwrap_or_default();
-        inputs.keep_when_still(&mut still, &paths, woken);
+        let tried = woken + ten;
+        inputs.keep_when_still(&mut still, &paths, tried);
         assert_eq!(
             (
                 inputs.kept_places_unwritten.clone(),
-                KeptPlaces::read(&paths.kept_places),
-                still.wait(woken)
+                KeptPlaces::read(&paths.kept_places)
             ),
-            (None, Some(said), None),
-            "woken then, it writes them though the shell said nothing more, and waits no more"
+            (None, Some(said)),
+            "woken then, it writes them though the windows still move and the shell said \
+             nothing more"
         );
         let _ = fs::remove_dir_all(&folder);
     }
