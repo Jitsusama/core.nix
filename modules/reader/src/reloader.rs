@@ -157,7 +157,10 @@ mod tests {
             |_| Ok(()),
         );
         assert_eq!(made, Err("it panicked".to_string()));
-        assert!(kept.is_none());
+        assert!(
+            kept.is_none(),
+            "a setter that panicked as it was made was kept"
+        );
     }
 
     #[test]

@@ -961,11 +961,6 @@ impl Setter {
         file.clone_into(&mut self.file);
     }
 
-    /// The file it sets.
-    pub fn file(&self) -> &str {
-        &self.file
-    }
-
     /// The window's title for the file, as it was last set.
     pub fn title(&self) -> &str {
         &self.title

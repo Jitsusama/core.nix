@@ -401,6 +401,9 @@ pub fn height_of(starts: &[(usize, f64)], block: usize) -> Option<f64> {
 /// the same page set again `after`, at another width: as far through the
 /// same block, and then on the line of that block nearest it, of the
 /// tops and baselines `lines_after`, or between them while it has none.
+/// The reader itself always lands lines as `moved_into` does, through an
+/// edit's renumbering; this is that with none, which the tests read.
+#[cfg(test)]
 pub fn moved(
     before: &[(usize, f64)],
     after: &[(usize, f64)],
