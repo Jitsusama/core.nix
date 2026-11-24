@@ -386,7 +386,69 @@ fn locked(log: &Path, what: &str) -> Result<(fs::File, u64), Failure> {
     Ok((file, length))
 }
 
-fn ran<I, S>(mut command: Command, what: &str, args: I, streams: Streams) -> Result<String, Failure>
+/// Runs a command to its end as `output` does, but giving the bytes it
+/// printed as they are, for one whose output isn't text, such as git's
+/// objects.
+pub fn bytes<I, S>(command: Command, what: &str, args: I) -> Result<Vec<u8>, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let (out, _) = waited(command, what, args, Streams::Piped { errors_too: false })?;
+    if out.status.success() {
+        return Ok(out.stdout);
+    }
+    Err(Failure {
+        why: format!("{what} failed ({})", out.status),
+        lines: tail(&String::from_utf8_lossy(&out.stderr)),
+    })
+}
+
+fn ran<I, S>(command: Command, what: &str, args: I, streams: Streams) -> Result<String, Failure>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let (out, began) = waited(command, what, args, streams)?;
+    let (mut said, errors, errors_too) = match streams {
+        Streams::Piped { errors_too } => (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+            errors_too,
+        ),
+        Streams::Logged(log) => (
+            fs::read(log).map_or_else(
+                |e| format!("{}: {e}", log.display()),
+                |read| {
+                    let began = usize::try_from(began).map_or(read.len(), |b| b.min(read.len()));
+                    String::from_utf8_lossy(&read[began..]).into_owned()
+                },
+            ),
+            String::new(),
+            true,
+        ),
+    };
+    if out.status.success() {
+        if errors_too {
+            said.push_str(&errors);
+        }
+        return Ok(said.trim().to_owned());
+    }
+    said.push_str(&errors);
+    Err(Failure {
+        why: format!("{what} failed ({})", out.status),
+        lines: tail(&said),
+    })
+}
+
+/// Runs a command to its end with its streams where `streams` says,
+/// giving how it ended and where its part of a log begins.
+fn waited<I, S>(
+    mut command: Command,
+    what: &str,
+    args: I,
+    streams: Streams,
+) -> Result<(std::process::Output, u64), Failure>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -436,35 +498,7 @@ where
         }
     }
     let out = out.map_err(|e| Failure::new(format!("{what}: {e}")))?;
-    let (mut said, errors, errors_too) = match streams {
-        Streams::Piped { errors_too } => (
-            String::from_utf8_lossy(&out.stdout).into_owned(),
-            String::from_utf8_lossy(&out.stderr).into_owned(),
-            errors_too,
-        ),
-        Streams::Logged(log) => (
-            fs::read(log).map_or_else(
-                |e| format!("{}: {e}", log.display()),
-                |read| {
-                    let began = usize::try_from(began).map_or(read.len(), |b| b.min(read.len()));
-                    String::from_utf8_lossy(&read[began..]).into_owned()
-                },
-            ),
-            String::new(),
-            true,
-        ),
-    };
-    if out.status.success() {
-        if errors_too {
-            said.push_str(&errors);
-        }
-        return Ok(said.trim().to_owned());
-    }
-    said.push_str(&errors);
-    Err(Failure {
-        why: format!("{what} failed ({})", out.status),
-        lines: tail(&said),
-    })
+    Ok((out, began))
 }
 
 /// Runs a build to its end as `said` does, but stops it, with its process

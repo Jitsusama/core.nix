@@ -2368,44 +2368,62 @@ fn a_hosted_main_is_read_from_its_hosts_api_unfetched() {
 /// A tree the checkout holds without its files is gone down too, its
 /// files read from the host: on 23 November a pack carrying a speculative
 /// merge no ref reaches left World's checkout such a tree, and the read
-/// failed on a file it took to be there.
+/// failed on a file it took to be there. Here the folder and a folder in
+/// it are held without what they hold, and a folder in that one isn't
+/// held at all, so the read goes down held trees in two rounds and asks
+/// the host for a tree under a held one. The host can't list the held
+/// trees, so a read that asked it for them fails.
 #[test]
 fn a_folder_the_checkout_holds_without_its_files_is_read_whole() {
     let world = with_api();
+    let deeper = world.origin.join("machine/lib/deeper");
+    fs::create_dir_all(&deeper).unwrap();
+    fs::write(world.origin.join("machine/lib/part"), "part").unwrap();
+    fs::write(deeper.join("more"), "more").unwrap();
     let head = world.hosted_commit("one", None);
     world.answer();
     let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
-    let listing = git(&world.origin, &["ls-tree", &format!("{head}:machine")]);
-    let mut mktree = Command::new(program("git"))
-        .arg("-C")
-        .arg(&checkout)
-        .args(["mktree", "--missing"])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .spawn()
+    let in_checkout = |args: &[&str]| {
+        Command::new(program("git"))
+            .arg("-C")
+            .arg(&checkout)
+            .args(args)
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    for folder in ["machine/lib", "machine"] {
+        let tree = git(&world.origin, &["rev-parse", &format!("{head}:{folder}")]);
+        let listing = git(&world.origin, &["ls-tree", tree.trim()]);
+        let mut mktree = Command::new(program("git"))
+            .arg("-C")
+            .arg(&checkout)
+            .args(["mktree", "--missing"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        std::io::Write::write_all(
+            mktree.stdin.as_mut().unwrap(),
+            format!("{listing}\n").as_bytes(),
+        )
         .unwrap();
-    std::io::Write::write_all(
-        mktree.stdin.as_mut().unwrap(),
-        format!("{listing}\n").as_bytes(),
-    )
-    .unwrap();
-    let made = mktree.wait_with_output().unwrap();
-    assert!(made.status.success(), "the checkout's tree wasn't written");
-    let file = git(
-        &world.origin,
-        &["rev-parse", &format!("{head}:machine/file")],
-    );
-    let held = Command::new(program("git"))
-        .arg("-C")
-        .arg(&checkout)
-        .args(["cat-file", "-e", file.trim()])
-        .stderr(std::process::Stdio::null())
-        .status()
-        .unwrap();
-    assert!(
-        !held.success(),
-        "the checkout holds the folder's file, so the test proves nothing"
-    );
+        let made = mktree.wait_with_output().unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&made.stdout).trim(),
+            tree.trim(),
+            "the checkout wasn't given {folder}'s tree, so the test proves nothing"
+        );
+        fs::remove_file(world.root.join("api/git/trees").join(tree.trim())).unwrap();
+    }
+    for path in ["machine/file", "machine/lib/part", "machine/lib/deeper"] {
+        let object = git(&world.origin, &["rev-parse", &format!("{head}:{path}")]);
+        assert!(
+            !in_checkout(&["cat-file", "-e", object.trim()]),
+            "the checkout holds {path}, so the test proves nothing"
+        );
+    }
     world.system(&head);
     assert_eq!(world.update().1, done(&head));
     assert_eq!(world.read("seen"), "one");
