@@ -450,8 +450,10 @@ fn quickened(line: &str) -> String {
             format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
         ),
     ] {
+        // A kind bringing nothing back has no bring-back step to bound.
+        let unbounded = real.starts_with("most_files=") && !line.contains("most_files=");
         assert!(
-            line.contains(&real),
+            unbounded || line.contains(&real),
             "the far line no longer holds {real}:\n{line}"
         );
         line = line.replace(&real, &quick);
