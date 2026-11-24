@@ -301,6 +301,7 @@ pub fn script(
 work={work}
 mine=
 tab=$(printf '\t')
+{CLEARING}
 {crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
@@ -323,11 +324,11 @@ say() {{ printf '\n%s\n' "$1"; }}
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
-  rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
+  cleared "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 [ -z "$mine" ] || rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
-    cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+    cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
   }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
@@ -335,7 +336,7 @@ if [ "$why" -ne 0 ]; then
 fi
 cd {folder} || {{
   printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+  cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
   say {refused}
   exit {REFUSES}
 }}
@@ -781,7 +782,7 @@ mod steps;
 #[cfg(test)]
 use names::within_tree;
 use names::{Folders, tracked};
-use steps::{RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
+use steps::{CLEARING, RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

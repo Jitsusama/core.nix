@@ -51,6 +51,7 @@ are fixes written here, kept until the kernel has its own:
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
 | `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 | `iwlwifi-txq-entries-kvzalloc.patch` | a join that survives fragmented memory | written here |
+| `vb2-dma-sg-orders.patch` | a camera that opens in fragmented memory | written here |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
 | `virtio-gpu-panic-outside-panic.patch` | that bar drawn safely in a VM | written here |
 
@@ -108,6 +109,19 @@ the processor reads those entries, so the patch lets them come from
 scattered pages when no single block is free. The rings the card itself
 reads are left as they were; the IOMMU already lets them be scattered.
 Neither 7.3.4 nor mainline changes it.
+
+The camera fix is for a built-in camera that took 40 seconds to open
+while memory was fragmented. Its capture buffers come from videobuf2's
+scattered allocator, which fills each buffer from the largest blocks it
+can get. For every piece it started again from the largest block size
+that fit and stepped down one size at a time. Every size that failed
+paid for compaction and reclaim first. So with no large blocks free, each
+piece paid for every size again: on 23 November, under a load of 99, four
+16.9 MB buffers took 40 seconds in one call, nearly all of it compacting.
+The buffer needn't be contiguous, so the patch never asks again for a size
+that has failed, and asks for any block larger than a page without
+retrying, as the IOMMU's own allocator does. A buffer still gets single
+pages when nothing larger is free. Neither 7.3.4 nor mainline changes it.
 
 The hibernation fix is for a hibernated machine that showed nothing while it
 read its image back. The kernel freezes every process before it reads the

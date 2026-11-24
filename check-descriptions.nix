@@ -256,7 +256,8 @@
     pi's sessions are those whose records name a process running on this boot since when they
     say, never found by a window's title, each with its window found by the app id it opened with,
     or else through the kitty it runs in, and gone once its record or its process is; and those to reopen are the last boot's until
-    put off, then those another machine carried here, newest first, never put off
+    put off, then those another machine carried here, newest first, never put off; and Reopen
+    Them All's lists given before niri says its screens count what they find gone as one walk
   '';
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
@@ -1790,6 +1791,11 @@
     the jobs broker makes a scope only into agents' own work, for a process already an agent's and
     named by the kernel, refuses a status of anything not a unit's name, and knows no stop or start
   '';
+  jobs-sorter-knows-pi-units-by-their-names = ''
+    each pi host's unit and each conversation's that host.nix renders for a realm, on a machine
+    with the sorter, is named exactly as the sorter joins it: the name it is told to find that
+    kind by, then the realm and kind, and a conversation's slot after an @
+  '';
   jobs-sorter-passes-clippy = ''
     clippy finds nothing in the jobs sorter or its tests
   '';
@@ -2401,7 +2407,9 @@
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
-    drawn and counted, a cell moving and one going, broken while the node is away with the realm
+    drawn and counted, its networks, a branch and lines across them in one window that opens a cell
+    clicked, a cell moving and one going, two cells sharing a title moving with a question waiting
+    on them, broken while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
     machine's drawer and a network's, what waits on a cell and what holds stand said as the node
@@ -3699,7 +3707,11 @@
     the one kept above it in its column, and a window already where it goes left there; and those
     that orchestrate are begun first, the next session only while the machine queue says the
     memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
-    holding nothing back
+    holding nothing back; and a Reopen Them All list counts what it finds gone in the walk's tally
+    while the walk may still find one of that tally's folders gone, else in one of its own, as
+    once only a window given up on or the harness's sessions keep the walk, each session once by
+    the id it was asked by, whichever list queued it, and told again as a list joins a tally
+    already told of one gone
   '';
   repos-is-told-every-realms-owners = ''
     the refresh's unit gives repos every realm's declared owners as one word that systemd passes
@@ -3744,9 +3756,9 @@
     clippy finds nothing in rhythm or its tests
   '';
   run-subtests-keeps-what-is-named = ''
-    run-subtests keeps a script's boot and helpers and only the subtests named, and runs a pytest
-    test whole with pytest picking the tests named, refusing a word pytest would read as more,
-    refuses a check that isn't a VM test rather than letting the quarantine call it a pass, and
+    run-subtests runs a VM test whole with pytest picking the tests named, refusing a word pytest
+    would read as more and a script that doesn't hand its tests to pytest, refuses a check that
+    isn't a VM test rather than letting the quarantine call it a pass, and
     lets a test's entries naming subtests excuse only a run whose every failed test they name
     between them, saying each one's owner
   '';
@@ -4086,6 +4098,14 @@
   '';
   surface-clock-passes-clippy = ''
     clippy finds nothing in surface-clock or its tests
+  '';
+  svgtext-probe-measures-a-drawings-words = ''
+    the web-design skill's drawing words probe, in headless Chromium over small pages of its own,
+    names light words on a shape whose fill fell back to paper in the dark look, as the forage
+    research page's diagram did on 15 November 2026, faint words on the page alone and dark words
+    faded by their group, holds its bar of 7:1 from both sides, passes words on a shape filled with
+    a colour the page defines and strong words, and names a drawing kept in an image 65 px wide
+    while passing one 64 px wide
   '';
   swayimg-accepts-its-configuration = ''
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
@@ -4879,7 +4899,8 @@
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
-    to watch their drawers ahead, and what it landed is kept past its end
+    to watch their drawers ahead, what it landed is kept past its end, and what a Reopen Them
+    All walk found gone is said as one folder gone or many, then how many reopened
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
