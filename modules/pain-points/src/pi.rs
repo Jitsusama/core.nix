@@ -112,12 +112,13 @@ pub enum Errored {
 }
 
 impl Errored {
-    /// Where a call of his turn that stopped so leaves it.
-    fn after(stop: Stop) -> Self {
+    /// Where a call of his turn that stopped so leaves it and, after an
+    /// error, the entry pi's retry edits out of its context.
+    fn after(stop: Stop, line: &[u8]) -> (Self, Option<String>) {
         if stop == Stop::Error {
-            Self::Untried
+            (Self::Untried, head_str(line, "id").map(str::to_owned))
         } else {
-            Self::No
+            (Self::No, None)
         }
     }
 }
@@ -141,6 +142,9 @@ pub struct Log {
     pub compacting: Option<i64>,
     #[serde(default)]
     pub errored: Errored,
+    /// The entry of the call that errored, which pi's retry edits out.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 impl Log {
@@ -220,7 +224,9 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
             // answers them, not him (hear/said.rs keeps the same rule).
             log.errored = Errored::Crossed;
         } else if log.errored != Errored::No && head_has(&line, r#""type":"context_edit""#) {
-            log.errored = Errored::No;
+            if retried(&line, log.error.as_deref()) {
+                log.errored = Errored::No;
+            }
         } else if log.errored == Errored::Crossed && begins_with_role(&line, "assistant") {
             (log.errored, log.open) = (Errored::No, false);
         } else if head_has(&line, r#""customType":"harness-call""#) {
@@ -247,7 +253,7 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
             // runs after it was set off by something else, a mesh message
             // or a job's result, not by him.
             log.open = matches!(call.stop, Stop::Tool | Stop::Error);
-            log.errored = Errored::after(call.stop);
+            (log.errored, log.error) = Errored::after(call.stop, &line);
             turn.tool_mark = turn.tool_mark.max(call.start + call.ms);
             turn.calls.push(call);
         } else if log.open
@@ -386,6 +392,25 @@ fn harness_call(line: &[u8]) -> Option<(i64, i64)> {
 /// abort ending soon after the ask.
 fn cut_for(asked: Option<i64>, call: &Call) -> bool {
     asked.is_some_and(|at| call.stop == Stop::Aborted && call.start + call.ms - at <= ASK_CUTS_MS)
+}
+
+/// A context edit: the entry it changes, and what it puts in its place.
+#[derive(Deserialize)]
+struct EditLine {
+    #[serde(rename = "targetId", default)]
+    target: Option<String>,
+    #[serde(default)]
+    replacement: Option<serde_json::Value>,
+}
+
+/// Whether a context edit is pi's retry of the call that errored: one that
+/// drops that entry from its context with nothing in its place. Any other
+/// edit, such as an extension's, isn't one (hear/said.rs keeps the same
+/// rule).
+fn retried(line: &[u8], error: Option<&str>) -> bool {
+    serde_json::from_slice::<EditLine>(line).is_ok_and(|edit| {
+        edit.replacement.is_none() && (error.is_none() || edit.target.as_deref() == error)
+    })
 }
 
 /// A compaction's ask, as the harness writes it: numbers alone, so it's
@@ -592,13 +617,25 @@ mod tests {
     fn a_peers_message_after_an_error_takes_the_turn_unless_pi_tries_again() {
         let retry =
             || r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned() + "\n";
-        let errored = || typed(AT, AT, "hello") + &reply(AT + 100, 1000, "error");
+        // The call that errored is entry "f", which pi's retry names.
+        let failed = reply(AT + 100, 1000, "error").replacen(r#""id":"c""#, r#""id":"f""#, 1);
+        let errored = || typed(AT, AT, "hello") + &failed;
+        // An extension may edit another entry, or put text in its place.
+        let other = r#"{"type":"context_edit","targetId":"c","replacement":null}"#.to_owned()
+            + "\n"
+            + r#"{"type":"context_edit","targetId":"f","replacement":"x"}"#
+            + "\n";
         let answered = || reply(AT + 5100, 2000, "stop");
         for (text, stops, what) in [
             (
                 errored() + &mesh(AT + 5000) + &answered(),
                 vec![Stop::Error],
                 "a peer's turn after an error pi never tried again",
+            ),
+            (
+                errored() + &mesh(AT + 5000) + &other + &answered(),
+                vec![Stop::Error],
+                "a peer's turn after edits that aren't pi's retry",
             ),
             (
                 errored() + &mesh(AT + 5000) + &retry() + &answered(),
@@ -898,6 +935,7 @@ mod tests {
             next: None,
             compacting: None,
             errored: Errored::No,
+            error: None,
         };
         log.prune(AT);
         assert_eq!(log.turns.len(), 1, "the older is gone");
