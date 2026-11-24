@@ -1593,6 +1593,8 @@ fn sweep(
             return;
         };
         hosts.sweep.held_off = None;
+        // Each name was read from a folder anyone in the account can make, so it's said quoted,
+        // and a line or a quote in it can't pass for a line of the sorter's own.
         for (unit, state) in asked.into_iter().zip(states) {
             match state {
                 own::Active::Stopped => {
@@ -1602,13 +1604,13 @@ fn sweep(
                     match error {
                         None => {
                             eprintln!(
-                                "Took back the {taken} settings {unit} left when it stopped."
+                                "Took back the {taken} settings {unit:?} left when it stopped."
                             );
                         }
                         Some(error) => {
                             if hosts.sweep.unswept.insert(unit.clone()) {
                                 eprintln!(
-                                    "Couldn't take back all the settings {unit} left, {taken} \
+                                    "Couldn't take back all the settings {unit:?} left, {taken} \
                                      taken: {error}."
                                 );
                             }
@@ -1650,7 +1652,7 @@ fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts, control: Option<&Pa
                 match control.map(|control| own::mark(control, unit)) {
                     Some(Ok(())) => marked = true,
                     Some(Err(error)) => {
-                        unmarked.get_or_insert(format!("{unit}: {error}"));
+                        unmarked.get_or_insert(format!("{unit:?}: {error}"));
                     }
                     None => {}
                 }
