@@ -943,6 +943,7 @@ fn started_with(scopes: &[PathBuf]) -> Vec<(String, Vec<String>)> {
 /// are held. A failure is said once, and tried again on the next look.
 fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> Vec<String> {
     let Some(following) = windows.focus else {
+        ranks.fitting.floored.order.clear();
         return Vec::new();
     };
     let now = std::time::Instant::now();
@@ -1018,6 +1019,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> Vec<String> {
         .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
     ranks.spared = spared;
+    ranks.fitting.floored.order.clone_from(&held);
     set_holds(&held, &kept, windows.pis, ranks);
     set_in_memory(&kept, ranks);
     read_back(following.at(), ranks);
@@ -1847,6 +1849,9 @@ struct Fitting {
 #[derive(Debug, Default)]
 struct Floored {
     held: HashSet<PathBuf>,
+    /// Those this look holds, in focus's order: the window Joel is at
+    /// first, each with its pi after it ([`hold_windows`]).
+    order: Vec<PathBuf>,
     /// Those keep.rs keeps, by unit.
     kept: HashSet<String>,
 }
@@ -1944,16 +1949,27 @@ fn claims(
     // focus::MOST windows at focus::FLOOR, the share the slice's floor is sized for: first
     // those the sorter holds, a window and its pi each, so up to twice focus::MOST and more
     // while a give-back fails; then those keep.rs keeps, every window running a pi; then those
-    // named alone; each by name so a look's order is the next one's. Past that they claim as
-    // strays do, after the units Joel is at, and aren't held: an agent naming scopes as
-    // windows and asking for max would otherwise take the units' floors, or push the sorter's
-    // own floors out. Each window claims what it held at
-    // its peak within the minute, so a window paging out doesn't hand the units room it takes
-    // back a look later, but never past its floor now: one the sorter has let go claims its
-    // new floor at once.
+    // named alone. Those held come in focus's order, the window Joel is at and its pi first,
+    // and a hold only a failed give-back left after this look's; the rest come by name, so a
+    // look's order is the next one's. Past that they claim as strays do, after the units Joel
+    // is at, and aren't held: an agent naming scopes as windows and asking for max would
+    // otherwise take the units' floors, or push the sorter's own floors out. Each window
+    // claims what it held at its peak within the minute, so a window paging out doesn't hand
+    // the units room it takes back a look later, but never past its floor now: one the sorter
+    // has let go claims its new floor at once.
+    //
+    // The order only decides how far the units' floors are trimmed. The windows keep the
+    // floors they were set, so once the children together are protected past the slice's own
+    // floor, the kernel shares that floor among them by their protected usage, whatever this
+    // order says; Fitting::overran says so when it happens.
     windows.sort_by_cached_key(|path| {
         (
             !floored.held.contains(path),
+            floored
+                .order
+                .iter()
+                .position(|held| held == path)
+                .unwrap_or(usize::MAX),
             !floored.keeps(path),
             path.clone(),
         )
@@ -5785,6 +5801,7 @@ mod tests {
         let slice = slice_with("fit-floored-first", 32768 * MIB, &children);
         let floored = Floored {
             held: held.iter().map(|name| slice.join(name)).collect(),
+            order: Vec::new(),
             kept: ["kitty-1-9.scope".to_owned()].into(),
         };
         let (room, strays) = claims(
@@ -5818,9 +5835,9 @@ mod tests {
     }
 
     // Held scopes are a window and its pi, so up to twice focus::MOST, and
-    // more while a give-back fails: outside the cap, six at their floor took
-    // 12 GiB ahead of the units Joel is at, against a cap of 6 sized to fit
-    // the slice's floor.
+    // more while a give-back fails: left outside the cap, six at their floor
+    // would take 12 GiB ahead of the units Joel is at, against a cap of 6 GiB
+    // sized to fit the slice's floor. It guards the cap; main never lacked it.
     #[test]
     fn held_floors_past_the_cap_claim_after_the_units_joel_is_at() {
         const MIB: u64 = 1 << 20;
@@ -5837,6 +5854,7 @@ mod tests {
         let slice = slice_with("fit-held-capped", 32768 * MIB, &children);
         let floored = Floored {
             held: held.iter().map(|name| slice.join(name)).collect(),
+            order: Vec::new(),
             kept: HashSet::new(),
         };
         let (room, strays) = claims(
@@ -5862,6 +5880,96 @@ mod tests {
         );
     }
 
+    // Past the cap, the held floors that claim first are those focus holds
+    // first, the window Joel is at and its pi, not the first by name, and a
+    // hold only a failed give-back left claims after this look's.
+    #[test]
+    fn held_floors_claim_within_the_cap_in_focus_order_with_stale_holds_last() {
+        const MIB: u64 = 1 << 20;
+        let order = [
+            "kitty-1-3.scope",
+            "mycelium-pi-3.scope",
+            "kitty-1-1.scope",
+            "mycelium-pi-1.scope",
+        ];
+        let stale = "kitty-1-0.scope";
+        let children: Vec<(&str, u64, &str)> = order
+            .iter()
+            .chain([&stale])
+            .map(|&name| (name, 2048 * MIB, "max"))
+            .collect();
+        let slice = slice_with("fit-held-in-order", 32768 * MIB, &children);
+        let floored = Floored {
+            held: order
+                .iter()
+                .chain([&stale])
+                .map(|name| slice.join(name))
+                .collect(),
+            order: order.iter().map(|name| slice.join(name)).collect(),
+            kept: HashSet::new(),
+        };
+        let (_, strays) = claims(
+            &slice,
+            32768 * MIB,
+            &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        let past: Vec<&str> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            past,
+            ["mycelium-pi-1.scope", stale],
+            "the cap's three floors didn't go to the first three focus holds, or a stale hold \
+             came before this look's"
+        );
+    }
+
+    // Held and kept floors together past the cap: the held fill it first, so
+    // the one keep.rs keeps is what claims after the units Joel is at.
+    #[test]
+    fn a_kept_floor_beside_held_ones_filling_the_cap_claims_after_the_units() {
+        const MIB: u64 = 1 << 20;
+        let held = ["kitty-1-1.scope", "kitty-1-2.scope", "kitty-1-3.scope"];
+        let children: Vec<(&str, u64, &str)> = held
+            .iter()
+            .map(|&name| (name, 2048 * MIB, "max"))
+            .chain([("kitty-1-0.scope", 512 * MIB, "536870912")])
+            .collect();
+        let slice = slice_with("fit-held-and-kept", 32768 * MIB, &children);
+        let floored = Floored {
+            held: held.iter().map(|name| slice.join(name)).collect(),
+            order: held.iter().map(|name| slice.join(name)).collect(),
+            kept: ["kitty-1-0.scope".to_owned()].into(),
+        };
+        let (_, strays) = claims(
+            &slice,
+            32768 * MIB,
+            &["kitty-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        let past: Vec<&str> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            past,
+            ["kitty-1-0.scope"],
+            "a kept floor came before the held ones within the cap"
+        );
+    }
+
     // keep.rs floors every window running a pi, however many there are, so
     // what it keeps can't claim ahead of the units Joel is at without a
     // bound: on 21 November 17 of his 20 windows ran a pi.
@@ -5877,6 +5985,7 @@ mod tests {
         let slice = slice_with("fit-kept-capped", 32768 * MIB, &children);
         let floored = Floored {
             held: HashSet::new(),
+            order: Vec::new(),
             kept: kept.iter().cloned().collect(),
         };
         let (room, strays) = claims(
