@@ -481,7 +481,7 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
     system_daemon.tell("machine", changed=[gone])
     # The part names wren too, as the daemon's would once wren is a machine of it.
     things = ["machine:kestrel", "machine:osprey", "machine:wren"]
-    named = {"key": "part:machines", "things": things}
+    named: dict[str, object] = {"key": "part:machines", "things": things}
     system_daemon.tell("part", changed=[named])
     counted(system_page, "Three machines, two worth a look and one out of reach.")
     row = system_page.locator("#away a[data-row='machine:wren']")
