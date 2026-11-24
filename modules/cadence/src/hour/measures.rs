@@ -8,14 +8,12 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use owner::first_owner;
-use promised::{Promise, promised};
+use promised::promised;
 
 use crate::tracking::{self, Tracking};
 
 pub mod apps;
 mod balanced;
-#[cfg(test)]
-mod slipped;
 mod broken;
 mod card;
 mod carried;
@@ -28,6 +26,8 @@ mod promised;
 pub mod queues;
 mod reports;
 pub mod rounds;
+#[cfg(test)]
+mod slipped;
 pub mod spent;
 #[cfg(test)]
 mod tracked;
@@ -162,7 +162,9 @@ type Slip = (i64, String, String);
 /// date moved in place after it passed is still a slip that day; one moved
 /// before it passed isn't, nor one whose entry says it was `met` by then,
 /// as a step kept before the ask moves on to the next. A line without
-/// `promised` gives its `expected` alone.
+/// `promised` gives its `expected` alone. An older date is answered by a
+/// landing or a move said by `now`, or by any later date the ask was
+/// given, since a date moved by `expected` alone says no time it moved.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // The list writes an ask again to move its date, or to re-mark, land
@@ -170,7 +172,8 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // read from its latest line, in the order the list first wrote it.
     let mut latest: BTreeMap<[String; 3], (usize, Option<Slip>)> = BTreeMap::new();
     // Each ask's dates on its latest line. A date gone from them was moved
-    // by a line written without `promised` to say so, which answers it.
+    // by a line written without `promised` to say so, which answers it,
+    // while a latest line with no date it can read moves none.
     let mut dated: BTreeMap<[String; 2], Vec<i64>> = BTreeMap::new();
     for (order, ask) in lines(text).enumerate() {
         let ours = tracking::of(&ask) == Some(which);
@@ -178,16 +181,16 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
         let given = promised(&ask);
         let asked = [ask["at"].to_string(), ask["words"].to_string()];
         dated.insert(asked, given.iter().map(|p| p.expected).collect());
-        for Promise {
-            expected,
-            moved,
-            met,
-        } in given
-        {
+        let last = given.len();
+        for (i, promise) in given.iter().enumerate() {
+            let (expected, moved, met) = (promise.expected, promise.moved, promise.met);
             let kept = landed.is_some_and(|landed| landed <= expected)
                 || met.is_some_and(|met| met <= expected)
                 || moved.is_some_and(|moved| moved < expected);
-            let answered = landed.is_some() || met.is_some() || moved.is_some();
+            // A `met` stands only on a date moved from, so the move answers.
+            let answered = landed.is_some_and(|landed| landed <= now)
+                || moved.is_some_and(|moved| moved <= now)
+                || i + 1 < last;
             let late = ours && expected <= now && !kept && (expected > now - DAY || !answered);
             let key = [
                 ask["at"].to_string(),
@@ -208,9 +211,10 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     let mut latest: Vec<(usize, Option<Slip>)> = latest
         .into_iter()
         .map(|([at, words, _], (first, slip))| {
-            let dates = dated.get(&[at, words]);
+            let held = dated.get(&[at, words]);
             let slip = slip.filter(|&(expected, _, _)| {
-                expected > now - DAY || dates.is_some_and(|dates| dates.contains(&expected))
+                expected > now - DAY
+                    || held.is_none_or(|held| held.is_empty() || held.contains(&expected))
             });
             (first, slip)
         })

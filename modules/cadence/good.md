@@ -207,7 +207,7 @@ where it's read" is taken from the measure's own source. Any other target is cou
 
 - Measures: `slips`, `slips-derived`
 - Target: 0 dates that passed in the last day without landing, or passed since with no landing,
-  meeting or move from their owner.
+  meeting or move from their owner, nor the ask put down.
 - Joel, 11 Nov 16:4x: "i need for you to make faster progress. i don't understand why so much
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.

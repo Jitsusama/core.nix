@@ -107,7 +107,7 @@ fn a_date_moved_in_place_after_it_passed_still_slipped() {
         moved("moved late", &[(3 * 3600, 20 * 3600), (-DAY, 3600)]),
         // Due 2 h ago, but moved 5 h ago, before it passed: none.
         moved("moved early", &[(2 * 3600, 20 * 3600), (-DAY, 5 * 3600)]),
-        // Due 2 days ago and moved since: past the day read.
+        // Due 2 days ago and moved since: answered by the move.
         moved("long ago", &[(2 * DAY, 3 * DAY), (-DAY, 3600)]),
         // Moved twice, each after it passed: two slips.
         moved(
