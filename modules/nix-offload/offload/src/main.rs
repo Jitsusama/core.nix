@@ -189,7 +189,6 @@ mod standing;
 #[cfg(test)]
 mod testing;
 mod there;
-mod uplink;
 mod vet;
 
 use std::collections::BTreeSet;

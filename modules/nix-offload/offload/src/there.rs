@@ -72,7 +72,7 @@
 //! same build runs here, saying so. It exits with the build's own status,
 //! or the first that failed, and journals where each part ran and what it
 //! sent, in `there.jsonl` beside the lender's journal, with what its copies
-//! up spent on this machine's uplink (`uplink.rs`).
+//! up spent on this machine's uplink (`there/uplink.rs`).
 //!
 //! A check that passed at a commit isn't built again, wherever it would
 //! go, since no builder lent since may hold it: a pass is kept by its
@@ -92,7 +92,10 @@ use crate::held;
 use crate::kept;
 use crate::passed;
 use crate::proof;
-use crate::uplink;
+
+// Only a run sent here counts what it spent on the uplink, so the count
+// lives beside it rather than among the crate's own modules.
+mod uplink;
 
 /// What a `there` was asked to build, and how.
 #[derive(Debug, PartialEq, Eq)]
