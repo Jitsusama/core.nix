@@ -46,7 +46,8 @@ pub struct Named {
 /// new entry beside its old one, so the window of each script before it
 /// stays where its change closed it, rather than stretching to the new
 /// naming; today's script is never among those before.
-pub fn named(kept: &[Named], script: &str, now: i64) -> (Option<Vec<Named>>, Vec<Earlier>) {
+#[cfg(test)]
+fn named(kept: &[Named], script: &str, now: i64) -> (Option<Vec<Named>>, Vec<Earlier>) {
     named_at(kept, script, now, now)
 }
 
