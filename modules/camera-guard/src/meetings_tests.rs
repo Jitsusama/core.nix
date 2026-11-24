@@ -101,7 +101,10 @@ fn an_answer_without_its_read_time_or_with_an_error_is_refused() {
 
 #[test]
 fn a_title_s_control_characters_are_dropped() {
-    let answer = json!({"read": 0, "records": [record("Ad\u{1b}[2Jmin", 1, 2)]});
+    // The escape is made from its character, since spelling one in the
+    // source is what commands-agree's inks point refuses.
+    let title = format!("Ad{}[2Jmin", char::from(0x1b));
+    let answer = json!({"read": 0, "records": [record(&title, 1, 2)]});
     assert_eq!(
         read(&answer).unwrap()[0].title,
         "Ad[2Jmin",

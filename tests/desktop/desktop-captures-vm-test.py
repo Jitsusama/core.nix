@@ -915,8 +915,7 @@ def test_no_agent_opens_a_camera_near_a_meeting_and_joels_programs_still_do(
 
     def opens(slice_: str) -> str:
         return desktop.in_session(
-            f"systemd-run --user --slice={slice_} --wait --pipe --quiet"
-            " -- sh -c ': < /dev/video9'"
+            f"systemd-run --user --slice={slice_} --wait --pipe --quiet -- sh -c ': < /dev/video9'"
         )
 
     try:
