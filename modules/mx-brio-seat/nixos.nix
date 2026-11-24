@@ -1,5 +1,5 @@
 # The MX Brio as the seat's own camera, opened by one program at a time,
-# while ../mx-brio's relay gives no picture (its header says why). A machine
+# while no role takes ../mx-brio's relay in (its header says why). A machine
 # that shared the Brio before keeps it hidden from the seat until it's
 # replugged, so a switch bringing this in, and every boot after, gives back
 # any of the Brio's nodes still held for a relay (give-back.sh), and nobody

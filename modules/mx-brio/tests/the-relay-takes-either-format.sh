@@ -34,10 +34,11 @@ done
 # sink after, so the input has to be made with nothing after it, which a
 # run ending in a sink can't show: the parser takes bare caps only between
 # two elements. Run alone, it stops at its unlinked end, and only one
-# that can't be made at all is called erroneous.
+# that can't be made, in part or at all, is called erroneous or said
+# not to be constructed.
 # shellcheck disable=SC2086 # gst-launch takes a pipeline word by word.
 alone=$(gst-launch-1.0 -q $picture,format=NV12 $rest 2>&1 || true)
-if [[ $alone == *"erroneous pipeline"* ]]; then
+if [[ $alone == *"erroneous pipeline"* || $alone == *"could not be constructed"* ]]; then
   echo "the relay can't make its input, ending as it does: $alone"
   exit 1
 fi

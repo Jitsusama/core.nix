@@ -5293,7 +5293,7 @@
     by any of udev's assignments or taking the Brio's seat tag off as the sharing's rule does, as a
     search with each pattern shown to find its line says, and starts at every boot, and at a
     switch bringing it in, the give-back of a Brio a relay held, so the seat opens the Brio itself
-    while its relay gives no picture
+    while no role takes its relay in
   '';
   the-mx-brio-give-back-never-fails = ''
     the MX Brio's give-back, run under set -e against a stand-in udevadm, replays both of the
@@ -6712,7 +6712,7 @@
     in a sleep leaves its boot said asleep, and a machine killed as a reset
     kills it leaves its boot said cut short, its last second read kept
   '';
-  vm-the-relay-waits-out-a-slow-camera = ''
+  vm-the-relay-waits-out-a-frameless-camera = ''
     the shared cameras' relay, read by a client, makes a camera that never frames again after
     90 s and ends 90 s later, saying so each time, and makes one whose frames stop again after
     10 s, each time it stops, never ending it

@@ -221,6 +221,17 @@ refuse warned "udev holds no record of the MX Brio at $work/root/dev/video0"
 expect warned "udev holds no record of the MX Brio at $work/root/dev/video1"
 refuse said "Gave the seat back"
 
+# A held Brio node whose path udev can't give is said to be unread, never
+# taken for the seat's.
+machine "$held" "$given"
+mkdir "$work/root/paths-fail"
+touch "$work/root/paths-fail/video0"
+give_back "a Brio whose path udev can't give"
+expect warned "Failed to get device path"
+expect warned "udev couldn't say how the cameras at $work/root/dev/video0 stand"
+refuse said "No MX Brio is held"
+replayed $'remove video1\nadd video1'
+
 # A Brio node unplugged as the scan reads it is skipped, not called unread.
 machine "$held" "$given"
 mkdir "$work/root/vanishes"
@@ -276,6 +287,7 @@ give_back "a boot udev hasn't caught up with"
 brio_nodes="$work/root/dev/video0 $work/root/dev/video1"
 expect warned "udev hasn't finished adding the cameras at $brio_nodes in"
 expect warned "isn't known yet"
+expect warned "systemctl restart mx-brio-seat looks again"
 refuse warned "holds no record"
 refuse said "No MX Brio is held"
 replayed ""

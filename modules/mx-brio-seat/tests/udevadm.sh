@@ -16,7 +16,7 @@
 # udevadm does; lags has an add queued and not yet handled, its settle
 # running out; killed has the first settle end the give-back with the TERM
 # its unit's timeout sends; a node named in vanishes/ is unplugged as info
-# reads it.
+# reads it, and one named in paths-fail/ can't have its path read.
 #
 # It refuses what give-back.sh must never ask: a flag it wasn't written for,
 # a trigger naming no device, which udev replays on every device the
@@ -52,7 +52,13 @@ info)
   fi
   case "$2" in
   --query=property) cat "${root}/facts/${node}" ;;
-  --query=path) echo "/devices/${node}" ;;
+  --query=path)
+    if [[ -e "${root}/paths-fail/${node}" ]]; then
+      echo "Failed to get device path for \"$3\": Permission denied" >&2
+      exit 1
+    fi
+    echo "/devices/${node}"
+    ;;
   *) refuse "info $2" ;;
   esac
   ;;

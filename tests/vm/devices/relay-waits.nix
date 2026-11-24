@@ -10,7 +10,10 @@
 # stand in: one never hands a frame on, as a camera whose setup outlasts the
 # wait, and one gives two seconds of frames and stops, as one that dies mid
 # call. The tests are relay-waits-vm-test.py, which pytest runs inside the
-# driver (tests/lib/vm_pytest.py).
+# driver (tests/lib/vm_pytest.py). It runs about four minutes, past the two
+# a VM test splits by, and splitting can't shorten it: the camera that
+# never frames alone takes the patch's two 90 s waits, and a build with
+# shorter ones would test a relay no machine runs.
 { self, pkgs }:
 let
   relay = pkgs.callPackage ../../../modules/v4l2loopback/relay.nix { };

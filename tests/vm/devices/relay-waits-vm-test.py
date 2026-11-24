@@ -7,6 +7,7 @@ with a client reading its loopback, and stopped as that test ends, so any test r
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -42,6 +43,8 @@ SAYING = timedelta(seconds=30)
 # How long udev, and the relay's first placeholder, may take with a new loopback on a busy
 # builder; each wait ends as soon as it's done.
 SETTLING = timedelta(minutes=2)
+# The journal's clock counts microseconds.
+MICROSECONDS = 1_000_000
 
 
 class Relay:
@@ -78,12 +81,20 @@ class Relay:
         self.machine.execute(f"systemctl stop client-{self.unit} {self.unit}")
         self.machine.execute(f"systemctl reset-failed client-{self.unit} {self.unit}")
 
-    def saying(self) -> str:
+    def saying(self, form: str = "cat") -> str:
         """Give the command that prints what the relay has said since it last started."""
         return (
-            "journalctl -o cat"
+            f"journalctl -o {form}"
             f" _SYSTEMD_INVOCATION_ID=$(systemctl show -P InvocationID {self.unit})"
         )
+
+    def when(self, words: str) -> float:
+        """Give the seconds since boot at which the relay first said those words."""
+        for line in self.machine.succeed(self.saying("json")).splitlines():
+            entry = json.loads(line)
+            if words in str(entry.get("MESSAGE", "")):
+                return int(entry["__MONOTONIC_TIMESTAMP"]) / MICROSECONDS
+        pytest.fail(f"The relay never said '{words}':\n{self.said()}")
 
     def said(self) -> str:
         """Give what the relay has said since it last started, an ended one included."""
@@ -129,8 +140,18 @@ def test_a_camera_that_never_frames_is_waited_on_90_s_then_ended(never: Relay) -
         f"! systemctl is-active --quiet {never.unit}",
         timeout=(timedelta(seconds=STALL + LOOKING) + SAYING).seconds,
     )
+    # journald takes the relay's last words in on its own time, so they're waited for.
+    never.machine.wait_until_succeeds(
+        f"{never.saying()} | grep -qF '{ENDING}'", timeout=SAYING.seconds
+    )
     said = never.said()
-    assert ENDING in said, f"The relay ended without saying why:\n{said}"
+    # The relay says nothing of its second wait, so it's timed from the journal: the pipeline
+    # made again gets the whole first wait over, since its camera's setup starts over too.
+    again = never.when("starting it again")
+    ended = never.when(ENDING)
+    assert STALL <= ended - again <= STALL + LOOKING, (
+        f"The relay ended {ended - again:.1f} s after making its camera again, not {STALL}"
+    )
     assert UNMADE not in said, f"The relay never made its camera's pipeline:\n{said}"
     result = never.machine.succeed(f"systemctl show -P Result {never.unit}").strip()
     assert result == "exit-code", f"The relay ended as {result}, not with its failure"
