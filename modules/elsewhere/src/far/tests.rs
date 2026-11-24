@@ -306,15 +306,18 @@ pub(super) fn far_line_in(
         std::env::var("PATH").unwrap_or_default()
     );
     let command = ["sh", "-c", run].map(str::to_owned);
-    let line = quickened(&script(
-        "QEST-20261115-ABC123",
-        "1",
-        bytes,
-        ".s",
-        folder,
+    let line = quickened(
+        &script(
+            "QEST-20261115-ABC123",
+            "1",
+            bytes,
+            ".s",
+            folder,
+            kind,
+            &command,
+        ),
         kind,
-        &command,
-    ));
+    );
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
     let far = std::process::Command::new(sh)
@@ -395,7 +398,7 @@ fn leave(
         std::fs::write(into, text).unwrap();
     }
     let paths = files.iter().map(|(path, _)| *path);
-    // 4 blocks of 512 bytes: a header, one block of a file and the close,
+    // 4 blocks of 512 bytes: a header, one block of a file and the close's two,
     // so one file with data a part (two empty ones may share one), and one
     // past 512 bytes or needing a pax header for its name is refused.
     let bytes = match left {
@@ -421,8 +424,9 @@ fn leave(
 
 /// The far `line` with these tests' waits and totals for a real
 /// crossing's: `WAITS`, `SLOWEST`, `A_PASS_AT_MOST`, `SHARE_FILES` and
-/// `SHARE_BYTES`.
-fn quickened(line: &str) -> String {
+/// `SHARE_BYTES`. Only a line for a `kind` that brings something back
+/// bounds what it brings, so only that one must hold the bound.
+fn quickened(line: &str, kind: &Kind) -> String {
     let mut line = line.to_owned();
     for (real, quick) in [
         (
@@ -450,7 +454,7 @@ fn quickened(line: &str) -> String {
             format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
         ),
     ] {
-        let brings_nothing = real.starts_with("most_files=") && !line.contains("most_files=");
+        let brings_nothing = real.starts_with("most_files=") && kind.brings_back.is_empty();
         assert!(
             brings_nothing || line.contains(&real),
             "the far line no longer holds {real}:\n{line}"

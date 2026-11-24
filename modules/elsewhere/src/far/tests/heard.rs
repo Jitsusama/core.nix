@@ -549,7 +549,8 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
              echo {theirs} \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" \
              > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
              mkdir \"$runs/2\" && \
-             sed 's/^{theirs} /{ended} /' \"$runs/1.run\" > \"$runs/2.run\"; fi"
+             sed 's/^{theirs} /{ended} /' \"$runs/1.run\" > \"$runs/2.run\" && \
+             : > \"$HOME/planted\"; fi"
         ),
     );
     let (code, err, home) = far_line(
@@ -566,6 +567,9 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
         "a run that lost its run's file read as {heard:?}, ending {code:?}: {err}"
     );
     let runs = work(&home);
+    // So the gone run's absence below says the sweep took it, not that
+    // its planting never got that far.
+    assert!(home.join("planted").exists(), "the two runs weren't planted: {err}");
     let file = std::fs::read_to_string(runs.join("1.run")).unwrap_or_default();
     assert!(
         file.starts_with(&format!("{theirs} ")),

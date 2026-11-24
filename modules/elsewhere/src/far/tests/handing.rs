@@ -42,8 +42,9 @@ fn a_link_a_job_leaves_at_what_it_brings_back_is_never_written_through() {
 #[test]
 fn a_file_put_at_the_list_s_name_after_the_handover_s_clear_still_gives_way_to_its_end() {
     // As one of the job's own processes could, once the handover is made
-    // new, for a kind that brings nothing back and for one that does,
-    // whose list is written in a step of its own.
+    // new, for a kind that brings nothing back, whose list is only its
+    // end, and for one that does, whose list is written in a subshell of
+    // its own.
     let when = format!("*\" -rf \"*/{BROUGHT}\" \"*");
     let (step, staling) = refusing(
         "rm",
@@ -51,11 +52,11 @@ fn a_file_put_at_the_list_s_name_after_the_handover_s_clear_still_gives_way_to_i
         "[ -e \"$HOME/staled\" ] || { rm \"$@\" && for last; do :; done && \
          echo stale > \"$last\" && : > \"$HOME/staled\"; exit 0; }",
     );
-    let mut bringing = kind("");
-    bringing.brings_back = vec!["out".into()];
+    let mut nothing = kind("");
+    nothing.brings_back = Vec::new();
     for (kind, run, whole) in [
-        (kind(""), "true", "end\n"),
-        (bringing, "mkdir out && printf a > out/a", "1\tout/a\nend\n"),
+        (nothing, "true", "end\n"),
+        (kind(""), "mkdir out && printf a > out/a", "1\tout/a\nend\n"),
     ] {
         let (code, err, home) = far_line(
             Left::Whole,
