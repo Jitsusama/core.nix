@@ -1373,10 +1373,9 @@ Provider {
         return acts.find(one => one.key === "verb:agent:close");
     }
 
-    // Whether a session has a window to go to: its own here, or one its
-    // machine's node attaches elsewhere.
+    // Whether a session has a window to go to (SessionRow.hasWindow).
     function windowedOf(session) {
-        return !!(session.window || session.kitty || (!session.here && session.attach));
+        return SessionRow.hasWindow(session);
     }
 
     // Wakes a parked session, its row reading as listening from this key's

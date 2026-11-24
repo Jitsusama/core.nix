@@ -30,12 +30,16 @@ function rankOf(row) {
 // order every kind keeps (docs/design.md, the order of actions): what
 // leaves it as it is before what changes it, and what ends it last. Every
 // session on the mesh reads its steer inbox, so each can be talked to,
-// paused, resumed and stopped; one with no window offers no Go To, and
-// only one under way can be stopped. One parked has no process to pause
-// or stop and no window known to go to: it can be woken, or talked to,
-// which wakes it too. Only one here can be closed, last, since the
-// harness ends a session on a close Joel steers it from this machine and
-// drops one a node relays (harness #1023).
+// paused, resumed and stopped; one with no window to go to, nor a holder
+// here to attach one to (hasWindow, below), offers no Go To, and only one
+// under way can be stopped. One parked has no process to pause or stop
+// and no window known to go to: it can be woken, or talked to, which
+// wakes it too. Only one here can be closed, last, since the harness ends
+// a session on a close Joel steers it from this machine and drops one a
+// node relays (harness #1023). These are the acts only until the agents
+// daemon serves the session's row (offered): its rule offers Go To on
+// every session here, since only kitty knows of a window opened with no
+// app id (modules/agents/src/session.rs, windowed).
 function acts(standing, windowed, here) {
     if (standing === "parked") {
         return ["wake", "talk"];
@@ -50,6 +54,21 @@ function acts(standing, windowed, here) {
         ids.push("close");
     }
     return ids;
+}
+
+// Whether a session has a window to go to: its own, or its kitty's; one
+// Go To attaches here to its holder, as for one held whose window Joel
+// closed (Sessions.goTo); or, for one elsewhere, one its machine's node
+// attaches, given the words to (none, as the daemon reads an empty list).
+// Agents' own row takes it only until the row is served (acts), but a
+// landing's Go To and Return, and a look's Go To, take it for good, as
+// no served row stands behind them. It's stricter here than the daemon's
+// rule, offering Go To only where a window is known or a hold attaches,
+// since the shell knows of no window opened with no app id.
+function hasWindow(session) {
+    const holder = session?.here ? session.held : session?.attach;
+    const attaches = Array.isArray(holder) ? holder.length > 0 : Boolean(holder);
+    return Boolean(session?.window || session?.kitty || attaches);
 }
 
 // The acts a session offers from a row it's behind but isn't its own, as

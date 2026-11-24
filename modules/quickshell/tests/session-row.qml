@@ -55,6 +55,27 @@ QtObject {
                     + `not "${want}"`);
         }
 
+        // A session goes to its own window or its kitty's, or to one Go To
+        // attaches to its holder: here, the one holding it, as for one whose
+        // window Joel closed; elsewhere, the one its node attaches with the
+        // words it gives, none for an empty list, as the daemon reads one.
+        // One here held by none has none to go to.
+        const windows = [
+            ["its own window", { here: true, window: 7 }, true],
+            ["its kitty's", { here: true, kitty: "pi-session.2" }, true],
+            ["held here, its window closed", { here: true, held: "w.wake" }, true],
+            ["here, held by none", { here: true, attach: "m" }, false],
+            ["elsewhere, attached by its node", { here: false, attach: "m" }, true],
+            ["elsewhere, attached by its node's words",
+                { here: false, attach: ["mycelium", "attach"] }, true],
+            ["elsewhere, given no words to attach", { here: false, attach: [] }, false],
+            ["elsewhere, attached by none", { here: false, held: "w.wake" }, false]
+        ];
+        for (const [what, session, want] of windows) {
+            if (SessionRow.hasWindow(session) !== want)
+                failures.push(`a session ${what} has ${want ? "no" : "a"} window to go to`);
+        }
+
         // A row a session is behind but isn't its own, as a landing's,
         // offers Talk and Go To of its acts, in their order, and none that
         // steers or ends it: Go To only where it has a window, and one
