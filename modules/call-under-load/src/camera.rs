@@ -39,8 +39,10 @@ const ANSWER: Duration = Duration::from_secs(10);
 const FRAMES: &str = "5";
 /// How many frames are passed over first: a relay hands its splash to the
 /// loopback until it hears a reader and starts the camera, so the first
-/// frames, up to two seconds of them at 30 a second, may be the splash.
-const SPLASH: &str = "60";
+/// frames may be the splash. Ten seconds of them at 30 a second leaves a
+/// relay slowed by load time to hear the reader, and a working camera
+/// still gives its five well inside the wait.
+const SPLASH: &str = "300";
 /// How long a meeting's check is remembered, so each is checked once.
 const KEPT_MS: u64 = 24 * 60 * MIN_MS;
 
@@ -110,34 +112,38 @@ impl std::fmt::Display for Fault {
 
 /// The system unit that feeds a machine's camera to its loopback, as the
 /// XPS 14's does (hardware/dell-xps-14-da14260/camera/camera.nix). It
-/// restarts itself when the camera gives nothing for 90 s, so a restart
+/// restarts itself when a reader has had no frame for 20 s, so a restart
 /// while the loopback is read means the camera gave nothing.
 const RELAY: &str = "camera.service";
 
-/// The relay's run, by systemd's id for it, or nothing on a machine with
-/// no such unit or none running.
+/// The relay's run, by systemd's id for it, empty on a machine with no
+/// such unit or none running, or nothing when systemd couldn't be asked,
+/// as under the load that stalls a camera, after asking three times.
 pub fn relay_run() -> Option<String> {
-    let shown = Command::new("systemctl")
-        .args(["show", "--value", "--property=InvocationID", RELAY])
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    let run = String::from_utf8_lossy(&shown.stdout).trim().to_owned();
-    (!run.is_empty()).then_some(run)
+    (0..3).find_map(|_| {
+        let shown = Command::new("systemctl")
+            .args(["show", "--value", "--property=InvocationID", RELAY])
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|shown| shown.status.success())?;
+        Some(String::from_utf8_lossy(&shown.stdout).trim().to_owned())
+    })
 }
 
 /// What a read came to, given the relay's run before and after it: frames
 /// from a relay that started again in between aren't the camera's, and a
-/// camera that couldn't be opened then was only between runs.
+/// camera that couldn't be opened then was only between runs. A run that
+/// couldn't be asked may hide a restart, whose new run's splash would pass
+/// for a picture, so it counts as one: read again while a minute is
+/// spare, and told rather than passed at the last chance.
 pub fn judged(
     gave: Result<(), Fault>,
     before: Option<&str>,
     after: Option<&str>,
 ) -> Result<(), Fault> {
     match gave {
-        // A side that couldn't be asked, as when systemd is slow to answer
-        // under load, says nothing of a restart.
-        Ok(()) | Err(Fault::Ended(_)) if before.zip(after).is_some_and(|(b, a)| b != a) => {
+        Ok(()) | Err(Fault::Ended(_)) if before.is_none() || before != after => {
             Err(Fault::Restarted)
         }
         gave => gave,
@@ -581,7 +587,7 @@ mod tests {
         let read = asked(Path::new("/dev/video32"), true);
         assert_eq!(
             read.join(" "),
-            "--device /dev/video32 --stream-mmap --stream-skip 60 --stream-count 5 \
+            "--device /dev/video32 --stream-mmap --stream-skip 300 --stream-count 5 \
              --stream-to /dev/null",
             "a loopback's frames weren't all sent to /dev/null"
         );
@@ -706,16 +712,26 @@ mod tests {
         );
         assert_eq!(
             judged(Ok(()), Some("a"), None),
-            Ok(()),
-            "a relay that couldn't be asked after the read was taken for a restart"
+            Err(Fault::Restarted),
+            "a relay that couldn't be asked after the read was taken as unchanged"
         );
         assert_eq!(
             judged(Ok(()), None, Some("a")),
-            Ok(()),
-            "a relay that couldn't be asked before the read was taken for a restart"
+            Err(Fault::Restarted),
+            "a relay that couldn't be asked before the read was taken as unchanged"
         );
         assert_eq!(
             judged(Ok(()), None, None),
+            Err(Fault::Restarted),
+            "a relay that couldn't be asked at all was taken as unchanged"
+        );
+        assert_eq!(
+            judged(Ok(()), Some(""), Some("a")),
+            Err(Fault::Restarted),
+            "a relay that started during the read was taken as unchanged"
+        );
+        assert_eq!(
+            judged(Ok(()), Some(""), Some("")),
             Ok(()),
             "a machine with no relay unit had its frames refused"
         );
