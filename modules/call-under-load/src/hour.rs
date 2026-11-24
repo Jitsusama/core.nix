@@ -113,18 +113,27 @@ fn left_out(app: &str, waits: &Waits) -> Vec<String> {
     said
 }
 
-/// What an app's time blocked stands for, or why it's unread.
+/// What an app's time blocked stands for, or why it's unread. Each count
+/// is said against the windows the app was open in, so an hour with it
+/// closed never reads as the kernel keeping no time, and an hour kept in
+/// only part shows how much of it the figure stands for.
 fn kept_blocked(app: &str, waits: &Waits) -> Vec<String> {
+    if waits.windows == 0 {
+        return vec![format!(
+            "Joel's {app}: unread, since it was not open in the hour"
+        )];
+    }
     if waits.blocked_windows == 0 {
         return vec![format!(
-            "Joel's {app}: unread, since the kernel keeps no time blocked without \
-             kernel.sched_schedstats"
+            "Joel's {app}: unread, kept in none of its {} windows, since the kernel keeps no \
+             time blocked without kernel.sched_schedstats",
+            waits.windows
         )];
     }
     vec![format!(
         "Joel's {app}: each 10 s window's most any drawing thread was blocked in the kernel, \
-         on a lock, a page read back or reclaim, from lag-watch, {} windows",
-        waits.blocked_windows
+         on a lock, a page read back or reclaim, from lag-watch, kept in {} of its {} windows",
+        waits.blocked_windows, waits.windows
     )]
 }
 

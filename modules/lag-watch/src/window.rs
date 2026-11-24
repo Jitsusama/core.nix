@@ -65,6 +65,9 @@ pub struct Snapshot {
     /// began, so a window reads what it gained. Empty where the kernel
     /// doesn't keep it.
     pub blocked: BTreeMap<Thread, u64>,
+    /// How much of that each app thread spent waiting on the disk, in
+    /// nanoseconds (`kernel::io_waited`), read and counted the same way.
+    pub io_waited: BTreeMap<Thread, u64>,
 }
 
 /// How far past the time between two reads a thread's wait may run and
@@ -138,9 +141,17 @@ pub struct Wait {
     pub doubted: u64,
     /// The most any of its threads was blocked in the kernel in the window,
     /// in milliseconds: on a lock, a page read back or reclaim, which no
-    /// wait for a CPU shows. None where it isn't kept.
+    /// wait for a CPU shows. None where it isn't kept. The kernel adds a
+    /// block to its sum only as the thread wakes, so a block lands whole in
+    /// the window it ends in; since a thread is never blocked twice at once,
+    /// one past the window's own `seconds` began before the window did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked_ms: Option<f64>,
+    /// How much of `blocked_ms` that thread spent waiting on the disk, in
+    /// milliseconds, so a block reads as io or as a lock or reclaim. None
+    /// where it isn't kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_ms: Option<f64>,
 }
 
 #[expect(
@@ -429,7 +440,9 @@ fn turns_waited(
     now: &Snapshot,
 ) -> (BTreeMap<String, Wait>, BTreeMap<String, Worst>) {
     let mut waits: BTreeMap<String, (u64, u64, f64, u64)> = BTreeMap::new();
-    let mut blocked: BTreeMap<&str, u64> = BTreeMap::new();
+    // Per label, the most one thread was blocked, and how much of that
+    // same thread's time went to the disk, so the two read together.
+    let mut blocked: BTreeMap<&str, (u64, Option<u64>)> = BTreeMap::new();
     let mut call: BTreeMap<String, Worst> = BTreeMap::new();
     let mut call_doubted: BTreeMap<&str, u64> = BTreeMap::new();
     for (key, s) in &now.threads {
@@ -472,7 +485,11 @@ fn turns_waited(
         entry.3 += doubted;
         if let (Some(was), Some(is)) = (then.blocked.get(key), now.blocked.get(key)) {
             let most = blocked.entry(key.label).or_default();
-            *most = (*most).max(is.saturating_sub(*was));
+            let this = is.saturating_sub(*was);
+            if this >= most.0 {
+                let io = then.io_waited.get(key).zip(now.io_waited.get(key));
+                *most = (this, io.map(|(was, is)| is.saturating_sub(*was)));
+            }
         }
     }
     for (label, doubted) in call_doubted {
@@ -488,7 +505,9 @@ fn turns_waited(
             } else {
                 0.0
             };
-            let blocked_ms = blocked.get(label.as_str()).map(|&ns| float(ns) / 1e6);
+            let most = blocked.get(label.as_str());
+            let blocked_ms = most.map(|&(ns, _)| float(ns) / 1e6);
+            let io_ms = most.and_then(|&(_, io)| io).map(|ns| float(ns) / 1e6);
             (
                 label,
                 Wait {
@@ -496,6 +515,7 @@ fn turns_waited(
                     worst_us: worst,
                     doubted,
                     blocked_ms,
+                    io_ms,
                 },
             )
         })

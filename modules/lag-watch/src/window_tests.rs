@@ -464,6 +464,83 @@ fn an_app_s_threads_blocked_in_the_kernel_say_the_most_one_was() {
     // A row written before it was kept reads as none kept.
     let old: Wait = serde_json::from_str(r#"{"mean_us": 1.0, "worst_us": 2.0}"#).unwrap();
     assert_eq!(old.blocked_ms, None, "an old row read as blocked");
+    assert_eq!(old.io_ms, None, "an old row read as waiting on the disk");
+}
+
+#[test]
+fn the_thread_blocked_most_says_how_much_of_it_was_the_disk() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    for s in [&mut then, &mut now] {
+        ran(s, "slack-ui", "slack", 0, 0);
+        ran(s, "slack-ui", "Compositor", 0, 0);
+    }
+    let thread = |s: &Snapshot, name: &str| {
+        s.threads
+            .keys()
+            .find(|t| t.name == name)
+            .expect("the thread was made above")
+            .clone()
+    };
+    for (s, slack, compositor) in [(&mut then, 0, 0), (&mut now, 350, 100)] {
+        let ms = |n: u64| n * 1_000_000;
+        let (main, drawer) = (thread(s, "slack"), thread(s, "Compositor"));
+        s.blocked.insert(main.clone(), ms(slack));
+        s.blocked.insert(drawer.clone(), ms(compositor));
+        // The main thread's block was a fifth io; the compositor's, all of it.
+        s.io_waited.insert(main, ms(slack / 5));
+        s.io_waited.insert(drawer, ms(compositor));
+    }
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    let slack = w.waits["slack-ui"];
+    assert_eq!(
+        (slack.blocked_ms, slack.io_ms),
+        (Some(350.0), Some(70.0)),
+        "the io said wasn't the io of the thread blocked most, so the two don't read together"
+    );
+    assert_eq!(w.waits["niri"].io_ms, None, "an io wait not kept was said");
+}
+
+// A thread seen at one end only has no time blocked in the window to say,
+// a tab shown by the window's end counts from where it rested hidden, and
+// one hidden by its end is resting, so none of its block is Joel's wait.
+#[test]
+fn time_blocked_counts_only_threads_seen_at_both_ends_and_shown_at_the_last() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    for s in [&mut then, &mut now] {
+        ran(s, "chrome-ui", "chrome", 0, 0);
+        ran(s, "chrome-ui", "Compositor", 0, 0);
+        ran(s, "chrome-ui", "VizCompositorTh", 0, 0);
+    }
+    let thread = |s: &Snapshot, name: &str| {
+        s.threads
+            .keys()
+            .find(|t| t.name == name)
+            .expect("the thread was made above")
+            .clone()
+    };
+    let ms = |n: u64| n * 1_000_000;
+    // The main thread is new: 9 s blocked by the end, nothing at the start.
+    now.blocked.insert(thread(&now, "chrome"), ms(9_000));
+    // The compositor rested hidden at the start and is shown at the end.
+    let shown = thread(&then, "Compositor");
+    let rested = then.threads.remove(&shown).unwrap();
+    then.resting.insert(shown.clone(), rested);
+    then.blocked.insert(shown.clone(), ms(1_000));
+    now.blocked.insert(shown, ms(1_040));
+    // The other is hidden by the end, though blocked 700 ms.
+    let hidden = thread(&now, "VizCompositorTh");
+    let resting = now.threads.remove(&hidden).unwrap();
+    now.resting.insert(hidden.clone(), resting);
+    then.blocked.insert(hidden.clone(), ms(2_000));
+    now.blocked.insert(hidden, ms(2_700));
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    assert_eq!(
+        w.waits["chrome-ui"].blocked_ms,
+        Some(40.0),
+        "only the tab shown by the end, counted from where it rested, is the window's"
+    );
 }
 
 fn sched(wait_ns: u64, slices: u64) -> Sched {

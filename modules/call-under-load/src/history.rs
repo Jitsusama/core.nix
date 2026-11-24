@@ -153,24 +153,28 @@ mod tests {
     #[test]
     fn the_hour_s_windows_give_the_p99_of_the_most_a_thread_was_blocked() {
         let now = 100_000;
-        let mut lines: Vec<String> = (1..=99)
-            .map(|i| {
-                let mut w: Value =
-                    serde_json::from_str(&window(now - i * 10, Some(1_000.0))).unwrap();
-                w["waits"]["chrome-ui"]["blocked_ms"] = json!(12.0);
-                w.to_string()
-            })
+        let blocked = |ended: u64, ms: f64| {
+            let mut w: Value = serde_json::from_str(&window(ended, Some(1_000.0))).unwrap();
+            w["waits"]["chrome-ui"]["blocked_ms"] = json!(ms);
+            w.to_string()
+        };
+        // Each window blocked a different time, 1 to 99 ms, and one 5 s, so
+        // the p99 (99) reads apart from the most (5000) and the mean (about
+        // 60), and the windows' order isn't the times'.
+        let mut lines: Vec<String> = (1..=99_u32)
+            .map(|i| blocked(now - u64::from(i) * 10, f64::from((i * 37) % 99 + 1)))
             .collect();
+        lines.push(blocked(now - 3, 5_000.0));
         // A window from before the time was kept counts toward the waits alone.
         lines.push(window(now - 5, Some(1_000.0)));
         let waits = of(&lines.join("\n"), "chrome-ui", now, 0, &[]);
         assert_eq!(
             (waits.blocked_windows, waits.blocked_p99),
-            (99, Some(12.0)),
-            "the windows' time blocked wasn't read"
+            (100, Some(99.0)),
+            "the windows' time blocked wasn't read as their p99"
         );
         assert_eq!(
-            waits.windows, 100,
+            waits.windows, 101,
             "a window without the time blocked was dropped"
         );
     }
