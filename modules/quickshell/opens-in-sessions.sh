@@ -16,11 +16,14 @@
 # unit's own main process, which nothing else can be. A kitty its unit is
 # starting again, 5 s after it ended, is waited on for up to 20 s, so a
 # window asked of it meanwhile opens once it's back rather than never;
-# with neither by then, or with one that opens nothing, the journal says
-# why, and the shell is told, so it stops counting the window as coming
-# and asks again at the next press (Sessions' untaken). It's told when
-# this was started, so a press made since, whose window may yet come, is
-# left coming.
+# with neither by then, a socket the ask can't reach, or an old kitty that
+# opens nothing, the journal says why, and the shell is told, so it stops
+# counting a viewer (pi-hosted) as coming and asks again at the next press
+# (Sessions' untaken); it counts no other as coming, so ignores the rest.
+# It's told when this was started, so a press made since, whose window
+# may yet come, is left coming. The kitty is asked for no answer: kitten
+# gives up on one after 10 s, though a kitty slow to draw may draw it
+# yet, so only an ask that never reached it is a window that won't come.
 
 asked=$(date +%s%3N)
 sock=$1
@@ -47,8 +50,8 @@ until [ -S "$sock" ] || old; do
 done
 
 if [ -S "$sock" ]; then
-  kitten @ --to "unix:$sock" launch --type=os-window --os-window-class "$class" \
-    --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" && exit 0
+  kitten @ --to "unix:$sock" launch --no-response --type=os-window \
+    --os-window-class "$class" --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" && exit 0
   echo "sessions: the sessions kitty opened no $class" >&2
 elif old; then
   systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
@@ -58,5 +61,7 @@ elif old; then
 else
   echo "sessions: no sessions kitty to open $class in" >&2
 fi
-qs ipc call sessions untaken "$class" "$asked" > /dev/null 2>&1 || true
+# Within 5 s, so a shell stalled or starting again leaves no script behind.
+timeout 5 qs ipc call sessions untaken "$class" "$asked" > /dev/null 2>&1 ||
+  echo "sessions: the shell didn't hear that no kitty took $class" >&2
 exit 1

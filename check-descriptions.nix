@@ -1305,8 +1305,9 @@
     give matches a file the repository holds
   '';
   every-why-in-the-foot-has-words = ''
-    every why the shell says a press it can't answer by, and every key the launcher's foot says, has
-    words in the agents' vocabulary, so no press goes unsaid in the foot
+    every why the shell's sessions say a press they can't answer by, and every key the launcher's
+    agents name to its foot, has words in the agents' vocabulary, so no press goes unsaid in the
+    foot
   '';
   every-window-says-what-it-holds = ''
     the reader on a page and a kitty running the account's shell, opened on the account's niri,

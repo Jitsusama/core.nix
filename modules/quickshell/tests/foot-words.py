@@ -5,14 +5,17 @@
 AGENTS is the vocabulary's own file for agents (launcher/words/agents.json),
 SESSIONS the shell's Sessions.qml and LAUNCHER the launcher's Agents.qml. Each
 why Sessions says a session by (`unhosted(session, "why")`, one or a choice
-of two) and each key the launcher says in its foot (`elsewhere("key", ...)`)
+of two) and each key the launcher names to its foot (`elsewhere("key", ...)`)
 must have words in agents:machine's `said`: the launcher reads them there and
 says nothing for a key it hasn't, so a press would be met with an empty foot
-(Joel, 2026-11-15: a press must never do nothing). A call is read to its
-closing paren, however it's wrapped. Each why or key missing, or worded "",
-fails, printed, and so does a why given by a name, which can't be read. The
-check first proves it finds a why in a choice or a wrapped call and refuses
-a why with no words, so a rule that stopped finding or refusing fails it too.
+(Joel, 2026-11-15: a press must never do nothing). Keys the launcher reads off
+agents:machine by name elsewhere, as SessionRow.js's unsteered does, aren't
+read here. A call is read to its closing paren, however it's wrapped. Each why
+or key missing, or worded "", fails, printed, and so does a why that can come
+to anything but a word, as one held in a name, which can't be read. A word a
+choice is made by is no why. The check first proves it finds a why in a choice
+or a wrapped call and refuses a why with no words, so a rule that stopped
+finding or refusing fails it too.
 """
 
 from __future__ import annotations
@@ -80,17 +83,86 @@ def argument(source: str, call: re.Pattern[str], which: int) -> list[str]:
     return found
 
 
+def top_level(text: str, wanted: str) -> list[int]:
+    """Give where `wanted` stands in `text` outside brackets and quotes.
+
+    A ? is wanted alone, never as part of ?? or ?.
+    """
+    found: list[int] = []
+    depth = 0
+    quote = ""
+    at = 0
+    while at < len(text):
+        one = text[at]
+        if quote:
+            if one == "\\":
+                at += 1
+            elif one == quote:
+                quote = ""
+        elif one in QUOTES:
+            quote = one
+        elif one in OPENS:
+            depth += 1
+        elif one in CLOSES:
+            depth -= 1
+        elif depth == 0 and text.startswith(wanted, at):
+            alone = wanted != "?" or (
+                text[at + 1 : at + 2] not in "?." and (at == 0 or text[at - 1] != "?")
+            )
+            if alone:
+                found.append(at)
+                at += len(wanted) - 1
+        at += 1
+    return found
+
+
+def outcomes(why: str) -> list[str]:
+    """Give what a why can come to: each side of ?? or ||, or each choice a ? makes.
+
+    What a choice is made by is none of them, so a word compared there is
+    no why.
+    """
+    why = why.strip()
+    for either in ("??", "||"):
+        splits = top_level(why, either)
+        if splits:
+            edges = [0, *(at + len(either) for at in splits)]
+            ends = [*splits, len(why)]
+            return [
+                part
+                for start, end in zip(edges, ends, strict=True)
+                for part in outcomes(why[start:end])
+            ]
+    asks = top_level(why, "?")
+    if asks:
+        rest = why[asks[0] + 1 :]
+        # The : that ends this choice's first side, past any it holds.
+        nested = 0
+        for at in sorted(top_level(rest, "?") + top_level(rest, ":")):
+            if rest[at] == "?":
+                nested += 1
+            elif nested:
+                nested -= 1
+            else:
+                return outcomes(rest[:at]) + outcomes(rest[at + 1 :])
+    return [why]
+
+
 def whys(source: str) -> set[str]:
-    """Give each why a call of unhosted gives, every word of its second argument."""
+    """Give each why a call of unhosted gives, every word its second argument can come to."""
     found: set[str] = set()
     for why in argument(source, UNHOSTED, 1):
-        found.update(said for said in WORD.findall(why) if said)
+        found.update(said for outcome in outcomes(why) for said in WORD.findall(outcome) if said)
     return found
 
 
 def unread(source: str) -> list[str]:
-    """Give each call's why that names no word of its own, so can't be read."""
-    return [why for why in argument(source, UNHOSTED, 1) if not any(WORD.findall(why))]
+    """Give each call's why that can come to anything but a word of its own, so can't be read."""
+    return [
+        why
+        for why in argument(source, UNHOSTED, 1)
+        if not all(WORD.fullmatch(outcome) for outcome in outcomes(why))
+    ]
 
 
 def keys(source: str) -> set[str]:
@@ -121,31 +193,52 @@ def unworded(wanted: set[str], words: dict[str, object]) -> list[str]:
 
 def refuses_what_it_should() -> list[str]:
     """Give each rule that let a gap through, from sources made to have one."""
-    let_through: list[str] = []
     choice = 'root.unhosted(footed, hostly ? "unviewable" : "unviewableHost");'
-    if whys(choice) != {"unviewable", "unviewableHost"}:
-        let_through.append("a why given as a choice of two")
-    if whys("signal unhosted(var session, string why)"):
-        let_through.append("the signal's own declaration")
     wrapped = 'root.unhosted(footed,\n    hostly ? "unviewable" : "unviewableHost");'
-    if whys(wrapped) != {"unviewable", "unviewableHost"}:
-        let_through.append("a why wrapped onto the call's next line")
-    if whys('unhosted(said, "unviewable-host");') != {"unviewable-host"}:
-        let_through.append("a why that isn't letters alone")
-    if whys('unhosted({ address: quest, machine: "" }, "hostless");') != {"hostless"}:
-        let_through.append("a why after a first argument holding a comma")
-    if unread("unhosted(said, why);") != ["why"]:
-        let_through.append("a why held in a name, which can't be read")
-    if unread('unhosted(said, why ?? "hosted");') != ['why ?? "hosted"']:
-        let_through.append("a why held half in a name")
-    if whys('unhosted(said, named === "x" ? "a" : "b");') != {"a", "b"}:
-        let_through.append("a word a choice is made by, read as a why")
-    if keys('provider.elsewhere("unopened", session), Theme.alert]]);') != {"unopened"}:
-        let_through.append("a key the launcher names")
     vocabulary = {"things": [{"id": "agents:machine", "said": {"hosted": "x", "opening": ""}}]}
-    if unworded({"hosted", "opening", "unnamed"}, said(vocabulary)) != ["opening", "unnamed"]:
-        let_through.append("a why worded empty or not at all")
-    return let_through
+    # What each rule gives a source made to test it, what it should, and
+    # the gap it lets through when the two differ.
+    held: list[tuple[object, object, str]] = [
+        (whys(choice), {"unviewable", "unviewableHost"}, "a why given as a choice of two"),
+        (whys("signal unhosted(var session, string why)"), set(), "the signal's own declaration"),
+        (
+            whys(wrapped),
+            {"unviewable", "unviewableHost"},
+            "a why wrapped onto the call's next line",
+        ),
+        (
+            whys('unhosted(said, "unviewable-host");'),
+            {"unviewable-host"},
+            "a why that isn't letters alone",
+        ),
+        (
+            whys('unhosted({ address: quest, machine: "" }, "hostless");'),
+            {"hostless"},
+            "a why after a first argument holding a comma",
+        ),
+        (unread("unhosted(said, why);"), ["why"], "a why held in a name, which can't be read"),
+        (
+            unread('unhosted(said, why ?? "hosted");'),
+            ['why ?? "hosted"'],
+            "a why held half in a name",
+        ),
+        (
+            whys('unhosted(said, named === "x" ? "a" : "b");'),
+            {"a", "b"},
+            "a word a choice is made by, read as a why",
+        ),
+        (
+            keys('provider.elsewhere("unopened", session), Theme.alert]]);'),
+            {"unopened"},
+            "a key the launcher names",
+        ),
+        (
+            unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
+            ["opening", "unnamed"],
+            "a why worded empty or not at all",
+        ),
+    ]
+    return [rule for given, wanted, rule in held if given != wanted]
 
 
 def main(arguments: list[str]) -> int:

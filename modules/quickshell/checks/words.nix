@@ -75,10 +75,11 @@
       touch $out
     '';
 
-  # Every why the shell says a press it can't answer by, and every key the
-  # launcher's foot says, has words in agents:machine
+  # Every why Sessions.qml says a press it can't answer by, and every key
+  # Agents.qml names to the launcher's foot, has words in agents:machine
   # (modules/quickshell/tests/foot-words.py), since the foot says nothing for
-  # a key it hasn't and a press must never do nothing.
+  # a key it hasn't and a press must never do nothing. Keys read off
+  # agents:machine by name elsewhere, as SessionRow.js's, aren't read here.
   every-why-in-the-foot-has-words = pkgs.runCommandLocal "every-why-in-the-foot-has-words" { } ''
     ${lib.getExe pkgs.python3} ${../tests/foot-words.py} ${../launcher/words/agents.json} \
       ${../Sessions.qml} ${../launcher/Agents.qml}

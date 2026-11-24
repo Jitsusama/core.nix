@@ -871,6 +871,7 @@ Singleton {
         // The window a session being reopened opens in, placed once niri
         // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
+            root.heardWindow(window);
             root.viewerCame(window);
             root.focusOpened(window);
             if (root.reopening && window.session === true)
@@ -1578,6 +1579,9 @@ Singleton {
     // (reopened), as Reopen Them All tells each to carry on.
     property var reopening: null
     function reopenAll(lost, gone, keptAt, told) {
+        // Its pid first, as a kitty started at login may have written it
+        // after the shell last read it, so each viewer is judged by it.
+        readKittyPid();
         const boots = { now: arrangement[bootId], restored: arrangement[restoring.boot] };
         const kept = keptAt ?? (id => Places.keptFor(id, boots));
         // The other windows its place's boot kept at once, which say which
@@ -2562,7 +2566,9 @@ Singleton {
     // words its node gives (Jitsusama/mycelium: `attach --host H --session
     // ID`), named for it alone (viewerOf), so niri's word on that window is
     // what Go To raises next time; with no words it tells `unhosted`, `why`
-    // "hosted", or "unnamed" for an id that can't name a viewer's window.
+    // "hosted", or "unnamed" for an id that can't name a viewer's window;
+    // "unowned", told after it opens or holds, a window niri lists under
+    // the viewer's app id was drawn by another program (heldByAnother).
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
@@ -2573,6 +2579,7 @@ Singleton {
     // A window Go To opens goes where the session would reopen (goesTo),
     // never on whichever workspace Joel is on.
     function goTo(session) {
+        readKittyPid();
         if (session.presence?.hosted
             && !(root.listedNow(session.window) && root.drawnHere(session.window))) {
             // Its viewer niri lists is raised, never a second
@@ -2589,8 +2596,15 @@ Singleton {
                 Niri.act({ FocusWindow: { id: listed.id } });
             else if (named === "" || !Array.isArray(words) || words.length === 0)
                 unhosted(session, named === "" ? "unnamed" : "hosted");
-            else if (!heldBack(session.address, named, session))
-                view(session, root.goesTo(session));
+            else {
+                if (!heldBack(session.address, named, session))
+                    view(session, root.goesTo(session));
+                // Said last, so a pid read wrong, which refuses every
+                // viewer, is seen at the press rather than as viewers that
+                // never come.
+                if (heldByAnother(named))
+                    unhosted(session, "unowned");
+            }
             return;
         }
         if (!session.here && !session.window && !session.kitty) {
@@ -2722,8 +2736,11 @@ Singleton {
     // no later than the script started (`asked`, its ms) is the one it
     // gave up on: a press since, whose window may yet come, stays coming,
     // so the next press opens no second viewer beside it.
+    // Any program of Joel's can call it, so only a viewer's app id and a
+    // time in ms are taken; anything else leaves what's coming as it was.
     function untaken(named, asked) {
-        if (attaching[named] === undefined || attaching[named] > Number(asked))
+        if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked))
+            || attaching[named] === undefined || attaching[named] > Number(asked))
             return;
         const still = Object.assign({}, attaching);
         delete still[named];
@@ -2867,26 +2884,42 @@ Singleton {
     // Whether the sessions' kitty drew `window`, once its pid is known:
     // any Wayland program can give its window a viewer's app id, so one
     // another drew is never raised, focused or counted come as a viewer.
-    // Before then, and for a kitty from before its unit wrote one, the app
-    // id alone says.
+    // That keeps stray windows and ones whose names collide apart, not a
+    // program of Joel's own set on forging one, which can reach the
+    // kitty's own socket as every session can. Before then, and for a
+    // kitty from before its unit wrote one, the app id alone says. It only
+    // compares, as running and the rest read it while they're worked out:
+    // the pid is read again as windows come (heardWindow), before Go To,
+    // and before Reopen Them All's walk.
     function drawnHere(window) {
-        const pid = String(window?.pid);
-        // The file is read again before one is refused, as a kitty started
-        // again under a new pid makes a folder its watch can miss.
-        if (sessionsKittyPid === "" || pid === sessionsKittyPid || readKittyPid() === pid)
-            return true;
-        const id = String(window?.id);
-        if (!(id in refusedViewers)) {
-            refusedViewers[id] = true;
-            console.info(`sessions: window ${id} isn't taken as a viewer: pid ${pid} drew it, `
-                + `not the sessions kitty's ${sessionsKittyPid}`);
-        }
-        return false;
+        return sessionsKittyPid === "" || String(window?.pid) === sessionsKittyPid;
     }
-    // Each window drawnHere refused, by niri's id, journalled once, so a
-    // forged viewer or a pid read wrong is seen rather than a viewer that
+    // A window come with a viewer's app id. The pid file is read again
+    // before one is refused, as a kitty started again under a new pid makes
+    // a folder its watch can miss, and each refused is journalled once.
+    function heardWindow(window) {
+        if (!String(window?.opened ?? "").startsWith("pi-hosted.") || drawnHere(window))
+            return;
+        readKittyPid();
+        const id = String(window?.id);
+        if (drawnHere(window) || id in refusedViewers)
+            return;
+        refusedViewers[id] = true;
+        console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
+            + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
+    }
+    // Each window heardWindow refused, by niri's id, journalled once, so a
+    // stray window or a pid read wrong is seen rather than a viewer that
     // never came.
     property var refusedViewers: ({})
+    // Whether a window niri lists with app id `named` is one the sessions'
+    // kitty didn't draw, as Go To says ("unowned").
+    function heldByAnother(named) {
+        const windows = trustsNiri()
+            ? Object.values(Niri.windows).filter(window => window.opened === named)
+            : niriWindows.opened[named] ?? [];
+        return windows.some(window => !drawnHere(window));
+    }
     // Whether niri's list says which windows are open: while it lists
     // any, being the windows daemon's own, or while niri's own stream
     // stands in for a daemon that isn't answering, which leaves the index
@@ -3458,9 +3491,11 @@ Singleton {
         const named = record.opened || viewerOf(record.presence);
         const kitty = record.kitty;
         const pid = kitty ? kittyPid(kitty.socket) : undefined;
-        // A viewer's window is one the sessions' kitty drew, never another
-        // program's of the same app id (drawnHere).
-        const ours = window => !String(named).startsWith("pi-hosted.") || drawnHere(window);
+        // A viewer's window, or any session's in the sessions' kitty, is
+        // one that kitty drew, never another program's of the same app id
+        // (drawnHere).
+        const checked = String(named).startsWith("pi-hosted.") || kitty?.socket === sessionsSocket;
+        const ours = window => !checked || drawnHere(window);
         if (named !== "" && opened)
             return SessionWindows.named((opened[String(named)] ?? []).filter(ours), pid);
         if (named !== "")
