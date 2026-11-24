@@ -3,10 +3,12 @@
 //! November: a line a pain, written once, its owner the cell it went to.
 //! Once a landing a switch carried closes the pain, its line's check says
 //! what landed, and cadence keeps the miss open until the change it names
-//! runs here. One the keeper carries into a ledger of its own after it
-//! was written is marked carried, as that ledger tracks it from then. No
-//! other line of the ledger is changed, and a pain closes only on its
-//! fix, never on how long it has been quiet.
+//! runs here. One the keeper carries into a ledger of its own is marked
+//! carried, as that ledger tracks its fix from then, and is written even
+//! when it was carried first: it is still a miss, and cadence asks its
+//! owner for a test that runs. No other line of the ledger is changed,
+//! and a pain closes only on its fix, never on how long it has been
+//! quiet.
 //!
 //! Only pains sent from `FROM_MS` on are written: the 214 sent before it
 //! had no thread kept, so most would only ever read as lost, and would
@@ -39,9 +41,9 @@ const LOCK_AT_MOST: Duration = Duration::from_secs(2);
 /// Joel's time, in ms.
 pub const FROM_MS: i64 = 1_795_496_400_000;
 
-/// Writes each of `kept` sent to a cell from `from_ms` on, and carried by
-/// no ledger, into the ledger at `ledger` once, at his time by
-/// `offset_s`, and the check of each closed since, or that it is carried.
+/// Writes each of `kept` sent to a cell from `from_ms` on into the ledger
+/// at `ledger` once, at his time by `offset_s`, and the check of each
+/// closed since, or that it is carried.
 /// Lines are added at its end; the ledger is written whole only when a
 /// line changes, under its lock either way, and read again first, so
 /// neither another run's writes nor a line added by hand are lost.
@@ -165,7 +167,7 @@ fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<S
         .collect();
     let added = owed
         .iter()
-        .filter(|h| !h.carried && !held.contains(&h.key))
+        .filter(|h| !held.contains(&h.key))
         .map(|h| line_of(h, offset_s))
         .collect();
     let whole = changed.then(|| lines.into_iter().map(|line| line + "\n").collect());
@@ -185,6 +187,9 @@ fn line_of(pain: &Heard, offset_s: i64) -> String {
     if let Some(fix) = pain.fixed_by() {
         line["check"] = json!(fix.said);
         line["closed_by"] = json!(fix.commit);
+    }
+    if pain.carried {
+        line["carried"] = json!(true);
     }
     line.to_string()
 }

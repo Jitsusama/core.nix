@@ -157,8 +157,9 @@ fn judged(text: &str, look: impl Fn(&Test<'_>) -> Look) -> Measure {
         .all(|line| serde_json::from_str::<Value>(line).is_ok());
     let mut behind = Vec::new();
     let mut blind = 0;
-    // A pain the keeper carried into the asks is tracked there, not here.
-    for miss in lines(text).filter(|miss| miss["carried"].as_bool() != Some(true)) {
+    // A pain the keeper carried into the asks has its fix tracked there,
+    // but it's still a miss, which needs a test that runs.
+    for miss in lines(text) {
         let why = match standing(&miss, &look) {
             Untested::No => continue,
             Untested::Unseen => {

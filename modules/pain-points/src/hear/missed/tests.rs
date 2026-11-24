@@ -79,7 +79,7 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
     write(&ledger, &kept, OFFSET, 0).expect("written");
     write(&ledger, &kept, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
-    assert_eq!(lines.len(), 2, "the keeper's and the one sent: {lines:?}");
+    assert_eq!(lines.len(), 3, "the keeper's and the two sent: {lines:?}");
     assert_eq!(
         lines[0]["words"], "fuck.",
         "the keeper's line is kept as it was"
@@ -88,7 +88,14 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
         lines[1],
         json!({"at": "2026-11-21T20:30:00-05:00", "words": "the bar is the wrong colour",
                "owner": "ABC123", "pain": "s/e1", "heard_by": "pain-points"}),
-        "the void's, the carried and the unsent aren't written"
+        "the void's and the unsent aren't written"
+    );
+    // One the keeper carried first is still a miss, which needs a test
+    // that runs, though the keeper's ledger tracks its fix.
+    assert_eq!(
+        (&lines[2]["pain"], &lines[2]["carried"]),
+        (&json!("s/c"), &json!(true)),
+        "a pain carried before it was written wasn't written as carried"
     );
     assert!(
         fs::read_to_string(&ledger)
