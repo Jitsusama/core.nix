@@ -212,12 +212,17 @@ or launchd, and [`home.nix`][2] the account's.
   long as what it was handed. Upkeep ends `unfinished` after 20 minutes,
   and a pass reaching for room in a band no worse than filling after two
   hours, the rest due at the next step, which surveys again and doesn't
-  rest. The next reach on that disk in such a band is offered nothing
-  the cut one judged, so each takes up where the last stopped, through
-  one that waits, stalls or is stopped too. A reach that gets through
-  its offers starts afresh, as does a reach at a worse band, which sees
-  every offer and so never calls the disk exhausted over offers it
-  wasn't shown, and a disk due for anything else. One cut short teaches nothing of how
+  rest. The next reach on that disk in such a band is offered none of
+  the files a cut one judged, so none judges the same two hours again;
+  what reaches that waited, stalled or were stopped judged is offered
+  again, and so is every command and garbage batch, whose names come
+  back each round for other work. Garbage collected in between skips
+  nothing. A reach that gets through its offers starts afresh, as does
+  a reach at a worse band, which sees every offer and so never calls
+  the disk exhausted over offers it wasn't shown, a reach that would
+  be offered nothing, upkeep, and a disk measured healthy. What was
+  judged lives only in memory, so a guard started again judges
+  everything. One cut short teaches nothing of how
   long a pass takes, and its notice says it ran as long as a pass may.
   On 12 November a laptop's upkeep held a day and a half of
   entries, and on 23 November an account's reach judged 88,000 offers for

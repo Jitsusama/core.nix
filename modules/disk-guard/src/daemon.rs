@@ -1384,6 +1384,9 @@ impl Guard {
             watched.space = Some(space);
             if watched.band == Band::Healthy {
                 watched.rest = None;
+                // The spell a cut reach belonged to is over, and what it
+                // judged kept may be free to clear when the disk fills again.
+                self.reached_short.remove(&device);
             }
             let decision = decide(&Situation {
                 band: watched.band,
@@ -1431,8 +1434,12 @@ impl Guard {
         let produced = self.produce(tick)?;
         let passed = asked || produced || !due.is_empty();
         if passed {
-            // So a pass's heartbeat starts from what the disks are now.
-            self.write_status(tick.wall)?;
+            // So a pass's heartbeat starts from what the disks are now. A
+            // disk too full to hold the status is the one the pass is for,
+            // so a status unwritten stops nothing but the telling.
+            if let Err(error) = self.write_status(tick.wall) {
+                eprintln!("disk-guard: writing the status before a pass: {error}");
+            }
             self.passes(tick, &due)?;
         }
         let frozen = self.memory.frozen.len();
@@ -2457,29 +2464,16 @@ impl Guard {
             && crate::survey::gone(&offer.candidate, &self.tried)
     }
 
-    /// Surveys once and runs each filesystem's pass over what lies on it.
-    /// Keeps what a reach on `device` judged, by how it `end`ed, for the
-    /// next to skip. A reach its length cut short takes up from where it
-    /// stopped, as does one that waited, stalled or was stopped before
-    /// getting through; one that got through what it was offered, or ran
-    /// at a band no length cuts, starts afresh, and a disk due for anything
-    /// but a reach is past the spell a cut reach belonged to.
+    /// Keeps what the next reach on `device` skips, by how the pass for
+    /// `decision` there `end`ed, as `pass::skipped_after` says.
     fn note_reached_short(&mut self, device: u64, decision: Decision, end: &End) {
-        let cuttable = matches!(decision, Decision::Reach(band) if band <= Band::Filling);
-        match end {
-            End::Unfinished if cuttable => {
-                self.reached_short
-                    .entry(device)
-                    .or_default()
-                    .extend(self.tried.iter().cloned());
-            }
-            End::Waiting | End::Stalled | End::Stopped if cuttable => {}
-            _ => {
-                self.reached_short.remove(&device);
-            }
+        let skipped = self.reached_short.remove(&device);
+        if let Some(skipped) = crate::pass::skipped_after(skipped, decision, end, &self.tried) {
+            self.reached_short.insert(device, skipped);
         }
     }
 
+    /// Surveys once and runs each filesystem's pass over what lies on it.
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
@@ -2498,7 +2492,7 @@ impl Guard {
                 (decision != Decision::Collect).then(|| (watched.path.clone(), aim(decision, None)))
             });
             if let Some((path, aimed)) = first {
-                self.tell_passing(tick, &path, aimed.band, aimed.why)?;
+                self.tell_passing(tick, &path, aimed.band, aimed.why);
             }
             let (scan, offers, seconds) = self
                 .offers(tick, None)
@@ -2533,9 +2527,9 @@ impl Guard {
                     offer.device == device || reaching && self.backs(device, offer.device)
                 })
                 .filter(|offer| !self.taken(offer))
-                .filter(|offer| judged.is_none_or(|judged| !judged.contains(&offer.candidate.path)))
                 .cloned()
                 .collect();
+            let here = crate::pass::left_to_judge(&here, judged, |offer| &offer.candidate.path);
             let offered = if decision == Decision::Collect {
                 self.collect_offers(tick.wall)
             } else {
@@ -2831,8 +2825,10 @@ impl Guard {
 
     /// Tells the status a pass is at work on `path` for `why` in `band`,
     /// from when the first of its steps began, its survey or its judging,
-    /// and writes it, telling none if the write fails.
-    fn tell_passing(&mut self, tick: &Tick, path: &Path, band: Band, why: Why) -> io::Result<()> {
+    /// and writes it, telling none if the write fails. The pass goes on
+    /// whatever the write did: a disk too full for the status file is the
+    /// one most in need of its pass, and saying so is only a courtesy.
+    fn tell_passing(&mut self, tick: &Tick, path: &Path, band: Band, why: Why) {
         let since = self
             .passing
             .as_ref()
@@ -2844,8 +2840,10 @@ impl Guard {
             band,
             why: why.word().to_owned(),
         });
-        self.write_status(tick.wall)
-            .inspect_err(|_| self.end_passing())
+        if let Err(error) = self.write_status(tick.wall) {
+            eprintln!("disk-guard: telling the pass at work: {error}");
+            self.end_passing();
+        }
     }
 
     /// Says no pass is at work, in the status the beats write as well, so
@@ -2879,7 +2877,7 @@ impl Guard {
         };
         // Told before it starts, since each beat as it works writes the
         // status again as it was, and a pass can judge for hours.
-        self.tell_passing(tick, &path, band, why)?;
+        self.tell_passing(tick, &path, band, why);
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
         let since = self.stepped;

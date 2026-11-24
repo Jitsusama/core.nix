@@ -2,11 +2,12 @@
 //! them, and plan again.
 
 use crate::band::{Band, Space, Thresholds};
+use crate::decide::Decision;
 use crate::plan::{Candidate, Class, Group, Step, plan};
 use crate::units::float;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// How long a batch may go before its frees are settled and measured.
 /// Settling asks the filesystem to commit, so it's done no more often.
@@ -540,4 +541,67 @@ fn credit(learned: &mut Learned, batch: &[&Candidate], freed: u64) {
 fn failed(mut report: Report, error: &io::Error) -> Report {
     report.end = End::Failed(error.to_string());
     report
+}
+
+/// What the next reach on a disk skips once a pass for `decision` there
+/// ended at `end` having tried `tried`, from what it skipped, `skipped`.
+///
+/// Only a reach its length cuts, one no worse than filling, skips what a
+/// cut one judged, so none judges the same two hours of offers again. One
+/// cut adds the files it tried; one that waited, stalled or was stopped
+/// keeps what was skipped, and so does a collection of Nix's garbage,
+/// which runs in a reach's rest. Anything else (a reach that got through
+/// or ran at a worse band, or upkeep, which a healthy disk alone gets)
+/// skips nothing more. A command or a garbage batch is named, not found,
+/// and its name comes again each round for other work (the oldest batch
+/// is always the first), so only files are kept. It lives only in memory,
+/// so a guard started afresh judges everything again.
+pub fn skipped_after(
+    skipped: Option<BTreeSet<PathBuf>>,
+    decision: Decision,
+    end: &End,
+    tried: &BTreeSet<PathBuf>,
+) -> Option<BTreeSet<PathBuf>> {
+    let cuttable = matches!(decision, Decision::Reach(band) if band <= Band::Filling);
+    match end {
+        End::Unfinished if cuttable => {
+            let mut skipped = skipped.unwrap_or_default();
+            skipped.extend(tried.iter().filter(|path| !named(path)).cloned());
+            Some(skipped)
+        }
+        End::Waiting | End::Stalled | End::Stopped if cuttable => skipped,
+        _ if decision == Decision::Collect => skipped,
+        _ => None,
+    }
+}
+
+/// Whether a candidate's path names a command or garbage rather than a
+/// file, as `survey::named` writes it. A file whose path holds the mark
+/// is only judged again, which costs time and nothing else.
+fn named(path: &Path) -> bool {
+    path.as_os_str().as_encoded_bytes().contains(&b'#')
+}
+
+/// The `offers` a reach skipping `skipped` is given, each found at `path`:
+/// all of them when skipping would leave none, since a reach given nothing
+/// would call the disk exhausted, and tell Joel to delete by hand, over
+/// offers it was never shown.
+pub fn left_to_judge<T: Clone>(
+    offers: &[T],
+    skipped: Option<&BTreeSet<PathBuf>>,
+    path: impl Fn(&T) -> &Path,
+) -> Vec<T> {
+    let Some(skipped) = skipped else {
+        return offers.to_vec();
+    };
+    let left: Vec<T> = offers
+        .iter()
+        .filter(|offer| !skipped.contains(path(offer)))
+        .cloned()
+        .collect();
+    if left.is_empty() {
+        offers.to_vec()
+    } else {
+        left
+    }
 }
