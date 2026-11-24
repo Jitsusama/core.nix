@@ -528,7 +528,7 @@ def test_a_keycap_line_is_cut_at_its_first_stop_past_any_it_opens_with(tab: Page
 
 
 def test_a_keycap_line_ending_on_a_joining_word_before_the_next_key_passes(tab: Page) -> None:
-    """ "lists every key and", the next key after it, says "lists every key"."""
+    """Before the next key, "lists every key and" says "lists every key"."""
     key = '<kbd role="button" tabindex="0" aria-label="{}">{}</kbd>'
     body = (
         f'<main><p class="keys">{key.format("Lists every key", "?")} lists every key and'
@@ -594,7 +594,7 @@ def test_a_keycap_beside_words_drawn_unseen_is_named(tab: Page) -> None:
 
 
 def test_a_keycap_beside_words_painted_out_of_sight_is_named(tab: Page) -> None:
-    """Words indented off their box, clipped by a box around them, or cut to nothing say none."""
+    """Words indented off their box, clipped by a box around them, or cut away say none."""
     key = '<kbd role="button" tabindex="0">{}</kbd>'
     body = (
         f'<main><p class="keys">{key.format("/")}<span style="display: inline-block;'
@@ -605,14 +605,28 @@ def test_a_keycap_beside_words_painted_out_of_sight_is_named(tab: Page) -> None:
         f'<p class="keys">{key.format("[")}<span style="clip-path: inset(100%)">steps back'
         "</span></p>"
         f'<p class="keys">{key.format("]")}<span style="position: absolute;'
-        ' clip: rect(0 0 0 0)">steps on</span></p></main>'
+        ' clip: rect(0 0 0 0)">steps on</span></p>'
+        f'<p class="keys">{key.format("|")}<span style="display: inline-block;'
+        ' clip-path: inset(0 0 0 100%)">steps up</span></p></main>'
     )
     assert named(tab, body) == [
         (
-            'a control showing only "/" (and 3 more): '
+            'a control showing only "/" (and 4 more): '
             "show its word beside the mark, its name starting with that word"
         )
     ]
+
+
+def test_a_keycap_beside_words_a_clip_leaves_in_sight_passes(tab: Page) -> None:
+    """Words an inset cuts only the top of, or in a box drawn as its contents, say a key's line."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("?")}<span style="display: inline-block;'
+        ' clip-path: inset(60% 0 0 0)">lists every key</span></p>'
+        f'<p class="keys">{key.format("/")}<span style="display: contents;'
+        ' overflow: hidden">finds a cell</span></p></main>'
+    )
+    assert named(tab, body) == []
 
 
 def test_a_controls_words_in_a_box_drawn_as_its_children_are_held_to_its_name(
@@ -629,8 +643,8 @@ def test_a_controls_words_in_a_box_drawn_as_its_children_are_held_to_its_name(
 
 
 def test_a_button_showing_only_a_mark_is_named_whatever_follows(tab: Page) -> None:
-    """An icon button showing "+" beside words is named: only a keycap reads its line."""
-    body = '<main><p><button aria-label="Add">+</button> adds a cell</p></main>'
+    """An icon button showing "+" in a line of keys is named: only a keycap reads its line."""
+    body = '<main><p class="keys"><button aria-label="Add">+</button> adds a cell</p></main>'
     found = named(tab, body)
     assert len(found) == 1, found
     assert found[0].startswith('a control showing only "+", named "Add"'), found

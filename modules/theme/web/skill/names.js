@@ -140,15 +140,31 @@
     }
     return text.slice(from, end);
   };
-  // A box cut to nothing: a clip-path inset by half or more, or an old clip
-  // rectangle with no area, on a box it applies to.
-  const cut = (style) => {
-    const inset = style.clipPath.startsWith("inset(")
-      ? style.clipPath.slice("inset(".length).split(" ")[0].replace(")", "")
-      : "";
-    if (inset.endsWith("%") && Number.parseFloat(inset) >= 50) {
-      return true;
+  // What a clip-path inset leaves of a box, `edge`, each side filled as the
+  // shorthand fills it and a percentage taken of the box; null where it's
+  // no inset.
+  const leftOf = (style, edge) => {
+    if (!style.clipPath.startsWith("inset(")) {
+      return null;
     }
+    const [top, right = top, bottom = top, left = right] = style.clipPath
+      .slice("inset(".length, style.clipPath.lastIndexOf(")"))
+      .split(" round ")[0]
+      .split(" ")
+      .filter((side) => side !== "");
+    const whole = 100;
+    const of = (side, length) =>
+      side.endsWith("%") ? (Number.parseFloat(side) / whole) * length : Number.parseFloat(side);
+    return {
+      top: edge.top + of(top, edge.height),
+      right: edge.right - of(right, edge.width),
+      bottom: edge.bottom - of(bottom, edge.height),
+      left: edge.left + of(left, edge.width),
+    };
+  };
+  // A box cut to nothing by an old clip rectangle with no area, on a box it
+  // applies to.
+  const cut = (style) => {
     if (!(style.clip.startsWith("rect(") && ["absolute", "fixed"].includes(style.position))) {
       return false;
     }
@@ -160,22 +176,30 @@
   };
   // Where a text's glyphs are painted, its own boxes, not its element's: an
   // indent or a box clipping them can push them out of sight while the box
-  // stays. Seen where one lies past the page's start and inside every box
-  // over it that clips what overflows, none of which cuts it to nothing.
+  // stays. Seen where one lies past the page's start, inside every box over
+  // it that clips what overflows, and inside what each one's clip-path
+  // leaves, none of which cuts it to nothing. A box drawn as its contents
+  // alone has no edge of its own, so clips nothing.
   const painted = (node) => {
     const range = page.createRange();
     range.selectNodeContents(node);
     const inside = (box) => {
       for (let at = node.parentElement; at !== null && at !== root; at = at.parentElement) {
         const style = getComputedStyle(at);
+        if (style.display === "contents") {
+          continue;
+        }
         const edge = at.getBoundingClientRect();
         const clips = style.overflowX !== "visible" || style.overflowY !== "visible";
-        const out =
-          box.right <= edge.left ||
-          box.left >= edge.right ||
-          box.bottom <= edge.top ||
-          box.top >= edge.bottom;
-        if (cut(style) || (clips && out)) {
+        const outOf = (bound) =>
+          bound.top >= bound.bottom ||
+          bound.left >= bound.right ||
+          box.right <= bound.left ||
+          box.left >= bound.right ||
+          box.bottom <= bound.top ||
+          box.top >= bound.bottom;
+        const inset = leftOf(style, edge);
+        if (cut(style) || (clips && outOf(edge)) || (inset !== null && outOf(inset))) {
           return false;
         }
       }

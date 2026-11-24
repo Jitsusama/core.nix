@@ -185,13 +185,54 @@ it("a button sending the same name and value to another action is another contro
   );
 });
 
-it("a control whose look or state changed is still the same control", () => {
-  const toggle = (pressed: string): Act => ({
+it("a control whose state changed is still the same control", () => {
+  const toggle = (pressed: string, more: Record<string, string> = {}): Act => ({
     says: "pin",
     kind: "button",
-    attributes: { name: "pin", value: "b", "aria-pressed": pressed, class: `pin ${pressed}` },
+    attributes: { name: "pin", value: "b", "aria-pressed": pressed, class: "pin", ...more },
   });
   assert.equal(refocused(["open", toggle("false")], ["open", toggle("true")]), "control");
+  const busy = { disabled: "", "aria-disabled": "true", "aria-invalid": "true" };
+  assert.equal(refocused(["open", toggle("false")], ["open", toggle("false", busy)]), "control");
+});
+
+it("a control whose class changed is another control, since a page may key its act on it", () => {
+  const marked = (act: string): Act => ({ says: "b", attributes: { href: "/r/b", class: act } });
+  assert.equal(refocused(["open", marked("open")], ["open", marked("forget")]), "row");
+});
+
+it("a page's own act says what a control does, so its words may change", () => {
+  const act = (says: string, name: string): Act => ({
+    says,
+    kind: "button",
+    attributes: { "data-act": name },
+  });
+  assert.equal(
+    refocused(["open", act("Forget", "forget")], ["open", act("Forget b", "forget")]),
+    "control",
+  );
+  assert.equal(refocused(["open", act("b", "forget")], ["open", act("b", "open")]), "row");
+});
+
+it("a button sending the same name and value from another form is another control", () => {
+  const sent = (action: string): Act => ({
+    says: "",
+    kind: "form",
+    attributes: { action, method: "post" },
+    holds: { says: "b", kind: "button", attributes: { name: "id", value: "b" } },
+  });
+  // Focus on the button inside lands on it again ("elsewhere" to refocused)
+  // only where its form is the same.
+  assert.equal(refocused(["open", sent("/start")], ["open", sent("/stop")], "on b", true), "row");
+  assert.equal(
+    refocused(["open", sent("/start")], ["open", sent("/start")], "on b", true),
+    "elsewhere",
+  );
+});
+
+it("a control labelled by another element is never known again", () => {
+  const labelled: Act = { says: "b", attributes: { href: "/r/b", "aria-labelledby": "b-name" } };
+  assert.equal(refocused(["open", labelled], ["open", labelled]), "row");
 });
 
 it("focus on a control saying nothing of itself goes to the row, not its likeness", () => {

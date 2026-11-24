@@ -136,16 +136,19 @@ for page in "${out}"/*.html; do
   # screen, so it's left to load when asked. The whole tag is asked for:
   # without crossorigin a preload is never matched to the face's own fetch,
   # and the page is read without its comments, where a preload asks for
-  # nothing. Each ends as HTML ends one: at once as <!--> or <!--->, or else
-  # at its first two dashes or more and a >, or those and !>, dashes and a
-  # lone -> inside it held, a bang's dash leading on to the end, as --!-->
-  # ends; and one never ended runs to the page's end. The
-  # at-once forms count only where a comment starts, so <!--> inside one ends
-  # it; its body can't open with > or ->, so sed's longest match can't read
-  # <!--> x --> as one comment.
-  first='\([^->]\|-[^->]\|--\+[^->!]\|--\+![^>]\)'
-  body='\([^-]\|-[^->]\|->\|--\+[^->!]\|--\+![^>]\)'
-  ended="s/<!--\(-\?>\|\(${first}${body}*\)\?\(--\+!\)*--\+!\?>\)//g"
+  # nothing. Each ends where HTML's tokenizer ends one, the pattern built
+  # from its comment states: at once as <!--> or <!--->; else at an end,
+  # two dashes or more, then > or !>, where a bang's dash and one more lead
+  # back to an end (--!-->), and a step back into the comment (loop) never
+  # passes one. Since no step passes an end, sed's longest match is the
+  # first end, however many comments follow. Each is read as a space, so
+  # what's either side can't join into a comment's opening; and one never
+  # ended runs to the page's end.
+  ends='\(-\|!--\)*'
+  loop="\([^-]\|-[^-]\|--${ends}[^-!>]\|--${ends}![^->]\|--${ends}!-[^-]\)"
+  end="--${ends}!\?>"
+  dashed="${ends}\(!\?>\|\([^-!>]\|![^->]\|!-[^-]\)${loop}*${end}\)"
+  ended="s/<!--\(-\?>\|--${dashed}\|\([^->]\|-[^->]\)${loop}*${end}\)/ /g"
   bare=$(tr '\n' ' ' <"${page}" | sed -e "${ended}" -e 's/<!--.*$//')
   for face in fraunces fraunces-italic monaspace; do
     preload="<link rel=\"preload\" href=\"../local-sites/web/fonts/${face}.woff2\" as=\"font\""

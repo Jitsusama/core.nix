@@ -135,6 +135,10 @@ copied "${work}/banged"
 sed -i '\|fonts/monaspace.woff2|{s|^|<!-- a --!- b |;s|$| -->|}' "${work}/banged/index.html"
 refused "${work}/banged" "index.html doesn't preload monaspace.woff2" \
   "a page preloading its mono only in a comment holding --! before its end"
+copied "${work}/bang-dashed"
+sed -i '\|fonts/monaspace.woff2|{s|^|<!-- a --!-> b |;s|$| -->|}' "${work}/bang-dashed/index.html"
+refused "${work}/bang-dashed" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono only in a comment holding --!-> before its end"
 
 # A comment HTML ends at --!>, or at once as <!--> or <!--->, hides nothing
 # after it, though another comment follows the preloads.

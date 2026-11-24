@@ -222,13 +222,18 @@ const SCRIPTED = /^javascript:/iu;
 /**
  * What a control does, where its markup says it of this control alone:
  * where it goes, unless that's "#" or a script, which many links share;
- * else its name with its value, since a form's buttons and a group's radios
- * share a name and differ by value. Null where it says neither.
+ * else the page's own act for it; else its name with its value, since a
+ * form's buttons and a group's radios share a name and differ by value.
+ * Null where it says none of them.
  */
 function does(control: Placed): string | null {
   const href = control.getAttribute?.("href")?.trim() ?? "";
   if (href !== "" && href !== "#" && !SCRIPTED.test(href)) {
     return `href ${href}`;
+  }
+  const act = control.getAttribute?.("data-act")?.trim() ?? "";
+  if (act !== "") {
+    return `act ${act}`;
   }
   const name = control.getAttribute?.("name") ?? "";
   const value = control.getAttribute?.("value") ?? "";
@@ -236,66 +241,82 @@ function does(control: Placed): string | null {
 }
 
 /**
- * The attributes saying a control's look or its state, not which control it
- * is: a toggle pressed or a tab chosen is the same control as before.
+ * The attributes saying a control's state, not which control it is: a
+ * toggle pressed, a tab chosen or a button disabled while it works is the
+ * same control as before. A class isn't among them, since a page may key a
+ * control's act on one.
  */
 const LOOKS = new Set([
   "aria-busy",
   "aria-checked",
   "aria-current",
+  "aria-describedby",
+  "aria-disabled",
   "aria-expanded",
+  "aria-invalid",
   "aria-pressed",
   "aria-selected",
-  "class",
+  "disabled",
   "id",
   "style",
   "tabindex",
 ]);
 
-/**
- * A control's markup but its look and state, which says what it does beyond
- * where it goes: its form's action and method, a target, a download, a
- * page's own data-act, each told apart.
- */
-function markup(control: Placed): string {
-  return (control.getAttributeNames?.() ?? [])
-    .filter((name) => !LOOKS.has(name))
-    .sort()
-    .map((name) => `${name}=${control.getAttribute?.(name) ?? ""}`)
-    .join("\n");
+/** The form a control sends, the nearest holding it. */
+function formOf(control: Placed): Placed | null {
+  for (let at = control.parentElement; at !== null; at = at.parentElement) {
+    if (at.localName === "form") {
+      return at;
+    }
+  }
+  return null;
 }
 
-/** What a control is heard as apart from its words, which tells two alike. */
-function heard(control: Placed): string {
-  return ["aria-label", "aria-labelledby", "title"]
-    .map((name) => control.getAttribute?.(name) ?? "")
-    .join("\n");
+/** An element's attributes but its state, each as name=value, in order. */
+function attributesOf(element: Placed): string[] {
+  return (element.getAttributeNames?.() ?? [])
+    .filter((name) => !LOOKS.has(name))
+    .sort()
+    .map((name) => `${name}=${element.getAttribute?.(name) ?? ""}`);
+}
+
+/**
+ * A control's markup but its state, which says what it does and how it's
+ * heard: where it goes, a target, a download, a page's own data-act and
+ * class, its label and title, and the form it sends, by that form's
+ * action and method, each told apart.
+ */
+function markup(control: Placed): string {
+  const form = formOf(control);
+  const sent = form === null ? [] : ["form", form.getAttribute?.("action") ?? ""];
+  return [...sent, form?.getAttribute?.("method") ?? "", ...attributesOf(control)].join("\n");
 }
 
 /**
  * Whether `one` is the same control as `other`: the same element with the
- * same markup but its look, heard as the same, doing the same, judged by
- * where it goes or its name, since its words may show the record that just
- * changed. Two sharing a place to go but marked for another act, a form's
- * other action or another label, are two controls. One whose markup says
- * neither is judged by its words too, and one with no words is no control
- * `one` can be known as.
+ * same markup but its state, which then says it does the same, so where
+ * the markup says what it does (where it goes, the page's act, its name
+ * and value) its words may show the record that just changed. One whose
+ * markup says none of those is judged by its words too, and one with no
+ * words is no control `one` can be known as. One labelled by another
+ * element is never known again, since its label's words aren't its own to
+ * read here. A listener no markup shows isn't seen, so a page drawing by
+ * key marks each act in its controls' markup.
  */
 function alike(one: Placed, other: Placed | null): boolean {
   if (
     other === null ||
     one.localName !== other.localName ||
     markup(one) !== markup(other) ||
-    heard(one) !== heard(other)
+    (other.getAttribute?.("aria-labelledby") ?? "") !== ""
   ) {
     return false;
   }
-  const did = does(other);
-  if (did !== null) {
-    return does(one) === did;
+  if (does(other) !== null) {
+    return true;
   }
   const words = other.textContent?.trim() ?? "";
-  return words !== "" && does(one) === null && one.textContent?.trim() === words;
+  return words !== "" && one.textContent?.trim() === words;
 }
 
 /**
