@@ -158,6 +158,11 @@ QtObject {
             [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: seeded, inUse: "Virtual-3" }).output],
             [["Virtual-3", "Virtual-4"], "Virtual-3"]);
+        const twinFirst = Reopening.givenBy([twins[1]],
+            Places.placed([twins[1]], bothBack, "Virtual-3", [twins]), early);
+        expect("nor keeps a connector the other twin's sessions were given",
+            [twinFirst.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
+                { given: twinFirst, inUse: "Virtual-3" }).output], [["Virtual-3"], "Virtual-3"]);
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early), inUse: "eDP-1" }).output, "Virtual-4");
@@ -174,11 +179,12 @@ QtObject {
             column: 1, tile: 1 }, workspace: { id: 30 + id, idx: workspace, output }, column: 1 });
         expect("a window back doesn't join its twin's workspace",
             Places.whereBack(Object.assign({}, twins[0], { column: 2 }),
-                [twinBack(1, "Virtual-2", 1)], ["Virtual-2"]),
+                [twinBack(1, "Virtual-2", 1)], Places.twinsOf(twins[0], twins)),
             { make: true, output: null, index: 1 });
         expect("a window back joins its own twin's workspace",
             Places.whereBack(Object.assign({}, twins[0], { column: 2 }),
-                [twinBack(1, "Virtual-2", 1), twinBack(2, "Virtual-1", 1)], ["Virtual-2"]),
+                [twinBack(1, "Virtual-2", 1), twinBack(2, "Virtual-1", 1)],
+                Places.twinsOf(twins[0], twins)),
             { join: 32, after: 2 });
         expect("one twin back renumbered is the first's, and the other's is gone",
             Places.placed(twins, { "Virtual-3": twin }, "Virtual-3", [twins, twins])
