@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  compilesForMacos,
   holds,
   onLinux,
   passesClippy,
@@ -19,6 +20,13 @@
   );
 }
 // onLinux {
+  # clippy reads elsewhere, its tests included, as macOS would compile it,
+  # from Linux, where every merge's checks build: a lint that only a Mac's
+  # code trips fails the gate with no Mac to ask.
+  elsewhere-compiles-for-macos = compilesForMacos "elsewhere-compiles-for-macos" (
+    pkgs.callPackage ./package.nix { }
+  );
+
   # elsewhere's tests run as it builds, against a stand-in realm: a job
   # mycelium places far goes by the quest's handover and mycelium's run,
   # never ssh or rsync, starts in the quest's scratch and runs in a copy

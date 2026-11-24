@@ -137,6 +137,32 @@ let
   # read too, held to clippyLints, and nothing installed.
   passesClippy = name: package: clippy.passes { inherit name package; };
 
+  # The same check of a package, read as macOS would compile it, from Linux:
+  # code only a Mac compiles is held to clippyLints on the machine every
+  # merge's checks build on, which no Mac is.
+  compilesForMacos =
+    name: package:
+    let
+      overlaid = pkgs.extend arguments.rust-overlay.overlays.default;
+      toolchain = overlaid.rust-bin.stable.latest.minimal.override {
+        targets = [ "aarch64-apple-darwin" ];
+        extensions = [ "clippy" ];
+      };
+    in
+    package.overrideAttrs {
+      pname = name;
+      CLIPPY_CONF_DIR = clippyConfig;
+      buildPhase = ''
+        export PATH=${toolchain}/bin:$PATH
+        cargo clippy --target aarch64-apple-darwin --all-targets --offline -- \
+          ${lib.escapeShellArgs clippyLints}
+      '';
+      doCheck = false;
+      installPhase = ''
+        touch $out
+      '';
+    };
+
   # The packages a VM test's host runs it with, the virtiofsd its VMs share
   # folders through started by without-syncfs (modules/nix-daemon), so a
   # guest's sync of a share never commits the host's whole filesystem,
@@ -366,6 +392,7 @@ let
       quickshellTypes
       shellFolderLint
       passesClippy
+      compilesForMacos
       onLinux
       vmHostPkgs
       ;
