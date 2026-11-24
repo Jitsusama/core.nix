@@ -3259,7 +3259,8 @@ Singleton {
         watchChanges: true
         onFileChanged: reload()
     }
-    readonly property string sessionsKittyPid: {
+    // Cases set it, as no kitty writes its pid where they run.
+    property string sessionsKittyPid: {
         const read = sessionsKittyFile.text().trim();
         return /^\d+$/.test(read) ? read : "";
     }

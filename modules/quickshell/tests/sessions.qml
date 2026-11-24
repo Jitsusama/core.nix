@@ -505,6 +505,35 @@ ShellRoot {
         expect("one pressed for while it comes takes the focus as it's listed",
             heldPress && JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":96}}',
             `${heldPress} ${JSON.stringify(Niri.acted)}`);
+        // Any program can give its window a viewer's app id, so once the
+        // sessions' kitty's pid is known, a window it didn't draw is never
+        // taken for a viewer: not raised, and not let go of as one come.
+        Sessions.sessionsKittyPid = "4242";
+        const forged = { id: 88, pid: 880, opened: "pi-hosted.s-forged" };
+        const unforged = Niri.windows;
+        Niri.windows = Object.assign({}, unforged, { "88": forged });
+        Niri.acted = null;
+        const forgedFrom = Niri.spawns.length;
+        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
+        const forgedRaised = JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":88}}';
+        Niri.acted = null;
+        Niri.windowOpenedOrChanged(forged);
+        const stillComing = Sessions.viewerComing("pi-hosted.s-forged")
+            && JSON.stringify(Niri.acted) !== '{"FocusWindow":{"id":88}}';
+        const drawn = { id: 89, pid: 4242, opened: "pi-hosted.s-forged" };
+        Niri.windows = Object.assign({}, unforged, { "88": forged, "89": drawn });
+        Niri.acted = null;
+        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
+        const drawnRaised = JSON.stringify(Niri.acted);
+        Niri.windows = unforged;
+        Sessions.sessionsKittyPid = "";
+        expect("a window another program named as a viewer is never raised as one",
+            !forgedRaised && Niri.spawns.length === forgedFrom + 1, `${forgedRaised} `
+                + Niri.spawns.slice(forgedFrom).join("\n"));
+        expect("nor is it taken for the viewer come, nor focused as Go To's", stillComing,
+            `${stillComing} ${JSON.stringify(Niri.acted)}`);
+        expect("while the one the sessions' kitty drew is",
+            drawnRaised === '{"FocusWindow":{"id":89}}', drawnRaised);
         holdsAlone();
     }
 
