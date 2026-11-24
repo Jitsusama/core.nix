@@ -442,9 +442,11 @@ Scope {
     // answer is held lets it go.
     property var lost: null
     // The words last asked again at a hello, till they're answered or other words are
-    // searched. Lost again, they wait for the next key, so a search that is what takes the
+    // searched. Lost again, they're held back (`lostTwice`) till the next key, neither the
+    // hello nor a refresh of what's typed asking them, so a search that is what takes the
     // daemon down isn't asked at every restart till systemd gives the unit up.
     property string reasked: ""
+    property string lostTwice: ""
 
     // Whether the daemon said it can't search, so a place that can matches
     // its rows itself, as it did before, said once in the journal. It's
@@ -464,12 +466,14 @@ Scope {
     function search(words, most) {
         if (lost !== null && lost.words !== words)
             lost = null;
-        if (reasked !== words)
+        if (reasked !== words) {
             reasked = "";
+            lostTwice = "";
+        }
         if (found.words === words)
             return found;
         const asks = !searchless || Date.now() - searchlessAt > searchlessFor;
-        if (asking !== words && asks && link) {
+        if (asking !== words && lostTwice !== words && asks && link) {
             asking = words;
             lost = null;
             const ask = { ask: "search", place: ready.place, words: words };
@@ -502,6 +506,7 @@ Scope {
         return {
             asking,
             reasked,
+            lostTwice,
             found: found.words,
             lost: lost?.words ?? null,
             ended: searchesEnded,
@@ -524,6 +529,7 @@ Scope {
         asking = "";
         lost = null;
         reasked = "";
+        lostTwice = "";
         searchesEnded += 1;
         typedAgain();
     }
@@ -549,13 +555,17 @@ Scope {
         if (answer === null) {
             if (awaited && drawn && reasked !== words)
                 lost = { words, most };
-            else if (awaited && drawn)
+            else if (awaited && drawn && lostTwice !== words) {
+                lostTwice = words;
                 console.warn(`launcher: ${place}'s search went unanswered again once asked `
                     + "again, left for the next key");
+            }
             return;
         }
-        if (reasked === words)
+        if (reasked === words) {
             reasked = "";
+            lostTwice = "";
+        }
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `
@@ -1384,6 +1394,7 @@ Scope {
         filling = null;
         lost = null;
         reasked = "";
+        lostTwice = "";
     }
 
     // The rows whose words the clock has moved on since they were made,
