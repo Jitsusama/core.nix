@@ -2365,6 +2365,53 @@ fn a_hosted_main_is_read_from_its_hosts_api_unfetched() {
     assert!(!world.checkout_has(&two), "the checkout was fetched");
 }
 
+/// A tree the checkout holds without its files is gone down too, its
+/// files read from the host: on 23 November a pack carrying a speculative
+/// merge no ref reaches left World's checkout such a tree, and the read
+/// failed on a file it took to be there.
+#[test]
+fn a_folder_the_checkout_holds_without_its_files_is_read_whole() {
+    let world = with_api();
+    let head = world.hosted_commit("one", None);
+    world.answer();
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let listing = git(&world.origin, &["ls-tree", &format!("{head}:machine")]);
+    let mut mktree = Command::new(program("git"))
+        .arg("-C")
+        .arg(&checkout)
+        .args(["mktree", "--missing"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(
+        mktree.stdin.as_mut().unwrap(),
+        format!("{listing}\n").as_bytes(),
+    )
+    .unwrap();
+    let made = mktree.wait_with_output().unwrap();
+    assert!(made.status.success(), "the checkout's tree wasn't written");
+    let file = git(
+        &world.origin,
+        &["rev-parse", &format!("{head}:machine/file")],
+    );
+    let held = Command::new(program("git"))
+        .arg("-C")
+        .arg(&checkout)
+        .args(["cat-file", "-e", file.trim()])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(
+        !held.success(),
+        "the checkout holds the folder's file, so the test proves nothing"
+    );
+    world.system(&head);
+    assert_eq!(world.update().1, done(&head));
+    assert_eq!(world.read("seen"), "one");
+    assert!(!world.checkout_has(&head), "the checkout was fetched");
+}
+
 /// A folder read from the host where it was needs no word on how main
 /// moved, since the machine stays where it is: on 12 November the host
 /// refused that ask with 429 and 422, and each time main was fetched for
