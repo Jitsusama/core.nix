@@ -2033,7 +2033,9 @@
     a Mac with a local name runs a root job under bash that sets it back, by that name and not
     the host name, from its start, whenever macOS writes its network settings and once a
     minute, finding its tools only in macOS's own folders and saying what it does in its log,
-    and a Mac with none runs nothing
+    and a Mac with none runs nothing; the module adds or changes no launchd plist but that job's,
+    nor any agent of the account's, the job opens no socket, and keep.sh names no dns-sd, since
+    any of those could advertise for the host
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
