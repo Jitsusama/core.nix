@@ -19,8 +19,20 @@
 // offered exactly as written, but for one whose label poses as one of the
 // launcher's own acts, which For You hides (Now.qml's lookOffers). Its act
 // is For You's "Open" unless the second form names one LookForm.js takes.
-// The check the-ask-row-reads-as-for-you holds these against the
-// launcher's own code.
+// The check the-ask-row-reads-as-for-you runs the launcher's own Looks.js,
+// LookForm.js and lookOffers against these over looks at each boundary,
+// and every character through how a name is read, in Node rather than in
+// Qt's engine, which tests/for-you.qml holds LookForm.js in.
+//
+// It's stricter than For You in two places, on the side of not asking.
+// For You offers a look's choices under To Read too, though it says it
+// asks nothing, where a page offers none on a look not asking. And For You
+// splits its looks at each hour, so it may keep one waiting up to an hour
+// past its expiresAt or its quiet, where a page lapses at the moment. It
+// knows the launcher's six act names only as core's own words say them, so
+// on a machine renaming them (jitsusama.quickshell.launcher.words) a page
+// would offer a choice named as a renamed act, which For You hides: rename
+// none of those six there while a page asks.
 //
 // The harness writes version 1 with the second form's fields beside the
 // first's (85PKB2, 22 November 2026), so what happened, why it matters,
@@ -36,8 +48,8 @@
 // In that window a page asks again, so a page drops its row's choices once
 // one is pressed, as For You does, and whatever carries a page's answer must
 // refuse a second answer to the same look. And the sites share their origin
-// with documents sessions write, so an answer saying it's from Joel says
-// nothing: whatever carries it must know he pressed it.
+// with documents sessions write, so an answer can't say it's from Joel:
+// whatever carries it must know he pressed it, and only then says so.
 //
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
@@ -147,16 +159,16 @@ interface Ask {
 
 /**
  * An answer for the session that asked, as the launcher's steer says one
- * (Looks.js `answer`): a choice's value, as it was offered. Whatever
- * carries it there names the session and the time, and checks it again
- * against the look itself, since a page is no guard: any page can say
- * anything.
+ * (Looks.js `answer`): a choice's value, as it was offered. It names no
+ * one it's from, since any document on the sites' origin could build the
+ * same: whatever carries it checks it again against the look itself and
+ * knows Joel pressed it, and only then adds who it's from, the session it
+ * goes to and the time, as the shell adds them.
  */
 interface Answer {
   readonly act: "answer";
   readonly look: string;
   readonly value: string;
-  readonly from: "joel";
 }
 
 /** Whether `value` is a string with anything in it, as Looks.js's `named`. */
@@ -399,7 +411,7 @@ function answering(look: unknown, choice: string, now: number): Answer | null {
   if (ask === null || !ask.asks || !ask.choices.some((one) => one.value === choice)) {
     return null;
   }
-  return { act: "answer", look: ask.id, value: choice, from: "joel" };
+  return { act: "answer", look: ask.id, value: choice };
 }
 
 export {

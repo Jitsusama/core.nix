@@ -201,6 +201,18 @@ it("a choice posing as the launcher's own act is neither offered nor sent", () =
   assert.deepEqual(asked(hidden, NOW)?.choices, [], "a choice hiding a space passed for Clear It");
   const asChoice = { ...posing, act: "Keep\u200b It" };
   assert.equal(asked(asChoice, NOW)?.act, OPEN, "an act reading as a choice offered showed");
+  // "Ship\u202e" holds a turn, so it isn't shown, but it's still offered:
+  // an act reading as it is refused, as For You tells the act apart from
+  // the offers before any posing is dropped.
+  const asDropped = {
+    ...second,
+    choices: [
+      { value: "ship", label: "Ship\u202e" },
+      { value: "keep", label: "Keep It" },
+    ],
+    act: "Ship",
+  };
+  assert.equal(asked(asDropped, NOW)?.act, OPEN, "an act reading as a dropped choice showed");
 });
 
 it("a look of the first form reads from its why, with its question and an act for its kind", () => {
@@ -331,12 +343,11 @@ it("a time written in milliseconds lapses and quiets a look as an ISO time does"
 });
 
 it("an answer is sent only as the look offered it, while it still asks at the press", () => {
-  assert.deepEqual(answering(second, "keep", NOW), {
-    act: "answer",
-    look: "look-1",
-    value: "keep",
-    from: "joel",
-  });
+  assert.deepEqual(
+    answering(second, "keep", NOW),
+    { act: "answer", look: "look-1", value: "keep" },
+    "the page vouched for who pressed it",
+  );
   assert.equal(answering(second, "Keep It", NOW), null, "a label was sent as a value");
   assert.equal(answering(second, "roll back", NOW), null);
   const padded = { ...first, choices: [{ value: "keep ", label: "Keep It" }] };

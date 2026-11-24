@@ -1,33 +1,58 @@
-// The kit's ask row reads a look's names and numbers as the launcher's For
-// You does, held against the launcher's own code rather than against what
-// ask.ts says it copied, so a rule changed on either side fails here. Each
-// name LookForm.js reads as another, refuses as an act or finds posing as
-// the launcher's, ask.ts reads and judges alike; the launcher's act names
-// are those Now.qml's lookActNames names, as its words say them; and
-// Looks.js's four choices offered and three days' quiet are the kit's. The
-// check the-ask-row-reads-as-for-you hands it the launcher's files by the
-// names `launcher` reads.
+// The kit's ask row reads a look as the launcher's For You does, held
+// against the launcher's own code rather than against what ask.ts says it
+// copied, so a rule changed on either side fails here. Looks.js's `look`,
+// `quieted` and `asksNothing` and Now.qml's own lookOffers decide, over
+// looks at each boundary, which a page reads, which wait, what each offers
+// and when it stops; LookForm.js's actOf decides its act, beside the
+// launcher's act names as Now.qml's lookActNames and its words name them;
+// and every character, wherever it stands in a name, is read and judged
+// as LookForm.js reads and judges it. The launcher's scripts run in Node,
+// not in Qt's engine, which tests/for-you.qml holds them in. The check
+// the-ask-row-reads-as-for-you hands it the launcher's files by the names
+// `launcher` reads.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { runInNewContext } from "node:vm";
-import { actOf, LAUNCHER_ACTS, OFFERED, poses, QUIET_AFTER, readAs } from "../kit/ask.ts";
+import { type Ask, asked, LAUNCHER_ACTS, poses, QUIET_AFTER, readAs } from "../kit/ask.ts";
 
-/** What LookForm.js gives, run as Qt runs it: a script of functions. */
-interface LookForm {
-  readAs(name: string): string;
-  poses(name: string, taken: readonly string[]): boolean;
-  actOf(one: object, taken: readonly string[]): string;
+/** A launcher script, its functions by their names. */
+type Script = Record<string, (...args: never[]) => unknown>;
+
+/** A look as Looks.js reads one, as far as this compares it. */
+interface Read {
+  readonly state: string;
+  readonly offers: readonly { value: string; label: string; follows: string }[];
+}
+
+/** For You as far as a page's row goes: Looks.js, LookForm.js, lookOffers and the act names. */
+interface ForYou {
+  readonly looks: Script;
+  readonly form: Script;
+  readonly offers: (one: Read) => Read["offers"];
+  readonly acts: readonly string[];
+  readonly open: string | undefined;
 }
 
 /** A line of Qt's own, which no other engine reads, as `.pragma library`. */
 const QT_LINE = /^\.(?:pragma|import)\b.*$/gmu;
 /** Now.qml's list of the launcher's acts on a look, by their words' ids. */
 const ACT_IDS = /lookActNames:\s*\[([^\]]*)\]/u;
+/** Now.qml's lookOffers, its body as written. */
+const LOOK_OFFERS = /function lookOffers\(one\) \{\n([\s\S]*?)\n {4}\}/u;
 const QUOTED = /"([^"]+)"/gu;
-/** A constant's whole value in Looks.js, by its name. */
-const CONSTANT = (name: string): RegExp => new RegExp(`^const ${name} = (.+);$`, "mu");
+/** What For You calls opening a look, which its act is where it names none. */
+const OPEN_ID = "verb:on:look:open";
+/** The last code point, and those standing for half a pair, which are no character. */
+const LAST_POINT = 0x10_ff_ff;
+const HALVES = [0xd8_00, 0xdf_ff] as const;
+/** How many characters read otherwise are named before the sweep stops. */
+const NAMED = 10;
+/** A code point's digits as it's written, U+ and hexadecimal. */
+const HEX = 16;
+/** A day, in milliseconds. */
+const DAY = 86_400_000;
 
 /** A file the check hands this, by the name it hands it under. */
 function launcher(name: string): string {
@@ -36,10 +61,15 @@ function launcher(name: string): string {
   return readFileSync(path, "utf8");
 }
 
-/** LookForm.js's functions, run apart from this test's own. */
-function lookForm(): LookForm {
-  const script = launcher("LOOK_FORM").replace(QT_LINE, "");
-  return runInNewContext(`${script}\n;({ readAs, poses, actOf });`, {}) as LookForm;
+/**
+ * A launcher script as Qt loads it: run on its own, its functions what it
+ * gives, with `imports`, the scripts it imports, by the names it imports
+ * them as.
+ */
+function loaded(name: string, imports: Record<string, Script> = {}): Script {
+  const script: Script = { ...imports };
+  runInNewContext(launcher(name).replace(QT_LINE, ""), script);
+  return script;
 }
 
 /** Each word's name by its id, wherever the words file holds it. */
@@ -60,93 +90,179 @@ function namesIn(words: unknown, names: Map<string, string>): Map<string, string
   return names;
 }
 
-/**
- * Names to tell apart: plain, spaced, stopped and cased; hiding what draws
- * as nothing, a space or a turn, the undrawn past U+FFFF among them; the
- * launcher's own; too long; and empty.
- */
-const NAMES = [
-  "Keep It",
-  "keep it.",
-  "KEEP IT!",
-  "Keep  It",
-  "Keep\u200b It",
-  "Keep It\u200b",
-  "Keep\u2060 It",
-  "Keep\u00ad It",
-  "Keep\u034f It",
-  "Keep\ufe0f It",
-  "Ke\u{1d173}ep It",
-  "Keep\u{e0041} It",
-  "Keep\u3164It",
-  "\u2800Keep It",
-  "\u202etI peeK",
-  "Keep\u2066 It",
-  "Open",
-  "open.",
-  "Answer",
-  "Clear It",
-  "clear  it.",
-  "Go To",
-  "Go\u3164To",
-  "Explain It",
-  "Talk",
-  "Read the Diff",
-  "One Two Three Four",
-  "One Two Three Four Five",
-  "  ",
-  "",
-];
+/** The launcher's words, each name by its id. */
+function launcherWords(): Map<string, string> {
+  return namesIn(
+    JSON.parse(launcher("ON_WORDS")),
+    namesIn(JSON.parse(launcher("AGENT_WORDS")), new Map()),
+  );
+}
 
-it("reads every name as LookForm.js reads it", () => {
-  const form = lookForm();
-  for (const name of NAMES) {
-    assert.equal(readAs(name), form.readAs(name), `${JSON.stringify(name)} read otherwise`);
+/** The launcher's act names on a look, as Now.qml's lookActNames names them. */
+function actNames(): string[] {
+  const ids = ACT_IDS.exec(launcher("NOW_QML"))?.[1];
+  assert.ok(ids !== undefined, "Now.qml holds no lookActNames list to read");
+  const names = launcherWords();
+  return Array.from(ids.matchAll(QUOTED), ([, id]) => names.get(id ?? "") ?? `no ${id}`);
+}
+
+/** The launcher's own scripts and words, loaded as For You loads them. */
+function forYou(): ForYou {
+  const order = loaded("ORDER");
+  const form = loaded("LOOK_FORM");
+  const looks = loaded("LOOKS", {
+    ForYou: loaded("FOR_YOU", { Order: order }),
+    LookForm: form,
+    Order: order,
+  });
+  const body = LOOK_OFFERS.exec(launcher("NOW_QML"))?.[1];
+  assert.ok(body !== undefined, "Now.qml holds no lookOffers to run");
+  const acts = actNames();
+  const offers = runInNewContext(`(function lookOffers(one) {${body}})`, {
+    LookForm: form,
+    lookActNames: acts,
+  }) as ForYou["offers"];
+  return { looks, form, offers, acts, open: launcherWords().get(OPEN_ID) };
+}
+
+/** When the looks below came, and when those of them that expire do, a day on. */
+const CAME = Date.parse("2026-11-23T14:00:00Z");
+const EXPIRES = CAME + DAY;
+
+/** A look of the second form, as the harness writes version 1. */
+const LOOK = {
+  v: 1,
+  id: "look-1",
+  at: "2026-11-23T14:00:00Z",
+  kind: "pr",
+  target: "https://github.com/Jitsusama/core.nix/pull/6146",
+  title: "Answer a Look Where It's Asked",
+  why: "The ask row is ready.",
+  ask: "Say whether a page may ask.",
+  ifNothing: "No page asks.",
+  choices: [
+    { value: "keep", label: "Keep It" },
+    { value: "show", label: "Always Show It", follows: "Its own words." },
+  ],
+  state: "waiting",
+  happened: "The ask row is ready",
+  matters: "Pages ask as For You does",
+  act: "Read the Diff",
+  wants: { choices: [{ label: "Keep It", follows: "A page asks." }], words: true },
+};
+
+/** Looks to read alike: each rule's cases, either side of what it decides. */
+const LOOKS: Record<string, object> = {
+  "a look of the second form": LOOK,
+  "one of the first form": { ...LOOK, happened: "", act: "" },
+  "five choices, posing ones among the first four": {
+    ...LOOK,
+    choices: [
+      { value: "close", label: "Clear It" },
+      { value: "keep", label: "Keep It" },
+      { value: "merge", label: "clear  it." },
+      { value: "ship", label: "Ship\u202e" },
+      { value: "fifth", label: "A Fifth" },
+    ],
+    act: "Ship",
+  },
+  "choices with no value, no label or neither": {
+    ...LOOK,
+    choices: [
+      { label: "No Value" },
+      { value: "bare" },
+      null,
+      "said",
+      { value: "", label: "Empty" },
+    ],
+  },
+  "an act read as a choice it offers": { ...LOOK, act: "keep it." },
+  "an act posing as the launcher's": { ...LOOK, act: "Clear\u200b It" },
+  "an act holding a turn": { ...LOOK, act: "Read\u202e" },
+  "an act of five words": { ...LOOK, act: "Read the Whole Diff Now" },
+  "a numeric came and expiry": { ...LOOK, at: CAME, expiresAt: EXPIRES },
+  "an expiry written as a time": { ...LOOK, expiresAt: new Date(EXPIRES).toISOString() },
+  "one asking nothing": { ...LOOK, asks: false },
+  "one about a session": { ...LOOK, kind: "terminal", target: "QGB4ON" },
+  "one about a page by a script": { ...LOOK, kind: "page", target: "javascript:alert(1)" },
+  "one opened": { ...LOOK, state: "opened" },
+  "one of a kind not known": { ...LOOK, kind: "folder" },
+  "one in a state not known": { ...LOOK, state: "quiet" },
+  "one of another version": { ...LOOK, v: 2 },
+  "one with no title": { ...LOOK, title: "" },
+  "one with no id": { ...LOOK, id: undefined },
+};
+
+/** Moments either side of each that ends a wait: its expiry, and its quiet. */
+const MOMENTS = [CAME, EXPIRES - 1, EXPIRES, CAME + QUIET_AFTER, CAME + QUIET_AFTER + 1];
+
+/** A choice as both sides offer it: what it sends and what it's named. */
+const sent = ({ value, label }: { value: string; label: string }): string => `${value}: ${label}`;
+
+/** Where the row and For You part, for one look at one moment: none where they agree. */
+function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou): string[] {
+  if (ask === null || read === null) {
+    return ask === null && read === null ? [] : ["read whole otherwise"];
   }
-});
+  const { looks, form, offers, acts, open } = shell;
+  const held = looks.quieted(read as never, now as never) as Read;
+  const waits = held.state === "waiting" && looks.asksNothing(held as never) === false;
+  // For You offers a waiting look's choices under To Read too, where the
+  // row, stricter, offers none on a look not asking (ask.ts).
+  const offered = waits ? offers(held).map(sent) : [];
+  const act = (form.actOf(read as never, acts as never) as string) || open;
+  const lapsed = (at: number): boolean =>
+    (looks.quieted(read as never, at as never) as Read).state !== "waiting";
+  return [
+    ask.asks === waits ? "" : "waits otherwise",
+    ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
+    ask.act === null || ask.act === act ? "" : `acts as ${ask.act}, not ${act}`,
+    ask.lapses === null || (!lapsed(ask.lapses - 1) && lapsed(ask.lapses))
+      ? ""
+      : "lapses otherwise",
+  ].filter((one) => one !== "");
+}
 
-it("finds a name posing as the launcher's acts where LookForm.js does", () => {
-  const form = lookForm();
-  for (const name of NAMES) {
-    for (const taken of [LAUNCHER_ACTS, []]) {
-      assert.equal(
-        poses(name, taken),
-        form.poses(name, taken),
-        `${JSON.stringify(name)} posed otherwise against ${JSON.stringify(taken)}`,
-      );
+it("reads, holds waiting, offers, acts and lapses as Looks.js, LookForm.js and lookOffers do", () => {
+  const shell = forYou();
+  for (const [name, look] of Object.entries(LOOKS)) {
+    const text = JSON.stringify(look);
+    for (const now of MOMENTS) {
+      const read = shell.looks.look(text as never) as Read | null;
+      const ask = asked(JSON.parse(text), now);
+      assert.deepEqual(parted(ask, read, now, shell), [], `${name}, at ${now}`);
     }
   }
 });
 
-it("takes the second form's act where LookForm.js takes it beside the same choices", () => {
-  const form = lookForm();
-  const offers = [
-    { value: "keep", label: "Keep It", follows: "" },
-    { value: "show", label: "Always Show It", follows: "" },
-  ];
-  for (const act of NAMES) {
-    const told = form.actOf({ happened: "It happened.", act, offers }, LAUNCHER_ACTS);
-    assert.equal(actOf(act.trim(), offers), told, `the act ${JSON.stringify(act)} was otherwise`);
+/**
+ * Whether `character` reads and is judged alike by both, within a name and
+ * leading one, and against a name it could pass for or by a turn pose as.
+ */
+function alike(form: Script, character: string): boolean {
+  return [`Keep${character} It`, `${character}tI peeK`].every(
+    (name) =>
+      readAs(name) === form.readAs(name as never) &&
+      poses(name, ["Keep It"]) === form.poses(name as never, ["Keep It"] as never),
+  );
+}
+
+it("reads and judges every character as LookForm.js does, wherever it stands in a name", () => {
+  const form = loaded("LOOK_FORM");
+  const otherwise: string[] = [];
+  for (const [from, to] of [
+    [0, HALVES[0] - 1],
+    [HALVES[1] + 1, LAST_POINT],
+  ] as const) {
+    for (let point = from; point <= to && otherwise.length < NAMED; point += 1) {
+      if (!alike(form, String.fromCodePoint(point))) {
+        otherwise.push(`U+${point.toString(HEX)}`);
+      }
+    }
   }
+  assert.deepEqual(otherwise, [], "a character read or judged otherwise");
 });
 
 it("names the launcher's acts as Now.qml's lookActNames and its words do", () => {
-  const ids = ACT_IDS.exec(launcher("NOW_QML"))?.[1];
-  assert.ok(ids !== undefined, "Now.qml holds no lookActNames list to read");
-  const names = namesIn(JSON.parse(launcher("AGENT_WORDS")), new Map());
-  namesIn(JSON.parse(launcher("ON_WORDS")), names);
-  const said = Array.from(ids.matchAll(QUOTED), ([, id]) => names.get(id ?? "") ?? `no ${id}`);
-  assert.deepEqual([...LAUNCHER_ACTS], said, "the kit names the launcher's acts otherwise");
-});
-
-it("offers as many choices and goes quiet as soon as Looks.js does", () => {
-  const looks = launcher("LOOKS");
-  for (const [name, kit] of [
-    ["OFFERED", OFFERED],
-    ["QUIET_AFTER", QUIET_AFTER],
-  ] as const) {
-    const written = CONSTANT(name).exec(looks)?.[1];
-    assert.ok(written !== undefined, `Looks.js holds no ${name} to read`);
-    assert.equal(kit, runInNewContext(written, {}), `the kit's ${name} isn't Looks.js's`);
-  }
+  assert.deepEqual([...LAUNCHER_ACTS], actNames(), "the kit names the launcher's acts otherwise");
 });

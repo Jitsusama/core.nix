@@ -4124,9 +4124,10 @@
   '';
   the-ask-row-reads-as-for-you = ''
     the live sites' ask row reads a look as the launcher's For You does, against the launcher's own
-    code: every name read, refused as an act or found posing as the launcher's acts as LookForm.js
-    finds it, the launcher's act names as Now.qml and its words give them, and as many choices and
-    as soon a quiet as Looks.js gives
+    scripts run in Node: over looks either side of each rule, which it reads, which wait, what
+    each offers and when it lapses as Looks.js and Now.qml's lookOffers give them, and its act as
+    LookForm.js takes it; every character read and judged as posing as LookForm.js does, within
+    a name and leading one; and the launcher's act names as Now.qml and core's own words give them
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one

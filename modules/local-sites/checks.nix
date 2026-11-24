@@ -68,10 +68,10 @@ in
   # The kit typechecks and its tests pass as it builds (kit/tests).
   local-sites-kit-holds = sites.kit;
 
-  # The kit's ask row reads a look's names and numbers as the launcher's
-  # For You does, against the launcher's own files, so either side's change
-  # fails it (tests/ask-as-for-you.test.ts). It's a check of its own so the
-  # kit, and every site built on it, isn't built again at each launcher edit.
+  # The kit's ask row reads a look as the launcher's For You does, against
+  # the launcher's own scripts run in Node, so either side's change fails it
+  # (tests/ask-as-for-you.test.ts). It's a check of its own so the kit, and
+  # every site built on it, isn't built again at each launcher edit.
   the-ask-row-reads-as-for-you =
     let
       launcher = ../quickshell/launcher;
@@ -81,6 +81,7 @@ in
       mkdir tests
       cp ${./tests/ask-as-for-you.test.ts} tests/ask-as-for-you.test.ts
       LOOK_FORM=${launcher + "/LookForm.js"} LOOKS=${launcher + "/Looks.js"} \
+        FOR_YOU=${launcher + "/ForYou.js"} ORDER=${launcher + "/Order.js"} \
         NOW_QML=${launcher + "/Now.qml"} ON_WORDS=${launcher + "/words/on.json"} \
         AGENT_WORDS=${launcher + "/words/agents.json"} \
         ${lib.getExe pkgs.nodejs} --test --test-reporter=spec tests/ask-as-for-you.test.ts
