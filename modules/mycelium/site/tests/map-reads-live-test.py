@@ -336,6 +336,14 @@ def waiting() -> dict[str, list[dict[str, object]]]:
     }
 
 
+def namesakes() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with ASKER's question waiting on both NAMESAKES."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    groups = [f"@{cell}" for cell in NAMESAKES]
+    asked = unanswered("namesakes", ASKER, ASKED_AGO, intent="question", groups=groups)
+    return {**reading, "unanswered": [{**asked, "waiting_on": list(NAMESAKES)}]}
+
+
 def foraging() -> dict[str, list[dict[str, object]]]:
     """Node.json's realm with forages served, none of them yet, as a node serves the kind."""
     reading = json.loads((HERE / "node.json").read_text())["kinds"]
@@ -419,6 +427,18 @@ def waiting_served(tmp_path: Path, waiting_node: StandIn) -> Iterator[Served]:
 
 
 @pytest.fixture
+def namesakes_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "namesakes.sock", "node", namesakes()).start()
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def namesakes_served(tmp_path: Path, namesakes_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, namesakes_node)
+
+
+@pytest.fixture
 def forage_node(tmp_path: Path) -> Iterator[StandIn]:
     stand_in = StandIn(tmp_path / "forage.sock", "node", foraging()).start()
     yield stand_in
@@ -475,8 +495,15 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
     the_map_counts(page, COUNTED, "the map miscounted the realm")
 
 
-# The fewest networks node.json's realm is drawn with, of the several it holds.
-FEWEST_NETWORKS = 2
+# The networks node.json's realm leads, each drawn as a hub, and the one
+# branching from another, as a mind map branches.
+NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")
+BRANCH, BRANCHED_FROM = "orchestration.tern01", "orchestration.skiff1"
+# Each cell's box, and the box of the view they're drawn in.
+IN_VIEW = """[document.getElementById('map-view'),
+  ...document.querySelectorAll('#world circle.cell')]
+  .map((e) => e.getBoundingClientRect())
+  .map(({ left, right, top, bottom }) => ({ left, right, top, bottom }))"""
 
 
 # On 14 November 2026 the first live map went on Joel's look list checked
@@ -494,14 +521,27 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     page.locator("#map-view").focus()
     page.keyboard.press("0")
-    settled(page, "0 didn't fit the whole map")
-    hubs = page.locator("#world .hub")
-    expect(hubs.first, "the map drew no network").to_be_visible()
-    drawn = hubs.count()
-    assert drawn >= FEWEST_NETWORKS, f"the map drew {drawn} networks of the realm's several"
+    settled(page, "the view never stood still after 0")
+    for network in NETWORKS:
+        hub = page.locator(f'#world .hub[data-key="h:{network}"]')
+        expect(hub, f"the map didn't draw the network {network}").to_be_visible()
+    branch = page.locator(f'#world .hub[data-key="h:{BRANCH}"]')
+    expect(branch, f"{BRANCH} wasn't drawn branching from {BRANCHED_FROM}").to_have_attribute(
+        "data-branch-of", BRANCHED_FROM
+    )
     expect(page.locator("#world circle.cell"), "the map left cells out").to_have_count(CELLS)
-    lines = page.evaluate("document.getElementById('map-ground').lines().length")
-    assert lines >= drawn, f"the map drew {lines} lines joining its networks and cells"
+    across = page.evaluate(f"{PAINTED}.across")
+    assert across > 0, "the map drew no line across networks, though cells share some"
+    view, *cells = page.evaluate(IN_VIEW)
+    outside = [
+        cell
+        for cell in cells
+        if cell["left"] < view["left"]
+        or cell["right"] > view["right"]
+        or cell["top"] < view["top"]
+        or cell["bottom"] > view["bottom"]
+    ]
+    assert not outside, f"0 left {len(outside)} cells outside the view {view}"
     window = page.evaluate(
         "[innerHeight, document.scrollingElement.scrollHeight,"
         " document.getElementById('map-view').getBoundingClientRect().bottom]"
@@ -515,7 +555,7 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     expect(
         page.locator('#panel-body a[href^="mycelium:cell/TERN03"]'),
         "a click on a cell left its drawer shut",
-    ).to_have_count(1)
+    ).to_be_visible()
 
 
 def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
@@ -526,23 +566,62 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
 
 
+# The two cells node.json names "Mend the Sails": the first moving, the
+# second needing Joel.
+NAMESAKES = ("TERN01", "TERN02")
+NAMESAKES_OWE = f"{ASKER_SHORT}'s question waiting since"
+
+
+def standing_of(page: Page, cell: str) -> set[str]:
+    """Read the classes a cell's marks are painted with, which say how it stands."""
+    return {str(mark["cls"]) for mark in marks_of(page, f"c:{cell}")}
+
+
+def still_owe(page: Page, why: str) -> None:
+    """Hold that the question waiting on each of NAMESAKES is still said, age and all."""
+    for cell in NAMESAKES:
+        assert "m-waits" in standing_of(page, cell), f"{cell} lost its wait {why}"
+        page.evaluate(f"location.hash = '#cell={cell}'")
+        expect(page.locator("#panel-body"), f"{cell}'s drawer lost its wait {why}").to_contain_text(
+            NAMESAKES_OWE
+        )
+
+
 # On 15 November 2026 the live map froze on "reading": two cells sharing a
 # title moved, a reading left one's waits unset, working out how long they
 # had waited threw, and a bare catch swallowed it, so the page kept its old
-# counts and logged nothing. TERN01 and TERN02 share "Mend the Sails" in
-# node.json, and TERN02 needs Joel. A reading that throws now logs, which
-# fails the tab, and one that's dropped leaves the counts stale.
+# counts and logged nothing. Here a question waits on both NAMESAKES, so
+# each move works out its age. A reading that throws now logs, which fails
+# the tab; one that's dropped leaves the counts or a cell's marks stale;
+# and one that lands on the other cell of the two leaves the wrong marks.
 def test_cells_sharing_a_title_that_move_are_drawn_moving(
-    mycelium_opened: Opened, mycelium_node: StandIn
+    browser: Browser, namesakes_served: Served, namesakes_node: StandIn
 ) -> None:
-    page = mycelium_opened.page
-    the_map_stands(page, "live")
-    the_map_counts(page, COUNTED, "the map miscounted the realm")
-    mycelium_node.tell("cell", changed=[{"key": "cell:TERN02", "standing": "moving"}])
-    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map froze as a twin moved")
-    mycelium_node.tell("cell", changed=[{"key": "cell:TERN01", "standing": "quiet"}])
-    the_map_counts(page, COUNTED, "the map froze as the other twin went quiet")
-    the_map_stands(page, "live")
+    root, _ = namesakes_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        first, second = NAMESAKES
+        the_map_stands(page, "live")
+        the_map_counts(page, COUNTED, "the map miscounted the realm")
+        still_owe(page, "before either moved")
+        namesakes_node.tell("cell", changed=[{"key": f"cell:{second}", "standing": "moving"}])
+        why = f"the map froze as {second}, sharing {first}'s title, moved"
+        the_map_counts(page, "8 cells, 3 moving, 1 stuck", why)
+        asks = page.locator(f'#world circle.cell[data-key="c:{second}"]')
+        expect(asks, f"{second} still needs Joel once moving").not_to_have_attribute(
+            "data-asks", ""
+        )
+        expect(page.locator("#asks-words"), "the map still says one needs Joel").to_have_text("")
+        still_owe(page, f"once {second} moved")
+        namesakes_node.tell("cell", changed=[{"key": f"cell:{first}", "standing": "quiet"}])
+        the_map_counts(page, COUNTED, f"the map froze as {first} went quiet")
+        assert "m-quiet" in standing_of(page, first), f"{first} wasn't drawn quiet"
+        assert "m-nucleus" in standing_of(page, second), f"{second} stopped being drawn moving"
+        still_owe(page, f"once {first} went quiet")
+        the_map_stands(page, "live")
+    finally:
+        opened.close()
 
 
 # The builders node.json's machine sends its builds to, by name as the map

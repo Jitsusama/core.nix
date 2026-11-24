@@ -5,8 +5,10 @@ it as a live page's test does (live_page.py's PAGE_CHECKS), reading the
 lines it answers. The first case is the miss that made the probe: on 15
 November 2026 the forage research page's diagram drew light words on a
 block whose fill named a colour the kit doesn't define, so it painted its
-light fallback in the dark look, at about 1.2:1, and the gate passed it,
-since it measured no words inside a drawing. The probe's path comes from
+light fallback in the dark look, at 1.45:1 there (1.16:1 in the case's own
+colours), and the gate passed it, since it measured no words inside a
+drawing. The probe's bar of 7:1 and its edge of 64 px for a drawing kept in
+an image are each pinned from both sides. The probe's path comes from
 WEB_SKILL, as the check running this sets it, and its browser from
 probe_browser.py, loaded as a plugin.
 """
@@ -27,6 +29,12 @@ ORIGIN = "http://svgtext.test/"
 # The dark look's ground and its words, near the kit's own.
 DARK = "#121a16"
 LIGHT_WORDS = "#e6e1cf"
+# Greys either side of 7:1 on white: 7.00:1 and 6.90:1.
+AT_THE_BAR, UNDER_THE_BAR = "#595959", "#5a5a5a"
+# A drawing an image loads, so a case's images are laid out as loaded ones are.
+DRAWING = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 1"><rect width="4" height="1"/></svg>'
+)
 
 
 @pytest.fixture
@@ -49,6 +57,8 @@ def probed(tab: Page, drawing: str, style: str = "") -> list[str]:
     )
     sent = "text/html; charset=utf-8"
     tab.route(ORIGIN, lambda route: route.fulfill(content_type=sent, body=page))
+    drawn = "image/svg+xml"
+    tab.route("**/*.svg", lambda route: route.fulfill(content_type=drawn, body=DRAWING))
     tab.goto(ORIGIN)
     return list(tab.evaluate(PROBE))
 
@@ -110,10 +120,20 @@ def test_strong_words_pass(tab: Page) -> None:
     assert probed(tab, drawing) == []
 
 
+def test_words_at_the_bar_pass_and_words_just_under_it_are_named(tab: Page) -> None:
+    """Grey at 7.00:1 on white answers nothing; grey at 6.90:1 is named."""
+    at = drawn(f'<text x="16" y="48" style="fill: {AT_THE_BAR}; font-size: 16px">C12</text>')
+    assert probed(tab, at) == []
+    under = drawn(f'<text x="16" y="48" style="fill: {UNDER_THE_BAR}; font-size: 16px">C12</text>')
+    found = probed(tab, under)
+    assert len(found) == 1, found
+    assert found[0].startswith('the drawn words "C12" stand at 6.90:1'), found
+
+
 def test_a_drawing_kept_in_an_image_is_named_and_an_icon_is_not(tab: Page) -> None:
-    """A drawing 200 px wide in an img can't be measured, so it's named; a 32 px icon isn't."""
-    images = '<img src="floor.svg" width="200" height="50" alt="">'
-    images += '<img src="cap.svg" width="32" alt="">'
+    """A drawing 65 px wide in an img can't be measured, so it's named; one 64 px wide isn't."""
+    images = '<img src="floor.svg" width="65" height="16" alt="">'
+    images += '<img src="cap.svg" width="64" height="16" alt="">'
     found = probed(tab, images)
     assert len(found) == 1, found
     assert found[0].startswith("the drawing floor.svg sits in an img"), found
