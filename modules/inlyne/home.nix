@@ -13,17 +13,23 @@
 # cut as a font of its own (../fonts/serif-text.nix), since inlyne can't
 # set a variable font's axes, and its code in the monospaced face.
 #
-# Its keys are the keyboard language's, and only these: ← and → back and
-# forward through the pages followed, ↑ and ↓ a few lines, Page Up and Page
-# Down a screen, Home and End the top and the bottom, + and - larger and
-# smaller, 0 as it was, Ctrl+C copies what's selected, q closes,
-# and ? opens a page saying all of them, which ← leaves. Six patches give
-# it what it lacked: a colour for headings, that page, opening without
-# asking the desktop for a theme when its settings name one, keeping the
-# file it shows for the launcher, since its command line goes stale once a
-# link opens another file in place, a space where a paragraph's line wraps
-# in the file, which it dropped, joining the words either side, and a zoom
-# it opens at, which 0 goes back to.
+# Its keys are Vim's, as the keyboard language gives them, and only these:
+# j and k or ↓ and ↑ a few lines, Ctrl+F and Ctrl+B or Page Down and Page
+# Up a screen, gg and G or Home and End the top and the bottom, Ctrl+O and
+# Ctrl+I back and forward through the pages followed, Ctrl and + or - larger
+# and smaller and Ctrl+0 as it was, Ctrl+C copies what's selected, :q and
+# Return, ZZ or Space w close it, as Vim's close a window, and Space ? or F1
+# opens a page saying all of them, which Ctrl+O leaves. q alone does
+# nothing, since nothing records, and Escape nothing, which closes nothing
+# of ours (docs/design.md, Vi's Keys); inlyne has no command line, so :q is
+# a sequence its keys wait out. Six patches give it what it lacked: a
+# colour for headings, that page, opening without asking the desktop for a
+# theme when its settings name one, keeping the file it shows for the
+# launcher, since its command line goes stale once a link opens another
+# file in place, a space where a paragraph's line wraps in the file, which
+# it dropped, joining the words either side, and a zoom it opens at, which
+# Ctrl+0 goes back to. A seventh holds these keys to Vim's in its own
+# tests, as it's built.
 #
 # It opens at one and a half times the screen's own scale. At its own size
 # Joel found its text too small to read (2026-11-01); a logical pixel is
@@ -60,7 +66,11 @@ let
       ./keeps-what-it-shows.patch
       ./keeps-words-apart.patch
       ./opens-at-a-reading-size.patch
+      ./speaks-vim.patch
     ];
+    env = (old.env or { }) // {
+      INLYNE_KEYBINDINGS = "${bindingsFile}";
+    };
     postFixup =
       (old.postFixup or "")
       + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
@@ -73,37 +83,83 @@ let
   # named apart from every other group a word could find there.
   scrolling = map (key: key // { group = "scrolling"; });
   zoom = map (key: key // { group = "zoom"; });
+  #
+  # Each is a chord, the keys held together with the last pressed, or a
+  # sequence of them, with the act of the key language (../keys/language.toml)
+  # it is where it's one, which keys-speak-the-language holds it to. An arrow
+  # is only its letter's motion, so ← and →, which inlyne has no column to
+  # move in, are nothing, and Ctrl+O and Ctrl+I go back and forward through
+  # the pages followed, as through Vim's jumps. `says` is how the keys page
+  # writes one where it isn't each key's face, as gg for g then g, and
+  # `spelled` how the key map does where a held Shift types another key,
+  # as Space ? for Space then Shift+/.
   keys =
     scrolling [
       {
-        chord = [ "Left" ];
-        action = "HistoryPrevious";
-        does = "Back to the page before";
-      }
-      {
-        chord = [ "Right" ];
-        action = "HistoryNext";
-        does = "Forward again";
-      }
-      {
-        chord = [ "Up" ];
-        action = "ScrollUp";
-        does = "Up a few lines";
-      }
-      {
-        chord = [ "Down" ];
+        chord = [ "j" ];
+        says = "j";
+        act = "down";
         action = "ScrollDown";
         does = "Down a few lines";
       }
       {
-        chord = [ "PageUp" ];
+        chord = [ "Down" ];
+        act = "down";
+        action = "ScrollDown";
+        does = "Down a few lines";
+      }
+      {
+        chord = [ "k" ];
+        says = "k";
+        act = "up";
+        action = "ScrollUp";
+        does = "Up a few lines";
+      }
+      {
+        chord = [ "Up" ];
+        act = "up";
+        action = "ScrollUp";
+        does = "Up a few lines";
+      }
+      {
+        chord = [
+          "Ctrl"
+          "f"
+        ];
+        act = "screen-down";
+        action = "PageDown";
+        does = "Down a screen";
+      }
+      {
+        chord = [ "PageDown" ];
+        act = "screen-down";
+        action = "PageDown";
+        does = "Down a screen";
+      }
+      {
+        chord = [
+          "Ctrl"
+          "b"
+        ];
+        act = "screen-up";
         action = "PageUp";
         does = "Up a screen";
       }
       {
-        chord = [ "PageDown" ];
-        action = "PageDown";
-        does = "Down a screen";
+        chord = [ "PageUp" ];
+        act = "screen-up";
+        action = "PageUp";
+        does = "Up a screen";
+      }
+      {
+        sequence = [
+          [ "g" ]
+          [ "g" ]
+        ];
+        says = "gg";
+        act = "first";
+        action = "ToTop";
+        does = "The top";
       }
       {
         chord = [ "Home" ];
@@ -111,24 +167,62 @@ let
         does = "The top";
       }
       {
+        chord = [
+          "Shift"
+          "g"
+        ];
+        says = "G";
+        act = "last";
+        action = "ToBottom";
+        does = "The bottom";
+      }
+      {
         chord = [ "End" ];
         action = "ToBottom";
         does = "The bottom";
       }
+      {
+        chord = [
+          "Ctrl"
+          "o"
+        ];
+        act = "jump-back";
+        action = "HistoryPrevious";
+        does = "Back to the page before";
+      }
+      {
+        chord = [
+          "Ctrl"
+          "i"
+        ];
+        act = "jump-forward";
+        action = "HistoryNext";
+        does = "Forward again";
+      }
     ]
+    # As the reader's, with Ctrl held, since 0 alone is a line's start.
     ++ zoom [
       {
-        chord = [ "=" ];
+        chord = [
+          "Ctrl"
+          "="
+        ];
         action = "ZoomIn";
         does = "Larger";
       }
       {
-        chord = [ "-" ];
+        chord = [
+          "Ctrl"
+          "-"
+        ];
         action = "ZoomOut";
         does = "Smaller";
       }
       {
-        chord = [ "0" ];
+        chord = [
+          "Ctrl"
+          "0"
+        ];
         action = "ZoomReset";
         does = "As it was";
       }
@@ -142,25 +236,79 @@ let
         action = "Copy";
         does = "Copy what's selected";
       }
+      # ? alone searches up the page, as Vim's, which inlyne can't.
       {
-        chord = [
-          "Shift"
-          "/"
+        sequence = [
+          [ "Space" ]
+          [
+            "Shift"
+            "/"
+          ]
         ];
+        says = "Space ?";
+        spelled = "Space ?";
+        act = "show-keys";
+        action = "Keys";
+        does = "The reader's keys";
+      }
+      {
+        chord = [ "F1" ];
+        act = "show-keys";
         action = "Keys";
         does = "The reader's keys";
       }
       # Escape closes nothing of ours (Joel, 2026-11-05: "fuck escape
-      # quitting"), so it isn't bound.
+      # quitting"), so it isn't bound, and q alone does nothing (Joel,
+      # 2026-11-04: "q should do nothing by itself. :q to quit"). Each
+      # close is a sequence of chords, said on the keys page as typed.
       {
-        chord = [ "q" ];
+        sequence = [
+          [
+            "Shift"
+            ";"
+          ]
+          [ "q" ]
+          [ "Enter" ]
+        ];
+        says = ":q ↵";
+        spelled = ": q Return";
+        action = "Quit";
+        does = "Close the reader";
+      }
+      {
+        sequence = [
+          [
+            "Shift"
+            "z"
+          ]
+          [
+            "Shift"
+            "z"
+          ]
+        ];
+        says = "ZZ";
+        act = "close";
+        action = "Quit";
+        does = "Close the reader";
+      }
+      {
+        sequence = [
+          [ "Space" ]
+          [ "w" ]
+        ];
+        says = "Space w";
+        act = "close";
         action = "Quit";
         does = "Close the reader";
       }
     ];
 
+  # The chords a key is pressed as, one after another: a chord alone, or a
+  # sequence's.
+  chordsOf = key: key.sequence or [ key.chord ];
+
   # A chord as inlyne reads one: its last key, with the others as modifiers.
-  combo =
+  comboOf =
     chord:
     if lib.length chord == 1 then
       lib.head chord
@@ -169,6 +317,13 @@ let
         key = lib.last chord;
         mod = lib.init chord;
       };
+  # A key as inlyne reads one: a chord, or a sequence of them.
+  combo =
+    key:
+    let
+      chords = chordsOf key;
+    in
+    if lib.length chords == 1 then comboOf (lib.head chords) else map comboOf chords;
 
   # How the keys page draws a chord: each key in the theme's face for it
   # (../theme/keys.nix), by the name the theme knows it by, a letter as a
@@ -184,22 +339,23 @@ let
     config.jitsusama.theme.keys.${themeNames.${key} or key}.text
       or (if lib.stringLength key == 1 then lib.toUpper key else key);
   said =
-    chord:
-    if
-      chord == [
-        "Shift"
-        "/"
-      ]
-    then
-      "?"
-    else
-      lib.concatStringsSep " " (map face chord);
+    key:
+    key.says or (
+      if
+        key.chord == [
+          "Shift"
+          "/"
+        ]
+      then
+        "?"
+      else
+        lib.concatStringsSep " " (map face key.chord)
+    );
 
   # The page ? opens: one row for each thing a key does, with every key
   # that does it, in the order the keys are listed.
   doings = lib.unique (map (key: key.does) keys);
-  keysFor =
-    does: lib.concatMapStringsSep " " (key: said key.chord) (lib.filter (key: key.does == does) keys);
+  keysFor = does: lib.concatMapStringsSep ", " said (lib.filter (key: key.does == does) keys);
   keysPage = pkgs.writeTextDir "keys.md" ''
     # Keys
 
@@ -235,14 +391,20 @@ let
       regular-font = font.serif.text.family;
       monospace-font = font.mono.family;
     };
-    keybindings.base = map (key: [
-      key.action
-      (combo key.chord)
-    ]) keys;
+    inherit (bindings) keybindings;
     keys-page = "${keysPage}/keys.md";
   };
 
   file = (pkgs.formats.toml { }).generate "inlyne.toml" settings;
+
+  # The keys alone, which inlyne's own tests read as it's built, so a key
+  # bound here that inlyne would read otherwise fails its build
+  # (speaks-vim.patch).
+  bindings.keybindings.base = map (key: [
+    key.action
+    (combo key)
+  ]) keys;
+  bindingsFile = (pkgs.formats.toml { }).generate "inlyne-keys.toml" bindings;
 in
 {
   imports = [
@@ -276,8 +438,9 @@ in
   # The launcher lists these over inlyne's window, by the same words.
   jitsusama.keys.inlyne = map (key: {
     inherit (key) does;
-    chord = lib.concatStringsSep "+" key.chord;
+    chord = key.spelled or (lib.concatMapStringsSep " " (lib.concatStringsSep "+") (chordsOf key));
     group = key.group or "";
+    act = key.act or "";
   }) keys;
 
   # Where inlyne looks for its settings: the configuration folder on Linux,

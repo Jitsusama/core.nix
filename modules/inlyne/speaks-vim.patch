@@ -1,0 +1,59 @@
+Hold the account's keys to Vim's in inlyne's own tests
+
+The keys the settings bind were checked only by how the keys page drew
+them, so a binding inlyne read otherwise, or q closing it again, passed.
+The build now names the settings' keys, and a test presses Vim's keys
+through them: q and Escape alone do nothing, and :q and Return, ZZ and
+Space w close it.
+
+diff -ru a/src/keybindings/tests.rs b/src/keybindings/tests.rs
+--- a/src/keybindings/tests.rs
++++ b/src/keybindings/tests.rs
+@@ -45,6 +45,47 @@
+     }
+ }
+ 
++// The account's own keys, which the build names: what's pressed in Vim is
++// what each does here, and q and Escape alone are nothing, since nothing
++// records and Escape closes nothing of ours.
++#[test]
++fn speaks_vim() {
++    log::init();
++
++    let config = include_str!(env!("INLYNE_KEYBINDINGS"));
++    let Config { keybindings, .. } = Config::load_from_str(config).unwrap();
++    let mut key_combos = KeyCombos::new(keybindings).unwrap();
++
++    let key = |virt: VirtKey| -> ModifiedKey { virt.into() };
++    let shifted = |virt: VirtKey| ModifiedKey(virt.into(), ModifiersState::SHIFT);
++    let test_vectors = [
++        (key(VirtKey::Q), None),
++        (key(VirtKey::Escape), None),
++        (key(VirtKey::J), Some(Action::Scroll(VertDirection::Down))),
++        (key(VirtKey::K), Some(Action::Scroll(VertDirection::Up))),
++        (key(VirtKey::G), None),
++        (key(VirtKey::G), Some(Action::ToEdge(VertDirection::Up))),
++        (key(VirtKey::LShift), None),
++        (shifted(VirtKey::G), Some(Action::ToEdge(VertDirection::Down))),
++        // :q and Return.
++        (shifted(VirtKey::Semicolon), None),
++        (key(VirtKey::Q), None),
++        (key(VirtKey::Return), Some(Action::Quit)),
++        // ZZ.
++        (shifted(VirtKey::Z), None),
++        (shifted(VirtKey::Z), Some(Action::Quit)),
++        // Space w, and Space ? for the keys page.
++        (key(VirtKey::Space), None),
++        (key(VirtKey::W), Some(Action::Quit)),
++        (key(VirtKey::Space), None),
++        (shifted(VirtKey::Slash), Some(Action::Keys)),
++    ];
++
++    for (pressed, maybe_action) in test_vectors {
++        assert_eq!(key_combos.munch(pressed), maybe_action, "after {pressed}");
++    }
++}
++
+ #[test]
+ fn keys() {
+     log::init();
