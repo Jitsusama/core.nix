@@ -126,6 +126,56 @@ fn a_folder_joined_to_a_string_owns_the_file_the_two_name() {
 }
 
 #[test]
+fn the_folder_a_file_sits_in_joined_to_a_string_owns_the_file_beside_it() {
+    // 23 November: the desktop test moved into tests/desktop/, where the
+    // areas beside it pick `./.`, the folder it sits in, so about fifteen
+    // areas' cases rest on `./.` joined to a name owning their file.
+    let desktop = r#"{ area, ... }: {
+  tests =
+    (
+      if pkgs.lib.hasPrefix "launcher-" area then
+        ./launcher
+      else if area == "looks" || pkgs.lib.hasPrefix "looks-" area then
+        ./looks
+      else
+        ./.
+    )
+    + "/desktop-${area}-vm-test.py";
+}"#;
+    let tests = [
+        (
+            "vm-desktop-captures".to_owned(),
+            owned_by(
+                "tests/desktop/desktop.nix",
+                desktop,
+                &[("area", "captures")],
+            ),
+        ),
+        (
+            "vm-desktop-launcher-answers".to_owned(),
+            owned_by(
+                "tests/desktop/desktop.nix",
+                desktop,
+                &[("area", "launcher-answers")],
+            ),
+        ),
+    ];
+    assert_eq!(
+        owners(&tests, &words("tests/desktop/desktop-captures-vm-test.py")),
+        words("vm-desktop-captures"),
+        "an area beside the file is owned through `./.`"
+    );
+    assert_eq!(
+        owners(
+            &tests,
+            &words("tests/desktop/launcher/desktop-launcher-answers-vm-test.py")
+        ),
+        words("vm-desktop-launcher-answers"),
+        "an area in a folder below it still is"
+    );
+}
+
+#[test]
 fn a_path_inside_a_value_or_from_the_root_or_a_folder_is_owned() {
     assert_eq!(
         owned_by("tests/a.nix", "t = ./a-${import ./b.nix}.py;", &[]),
