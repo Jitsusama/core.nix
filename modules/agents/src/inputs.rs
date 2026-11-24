@@ -1511,14 +1511,103 @@ mod tests {
             "behind still from the first, said now"
         );
         assert_eq!(
-            write_heard(path, None, Some(&first), 31_000),
-            (Some("agents: kept /k/arrangement.json again".into()), None)
+            write_heard(path, None, Some(&first), 31_000).1,
+            None,
+            "a write that goes through leaves nothing unwritten"
         );
         assert_eq!(
             write_heard(path, None, None, 31_000),
             (None, None),
             "a write that never failed says nothing"
         );
+    }
+
+    #[test]
+    fn a_lasting_failure_is_journalled_hourly_and_its_end_says_how_long_it_lasted() {
+        let path = Path::new("/k/arrangement.json");
+        let full = "No space left on device";
+        let hour = 3_600_000;
+        let (_, first) = write_heard(path, Some(full), None, 1_000);
+        let first = first.expect("left unwritten");
+        let (heard, still) = write_heard(path, Some(full), Some(&first), 1_000 + hour - 1);
+        assert_eq!(heard, None, "not again within the hour");
+        let (heard, still) = write_heard(path, Some(full), still.as_ref(), 1_000 + hour);
+        assert_eq!(
+            heard.as_deref(),
+            Some(
+                "agents: still can't keep /k/arrangement.json, 60 min behind: \
+                 No space left on device"
+            ),
+            "an hour on, it's said again, so a full disk isn't one line lost among many"
+        );
+        assert_eq!(
+            still.map(|still| (still.since, still.said)),
+            Some((1_000, 1_000 + hour)),
+            "behind still from the first failure, said now"
+        );
+        assert_eq!(
+            write_heard(path, None, Some(&first), 1_000 + 90 * 60_000).0,
+            Some("agents: kept /k/arrangement.json again, 90 min behind".into())
+        );
+        assert_eq!(
+            write_heard(path, None, Some(&first), 31_000).0,
+            Some("agents: kept /k/arrangement.json again, 30 s behind".into())
+        );
+    }
+
+    #[test]
+    fn keep_places_holds_a_failure_as_first_said_until_a_write_goes_through() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
+        ]}));
+        let folder =
+            std::env::temp_dir().join(format!("agents-inputs-said-{}", std::process::id()));
+        // Only this case's own folder, left by a run that failed.
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let blocked = folder.join("blocked");
+        std::fs::write(&blocked, "").expect("a file where its folder would be");
+        let path = blocked.join("arrangement.json");
+        inputs.keep_places(&path);
+        let first = inputs.unwritten.clone().expect("the write failed");
+        inputs.keep_places(&path);
+        assert_eq!(
+            inputs.unwritten,
+            Some(first),
+            "failing the same way again, it's held as first said, so not said again"
+        );
+        std::fs::remove_file(&blocked).expect("the way cleared");
+        inputs.keep_places(&path);
+        assert_eq!(inputs.unwritten, None, "written, nothing's held");
+        // Only this case's own folder, which the next run makes afresh.
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_keep_where_nothing_moved_and_nothing_is_unwritten_writes_nothing() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
+        ]}));
+        let folder =
+            std::env::temp_dir().join(format!("agents-inputs-still-{}", std::process::id()));
+        // Only this case's own folder, left by a run that failed.
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let path = folder.join("arrangement.json");
+        inputs.keep_places(&path);
+        assert!(path.exists(), "the first keep writes");
+        std::fs::remove_file(&path).expect("taken away");
+        inputs.keep_places(&path);
+        assert!(
+            !path.exists(),
+            "nothing moved and nothing's behind, so nothing's written"
+        );
+        // Only this case's own folder, which the next run makes afresh.
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]
