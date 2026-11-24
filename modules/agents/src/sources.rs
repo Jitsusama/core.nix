@@ -288,9 +288,10 @@ impl Inputs {
                 }
             }
             Heard::KeepPlaces(kept) => {
-                if let Err(why) = kept.write(&paths.kept_places) {
+                self.kept_places_unwritten = kept.write(&paths.kept_places).err().map(|why| {
                     eprintln!("agents: can't keep {}: {why}", paths.kept_places.display());
-                }
+                    why.to_string()
+                });
                 self.kept_places = kept;
             }
             Heard::FedBack(line) => self.fed_back.push(line),
@@ -336,6 +337,11 @@ impl Inputs {
                 self.arrangement = kept;
             }
         } else if path == paths.kept_places {
+            // As with the arrangement: while their write has failed,
+            // memory holds what the shell said last and the file doesn't.
+            if self.kept_places_unwritten.is_some() {
+                return;
+            }
             if let Some(kept) = KeptPlaces::read(path) {
                 self.kept_places = kept;
             }
