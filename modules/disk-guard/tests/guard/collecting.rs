@@ -1625,6 +1625,64 @@ fn an_ask_naming_a_fuller_band_than_the_disk_reads_still_waits_for_writers() {
 }
 
 #[test]
+fn a_pass_ending_waiting_teaches_nothing_of_how_long_a_pass_takes() {
+    // A pass that ends waiting ends in moments, so learning its length
+    // drew the forecast's lead toward its floor, and a fill rate that
+    // should have started a pass in time didn't. An ask reaches for room,
+    // as a pass of the guard's own nearly full does.
+    let store = Store::new();
+    store.dead("aaa-older", 10.0 * DAY, BATCH_BYTES);
+    store.dead("bbb-newer", 9.0 * DAY, BATCH_BYTES);
+    let shared = written_database(&store);
+    let _writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    let memory = store.root.join("state/memory.json");
+    let learned = || {
+        disk_guard::state::load::<disk_guard::state::Memory>(&memory)
+            .unwrap()
+            .unwrap_or_default()
+            .pass_seconds
+    };
+    let before = learned();
+    let (_ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::NearlyFull,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    let passes = store.passes();
+    assert_eq!(
+        passes.last().map(|pass| pass["end"].clone()),
+        Some(serde_json::json!("waiting")),
+        "{passes:?}"
+    );
+    // An ask's step saves nothing, so a step past the guard's five minutes
+    // between saves writes down what the waiting pass taught it.
+    let later = Tick {
+        wall: now() + 301.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+    assert_eq!(
+        store.passes().len(),
+        passes.len(),
+        "the saving step passed too"
+    );
+    assert_eq!(
+        learned(),
+        before,
+        "learned from a pass ending waiting: {passes:?}"
+    );
+}
+
+#[test]
 fn garbage_waits_while_another_process_writes_nix_s_database() {
     // A delete holds the database's write lock for seconds at a time, and
     // an evaluation waiting on it reads "database is busy"; SQLite's write

@@ -2732,7 +2732,10 @@ impl Guard {
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        if goal == Goal::Reach {
+        // A pass that ends waiting or at a stop ends in moments, not when its
+        // work is done, so it says nothing of how long reaching for room
+        // takes: learned, it drew the forecast's lead toward its floor.
+        if goal == Goal::Reach && !matches!(report.end, End::Waiting | End::Stopped) {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
