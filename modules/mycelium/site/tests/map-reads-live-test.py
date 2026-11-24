@@ -937,16 +937,21 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
     assert talked == f"mycelium:cell/{NEEDING[0]}@kestrel", f"t talked to {talked}"
-    # The tree's g is the tree's alone: it goes to its first row, and never
-    # also to the cell still open.
+    # The tree's g is the tree's alone: it goes to its first row, and the
+    # page's g never also answers it. The tree is hidden while a cell is
+    # open, so the page's g would only refuse, saying so in the status
+    # line a screen reader reads out over the tree's own step.
     talks = page.evaluate("window.talks")
     page.locator("#panel-title").press(".")
     items = page.locator("#tree [role=treeitem]")
     items.last.focus()
     page.keyboard.press("g")
     expect(items.first, "g didn't go to the tree's first").to_be_focused()
+    expect(page.locator("#where"), "the page's g answered the tree's").not_to_contain_text(
+        "No cell is open to go to"
+    )
     after = page.evaluate("window.talks")
-    assert after == talks, f"the tree's g also went to the open cell: {after} links, not {talks}"
+    assert after == talks, f"the tree's g opened a link: {after} links, not {talks}"
 
 
 # What new work's line hands the Launcher, said back once the line closes,
