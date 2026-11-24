@@ -75,6 +75,16 @@
       touch $out
     '';
 
+  # Every why the shell says a press it can't answer by, and every key the
+  # launcher's foot says, has words in agents:machine
+  # (modules/quickshell/tests/foot-words.py), since the foot says nothing for
+  # a key it hasn't and a press must never do nothing.
+  every-why-in-the-foot-has-words = pkgs.runCommandLocal "every-why-in-the-foot-has-words" { } ''
+    ${lib.getExe pkgs.python3} ${../tests/foot-words.py} ${../launcher/words/agents.json} \
+      ${../Sessions.qml} ${../launcher/Agents.qml}
+    touch $out
+  '';
+
   # The words each daemon's tests are given are the vocabulary's own, as the
   # account writes it (modules/quickshell/tests/daemon-words.py), so no daemon
   # passes its tests on words Joel never reads. A daemon whose tests hold a
