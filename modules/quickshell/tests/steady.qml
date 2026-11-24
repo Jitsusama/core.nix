@@ -396,19 +396,27 @@ QtObject {
             failures.push(`a row kept unseen, laid afresh: ${asSeenRead(laidAfresh)}`);
         // Found by what's typed in the step, by rank and with no heading, a
         // row kept unseen is shown where it was found, and stays there as
-        // the list is said again, as it is while rows are held still.
+        // the list is said again and again, as it is while rows are held
+        // still, though the step hands it back marked each time, as a row
+        // that stops matching what's typed comes back from its rows.
         const unheaded = rows => rows.filter(row => row.heading !== true && !row.repeated);
         const lateStep = Steady.kept(underHeadings("#A=a1 a1"),
             underHeadings("#A=a1 a1 look"), id);
         const typedFound = Steady.searched([lateStep[2], lateStep[1]]);
         const typedAgain = Steady.refreshed(typedFound, unheaded(lateStep), id);
         const typedHeld = Steady.held(typedFound, unheaded(lateStep), id);
+        const typedThen = Steady.refreshed(typedAgain.rows, unheaded(lateStep), id);
+        const typedHeldThen = Steady.held(typedHeld.rows, unheaded(lateStep), id);
         if (readHeaded(typedFound) !== "look a1" || readHeaded(typedAgain.rows) !== "look a1"
                 || typedAgain.waiting !== 0 || readHeaded(typedHeld.rows) !== "look a1"
+                || readHeaded(typedThen.rows) !== "look a1" || typedThen.waiting !== 0
+                || readHeaded(typedHeldThen.rows) !== "look a1"
                 || lateStep[2].unseen !== true)
             failures.push(`a row kept unseen, found by what's typed: "${readHeaded(typedFound)}",`
                 + ` then "${readHeaded(typedAgain.rows)}" with ${typedAgain.waiting} waiting,`
-                + ` held "${readHeaded(typedHeld.rows)}"`);
+                + ` then "${readHeaded(typedThen.rows)}" with ${typedThen.waiting},`
+                + ` held "${readHeaded(typedHeld.rows)}", then`
+                + ` "${readHeaded(typedHeldThen.rows)}"`);
         // A row of no cell that comes while a held step's rows are made again,
         // and leaves before it's shown, stops being counted once it's gone.
         const waitedFrom = underHeadings("#A=a1 a1");
