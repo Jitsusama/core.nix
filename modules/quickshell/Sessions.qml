@@ -2567,8 +2567,8 @@ Singleton {
     // ID`), named for it alone (viewerOf), so niri's word on that window is
     // what Go To raises next time; with no words it tells `unhosted`, `why`
     // "hosted", or "unnamed" for an id that can't name a viewer's window;
-    // "unowned", told after it opens or holds, a window niri lists under
-    // the viewer's app id was drawn by another program (heldByAnother).
+    // "unowned", told as it opens its own, a window niri lists under the
+    // viewer's app id was drawn by another program (heldByAnother).
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
@@ -2596,12 +2596,12 @@ Singleton {
                 Niri.act({ FocusWindow: { id: listed.id } });
             else if (named === "" || !Array.isArray(words) || words.length === 0)
                 unhosted(session, named === "" ? "unnamed" : "hosted");
-            else {
-                if (!heldBack(session.address, named, session))
-                    view(session, root.goesTo(session));
-                // Said last, so a pid read wrong, which refuses every
-                // viewer, is seen at the press rather than as viewers that
-                // never come.
+            else if (!heldBack(session.address, named, session)) {
+                view(session, root.goesTo(session));
+                // Its own asked for, whose window holds its name is said,
+                // so a pid read wrong, which refuses every viewer, is seen
+                // at the press rather than as viewers that never come. One
+                // held back is said opening, which is true either way.
                 if (heldByAnother(named))
                     unhosted(session, "unowned");
             }
@@ -2737,7 +2737,9 @@ Singleton {
     // gave up on: a press since, whose window may yet come, stays coming,
     // so the next press opens no second viewer beside it.
     // Any program of Joel's can call it, so only a viewer's app id and a
-    // time in ms are taken; anything else leaves what's coming as it was.
+    // time in ms are taken, which stops a malformed ask, not one meant: the
+    // time only orders the script's own give-ups against newer presses,
+    // and any program of his could start a viewer itself anyway.
     function untaken(named, asked) {
         if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked))
             || attaching[named] === undefined || attaching[named] > Number(asked))
@@ -2897,12 +2899,17 @@ Singleton {
     // A window come with a viewer's app id. The pid file is read again
     // before one is refused, as a kitty started again under a new pid makes
     // a folder its watch can miss, and each refused is journalled once.
+    // A window refused once isn't read for again as it changes, as a
+    // stray one retitling would read the file on the shell's own thread
+    // with every title; a pid changed since is read before Go To and the
+    // walk.
     function heardWindow(window) {
-        if (!String(window?.opened ?? "").startsWith("pi-hosted.") || drawnHere(window))
+        const id = String(window?.id);
+        if (!String(window?.opened ?? "").startsWith("pi-hosted.") || drawnHere(window)
+            || id in refusedViewers)
             return;
         readKittyPid();
-        const id = String(window?.id);
-        if (drawnHere(window) || id in refusedViewers)
+        if (drawnHere(window))
             return;
         refusedViewers[id] = true;
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
@@ -3715,8 +3722,11 @@ Singleton {
     }
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.
+    // A window only the windows daemon's index names, which niri, its list
+    // trusted, no longer lists, is none, as Go To and the walk read it.
     function wokenByViewing(session) {
-        return !!session?.presence?.hosted && !session.window && Viewers.parkedHere(session);
+        return !!session?.presence?.hosted && !root.listedNow(session.window)
+            && Viewers.parkedHere(session);
     }
     // Where the session pi knows as `id` had its window as it went to
     // sleep, while that workspace is still there, or null.

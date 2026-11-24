@@ -324,7 +324,7 @@
         "opening": "not asked again \u00b7 its window was asked for a moment ago",
         "unviewable": "started in its host \u00b7 it can't be viewed from here",
         "unviewableHost": "started in its host \u00b7 its host has a name it can't be viewed under",
-        "unowned": "not raised \u00b7 a window another program drew holds its name",
+        "unowned": "opening its own \u00b7 a window another program drew holds its name",
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
         "refused": "{act} refused, {why}",

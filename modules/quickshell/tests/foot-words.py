@@ -11,8 +11,9 @@ says nothing for a key it hasn't, so a press would be met with an empty foot
 (Joel, 2026-11-15: a press must never do nothing). Keys the launcher reads off
 agents:machine by name elsewhere, as SessionRow.js's unsteered does, aren't
 read here. A call is read to its closing paren, however it's wrapped. Each why
-or key missing, or worded "", fails, printed, and so does a why that can come
-to anything but a word, as one held in a name, which can't be read. A word a
+or key missing, or worded "", fails, printed, and so does a why or key that can
+come to anything but a word, as one held in a name, which can't be read; only
+the launcher's `why`, a why the shell gave, may be a name. A word a
 choice is made by is no why. The check first proves it finds a why in a choice
 or a wrapped call and refuses a why with no words, so a rule that stopped
 finding or refusing fails it too.
@@ -35,6 +36,8 @@ UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(")
 ELSEWHERE = re.compile(r"(?<!function )\belsewhere\(")
 # A string in double quotes, as each why and key is said, "" too, so the
 # quote that closes one is never read as opening the next.
+# The name Agents.qml keeps a why the shell gave in, as it passes it on.
+SHELLS_WHY = "why"
 WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
 OPENS = "([{"
 CLOSES = ")]}"
@@ -176,6 +179,20 @@ def keys(source: str) -> set[str]:
     return found
 
 
+def unkeyed(source: str) -> list[str]:
+    """Give each key elsewhere is asked for that can come to anything but a word.
+
+    A key held in `why`, the name the launcher keeps the shell's why in, is
+    read where the shell gives it (whys), so only it may be a name.
+    """
+    return [
+        first
+        for first in argument(source, ELSEWHERE, 0)
+        if first.strip() != SHELLS_WHY
+        and not all(WORD.fullmatch(outcome) for outcome in outcomes(first))
+    ]
+
+
 def said(vocabulary: object) -> dict[str, object]:
     """Give agents:machine's `said`, or nothing where the vocabulary has none."""
     things = vocabulary.get("things", []) if isinstance(vocabulary, dict) else []
@@ -233,6 +250,11 @@ def refuses_what_it_should() -> list[str]:
             "a key the launcher names",
         ),
         (
+            unkeyed('elsewhere(why, session); elsewhere(reason, session); elsewhere("a", s);'),
+            ["reason"],
+            "a key held in a name other than the shell's why",
+        ),
+        (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
             ["opening", "unnamed"],
             "a why worded empty or not at all",
@@ -255,7 +277,11 @@ def main(arguments: list[str]) -> int:
     named = unread(sessions)
     for why in named:
         print(f"foot-words: a why given as {why or 'nothing'} can't be read", file=sys.stderr)
-    asked = keys(Path(arguments[2]).read_text(encoding="utf-8"))
+    launcher = Path(arguments[2]).read_text(encoding="utf-8")
+    asked = keys(launcher)
+    unasked = unkeyed(launcher)
+    for key in unasked:
+        print(f"foot-words: a key given as {key or 'nothing'} can't be read", file=sys.stderr)
     if not given:
         print(
             f"foot-words: {arguments[1]} gives no why, so the check reads it wrong", file=sys.stderr
@@ -263,7 +289,7 @@ def main(arguments: list[str]) -> int:
     missing = unworded(given | asked, said(vocabulary))
     for key in missing:
         print(f"foot-words: {key} has no words in agents:machine's said", file=sys.stderr)
-    return 1 if let_through or missing or named or not given else 0
+    return 1 if let_through or missing or named or unasked or not given else 0
 
 
 if __name__ == "__main__":

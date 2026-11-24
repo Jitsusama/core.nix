@@ -16,14 +16,16 @@
 # unit's own main process, which nothing else can be. A kitty its unit is
 # starting again, 5 s after it ended, is waited on for up to 20 s, so a
 # window asked of it meanwhile opens once it's back rather than never;
-# with neither by then, a socket the ask can't reach, or an old kitty that
-# opens nothing, the journal says why, and the shell is told, so it stops
-# counting a viewer (pi-hosted) as coming and asks again at the next press
-# (Sessions' untaken); it counts no other as coming, so ignores the rest.
+# with neither by then, a kitty that turns the launch down or can't be
+# reached, or an old kitty that opens nothing, the journal says why, and
+# the shell is told, so it stops counting a viewer (pi-hosted) as coming
+# and asks again at the next press (Sessions' untaken); it counts no other
+# as coming, so ignores the rest.
 # It's told when this was started, so a press made since, whose window
-# may yet come, is left coming. The kitty is asked for no answer: kitten
-# gives up on one after 10 s, though a kitty slow to draw may draw it
-# yet, so only an ask that never reached it is a window that won't come.
+# may yet come, is left coming. The kitty's answer is waited for, so a
+# launch it turns down is said, for a minute: kitten's own wait for a
+# launch's is a day (kitty's launch --response-timeout), and the shell asks
+# again after half a minute anyway.
 
 asked=$(date +%s%3N)
 sock=$1
@@ -50,7 +52,7 @@ until [ -S "$sock" ] || old; do
 done
 
 if [ -S "$sock" ]; then
-  kitten @ --to "unix:$sock" launch --no-response --type=os-window \
+  kitten @ --to "unix:$sock" launch --response-timeout 60 --type=os-window \
     --os-window-class "$class" --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" && exit 0
   echo "sessions: the sessions kitty opened no $class" >&2
 elif old; then
