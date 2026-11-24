@@ -1445,6 +1445,13 @@
     open-with chooses a file in the shell when it answers, and chooses none when the shell can't be
     asked, never asking GTK's portal
   '';
+  find-leaves-guarded-folders-alone = ''
+    a Mac's account runs its own find ahead of macOS's, and a search from the home folder or from
+    Library, run there or given its path, never opens the folders ripgrep's ignore file guards,
+    while still finding the rest, a project's folder named like a guarded one included, keeping an
+    expression's own action, and searching a guarded folder named or started in; a depth-first
+    search runs as given; Linux's account gets no such find
+  '';
   firmware-errors-passes-clippy = ''
     clippy finds nothing in firmware-errors or its tests
   '';
