@@ -1194,6 +1194,8 @@ Provider {
     // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
     // feedback at all"), each in TalkLine.js's exchange shape.
     function answerTalks(session) {
+        // A want that comes while the Talk is open draws it again (wantOf reads the held rows).
+        void rowsKind?.revision;
         const to = String(session.address).toUpperCase();
         const said = Words.of("verb:agent:talk").said ?? {};
         const stages = Words.of("orchestrators:talk").said ?? {};
@@ -1219,7 +1221,9 @@ Provider {
     // answered once the node has put it in the session's inbox, or why not (answerWant), naming
     // the want he was shown so a newer ask is never answered by it. His words stay kept under
     // its address, as a talk's do until delivered (Drafts.qml), so the field gives them back
-    // where they took no answer or never went, the foot saying what it takes or why.
+    // where they never went while their ask stands, the foot saying why. Words naming none of
+    // the choices it takes only are let go, the foot saying what it takes, so they're never
+    // given back to answer a later ask.
     function answerIn(session, text, answers) {
         const to = String(session.address).toUpperCase();
         const said = Words.of("verb:agent:talk").said ?? {};
@@ -1228,6 +1232,7 @@ Provider {
             told = TalkAnswers.filled(said.takesOnly ?? "", {
                 choices: answers.choices.map(one => String(one.label ?? one.value))
                     .join(" \u00b7 ") });
+            launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
             // A walk from a terminal is told so, as nothing went (Launcher.qml's walkedRun).
             launcher?.walkRefused?.(told);
             return;
@@ -1250,7 +1255,7 @@ Provider {
             const now = answersOf(sessionAt(session.address) ?? session);
             if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
                 launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
-            if (!put && why !== "")
+            if (!put && (why ?? "") !== "")
                 told = why;
         });
     }
@@ -1588,6 +1593,14 @@ Provider {
                     const held = provider.launcher?.asking?.draft === draft
                         && draft in provider.answersShown;
                     const answers = held ? provider.answersShown[draft] : asks();
+                    // An answer goes as Joel's, so only his own Return gives one: a walk from
+                    // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
+                    if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
+                        provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",
+                            { name: session.title });
+                        provider.launcher?.walkRefused?.(provider.told);
+                        return;
+                    }
                     if (answers !== null) {
                         provider.answerIn(current(), text, answers);
                         return;

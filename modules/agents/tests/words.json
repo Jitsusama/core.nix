@@ -484,6 +484,7 @@
         "didNot": "didn't talk",
         "leadless": "a network has no one lead",
         "answerAsk": "your answer?",
+        "answerWalked": "what {name} asks is answered only from your own Return in the launcher",
         "asks": "{name} asks you",
         "choices": "{choices}, or your own words",
         "only": "{choices}",
