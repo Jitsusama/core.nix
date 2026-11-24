@@ -1215,6 +1215,40 @@ ShellRoot {
         expect("one whose own came refused is asked for no more, said so",
             Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // Nor by a wake, which keeps where it slept for the press that can
+        // open it once that window closes.
+        const sleptForged = { address: "FORGED", here: true, window: null, kitty: null,
+            attach: view, presence: { hosted: true, session: "s-forged", state: "parked" } };
+        const keptBeforeWake = Sessions.keptPlaces;
+        Sessions.keepPlaces(Object.assign({}, keptBeforeWake, { "s-forged": { workspace: 5,
+            column: 2, at: 0, slept: true, asleep: true } }));
+        root.unhostedWhy = "";
+        Sessions.wake(sleptForged);
+        expect("nor by a wake, said so, keeping where it slept",
+            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned"
+            && Sessions.keptPlaces["s-forged"]?.slept === true,
+            `${root.unhostedWhy} ${JSON.stringify(Sessions.keptPlaces["s-forged"] ?? null)}`);
+        Sessions.keepPlaces(keptBeforeWake);
+        // The walk's wake (wakeReopened) is no press: with its viewer
+        // already coming it says nothing and takes no focus, as a handover
+        // wakes it with Joel nowhere near.
+        const walkWords = view.slice(0, -1).concat(["s-walk-woken"]);
+        const walkWoken = { address: "WALKWOKEN", here: true, window: null, kitty: null,
+            attach: walkWords, presence: { hosted: true, session: "s-walk-woken",
+                state: "parked" } };
+        Sessions.viewWith(walkWords, "pi-hosted.s-walk-woken", null, "walk");
+        const keptBeforeWalk = Sessions.keptPlaces;
+        Sessions.keepPlaces(Object.assign({}, keptBeforeWalk, { "s-walk-woken": {
+            workspace: 5, column: 2, at: 0, slept: true, asleep: true } }));
+        const goingBeforeWalk = Sessions.goingTo;
+        root.unhosted = "";
+        Sessions.wakeReopened(walkWoken, { one: { id: "s-walk-woken" }, at: null, told: "" });
+        expect("the walk's wake while its viewer comes says nothing, nor takes the focus",
+            root.unhosted === "" && Sessions.goingTo === goingBeforeWalk,
+            `${root.unhosted} ${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.goingTo = goingBeforeWalk;
+        Sessions.keepPlaces(keptBeforeWalk);
+        Sessions.forgetAsk("pi-hosted.s-walk-woken");
         // Nor by a row's Reopen, nor by the shell's own asks, once its
         // patience has run out, and none of them lets Go To ask again.
         Sessions.attaching = Object.assign({}, Sessions.attaching,
@@ -1303,8 +1337,10 @@ ShellRoot {
             JSON.stringify(waitedOn));
         // Its viewer come refused, or taken by no kitty, the walk waits on
         // it no more, as none can come for that ask, rather than for its
-        // patience, viewer after viewer; it goes on at its pace, kept late,
-        // and the refused window is no late one's either.
+        // patience, viewer after viewer; it goes on at its pace, keeping it
+        // neither late nor begun, so the walk can end and a press asks for
+        // it again once its window closes, and the refused window is no
+        // late one's either.
         const refusedWalk = { id: 97, pid: 880, session: true,
             opened: "pi-hosted.s-refused-walk" };
         const waitedRefused = { id: "s-refused-walk", classed: refusedWalk.opened, opened: null };
@@ -1320,8 +1356,9 @@ ShellRoot {
         Sessions.heardWindow(refusedWalk);
         Niri.windowOpenedOrChanged(refusedWalk);
         const goneOnRefused = Sessions.reopening?.waiting === null
-            && Sessions.reopening?.late.includes(waitedRefused) && waitedRefused.opened === null
-            && Sessions.reopening?.begun.includes("s-refused-walk");
+            && Sessions.reopening?.late.includes(waitedRefused) === false
+            && waitedRefused.opened === null
+            && Sessions.reopening?.begun.includes("s-refused-walk") === false;
         const paced = Sessions.reopening?.queue.length === 1;
         const untakenWalk = "pi-hosted.s-untaken-walk";
         const waitedUntaken = { id: "s-untaken-walk", classed: untakenWalk, opened: null };
@@ -1383,8 +1420,8 @@ ShellRoot {
         const stillLate = { id: "s-still-late", classed: "pi-hosted.s-still-late", opened: null };
         const besideLate = lateGoesOn("pi-hosted.s-late-beside", [stillLate], false);
         const lockedLate = lateGoesOn("pi-hosted.s-late-locked", [], true);
-        expect("the walk waits no more on one whose window came refused", goneOnRefused,
-            JSON.stringify(waitedRefused));
+        expect("the walk waits no more on one whose window came refused, nor keeps it",
+            goneOnRefused, JSON.stringify(Sessions.reopening ?? waitedRefused));
         expect("nor on one no kitty took, which a press asks for again", goneOnUntaken,
             JSON.stringify(waitedUntaken));
         expect("the next waits out the walk's pace", paced, "begun at once");
