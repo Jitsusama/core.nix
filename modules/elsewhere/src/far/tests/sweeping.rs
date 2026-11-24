@@ -70,11 +70,10 @@ fn sweep_in(sh: &str, work: &Path, programs: &[(&str, &str)], before: &str) -> S
         bin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    // Under no locale of the runner's, so each test asks for its own.
+    // Under C, which every machine has, in place of any locale of the
+    // runner's, so each test asks for its own.
     let swept = std::process::Command::new(sh)
-        .env_remove("LC_ALL")
-        .env_remove("LC_CTYPE")
-        .env_remove("LANG")
+        .env("LC_ALL", "C")
         .args([
             "-c",
             &format!("{before}\nwork='{}'\n{}", work.display(), sweeping()),
@@ -512,9 +511,8 @@ fn kept_beyond(home: &Path) -> bool {
 fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
-    // A link that can't be cleared, as where its folder's closed to the
-    // far line, and a code of its own, which the far line ends with all
-    // the same.
+    // A link the far line isn't allowed to clear, and a code of its own,
+    // which the far line ends with all the same.
     let job = format!(
         "mkdir out && printf a > out/a && {} && exit 3",
         linking_its_handover()
@@ -563,7 +561,7 @@ fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
 }
 
 /// A stand-in for `rm` that never clears the job's handover folder, as
-/// where a link stands at it in a folder closed to the far line.
+/// where a link stands at it that the far line isn't allowed to clear.
 fn pinning() -> (&'static str, String) {
     refusing("rm", &format!("*\"/{HANDOVER}/1 \"*"), "exit 1")
 }
@@ -574,13 +572,14 @@ fn a_job_that_closes_its_handover_still_has_only_what_it_made_brought_back() {
     kind.brings_back = vec!["out".into()];
     // Its own list, claiming another size, left in a handover closed to
     // all, with a folder closed under the copies' folder; or in one whose
-    // folder above, or the one above that, is closed, so nothing in it
-    // can be seen.
+    // folder above, the one above that, or the quest's scratch itself, is
+    // closed, so nothing in it can be seen.
     let at = format!("../../{HANDOVER}/1");
     for closed in [
         format!("{at}/{BACK}/d {at}"),
         format!("../../{HANDOVER}"),
         "../../handover".to_owned(),
+        "../..".to_owned(),
     ] {
         let job = format!(
             "mkdir out && printf a > out/a && mkdir -p {at}/{BACK}/d && touch {at}/{BACK}/d/f &&
@@ -588,11 +587,7 @@ fn a_job_that_closes_its_handover_still_has_only_what_it_made_brought_back() {
         );
         let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
         let job = handover(&home);
-        for folder in [
-            job.parent().unwrap().parent().unwrap(),
-            job.parent().unwrap(),
-            &job,
-        ] {
+        for folder in job.ancestors().take(4) {
             let _ = std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o755));
         }
         let listed = std::fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();

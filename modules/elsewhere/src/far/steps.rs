@@ -126,8 +126,9 @@ pub(super) fn stopping() -> String {
 # may leave one, and whatever the far line writes or clears below goes
 # through it. Each is opened, top down from the scratch, once it's known
 # to be a folder of its own, since a job may close one so that nothing
-# below it, a link included, can be seen or cleared. False when a link
-# stays.
+# below it, a link included, can be seen or cleared. False only when a
+# link stays, never for a folder that couldn't be opened, which fails what
+# follows in its own words.
 unlinked() {{
   [ -L "${{job%/*/*/*}}" ] || chmod u+rwx "${{job%/*/*/*}}" 2>/dev/null
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
@@ -135,6 +136,7 @@ unlinked() {{
     [ ! -L "$at" ] || return 1
     [ ! -d "$at" ] || chmod u+rwx "$at" 2>/dev/null
   done
+  return 0
 }}
 stopped() {{
   trap '' HUP INT PIPE TERM
