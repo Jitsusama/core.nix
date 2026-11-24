@@ -560,8 +560,9 @@ fn closed_for() -> u64 {
 /// When `place`'s closed mark counts from at `at`, if it has one. A mark
 /// stamped ahead of `at`, as after the wall clock stepped back, is
 /// stamped `at`, so its place goes a boot's end from here, never held
-/// for as long as the clock stepped. So is one that isn't a time in ms,
-/// as a hand edit may leave, which would otherwise hold it for good; but
+/// for as long as the clock stepped. So is one that isn't an integer of
+/// ms, as only a hand edit leaves (serde and the shell's JSON both write
+/// a whole time as one), which would otherwise hold it for good; but
 /// one set to null or false, as a hand edit clearing it leaves, is no
 /// mark, and is taken off.
 fn closed_from(place: &mut Map<String, Value>, at: u64) -> Option<u64> {
