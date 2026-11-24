@@ -15,6 +15,7 @@
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 use serde_json::{Value, json};
 
@@ -104,10 +105,10 @@ fn named(rows: &HashMap<String, &Value>, address: &str) -> Option<String> {
 /// it, since a session between machines has no row anywhere and one
 /// carried away runs under another id; only a quest the records don't
 /// hold is said in words, on its way or ended.
-fn name_of(
+fn name_of<S: BuildHasher>(
     record: &Value,
     rows: &HashMap<String, &Value>,
-    titles: &HashMap<&str, &str>,
+    titles: &HashMap<&str, &str, S>,
     words: &Words,
 ) -> String {
     if let Some(name) = named(rows, text(record, "address")) {
@@ -134,11 +135,11 @@ fn name_of(
 /// A carry's row under `parent`: its session's or quest's title, how it
 /// stands and when it was ordered, and where it went, by whom and why, or
 /// why it was refused or is stuck.
-fn carry(
+fn carry<S: BuildHasher>(
     record: &Value,
     parent: &str,
     rows: &HashMap<String, &Value>,
-    titles: &HashMap<&str, &str>,
+    titles: &HashMap<&str, &str, S>,
     words: &Words,
 ) -> Value {
     let said = &words.carried;
@@ -206,10 +207,10 @@ fn back(record: &Value) -> Value {
 /// records, newest first, each session named as the tree served it in
 /// `top`, else by its quest's title in `titles`, by quest id; none while
 /// the node keeps no carry.
-pub fn rows(
+pub fn rows<S: BuildHasher>(
     records: &[&Value],
     top: &[Value],
-    titles: &HashMap<&str, &str>,
+    titles: &HashMap<&str, &str, S>,
     words: &Words,
 ) -> Vec<Value> {
     if records.is_empty() {
