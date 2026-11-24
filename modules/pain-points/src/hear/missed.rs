@@ -7,18 +7,19 @@
 //! carried, as that ledger tracks its fix from then, and is written even
 //! when it was carried first: it is still a miss, and cadence asks its
 //! owner for a test that runs. One carried before it was ever sent, so
-//! never sent at all, is written to the owner the carrying line names,
-//! and left unwritten while that line names none. One a line the keeper
-//! wrote before quotes is written too: said again, it is that miss come
-//! back, which needs a test of its own. No other line of the ledger is
-//! changed, and a pain closes only on its fix, never on how long it has
-//! been quiet.
+//! never sent at all, is written to the owner the first carrying line
+//! naming one the routes allow names, or else to the ledgers' keeper that
+//! carried it, and left unwritten only while the routes refuse both or
+//! name no keeper. One a line the keeper wrote before
+//! quotes is written too: said again, it is that miss come back, which
+//! needs a test of its own. No other line of the ledger is changed, and a
+//! pain closes only on its fix, never on how long it has been quiet.
 //!
 //! Only pains sent, or heard and carried unsent, from `FROM_MS` on are
-//! written: the 214 sent before it
-//! had no thread kept, so most would only ever read as lost, and would
-//! each ask its owner for a check at once. They still count as open or
-//! lost in the hour until a landing naming each closes it.
+//! written: the 214 sent before it had no thread kept, so most would only
+//! ever read as lost, and would each ask its owner for a check at once.
+//! They still count as open or lost in the hour until a landing naming
+//! each closes it.
 //!
 //! pain-points is the ledger's only writer, under its lock, and nobody
 //! has written it by hand since the keeper's last line of 21 November; a
@@ -30,6 +31,7 @@
 pub mod tested;
 
 use super::heard::{self, Heard, Line};
+use super::route::Routes;
 use super::stalled;
 use serde_json::{Value, json};
 use std::fs::{self, File, TryLockError};
@@ -49,8 +51,8 @@ pub const FROM_MS: i64 = 1_795_496_400_000;
 
 /// Writes each of `kept` owed to a cell from `from_ms` on into the ledger
 /// at `ledger` once, at his time by `offset_s`, and the check of each
-/// closed since, or that it is carried; one carried unsent is owed to the
-/// owner of the line of `ledgers` carrying it.
+/// closed since, or that it is carried; one carried unsent is owed as
+/// `owning` says.
 /// Lines are added at its end; the ledger is written whole only when a
 /// line changes, under its lock either way, so another run's writes are
 /// kept, and only once the ledger reads as it did before, so a writer that
@@ -63,14 +65,14 @@ pub const FROM_MS: i64 = 1_795_496_400_000;
 pub fn write(
     ledger: &Path,
     kept: &[Heard],
-    ledgers: &[Line],
+    owning: &Owning,
     offset_s: i64,
     from_ms: i64,
 ) -> Result<(), String> {
     let owed: Vec<(&Heard, &str)> = kept
         .iter()
         .filter(|h| !h.void && !stalled::is(h))
-        .filter_map(|h| Some((h, owner(h, ledgers, from_ms)?)))
+        .filter_map(|h| Some((h, owner(h, owning, from_ms)?)))
         .collect();
     if owed.is_empty() {
         return Ok(());
@@ -107,15 +109,49 @@ pub fn write(
         .map_err(|e| format!("{}: {e}", ledger.display()))
 }
 
+/// Whom a pain carried unsent may be owed to: the ledger lines naming an
+/// owner a miss may be written to, and the ledgers' keeper that carried
+/// it, for one whose carrying lines name none.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Owning {
+    pub lines: Vec<Line>,
+    pub keeper: Option<String>,
+}
+
+/// Who may own a pain carried unsent, by `ledgers` and `routes`: each
+/// line's owner named, trimmed, that `routes` doesn't refuse, as no pain
+/// is sent to, and the ledgers' keeper `routes` names, unless refused.
+#[must_use]
+pub fn owning(ledgers: &[Line], routes: &Routes) -> Owning {
+    let allowed = |owner: &str| !owner.is_empty() && !routes.refuses(owner);
+    let lines = ledgers
+        .iter()
+        .filter_map(|line| {
+            let owner = line.owner.trim();
+            allowed(owner).then(|| Line {
+                words: line.words.clone(),
+                owner: owner.to_owned(),
+            })
+        })
+        .collect();
+    let keeper = routes.ledgers.as_deref().map(str::trim);
+    Owning {
+        lines,
+        keeper: keeper.filter(|k| allowed(k)).map(str::to_owned),
+    }
+}
+
 /// Whom `pain` is owed to as a miss: the cell it was sent to from
 /// `from_ms` on, or, for one heard from then that the keeper carried
-/// before it was sent, the owner the line of `ledgers` carrying it names.
-fn owner<'a>(pain: &'a Heard, ledgers: &'a [Line], from_ms: i64) -> Option<&'a str> {
+/// before it was sent, the owner of the first line of `owning` carrying
+/// it, or else its keeper.
+fn owner<'a>(pain: &'a Heard, owning: &'a Owning, from_ms: i64) -> Option<&'a str> {
     match (&pain.to, pain.routed_at) {
         (Some(to), Some(at)) if at >= from_ms => Some(to.as_str()),
         (None, None) if pain.carried && pain.at >= from_ms => {
-            let line = heard::carrier(&pain.words, ledgers)?;
-            Some(line.owner.as_str()).filter(|owner| !owner.is_empty())
+            let line = heard::carrier(&pain.words, &owning.lines);
+            line.map(|line| line.owner.as_str())
+                .or(owning.keeper.as_deref())
         }
         _ => None,
     }

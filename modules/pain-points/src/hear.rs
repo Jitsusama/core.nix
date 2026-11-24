@@ -420,9 +420,10 @@ pub fn hear(
     }
     // A listener nobody set up writes nothing of his.
     let (offset_s, from) = (ears.offset_s, ears.misses_from);
+    let owning = missed::owning(&ledgers, &routes);
     let ledgered = routes
         .sends()
-        .then(|| missed::write(&ears.misses, &kept, &ledgers, offset_s, from).err())
+        .then(|| missed::write(&ears.misses, &kept, &owning, offset_s, from).err())
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
