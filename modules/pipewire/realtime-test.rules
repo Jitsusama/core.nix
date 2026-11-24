@@ -15,6 +15,8 @@ var where = {
   chainInApps: account + "app.slice/pebble-x-plus-tuning.service",
   voice: account + "session.slice/shure-mv7-voice.service",
   wanted: account + "session.slice/noise-cancelled.service",
+  watcher: account + "app.slice/pause-for-calls.service",
+  unread: account + "session.slice/wireplumber.service",
   dotted: account + "session.slice/tuning.v2.service",
   undotted: account + "session.slice/tuningXv2.service",
   another: "/user.slice/user-1001.slice/user@1001.service/session.slice/pipewire.service",
@@ -42,11 +44,16 @@ for (var place in where) {
   commands[next] = "/run/current-system/sw/bin/" + place + " --serve";
   next += 1;
 }
+// A process ps can't read, as one that's gone by then.
+delete commands[pids.unread];
+
+// The graphical role's account, whose home-manager gives noise-cancelled.
+var user = "someone";
 
 function asker(pid, atTheSeat) {
   var subject = new Subject();
   subject.pid = pid;
-  subject.user = "jitsusama";
+  subject.user = user;
   subject.groups = ["users", "wheel"];
   subject.seat = atTheSeat ? "seat0" : "";
   subject.session = atTheSeat ? "2" : "1";
@@ -89,6 +96,7 @@ var sound = [
   "wanted",
   "dotted",
   "another",
+  "unread",
 ];
 for (var i = 0; i < sound.length; i += 1) {
   expect("real time", realTime, sound[i], "yes");
@@ -97,11 +105,12 @@ for (var i = 0; i < sound.length; i += 1) {
 }
 // Anything else of the account's keeps rtkit's own answer: a process below
 // a sound service, a unit systemd-run starts in app.slice, another
-// service, a near name, one a dot read as any character would let in, a
-// manager not the slice's own account's, an app's scope, and the system's
-// units.
+// service, a watcher PipeWire wants left in app.slice, a near name, one a
+// dot read as any character would let in, a manager not the slice's own
+// account's, an app's scope, and the system's units.
 var others = [
   "below",
+  "watcher",
   "undotted",
   "stray",
   "service",
@@ -126,6 +135,17 @@ for (var k = 0; k < agents.length; k += 1) {
 // Another action from a sound service is no business of the rule's.
 expect("another action", asking("org.example.another"), "pipewire", null);
 
+// A service one account's home-manager gives is a sound service only for
+// that account, so another asking by its name keeps rtkit's own answer,
+// while PipeWire's own is sound for every account, and an account named as
+// an object's own key is no account's.
+user = "another";
+expect("real time for another account", realTime, "wanted", null);
+expect("real time for another account", realTime, "pipewire", "yes");
+user = "constructor";
+expect("real time for an object's key", realTime, "wanted", null);
+user = "someone";
+
 // Each grant leaves its line, naming the process, what it runs and where
 // it runs, and nothing refused or left to rtkit leaves one.
 var granted =
@@ -147,6 +167,16 @@ for (var n = 0; n < logged.length; n += 1) {
 if (!said) {
   failed += 1;
   print("FAIL PipeWire's grant left no line saying what it runs: " + granted);
+}
+// A process ps can't read is said to run something unknown.
+var unknown =
+  "granted org.freedesktop.RealtimeKit1.acquire-real-time to pid " +
+  pids.unread +
+  " (unknown) in " +
+  where.unread;
+if (logged.indexOf(unknown) === -1) {
+  failed += 1;
+  print("FAIL a grant to a process ps can't read said no unknown: " + unknown);
 }
 
 if (failed > 0) {

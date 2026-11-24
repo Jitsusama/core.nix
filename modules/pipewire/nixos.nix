@@ -14,36 +14,16 @@ let
   # nothing otherwise.
   resampling."stream.properties"."resample.quality" = 10;
   cat = "${pkgs.coreutils}/bin/cat";
-  # The account's sound services: PipeWire's own three, each service that
-  # runs a PipeWire of its own, as a tuning chain does, and each service
-  # PipeWire wants that sits in session.slice beside it, as noise-cancelled
-  # does from home-manager, so one a module adds is granted without a list
-  # here to keep. A watcher PipeWire wants, such as the mic-mute light,
-  # stays in app.slice and keeps rtkit's own answer.
-  pipewire = lib.getExe' config.services.pipewire.package "pipewire";
-  wanted = units: lib.elem "pipewire.service" units;
-  inSession = slice: slice == "session.slice";
-  system = lib.filterAttrs (
-    _: service:
-    lib.hasPrefix "${pipewire} " (toString (service.serviceConfig.ExecStart or ""))
-    || (wanted service.wantedBy && inSession (service.serviceConfig.Slice or ""))
-  ) config.systemd.user.services;
-  wantedInSession =
-    service: wanted (service.Install.WantedBy or [ ]) && inSession (service.Service.Slice or "");
-  homes = lib.concatMap (
-    home: lib.attrNames (lib.filterAttrs (_: wantedInSession) home.systemd.user.services)
-  ) (lib.attrValues (config.home-manager.users or { }));
-  # As JSON, so a name is read as a string and never as a pattern.
+  # The sound services (sound-services.nix says which), so one a module adds
+  # is granted without a list here to keep: NixOS's for every account, and
+  # home-manager's for its own account alone. As JSON, so a name is read as
+  # a string and never as a pattern.
   services = builtins.toJSON (
-    lib.unique (
-      [
-        "pipewire"
-        "pipewire-pulse"
-        "wireplumber"
-      ]
-      ++ lib.attrNames system
-      ++ homes
-    )
+    import ./sound-services.nix { inherit lib; } {
+      pipewire = lib.getExe' config.services.pipewire.package "pipewire";
+      system = config.systemd.user.services;
+      homes = lib.mapAttrs (_: home: home.systemd.user.services) (config.home-manager.users or { });
+    }
   );
 in
 {
