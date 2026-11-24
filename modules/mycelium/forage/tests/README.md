@@ -77,7 +77,8 @@ draws the crest again once every cell has gone and the floor again once
 one is heard again,
 lets a cell a purpose takes out of the view of cells without purpose
 take the cursor with it, find or not, holds a first visit still at a
-phone's width and a desk's while a long link never widens the page, and
+phone's width, a desk's and a wide desk's, where the floor's words show and
+none draws under 12 px, while a long link never widens the page, and
 keeps the page within its budget and passing the web-design skill's page checks. Beside a second
 stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn
