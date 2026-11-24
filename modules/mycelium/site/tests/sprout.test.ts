@@ -141,17 +141,41 @@ it("refuses a case escaped any other way", () => {
   );
 });
 
-it("judges each shared address case", () => {
-  const cases = readFileSync(new URL("addresses.txt", import.meta.url), "utf8")
+/**
+ * The cases `written` holds, each whether it is an address and its text, failing on a line
+ * written any way but one, a carriage return in it included (README.md, The Address Cases).
+ */
+function casesIn(written: string): [boolean, string][] {
+  return written
     .split("\n")
-    .filter((line) => line !== "" && !line.startsWith("#"));
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .map((line) => {
+      assert.ok(!line.includes("\r"), `${JSON.stringify(line)} should hold no carriage return`);
+      const [kind, ...rest] = line.split(" ");
+      assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
+      return [kind === "is", caseText(rest.join(" "))];
+    });
+}
+
+it("refuses a line written any other way", () => {
+  for (const written of ["is T\r", "not T\r\n", "is T\n\r", "IS T", "maybe T"]) {
+    assert.throws(() => casesIn(written), `${JSON.stringify(written)} should be refused`);
+  }
+  assert.deepEqual(
+    casesIn("# a note\nis T\n\nnot\nnot T "),
+    [
+      [true, "T"],
+      [false, ""],
+      [false, "T "],
+    ],
+    "a note and an empty line should be skipped, and `not` alone should be the empty text",
+  );
+});
+
+it("judges each shared address case", () => {
+  const cases = casesIn(readFileSync(new URL("addresses.txt", import.meta.url), "utf8"));
   assert.ok(cases.length > 20, "the shared cases should be read");
-  for (const line of cases) {
-    assert.ok(!line.includes("\r"), `${JSON.stringify(line)} should hold no carriage return`);
-    const [kind, ...rest] = line.split(" ");
-    const text = caseText(rest.join(" "));
-    assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
-    const is = kind === "is";
+  for (const [is, text] of cases) {
     assert.equal(isAddress(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
   }
 });

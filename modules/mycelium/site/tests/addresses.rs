@@ -9,20 +9,46 @@ const ADDRESSES: &str = include_str!("addresses.txt");
 /// Hold `judged`, a copy of the address rule, to every case, failing on
 /// the first it reads otherwise, or on a case written any way but one.
 fn judged_by_every_case(judged: impl Fn(&str) -> bool) {
+    let cases = cases_in(ADDRESSES);
+    assert!(cases.len() > 20, "the shared cases are read");
+    for (is, text) in cases {
+        assert_eq!(judged(&text), is, "{text:?}");
+    }
+}
+
+/// The cases `written` holds, each whether it is an address and its text,
+/// failing on a line written any way but one, a carriage return in it
+/// included (README.md, The Address Cases).
+fn cases_in(written: &str) -> Vec<(bool, String)> {
     // Split on line feeds alone, since `lines` would drop a carriage
     // return the other readers see.
-    let cases: Vec<&str> = ADDRESSES
+    written
         .split('\n')
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .collect();
-    assert!(cases.len() > 20, "the shared cases are read");
-    for line in cases {
-        assert!(!line.contains('\r'), "{line:?} holds no carriage return");
-        let (kind, text) = line.split_once(' ').unwrap_or((line, ""));
-        assert!(matches!(kind, "is" | "not"), "{line:?} says is or not");
-        let text = case_text(text);
-        assert_eq!(judged(&text), kind == "is", "{text:?}");
+        .map(|line| {
+            assert!(!line.contains('\r'), "{line:?} holds no carriage return");
+            let (kind, text) = line.split_once(' ').unwrap_or((line, ""));
+            assert!(matches!(kind, "is" | "not"), "{line:?} says is or not");
+            (kind == "is", case_text(text))
+        })
+        .collect()
+}
+
+#[test]
+fn a_line_written_any_other_way_is_refused() {
+    for written in ["is T\r", "not T\r\n", "is T\n\r", "IS T", "maybe T"] {
+        let read = std::panic::catch_unwind(|| cases_in(written));
+        assert!(read.is_err(), "{written:?} is refused");
     }
+    assert_eq!(
+        cases_in("# a note\nis T\n\nnot\nnot T "),
+        [
+            (true, "T".to_owned()),
+            (false, String::new()),
+            (false, "T ".to_owned())
+        ],
+        "a note and an empty line are skipped, and `not` alone is the empty text"
+    );
 }
 
 #[test]
