@@ -396,8 +396,8 @@ fn leave(
     }
     let paths = files.iter().map(|(path, _)| *path);
     // 4 blocks of 512 bytes: a header, one block of a file and the close,
-    // so one file a part, and one past 512 bytes or needing a pax header
-    // for its name is refused.
+    // so one file with data a part (two empty ones may share one), and one
+    // past 512 bytes or needing a pax header for its name is refused.
     let bytes = match left {
         Left::Parts => super::leave(&source, paths, job, 4 * 512, super::MOST_BYTES),
         _ => super::left(&source, paths, job),
