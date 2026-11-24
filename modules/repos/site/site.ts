@@ -6,6 +6,7 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
+import { tell } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, forgotten, landing, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
@@ -38,12 +39,11 @@ import {
   write,
 } from "./page.ts";
 
-const title = element("#title", HTMLHeadingElement);
 const lede = element("#lede", HTMLParagraphElement);
 const stand = element("#grove", HTMLDivElement);
 const list = element("#list", HTMLDivElement);
 const opened = element("#open", HTMLDivElement);
-const asof = element("#asof", HTMLParagraphElement);
+const asof = element("#asof", HTMLSpanElement);
 const find = element("#find", HTMLInputElement);
 const keys = element("#keys", HTMLDialogElement);
 
@@ -96,14 +96,12 @@ const current = (): Repository | undefined =>
 
 function sayWhen(): void {
   const now = worst(footed(standings));
-  asof.textContent = footOf(grove, now, footed(heard));
-  asof.dataset["state"] = now?.state ?? "connecting";
+  tell(asof, footOf(grove, now, footed(heard)), now?.state ?? "connecting");
 }
 
-/** The headline and its lede: how things stand, then what's worth a look. */
+/** The lede: how things stand, then what's worth a look. */
 function drawHero(at: Grove): void {
   const head = headOf(at);
-  write(title, head.title);
   write(lede, head.lede);
   document.title = head.tab;
 }

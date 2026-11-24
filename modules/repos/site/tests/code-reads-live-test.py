@@ -603,14 +603,14 @@ def test_a_phone_shows_the_trees_keys_at_the_foot_of_the_window(
 
 def test_a_redraw_keeps_focus_where_it_was(code_page: Page, repos_daemon: StandIn) -> None:
     says_it_stands(code_page, "live")
-    every = code_page.locator('#title a[data-place="every"]')
+    every = code_page.locator('#lede a[data-place="every"]')
     every.focus()
-    # A tree written now makes core grow, which the headline says again around the link.
+    # A tree written now makes core grow, which the lede says again around the link.
     grove_written_now(repos_daemon)
-    expect(code_page.locator("#title"), "the headline wasn't said again").to_contain_text(
+    expect(code_page.locator("#lede"), "the lede wasn't said again").to_contain_text(
         "1 growing", timeout=PACE_MS
     )
-    expect(every, "the headline said again lost the link focused in it").to_be_focused()
+    expect(every, "the lede said again lost the link focused in it").to_be_focused()
 
 
 def redrawn_drawer(code_page: Page, repos_daemon: StandIn) -> None:
@@ -727,7 +727,7 @@ def test_a_reload_holds_the_page_still(code_page: Page) -> None:
 HELD_ROOM = """document.addEventListener("DOMContentLoaded", () => {
   const style = document.documentElement.style;
   globalThis.held = Object.fromEntries(
-    ["title", "list", "open"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
+    ["lede", "list", "open"].map((id) => [id, style.getPropertyValue(`--room-${id}`)]),
   );
   globalThis.loadedAt = performance.now();
   addEventListener("resize", () => { globalThis.resizedAt ??= performance.now(); });
@@ -748,7 +748,7 @@ def test_a_reload_holds_no_room_for_a_name_it_forgets(code_page: Page) -> None:
     code_page.reload()
     says_it_stands(code_page, "live")
     held = code_page.evaluate("() => globalThis.held")
-    assert held["title"] != "", "the reload held no room at all"
+    assert held["lede"] != "", "the reload held no room at all"
     # The reload forgets what was found, so the list it draws is every repository.
     assert held["list"] == "", f"the reload held {held['list']} for a list it won't draw"
 
@@ -758,7 +758,7 @@ def test_a_reload_holds_no_room_for_a_place_the_address_left(
 ) -> None:
     says_it_stands(code_page, "live")
     grove_written_now(repos_daemon)
-    code_page.locator('#title a[data-place="growing"]').click()
+    code_page.locator('#lede a[data-place="growing"]').click()
     expect(code_page.locator("#list .row"), "Growing didn't narrow the list").to_have_count(
         1, timeout=PACE_MS
     )
@@ -768,7 +768,7 @@ def test_a_reload_holds_no_room_for_a_place_the_address_left(
     code_page.reload()
     says_it_stands(code_page, "live")
     held = code_page.evaluate("() => globalThis.held")
-    assert held["title"] != "", "the reload held no room at all"
+    assert held["lede"] != "", "the reload held no room at all"
     assert held["list"] == "", f"the reload held {held['list']} for a Growing it won't draw"
 
 
@@ -794,7 +794,7 @@ def test_a_reload_holds_no_room_for_a_season_only_z_opened(code_page: Page) -> N
     code_page.reload()
     says_it_stands(code_page, "live")
     held = code_page.evaluate("() => globalThis.held")
-    assert held["title"] != "", "the reload held no room at all"
+    assert held["lede"] != "", "the reload held no room at all"
     assert held["open"] == "", f"the reload held {held['open']} for trees it folds again"
 
 

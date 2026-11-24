@@ -43,7 +43,6 @@ code,
 .meta,
 .n,
 .when,
-.eyebrow,
 .cell-name,
 .num {
   font-family: var(--mono);
@@ -56,7 +55,7 @@ code,
   font-size: var(--step-small);
 }
 
-/* ---- The sentence over the work, and the grove beside it. ---- */
+/* ---- The kit's head (head.css) over the work, and the grove beside it. ---- */
 
 .over {
   inline-size: var(--page);
@@ -110,89 +109,33 @@ code,
   color: var(--strong);
 }
 
-.eyebrow {
-  margin: 0 0 var(--tie);
-  font-size: var(--step-small);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--leaf-words);
-}
-
-.title {
-  margin: 0;
-  font-family: var(--serif);
-  font-weight: 540;
-  font-size: clamp(2.5rem, 1.5rem + 3.4vw, 4.5rem);
-  line-height: 0.98;
-  letter-spacing: -0.018em;
-  font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 144;
-  color: var(--strong);
-}
-
-/* Balanced and pretty wrapping are asked for where a browser has them; one without them
-   wraps the sentence as it always has. */
-@supports (text-wrap: balance) {
-  .title,
-  .eyebrow {
-    text-wrap: balance;
-  }
-}
-
+/* Pretty wrapping is asked for where a browser has it; one without it wraps the sentence as
+   it always has. */
 @supports (text-wrap: pretty) {
-  .lede {
+  .page-head .lede {
     text-wrap: pretty;
   }
 }
 
-.title em {
-  font-weight: 400;
-  color: var(--leaf-words);
-}
-
-.title a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.title a:hover {
-  text-decoration: underline 1px;
-  text-underline-offset: 0.12em;
-}
-
-.lede {
-  max-inline-size: 40rem;
-  margin: var(--items) 0 0;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: clamp(1.1rem, 1rem + 0.3vw, 1.25rem);
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.lede .rn {
+.page-head .lede .rn {
   font-style: normal;
 }
 
-/* A repository's name is said whole, never broken at its dash. */
-.lede a {
+/* A repository's name and each count are said whole, never broken at a dash or a space, and
+   underlined by a hairline until pointed at, since each leads to its place. */
+.page-head .lede a {
+  color: inherit;
   white-space: nowrap;
+  text-decoration: underline 1px;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.12em;
 }
 
-.standing {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--tie) var(--groups);
-  margin-block-start: var(--items);
+.page-head .lede a:hover {
+  text-decoration-color: currentColor;
 }
 
-.keys {
-  margin: 0;
-  font-size: var(--step-small);
-  color: var(--muted);
-}
-
-.keys kbd {
+.page-head .keys kbd {
   cursor: pointer;
 }
 
@@ -383,7 +326,8 @@ code,
   }
 }
 
-.quiet {
+/* Only the work's empty places: the head's quiet row is the kit's. */
+:is(.work, .drawer) p.quiet {
   padding: var(--items) 0 var(--items) var(--gutter);
   font-family: var(--serif);
   font-style: italic;
@@ -391,10 +335,6 @@ code,
 }
 
 /* ---- The room the feeds draw into, held from the last visit until they draw (page.ts). ---- */
-
-#title {
-  min-block-size: var(--room-title, auto);
-}
 
 #lede {
   min-block-size: var(--room-lede, auto);
@@ -410,28 +350,6 @@ code,
 
 #open {
   min-block-size: var(--room-open, auto);
-}
-
-/* ---- The standing line. ---- */
-
-.foot {
-  inline-size: var(--page);
-  margin: var(--groups) auto;
-  padding-inline: calc(var(--inset) + var(--gutter)) var(--inset);
-  box-sizing: border-box;
-}
-
-.asof {
-  margin: 0;
-  font-family: var(--serif);
-  font-style: italic;
-  font-size: var(--step-small);
-  color: var(--muted);
-}
-
-.asof[data-state="broken"],
-.asof[data-state="stale"] {
-  color: var(--sap-words);
 }
 
 /* ---- Narrower windows: the drawer follows the list, the gutter tightens. ---- */
@@ -479,7 +397,7 @@ code,
 
   .caption,
   .list-head,
-  .quiet {
+  :is(.work, .drawer) p.quiet {
     padding-inline-start: 0;
   }
 

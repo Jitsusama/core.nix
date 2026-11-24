@@ -26,7 +26,7 @@
   try {
     const room = JSON.parse(localStorage.getItem("code-room") ?? "null");
     if (room?.width === innerWidth) {
-      for (const id of ["title", "lede", "grove", "list", "open"]) {
+      for (const id of ["lede", "grove", "list", "open"]) {
         const px = Number(room.heights?.[id]);
         if (px > 0) {
           document.documentElement.style.setProperty(`--room-${id}`, `${px}px`);
@@ -44,6 +44,7 @@
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="grove.css">
 <link rel="stylesheet" href="drawer.css">
 <link rel="stylesheet" href="site.css">
@@ -56,7 +57,7 @@
 
 
 <div class="over">
-<header class="head">
+<div class="head">
   <p class="masthead">
     <svg class="crest" viewBox="0 0 56 40" aria-hidden="true">
       <circle class="canopy" cx="15" cy="13" r="10"/>
@@ -70,12 +71,15 @@
     </svg>
     <span class="wordmark">Code</span>
   </p>
-  <p class="eyebrow">the grove · every repository on this machine</p>
-  <h1 id="title" class="title" tabindex="-1">Walking the grove.</h1>
+  <header class="page-head">
+  <p class="eyebrow">the grove<span class="sep">·</span>every repository on this machine</p>
+  <h1 id="title" class="title" tabindex="-1">Your Code, <em>Growing</em></h1>
   <!-- Not a live region: it is written again each time a check or a tree moves, and a screen
-       reader would say it whole every time. -->
+       reader would say it whole every time; the standing line's status speaks for the feeds. -->
   <p id="lede" class="lede">Reading every repository from git's own files.</p>
-  <div class="standing">
+  <p class="standing"><span class="glyph" aria-hidden="true"></span>
+    <span id="asof" class="asof" role="status" data-state="connecting">Reaching the repos daemon.</span></p>
+  <div class="quiet">
     <p class="keys">Press <kbd>j</kbd> and <kbd>k</kbd> to step through the repositories, <kbd>h</kbd> and <kbd>l</kbd> to walk the grove, <kbd>Return</kbd> to step in, and <kbd>?</kbd> for every key.</p>
     <div class="switch" role="radiogroup" aria-label="Theme">
       <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
@@ -89,7 +93,8 @@
       </label>
     </div>
   </div>
-</header>
+  </header>
+</div>
 
 <section class="grove-place" aria-label="The grove">
 <figure class="grove-figure">
@@ -129,10 +134,6 @@
 </section>
 <!-- Outside the map's section, so what the map says as it hides is still heard. -->
 <p id="ties-said" class="sr" role="status"></p>
-
-<footer class="foot">
-  <p id="asof" class="asof" data-state="connecting">Reaching the repos daemon.</p>
-</footer>
 
 <dialog class="keypanel" id="keys" aria-labelledby="keys-title">
   <h2 id="keys-title">Keys</h2>

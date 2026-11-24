@@ -203,7 +203,6 @@ let
   # into FIRST_WAITING, is the way past the gate, which review alone holds,
   # so do it only to unblock a merge, and say so.
   waitingForTheHead = [
-    "Code"
     "Forage"
     "Machines"
     "Map"

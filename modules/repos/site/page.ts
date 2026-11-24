@@ -243,7 +243,7 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
 }
 
 // The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.
-const ROOMS = ["title", "lede", "grove", "list", "open"] as const;
+const ROOMS = ["lede", "grove", "list", "open"] as const;
 type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
 // page fitting what it holds, the trouble said where it's seen, rather than the last visit.
