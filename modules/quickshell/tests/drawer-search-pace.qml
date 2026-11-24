@@ -27,13 +27,14 @@ import "DrawerPage.js" as Page
 
 QtObject {
     // How many times as long a search over joined words may take as one
-    // over the same with none, and that as the plainest search: words
-    // with none took 8.6 times the plainest on a builder and 5.6 to 8.1
-    // on a laptop, and 14.2 to 14.6 there with their fast path gone, which
-    // this only just refuses, while a search a letter at a time took 60
-    // (2026-11-23).
+    // over the same with none, and that as the plainest search, each
+    // between what this code takes and what it takes with a fix taken
+    // out, from ten quiet runs of each (2026-11-23). Joined words took
+    // 3.0 to 3.2 times none, and 9.4 to 9.9 read a letter at a time.
+    // Words with none took 5.5 to 5.9 times the plainest, and 8.6 on a
+    // busy builder, and 15.8 to 16.3 with their fast path gone.
     readonly property real joined: 6
-    readonly property real plain: 14
+    readonly property real plain: 12
 
     // A case that throws would leave qml waiting on nothing, and the check
     // with it, so a throw fails it as a wrong answer does.
