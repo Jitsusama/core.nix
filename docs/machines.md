@@ -379,7 +379,7 @@ comments-name-what-exists = core.lib.commentsNameWhatExists pkgs {
 
 It fails on a comment naming a path from one of the repository's top folders
 that names nothing, and on a waiting line listed more often than it's found,
-so the list only shrinks. It reads code comments, not docstrings or markdown.
+so the list only shrinks. It reads code comments and Python docstrings, not markdown.
 
 Every folder says what it holds, as core's do, through another:
 

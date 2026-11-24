@@ -3,7 +3,8 @@
 # Google's rules beside its own) and trivy, which it runs over a
 # repository's Terraform, found on its own PATH wherever it runs
 # (src/terraform.rs), and the providers tofu
-# validate readies a workspace with (providers.nix). It takes its shape
+# validate readies a workspace with (providers.nix), on the systems it has
+# them for. It takes its shape
 # from the terminal kit (../terminal-kit), so the source is cut from the
 # folder holding both.
 {
@@ -49,7 +50,9 @@ rustPlatform.buildRustPackage rec {
         linter
         trivy
       ]
-    } --set-default CODE_HEALTH_TERRAFORM_PROVIDERS ${providers}
+    } ${
+      lib.optionalString (providers != null) "--set-default CODE_HEALTH_TERRAFORM_PROVIDERS ${providers}"
+    }
   '';
   meta = {
     description = "Writes the day's figures of how messy each repository it's given is";

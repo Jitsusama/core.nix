@@ -2,6 +2,9 @@
 # tofu validate reads it (src/terraform_validate.rs), laid out as a tofu
 # filesystem mirror, so it never asks a registry: google's newest 7.x
 # release, as OpenTofu publishes it, for the systems this flake builds.
+# Elsewhere it's null and code-health has none at hand, as with its
+# variable unset, so a repository built on core for another system can
+# still take the checks that run it.
 {
   fetchurl,
   linkFarm,
@@ -19,15 +22,19 @@ let
       sha256 = "a49a11d051a785ce7b62ad1ded5eb17208d8609fcdea69e047e9c5ad98e07e5f";
     };
   };
-  build = builds.${stdenv.hostPlatform.system};
+  system = stdenv.hostPlatform.system;
+  build = builds.${system};
   zip = "terraform-provider-google_${version}_${build.platform}.zip";
 in
-linkFarm "code-health-terraform-providers" [
-  {
-    name = "registry.opentofu.org/hashicorp/google/${zip}";
-    path = fetchurl {
-      url = "https://github.com/opentofu/terraform-provider-google/releases/download/v${version}/${zip}";
-      inherit (build) sha256;
-    };
-  }
-]
+if builds ? ${system} then
+  linkFarm "code-health-terraform-providers" [
+    {
+      name = "registry.opentofu.org/hashicorp/google/${zip}";
+      path = fetchurl {
+        url = "https://github.com/opentofu/terraform-provider-google/releases/download/v${version}/${zip}";
+        inherit (build) sha256;
+      };
+    }
+  ]
+else
+  null
