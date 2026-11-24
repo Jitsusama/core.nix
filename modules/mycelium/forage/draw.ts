@@ -81,6 +81,14 @@ const FLOOR = {
   steps: 3,
 } as const;
 
+/**
+ * The width of a floor of the most cells and one gap, which site.css sizes the
+ * floor's room and the cut for its words to. A floor skipping cells in more
+ * places is wider, and draws its words that much larger, so on screen they are
+ * never smaller than this one's.
+ */
+const WORDED = FLOOR.margin * 2 + FLOOR.most * FLOOR.room + FLOOR.gap;
+
 /** How `stage` is said. */
 function staged(stage: string): string {
   return STAGES[stage] ?? stage;
@@ -469,8 +477,12 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
     forages.length > cells.length
       ? `<text class="note" x="${width - FLOOR.margin}" y="${height - 12}" text-anchor="end">and ${forages.length - cells.length} more in the list</text>`
       : "";
+  // site.css's words grow by this, so a floor wider than WORDED, which meet draws
+  // smaller, draws them at the size WORDED's would be on screen.
+  const grown = width > WORDED ? ` style="--grown:${width / WORDED}"` : "";
   // At the room's foot, so any room a wide floor leaves on a phone is above it.
-  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+  const fitted = `preserveAspectRatio="xMidYMax meet"${grown}`;
+  return `<svg viewBox="0 0 ${width} ${height}" ${fitted} aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
 ${main}${skipped}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}

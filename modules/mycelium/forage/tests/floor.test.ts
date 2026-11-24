@@ -80,6 +80,8 @@ const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
 
 /** A floor's width and height in its own units. */
 const VIEWED = /viewBox="0 0 (\d+) (\d+)"/u;
+/** How much larger a floor wider than site.css's draws its words. */
+const GROWN_BY = /--grown:([\d.]+)"/u;
 // The floor's smallest words in its own units, and the least the kit draws text at.
 const WORD_PX = 13;
 const LEAST_PX = 12;
@@ -440,7 +442,7 @@ it("keeps the floor where it is while it holds the cursor, else draws it around 
   assert.equal(floorAfter(grown, floorFor(LONG, "C55"), "C20").around, "C20");
 });
 
-it("draws the widest, deepest floor in the room the page holds before the node speaks", () => {
+it("fits its room to a floor of the most cells and a gap, growing a wider one's words", () => {
   const startedAt = (depth: number) =>
     LONG.map((each, at) => (at === 1 ? { ...each, startedBy: named(0), depth } : each));
   const drawnAt = (depth: number) =>
@@ -455,13 +457,27 @@ it("draws the widest, deepest floor in the room the page holds before the node s
   );
   const [, width = "", height = ""] = floor.match(VIEWED) ?? [];
   const sheet = readFileSync(new URL("../site.css", import.meta.url), "utf8");
-  // The room is this floor's shape at most half again as large, never under 6rem, so a shift
-  // can't come of it and a floor of few cells on a phone still reads.
+  // The room is this floor's shape, at most half again as large and never under 6rem.
   const room = `clamp(6rem, 100cqi * ${height} / ${width}, ${(Number(height) * 3) / 2}px)`;
   assert.ok(sheet.includes(room), `site.css holds no room of ${room}`);
   // The words go where this floor would draw its smallest under the kit's floor for text.
-  const words = `@container (max-width: ${Math.ceil((Number(width) * LEAST_PX) / WORD_PX)}px)`;
+  const cut = Math.ceil((Number(width) * LEAST_PX) / WORD_PX);
+  const words = `@container (max-width: ${cut}px)`;
   assert.ok(sheet.includes(words), `site.css holds no ${words}`);
+  // A floor skipping cells in more places is wider, and grows its words to match.
+  const floors = [
+    ...[null, "C10", "C55"].map((cursor) => floorAt(LONG, cursor)),
+    ...GROWN.map(({ cell }) => floorAt(GROWN, cell)),
+  ];
+  const widths = floors.map((other) => Number(other.match(VIEWED)?.[1]));
+  const wider = widths.some((each) => each > Number(width));
+  assert.ok(wider, "none drew wider than this");
+  // Where words first show, meet fits a floor to the room's height or, if wider, its width.
+  for (const [at, other] of floors.entries()) {
+    const wide = Math.max(widths[at] ?? 0, Number(width));
+    const shown = (WORD_PX * Number(other.match(GROWN_BY)?.[1] ?? 1) * cut) / wide;
+    assert.ok(shown >= LEAST_PX - 1e-9, `a floor ${wide} wide drew its words at ${shown} px`);
+  }
 });
 
 it("draws the cursor after a redraw around any kept cell, keeping it there while it can", () => {

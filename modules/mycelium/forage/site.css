@@ -142,12 +142,12 @@
   container-type: inline-size;
 }
 
-/* The floor's room is as tall as the widest floor drawn across the page,
-   1512 by 178 of its units as draw.ts's FLOOR sets them, at most half again
-   as large, and never under 6rem, so a floor of few cells on a phone still
-   reads. The crest holds the same room until the node speaks, and once every
+/* The floor's room is as tall as a floor of every cell it draws and one gap
+   drawn across the page, 1512 by 178 of its units as draw.ts's WORDED sets
+   them, at most half again as large, and never under 6rem, so a floor of few
+   cells on a phone still reads. The crest holds the same room until the node speaks, and once every
    cell has gone, so cells arriving or leaving move nothing under them; a floor
-   sits at the room's foot. */
+   sits at the room's foot, a wider one, of more gaps, a little shorter. */
 .drawn {
   position: relative;
   inline-size: 100%;
@@ -248,20 +248,22 @@ rect.hollow {
   stroke: color-mix(in oklab, var(--strong) 70%, var(--background));
 }
 
+/* --grown is how much wider than 1512 units draw.ts drew the floor, so its
+   words are as large on screen as on a floor of 1512. */
 .drawn text {
   fill: var(--text);
-  font: italic 400 14px var(--serif);
+  font: italic 400 calc(14px * var(--grown, 1)) var(--serif);
 }
 
 .drawn .substrate {
   fill: var(--strong);
-  font: var(--label-weight) 13px var(--label-face);
+  font: var(--label-weight) calc(13px * var(--grown, 1)) var(--label-face);
   letter-spacing: 0.12em;
   text-transform: lowercase;
 }
 
-/* Narrower than this the widest floor's 13 px words would be drawn under
-   the kit's 12 px floor for text. The eyebrow names the machine, the
+/* Narrower than this a 1512 floor's 13 px words, and so any floor's, would
+   be drawn under the kit's 12 px floor for text. The eyebrow names the machine, the
    headline counts every cell and the list holds them all, so the words go. */
 @container (max-width: 1396px) {
   .drawn text {

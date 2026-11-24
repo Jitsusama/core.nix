@@ -4023,7 +4023,8 @@
     cell's forage under the cell that started it, even in a ring, plans first with their steps
     added up, how many cells have no purpose written, what each quest waits on its person for, a
     record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
-    with the cells it started and every cell each grew from, kept on its cell through records
+    with the cells it started and every cell each grew from, kept on its cell through records,
+    and a floor wider for its gaps drawing its words no smaller than site.css's cut allows
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
