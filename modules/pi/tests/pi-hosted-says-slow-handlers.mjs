@@ -1,5 +1,5 @@
 // pi as the host runs it says, on stderr, each extension whose handlers for
-// one event took 250 ms or more. A runner awaits every extension's handlers
+// one event emit or emitResourcesDiscover sends took 250 ms or more. A runner awaits every extension's handlers
 // one after another, so a conversation's session_start costs their sum, and
 // nothing outside the runner can see which extension a slow open waited on:
 // its extensions are private to it. Unpatched, it says nothing.
@@ -50,12 +50,15 @@ const run = async (extensions, emitting) => {
 };
 
 // Only the slow extension is said, its two handlers summed, though each
-// alone is under the bar; one with no handler for the event is never timed.
+// alone is under the bar. Each extension is timed from its own start, so
+// the fast one after it isn't said, nor one under the bar, nor one with no
+// handler for the event.
 {
   const { lines } = await run(
     [
-      ["fast", [["session_start", [() => undefined]]]],
       ["slow", [["session_start", [waiting(150), waiting(150)]]]],
+      ["fast", [["session_start", [() => undefined]]]],
+      ["under", [["session_start", [waiting(150)]]]],
       ["other", [["turn_end", [waiting(300)]]]],
     ],
     (runner) => runner.emit({ type: "session_start", reason: "startup" }),
@@ -80,18 +83,28 @@ const run = async (extensions, emitting) => {
   assert.match(lines[0] ?? "", /^pi-host: "failing" session_start took \d+ ms$/);
 }
 
-// A slow handler that cancels is said before emit returns its result.
+// A slow handler that cancels is said once, before emit returns its result
+// at once: neither its extension's next handler nor the next extension runs.
 {
+  const ran = [];
   const cancelling = async () => {
     await waiting(300)();
     return { cancel: true };
   };
+  const after = (name) => () => {
+    ran.push(name);
+  };
   const { lines, result } = await run(
-    [["cancelling", [["session_before_switch", [cancelling]]]]],
+    [
+      ["cancelling", [["session_before_switch", [cancelling, after("its next")]]]],
+      ["later", [["session_before_switch", [after("the next extension")]]]],
+    ],
     (runner) => runner.emit({ type: "session_before_switch", reason: "new" }),
   );
   assert.deepEqual(result, { cancel: true });
-  assert.match(lines[0] ?? "", /^pi-host: "cancelling" session_before_switch took \d+ ms$/);
+  assert.deepEqual(ran, [], "a handler ran after the cancel");
+  assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
+  assert.match(lines[0], /^pi-host: "cancelling" session_before_switch took \d+ ms$/);
 }
 
 // resources_discover, which pi emits on its own path, is said the same way,

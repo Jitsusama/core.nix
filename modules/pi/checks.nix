@@ -379,7 +379,8 @@ import ./host-checks.nix args
       '';
 
   # A hosted pi says on stderr each extension whose handlers for one event
-  # took 250 ms or more, so a slow open names the extension it waited on.
+  # emit or emitResourcesDiscover sends took 250 ms or more, so a slow open
+  # names the extension it waited on.
   pi-hosted-says-slow-handlers =
     pkgs.runCommandLocal "pi-hosted-says-slow-handlers" { }
       ''

@@ -1,4 +1,5 @@
-A host says each extension whose handlers for one event took 250 ms or more.
+A host says each extension whose session_start, or other event pi's emit
+sends, took 250 ms or more.
 
 A host's conversation awaits every extension's handlers for an event one
 after another, so its session_start costs the sum of every extension's, and
@@ -11,15 +12,19 @@ Time each extension's handlers for an event, in emit and in
 emitResourcesDiscover, and write a line to stderr, which a host's
 conversation sends to its journal, for each one at 250 ms or more:
 pi-host: "PATH" EVENT took N ms. The path is quoted as JSON, so it stays on
-one line. Nothing else changes: the handlers run in the same order, a
-cancel still returns at once, and an error still reaches emitError.
+one line. The time is the wall's, awaits included, since that is what an
+open waited, so it counts whatever else the thread ran meanwhile. The events
+with dispatch loops of their own (turn_end, before_agent_start, context,
+tool_call and the like) are not timed. Nothing else changes: the handlers
+run in the same order, a cancel still returns at once, and an error still
+reaches emitError.
 
 Apply only to the host's private pi build; ordinary interactive pi stays
 unchanged.
 
 --- a/packages/coding-agent/src/core/extensions/runner.ts
 +++ b/packages/coding-agent/src/core/extensions/runner.ts
-@@ -281,6 +281,20 @@
+@@ -281,6 +281,23 @@
  	return extensions.map((ext) => ({ ext, handlers: ext.handlers.get(event)?.slice() ?? [] }));
  }
  
@@ -28,7 +33,10 @@ unchanged.
 +// open, reload and wake behind it. The runner keeps its extensions private, so nothing
 +// outside it can say which one is slow: say it here, on stderr, which a host's
 +// conversation sends to its journal, for each extension whose handlers for one event
-+// took this long or longer.
++// took this long or longer. Only emit, which sends session_start, and
++// emitResourcesDiscover are timed; the events with loops of their own are not. The time
++// is the wall's, awaits included, since that is what the open waited on it, so it counts
++// whatever else the thread ran meanwhile; each line stands for this much time waited.
 +const SLOW_HANDLERS_MS = 250;
 +
 +function sayIfSlow(ext: Extension, event: ExtensionEvent["type"], startedAt: number): void {
@@ -40,7 +48,7 @@ unchanged.
  function sameMessages(left: AgentMessage[], right: AgentMessage[]): boolean {
  	return left.length === right.length && left.every((message, index) => message === right[index]);
  }
-@@ -1132,26 +1146,31 @@
+@@ -1132,26 +1149,31 @@
  		let result: SessionBeforeEventResult | undefined;
  
  		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, event.type)) {
@@ -89,7 +97,7 @@ unchanged.
  			}
  		}
  
-@@ -1524,6 +1543,7 @@
+@@ -1524,6 +1546,7 @@
  		const themePaths: Array<{ path: string; extensionPath: string }> = [];
  
  		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "resources_discover")) {
@@ -97,7 +105,7 @@ unchanged.
  			for (const handler of handlers) {
  				try {
  					const event: ResourcesDiscoverEvent = { type: "resources_discover", cwd, reason };
-@@ -1550,6 +1570,7 @@
+@@ -1550,6 +1573,7 @@
  					});
  				}
  			}
