@@ -2703,8 +2703,16 @@ Singleton {
         attaching = still;
     }
     // A window no sessions kitty took, as opens-in-sessions.sh says when
-    // it gives up, by the app id it was asked under.
+    // it gives up, by the app id it was asked under: no longer opening,
+    // so the next press asks for it again rather than saying it's opening
+    // for as long as viewPatience, while nothing comes.
     function untaken(named) {
+        if (attaching[named] === undefined)
+            return;
+        const still = Object.assign({}, attaching);
+        delete still[named];
+        attaching = still;
+        console.info(`sessions: no sessions kitty took ${named}, so it's asked for afresh`);
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's

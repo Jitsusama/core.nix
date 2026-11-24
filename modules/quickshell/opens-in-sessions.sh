@@ -16,7 +16,9 @@
 # unit's own main process, which nothing else can be. A kitty its unit is
 # starting again, 5 s after it ended, is waited on for up to 20 s, so a
 # window asked of it meanwhile opens once it's back rather than never;
-# with neither by then, nothing opens, and the journal says why.
+# with neither by then, nothing opens, the journal says why, and the
+# shell is told, so it stops counting the window as coming and asks
+# again at the next press (Sessions' untaken).
 
 sock=$1
 class=$2
@@ -51,4 +53,5 @@ if old; then
     --directory "$dir" "$@"
 fi
 echo "sessions: no sessions kitty to open $class in" >&2
+qs ipc call sessions untaken "$class" > /dev/null 2>&1 || true
 exit 1
