@@ -10,8 +10,13 @@
 //! clock in milliseconds since then. Given the house's key in FILE, it
 //! signs each (src/signed.rs), reading FILE each second, so a key put
 //! there or swapped while it runs is taken without a restart, where FILE
-//! is the key itself rather than a copy made at start, as systemd's
-//! credentials are (nixos.nix restarts it for those). The uplink
+//! is the key itself or a copy kept fresh, as a Mac's is (darwin.nix),
+//! rather than a copy made at start, as systemd's credentials are
+//! (nixos.nix restarts it for those). A copy made at start can't
+//! change while it runs, so one that can't be used at start, empty or
+//! short, as a key made first and filled after can be copied, ends it
+//! failed, for its service to start it again on a fresh copy, as a
+//! missing one does (house signing round 3's F9). The uplink
 //! is INTERFACE, or, without one, the interface this machine's routes
 //! send to ADDRESS by that second, so a
 //! Mac given a cable beside its Wi-Fi is counted by the one it sends by.
@@ -36,6 +41,8 @@ mod route;
 mod sent;
 mod signed;
 
+use std::env;
+use std::ffi::OsStr;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::path::Path;
 use std::process::ExitCode;
@@ -123,7 +130,10 @@ fn help() -> Help {
         "what a machine beside a shaped one runs",
     )
     .exit(Exit::Usage, "the address is missing or isn't one")
-    .exit(Exit::Failed, "no socket could be opened to send from")
+    .exit(
+        Exit::Failed,
+        "no socket could be opened to send from, or a key copied at start can't be used",
+    )
 }
 
 fn main() -> ExitCode {
@@ -232,8 +242,23 @@ fn text(bytes: u64, ms: u128, key: Option<&Path>, troubles: &mut Troubles) -> Op
     read.ok()
 }
 
+/// Whether the key at `path` is a copy its service made as it started,
+/// in the folder `credentials` names, which nothing changes while it runs.
+fn copied_at_start(path: &Path, credentials: Option<&OsStr>) -> bool {
+    credentials.is_some_and(|folder| !folder.is_empty() && path.starts_with(folder))
+}
+
 /// Sends a report each second, for as long as it runs.
 fn reports(to: SocketAddr, interface: Option<&str>, key: Option<&Path>) -> Result<(), Failure> {
+    if let Some(path) = key
+        && copied_at_start(path, env::var_os("CREDENTIALS_DIRECTORY").as_deref())
+        && let Err(error) = signed::key(path)
+    {
+        return Err(Failure::new(
+            Exit::Failed,
+            format!("the key copied at start can't be used, so it ends for a fresh copy: {error}"),
+        ));
+    }
     let any: SocketAddr = if to.is_ipv4() {
         ([0, 0, 0, 0], 0).into()
     } else {
@@ -303,6 +328,30 @@ fn reports(to: SocketAddr, interface: Option<&str>, key: Option<&Path>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_key_in_the_credentials_folder_is_a_copy_made_at_start() {
+        let folder = OsStr::new("/run/credentials/house-report.service");
+        assert!(
+            copied_at_start(
+                Path::new("/run/credentials/house-report.service/house.key"),
+                Some(folder)
+            ),
+            "a credential wasn't a copy"
+        );
+        assert!(
+            !copied_at_start(Path::new("/etc/house.key"), Some(folder)),
+            "a key read in place was a copy"
+        );
+        assert!(
+            !copied_at_start(Path::new("/etc/house.key"), None),
+            "a key with no credentials was a copy"
+        );
+        assert!(
+            !copied_at_start(Path::new("/etc/house.key"), Some(OsStr::new(""))),
+            "an empty credentials folder named every key a copy"
+        );
+    }
 
     #[test]
     fn a_report_is_the_bytes_then_the_ms() {

@@ -78,12 +78,14 @@ in
         service, and while none is there the service fails to start,
         systemd saying why, and tries again every 5 s, writing a few
         journal lines each time, so put the key in place before naming
-        it. On a Mac the service runs as nobody and reads the file each
-        second, so a key swapped is taken without a restart, but the
-        file must be nobody's, 0400, as activation makes one already
-        there in a folder root's alone: one put there after, root's,
-        can't be read until it's made nobody's or the machine switches,
-        and the log says it can't be read. Never a link, of either kind,
+        it; one empty or short at start ends the service, which starts
+        again on a fresh copy. On a Mac the service runs as nobody, so
+        activation copies the key, nobody's alone, where the service
+        reads it each second: a key put there or swapped is taken at the
+        next switch, and until then the log says the copy can't be read
+        or signs with the last. There it must be under /etc, /private/etc
+        or /var/root, every folder above it root's and written by no
+        other account, as the build and activation check. Never a link,
         a Nix path or a value in the store.
       '';
     };
@@ -91,7 +93,7 @@ in
       type = lib.types.nullOr lib.types.str;
       internal = true;
       default = cfg.keyFile;
-      description = "Where the service reads the key: keyFile, or on Linux its credential.";
+      description = "Where the service reads the key: on Linux its credential, on a Mac its copy.";
     };
     interface = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

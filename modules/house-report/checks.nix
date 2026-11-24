@@ -74,13 +74,48 @@ let
       lib.stringLength keyedPrepared + 1
     else
       lib.stringLength (lib.head parts);
-  handedOver = placed "/usr/sbin/chown -h nobody:nobody \"$houseReportKey\"";
-  refusedFirst = map placed [
-    "[ -L \"$houseReportKey\" ]"
-    "/usr/bin/stat -f %l \"$houseReportKey\""
-    "/usr/bin/stat -L -f %u \"$houseReportFolder\""
-    "/usr/bin/find -H \"$houseReportFolder\" -maxdepth 0 -perm +022"
+  # Every folder above the key is tested before the chain that copies
+  # it, and the copy is that chain's last branch, so a refusal stops it.
+  walked = placed "while [ -z \"$houseReportWhy\" ] && [ \"$houseReportFolder\" != / ]; do";
+  chained = lib.concatStringsSep "\n" [
+    "if [ -n \"$houseReportWhy\" ]; then"
+    "  :"
+    "elif [ -L \"$houseReportKey\" ]; then"
+    "  houseReportWhy=\"is a link\""
+    "elif [ ! -f \"$houseReportKey\" ]; then"
+    "  houseReportWhy=\"isn't there as a file\""
+    (
+      "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportKey\" "
+      + "\"$houseReportCopy.new\" \\"
+    )
   ];
+  # Where a Mac's daemon reads activation's copy of its key.
+  copied = "/var/db/house-report/house.key";
+  watching = keyedMac.launchd.daemons.house-report-key.serviceConfig or { };
+  watched = lib.last (watching.ProgramArguments or [ "" ]);
+  # Whether a Mac given `keyFile` is refused as it builds.
+  macRefuses =
+    keyFile:
+    lib.any (said: !said.assertion)
+      (bareDarwin [
+        self.darwinModules.house-report
+        (lib.recursiveUpdate told { jitsusama.house-report.keyFile = keyFile; })
+      ]).config.assertions;
+  macKeys = {
+    taken = [
+      "/etc/house.key"
+      "/private/etc/house-report/house.key"
+      "/var/root/house.key"
+    ];
+    refused = [
+      "/Users/someone/house.key"
+      "/usr/local/etc/house.key"
+      "/etc/../tmp/house.key"
+      "/etc//house.key"
+      "/etc/./house.key"
+    ];
+  };
+  macMisread = lib.filter macRefuses macKeys.taken ++ lib.filter (k: !macRefuses k) macKeys.refused;
   keyedLinux =
     (bareNixos [
       self.nixosModules.house-report
@@ -119,22 +154,59 @@ in
         && lib.hasInfix "chown nobody:nobody /var/log/house-report.log" prepared
       );
 
-  # A Mac given a key reads it by its path, ahead of the address, and its
-  # activation hands the key to nobody only after refusing a link, a
-  # second name and a folder not root's alone, never following a link.
+  # A Mac given a key reads activation's copy of it, nobody's alone, by
+  # its path ahead of the address. Activation copies the key only once
+  # every folder above it is root's and written by no other account and
+  # the key is a plain file, the copy the last branch of the chain that
+  # refuses, and never makes the key itself another account's. The build
+  # refuses a key outside root's own trees, or spelled through dots.
   house-report-hands-a-mac-its-key-safely =
     holds "house-report-hands-a-mac-its-key-safely"
       (
-        "A Mac given /etc/house.key doesn't run house-report --key /etc/house.key 192.0.2.3:47110, "
-        + "or its activation hands the key over before refusing a link, a second name or a "
-        + "folder another account may write, or follows a link as it does."
+        if macMisread != [ ] then
+          "a Mac's key check misreads: ${lib.concatStringsSep ", " macMisread}"
+        else
+          "A Mac given /etc/house.key doesn't run house-report --key "
+          + "/var/db/house-report/house.key 192.0.2.3:47110, or its activation copies the key "
+          + "outside the chain that refuses a link and a folder another account may write, "
+          + "or hands the key itself over."
       )
       (
-        lib.hasSuffix "/bin/house-report --key /etc/house.key 192.0.2.3:47110" keyedProgram
+        macMisread == [ ]
+        && lib.hasSuffix "/bin/house-report --key ${copied} 192.0.2.3:47110" keyedProgram
         && lib.hasInfix "houseReportKey=/etc/house.key" keyedPrepared
-        && handedOver < lib.stringLength keyedPrepared
-        && lib.all (at: at < handedOver) refusedFirst
-        && lib.hasInfix "/bin/chmod -h 0400 \"$houseReportKey\"" keyedPrepared
+        && lib.hasInfix chained keyedPrepared
+        && walked < placed chained
+        && lib.hasInfix "&& pwd -P)" keyedPrepared
+        && lib.hasInfix "/usr/bin/stat -f %u \"$houseReportFolder\"" keyedPrepared
+        && lib.hasInfix "/usr/bin/find \"$houseReportFolder\" -maxdepth 0 -perm +022" keyedPrepared
+        && !lib.hasInfix "chown -h" keyedPrepared
+        && !lib.hasInfix "chmod -h" keyedPrepared
+      );
+
+  # A Mac given a key copies it again, as root, whenever the key or its
+  # folder changes, by the same text activation runs, so a key swapped
+  # while the Mac runs is taken without a switch.
+  house-report-takes-up-a-macs-swapped-key =
+    holds "house-report-takes-up-a-macs-swapped-key"
+      (
+        "A Mac given /etc/house.key doesn't copy it again, as root, by activation's own text, "
+        + "whenever /etc/house.key or /etc changes."
+      )
+      (
+        lib.take 2 (watching.ProgramArguments or [ ]) == [
+          "/bin/sh"
+          "-c"
+        ]
+        && lib.hasInfix chained watched
+        && lib.hasInfix watched keyedPrepared
+        && watching.UserName or null == null
+        && watching.RunAtLoad or null == true
+        &&
+          watching.WatchPaths or [ ] == [
+            "/etc/house.key"
+            "/etc"
+          ]
       );
 }
 # What follows needs Linux to build or to run, so a Mac leaves it out.
