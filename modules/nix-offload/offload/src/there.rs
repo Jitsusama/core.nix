@@ -4746,6 +4746,53 @@ impl Drop for Claim {
 /// Says `count` VM tests go to the builder `dir`'s lender lends, for as
 /// long as what's given lives; none when the folder can't be written.
 pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
+    claim_marked(dir, count, "")
+}
+
+/// What ends the name of a claim that what overflows full lent builders
+/// holds on a VM builder, so a run can tell a lane already takes one.
+const SPILL: &str = ".spill";
+
+/// Claims the whole of `room` on the VM builder `dir`'s lender lends for
+/// what overflows full lent builders, under its lock, and only while no
+/// run has VM tests sent there or waiting: checked unlocked and claimed
+/// later, VM tests admitted between the two ran beside a big build.
+/// None when it isn't idle, or its folder can't be locked or written.
+pub fn claim_spill(dir: &Path, room: usize) -> Option<Claim> {
+    use std::os::fd::AsRawFd;
+    let lock = fs::File::create(dir.join("sending.lock")).ok()?;
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return None;
+    }
+    if claimed(dir) + waiting(dir) > 0 {
+        return None;
+    }
+    claim_marked(dir, room.max(1), SPILL)
+}
+
+/// Whether a run still going holds a spill's claim on the VM builder
+/// `dir`'s lender lends. One spill at a time takes a VM builder, so VM
+/// runs never find every idle lane taken by builds that aren't theirs.
+pub fn spilled(dir: &Path) -> bool {
+    claimed(dir) > 0
+        && fs::read_dir(dir.join("sending")).is_ok_and(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .any(|entry| entry.file_name().to_string_lossy().ends_with(SPILL))
+        })
+}
+
+/// The VM builders, by their place among `lanes`, that may take a spill,
+/// in the order they're asked: never the first, which every VM run tries
+/// first and keeps warmest, and the last first, so VM runs keep the lanes
+/// they reach soonest.
+pub fn spill_order(lanes: usize) -> impl Iterator<Item = usize> {
+    (1..lanes).rev()
+}
+
+/// [`claim`], its file's name ending in `mark`.
+fn claim_marked(dir: &Path, count: usize, mark: &str) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     // One run may send two parts to one folder, when a second builder
     // doesn't come.
@@ -4753,7 +4800,7 @@ pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
     let sending = dir.join("sending");
     fs::create_dir_all(&sending).ok()?;
     let path = sending.join(format!(
-        "{}.{}",
+        "{}.{}{mark}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
@@ -9576,6 +9623,61 @@ mod tests {
             "one half as busy as full must not"
         );
         assert!(!takes_spill(None), "one that can't be read must not");
+        assert!(
+            takes_spill(Some(FULL / 2.0 - 1.0)),
+            "one just under half as busy as full must take it"
+        );
+    }
+
+    #[test]
+    fn a_spill_claims_a_whole_idle_lane_and_marks_it_taken() {
+        let lane = tempfile::tempdir().expect("a folder");
+        assert!(!spilled(lane.path()), "an empty lane holds no spill");
+        let held = claim_spill(lane.path(), VM_ROOM).expect("an idle lane takes a spill");
+        assert_eq!(
+            claimed(lane.path()),
+            VM_ROOM,
+            "the spill must claim the whole room"
+        );
+        assert!(spilled(lane.path()), "the lane must say it holds a spill");
+        assert!(
+            claim_spill(lane.path(), VM_ROOM).is_none(),
+            "a lane holding a spill must take no second"
+        );
+        drop(held);
+        assert_eq!(claimed(lane.path()), 0, "the claim must go with the spill");
+        assert!(
+            !spilled(lane.path()),
+            "nor may the lane still say it holds one"
+        );
+    }
+
+    #[test]
+    fn a_lane_with_vm_tests_sent_or_waiting_takes_no_spill() {
+        let sent = tempfile::tempdir().expect("a folder");
+        let _vm = claim(sent.path(), 1).expect("a VM test's claim");
+        assert!(
+            claim_spill(sent.path(), VM_ROOM).is_none(),
+            "VM tests are sent there"
+        );
+        assert!(!spilled(sent.path()), "a VM test's claim is no spill");
+        let waits = tempfile::tempdir().expect("a folder");
+        let _place = queued(waits.path(), 1, Rank::Plain).expect("a place in line");
+        assert!(
+            claim_spill(waits.path(), VM_ROOM).is_none(),
+            "a VM run waits there"
+        );
+    }
+
+    #[test]
+    fn a_spill_never_takes_the_first_vm_lane_and_asks_the_last_first() {
+        assert_eq!(
+            spill_order(4).collect::<Vec<_>>(),
+            [3, 2, 1],
+            "last first, never 0"
+        );
+        assert_eq!(spill_order(1).count(), 0, "a lone lane is kept for VM runs");
+        assert_eq!(spill_order(0).count(), 0, "no lanes, no spill");
     }
 
     #[test]
