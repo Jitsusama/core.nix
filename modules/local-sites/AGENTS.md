@@ -115,7 +115,8 @@ What holds it together:
    a `Budget` set a little above what the page costs now. Name each check
    in `check-descriptions.nix`. Add its `index.html` to `pages` in
    [`heads.nix`][heads], which `heads-are-the-kits` holds to the kit's
-   head, and fails while a page a realm machine mounts goes unnamed. A new
+   head, and fails while a page core mounts on a realm machine goes
+   unnamed, saying which in its build's log. A new
    page opens with the head: the check fails on a name that joins
    `waitingForTheHead`, and a page that moves to it leaves that list.
 

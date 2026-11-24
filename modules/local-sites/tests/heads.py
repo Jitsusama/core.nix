@@ -2,9 +2,10 @@
 
 The seven pages read as one family only while each opens with the same head:
 an eyebrow of two phrases, the title, a lede, the standing line and the quiet
-row, in that order, inside one `<header class="page-head">` that is the page's
-first header, inside no other, and holds its first heading, styled by the
-kit's head.css linked in its `<head>` as a sheet every screen applies. Only
+row, in that order, each drawn and heard, inside one `<header class="page-head">`
+that is the page's banner: its first header or element marked one, inside no
+other and in no section, holding its first heading by tag or role, styled by
+the kit's head.css linked in its `<head>` as a sheet every screen applies. Only
 the standing line's status is a live region, polite and heard, and nothing
 around the head is live, so a screen reader hears the state change and never
 a lede being rewritten.
@@ -13,9 +14,13 @@ This reads each page's markup as written, since every page writes its head
 there, and as a browser parses it where a head would meet the difference:
 void elements hold nothing, a `<p>` ends where a block starts, a non-void
 element written closed stays open outside SVG and MathML, a `<head>` left
-unwritten or unclosed is implied where the parser implies it, and what
-`<template>` or `<noscript>` holds, or what's `hidden`, is never drawn. What
-is under `aria-hidden` is never heard. What a script later puts in the head
+unwritten or unclosed is implied where the parser implies it, the body begins
+at the first tag or words a head can't hold, and a second `<head>` is ignored.
+What `<template>`, `<noscript>` or an element read as words holds, what a
+shut `<dialog>` or `<details>` holds past its summary, and what's `hidden`, is
+never drawn; nor is it heard, and neither is what's under `aria-hidden`. A
+`<base>` moving where links read from fails, since the sheet can't be known
+to be the kit's. What a script later puts in the head
 is the page's own tests' to hold; Home's standing line is the one its build
 fills (home.py), so its template writes the status around what's filled.
 
@@ -118,8 +123,29 @@ P_SCOPE = {"button", "caption", "html", "marquee", "object", "table", "td", "tem
 # Where an element written closed is closed, as it is in SVG and MathML.
 FOREIGN = {"svg", "math"}
 
-# What holds markup never drawn as the page's own.
-UNDRAWN = {"template", "noscript"}
+# What holds markup never drawn as the page's own: a template, what shows only
+# without scripts, and what a browser reads as words or another page's, however a
+# parser of this Python's version nests them.
+UNDRAWN = {
+    "iframe",
+    "noembed",
+    "noframes",
+    "noscript",
+    "plaintext",
+    "template",
+    "textarea",
+    "title",
+    "xmp",
+}
+
+# What draws only its summary, or nothing, until it's open.
+SHUT = {"details", "dialog"}
+
+# Where a header is a section's, not the page's banner.
+SECTIONS = {"article", "aside", "main", "nav", "section"}
+
+# The roles a head may be marked with and still be the page's banner.
+BANNER = {None, "banner"}
 
 # The roles ARIA knows; of a role list, a browser takes the first it knows.
 ROLES = {
@@ -248,9 +274,22 @@ class Element:
             if "hidden" in child.attributes and child.tag not in HEAD_ONLY:
                 continue
             found.append(child)
-            if child.tag not in UNDRAWN:
+            if child.tag in SHUT and "open" not in child.attributes:
+                summary = next((each for each in child.shown() if each.tag == "summary"), None)
+                if child.tag == "details" and summary is not None:
+                    found.append(summary)
+                    found.extend(summary.within())
+            elif child.tag not in UNDRAWN:
                 found.extend(child.within())
         return found
+
+    def shown(self) -> list[Element]:
+        """Give the children drawn in it, leaving out those hidden."""
+        return [
+            child
+            for child in self.children
+            if "hidden" not in child.attributes or child.tag in HEAD_ONLY
+        ]
 
     def text(self) -> str:
         """Give the words written in it, in order."""
@@ -263,10 +302,12 @@ class Element:
         return known or ("status" if self.tag == "output" else None)
 
     def heard(self) -> bool:
-        """Say whether a screen reader hears it: nothing under aria-hidden is."""
+        """Say whether a screen reader hears it: nothing hidden or under aria-hidden is."""
         element: Element | None = self
         while element is not None:
             if element.attributes.get("aria-hidden", "").strip().lower() == "true":
+                return False
+            if "hidden" in element.attributes and element.tag not in HEAD_ONLY:
                 return False
             element = element.parent
         return True
@@ -279,6 +320,14 @@ class Element:
         if said in {"polite", "assertive", "off"}:
             return said != "off"
         return self.role() in LIVE_ROLES
+
+    def is_banner(self) -> bool:
+        """Say whether it's drawn or heard as a banner: a header, or marked one."""
+        return self.tag == "header" or self.role() == "banner"
+
+    def is_heading(self) -> bool:
+        """Say whether it's drawn or heard as a heading: h1 to h6, or marked one."""
+        return self.tag in HEADINGS or self.role() == "heading"
 
     def interrupts(self) -> bool:
         """Say whether it cuts in on what's being read, as an alert does."""
@@ -347,9 +396,19 @@ class Reader(HTMLParser):
             self.head = self.add("head", [])
         return self.head
 
+    def before_body(self) -> bool:
+        """Say whether the open element is the document or its html, the body not begun."""
+        return not self.bodied and self.open.tag in {"#document", "html"}
+
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Open an element under the one open now, where a parser would put it."""
-        if tag == "body" or (tag not in HEAD_HOLDS and self.in_head()):
+        # A browser ignores a second head, and one written in the body.
+        if tag == "head" and (self.head is not None or self.bodied):
+            return
+        # The body begins at its tag, or at the first tag a head can't hold.
+        if tag == "body" or (
+            tag not in HEAD_HOLDS and tag != "html" and (self.in_head() or self.before_body())
+        ):
             self.bodied = True
             while self.in_head() and self.open.parent is not None:
                 self.open = self.open.parent
@@ -383,7 +442,11 @@ class Reader(HTMLParser):
             self.open = element.parent
 
     def handle_data(self, data: str) -> None:
-        """Keep the words written where they're written."""
+        """Keep the words written where they're written; words before the body begin it."""
+        if data.strip() and (self.before_body() or self.open is self.head):
+            self.bodied = True
+            if self.open is self.head and self.open.parent is not None:
+                self.open = self.open.parent
         self.open.content.append(data)
 
 
@@ -401,6 +464,11 @@ def said(part: tuple[str, str | None]) -> str:
     return f"<{tag}>" if name is None else f'<{tag} class="{name}">'
 
 
+def named(element: Element) -> str:
+    """Name an element by its tag and first class, as `said` writes a part."""
+    return said((element.tag, next(iter(element.classes()), None)))
+
+
 def head_faults(markup: str) -> list[str]:
     """Say what `markup`'s head must change to be the kit's, or nothing."""
     everything = read(markup).within()
@@ -411,31 +479,68 @@ def head_faults(markup: str) -> list[str]:
     faults = []
     if head.tag != "header":
         faults.append(f'its head is a <{head.tag}>: draw it as <header class="page-head">')
-    banners = [element for element in everything if element.tag == "header"]
+    elif head.role() not in BANNER:
+        faults.append(
+            f'its head is marked role="{head.role()}": leave the header its own role, the banner'
+        )
+    section = head.parent
+    while section is not None and section.tag not in SECTIONS:
+        section = section.parent
+    if section is not None:
+        faults.append(
+            f"its head sits in a <{section.tag}>, where a header is no banner:"
+            " draw it before, as the page's own"
+        )
+    banners = [element for element in everything if element.is_banner()]
     if banners and banners[0] is not head:
-        drawn = (banners[0].tag, next(iter(banners[0].classes()), None))
         where = "around" if head.inside(banners[0]) else "above"
-        faults.append(f"it draws a {said(drawn)} {where} its head: let the kit's head be its first")
-    titles = [element for element in everything if element.tag in HEADINGS]
+        faults.append(
+            f"it draws a {named(banners[0])} {where} its head: let the kit's head be its first"
+        )
+    titles = [element for element in everything if element.is_heading()]
     if not titles or not titles[0].inside(head):
-        first = f"<{titles[0].tag}>" if titles else "heading"
+        first = named(titles[0]) if titles else "heading"
         faults.append(
             f"its first heading, {first}, sits outside its head: make the head's title first"
         )
     if any(isinstance(each, str) and each.strip() for each in head.content):
         faults.append("its head writes words outside its parts: keep every word in a part")
-    drawn_parts = [(child.tag, next(iter(child.classes()), None)) for child in head.children]
+    return faults + parts_faults(head) + speaking_faults(head)
+
+
+def parts_faults(head: Element) -> list[str]:
+    """Say what the head's parts must change: their order, their showing, what's in each."""
+    faults = []
     parts = [
         next((part for part in PARTS if child.is_part(*part)), (child.tag, None))
         for child in head.children
     ]
     if parts != PARTS:
-        shown = ", ".join(said(part) for part in drawn_parts) or "nothing"
+        held = ", ".join(named(child) for child in head.children) or "nothing"
         wanted = ", ".join(said(part) for part in PARTS)
-        faults.append(f"its head holds {shown}: hold {wanted}, in that order and nothing else")
-    for child in head.children:
-        faults.extend(part_faults(child))
-    return faults + speaking_faults(head)
+        faults.append(f"its head holds {held}: hold {wanted}, in that order and nothing else")
+    shown = head.shown()
+    hidden = [child for child in head.children if child not in shown]
+    if hidden:
+        faults.append(
+            f"its head hides its {', '.join(named(child) for child in hidden)}: draw every part"
+        )
+    if not head.heard():
+        return [*faults, "its head is hidden from screen readers: let them hear it"]
+    # The standing line's own fault says when its status goes unheard.
+    unheard = [child for child in shown if not child.heard() and not child.is_part("p", "standing")]
+    if unheard:
+        faults.append(
+            f"its head hides its {', '.join(named(child) for child in unheard)}"
+            " from screen readers: let them hear every part"
+        )
+    title = next((child for child in shown if child.tag == "h1"), None)
+    if title is not None and title.role() not in {None, "heading"}:
+        faults.append(f'its title is marked role="{title.role()}": leave the <h1> a heading')
+    for child in shown:
+        if child not in unheard:
+            faults.extend(part_faults(child))
+    return faults
 
 
 def phrases(element: Element, stop: Element) -> list[str]:
@@ -489,7 +594,8 @@ def part_faults(part: Element) -> list[str]:
                     " heard, and nothing else live"
                 )
             ]
-    opens = part.children[0] if part.children else None
+    drawn = part.shown()
+    opens = drawn[0] if drawn else None
     if part.is_part("div", "quiet") and (opens is None or not opens.is_part("p", "keys")):
         return ['its quiet row doesn\'t open with a <p class="keys">: put the key line first in it']
     return []
@@ -529,15 +635,21 @@ def links_the_sheet(element: Element, document: list[Element]) -> bool:
     rel = element.attributes.get("rel", "").lower().split()
     href = element.attributes.get("href", "").split("?")[0].split("#")[0]
     media = element.attributes.get("media", "").strip().lower()
-    heads = [each for each in document if each.tag == "head"]
+    # A browser fetches no sheet of another type, and applies none whose digest
+    # fails; the kit's sheet changes as the kit does, so a digest would go stale.
+    kind = element.attributes.get("type", "").split(";")[0].strip().lower()
+    head = next((each for each in document if each.tag == "head"), None)
     return (
         element.tag == "link"
         and "stylesheet" in rel
         and "alternate" not in rel
         and "disabled" not in element.attributes
+        and "integrity" not in element.attributes
+        and kind in {"", "text/css"}
         and media in EVERY_SCREEN
         and href in SHEETS
-        and any(element.inside(head) for head in heads)
+        and head is not None
+        and element.inside(head)
     )
 
 
@@ -549,11 +661,23 @@ NO_SHEET = (
 )
 
 
+# What a page whose links a base moves must change.
+BASED = (
+    "its <base href> moves where its links read from, so head.css may not be the kit's:"
+    " take the base out"
+)
+
+
 def page_faults(markup: str) -> list[str]:
     """Say what a whole page must change to open with the kit's head."""
     document = read(markup).within()
-    linked = any(links_the_sheet(element, document) for element in document)
-    return ([] if linked else [NO_SHEET]) + head_faults(markup)
+    if any(element.tag == "base" and "href" in element.attributes for element in document):
+        sheet = [BASED]
+    elif any(links_the_sheet(element, document) for element in document):
+        sheet = []
+    else:
+        sheet = [NO_SHEET]
+    return sheet + head_faults(markup)
 
 
 def main() -> int:

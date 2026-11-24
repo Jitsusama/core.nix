@@ -76,29 +76,37 @@ in
       looks ? webKit.looks,
     }:
     # The site carries the web kit it was built on, so a folder laid out
-    # from it copies the same one in, and the source it was built from, so
-    # the heads gate can see every page a machine mounts.
-    pkgs.runCommandLocal "${name}-site" { passthru = { inherit webKit src; }; } ''
-      ${lib.getExe pkgs.bash} ${./site.sh} ${
-        lib.escapeShellArgs [
-          tsc
-          node
-          esbuild
-          "${bareSheet}"
-          "${keptComments}"
-          "${./kit}"
-          "${src}"
-          name
-        ]
-      } "$out" ${
-        lib.escapeShellArgs [
-          looks.dark.background
-          looks.light.background
-          looks.dark.${tint}
-          looks.light.${tint}
-        ]
+    # from it copies the same one in, and the page it was built from, so
+    # the heads gate can see every page a machine mounts. The page's name
+    # is localSite's own, as a src any derivation may carry is not.
+    pkgs.runCommandLocal "${name}-site"
+      {
+        passthru = {
+          inherit webKit;
+          localSitePage = src + "/index.html";
+        };
       }
-    '';
+      ''
+        ${lib.getExe pkgs.bash} ${./site.sh} ${
+          lib.escapeShellArgs [
+            tsc
+            node
+            esbuild
+            "${bareSheet}"
+            "${keptComments}"
+            "${./kit}"
+            "${src}"
+            name
+          ]
+        } "$out" ${
+          lib.escapeShellArgs [
+            looks.dark.background
+            looks.light.background
+            looks.dark.${tint}
+            looks.light.${tint}
+          ]
+        }
+      '';
 
   /**
     The live site `site`, built by localSite as `name`, as one folder that

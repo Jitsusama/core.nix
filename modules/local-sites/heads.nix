@@ -26,18 +26,78 @@ let
   # The mounts that serve no page of their own: the kit every page reads.
   pageless = [ "local-sites" ];
 
-  # The mounts serving a page, each of which must say where its page comes
-  # from, so a site mounted some other way fails here rather than going
-  # unjudged.
-  sited = removeAttrs mounts pageless;
-  unsourced = lib.attrNames (lib.filterAttrs (_: site: !(site ? src)) sited);
+  # A page as a person writes it in `pages`, from the repository's root.
+  fromTheRoot = page: lib.removePrefix (toString ../.. + "/") (toString page);
 
-  # Each page a machine in a realm mounts that `pages` doesn't name, which
-  # the gate would never judge. Code, mounted only where repositories are
-  # rooted, and Home, which no mount serves, are named by hand.
-  unnamedPages = lib.filter (page: !(lib.elem page (lib.attrValues pages))) (
-    lib.mapAttrsToList (_: site: site.src + "/index.html") (lib.filterAttrs (_: site: site ? src) sited)
-  );
+  # What a set of mounts does that would leave a page unjudged. Each mount
+  # serving a page must be a localSite, which says what page it was built
+  # from, so a site mounted some other way fails rather than going
+  # unjudged; and each such page must be named in `pages`. Home, which no
+  # mount serves, is named there by hand.
+  faultsOf =
+    mounts:
+    let
+      sited = removeAttrs mounts pageless;
+      unsourced = lib.attrNames (lib.filterAttrs (_: site: !(site ? localSitePage)) sited);
+      unnamed = lib.filter (page: !(lib.elem page (lib.attrValues pages))) (
+        lib.mapAttrsToList (_: site: site.localSitePage) (
+          lib.filterAttrs (_: site: site ? localSitePage) sited
+        )
+      );
+    in
+    lib.optional (
+      sited == { }
+    ) "a machine in a realm mounts no page, so the gate can't tell what it misses"
+    ++
+      lib.optional (unsourced != [ ])
+        "${lib.concatStringsSep ", " unsourced} mount no localSite, so their pages can't be judged: build them with localSite, or name them in pageless"
+    ++
+      lib.optional (unnamed != [ ])
+        "name ${
+          lib.concatMapStringsSep ", " fromTheRoot unnamed
+        } in heads.nix's pages, by the name Joel knows each by";
+
+  # The faults of what a machine in a realm mounts: every mount core's own
+  # modules declare there, the sites under a realm and under repository
+  # roots both. Mounts a machine's own repository adds aren't seen.
+  mountFaults = faultsOf mounts;
+
+  # The mount rules hold of a mount built each other way, so the gate is
+  # seen to fail closed rather than taken to: each case but the last must
+  # be refused.
+  refused = {
+    "no mounts" = { };
+    "a plain folder" = {
+      x = pkgs.emptyDirectory;
+    };
+    "a derivation built from a source" = {
+      x = {
+        src = ../mycelium/forage;
+      };
+    };
+    "a page pages doesn't name" = {
+      x = {
+        localSitePage = ./nowhere/index.html;
+      };
+    };
+  };
+  passed = {
+    forage = {
+      localSitePage = pages.Forage;
+    };
+    local-sites = pkgs.emptyDirectory;
+  };
+  ruleFaults =
+    map (case: "the gate's own mount rules let ${case} through, so its page would go unjudged") (
+      lib.attrNames (lib.filterAttrs (_: case: faultsOf case == [ ]) refused)
+    )
+    ++
+      lib.optional (faultsOf passed != [ ])
+        "the gate's own mount rules refuse a localSite named in pages: ${lib.concatStringsSep "; " (faultsOf passed)}";
+
+  # Said in the build's log, where a change's checks show why it failed,
+  # rather than at evaluation, where they'd show only that it didn't.
+  faults = map (fault: "heads-are-the-kits: ${fault}") (mountFaults ++ ruleFaults);
 
   # The pages still drawing a head of their own. Take each off as it moves
   # to the kit's: the gate fails while a page on it already keeps to the
@@ -55,13 +115,6 @@ let
     "Network"
   ];
 in
-assert lib.assertMsg (
-  sited != { }
-) "heads-are-the-kits: a machine in a realm mounts no page, so the gate can't tell what it misses";
-assert lib.assertMsg (unsourced == [ ])
-  "heads-are-the-kits: ${lib.concatStringsSep ", " unsourced} mount no localSite, so their pages can't be judged: build them with localSite, or name them in pageless";
-assert lib.assertMsg (unnamedPages == [ ])
-  "heads-are-the-kits: name ${lib.concatMapStringsSep ", " toString unnamedPages} in pages";
 pkgs.runCommandLocal "heads-are-the-kits"
   {
     env = {
@@ -71,6 +124,8 @@ pkgs.runCommandLocal "heads-are-the-kits"
     };
   }
   ''
+    ${lib.concatMapStrings (fault: "echo ${lib.escapeShellArg fault} >&2\n") faults}
+    ${lib.optionalString (faults != [ ]) "exit 1"}
     ${plainPython}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
       --basetemp="$TMPDIR/pytest" ${./tests}/heads-test.py
     ${plainPython}/bin/python ${./tests/heads.py} \

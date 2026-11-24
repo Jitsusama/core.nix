@@ -1024,16 +1024,17 @@
   '';
   heads-are-the-kits = ''
     every live page off the waiting list opens with the kit's head as the web-design skill's
-    sites.md writes it, read as a browser parses it with what's hidden left undrawn: its first
-    header, inside no other, holding its first heading of any level, an eyebrow of two phrases
+    sites.md writes it, read as a browser parses it with what's hidden or shut left undrawn: its
+    first banner, by tag or role, inside no other and no section, holding its first heading of
+    any level, each part drawn and heard, an eyebrow of two phrases
     split by the kit's one dot, the title, a lede, the standing line and the quiet row in that
     order and nothing else, only the standing line's polite status live as ARIA reads it and
     nothing around the head live, the quiet row opening with its key line, and the kit's
     head.css linked by its own path in the page's head as a sheet every screen applies; a page
     still waiting passes until it keeps to the head, then fails until it's taken off the list,
-    which no page joins; every page a machine in a realm mounts is judged, a mount built any
-    other way failing; and the gate passes sites.md's own head and names each way a page
-    strays from it
+    which no page joins; every page core's own modules mount on a machine in a realm is
+    judged, a mount not built with localSite failing as its rules are seen to; and the gate
+    passes sites.md's own head and names each way a page strays from it
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
