@@ -448,26 +448,42 @@ fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
 fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // Each step of making the tree failing, as a full disk, a fenced
     // scratch or a program missing would, ahead of the far machine's own
-    // on its path.
-    for step in ["mkdir", "tar", "find"] {
+    // on its path: each program's first call, and the unpacking and the
+    // search for what is neither a file nor a folder alone, after the
+    // calls before them went through.
+    let failing = |at: &str, program: &str| {
+        format!(
+            "case \" $* \" in *' {at} '*) exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec {program} \"$@\""
+        )
+    };
+    let (unpacking, searching) = (failing("-xf", "tar"), failing("-type l", "find"));
+    for (step, stand_in) in [
+        ("mkdir", "exit 1"),
+        ("tar", "exit 1"),
+        ("find", "exit 1"),
+        ("tar", &unpacking),
+        ("find", &searching),
+    ] {
         let (code, err, home) = far_line(
             Left::Whole,
             &[("target/a", "x")],
             "touch ../ran",
             &kind(""),
             None,
-            &[(step, "exit 1")],
+            &[(step, stand_in)],
         );
         let heard = relay(said(&home).as_slice(), "1");
         assert!(
             code == Some(75) && heard == Heard::Untaken,
-            "a tree it couldn't make for {step} read as {heard:?}, ending {code:?}: {err}"
+            "a tree it couldn't make for {step} ({stand_in:?}) read as {heard:?}, ending \
+             {code:?}: {err}"
         );
         assert!(
             !work(&home).join("ran").exists()
                 && !work(&home).join("1").exists()
                 && !work(&home).join("1.run").exists(),
-            "a tree it couldn't make for {step} was run, or left behind with its run's file"
+            "a tree it couldn't make for {step} ({stand_in:?}) was run, or left behind with \
+             its run's file"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
