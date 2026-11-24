@@ -3173,7 +3173,9 @@ impl Guard {
                     total: space.total,
                     size: space.total,
                     used: space.total.saturating_sub(space.free),
-                    forecast: next.and_then(|start| watched.fill.steady_until(space.free, start)),
+                    // Nor is it told a band Nix's floor keeps it out of.
+                    forecast: next
+                        .and_then(|start| watched.fill.band_in(space.free, start, ahead.nix_floor)),
                     fill_per_hour: watched.fill.trend().map(|trend| trend * 3600.0),
                     full_at: ahead.full_at,
                     nix_floor: ahead.nix_floor,

@@ -19,8 +19,16 @@ pub struct Ahead {
 /// starts collecting only once free space is under its floor and frees as
 /// it goes, so a dip that shallow is neither the disk filling nor at its
 /// floor, and telling when it fills there would warn every time Nix
-/// collects.
+/// collects. It's at most this, and at most half the floor, since a floor
+/// of 10 GiB, as NixOS's, would otherwise leave nothing under it that is
+/// told when it fills.
 pub const COLLECTING_UNDER: u64 = 10 << 30;
+
+/// How far under `floor` free space may dip while Nix collects: the
+/// smaller of `COLLECTING_UNDER` and half the floor.
+pub fn collecting_under(floor: u64) -> u64 {
+    COLLECTING_UNDER.min(floor / 2)
+}
 
 /// What one filesystem's trend says comes next, as its status carries it:
 /// when it's full, and Nix's floor with when it reaches it, the floor only
@@ -131,20 +139,32 @@ impl Fill {
     /// When the disk is full, or when it reaches `floor`, the free space
     /// Nix keeps by collecting its own garbage as it builds, at the trend.
     /// Above the floor only when it reaches it is told, since Nix collects
-    /// there before the disk fills; within `COLLECTING_UNDER` under it
-    /// neither, since Nix is collecting; further under, Nix's collections
-    /// haven't kept up, so when it's full is told.
+    /// there before the disk fills; within `collecting_under` it neither,
+    /// since Nix is collecting; further under, Nix's collections haven't
+    /// kept up, so when it's full is told.
     pub fn ahead(&self, free: u64, floor: Option<u64>) -> Ahead {
         match floor {
             Some(floor) if free > floor => Ahead {
                 full_in: None,
                 floor_in: self.steady_until(free, floor),
             },
-            Some(floor) if free >= floor.saturating_sub(COLLECTING_UNDER) => Ahead::default(),
+            Some(floor) if free >= floor - collecting_under(floor) => Ahead::default(),
             _ => Ahead {
                 full_in: self.steady_until(free, 0),
                 floor_in: None,
             },
+        }
+    }
+
+    /// Seconds until free space reaches a band starting at `start`, at the
+    /// trend, or none where Nix's `floor` keeps it from getting there: a
+    /// band starting under the floor, while free space is above where Nix
+    /// collects, would otherwise be told as coming when Nix stops the
+    /// disk at its floor first.
+    pub fn band_in(&self, free: u64, start: u64, floor: Option<u64>) -> Option<f64> {
+        match floor {
+            Some(floor) if start < floor && free >= floor - collecting_under(floor) => None,
+            _ => self.steady_until(free, start),
         }
     }
 

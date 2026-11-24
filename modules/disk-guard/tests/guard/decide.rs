@@ -168,6 +168,55 @@ fn a_disk_above_nixs_floor_counts_to_the_floor_not_to_full() {
     );
 }
 
+/// NixOS keeps 10 GiB free, as much as a collection dips under the Mac's
+/// 50 GiB, so under it the dip is half the floor: under 5 GiB free the disk
+/// is told when it fills, rather than never.
+#[test]
+fn a_disk_under_nixoss_small_floor_is_told_when_it_fills() {
+    let (fill, _) = filling(30 * GIB, 10e6, 1800);
+    let floor = Some(10 * GIB);
+    assert_eq!(
+        fill.ahead(5 * GIB, floor),
+        Ahead::default(),
+        "half the floor under it, Nix is collecting, so neither"
+    );
+    let under = fill.ahead(GIB, floor);
+    assert_eq!(under.floor_in, None);
+    assert_eq!(
+        under.full_in,
+        fill.steady_until(GIB, 0),
+        "further under, when it fills"
+    );
+    assert!(under.full_in.is_some(), "a filling disk has a time to full");
+}
+
+/// The store's disk above Nix's floor is told no band that starts under
+/// the floor, since Nix stops it there first: a 500 GB Mac's nearly full
+/// starts at 46.6 GiB, under its 50 GiB floor. A band above the floor, or a
+/// disk Nix hasn't kept up on, is told as before.
+#[test]
+fn a_band_under_nixs_floor_isnt_told_as_coming() {
+    let (fill, free) = filling(120 * GIB, 10e6, 1800);
+    let floor = Some(50 * GIB);
+    assert_eq!(fill.band_in(free, 46 * GIB, floor), None);
+    assert_eq!(
+        fill.band_in(free, 60 * GIB, floor),
+        fill.steady_until(free, 60 * GIB),
+        "a band above the floor"
+    );
+    assert_eq!(
+        fill.band_in(free, 46 * GIB, None),
+        fill.steady_until(free, 46 * GIB),
+        "another disk"
+    );
+    assert_eq!(
+        fill.band_in(30 * GIB, 20 * GIB, floor),
+        fill.steady_until(30 * GIB, 20 * GIB),
+        "under where Nix collects, it hasn't kept up"
+    );
+    assert!(fill.band_in(free, 60 * GIB, floor).is_some());
+}
+
 /// A status carries no time to full for the store's disk above Nix's
 /// floor, which is what keeps the desktop's full-in warning quiet, while
 /// another disk keeps its own; at a trend of nothing, nothing is told.
