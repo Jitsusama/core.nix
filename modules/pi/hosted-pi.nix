@@ -22,6 +22,7 @@ let
     ./host-patches/pi-host-runs-through-pi.patch
     ./host-patches/pi-host-yields-between-extensions.patch
     ./host-patches/pi-host-freezes-context-without-a-set.patch
+    ./host-patches/pi-host-says-slow-handlers.patch
   ];
 in
 pkgs.pi-coding-agent.overrideAttrs (old: {

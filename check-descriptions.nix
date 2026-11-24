@@ -3185,6 +3185,12 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
+  pi-hosted-says-slow-handlers = ''
+    pi built with the host's patches, applied exactly, writes one line to stderr for each
+    extension whose handlers for one event took 250 ms or more, its path quoted on one line,
+    for session_start, a cancelling event and resources_discover alike, a throwing handler
+    too, and none for a fast extension or one with no handler for the event
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images

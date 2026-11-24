@@ -1,0 +1,107 @@
+A host says each extension whose handlers for one event took 250 ms or more.
+
+A host's conversation awaits every extension's handlers for an event one
+after another, so its session_start costs the sum of every extension's, and
+one slow extension holds every open, reload and wake behind it. Plain pi's
+own ready lines on a busy machine show 2 to 53 s between loading its
+extensions and binding them, but nothing says which extension the time went
+to: the runner keeps its extensions private.
+
+Time each extension's handlers for an event, in emit and in
+emitResourcesDiscover, and write a line to stderr, which a host's
+conversation sends to its journal, for each one at 250 ms or more:
+pi-host: "PATH" EVENT took N ms. The path is quoted as JSON, so it stays on
+one line. Nothing else changes: the handlers run in the same order, a
+cancel still returns at once, and an error still reaches emitError.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/runner.ts
++++ b/packages/coding-agent/src/core/extensions/runner.ts
+@@ -281,6 +281,20 @@
+ 	return extensions.map((ext) => ({ ext, handlers: ext.handlers.get(event)?.slice() ?? [] }));
+ }
+ 
++// pi-host: an event's handlers run one extension after another, so a conversation's
++// session_start costs the sum of every extension's, and one slow extension holds every
++// open, reload and wake behind it. The runner keeps its extensions private, so nothing
++// outside it can say which one is slow: say it here, on stderr, which a host's
++// conversation sends to its journal, for each extension whose handlers for one event
++// took this long or longer.
++const SLOW_HANDLERS_MS = 250;
++
++function sayIfSlow(ext: Extension, event: ExtensionEvent["type"], startedAt: number): void {
++	const took = performance.now() - startedAt;
++	if (took < SLOW_HANDLERS_MS) return;
++	process.stderr.write(`pi-host: ${JSON.stringify(ext.path)} ${event} took ${Math.round(took)} ms\n`);
++}
++
+ function sameMessages(left: AgentMessage[], right: AgentMessage[]): boolean {
+ 	return left.length === right.length && left.every((message, index) => message === right[index]);
+ }
+@@ -1132,26 +1146,31 @@
+ 		let result: SessionBeforeEventResult | undefined;
+ 
+ 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, event.type)) {
+-			for (const handler of handlers) {
+-				try {
+-					const handlerResult = await handler(event, ctx);
+-
+-					if (this.isSessionBeforeEvent(event) && handlerResult) {
+-						result = handlerResult as SessionBeforeEventResult;
+-						if (result.cancel) {
+-							return result as RunnerEmitResult<TEvent>;
++			const startedAt = performance.now();
++			try {
++				for (const handler of handlers) {
++					try {
++						const handlerResult = await handler(event, ctx);
++
++						if (this.isSessionBeforeEvent(event) && handlerResult) {
++							result = handlerResult as SessionBeforeEventResult;
++							if (result.cancel) {
++								return result as RunnerEmitResult<TEvent>;
++							}
+ 						}
++					} catch (err) {
++						const message = err instanceof Error ? err.message : String(err);
++						const stack = err instanceof Error ? err.stack : undefined;
++						this.emitError({
++							extensionPath: ext.path,
++							event: event.type,
++							error: message,
++							stack,
++						});
+ 					}
+-				} catch (err) {
+-					const message = err instanceof Error ? err.message : String(err);
+-					const stack = err instanceof Error ? err.stack : undefined;
+-					this.emitError({
+-						extensionPath: ext.path,
+-						event: event.type,
+-						error: message,
+-						stack,
+-					});
+ 				}
++			} finally {
++				if (handlers.length > 0) sayIfSlow(ext, event.type, startedAt);
+ 			}
+ 		}
+ 
+@@ -1524,6 +1543,7 @@
+ 		const themePaths: Array<{ path: string; extensionPath: string }> = [];
+ 
+ 		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "resources_discover")) {
++			const startedAt = performance.now();
+ 			for (const handler of handlers) {
+ 				try {
+ 					const event: ResourcesDiscoverEvent = { type: "resources_discover", cwd, reason };
+@@ -1550,6 +1570,7 @@
+ 					});
+ 				}
+ 			}
++			if (handlers.length > 0) sayIfSlow(ext, "resources_discover", startedAt);
+ 		}
+ 
+ 		return { skillPaths, promptPaths, themePaths };

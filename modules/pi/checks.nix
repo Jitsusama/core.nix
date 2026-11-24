@@ -378,6 +378,16 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi says on stderr each extension whose handlers for one event
+  # took 250 ms or more, so a slow open names the extension it waited on.
+  pi-hosted-says-slow-handlers =
+    pkgs.runCommandLocal "pi-hosted-says-slow-handlers" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-says-slow-handlers.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
