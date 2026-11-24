@@ -1027,10 +1027,10 @@ QtObject {
         expect("its window named by the index alone, it opens", Viewers.viewersDue(alone,
             [hosted("moved", laid(4, 3))], 10, unlisted).open.map(one => one.into),
             [{ workspace: 4, column: 3 }]);
-        const slept = { moved: { workspace: 4, column: 3, at: 0, slept: true, asleep: true,
+        const woken = { moved: { workspace: 4, column: 3, at: 0, slept: true, asleep: true,
             asked: true } };
         expect("a sleeper woken, its window named by the index alone, opens",
-            Viewers.viewersDue(slept, [hosted("moved", laid(4, 3))], 5, unlisted).open
+            Viewers.viewersDue(woken, [hosted("moved", laid(4, 3))], 5, unlisted).open
                 .map(one => one.into), [{ workspace: 4, column: 3 }]);
 
         // One Reopen Them All kept while Joel was on its workspace, with
