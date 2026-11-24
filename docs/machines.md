@@ -382,8 +382,10 @@ that names nothing while the folder under the top it names still stands, and
 on a waiting line listed more often than it's found, so the list only shrinks.
 It reads whole-line comments in the languages code-health's stale.rs knows:
 `//` lines in Rust, JavaScript, TypeScript, QML and C, `#` lines in Nix,
-shell, Python, TOML and YAML, Nix's block comments, and Python's
-docstrings, not markdown.
+shell, Python, TOML and YAML, block comments opening a line in Nix and the
+five that use `//`, and Python's docstrings, plain or with up to two of the
+r, b, f and u prefixes, where a statement starts (a module's top, or past
+a line ending with a colon); not markdown.
 
 Every folder says what it holds, as core's do, through another:
 
