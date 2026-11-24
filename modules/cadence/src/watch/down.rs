@@ -614,13 +614,14 @@ impl Tell {
 }
 
 /// What `program` prints given `args`, or an error when it fails or is
-/// still running after `within`, when it's stopped.
+/// still running after `within`, when it's stopped. Its own complaints go
+/// to cadence's journal as it says them, so a failure says why.
 pub fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> {
     let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()?;
     let mut out = child.stdout.take().expect("its output was piped");
     // Read beside the wait, so an answer past a pipe's buffer can't stall
