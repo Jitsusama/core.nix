@@ -255,27 +255,40 @@ fn parts(line: &Line, runs: &[(usize, Option<usize>)], said: Vec<Word>) -> Vec<(
         .collect()
 }
 
-/// The words in each run, by when each was said, a word inside a bracket
-/// opened before it kept with the word before.
+/// The words in each run, as [`runs_of`] gives them.
 fn in_runs(runs: &[(usize, Option<usize>)], said: Vec<Word>) -> Vec<Vec<Word>> {
+    let starts: Vec<usize> = runs.iter().map(|&(start, _)| start).collect();
     let mut in_runs: Vec<Vec<Word>> = runs.iter().map(|_| Vec::new()).collect();
-    let mut depth = 0_usize;
-    let mut last = 0;
-    for word in said {
-        if depth == 0 {
-            let by_time = runs.iter().rposition(|&(start, _)| start <= word.at);
-            last = by_time.unwrap_or(0).max(last);
-        }
-        for c in word.text.chars() {
-            match c {
-                '[' | '(' => depth += 1,
-                ']' | ')' => depth = depth.saturating_sub(1),
-                _ => {}
-            }
-        }
-        in_runs[last].push(word);
+    for (run, word) in runs_of(&starts, &said).into_iter().zip(said) {
+        in_runs[run].push(word);
     }
     in_runs
+}
+
+/// Which of the runs starting at `starts` each of `said` is in: the last
+/// to start by when it was said, never one before the word before's, and
+/// a word inside a bracket opened before it kept with the word before,
+/// so a note is never cut. Hearing a take judges its pieces' words by it
+/// too (hear.rs), so a piece counts as speech only where a part could.
+pub fn runs_of(starts: &[usize], said: &[Word]) -> Vec<usize> {
+    let mut depth = 0_usize;
+    let mut last = 0;
+    said.iter()
+        .map(|word| {
+            if depth == 0 {
+                let by_time = starts.iter().rposition(|&start| start <= word.at);
+                last = by_time.unwrap_or(0).max(last);
+            }
+            for c in word.text.chars() {
+                match c {
+                    '[' | '(' => depth += 1,
+                    ']' | ')' => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+            last
+        })
+        .collect()
 }
 
 /// Words, a space between each.
