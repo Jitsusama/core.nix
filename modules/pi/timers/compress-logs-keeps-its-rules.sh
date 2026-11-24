@@ -78,7 +78,9 @@ fail() {
 old_log() {
   local sessions=$work/$1
   mkdir -p "$sessions/project"
-  head -c 100000 /dev/zero | tr '\0' 'a' > "$sessions/project/$1.jsonl"
+  local text
+  printf -v text '%100000s' ''
+  printf '%s' "${text// /a}" > "$sessions/project/$1.jsonl"
   touch -d '5 days ago' "$sessions/project/$1.jsonl"
   echo "$sessions"
 }
@@ -103,7 +105,10 @@ head -c 1000 /dev/zero > "$sessions/project/small.jsonl"
 touch -d '5 days ago' "$sessions/project/small.jsonl"
 rewrite "$sessions"
 [ "$status" -eq 0 ] || fail "over a young log and a small one the rewrite ended $status, not 0: $said"
-[ -s "$work/calls" ] && fail "a young log or a small one reached btrfs: $(cat "$work/calls")"
+if [ -s "$work/calls" ]; then
+  calls=$(cat "$work/calls")
+  fail "a young log or a small one reached btrfs: $calls"
+fi
 
 # A log already compressed enough is left alone.
 sessions=$(old_log packed)
@@ -126,7 +131,8 @@ case $said in
 *"couldn't rewrite $sessions/project/failing.jsonl compressed"*) ;;
 *) fail "a failed rewrite didn't say it couldn't rewrite the log: $said" ;;
 esac
-[ "$(cksum < "$sessions/project/failing.jsonl")" = "$before" ] || fail "a failed rewrite changed the log"
+after=$(cksum < "$sessions/project/failing.jsonl")
+[ "$after" = "$before" ] || fail "a failed rewrite changed the log"
 
 # A rewrite that leaves a byte different, length and time kept, ends 1.
 sessions=$(old_log flipped)
