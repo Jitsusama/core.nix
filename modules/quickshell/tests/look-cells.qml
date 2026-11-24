@@ -161,6 +161,17 @@ QtObject {
         // digits. The look names the six-letter address it went by then.
         const lookOld = { session: "01a1dd5c-1372-7422-ab6f-f984e1921aab", quest: "Q-1",
             address: "87KI6A" };
+        // The session still held that left it carries its id, so it is
+        // found by that id whether or not the cell is worked out from it.
+        const leftOld = { address: "E1921AAB", presence: { session: lookOld.session,
+            quest: "Q-1" } };
+        expect("an old look naming no cell, the held session that left it",
+            Looks.cellFor(lookOld, {}, [heir, leftOld], []).address, "E1921AAB");
+        expect("and Joel's answer goes there too",
+            (Looks.answer(lookOld, { value: "yes" }, leftOld, now) ?? {}).address, "E1921AAB");
+        // What the worked-out cell adds: the daemon's record of where it
+        // went (below), and a session going by that address under another
+        // id, which only the worked-out cell finds, as `derived` does.
         const derived = { address: "E1921AAB", presence: { session: "s-8", quest: "Q-1" } };
         expect("an old look naming no cell, the cell its session goes by",
             Looks.cellFor(lookOld, {}, [heir, derived], []).address, "E1921AAB");

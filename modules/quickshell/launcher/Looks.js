@@ -236,7 +236,8 @@ const ADDRESS_DIGITS = 8;
 // (lib/mesh/address.ts's sessionAddress: its last eight hex digits, in
 // capitals), though it went by another as it left the look, so a look
 // still waiting from then is led as a new one is;
-// else "", for one naming no session of pi's.
+// else "", for one naming no session of pi's. A held session that left it is found by
+// its id anyway; this adds the daemon's record (cellGoes) and one going by it anew.
 function cellNamed(one) {
     if (typeof one.cell === "string" && one.cell !== "") {
         return one.cell;
