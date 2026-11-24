@@ -52,7 +52,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pineapple::deaf::{self, Change, Deaf, Deafness, Round, Search, Waiting};
-use pineapple::ears::{Api, Through};
+use pineapple::ears::{Api, Skipped, Through};
 use pineapple::judged::{self, Afresh, Judged};
 use pineapple::mcp::Gateway;
 use pineapple::sign_in::{self, ran_over};
@@ -428,6 +428,26 @@ fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
     }
 }
 
+/// Tells Joel, in a row of its own in `file`, that what `search` read on
+/// past was never read, so he can look for a stop said then.
+fn tell_missed(file: &Path, search: Search, skipped: Skipped) {
+    let at = millis();
+    let millis_of = |micros: u128| u64::try_from(micros / 1000).ok();
+    let (from, to) = (
+        skipped.from.and_then(millis_of),
+        skipped.to.and_then(millis_of),
+    );
+    let row = deaf::missed(search, from, to, at);
+    let why = row["why"].as_str().unwrap_or_default().to_owned();
+    match deaf::keep_missed(file, row, at) {
+        Ok(()) => eprintln!("<5>wrote Joel's row in {}: {why}", file.display()),
+        Err(error) => eprintln!(
+            "<3>couldn't write Joel's row in {}: {why}: {error}",
+            file.display()
+        ),
+    }
+}
+
 /// The reader, which runs until its service stops it.
 fn run(how: &Run) -> Result<(), Failure> {
     let credentials = credentials();
@@ -518,6 +538,8 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         file: state.join("waiting.json"),
         refused: None,
     };
+    // Beside it, what a search read on past, which nothing takes away.
+    let missed = state.join("missed.json");
     let mut through = Through::new(Gateway::new(url, program));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::new();
@@ -535,6 +557,14 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         if let Some(user) = &me {
             through.told(round::PHRASE, deaf.tells(Search::Phrase));
             through.told(&round::tag(user), deaf.tells(Search::Tag));
+            for (query, search) in [
+                (round::PHRASE.to_owned(), Search::Phrase),
+                (round::tag(user), Search::Tag),
+            ] {
+                if let Some(skipped) = through.skipped(&query) {
+                    tell_missed(&missed, search, skipped);
+                }
+            }
         }
         std::thread::sleep(how.every);
     }

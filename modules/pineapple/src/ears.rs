@@ -150,6 +150,20 @@ pub struct Through {
     /// What each search's last answer, by its query, gave that it
     /// couldn't read.
     unread: HashMap<String, Unread>,
+    /// What each search, by its query, read on past and never read, till
+    /// the reader takes it to tell Joel.
+    skipped: HashMap<String, Skipped>,
+}
+
+/// What a search read on past, so never read: from a minute before the
+/// last read to the oldest message its answer gave, each in microseconds
+/// since 1970, or unknown when a stamp couldn't be read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Skipped {
+    /// Where what's never read begins.
+    pub from: Option<u128>,
+    /// Where it ends, from which on all was read.
+    pub to: Option<u128>,
 }
 
 impl Through {
@@ -161,7 +175,14 @@ impl Through {
             gaps: HashMap::new(),
             told: HashSet::new(),
             unread: HashMap::new(),
+            skipped: HashMap::new(),
         }
+    }
+
+    /// What the search for `query` last read on past, taken so it's told
+    /// once.
+    pub fn skipped(&mut self, query: &str) -> Option<Skipped> {
+        self.skipped.remove(query)
     }
 
     /// Whether the row Joel has, as written, says the search for `query`
@@ -367,14 +388,14 @@ impl Through {
                 .filter(|message| !found.contains(message))
                 .collect();
             // A page that doesn't meet the one after it leaves unread what
-            // was said between the two, though what it gives was agreed.
+            // was said between the two, though what it gives was agreed, so
+            // it's kept to judge beside what's found.
             if !meets {
                 let why = format!(
                     "its page before {before} doesn't hold {:?}, the oldest of the one after it",
                     oldest.ts
                 );
-                found.extend(older);
-                found.sort_by_key(|message| slack::micros(&message.ts));
+                self.unread.entry(query.to_owned()).or_default().agreed = older;
                 return Ok((found, Some(why)));
             }
             if older.is_empty() && !whole {
@@ -453,31 +474,32 @@ impl Ears for Through {
         // Fewer than asked for, never cut, is every message it finds. Any
         // other must reach a minute before the last read, even one holding
         // it, or its pages before must.
-        let (found, short) = if holds_all(found.len(), &cuts) {
+        let (mut found, short) = if holds_all(found.len(), &cuts) {
             (found, None)
         } else {
             self.paged(query, back_to, found)?
         };
         if let Some(short) = short {
-            let oldest = found.first().map_or("", |message| message.ts.as_str());
+            let oldest = found.first().map(|message| message.ts.clone());
             let unheard = format!(
-                "back to {oldest:?}, it leaves unread what was said from a minute before \
-                 {back_to} to then, as {short}"
+                "back to {:?}, it leaves unread what was said from a minute before {back_to} to \
+                 then, as {short}",
+                oldest.as_deref().unwrap_or_default()
             );
+            // What a page that doesn't meet the one after it gave was agreed,
+            // so it's judged with the rest, though the span before the oldest
+            // of the one after it stays unread; what a page that can't be
+            // read gave is kept for its stops.
+            let paged = self.unread.remove(query).unwrap_or_default();
+            found.extend(paged.agreed);
+            found.sort_by_key(|message| slack::micros(&message.ts));
             let gaps = self.gaps.entry(query.to_owned()).or_default();
             *gaps = gaps.saturating_add(1);
             if *gaps <= deaf::ROUNDS || !self.told.contains(query) {
                 let unheard = cut_to(unheard);
-                // What a page that can't be read gave is kept beside the
-                // pages agreed, for its stops.
-                let unagreed = self
-                    .unread
-                    .remove(query)
-                    .map(|unread| unread.unagreed)
-                    .unwrap_or_default();
                 let found = Unread {
                     agreed: found,
-                    unagreed,
+                    unagreed: paged.unagreed,
                 };
                 self.unread.insert(query.to_owned(), found);
                 return Err(unread(unheard));
@@ -487,6 +509,13 @@ impl Ears for Through {
                  what was said then is never read",
                 cut_to(unheard)
             );
+            // Kept for a row of its own, as the row saying it can't be read
+            // goes once Slack is heard, and this span never is.
+            let skipped = Skipped {
+                from: slack::micros(back_to).map(|at| at.saturating_sub(FOUND_LATE)),
+                to: oldest.as_deref().and_then(slack::micros),
+            };
+            self.skipped.insert(query.to_owned(), skipped);
         } else if found.len() > asked {
             eprintln!(
                 "<5>the gateway's search for {query:?} read {} messages in pages, back to the \

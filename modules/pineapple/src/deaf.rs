@@ -19,6 +19,11 @@
 //! judged: a cause only one search meets would otherwise keep both deaf
 //! for as long as it lasts. One both searches meet still keeps both
 //! deaf.
+//!
+//! A search a gateway's answers leave a gap in is read on past it once
+//! Joel's row says so ([`crate::ears::Through`]), and that span is never
+//! read. So it's said in a row of its own ([`missed`]), kept a week in a
+//! file the reader's stop leaves, until Joel says he has looked.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -373,4 +378,104 @@ pub fn make(file: &Path, change: &Change) -> std::io::Result<()> {
         },
         Change::Keep => Ok(()),
     }
+}
+
+/// How long a row saying what was never read is kept, in milliseconds:
+/// a week, long past when Joel would look for a stop said then.
+const MISSED_FOR: u64 = 7 * 24 * 60 * 60 * 1000;
+
+/// What names each row saying what was never read.
+const MISSED: &str = "pineapple-slack-missed-";
+
+/// The row saying what `search` read on past is never read, from `from`
+/// to `to`, each in milliseconds since 1970 or unknown, as Joel reads it
+/// when it's raised, `at`: as minutes before then, so no zone is named.
+/// No round reads that span, so only Joel's word marks it done, and it's
+/// named for its search and `at`, so each span is a row of its own.
+#[must_use]
+pub fn missed(search: Search, from: Option<u64>, to: Option<u64>, at: u64) -> Value {
+    let ago = |then: u64| at.saturating_sub(then);
+    let span = match (
+        from.map(|from| ago(from).div_ceil(60_000)),
+        to.map(|to| ago(to) / 60_000),
+    ) {
+        (Some(from), Some(to)) if to > 0 && to < from => {
+            format!("from {from} to {} before this was raised", minutes(to))
+        }
+        (Some(from), _) => format!("in the {} before this was raised", minutes(from)),
+        (None, _) => "before this was raised, since when it last read can't be told".to_owned(),
+    };
+    let (name, unheard, step) = match search {
+        Search::Phrase => (
+            "phrase",
+            "said pineapple in Slack without tagging you",
+            "Search Slack for pineapple, for a stop said then",
+        ),
+        Search::Tag => (
+            "tag",
+            "tagged you in Slack without saying pineapple",
+            "Look in Slack's Activity for a stop that mentioned you then",
+        ),
+    };
+    json!({
+        "id": format!("{MISSED}{name}-{at}"),
+        "title": "The Safe Word Missed Part of Slack",
+        "why": format!(
+            "The safe word never read what {unheard} {span}, as more was said than it could \
+             read, so a stop said then wasn't heard"
+        ),
+        "raisedAt": slack_people::messages::iso(at),
+        "minutes": 2,
+        "ready": true,
+        "doneWhen": {"by": "person"},
+        "steps": [step],
+    })
+}
+
+fn minutes(count: u64) -> String {
+    if count == 1 {
+        "1 minute".to_owned()
+    } else {
+        format!("{count} minutes")
+    }
+}
+
+/// Adds `row`, raised `at` in milliseconds, to the rows in `file` saying
+/// what was never read, keeping those raised in the [`MISSED_FOR`] before.
+/// It's a file of its own, which the reader's stop doesn't take away as it
+/// does the row saying it can't hear, since what it says stays true once
+/// the reader hears again or restarts. A file that can't be read holds no
+/// row it keeps.
+///
+/// # Errors
+///
+/// Why it couldn't be written.
+pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
+    let kept = std::fs::read(file)
+        .ok()
+        .and_then(|read| serde_json::from_slice::<Value>(&read).ok());
+    let recent = |row: &Value| {
+        row["id"]
+            .as_str()
+            .and_then(|id| id.strip_prefix(MISSED))
+            .and_then(|named| named.rsplit('-').next())
+            .and_then(|raised| raised.parse::<u64>().ok())
+            .is_some_and(|raised| raised.saturating_add(MISSED_FOR) >= at)
+    };
+    let mut rows: Vec<Value> = kept
+        .as_ref()
+        .and_then(|kept| kept["items"].as_array())
+        .into_iter()
+        .flatten()
+        .filter(|row| recent(row))
+        .cloned()
+        .collect();
+    rows.push(row);
+    let file_of = json!({
+        "v": 2,
+        "updated": slack_people::messages::iso(at),
+        "quest": "pineapple",
+        "items": rows,
+    });
+    make(file, &Change::Tell(file_of))
 }

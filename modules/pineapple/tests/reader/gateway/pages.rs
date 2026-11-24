@@ -146,6 +146,11 @@ fn a_gap_read_in_pages_back_to_the_last_read_is_read_untold() {
          and the journal says so: {}",
         came.journal
     );
+    assert!(
+        came.missed.is_null(),
+        "nothing was read on past, so no row says so: {:?}",
+        came.missed
+    );
     let began = BEGAN.load(Ordering::SeqCst);
     let bounds = bounds(&came.searched);
     assert!(
@@ -174,9 +179,12 @@ fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
                 in_pages(&TAGS, asked, began, &paged(began, &stop), 3, false)
             }
         },
+        // A round is three searches, then six once there's a gap: five
+        // rounds and the next's first, past the read on, as what the pages
+        // gave is judged before it.
         &Until {
             judging: 6,
-            asks: 0,
+            asks: 28,
             read_at: None,
         },
     );
@@ -198,6 +206,12 @@ fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
         "what both pages gave was agreed, so each is judged while the span between them is \
          unread, the one Slack found late among them: {}",
         came.journal
+    );
+    assert_eq!(
+        came.missed["items"].as_array().map(Vec::len),
+        Some(1),
+        "what it read on past is a row of its own: {:?}",
+        came.missed
     );
 }
 

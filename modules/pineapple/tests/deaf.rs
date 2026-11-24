@@ -5,8 +5,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use pineapple::deaf::{
-    Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, make, refuses_the_sign_in, waiting,
-    waits,
+    Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
+    refuses_the_sign_in, waiting, waits,
 };
 
 const AT: u64 = 1_795_000_000_000;
@@ -471,4 +471,82 @@ fn the_row_goes_where_a_whole_name_says_and_a_part_name_is_said() {
             "{part:?} names nothing, and is kept to be said"
         );
     }
+}
+
+const MINUTE: u64 = 60_000;
+
+#[test]
+fn what_was_never_read_is_said_as_minutes_before_the_row() {
+    let tag = missed(
+        Search::Tag,
+        Some(AT - 41 * MINUTE + 1),
+        Some(AT - 13 * MINUTE),
+        AT,
+    );
+    assert_eq!(
+        tag["why"],
+        "The safe word never read what tagged you in Slack without saying pineapple from 41 to \
+         13 minutes before this was raised, as more was said than it could read, so a stop said \
+         then wasn't heard",
+        "a span begun part way into a minute is said from the whole one"
+    );
+    assert_eq!(tag["id"], format!("pineapple-slack-missed-tag-{AT}"));
+    assert_eq!(
+        tag["doneWhen"],
+        serde_json::json!({"by": "person"}),
+        "no round reads it again, so only Joel says he has looked"
+    );
+    let phrase = missed(Search::Phrase, Some(AT - MINUTE), Some(AT - 10), AT);
+    assert_eq!(
+        phrase["why"],
+        "The safe word never read what said pineapple in Slack without tagging you in the 1 \
+         minute before this was raised, as more was said than it could read, so a stop said \
+         then wasn't heard",
+        "one ending this minute is said up to the row"
+    );
+    assert_eq!(phrase["id"], format!("pineapple-slack-missed-phrase-{AT}"));
+    assert!(
+        missed(Search::Tag, None, Some(AT - MINUTE), AT)["why"]
+            .as_str()
+            .is_some_and(|why| why.contains(
+                "before this was raised, since when it last read can't be told, as more"
+            )),
+        "and one with no last read it can tell is said with no minutes"
+    );
+}
+
+#[test]
+fn each_span_never_read_is_kept_a_week_beside_the_others() {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-file-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    std::fs::write(&file, "not JSON").expect("a file it can't read");
+    let week = 7 * 24 * 60 * MINUTE;
+    let row = |search, at| missed(search, Some(at - MINUTE), Some(at - 10), at);
+    let first = AT - week - 1;
+    keep_missed(&file, row(Search::Tag, first), first).expect("written over what it can't read");
+    keep_missed(&file, row(Search::Phrase, AT - week), AT - week).expect("written");
+    keep_missed(&file, row(Search::Tag, AT), AT).expect("written");
+    let read: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&file).expect("read")).expect("JSON");
+    let ids: Vec<_> = read["items"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|row| row["id"].clone())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            format!("pineapple-slack-missed-phrase-{}", AT - week),
+            format!("pineapple-slack-missed-tag-{AT}"),
+        ],
+        "one raised a week ago stays, one older goes, and the newest joins them"
+    );
+    assert_eq!(read["quest"], "pineapple", "in the shape For You reads");
+    let _ = std::fs::remove_dir_all(&folder);
 }

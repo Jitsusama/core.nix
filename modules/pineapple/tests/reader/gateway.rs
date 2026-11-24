@@ -430,6 +430,8 @@ struct Came {
     searched: Vec<Value>,
     journal: String,
     wrote_live: bool,
+    /// Its rows saying what a search read on past was never read.
+    missed: Value,
 }
 
 fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
@@ -517,6 +519,7 @@ fn hearing_in(answer: fn(&str, &Value, u64) -> String, until: &Until, before: fn
         searched: asks,
         journal: journal(&home),
         wrote_live: named.exists(),
+        missed: read("missed.json"),
     };
     std::fs::remove_dir_all(&home).expect("the case's home goes");
     came

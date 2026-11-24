@@ -334,6 +334,25 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
         ["nothing", "nothing", "nothing", "stop"],
         "and the stop the gap gave is judged, as an ask for one fewer agreed with it"
     );
+    let rows = came.missed["items"].as_array().cloned().unwrap_or_default();
+    let why = rows
+        .first()
+        .map_or("", |row| row["why"].as_str().unwrap_or_default());
+    assert!(
+        rows.len() == 1
+            && rows[0]["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("pineapple-slack-missed-tag-"))
+            && why.starts_with(
+                "The safe word never read what tagged you in Slack without saying pineapple \
+                 from "
+            )
+            && why.contains(" minutes before this was raised"),
+        "what it read on past is a row of its own, naming the span, as the row saying it \
+         can't be read goes once it hears: {:?}\n{}",
+        came.missed,
+        came.journal
+    );
 }
 
 #[test]
