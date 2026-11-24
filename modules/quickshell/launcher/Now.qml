@@ -1274,8 +1274,19 @@ Provider {
             later: true,
             run: () => provider.goToCell(one)
         })]);
+        // A terminal look's own Open goes to the cell's window (openLook), so
+        // Explain It may point to it under the name its row shows.
+        const beside = acts.map(act => act.name)
+            .concat(one.kind === "terminal" ? [lookOpenName(one)] : []);
         return source("ask") === null ? acts : acts.concat([explainAct(
-            `verb:on:waiting:explain:on:look:${one.id}`, cell, acts.map(act => act.name))]);
+            `verb:on:waiting:explain:on:look:${one.id}`, cell, beside)]);
+    }
+
+    // What a look's Open is named on its row: in the look's own words where
+    // it says them, else Go To for a terminal's and Open for any other's.
+    function lookOpenName(one) {
+        const opens = one.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
+        return LookForm.actOf(one, lookActNames) || Words.name(opens);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
@@ -1564,7 +1575,7 @@ Provider {
             // What Joel presses, in the look's own words where it says them;
             // the verb stays the launcher's, since the foot and the : line
             // read a verb as what an act does, never a look's to choose.
-            name: LookForm.actOf(one, provider.lookActNames) || Words.name(opens),
+            name: provider.lookOpenName(one),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
