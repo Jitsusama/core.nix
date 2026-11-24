@@ -18,7 +18,7 @@
 //! builder, and a failed write can't move a script's time on.
 
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -42,14 +42,28 @@ pub struct Named {
 /// `now`: what to keep, when it differs from `kept`, and the scripts before
 /// it that a builder may still run. Each earlier script is trusted on a
 /// builder made before the one after it was named, for [`DRAINS_FOR`]
-/// after that; one past it is dropped.
+/// after that; one past it is dropped. A script named again is kept as a
+/// new entry beside its old one, so the window of each script before it
+/// stays where its change closed it, rather than stretching to the new
+/// naming; today's script is never among those before.
 pub fn named(kept: &[Named], script: &str, now: i64) -> (Option<Vec<Named>>, Vec<Earlier>) {
+    named_at(kept, script, now, now)
+}
+
+/// [`named`], with `script`, when new, named as of `since` rather than
+/// `now`: when it was first asked after, though the record couldn't be
+/// read until now.
+fn named_at(
+    kept: &[Named],
+    script: &str,
+    since: i64,
+    now: i64,
+) -> (Option<Vec<Named>>, Vec<Earlier>) {
     let mut all = kept.to_vec();
     if all.last().is_none_or(|last| last.script != script) {
-        all.retain(|one| one.script != script);
         all.push(Named {
             script: script.to_owned(),
-            since: now,
+            since,
         });
     }
     let afters: Vec<i64> = all.iter().skip(1).map(|one| one.since).collect();
@@ -58,6 +72,7 @@ pub fn named(kept: &[Named], script: &str, now: i64) -> (Option<Vec<Named>>, Vec
     for (one, after) in all.iter().zip(afters.iter().map(Some).chain([None])) {
         match after {
             Some(&after) if now >= after + DRAINS_FOR => {}
+            Some(_) if one.script == script => keep.push(one.clone()),
             Some(&after) => {
                 keep.push(one.clone());
                 earlier.push(Earlier {
@@ -115,7 +130,14 @@ fn write(file: &Path, named: &[Named]) -> Result<(), String> {
         .map(|one| json!({"script": one.script, "since": one.since}))
         .collect();
     let draft = file.with_extension("draft");
-    fs::write(&draft, Value::Array(list).to_string())
+    // The draft reaches the disk before it takes the file's name, so a
+    // power loss just after a switch leaves the old record or the new,
+    // never an empty one that would cut every builder at the next change.
+    fs::File::create(&draft)
+        .and_then(|mut made| {
+            made.write_all(Value::Array(list).to_string().as_bytes())?;
+            made.sync_all()
+        })
         .and_then(|()| fs::rename(&draft, file))
         .map_err(|error| format!("{}: {error}", file.display()))
 }
@@ -130,6 +152,10 @@ pub struct Record {
     unwritten: bool,
     /// What last went wrong with the file, none once it's kept again.
     pub trouble: Option<String>,
+    /// The script first asked after, and when, so one asked while the file
+    /// can't be read is named as of then once it can, not as of the first
+    /// read that works.
+    asked: Option<(String, i64)>,
 }
 
 impl Record {
@@ -139,6 +165,13 @@ impl Record {
     /// cutting every builder at each later change; one that can't be read
     /// trusts only `script` until it can. Either is said in `trouble`.
     pub fn earlier(&mut self, file: &Path, script: &str, now: i64) -> Vec<Earlier> {
+        let since = match &self.asked {
+            Some((asked, at)) if asked == script => *at,
+            _ => {
+                self.asked = Some((script.to_owned(), now));
+                now
+            }
+        };
         let mut trouble = None;
         let kept = match self.named.take() {
             Some(kept) => kept,
@@ -155,7 +188,7 @@ impl Record {
                 }
             },
         };
-        let (changed, earlier) = named(&kept, script, now);
+        let (changed, earlier) = named_at(&kept, script, since, now);
         self.unwritten |= changed.is_some();
         let known = changed.unwrap_or(kept);
         if self.unwritten {
@@ -234,8 +267,8 @@ mod tests {
         let (changed, earlier) = named(&[one("a", 100), one("b", 200)], "a", 300);
         assert_eq!(
             changed,
-            Some(vec![one("b", 200), one("a", 300)]),
-            "a script named again kept its first time"
+            Some(vec![one("a", 100), one("b", 200), one("a", 300)]),
+            "a script named again wasn't kept anew beside its first naming"
         );
         assert_eq!(
             earlier,
@@ -244,6 +277,34 @@ mod tests {
                 made_before: 300
             }],
             "the script between wasn't the one trusted before"
+        );
+    }
+
+    #[test]
+    fn a_script_named_again_stretches_no_window_before_it() {
+        let kept = [one("x", 100), one("a", 200), one("b", 300)];
+        let (_, earlier) = named(&kept, "a", 400);
+        assert_eq!(
+            earlier,
+            vec![
+                Earlier {
+                    script: "x".to_owned(),
+                    made_before: 200
+                },
+                Earlier {
+                    script: "b".to_owned(),
+                    made_before: 400
+                },
+            ],
+            "naming a again moved x's window past the change that closed it"
+        );
+        assert_eq!(
+            named(&kept, "a", 200 + DRAINS_FOR).1,
+            vec![Earlier {
+                script: "b".to_owned(),
+                made_before: 200 + DRAINS_FOR
+            }],
+            "x outlived its drain once a was named again"
         );
     }
 
@@ -350,13 +411,19 @@ mod tests {
         fs::remove_dir(&file).expect("couldn't clear the folder");
         fs::write(&file, "[{\"script\":\"a\",\"since\":100}]").expect("the record");
         assert_eq!(
-            record.earlier(&file, "b", 500),
+            record.earlier(&file, "b", 900),
             a_and_then_b(),
-            "the record wasn't read again once it could be"
+            "the record wasn't read again once it could be, or b was named as of \
+             the first read that worked rather than when it was first asked after"
         );
         assert_eq!(
             record.trouble, None,
             "a record read again was still said to fail"
+        );
+        assert_eq!(
+            read(&file),
+            Ok(vec![one("a", 100), one("b", 500)]),
+            "b wasn't kept as of when it was first asked after"
         );
     }
 
