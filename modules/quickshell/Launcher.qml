@@ -411,7 +411,8 @@ Scope {
         keysWeighing = 0;
         drawerJoining = 0;
         readingBegun();
-        // A list shown afresh shows all it has, so nothing waits.
+        // A list shown afresh at the top shows all it has, so nothing
+        // waits; a held step's own listing counts what it still leaves out.
         if (!steadying || ordering)
             waitingRows = 0;
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
@@ -5440,8 +5441,9 @@ Scope {
     // rows, they hold still: what arrives waits, counted in the foot as
     // "2 new", and comes in at the end once it ends, as a refresh adds it
     // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05). A row For
-    // You gets of no cell waits so too, until it's shown afresh, since at
-    // the end it would read as the last cell's (Steady.js's laidAgain).
+    // You gets of no cell waits so too, until the launcher next opens or
+    // a search finds it, since at the end it would read as the last
+    // cell's (Steady.js's laidAgain).
     readonly property bool holdingRows: open && (visual || pendingSaid !== ""
         || commanding !== null)
     property int waitingRows: 0
@@ -5450,6 +5452,23 @@ Scope {
     onHoldingRowsChanged: {
         if (!holdingRows && waitingRows > 0)
             reshow(held.length);
+    }
+
+    // The rows a search found this opening, by the steps to the list it
+    // searched and their ids, so one that waited unseen stays seen however
+    // many lists are shown after (Steady.seenAmong): searched again, or
+    // stepped into and back out of. Plain, so keeping notifies nothing,
+    // and let go as the launcher closes.
+    property var seenFound: ({})
+    function seenHere(rows) {
+        const here = seenFound[stepsTaken] ?? {};
+        for (const row of rows)
+            here[steadyId(row)] = true;
+        seenFound[stepsTaken] = here;
+        return rows;
+    }
+    function foundHere() {
+        return Object.keys(seenFound[stepsTaken] ?? {});
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -7177,10 +7196,10 @@ Scope {
             // unseen, counted, as a held step's rows do, but for one what
             // was typed found, which has been seen (Steady.seenAmong).
             const standing = words.length === 0 && (!steadying || ordering)
-                ? Steady.seen(Steady.seenAmong(offered, matches, steadyId))
+                ? Steady.seen(Steady.seenAmong(offered, foundHere(), steadyId))
                 : { rows: offered.slice(), waiting: 0 };
             root.found = words.length === 0 ? standing.rows
-                : Steady.searched(inCategory(letters));
+                : seenHere(Steady.searched(inCategory(letters)));
             const foundAt = Date.now();
             compose(!steadying);
             if (!steadying || ordering)
@@ -7229,19 +7248,19 @@ Scope {
             // its end, where they'd read as the last cell's; steadied, they
             // stay in, for the refresh to withhold and count. One what was
             // typed found has been seen, so it stays as what's typed is
-            // taken away, the selection on it (Steady.seenAmong).
+            // taken away, the selection on it, and after (Steady.seenAmong).
             else if (words.length === 0 && !holdsWords) {
-                const standing = Steady.seen(Steady.seenAmong(offered, matches, steadyId));
+                const standing = Steady.seen(Steady.seenAmong(offered, foundHere(), steadyId));
                 found = steadying && !ordering ? offered.slice() : standing.rows;
                 unseen = standing.waiting;
             } else if (held[held.length - 1].row.finds)
-                found = Steady.searched(held[held.length - 1].row.finds(letters));
+                found = seenHere(Steady.searched(held[held.length - 1].row.finds(letters)));
             else
-                found = Steady.searched((held[held.length - 1].row.typed?.(letters) ?? [])
+                found = seenHere(Steady.searched((held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
                         row.offers && row.verbs ? row.verbs() : []), []), letters,
                         picks.weights(Rank.stepped(held[held.length - 1].row.key ?? "",
-                            letters)))));
+                            letters))))));
             found = found.concat(stillActed(found));
             answer = null;
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
@@ -10243,7 +10262,8 @@ Scope {
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
             // How many rows wait unseen (waitingRows): behind rows held still
-            // (holdingRows), or For You's of no cell, until it's shown afresh.
+            // (holdingRows), or For You's of no cell, until the launcher next
+            // opens or a search finds it.
             waiting: root.waitingRows,
             begun: prompt.standing.typed.join(""),
             // The command line, while it's open: what it holds, the line
@@ -11250,11 +11270,12 @@ Scope {
         // and a key listed without answers is late only while its
         // opening waits on them: kept, the next unheld answer, maybe hours
         // on, would say it came that late (answersLate). What waited to be
-        // shown afresh is, at the next.
+        // shown afresh is, at the next, as is what its searches found.
         if (!open) {
             prompt.unlinked();
             answersLate = null;
             waitingRows = 0;
+            seenFound = {};
         }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.

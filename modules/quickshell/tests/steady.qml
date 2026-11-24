@@ -420,14 +420,24 @@ QtObject {
         // What's typed taken away, the row a search found has been seen, so
         // the step's rows as they stand show it and count nothing new; one
         // the search didn't find still waits.
-        const clearedSeen = Steady.seen(Steady.seenAmong(unheaded(lateStep), typedFound, id));
+        const clearedSeen = Steady.seen(Steady.seenAmong(unheaded(lateStep),
+            typedFound.map(id), id));
         const clearedUnfound = Steady.seen(Steady.seenAmong(unheaded(lateStep),
-            [lateStep[1]], id));
+            [id(lateStep[1])], id));
         if (readHeaded(clearedSeen.rows) !== "a1 look" || clearedSeen.waiting !== 0
                 || readHeaded(clearedUnfound.rows) !== "a1" || clearedUnfound.waiting !== 1)
             failures.push(`a row found, then what's typed taken away: `
                 + `"${readHeaded(clearedSeen.rows)}" with ${clearedSeen.waiting} waiting, unfound `
                 + `"${readHeaded(clearedUnfound.rows)}" with ${clearedUnfound.waiting}`);
+        // Found once, it stays seen as the step is made again, hands it back
+        // marked and lists it after other lists were shown, as when Joel
+        // searches again or steps into a row and back out.
+        const madeAgain = Steady.kept(lateStep, underHeadings("#A=a1 a1 look"), id);
+        const clearedLater = Steady.seen(Steady.seenAmong(madeAgain, typedFound.map(id), id));
+        if (madeAgain[2]?.unseen !== true || readHeaded(clearedLater.rows) !== "#A a1 look"
+                || clearedLater.waiting !== 0)
+            failures.push(`a row found, then the step made again and listed: `
+                + `"${readHeaded(clearedLater.rows)}" with ${clearedLater.waiting} waiting`);
         // A row of no cell that comes while a held step's rows are made again,
         // and leaves before it's shown, stops being counted once it's gone.
         const waitedFrom = underHeadings("#A=a1 a1");
