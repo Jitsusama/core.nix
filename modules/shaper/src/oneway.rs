@@ -136,6 +136,10 @@ const PAST: f64 = 1.25;
 const DRIFT: f64 = 0.01;
 /// What share of its rate counts as full, and what as low.
 const FULL: f64 = 0.75;
+/// How lately a direction was cut for its hold still to say the line is
+/// full (`Way::judged_full`), in seconds: a call's download hold reads
+/// the cut a few seconds late (src/room.rs).
+const CUT_LATELY_S: f64 = 5.0;
 /// How many of the connection's rates the base is the median of.
 const LEARNED: usize = 10;
 /// The gateway's jitter on Wi-Fi: its rises past this are the air's.
@@ -991,6 +995,15 @@ impl Way {
         self.rate.is_finite().then(|| crate::rate::whole(self.rate))
     }
 
+    /// Whether this direction's hold says its line is full at `at`,
+    /// carrying `carried` in kbit/s: held, and cut within `CUT_LATELY_S`
+    /// or carrying `FULL` of the rate it's held to. A hold kept on over
+    /// a line gone quiet, as one with no base is for `CEILING_S`, or one
+    /// climbing back over little, says nothing of the line now.
+    pub fn judged_full(&self, at: f64, carried: f64) -> bool {
+        self.rate.is_finite() && (at - self.last_cut <= CUT_LATELY_S || carried >= self.rate * FULL)
+    }
+
     /// What a trial's ceiling holds the upload to while the controller
     /// lets it go, which a trial still means to hold.
     fn let_go(&self) -> Option<u64> {
@@ -1511,9 +1524,11 @@ pub struct Controller {
     /// Why the upload holds where it does, and since when.
     why: Why,
     why_since: Option<f64>,
-    /// Whether the upload has been held on this network, so one let go
-    /// since isn't said never to have met a queue.
-    has_held: bool,
+    /// When the upload was last held in this stay, so one let go since
+    /// isn't said never to have met a queue, and is said let go as long
+    /// ago as it was, whatever reasons came between (follow-ups round 1's
+    /// F4 and F15). A stay starts with none, a recorder's restart's too.
+    held_at: Option<f64>,
     last_cut: LastCut,
     /// The hold on the VPN's own queue, for a wait inside its tunnel.
     tunnel: crate::tunnel::Hold,
@@ -1549,7 +1564,7 @@ impl Controller {
             guarded: 0,
             why: Why::Unmeasured,
             why_since: None,
-            has_held: false,
+            held_at: None,
             last_cut: LastCut::default(),
             tunnel: crate::tunnel::Hold::default(),
             agents: crate::tunnel::Hold::default(),
@@ -1653,7 +1668,12 @@ impl Controller {
     /// that tells what it handed over beside it, so the two agree.
     pub fn why_holding(&self, up: Option<u64>) -> String {
         let at = self.last_at.unwrap_or(0.0);
-        let since = self.why_since.unwrap_or(at);
+        let since = if self.why == Why::LetGo {
+            self.held_at
+        } else {
+            self.why_since
+        };
+        let since = since.unwrap_or(at);
         // The guard's figure is the line's, under a network's ceiling; the
         // rate a clear line is named at is the one declared.
         let anchor = if self.why == Why::Guarded {
@@ -1872,7 +1892,9 @@ impl Controller {
         let waiting = seen.up_ours.is_some_and(|ours| ours.agents_straight);
         let why = self.reason(at, guarded, met, (heeded, waiting));
         self.judge(at, why);
-        self.has_held |= self.up.rate.is_finite();
+        if self.up.rate.is_finite() {
+            self.held_at = Some(at);
+        }
         Limits {
             up: self.up.limit(),
             down: self.down.limit(),
@@ -2006,7 +2028,7 @@ impl Controller {
             return Why::Ceiling;
         }
         if !up.rate.is_finite() {
-            return if self.has_held {
+            return if self.held_at.is_some() {
                 Why::LetGo
             } else {
                 Why::Unmeasured
@@ -2488,6 +2510,22 @@ mod tests {
             "let go after a hold: {}",
             c.why()
         );
+        // A spell with no reflector answering, then a clear line: the hold
+        // let go as long ago as it did, not when the reason last changed.
+        let end = 3.2 + CEILING_S + 5.0;
+        run(&mut c, end, end + 20.0, |_| Seen::default());
+        run(&mut c, end + 20.0, end + 22.0, quiet(300.0, 300.0));
+        let why = c.why();
+        let ago: f64 = why
+            .split("let go, ")
+            .nth(1)
+            .and_then(|rest| rest.strip_suffix(" s ago."))
+            .and_then(|secs| secs.parse().ok())
+            .unwrap_or_else(|| panic!("no let-go time in: {why}"));
+        assert!(
+            ago >= 20.0,
+            "a hold let go before a silent spell was said let go {ago} s ago"
+        );
     }
 
     #[test]
@@ -2860,8 +2898,19 @@ mod tests {
     fn with_no_line_learned_a_cut_is_let_go_half_a_minute_on() {
         let mut c = Controller::new(None, None);
         run(&mut c, 0.0, 1.2, queued(40.0, 26_000.0));
+        assert!(
+            c.down.judged_full(1.2, 26_000.0),
+            "a download its queue cut wasn't judged full"
+        );
         let early = run(&mut c, 1.2, 30.0, quiet(300.0, 1_000.0));
         assert!(early.down.is_some(), "held until the line has likely moved");
+        // The cut held on over a quiet download says nothing of the line
+        // (follow-ups round 1's F12 and F23), so a call starting then
+        // isn't given room.
+        assert!(
+            !c.down.judged_full(30.0, 1_000.0),
+            "a cut kept over a quiet download was judged full"
+        );
         let limits = run(&mut c, 30.0, 32.0, quiet(300.0, 1_000.0));
         assert_eq!(limits.down, None, "unlimited until a queue stands");
     }

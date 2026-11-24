@@ -286,6 +286,9 @@ pub struct Pinning {
     retried: Option<u64>,
     failing: u64,
     back_at: Option<Instant>,
+    /// The pin `failing` counts returns to, so a pin moved or let go
+    /// starts its own count rather than taking the last one's.
+    counting: Option<Pin>,
     kept: bool,
     on: Option<(String, String)>,
     flows: Vec<(End, Option<u16>)>,
@@ -590,12 +593,14 @@ impl Pinning {
     /// through a moment unnamed would otherwise be kept as long as the
     /// router stays silent, on a line nothing says is the one it split.
     /// The spacing and the flows probed for are left as they are, since a
-    /// silent router names no new network to probe on. Gives the first of
-    /// the pair let go.
+    /// silent router names no new network to probe on, and so is a pin
+    /// still settling: main asks again once the link has gone another
+    /// `APART` unnamed, so a pin taken there stands at most that long, and
+    /// rounds there still pin. With no pin standing, nothing changes.
+    /// Gives the first of the pair let go.
     pub fn unheard(&mut self, now: Instant) -> Option<u16> {
-        self.coming = None;
-        self.kept = false;
         let first = self.pinned.take()?.first;
+        self.kept = false;
         self.replaced = Some((first, now));
         Some(first)
     }
@@ -729,7 +734,13 @@ impl Pinning {
     /// switch's does. Gives the pin let go and how many came back.
     pub fn heed(&mut self, retried: u64, now: Instant) -> Option<(Moved, u64)> {
         let was = self.retried.replace(retried);
-        let first = self.pinned?.first;
+        let pin = self.pinned?;
+        let first = pin.first;
+        if self.counting != Some(pin) {
+            self.counting = Some(pin);
+            self.failing = 0;
+            self.back_at = None;
+        }
         let was = was?;
         if retried < was {
             self.failing = 0;
@@ -1124,6 +1135,15 @@ mod tests {
             pinning.held(),
             Vec::<u16>::new(),
             "the pair let go is held with no flow first seen after it"
+        );
+        // A round's pin found while the router is still silent settles and
+        // takes hold as anywhere, until the next span lets it go.
+        let found = start + APART + Duration::from_secs(1);
+        pinning.coming = Some((Some(pin_at(30_010)), found));
+        assert_eq!(pinning.unheard(found), None, "nothing stood to let go");
+        assert!(
+            pinning.take_hold(found).is_some(),
+            "a pin found unnamed was thrown away before it took hold"
         );
     }
 
@@ -1611,6 +1631,26 @@ mod tests {
             switched.heed(1, look(start, 3)),
             None,
             "one back after a switch was counted with one before it"
+        );
+
+        // A return under one pin isn't counted against the pin a round
+        // moved it to: the new pin's own count starts at its first look.
+        let mut moved = pinned_at(0, start);
+        assert_eq!(moved.heed(1, look(start, 1)), None, "one back let go");
+        moved.coming = Some((Some(pin_at(30_010)), look(start, 1)));
+        assert!(
+            moved.take_hold(look(start, 1)).is_some(),
+            "the pin didn't move"
+        );
+        assert_eq!(
+            moved.heed(2, look(start, 2)),
+            None,
+            "one back under the new pin was counted with one under the old"
+        );
+        assert_eq!(
+            moved.heed(3, look(start, 3)),
+            Some((Moved { was: Some(30_010) }, 2)),
+            "two back under the new pin kept it"
         );
 
         let mut unpinned = Pinning::default();

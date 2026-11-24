@@ -335,6 +335,13 @@ impl Lanes {
         self.last.agents_held = None;
     }
 
+    /// The share agents straight were held to in the last split, `at`'s
+    /// included, whole while they weren't: what their class holds once
+    /// that split is sent.
+    pub fn held_share(&self) -> f64 {
+        self.last.agents_held.unwrap_or(1.0)
+    }
+
     /// Whether agents straight on the connection wait, as the last split
     /// judged it: what lets the controller hold them for the VPN's wait.
     pub fn agents_wait_straight(&self) -> bool {
@@ -1949,8 +1956,10 @@ mod tests {
         ] {
             let free = Lanes::default().split(&seen(joel, agents), 1.0);
             assert_eq!(free.agents_most, None, "agents not held were capped");
-            // Four fifths of 4,000 lands over the floor (carry lane round
-            // 2's F8); the others land on it.
+            // Four fifths lands over the floor where agents straight have
+            // 4,000 free (carry lane round 2's F8), and where they wait
+            // alone, with 4,400 and nothing given up: 3,520. The others
+            // land on it.
             for share in [0.8, 0.5, 0.1] {
                 let held = Lanes::default().split(
                     &Seen {
@@ -2043,6 +2052,14 @@ mod tests {
             assert!(
                 second > 1 || h.vpn > f.vpn - floor / 2.0 + 1.0,
                 "the VPN gave agents straight their quarter at once: free {f:?}, held {h:?}"
+            );
+            // Only while the VPN still falls may agents straight sit under
+            // the quarter: one standing still has given what Joel's hold
+            // takes from them too (follow-ups round 1's F9).
+            assert!(
+                (h.vpn - was).abs() >= 1.0 || h.agents >= floor - 1.0,
+                "second {second}: the VPN stood still with agents straight {} short: {h:?}",
+                floor - h.agents
             );
             was = h.vpn;
             last = Some((f, h));
@@ -2169,11 +2186,21 @@ mod tests {
             lanes.at(9_000.0).agents_most.is_some(),
             "a new rate let agents go"
         );
+        // A split sent at a new rate holds the share the last second asked,
+        // which a trace must name (follow-ups round 1's F1).
+        assert!(
+            (lanes.held_share() - 0.5).abs() < f64::EPSILON,
+            "a new rate's split named another share"
+        );
         lanes.let_agents_go();
         assert_eq!(
             lanes.at(9_000.0).agents_most,
             None,
             "agents let go stayed held"
+        );
+        assert!(
+            (lanes.held_share() - 1.0).abs() < f64::EPSILON,
+            "agents let go were named held"
         );
     }
 

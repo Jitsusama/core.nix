@@ -121,6 +121,18 @@ const UNKNOWN: &str = "unknown";
 
 /// What the recorder's lines have said: the link it records, and the
 /// controller stepped on each second they finished.
+/// What the last second said of a link's download (`Follow::carried`): the
+/// link and the stay's network it was read on, what it carried in kbit/s,
+/// and whether the controller's hold of it said the line was full then
+/// (`oneway::Way::judged_full`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Carried<'a> {
+    pub link: &'a str,
+    pub network: &'a str,
+    pub kbit: f64,
+    pub cut: bool,
+}
+
 pub struct Follow {
     link: Option<String>,
     reading: Reading,
@@ -306,13 +318,19 @@ impl Follow {
     /// stamp's rounding to a whole second, is of a clock since stepped
     /// back, so it says nothing of now either (download hold round 2's
     /// F25).
-    pub fn carried(&self, at_ms: u64) -> Option<(&str, f64)> {
+    pub fn carried(&self, at_ms: u64) -> Option<Carried<'_>> {
         let link = self.last_link.as_deref()?;
         let began_ms = self.last_at?.saturating_mul(1_000);
         if began_ms.saturating_add(CARRIED_MS) < at_ms || began_ms > at_ms.saturating_add(1_000) {
             return None;
         }
-        Some((link, self.last.as_ref()?.down_kbit))
+        let last = self.last.as_ref()?;
+        Some(Carried {
+            link,
+            network: &self.network,
+            kbit: last.down_kbit,
+            cut: self.controller.down.judged_full(last.t_s, last.down_kbit),
+        })
     }
 
     /// The link the controller holds, and what it last heard of it and
@@ -459,7 +477,7 @@ impl Live {
 
     /// The link the recorder follows and what it carried down in its last
     /// second, while that second is fresh at `now` (`Follow::carried`).
-    pub fn carried(&self, now: SystemTime) -> Option<(&str, f64)> {
+    pub fn carried(&self, now: SystemTime) -> Option<Carried<'_>> {
         self.follow.carried(ms(now))
     }
 
@@ -640,14 +658,21 @@ mod tests {
             .last_at
             .expect("a second stepped on")
             .saturating_mul(1_000);
-        let (link, kbit) = follow
+        let carried = follow
             .carried(began)
             .expect("a fresh second carried nothing");
-        assert_eq!(link, "wlan0", "the second carried isn't its link's");
-        assert!(
-            kbit > 100_000.0,
-            "a 200 Mbit/s download carried {kbit} kbit/s"
+        assert_eq!(carried.link, "wlan0", "the second carried isn't its link's");
+        assert_eq!(
+            carried.network, "home",
+            "the second carried isn't its stay's"
         );
+        assert!(
+            carried.kbit > 100_000.0,
+            "a 200 Mbit/s download carried {} kbit/s",
+            carried.kbit
+        );
+        // Its queue stood, so the controller cut under what it carries.
+        assert!(carried.cut, "a download filling its cut wasn't judged full");
         assert!(
             follow.carried(began + CARRIED_MS).is_some(),
             "a second as old as allowed carried nothing"

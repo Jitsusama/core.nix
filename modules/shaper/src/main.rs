@@ -426,12 +426,21 @@ impl Shaped {
         let split = self.lanes.split(&seen, dt);
         if split.moved_from(&self.split, rate) {
             let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
-            self.split = self.split.after(split, took);
-            if took {
-                self.split_agents_share = self.agents_share;
-            }
+            self.sent_split(split, took);
         }
         self.split.vpn
+    }
+
+    /// Takes `split` as sent to the classes, `took` saying whether every
+    /// command did, and the share agents straight were held to in it as
+    /// what their class holds: wherever a split is sent, a rate's move
+    /// between seconds included, so a trace never names a share the
+    /// classes weren't sent (follow-ups round 1's F1 and F24).
+    fn sent_split(&mut self, split: lanes::Split, took: bool) {
+        self.split = self.split.after(split, took);
+        if took {
+            self.split_agents_share = self.lanes.held_share();
+        }
     }
 
     /// Lets agents straight borrow the whole rate again once the
@@ -445,10 +454,7 @@ impl Shaped {
         self.lanes.let_agents_go();
         let split = self.lanes.at(float(self.applied.0));
         let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
-        self.split = self.split.after(split, took);
-        if took {
-            self.split_agents_share = 1.0;
-        }
+        self.sent_split(split, took);
     }
 
     /// The shares this link's queues are held to now, as a trace says them
@@ -822,6 +828,23 @@ struct Pinner {
     unnamed_since: Option<Instant>,
 }
 
+/// Since when the primary uplink has gone unnamed, `since` at the last
+/// step, and whether a span of `pin::APART` ran out at `now`, so the pin
+/// then standing lets go. Each span that runs out starts another, so a
+/// pin taken later in the spell still stands at most `APART`, and a
+/// round's pin there is never thrown away the step it's found.
+fn unnamed_span(since: Option<Instant>, unnamed: bool, now: Instant) -> (Option<Instant>, bool) {
+    if !unnamed {
+        return (None, false);
+    }
+    let since = since.unwrap_or(now);
+    if now.saturating_duration_since(since) >= pin::APART {
+        (Some(now), true)
+    } else {
+        (Some(since), false)
+    }
+}
+
 impl Pinner {
     fn new(state: &Path) -> Pinner {
         let (send, read) = channel();
@@ -913,15 +936,10 @@ impl Pinner {
         {
             eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
         }
-        let since = self.unnamed_since.unwrap_or(now);
-        self.unnamed_since = uplink
-            .filter(|&(_, network)| pin::unnamed(network))
-            .map(|_| since);
-        if self
-            .unnamed_since
-            .is_some_and(|at| now.saturating_duration_since(at) >= pin::APART)
-            && let Some(first) = self.pinning.unheard(now)
-        {
+        let unnamed = uplink.is_some_and(|(_, network)| pin::unnamed(network));
+        let (since, lapsed) = unnamed_span(self.unnamed_since, unnamed, now);
+        self.unnamed_since = since;
+        if lapsed && let Some(first) = self.pinning.unheard(now) {
             eprintln!("{}", pin::let_go(first, pin::UNNAMED));
         }
         while let Ok((end, read)) = self.read.try_recv() {
@@ -1763,6 +1781,7 @@ fn look(
                     ) {
                         s.applied = (s.up.rate, s.down.rate);
                         s.joel_told = None;
+                        s.split_agents_share = s.lanes.held_share();
                     }
                 }
                 if !s.probes.running() {
@@ -1884,9 +1903,12 @@ fn step_links(
     let agents = live.agents_share(now);
     // What the link the recorder follows carried down its last second,
     // while that second says anything of the line now.
-    let carried = live
-        .carried(now)
-        .map(|(link, kbit)| (link.to_string(), kbit));
+    let carried = live.carried(now).map(|c| Down {
+        link: c.link.to_string(),
+        network: c.network.to_string(),
+        kbit: c.kbit,
+        cut: c.cut,
+    });
     for (name, s) in shaped.iter_mut() {
         let held = link.as_deref() == Some(name.as_str());
         // The VPN is held only while the upload is: a recorder gone
@@ -1911,16 +1933,16 @@ fn step_links(
             ceilings.get(&s.network).copied().map(rate::whole),
             house.get(&s.network).map(|&(_, most)| most),
         );
-        let its = carried.as_ref().filter(|(link, _)| link == name);
         let declared = lines.get(&s.network).copied();
-        // The controller's own cut of this link's download, which it
-        // makes only on a line it judged full.
-        let cut = held && rates.down.is_some();
         let (room, said) = s.room.step(
             name,
             &s.network,
             calling,
-            (its.map(|&(_, kbit)| kbit), cut),
+            room_heard(
+                carried.as_ref(),
+                (name, &s.network),
+                held && rates.down.is_some(),
+            ),
             declared,
         );
         if let Some(said) = said {
@@ -1929,6 +1951,34 @@ fn step_links(
         let rates = led(rates, held, most);
         let why = if held { &why } else { &why::Judged::Nothing };
         hold(s, rates, why, room);
+    }
+}
+
+/// What the recorder's last second said of the download of the link it
+/// follows (`live::Carried`), kept apart from the recorder so the links
+/// can be stepped.
+struct Down {
+    link: String,
+    network: String,
+    kbit: f64,
+    cut: bool,
+}
+
+/// What a call's download hold on link `name`, on `network`, hears of the
+/// download (src/room.rs): what it carried, and whether the controller's
+/// hold of it says the line is full, which counts only while the
+/// controller `holds` this link's download. Both are heard only where the
+/// recorder's last second was read on this link in a stay on this
+/// network, so a stay not yet moved with the link says nothing of the
+/// network it moved to (follow-ups round 1's F5 and F16).
+fn room_heard(
+    down: Option<&Down>,
+    (name, network): (&str, &str),
+    holds: bool,
+) -> (Option<f64>, bool) {
+    match down.filter(|d| d.link == name && d.network == network) {
+        Some(d) => (Some(d.kbit), holds && d.cut),
+        None => (None, false),
     }
 }
 
@@ -2304,7 +2354,7 @@ fn apply(s: &mut Shaped, most: u64) {
         if took {
             s.applied.0 = up;
         }
-        s.split = s.split.after(split, took);
+        s.sent_split(split, took);
     }
     // Apart from the classes, so a CAKE that refuses its rate never makes
     // them read as unmoved, and asked again each step until it takes.
@@ -3343,6 +3393,76 @@ mod tests {
     // A read that failed changes nothing: install leaves the link, look
     // doesn't put its queues back, and its VPN isn't counted taken up
     // (round 5's F58 and F59).
+    #[test]
+    fn a_call_s_hold_hears_only_the_download_of_its_own_link_and_stay() {
+        let down = Down {
+            link: "eth1".into(),
+            network: "home".into(),
+            kbit: 44_700.0,
+            cut: true,
+        };
+        assert_eq!(
+            room_heard(Some(&down), ("eth1", "home"), true),
+            (Some(44_700.0), true),
+            "its own link's cut download"
+        );
+        assert_eq!(
+            room_heard(Some(&down), ("eth1", "home"), false),
+            (Some(44_700.0), false),
+            "a cut the controller doesn't apply to this link counted"
+        );
+        assert_eq!(
+            room_heard(Some(&down), ("wlan0", "home"), true),
+            (None, false),
+            "another link's download was heard"
+        );
+        assert_eq!(
+            room_heard(Some(&down), ("eth1", "office"), true),
+            (None, false),
+            "a stay not yet moved with the link spoke for the network it moved to"
+        );
+        assert_eq!(
+            room_heard(None, ("eth1", "home"), true),
+            (None, false),
+            "nothing"
+        );
+    }
+
+    #[test]
+    fn an_unnamed_link_lets_a_pin_go_once_each_span() {
+        let start = Instant::now();
+        let at = |s: u64| start + Duration::from_secs(s);
+        let apart = pin::APART.as_secs();
+        assert_eq!(unnamed_span(None, false, at(0)), (None, false), "named");
+        assert_eq!(
+            unnamed_span(None, true, at(0)),
+            (Some(at(0)), false),
+            "a span didn't start"
+        );
+        assert_eq!(
+            unnamed_span(Some(at(0)), true, at(apart - 1)),
+            (Some(at(0)), false),
+            "a span ran out early"
+        );
+        let (since, lapsed) = unnamed_span(Some(at(0)), true, at(apart));
+        assert!(lapsed, "a span ran on past APART");
+        assert_eq!(
+            since,
+            Some(at(apart)),
+            "a span that ran out didn't start another"
+        );
+        assert_eq!(
+            unnamed_span(since, true, at(apart + 5)),
+            (since, false),
+            "the step after a span ran out let go again"
+        );
+        assert_eq!(
+            unnamed_span(since, false, at(apart + 5)),
+            (None, false),
+            "a router naming the network kept the span"
+        );
+    }
+
     #[test]
     fn a_read_that_failed_leaves_the_queues_as_they_are() {
         assert_eq!(
