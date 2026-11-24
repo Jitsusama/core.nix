@@ -4,11 +4,16 @@
   bareDarwin,
   bareNixos,
   holds,
+  lib,
+  macWorkstation,
+  workstation,
   ...
 }:
 let
-  # Whether a machine's nixpkgs lets a package evaluate: its derivation's
-  # path is refused for an unfree package no list names.
+  # Whether a machine's nixpkgs lets a package evaluate. Refusing an unfree
+  # package no list names is a throw, which tryEval catches; any other
+  # error ends the check's evaluation with its own message rather than
+  # passing as a refusal.
   allows =
     machine: name:
     let
@@ -16,19 +21,26 @@ let
     in
     (builtins.tryEval pkgs.${name}.drvPath).success;
 
+  # Whether nixpkgs still marks a package unfree, so that the checks below
+  # fail, saying so, rather than passing for nothing once it doesn't.
+  unfree = machine: name: machine.config._module.args.pkgs.${name}.meta.unfree;
+
   # A name a machine adds for itself, of a package core names nowhere.
   naming.nixpkgs.config.allowUnfreePackages = [ "terraform" ];
 
-  # A machine's own name joins core's rather than replacing them, and an
-  # unfree package nobody names stays refused.
+  # A machine's own name joins core's rather than replacing them, and a role
+  # machine, with every module it brings, still refuses an unfree package
+  # nobody names, so no module of core's allows every unfree package.
   joins =
-    bare:
+    bare: role:
     let
-      plain = bare [ ];
       named = bare [ naming ];
     in
-    allows plain "claude-code"
-    && !allows plain "terraform"
+    assert lib.assertMsg (
+      unfree role "claude-code" && unfree role "terraform"
+    ) "claude-code or terraform is no longer unfree, so these checks prove nothing.";
+    allows role "claude-code"
+    && !allows role "terraform"
     && allows named "claude-code"
     && allows named "terraform";
 in
@@ -36,10 +48,10 @@ in
   a-machines-unfree-names-join-cores-on-nixos =
     holds "a-machines-unfree-names-join-cores-on-nixos"
       "On NixOS, a machine's unfree names don't join core's, or one nobody names is let through."
-      (joins bareNixos);
+      (joins bareNixos workstation);
 
   a-machines-unfree-names-join-cores-on-darwin =
     holds "a-machines-unfree-names-join-cores-on-darwin"
-      "On nix-darwin, a machine's unfree names don't join core's, or one nobody names is let through."
-      (joins bareDarwin);
+      "On nix-darwin, a Mac's unfree names don't join core's, or one nobody names is let through."
+      (joins bareDarwin macWorkstation);
 }
