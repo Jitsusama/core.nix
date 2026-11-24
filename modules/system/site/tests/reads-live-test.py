@@ -38,8 +38,9 @@ COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
 # and since no comment is sent, its styles' included; about 445 KB since machines
-# out of reach are named apart, a cost worth the page reading well with many down.
-BUDGET = Budget(files=25, kilobytes=450, elements=400)
+# out of reach are named apart, a cost worth the page reading well with many down. One file
+# is the kit's head.css, the head every live page shares.
+BUDGET = Budget(files=26, kilobytes=450, elements=400)
 
 
 @pytest.fixture

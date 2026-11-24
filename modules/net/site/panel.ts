@@ -210,6 +210,14 @@ function standsNow(context: Context): string {
   return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, and ${asks}.`;
 }
 
+/** Says what stands now in the head's lede, writing only when it changes. */
+function sayStandsNow(lede: HTMLElement, context: Context | undefined): void {
+  const words = context === undefined ? null : standsNow(context);
+  if (words !== null && lede.textContent !== words) {
+    lede.textContent = words;
+  }
+}
+
 function worthALook(context: Context): HTMLElement {
   const { network } = context;
   const { worth, quiet } = worthOf(network);
@@ -281,4 +289,4 @@ function found(context: Context, query: string): Child[] {
 }
 
 export type { Context };
-export { concernRows, found, overview, row, standsNow };
+export { concernRows, found, overview, row, sayStandsNow };

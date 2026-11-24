@@ -147,12 +147,9 @@ function sayWhen(): void {
     words.push(now.state === "live" ? "live" : said(now));
   }
   const state = now?.state ?? "connecting";
-  // The words are the head's one live region, so they're written only when they change.
-  tell(
-    standingWords,
-    words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`,
-    state,
-  );
+  const spoken = words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
+  // The words are the head's one live region, so tell writes them only when they change.
+  tell(standingWords, spoken, state);
   standingLine.dataset["state"] = state;
   const problems = [...(system?.unread ?? []), ...heard.values()];
   const unreadNote = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";

@@ -73,8 +73,8 @@ CELLS = 8
 # builders, the legend's moving samples and new work's line, and since no
 # comment is sent, view.js's and the styles' included, with a little room
 # above; new work's line and its hidden controls draw about 20 elements of the
-# 611.
-BUDGET = Budget(files=32, kilobytes=677, elements=620)
+# 611. One file is the kit's head.css, the head every live page shares.
+BUDGET = Budget(files=33, kilobytes=677, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200

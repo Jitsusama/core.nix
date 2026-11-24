@@ -73,8 +73,8 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
-# every page reads.
-BUDGET = Budget(files=37, kilobytes=536, elements=276)
+# every page reads. One file is the kit's head.css, the head every live page shares.
+BUDGET = Budget(files=38, kilobytes=536, elements=276)
 CELLS_SITE = "cells/"
 
 

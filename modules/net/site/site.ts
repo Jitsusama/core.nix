@@ -16,7 +16,7 @@ import { type Child, h } from "./elements.ts";
 import { type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
-import { type Context, found, overview, standsNow } from "./panel.ts";
+import { type Context, found, overview, sayStandsNow } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
 import { el } from "./svg.ts";
 import { drawTree, heedTree, markOpened } from "./tree.ts";
@@ -80,14 +80,6 @@ function sayWhen(): void {
   const problems = [...(network?.unread ?? []), ...heard.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   tell(asof, `${stands === undefined ? "" : said(stands)}${trouble}`, stands?.state ?? "connecting");
-}
-
-/** Says what stands now in the head's lede, writing only when it changes. */
-function sayLede(at: Context): void {
-  const words = standsNow(at);
-  if (lede.textContent !== words) {
-    lede.textContent = words;
-  }
 }
 
 function context(): Context | undefined {
@@ -161,10 +153,7 @@ function render(): void {
     return;
   }
   shape = study(network);
-  const at = context();
-  if (at !== undefined) {
-    sayLede(at);
-  }
+  sayStandsNow(lede, context());
   drawn = drawMap(draw, network, shape, now());
   map.shows(drawn);
   fitFirst(network);
