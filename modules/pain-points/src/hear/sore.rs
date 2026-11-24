@@ -89,8 +89,9 @@ const REASSURING: [&str; 10] = [
 
 /// Phrases that give up on the agent, which no ease beside them softens:
 /// "it's fine, i'll do it myself" is no reassurance. Each is whole words,
-/// so "i blame myself" gives up on nothing; a bare "whatever" gives up
-/// only as a sentence of its own.
+/// so "i blame myself" gives up on nothing; "whatever" gives up only as
+/// a sentence's last word, so "fine, whatever" gives up and "whatever
+/// works for you" doesn't.
 const GIVING_UP: [&str; 4] = ["do it myself", "do this myself", "forget it", "never mind"];
 
 /// The marks that end a sentence, a full-width question mark among them.
@@ -133,7 +134,7 @@ fn swears(low: &str) -> bool {
         .iter()
         .any(|(asked, words)| *asked && swore(words));
     let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || sentences.iter().any(|(_, words)| words[..] == ["whatever"]);
+        || sentences.iter().any(|(_, words)| words.last() == Some(&"whatever"));
     !eased || asked_swearing || gave_up
 }
 
@@ -399,6 +400,8 @@ mod tests {
             "that's fine. why the fuck is it slow?",
             "it's fine, i'll do it myself, fuck this",
             "shit, it's fine. whatever.",
+            "shit, it's fine, whatever",
+            "shit, it's fine\nwhatever",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
