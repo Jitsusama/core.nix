@@ -5,7 +5,11 @@
 //! for one, and keeps the miss on its card until it finds NAME in PATH at
 //! the revision of REPO that runs here, which that repository's own checks
 //! ran before it merged: every miss gets a check that runs, as the
-//! orchestrator ruled on 23 November. pain-points stays the ledger's only
+//! orchestrator ruled on 23 November. A pain heard as a miss that wasn't
+//! one, such as his reassurance, can't name a test, so its owner says why
+//! as `none` instead, which the hour shows for a day: as a finding closes
+//! on its owner's word of why it's expected, a miss closes only on its
+//! owner's word, never by going quiet. pain-points stays the ledger's only
 //! writer, so the line is changed under the ledger's lock and the ledger
 //! written whole.
 
@@ -17,7 +21,7 @@ use std::path::{Path, PathBuf};
 use terminal_kit::{Exit, Failure, Help};
 
 /// The flags `test` takes, each with a value.
-pub const FLAGS: [&str; 3] = ["--miss", "--test", "--ledgers"];
+pub const FLAGS: [&str; 4] = ["--miss", "--test", "--none", "--ledgers"];
 
 /// What `pain-points test --help` says.
 #[must_use]
@@ -27,17 +31,66 @@ pub fn help() -> Help {
             "pain-points test --miss AT --test \"core modules/x/src/y.rs a_test\"",
             "as a miss's owner runs it",
         )
+        .example(
+            "pain-points test --miss AT --none \"he was reassuring, not hurt\"",
+            "as its owner says a pain heard as a miss was none",
+        )
         .option("--miss AT", "the miss's time, as its line has it")
         .option("--test TEST", "its test, as REPO PATH NAME")
+        .option("--none WHY", "why it was no miss, in place of a test")
         .option("--ledgers DIR", "its ledger's folder, or the mission's")
-        .exit(Exit::Usage, "no miss or test, or a test not REPO PATH NAME")
+        .exit(
+            Exit::Usage,
+            "no miss, a test and why it's none both or neither, a test not REPO PATH NAME",
+        )
         .exit(Exit::NotFound, "no ledger, or no one miss at that time")
         .exit(Exit::TryAgain, "the ledger stayed locked")
         .exit(Exit::Failed, "the ledger couldn't be read or written")
 }
 
-/// Names the test `--test` gives on the line of the miss at `--miss`, in
-/// the ledger in `--ledgers`, or the mission's, and says so.
+/// What an owner says of a miss: the test that would catch it again, or
+/// why it was no miss, and when that was said.
+#[derive(Debug, Clone, Copy)]
+enum Said<'a> {
+    Test(&'a str),
+    NoMiss { why: &'a str, at_ms: i64 },
+}
+
+impl Said<'_> {
+    /// Puts this on a miss's `line`, in place of what was said before, and
+    /// says whether the line said it already.
+    fn on(self, line: &mut Value) -> bool {
+        let (field, said, other) = match self {
+            Said::Test(test) => ("test", test, ["none", "none_at_ms"]),
+            Said::NoMiss { why, .. } => ("none", why, ["test", "none_at_ms"]),
+        };
+        let already = line[field].as_str() == Some(said);
+        if !already {
+            if let Some(fields) = line.as_object_mut() {
+                for gone in other {
+                    fields.remove(gone);
+                }
+            }
+            line[field] = json!(said);
+            if let Said::NoMiss { at_ms, .. } = self {
+                line["none_at_ms"] = json!(at_ms);
+            }
+        }
+        already
+    }
+
+    /// How the miss reads once this is said.
+    fn says(self) -> String {
+        match self {
+            Said::Test(test) => format!("names its test, {test}"),
+            Said::NoMiss { why, .. } => format!("says it was no miss: {why}"),
+        }
+    }
+}
+
+/// Names the test `--test` gives, or why `--none` says it was no miss, on
+/// the line of the miss at `--miss`, in the ledger in `--ledgers`, or the
+/// mission's, and says so.
 ///
 /// # Errors
 ///
@@ -47,19 +100,29 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
     let at = given
         .get("--miss")
         .ok_or_else(|| wrongly("--miss names the miss"))?;
-    let test = given
-        .get("--test")
-        .ok_or_else(|| wrongly("--test names its test"))?;
-    let test = test.trim();
-    if !shaped(test) {
-        return Err(wrongly(&format!(
-            "\"{test}\" isn't REPO PATH NAME, such as \"core modules/x/src/y.rs a_test\""
-        )));
+    let said = match (given.get("--test"), given.get("--none")) {
+        (Some(test), None) => Said::Test(test.trim()),
+        (None, Some(why)) => Said::NoMiss {
+            why: why.trim(),
+            at_ms: crate::millis_now(),
+        },
+        _ => return Err(wrongly("give --test, or --none with why it was no miss")),
+    };
+    match said {
+        Said::Test(test) if !shaped(test) => {
+            return Err(wrongly(&format!(
+                "\"{test}\" isn't REPO PATH NAME, such as \"core modules/x/src/y.rs a_test\""
+            )));
+        }
+        Said::NoMiss { why, .. } if why.is_empty() || why.contains(char::is_control) => {
+            return Err(wrongly("--none says why on one line"));
+        }
+        _ => {}
     }
     let folder = given
         .get("--ledgers")
         .map_or_else(|| crate::state_home().join("mission"), PathBuf::from);
-    name_in(&folder.join("misses.jsonl"), at, test)
+    name_in(&folder.join("misses.jsonl"), at, said)
 }
 
 /// Whether `test` reads as cadence reads one: a repository, a path git
@@ -74,8 +137,8 @@ fn shaped(test: &str) -> bool {
         && name.is_some_and(|name| !name.trim().is_empty())
 }
 
-/// Names `test` on the line of the one miss at `at` in `ledger`.
-fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
+/// Puts what's `said` on the line of the one miss at `at` in `ledger`.
+fn name_in(ledger: &Path, at: &str, said: Said<'_>) -> Result<String, Failure> {
     if !ledger.is_file() {
         let what = format!("no misses ledger at {}", ledger.display());
         return Err(Failure::new(Exit::NotFound, what).try_this("the mission's folder"));
@@ -98,8 +161,7 @@ fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
                 return line.to_owned();
             }
             found += 1;
-            already = read["test"].as_str() == Some(test);
-            read["test"] = json!(test);
+            already = said.on(&mut read);
             read.to_string()
         })
         .collect();
@@ -109,7 +171,8 @@ fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
     }
     if already {
         return Ok(format!(
-            "pain-points: the miss at {at} already names {test}"
+            "pain-points: the miss at {at} already {}",
+            said.says()
         ));
     }
     lines.push(String::new());
@@ -120,9 +183,7 @@ fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
         return Err(Failure::new(Exit::TryAgain, what).try_this("pain-points test again"));
     }
     crate::write_whole(ledger, &lines.join("\n")).map_err(failed)?;
-    Ok(format!(
-        "pain-points: the miss at {at} now names its test, {test}"
-    ))
+    Ok(format!("pain-points: the miss at {at} now {}", said.says()))
 }
 
 #[cfg(test)]
@@ -147,7 +208,7 @@ mod tests {
         let written = format!("{other}\n{{\"at\":\"{AT}\",\"owner\":\"XY9H5C\"}}\nnot json\n");
         let path = ledger("named", &written);
         let test = "core modules/cat/src/air.rs the_cat_never_waits";
-        let said = name_in(&path, AT, test).expect("named");
+        let said = name_in(&path, AT, Said::Test(test)).expect("named");
         assert!(said.contains(test), "it didn't say what it named: {said}");
         let kept = fs::read_to_string(&path).expect("the ledger");
         let lines: Vec<&str> = kept.lines().collect();
@@ -157,10 +218,50 @@ mod tests {
         assert_eq!(named["test"], test, "the miss doesn't name its test");
         assert_eq!(named["owner"], "XY9H5C", "the miss lost its owner");
         assert!(kept.ends_with('\n'), "the ledger lost its last line's end");
-        let again = name_in(&path, AT, test).expect("named again");
+        let again = name_in(&path, AT, Said::Test(test)).expect("named again");
         assert!(
             again.contains("already"),
             "naming it twice said nothing of it: {again}"
+        );
+    }
+
+    #[test]
+    fn an_owner_saying_it_was_no_miss_takes_the_place_of_a_test_until_one_is_named() {
+        let path = ledger(
+            "none",
+            &format!("{{\"at\":\"{AT}\",\"test\":\"core a b\"}}\n"),
+        );
+        let why = "he was reassuring, not hurt";
+        let none = Said::NoMiss { why, at_ms: 1 };
+        let said = name_in(&path, AT, none).expect("said");
+        assert!(said.contains(why), "it didn't say why: {said}");
+        let read = |path: &Path| -> Value {
+            let kept = fs::read_to_string(path).expect("the ledger");
+            serde_json::from_str(kept.trim()).expect("the miss's line")
+        };
+        let line = read(&path);
+        assert_eq!(
+            (&line["none"], &line["none_at_ms"], &line["test"]),
+            (&json!(why), &json!(1), &Value::Null),
+            "its owner's word didn't take the test's place: {line}"
+        );
+        let again = Said::NoMiss { why, at_ms: 2 };
+        let said = name_in(&path, AT, again).expect("said again");
+        assert!(
+            said.contains("already"),
+            "saying it twice said nothing of it: {said}"
+        );
+        assert_eq!(
+            read(&path)["none_at_ms"],
+            json!(1),
+            "saying it again moved when it was said"
+        );
+        name_in(&path, AT, Said::Test("core a b")).expect("named");
+        let line = read(&path);
+        assert_eq!(
+            (&line["test"], &line["none"], &line["none_at_ms"]),
+            (&json!("core a b"), &Value::Null, &Value::Null),
+            "a test named after didn't take its place: {line}"
         );
     }
 
@@ -169,7 +270,7 @@ mod tests {
         let one = format!("{{\"at\":\"{AT}\"}}\n");
         for (text, what) in [("", "no miss"), (&*one.repeat(2), "two misses")] {
             let path = ledger("unnamed", text);
-            let failed = name_in(&path, AT, "core a b").expect_err("named a test");
+            let failed = name_in(&path, AT, Said::Test("core a b")).expect_err("named a test");
             assert!(
                 matches!(failed.exit, Exit::NotFound),
                 "{what} at the time wasn't refused as not found"

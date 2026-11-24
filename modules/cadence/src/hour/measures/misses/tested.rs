@@ -204,8 +204,12 @@ enum Untested {
     Because(String),
 }
 
-/// Whether `miss` names a test that runs here, as `look` finds it.
+/// Whether `miss` names a test that runs here, as `look` finds it; one
+/// its owner said was none needs none.
 fn standing(miss: &Value, look: impl Fn(&Test<'_>) -> Look) -> Untested {
+    if super::no_miss(miss) {
+        return Untested::No;
+    }
     let Some(said) = miss["test"].as_str() else {
         return Untested::Because("naming no test".to_owned());
     };

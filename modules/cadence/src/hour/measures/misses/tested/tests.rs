@@ -48,6 +48,7 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
         miss("88LQC0", "backup notice", Some("world src/a.rs anything")),
         miss("16V6F4", "lost Colemak", Some("core src/a.rs unseen")),
         r#"{"at": "x", "owner": "WCJQSG", "what": "carried", "carried": true}"#.to_owned(),
+        r#"{"at": "y", "owner": "IKQ63G", "what": "reassured", "none": "no pain"}"#.to_owned(),
     ]
     .join("\n");
     let look = |unseen| {
@@ -77,8 +78,8 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
             ),
             "carried (x), naming no test · WCJQSG".to_owned(),
         ],
-        "a miss was judged wrongly, or one that runs or unseen was counted, or one \
-         carried wasn't"
+        "a miss was judged wrongly, or one that runs, unseen or said none was counted, or \
+         one carried wasn't"
     );
     assert_eq!(m.now, 5.0, "the count isn't its lines'");
     assert_eq!(
