@@ -31,18 +31,16 @@ for program in kitten systemd-run qs; do
 done
 # The shell's own clock, only when asked in ms, as the shell's handler
 # takes it: asked any other way, it answers what it was asked, which no
-# case wants. It gives 1700000000000 when first asked and later times
-# after, so the time the shell is told is the one the script started at,
-# never when it gave up, which would clear a press made meanwhile.
+# case wants. Its clock moves 200 ms with each wait the script makes, so
+# the time the shell is told is 1700000000000 only if the script read it
+# as it started, never as it gave up, which would clear a press made
+# meanwhile.
 cat > "$stand_ins/date" << EOF
 #!$BASH
 if [ "\$*" != +%s%3N ]; then
   echo "date \$*"
-elif [ -s "$work/dates" ]; then
-  echo 1700000099999
 else
-  echo . > "$work/dates"
-  echo 1700000000000
+  echo \$((1700000000000 + \$(wc -l < "$work/waits") * 200))
 fi
 EOF
 # The unit's main process, as main-pid names it.
@@ -61,7 +59,7 @@ old=""
 trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 
 fresh() {
-  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails "$work/dates"
+  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails
   : > "$work/asked"
   : > "$work/waits"
   echo 0 > "$work/main-pid"
