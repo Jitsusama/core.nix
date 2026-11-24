@@ -129,7 +129,9 @@ pub fn write<'a>(
 /// way that is a link once it is open is refused too, as the file may lie
 /// outside the tree. So nothing outside the tree goes in, unless a link is
 /// put in a folder's place and taken out again while the file is opened,
-/// and nothing holds the job. A file past `most` bytes, as it is opened or
+/// which something swapping it over and over could win, as only opening
+/// each folder from the one before would close it and std can't; and
+/// nothing holds the job. A file past `most` bytes, as it is opened or
 /// as it is read, is refused without being read whole, as no share
 /// carries it.
 fn read(root: &Path, name: &str, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
