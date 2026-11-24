@@ -295,8 +295,7 @@ fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
     after_landing(
         &root,
         Landing::Landed("m1".to_owned()),
-        &merged,
-        0,
+        &run(&merged),
         &mut Splitting::default(),
     );
     let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap();
