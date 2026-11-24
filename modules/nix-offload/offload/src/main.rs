@@ -251,6 +251,14 @@ fn more_dir() -> PathBuf {
     env::var_os("NIX_OFFLOAD_MORE_DIR").map_or_else(|| PathBuf::from(MORE_DIR), PathBuf::from)
 }
 
+/// Remove the bundle `source` sent, if it sent one, once the run is done
+/// with it; one already gone needs nothing more.
+fn forget_bundle(source: &there::Source) {
+    if let there::Source::Bundled { bundle, .. } = source {
+        let _ = fs::remove_file(bundle);
+    }
+}
+
 /// Where a `there` keeps what it sends while it runs: the runtime
 /// folder, or the temporary one where there's none.
 fn scratch() -> PathBuf {
@@ -1779,15 +1787,7 @@ fn changed_there(
     } else {
         (source, None)
     };
-    let bundle = match &source {
-        there::Source::Bundled { bundle, .. } => Some(bundle.clone()),
-        there::Source::Pushed { .. } => None,
-    };
-    let forget = || {
-        if let Some(bundle) = &bundle {
-            let _ = fs::remove_file(bundle);
-        }
-    };
+    let forget = || forget_bundle(&source);
     // The same run at a commit where it passed passes again, so it's said
     // again rather than evaluated and built anew (`passed.rs`).
     let passed = passed::Passed::here(&state());
@@ -4460,7 +4460,10 @@ mod tests {
         assert_eq!(Finished::of(1, None).wholly(true).ends(), 1);
         assert_eq!(Finished::of(1, None).wholly(false).ends(), ended::CUT_SHORT);
         assert_eq!(Finished::of(1, None).cut_short().ends(), ended::CUT_SHORT);
-        assert!(!Finished::of(1, None).cut_short().whole);
+        assert!(
+            !Finished::of(1, None).cut_short().whole,
+            "a run cut short isn't whole"
+        );
         assert_eq!(Finished::of(0, None).cut_short().ends(), 0);
     }
 
