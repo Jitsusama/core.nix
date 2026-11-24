@@ -292,7 +292,9 @@
     timer naming its service, or running a template's instance, sets them on that service
   '';
   a-talk-answers-what-its-session-asks = ''
-    Talk to It on a session asking shows what it asks whole with what it takes; words answer it
+    Talk to It on a session asking shows what it asks whole, with what it takes on the line
+    under it, which no long question cuts off, and that alone where it says nothing of what;
+    words answer it
     by a choice's label, else its value, or as its own words where it takes them, and read sent,
     then answered or working, or not delivered and why, kept newest first, only those to what it
     asks while it asks, with any not delivered in the last quarter hour, and all of that quarter
