@@ -641,7 +641,7 @@ Singleton {
         const into = root.opensOn(lost, null, []);
         const title = Viewers.viewerTitle("", lost.title, lost.cwd);
         viewWith(words, named, into === null ? null
-            : Object.assign({}, into, { focused: true }), title);
+            : Object.assign({}, into, { focused: true }), title, said);
         console.info(`sessions: viewing ${lost.id} to wait for its host`);
     }
     // Whether a viewer `named` is held back, as one asked for moments ago
@@ -1811,7 +1811,8 @@ Singleton {
                     else if (!root.heldBack(id, viewer, footed))
                         root.viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""),
                             "attach", "--host", host, "--session", id],
-                            viewer, null, Viewers.viewerTitle("", title || quest, folder));
+                            viewer, null, Viewers.viewerTitle("", title || quest, folder),
+                            footed);
                     console.info(`sessions: started ${quest} in pi's host ${host}, as ${id}`
                         + (listed ? ", its viewer already open" : ""));
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
@@ -2568,7 +2569,11 @@ Singleton {
     // what Go To raises next time; with no words it tells `unhosted`, `why`
     // "hosted", or "unnamed" for an id that can't name a viewer's window;
     // "unowned", told as it opens its own, a window niri lists under the
-    // viewer's app id was drawn by another program (heldByAnother).
+    // viewer's app id was drawn by another program (heldByAnother), or
+    // "disowned", told opening none, the window that came for the one it
+    // asked for was refused too (refusedAsks), as a pid read wrong refuses
+    // its own; "untaken", told to the press that asked, no kitty took the
+    // window it asked for (untaken).
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
@@ -2596,12 +2601,16 @@ Singleton {
                 Niri.act({ FocusWindow: { id: listed.id } });
             else if (named === "" || !Array.isArray(words) || words.length === 0)
                 unhosted(session, named === "" ? "unnamed" : "hosted");
+            // One whose own came and was refused isn't asked for again,
+            // now or once viewPatience runs out, as each ask would open
+            // another window of the same session beside it.
+            else if (refusedAsks[named] === true && heldByAnother(named))
+                unhosted(session, "disowned");
             else if (!heldBack(session.address, named, session)) {
                 view(session, root.goesTo(session));
                 // Its own asked for, whose window holds its name is said,
-                // so a pid read wrong, which refuses every viewer, is seen
-                // at the press rather than as viewers that never come. One
-                // held back is said opening, which is true either way.
+                // so a stray window is seen at the press. One held back is
+                // said opening, as its own is.
                 if (heldByAnother(named))
                     unhosted(session, "unowned");
             }
@@ -2681,7 +2690,7 @@ Singleton {
         }
         const title = Viewers.viewerTitle(session.presence?.title, session.title,
             session.presence?.cwd);
-        const asked = viewWith(words.map(String), named, into, title);
+        const asked = viewWith(words.map(String), named, into, title, session);
         if (asked)
             Report.say(`viewing hosted session ${session.address}`);
         return asked;
@@ -2695,11 +2704,19 @@ Singleton {
     // would open beside a viewer slow to come. Nor while one is open
     // already (openNamed), which a served session's record may not say
     // yet.
+    // `said`, the session or row a press asked for, is told if no kitty
+    // takes it (untaken).
     readonly property int viewPatience: 30000
-    function viewWith(words, named, into, title) {
+    function viewWith(words, named, into, title, said) {
         if (root.openNamed(named) || viewerComing(named))
             return false;
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
+        pressedFor = Object.assign({}, pressedFor, { [named]: said ?? null });
+        if (named in refusedAsks) {
+            const refused = Object.assign({}, refusedAsks);
+            delete refused[named];
+            refusedAsks = refused;
+        }
         root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
         return true;
     }
@@ -2723,12 +2740,33 @@ Singleton {
             keepPlaces(kept);
             console.info(`sessions: ${waited.join(", ")}'s kept place let go, its viewer come`);
         }
+        forgetAsk(named);
+    }
+    // A viewer no longer asked for, come or given up on, and what its
+    // press and any refused window said of it.
+    function forgetAsk(named) {
+        if (named in refusedAsks) {
+            const refused = Object.assign({}, refusedAsks);
+            delete refused[named];
+            refusedAsks = refused;
+        }
+        if (named in pressedFor) {
+            const pressed = Object.assign({}, pressedFor);
+            delete pressed[named];
+            pressedFor = pressed;
+        }
         if (attaching[named] === undefined)
             return;
         const still = Object.assign({}, attaching);
         delete still[named];
         attaching = still;
     }
+    // The session or row each viewer asked for by a press was asked for,
+    // by its app id, so a give-up is said to it (untaken).
+    property var pressedFor: ({})
+    // Each viewer whose window came while it was asked for and was
+    // refused (heardWindow), by its app id, so Go To asks for it no more.
+    property var refusedAsks: ({})
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
     // so the next press asks for it again rather than saying it's opening
@@ -2740,14 +2778,16 @@ Singleton {
     // time in ms are taken, which stops a malformed ask, not one meant: the
     // time only orders the script's own give-ups against newer presses,
     // and any program of his could start a viewer itself anyway.
+    // The press that asked, which saw no window, is told "untaken".
     function untaken(named, asked) {
         if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked))
             || attaching[named] === undefined || attaching[named] > Number(asked))
             return;
-        const still = Object.assign({}, attaching);
-        delete still[named];
-        attaching = still;
+        const said = pressedFor[named] ?? null;
+        forgetAsk(named);
         console.info(`sessions: no sessions kitty took ${named}, so it's asked for afresh`);
+        if (said !== null)
+            unhosted(said, "untaken");
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
@@ -2912,6 +2952,11 @@ Singleton {
         if (drawnHere(window))
             return;
         refusedViewers[id] = true;
+        // Come while its viewer was asked for, it's taken for that one
+        // refused, so Go To asks for no more beside it.
+        const named = String(window.opened);
+        if (attaching[named] !== undefined)
+            refusedAsks = Object.assign({}, refusedAsks, { [named]: true });
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
     }

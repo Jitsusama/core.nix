@@ -34,10 +34,10 @@ UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(")
 # The launcher saying a key of agents:machine's in its foot, not the
 # function's own declaration.
 ELSEWHERE = re.compile(r"(?<!function )\belsewhere\(")
-# A string in double quotes, as each why and key is said, "" too, so the
-# quote that closes one is never read as opening the next.
 # The name Agents.qml keeps a why the shell gave in, as it passes it on.
 SHELLS_WHY = "why"
+# A string in double quotes, as each why and key is said, "" too, so the
+# quote that closes one is never read as opening the next.
 WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
 OPENS = "([{"
 CLOSES = ")]}"

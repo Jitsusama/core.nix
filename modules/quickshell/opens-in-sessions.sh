@@ -24,10 +24,23 @@
 # It's told when this was started, so a press made since, whose window
 # may yet come, is left coming. The kitty's answer is waited for, so a
 # launch it turns down is said, for a minute: kitten's own wait for a
-# launch's is a day (kitty's launch --response-timeout), and the shell asks
-# again after half a minute anyway.
+# launch's is a day (kitty's launch --response-timeout, which its Go
+# kitten takes as the wait for any command's answer, in tools/cmd/at's
+# template.go), and the shell asks again after half a minute anyway.
+#
+# niri gives what it starts no output (its utils/spawning.rs sets stdin,
+# stdout and stderr to null), so a run given none runs again once with
+# them in the journal, told when it was first started; one given output
+# of its own, as a test's, keeps it.
 
 asked=$(date +%s%3N)
+if [ -z "${OPENS_IN_SESSIONS_ASKED:-}" ] && [ /proc/self/fd/2 -ef /dev/null ] &&
+  command -v systemd-cat > /dev/null; then
+  OPENS_IN_SESSIONS_ASKED=$asked exec systemd-cat --identifier=opens-in-sessions \
+    sh "$0" "$@"
+fi
+asked=${OPENS_IN_SESSIONS_ASKED:-$asked}
+unset OPENS_IN_SESSIONS_ASKED
 sock=$1
 class=$2
 shift 2
@@ -53,7 +66,8 @@ done
 
 if [ -S "$sock" ]; then
   kitten @ --to "unix:$sock" launch --response-timeout 60 --type=os-window \
-    --os-window-class "$class" --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" && exit 0
+    --os-window-class "$class" --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" \
+    > /dev/null && exit 0
   echo "sessions: the sessions kitty opened no $class" >&2
 elif old; then
   systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
