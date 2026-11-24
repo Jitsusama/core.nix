@@ -138,13 +138,14 @@ for page in "${out}"/*.html; do
   # and the page is read without its comments, where a preload asks for
   # nothing. Each ends as HTML ends one: at once as <!--> or <!--->, or else
   # at its first two dashes or more and a >, or those and !>, dashes and a
-  # lone -> inside it held; and one never ended runs to the page's end. The
+  # lone -> inside it held, a bang's dash leading on to the end, as --!-->
+  # ends; and one never ended runs to the page's end. The
   # at-once forms count only where a comment starts, so <!--> inside one ends
   # it; its body can't open with > or ->, so sed's longest match can't read
   # <!--> x --> as one comment.
   first='\([^->]\|-[^->]\|--\+[^->!]\|--\+![^>]\)'
   body='\([^-]\|-[^->]\|->\|--\+[^->!]\|--\+![^>]\)'
-  ended="s/<!--\(-\?>\|\(${first}${body}*\)\?--\+!\?>\)//g"
+  ended="s/<!--\(-\?>\|\(${first}${body}*\)\?\(--\+!\)*--\+!\?>\)//g"
   bare=$(tr '\n' ' ' <"${page}" | sed -e "${ended}" -e 's/<!--.*$//')
   for face in fraunces fraunces-italic monaspace; do
     preload="<link rel=\"preload\" href=\"../local-sites/web/fonts/${face}.woff2\" as=\"font\""

@@ -151,6 +151,14 @@ def test_text_under_the_floor_is_named(tab: Page) -> None:
     assert found[0].startswith('text at 11.8 px ("12 cells"), under 12 px'), found
 
 
+def test_words_in_a_box_drawn_as_its_children_are_held_to_the_floor(tab: Page) -> None:
+    """Words at 10 px in a display: contents span, which draws no box, are under the floor."""
+    body = '<main><p><span style="display: contents; font-size: 10px">Ten</span></p></main>'
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text at 10.0 px ("Ten"), under 12 px'), found
+
+
 def test_text_at_the_floor_passes(tab: Page) -> None:
     """A count at exactly 12 px holds the floor."""
     assert probed(tab, '<main><p style="font-size: 12px">12 cells</p></main>') == []
@@ -468,9 +476,9 @@ def test_a_keycap_beside_words_no_one_sees_or_a_joining_word_is_named(tab: Page)
         ' clip-path: inset(50%)">lists every key</span>'
     )
     body = (
-        f"<main><p>{key.format('/')}<!-- searches --></p>"
-        f"<p>{key.format('?')}{heard}</p>"
-        f"<p>{key.format('[')} or {key.format(']')}</p></main>"
+        f'<main><p class="keys">{key.format("/")}<!-- searches --></p>'
+        f'<p class="keys">{key.format("?")}{heard}</p>'
+        f'<p class="keys">{key.format("[")} or {key.format("]")}</p></main>'
     )
     assert named(tab, body) == [
         (
@@ -482,7 +490,10 @@ def test_a_keycap_beside_words_no_one_sees_or_a_joining_word_is_named(tab: Page)
 
 def test_a_keycap_its_line_passes_is_named_for_that_line(tab: Page) -> None:
     """A ? keycap named "Delete everything" beside "lists every key" is named; its line passes."""
-    key = '<main><p><kbd role="button" tabindex="0" aria-label="{}">?</kbd> lists every key</p>'
+    key = (
+        '<main><p class="keys"><kbd role="button" tabindex="0" aria-label="{}">?</kbd>'
+        " lists every key</p>"
+    )
     assert named(tab, key.format("Lists every key") + "</main>") == []
     assert named(tab, key.format("Delete everything") + "</main>") == [
         (
@@ -504,6 +515,34 @@ def test_a_keycap_named_for_its_line_up_to_a_comma_or_a_control_passes(tab: Page
         f" {key.format('Return', 'Return')} opens it</p></main>"
     )
     assert named(tab, body) == []
+
+
+def test_a_keycap_line_is_cut_at_its_first_stop_past_any_it_opens_with(tab: Page) -> None:
+    """A line read on past its full stop, or opening with a colon, says what its key does."""
+    key = '<kbd role="button" tabindex="0" aria-label="Lists every key">?</kbd>'
+    body = (
+        f'<main><p class="keys">{key} lists every key. Esc closes it</p>'
+        f'<p class="keys">{key}: lists every key</p></main>'
+    )
+    assert named(tab, body) == []
+
+
+def test_a_keycap_line_ending_on_a_joining_word_before_the_next_key_passes(tab: Page) -> None:
+    """ "lists every key and", the next key after it, says "lists every key"."""
+    key = '<kbd role="button" tabindex="0" aria-label="{}">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("Lists every key", "?")} lists every key and'
+        f" {key.format('Finds a cell', '/')} finds a cell</p></main>"
+    )
+    assert named(tab, body) == []
+
+
+def test_a_pressable_keycap_outside_a_line_of_keys_is_an_icon(tab: Page) -> None:
+    """A pressable kbd drawn as a mark elsewhere takes no word from what follows it."""
+    body = '<main><p><kbd role="button" tabindex="0">\u00d7</kbd> notifications</p></main>'
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "\u00d7"'), found
 
 
 def test_a_keycap_beside_another_control_takes_none_of_its_words(tab: Page) -> None:
@@ -540,14 +579,37 @@ def test_a_keycap_beside_words_drawn_unseen_is_named(tab: Page) -> None:
     """Words in no ink, at no size, or moved off the page's start say nothing beside a key."""
     key = '<kbd role="button" tabindex="0">{}</kbd>'
     body = (
-        f'<main><p>{key.format("/")}<span style="color: transparent">finds a cell</span></p>'
-        f'<p>{key.format("?")}<span style="font-size: 0">lists every key</span></p>'
-        f'<p>{key.format("[")}<span style="position: absolute; left: -9999px">steps back'
-        "</span></p></main>"
+        f'<main><p class="keys">{key.format("/")}<span style="color: transparent">finds a cell'
+        "</span></p>"
+        f'<p class="keys">{key.format("?")}<span style="font-size: 0">lists every key</span></p>'
+        f'<p class="keys">{key.format("[")}<span style="position: absolute; left: -9999px">'
+        "steps back</span></p></main>"
     )
     assert named(tab, body) == [
         (
             'a control showing only "/" (and 2 more): '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_keycap_beside_words_painted_out_of_sight_is_named(tab: Page) -> None:
+    """Words indented off their box, clipped by a box around them, or cut to nothing say none."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("/")}<span style="display: inline-block;'
+        ' width: 8em; text-indent: -9999px">finds a cell</span></p>'
+        '<p class="keys" style="position: relative; overflow: hidden; width: 10em">'
+        f'{key.format("?")}<span style="position: absolute; left: 400px">lists every key'
+        "</span></p>"
+        f'<p class="keys">{key.format("[")}<span style="clip-path: inset(100%)">steps back'
+        "</span></p>"
+        f'<p class="keys">{key.format("]")}<span style="position: absolute;'
+        ' clip: rect(0 0 0 0)">steps on</span></p></main>'
+    )
+    assert named(tab, body) == [
+        (
+            'a control showing only "/" (and 3 more): '
             "show its word beside the mark, its name starting with that word"
         )
     ]
@@ -793,6 +855,9 @@ def test_a_layer_sized_past_its_box_in_pixels_is_its_ground(tab: Page) -> None:
         found = probed(tab, body)
         assert len(found) == 1, (size, found)
         assert found[0].startswith('text "Dim" at 1.'), (size, found)
+        # Pale words pass only where the layer lies under them all, leaving no white.
+        pale = body.replace("#111", "#eee").replace("Dim", "Pale")
+        assert probed(tab, pale) == [], size
 
 
 def test_a_stripe_tiled_along_one_axis_is_a_ground(tab: Page) -> None:
@@ -837,6 +902,8 @@ def test_a_tiled_layer_is_the_ground_under_the_words(tab: Page) -> None:
     found = probed(tab, body)
     assert len(found) == 1, found
     assert found[0].startswith('text "Dim" at 1.'), found
+    # Pale words pass only where the tiles lie under them all, leaving no canvas.
+    assert probed(tab, body.replace("#111", "#eee").replace("Dim", "Pale")) == []
 
 
 def test_a_hard_stop_is_not_blended_across(tab: Page) -> None:
@@ -850,7 +917,7 @@ def test_a_hard_stop_is_not_blended_across(tab: Page) -> None:
 
 def test_a_hard_stop_in_pixels_is_not_blended_across(tab: Page) -> None:
     """#757575 passes on a white band 200 px wide, or one to 100%, that ends hard on black."""
-    for stops in ("#fff 0 200px, #000 200px", "#fff 100%, #000"):
+    for stops in ("#fff 0 200px, #000 200px", "#fff 100%, #000", "#fff 50%, #000 0"):
         body = (
             f'<main><div style="background: linear-gradient(90deg, {stops})">'
             '<p style="color: #757575">Split</p></div></main>'
@@ -876,6 +943,40 @@ def test_a_line_drawn_beside_the_words_is_not_their_ground(tab: Page) -> None:
         'background-size: 1px 100%"><p>Beside a line</p></div></main>'
     )
     assert probed(tab, body) == []
+
+
+def test_a_rule_is_a_hairline_to_two_pixels_and_a_band_past_them(tab: Page) -> None:
+    """#111 words pass beside a 2 px black rule under them, and are named on a 3 px one."""
+    rule = (
+        '<main><p style="color: #111; background: linear-gradient(#000, #000) no-repeat 0 100% /'
+        ' 100% {}, #fff">Dim</p></main>'
+    )
+    assert probed(tab, rule.format("2px")) == []
+    found = probed(tab, rule.format("3px"))
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_spaced_tile_a_pixel_across_is_no_hairline(tab: Page) -> None:
+    """Tiles of a pixel, spaced, may fill the box, so #111 words are named on their black."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(#000, #000) space 0 0 /'
+        ' 1px 1px, #fff">Dim</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_box_broken_across_lines_keeps_the_ground_under_its_layer(tab: Page) -> None:
+    """A wrapped span's layer, sized in px, can't be said to reach its box: the white stays."""
+    body = (
+        '<main><p style="width: 4em"><span style="color: #eee; background: linear-gradient('
+        '#000, #000) no-repeat 0 0 / 4000px 4000px, #fff">Pale words over lines</span></p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Pale words over lines" at 1.'), found
 
 
 def test_words_painted_with_a_gradient_are_measured_by_it(tab: Page) -> None:
@@ -927,6 +1028,11 @@ def test_a_band_thicker_than_a_hairline_keeps_the_ground_under_it(tab: Page) -> 
         found = probed(tab, f"<main>{band}</main>")
         assert len(found) == 1, (band, found)
         assert found[0].startswith('text "Dim" at 1.'), (band, found)
+        # Pale words are named on the white the band leaves above it.
+        pale = band.replace("#111", "#eee").replace("Dim", "Pale")
+        found = probed(tab, f"<main>{pale}</main>")
+        assert len(found) == 1, (pale, found)
+        assert found[0].startswith('text "Pale" at 1.'), (pale, found)
 
 
 def test_a_layer_tiling_the_whole_box_is_under_all_its_words(tab: Page) -> None:

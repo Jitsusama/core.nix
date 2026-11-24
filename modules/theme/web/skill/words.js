@@ -27,8 +27,9 @@
   const pictures = ["url", "image-set", "cross-fade", "element", "paint"];
   const picture = new RegExp(String.raw`\b(?:${pictures.join("|")})\(`, "u");
   // A ground's layer repeated so it tiles its whole box, on each axis, which
-  // space doesn't: it leaves gaps between its tiles. And the most a line
-  // may be across to lie beside words, never under them, in px: a hairline.
+  // space doesn't: it leaves gaps between its tiles, though tiles of a pixel
+  // or two may leave none. And the most a line untiled on an axis may be
+  // across to lie beside words, never under them, in px: a hairline.
   const tiles = new Set(["repeat", "round"]);
   const hairline = 2;
   const sides = { "repeat-x": "repeat no-repeat", "repeat-y": "no-repeat repeat" };
@@ -180,12 +181,15 @@
     return [0, 1, 2].map((at) => part(at) / alpha).concat(alpha);
   };
   // The page's scheme, from its style or, where that says nothing, from the
-  // head's meta tag, which sets the canvas as well.
+  // head's meta tag, which sets the canvas as well: the first named so in
+  // any case, as HTML matches a meta's name, that says a scheme.
   const declared = getComputedStyle(root).colorScheme;
-  const scheme =
-    declared === "normal"
-      ? (page.head?.querySelector('meta[name="color-scheme"]')?.content ?? "normal")
-      : declared;
+  const metas = Array.from(page.head?.querySelectorAll('meta[name="color-scheme" i]') ?? []);
+  const schemes = ["light", "dark", "normal"];
+  const said = metas
+    .map((meta) => meta.content.toLowerCase())
+    .find((content) => schemes.some((word) => content.includes(word)));
+  const scheme = declared === "normal" ? (said ?? "normal") : declared;
   const night =
     scheme.includes("dark") &&
     (!scheme.includes("light") || matchMedia("(prefers-color-scheme: dark)").matches);
@@ -251,7 +255,10 @@
     const whole = size === "cover" || size === "contain";
     const [wide, tall = "auto"] = whole ? ["100%", "100%"] : size.split(" ");
     const thin = (axis, part) =>
-      !tiles.has(axis) && part.endsWith("px") && Number.parseFloat(part) <= hairline;
+      !tiles.has(axis) &&
+      axis !== "space" &&
+      part.endsWith("px") &&
+      Number.parseFloat(part) <= hairline;
     const under = along(across, wide, x, box.width) && along(down, tall, y, box.height);
     if (thin(across, wide) || thin(down, tall)) {
       return "beside";
@@ -272,7 +279,8 @@
   };
   // A gradient's colours: each stop, and eighths between each pair it
   // blends, but not across a hard stop, which starts where the last ends,
-  // in the same unit, or is placed nowhere after one at 100%.
+  // in the same unit, or at 0 or before in any, as #fff 50%, #000 0 writes
+  // a split, or is placed nowhere after one at 100%.
   const gradient = (layer, style) => {
     const stops = [];
     for (const found of layer.matchAll(colourWords)) {
@@ -294,7 +302,8 @@
         before.last !== undefined &&
         (after.first === undefined
           ? before.last.unit === "%" && before.last.at >= 100
-          : after.first.unit === before.last.unit && after.first.at <= before.last.at);
+          : after.first.at <= 0 ||
+            (after.first.unit === before.last.unit && after.first.at <= before.last.at));
       for (let eighth = hard ? 8 : 1; eighth <= 8; eighth += 1) {
         colours.push(between(before.colour, after.colour, eighth / 8));
       }

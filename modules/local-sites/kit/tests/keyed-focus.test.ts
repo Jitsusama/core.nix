@@ -1,8 +1,8 @@
 // Where focus goes when a list is drawn by key: it stays on a control still
 // in its row, goes to the same place in a new drawing only where that holds
 // the same control, and otherwise to the row, so no other control takes the
-// next press. A control is the same where its markup says what it does of
-// it alone, else where its words are the same.
+// next press. A control is the same where its markup but its look is the
+// same and says what it does of it alone, else where its words are too.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
@@ -145,11 +145,53 @@ it("a control of another kind with the same name and value is another control", 
   assert.equal(refocused(["open", sent("a")], ["open", sent("button")]), "row");
 });
 
-it("focus nested deeper than the new drawing goes to the row", () => {
+it("focus nested deeper than the new drawing goes to the row, however alike the place", () => {
   const copy: Act = { says: "copy", attributes: { href: "#copy" } };
   const held: Act = { says: "", kind: "span", attributes: {}, holds: { ...copy } };
-  const flat: Act = { says: "copy", kind: "span", attributes: { href: "#copy" } };
-  assert.equal(refocused(["open", held], ["open", flat], "on b", true), "row");
+  assert.equal(refocused(["open", held], ["open", copy], "on b", true), "row");
+});
+
+it("a control going to the same place but marked for another act is another control", () => {
+  const act = (says: string, marks: Record<string, string>): Act => ({
+    says,
+    attributes: { href: "#b", ...marks },
+  });
+  const [open, forget] = [
+    act("open", { "data-act": "open" }),
+    act("forget", { "data-act": "forget" }),
+  ];
+  assert.equal(refocused([open, forget], [forget, open]), "row");
+  assert.equal(refocused([open, forget], [open, forget], "on b, moved"), "control");
+  const [start, stop] = [
+    act("b", { "aria-label": "Start b" }),
+    act("b", { "aria-label": "Stop b" }),
+  ];
+  assert.equal(refocused(["open", start], ["open", stop]), "row");
+});
+
+it("a button sending the same name and value to another action is another control", () => {
+  const sent = (says: string, action: string): Act => ({
+    says,
+    kind: "button",
+    attributes: { name: "id", value: "b", formaction: action },
+  });
+  assert.equal(
+    refocused(["open", sent("Start", "/start")], ["open", sent("Stop", "/stop")]),
+    "row",
+  );
+  assert.equal(
+    refocused(["open", sent("Start", "/start")], ["open", sent("Start b", "/start")]),
+    "control",
+  );
+});
+
+it("a control whose look or state changed is still the same control", () => {
+  const toggle = (pressed: string): Act => ({
+    says: "pin",
+    kind: "button",
+    attributes: { name: "pin", value: "b", "aria-pressed": pressed, class: `pin ${pressed}` },
+  });
+  assert.equal(refocused(["open", toggle("false")], ["open", toggle("true")]), "control");
 });
 
 it("focus on a control saying nothing of itself goes to the row, not its likeness", () => {

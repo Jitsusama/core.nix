@@ -99,18 +99,20 @@
   // A keycap the kit makes pressable sits in a line of keys that says what
   // it does, as "? lists every key" does: the words a person sees that follow
   // it there, up to the next keycap or control, are the word beside its mark,
-  // cut at the line's first comma or sentence end, so "opens Now, and" says
-  // "opens Now", with no joining word such as "or" left trailing, so long as
+  // cut at the line's first comma or sentence end past any it opens with, so
+  // "opens Now, and" says "opens Now" and ": lists every key" says "lists
+  // every key", with no joining word such as "or" left trailing, so long as
   // one says more. A comment, words kept for a screen reader, and words in
-  // no ink, at no size or off the page's start aren't seen. A button holding
-  // only a keycap reads its line the same way, but only in a line of keys,
-  // so an icon wrapped in a kbd is still an icon.
+  // no ink, at no size, or painted off the page's start or outside a box
+  // clipping them aren't seen. A keycap, or a button holding only one,
+  // reads its line only in a line of keys, so a mark in a kbd elsewhere is
+  // still an icon.
   const capped = (one, all) =>
-    one.localName === "kbd" ||
-    (one.closest(".keys") !== null &&
-      one.children.length === 1 &&
-      one.firstElementChild.localName === "kbd" &&
-      one.firstElementChild.textContent.trim() === all.trim());
+    one.closest(".keys") !== null &&
+    (one.localName === "kbd" ||
+      (one.children.length === 1 &&
+        one.firstElementChild.localName === "kbd" &&
+        one.firstElementChild.textContent.trim() === all.trim()));
   const joining = new Set(["a", "an", "and", "or", "the", "then", "to"]);
   // How opaque an ink is, as the browser computes a colour: an alpha after
   // a slash, or rgba's fourth number, else whole.
@@ -123,47 +125,101 @@
     }
     return ink.startsWith("rgba(") ? Number.parseFloat(ink.slice(ink.lastIndexOf(",") + 1)) : 1;
   };
-  // A line's words up to where its sense ends, at a comma or a stop.
+  // A line's words from where its sense starts, past any comma or stop it
+  // opens with, up to where it ends, at the next.
+  const stops = ",.;:!?";
   const sense = (text) => {
+    let from = 0;
+    while (from < text.length && (stops.includes(text[from]) || text[from].trim() === "")) {
+      from += 1;
+    }
     let end = text.length;
-    for (const stop of ",.;:!?") {
-      const at = text.indexOf(stop);
+    for (const stop of stops) {
+      const at = text.indexOf(stop, from);
       end = at >= 0 && at < end ? at : end;
     }
-    return text.slice(0, end);
+    return text.slice(from, end);
   };
-  const seen = (element) => {
-    if (!shown(element) || forEarsOnly(element)) {
+  // A box cut to nothing: a clip-path inset by half or more, or an old clip
+  // rectangle with no area, on a box it applies to.
+  const cut = (style) => {
+    const inset = style.clipPath.startsWith("inset(")
+      ? style.clipPath.slice("inset(".length).split(" ")[0].replace(")", "")
+      : "";
+    if (inset.endsWith("%") && Number.parseFloat(inset) >= 50) {
+      return true;
+    }
+    if (!(style.clip.startsWith("rect(") && ["absolute", "fixed"].includes(style.position))) {
+      return false;
+    }
+    const [top, right, bottom, left] = style.clip
+      .slice("rect(".length, -1)
+      .split(",")
+      .map((side) => Number.parseFloat(side));
+    return top >= bottom || left >= right;
+  };
+  // Where a text's glyphs are painted, its own boxes, not its element's: an
+  // indent or a box clipping them can push them out of sight while the box
+  // stays. Seen where one lies past the page's start and inside every box
+  // over it that clips what overflows, none of which cuts it to nothing.
+  const painted = (node) => {
+    const range = page.createRange();
+    range.selectNodeContents(node);
+    const inside = (box) => {
+      for (let at = node.parentElement; at !== null && at !== root; at = at.parentElement) {
+        const style = getComputedStyle(at);
+        const edge = at.getBoundingClientRect();
+        const clips = style.overflowX !== "visible" || style.overflowY !== "visible";
+        const out =
+          box.right <= edge.left ||
+          box.left >= edge.right ||
+          box.bottom <= edge.top ||
+          box.top >= edge.bottom;
+        if (cut(style) || (clips && out)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    return Array.from(range.getClientRects()).some(
+      (box) =>
+        box.width > 0 &&
+        box.height > 0 &&
+        box.right + window.scrollX > 0 &&
+        box.bottom + window.scrollY > 0 &&
+        inside(box),
+    );
+  };
+  const seen = (node) => {
+    const element = node.parentElement;
+    if (element === null || !shown(element) || forEarsOnly(element)) {
       return false;
     }
     const style = getComputedStyle(element);
-    const box = element.getBoundingClientRect();
     return (
       Number.parseFloat(style.fontSize) > 0 &&
       alpha(style.webkitTextFillColor || style.color) > 0 &&
-      box.right + window.scrollX > 0 &&
-      box.bottom + window.scrollY > 0
+      painted(node)
     );
   };
   const onScreen = (element) => {
     const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const words = [];
     for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-      if (seen(node.parentElement)) {
+      if (seen(node)) {
         words.push(node.textContent);
       }
     }
     return words.join(" ");
   };
+  const ending = `kbd, ${acting}`;
   const follows = (one) => {
     const words = [];
-    const loose = one.parentElement !== null && seen(one.parentElement);
     for (let at = one.nextSibling; at !== null; at = at.nextSibling) {
       if (at.nodeType === Node.TEXT_NODE) {
-        words.push(loose ? at.textContent : "");
+        words.push(seen(at) ? at.textContent : "");
       } else if (at.nodeType === Node.ELEMENT_NODE) {
-        const stops = `kbd, ${acting}`;
-        if (at.matches(stops) || at.querySelector(stops) !== null) {
+        if (at.matches(ending) || at.querySelector(ending) !== null) {
           break;
         }
         words.push(onScreen(at));

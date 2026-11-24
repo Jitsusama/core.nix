@@ -62,6 +62,10 @@ class Inner implements Placed {
     return this.#attributes[name] ?? null;
   }
 
+  getAttributeNames(): string[] {
+    return Object.keys(this.#attributes);
+  }
+
   focus(): void {
     if (this.parentElement !== null) {
       this.#page.activeElement = this;

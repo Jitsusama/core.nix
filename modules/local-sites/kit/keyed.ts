@@ -32,6 +32,7 @@ interface Placed {
   readonly localName?: string;
   readonly textContent?: string | null;
   getAttribute?(name: string): string | null;
+  getAttributeNames?(): string[];
   focus?(options?: FocusOptions): void;
 }
 
@@ -234,6 +235,36 @@ function does(control: Placed): string | null {
   return name !== "" && value !== "" ? `name ${name} ${value}` : null;
 }
 
+/**
+ * The attributes saying a control's look or its state, not which control it
+ * is: a toggle pressed or a tab chosen is the same control as before.
+ */
+const LOOKS = new Set([
+  "aria-busy",
+  "aria-checked",
+  "aria-current",
+  "aria-expanded",
+  "aria-pressed",
+  "aria-selected",
+  "class",
+  "id",
+  "style",
+  "tabindex",
+]);
+
+/**
+ * A control's markup but its look and state, which says what it does beyond
+ * where it goes: its form's action and method, a target, a download, a
+ * page's own data-act, each told apart.
+ */
+function markup(control: Placed): string {
+  return (control.getAttributeNames?.() ?? [])
+    .filter((name) => !LOOKS.has(name))
+    .sort()
+    .map((name) => `${name}=${control.getAttribute?.(name) ?? ""}`)
+    .join("\n");
+}
+
 /** What a control is heard as apart from its words, which tells two alike. */
 function heard(control: Placed): string {
   return ["aria-label", "aria-labelledby", "title"]
@@ -242,14 +273,21 @@ function heard(control: Placed): string {
 }
 
 /**
- * Whether `one` is the same control as `other`: the same element doing the
- * same, judged by where it goes or its name, since its words may show the
- * record that just changed. One whose markup says neither is judged by its
- * words and what it's heard as, and one with no words is no control `one`
- * can be known as.
+ * Whether `one` is the same control as `other`: the same element with the
+ * same markup but its look, heard as the same, doing the same, judged by
+ * where it goes or its name, since its words may show the record that just
+ * changed. Two sharing a place to go but marked for another act, a form's
+ * other action or another label, are two controls. One whose markup says
+ * neither is judged by its words too, and one with no words is no control
+ * `one` can be known as.
  */
 function alike(one: Placed, other: Placed | null): boolean {
-  if (other === null || one.localName !== other.localName) {
+  if (
+    other === null ||
+    one.localName !== other.localName ||
+    markup(one) !== markup(other) ||
+    heard(one) !== heard(other)
+  ) {
     return false;
   }
   const did = does(other);
@@ -257,20 +295,16 @@ function alike(one: Placed, other: Placed | null): boolean {
     return does(one) === did;
   }
   const words = other.textContent?.trim() ?? "";
-  return (
-    words !== "" &&
-    does(one) === null &&
-    one.textContent?.trim() === words &&
-    heard(one) === heard(other)
-  );
+  return words !== "" && does(one) === null && one.textContent?.trim() === words;
 }
 
 /**
  * Gives focus back after a drawing: to `focused` itself while it's still in
  * its row, and otherwise to the same place in the row's new drawing where
  * that holds the same control, or to the row itself, since by its place
- * alone another control there would take the next press. A row that takes
- * no focus lets it go, as the page does when a focused element leaves.
+ * alone another control there would take the next press. A place the new
+ * drawing doesn't reach all the way down to is another place. A row that
+ * takes no focus lets it go, as the page does when a focused element leaves.
  */
 function refocus(focused: Placed | null, path: number[], item: object) {
   if (focused !== null && inside(focused, item)) {
@@ -284,7 +318,8 @@ function refocus(focused: Placed | null, path: number[], item: object) {
   for (const at of path) {
     const next = target.children[at];
     if (next === undefined) {
-      break;
+      item.focus?.({ preventScroll: true });
+      return;
     }
     target = next;
   }
