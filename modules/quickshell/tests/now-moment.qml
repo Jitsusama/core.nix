@@ -2713,7 +2713,7 @@ ShellRoot {
             laidRows.find(row => row.key === "on:waitingOnYou:kind:agent")?.pressing === true
                 && JSON.stringify([heldBy("on:heading:cell:LEFTC"),
                     heldBy("on:heading:cell:yours")])
-                === JSON.stringify([["on:look:c"], ["on:waiting:Sign In"]]),
+                === JSON.stringify([["on:look:c"], ["on:waiting:item:Sign In"]]),
             JSON.stringify(laidRows.map(row => [row.key, row.pressing ?? null,
                 row.holding ?? null])));
         // A cell's standing moving alone, what it asks and left as they
