@@ -46,7 +46,12 @@ let
     {
       wants = [ "modprobe@v4l2loopback.service" ];
       after = [ "modprobe@v4l2loopback.service" ];
-      environment.GST_PLUGIN_PATH = plugins;
+      environment = {
+        GST_PLUGIN_PATH = plugins;
+        # GStreamer's errors and warnings, so a pipeline the relay can't make
+        # says why in the test's log.
+        GST_DEBUG = "2";
+      };
       serviceConfig.RuntimeDirectory = "relay-${name}";
       preStart = "${ctl} add -n 'Relayed ${name}' -b 4 -x 1 > ${device}";
       script = ''

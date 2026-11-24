@@ -36,6 +36,9 @@ LOOKING = 3
 # How long a test gives the relay to say what it says, beyond the wait it's saying it after:
 # the loopback's client takes a moment to be counted on a busy builder.
 SAYING = timedelta(seconds=30)
+# How long udev, and the relay's first placeholder, may take with a new loopback on a busy
+# builder; each wait ends as soon as it's done.
+SETTLING = timedelta(minutes=2)
 
 
 class Relay:
@@ -49,13 +52,22 @@ class Relay:
     def start(self) -> None:
         """Start the relay, then a client reading its loopback until it's stopped."""
         self.machine.succeed(f"systemctl start {self.unit}")
-        device = self.machine.succeed(f"cat /run/{self.unit.removesuffix('.service')}/device")
-        self.machine.succeed(f"udevadm wait --timeout 60 {device.strip()}")
+        device = self.machine.succeed(
+            f"cat /run/{self.unit.removesuffix('.service')}/device"
+        ).strip()
+        self.machine.succeed(f"udevadm wait --timeout {SETTLING.seconds} {device}")
+        # The loopback is exclusive, as the shared cameras' are, so it offers a picture to
+        # read only once the relay writes its placeholder, which a first start of GStreamer,
+        # reading its plugins, can put off for seconds.
+        self.machine.wait_until_succeeds(
+            f"v4l2-ctl -d {device} --info | sed -n '/Device Caps/,$p' | grep -q 'Video Capture'",
+            timeout=SETTLING.seconds,
+        )
         # The client streams for as long as the relay gives it frames, and waits through the
         # gaps, as a call's camera does.
         self.machine.succeed(
             f"systemd-run --unit=client-{self.unit} -p Type=exec"
-            f" v4l2-ctl -d {device.strip()} --stream-mmap --stream-count=0 --stream-to=/dev/null"
+            f" v4l2-ctl -d {device} --stream-mmap --stream-count=0 --stream-to=/dev/null"
         )
 
     def stop(self) -> None:
