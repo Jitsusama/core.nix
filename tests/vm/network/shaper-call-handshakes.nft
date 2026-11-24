@@ -11,9 +11,10 @@
 # heard the failing one: it was lost going up, in the shaper's upload queue
 # or the router. Only the uploads subtest judges that loss, the shaper's
 # video drops, on counts that span every time the calls are made, so a
-# connect it drops still counts there. One it heard and no reply
-# came for was lost at the server or on the way down, in the router or the
-# shaper's IFB.
+# connect it drops still counts there. A reply the server sent that never
+# came was lost on the way down, in the router or the shaper's IFB; a
+# connect it heard and never answered is the server's failing, and no
+# datagram lost.
 
 counter media { }
 counter page { }

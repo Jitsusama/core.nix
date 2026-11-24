@@ -303,6 +303,7 @@ class Rig:
             before = self.downs()
             connects, replies = self.handshakes(self.server), self.handshakes(self.client)
             asked = self.handshakes(self.client, "sent")
+            answered = self.handshakes(self.server, "sent")
             walked = self.path()
             results = self.hold(held, seconds)
             now = self.path()
@@ -317,18 +318,23 @@ class Rig:
             sent = {
                 name: n - asked[name] for name, n in self.handshakes(self.client, "sent").items()
             }
+            # A connect the server heard and never answered is the server's failing, not a
+            # datagram lost: only a reply it sent that never came counts as lost going down.
+            replied = {
+                name: n - answered[name] for name, n in self.handshakes(self.server, "sent").items()
+            }
             lost = [
                 name
                 for name in held
                 if unanswered(results[name])
-                and (sent[name] > heard[name] or heard[name] > came[name])
+                and (sent[name] > heard[name] or replied[name] > came[name])
             ]
             failed = [name for name in held if "error" in results[name] and name not in lost]
             # iperf3 connects a call's streams one after another and stops at the first left
             # unanswered, so a reply came for every connect heard only when the failing one
             # never reached the server: lost going up, judged only where a subtest counts the
             # shaper's upload drops over every try.
-            down = [name for name in lost if heard[name] > came[name]]
+            down = [name for name in lost if replied[name] > came[name]]
             # A call that ran in a try made again would go unjudged, so one past the bar keeps it.
             over = over_the_bar(results, [name for name in held if name not in lost])
             if not lost or failed or over or (down and dropped) or made == HANDSHAKES:
@@ -569,8 +575,11 @@ def received(result: Json, way: str) -> Json:
 def written(result: Json, way: str) -> int:
     """Give how many datagrams a call's sender wrote one way: `up` to the server, `down` back."""
     end: Json = result.get("end", {})
-    summary: Json = end.get("sum_sent" if way == "up" else "sum_sent_bidir_reverse", {})
-    return int(summary.get("packets", 0))
+    key = "sum_sent" if way == "up" else "sum_sent_bidir_reverse"
+    summary: Json = end.get(key, {})
+    # Read as nought, a field iperf3 stopped writing would blame the counter that met more.
+    assert "packets" in summary, f"iperf3 wrote no packets in end.{key}: {sorted(summary)}"
+    return int(summary["packets"])
 
 
 def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
