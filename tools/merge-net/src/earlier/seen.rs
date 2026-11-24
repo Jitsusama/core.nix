@@ -356,11 +356,20 @@ pub fn unread(short: &str) -> String {
 /// Why `commit`, which only rounds over a range of commits read, may not
 /// merge: each read from a base that's on no main, or that it recorded as
 /// no commit (`read_in` above), so none stands for the commits under it.
-pub fn read_from_no_base(short: &str) -> String {
+/// The bases are named, as `bases` gives them, since git failing to check
+/// one (a repo it can't read, a spawn that failed) reads the same as a base
+/// off main, and the name is how a reader tells the two apart.
+pub fn read_from_no_base(short: &str, bases: &[String]) -> String {
+    let named = if bases.is_empty() {
+        "none recorded".to_owned()
+    } else {
+        bases.join(", ")
+    };
     format!(
-        "a review round read {short} only over a range whose base isn't a commit on main, \
-         so it doesn't stand for the commits under it: ask a council (review_ask) on the \
-         change, or on a range from main, and ask ready again once it's collected"
+        "a review round read {short} only over a range from a base that isn't a commit on \
+         main, or that git couldn't check (read from: {named}), so it doesn't stand for the \
+         commits under it: ask a council (review_ask) on the change, or on a range from \
+         main, and ask ready again once it's collected"
     )
 }
 

@@ -138,12 +138,24 @@ fn read_in(
     if same(read).is_empty() {
         // A range round that read the head itself, from a base that's no
         // commit on main, is told apart from no round at all: asking the
-        // same range again reads from the same base.
-        let ranged = rounds.iter().any(|read| read.commit == commit);
-        Err(if ranged {
-            seen::read_from_no_base(short(commit))
-        } else {
+        // same range again reads from the same base. A rebased head, read
+        // by no round itself, is left to `seen::unread`, since what could
+        // be its change was searched above.
+        let mut bases: Vec<String> = rounds
+            .iter()
+            .filter(|read| read.commit == commit)
+            .map(|read| match read.from.as_deref() {
+                Some(base) if !base.is_empty() => short(base).to_owned(),
+                _ => "none recorded".to_owned(),
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        bases.sort();
+        Err(if bases.is_empty() {
             seen::unread(short(commit))
+        } else {
+            seen::read_from_no_base(short(commit), &bases)
         })
     } else {
         Ok(())
@@ -580,7 +592,14 @@ mod tests {
         let rounds = HashSet::from([round("ddd", Some("off")), round("ddd", Some(""))]);
         let on_main = |base: &str| base == "main";
         let refused = read_in("ddd", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
-        assert_eq!(refused, seen::read_from_no_base("ddd"));
+        assert_eq!(
+            refused,
+            seen::read_from_no_base("ddd", &["none recorded".to_owned(), "off".to_owned()])
+        );
+        assert!(
+            refused.contains("read from: none recorded, off"),
+            "the bases it read from weren't named: {refused}"
+        );
         let unread = read_in("ccc", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
         assert_eq!(unread, seen::unread("ccc"));
     }
