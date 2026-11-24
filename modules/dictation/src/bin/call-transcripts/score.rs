@@ -136,6 +136,77 @@ pub fn hear_side(
     Ok(())
 }
 
+/// PROBE, never merged: where `side`'s reference words fall against its
+/// takes, and how many words each length of take is heard with against
+/// how many its reference holds.
+fn probe(name: &str, side: Side, cut: &[Take], heard: &[Line], reference: &[Said], mine: &str) {
+    let spans: Vec<(usize, usize)> = cut
+        .iter()
+        .map(|take| (take.start, take.start + take.samples.len()))
+        .collect();
+    let overlap = |from: usize, to: usize, (start, end): (usize, usize)| {
+        to.min(end).saturating_sub(from.max(start))
+    };
+    let mut covered = [0usize; 5];
+    let mut lengths = [(0usize, 0f64, 0usize); 5];
+    let ours: Vec<&Said> = reference.iter().filter(|line| whose(line, mine) == side).collect();
+    for line in &ours {
+        let (from, to) = (samples(line.start), samples(line.end));
+        let n = said(&line.text).len();
+        let inside: usize = spans.iter().map(|&span| overlap(from, to, span)).sum();
+        let share = inside as f64 / (to - from).max(1) as f64;
+        let bucket = match share {
+            s if s < 0.25 => 0,
+            s if s < 0.5 => 1,
+            s if s < 0.75 => 2,
+            s if s < 0.95 => 3,
+            _ => 4,
+        };
+        covered[bucket] += n;
+    }
+    for &(start, end) in &spans {
+        let seconds = (end - start) / RATE;
+        let bucket = match seconds {
+            0..2 => 0,
+            2..5 => 1,
+            5..9 => 2,
+            9..13 => 3,
+            _ => 4,
+        };
+        let said_in: f64 = ours
+            .iter()
+            .map(|line| {
+                let (from, to) = (samples(line.start), samples(line.end));
+                let n = said(&line.text).len() as f64;
+                n * overlap(from, to, (start, end)) as f64 / (to - from).max(1) as f64
+            })
+            .sum();
+        let heard_in: usize = heard
+            .iter()
+            .filter(|line| line.start == start)
+            .map(|line| words(&line.text).len())
+            .sum();
+        lengths[bucket].0 += 1;
+        lengths[bucket].1 += said_in;
+        lengths[bucket].2 += heard_in;
+    }
+    let side = label(side);
+    println!(
+        "PROBE {name} {side} words by share of their line in takes: \
+         <25% {} <50% {} <75% {} <95% {} rest {}",
+        covered[0], covered[1], covered[2], covered[3], covered[4]
+    );
+    for (bucket, (count, said_in, heard_in)) in ["<2s", "2-5s", "5-9s", "9-13s", "13s+"]
+        .iter()
+        .zip(lengths)
+    {
+        println!(
+            "PROBE {name} {side} takes {bucket}: {count} takes, {said_in:.0} words said, \
+             {heard_in} heard"
+        );
+    }
+}
+
 /// Joel's lines of `lines` that are written, by when each starts.
 fn joels(lines: &[Line]) -> Vec<&Line> {
     let mut own: Vec<&Line> = lines
@@ -198,14 +269,17 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
     for side in [Side::Mine, Side::Theirs] {
         let sound = &sounds[index(side)];
         let file = format!("{name}.{}.wav", label(side));
+        let cut = takes(sound);
+        let before = lines.len();
         hear_side(
             &mut *speech,
             side,
             &file,
-            &takes(sound),
+            &cut,
             &mut lines,
             &mut word_times,
         )?;
+        probe(name, side, &cut, &lines[before..], reference, mine);
         for line in reference.iter().filter(|line| whose(line, mine) == side) {
             let (from, to) = (samples(line.start - AROUND), samples(line.end + AROUND));
             let clip = &sound[from.min(sound.len())..to.min(sound.len())];
