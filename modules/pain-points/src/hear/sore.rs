@@ -434,6 +434,11 @@ mod tests {
                 "ease beside giving up spared a swear: {hurt}"
             );
         }
+        // Each word that leaves the choice, so one dropped from the list is caught.
+        for word in ["use", "pick", "take", "choose"] {
+            let eased = format!("shit, it's fine, {word} whatever");
+            assert_eq!(kinds(&eased, AT, &[]), none, "leaving it undid: {eased}");
+        }
         for eased in [
             "shit, it's fine. can you check the logs?",
             "shit, it's fine, i blame myself",

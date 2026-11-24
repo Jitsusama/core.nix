@@ -12,6 +12,7 @@
 
 use crate::pi::iso_ms;
 use crate::words::automated;
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -100,6 +101,14 @@ pub struct Carried {
     pub answers: Vec<(i64, i64)>,
 }
 
+impl Carried {
+    /// Forgets the error the turn stopped on, once pi tries again or he
+    /// speaks, and any message that came after it.
+    fn past_error(&mut self) {
+        (self.errored, self.crossed, self.error) = (false, false, None);
+    }
+}
+
 /// His words in a user message's text, and the window attached, or none
 /// when someone else sent it.
 pub fn his(text: &str) -> Option<(String, Option<String>)> {
@@ -159,16 +168,19 @@ struct Head {
     #[serde(default)]
     timestamp: String,
     message: Option<HeadMessage>,
-    /// The entry a context edit changes, and what it puts in its place.
+    /// The entry a context edit changes, and whether it puts anything in
+    /// its place, read without decoding what.
     #[serde(rename = "targetId", default)]
     target: Option<String>,
     #[serde(default)]
-    replacement: Option<Value>,
+    replacement: Option<IgnoredAny>,
 }
 
 /// Whether `head` is pi's retry of `carried`'s errored turn: an edit that
 /// drops the message that errored from its context, with nothing in its
-/// place. Any other edit, such as an extension's, isn't one.
+/// place, as pi's `_omitRecoveryAttempt` writes before a retry's wait or
+/// an overflow's compaction. Any other edit, such as an extension's, isn't
+/// one.
 fn retried(head: &Head, carried: &Carried) -> bool {
     head.replacement.is_none() && (carried.error.is_none() || head.target == carried.error)
 }
@@ -216,9 +228,7 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
     if carried.errored {
         match head.kind.as_str() {
             "custom_message" => carried.crossed = true,
-            "context_edit" if retried(&head, carried) => {
-                (carried.errored, carried.crossed) = (false, false);
-            }
+            "context_edit" if retried(&head, carried) => carried.past_error(),
             _ => {}
         }
     }
@@ -262,7 +272,7 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             // A turn ends on any stop but a call for tools, answered or not,
             // or an error, which pi tries again within the same turn.
             carried.errored = stopped == Some("error");
-            carried.error = carried.errored.then(|| head.id.clone());
+            carried.error = (carried.errored && !head.id.is_empty()).then(|| head.id.clone());
             if stopped.is_some_and(|stop| !matches!(stop, "toolUse" | "error")) {
                 carried.from = None;
             }
@@ -295,12 +305,12 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
                 } else if let Some(at) = at {
                     opened(carried, at);
                 }
-                (carried.errored, carried.crossed) = (false, false);
+                carried.past_error();
                 return None;
             };
             let at = at?;
             opened(carried, at);
-            (carried.errored, carried.crossed) = (false, false);
+            carried.past_error();
             let said = Said {
                 entry: head.id,
                 at,
@@ -673,6 +683,12 @@ mod tests {
                 vec![&asking, &done],
                 Vec::new(),
             ),
+            // Only the errored entry kept across runs tells this from a retry.
+            (
+                vec![&his, &asking, &failed, &peer],
+                vec![&other, &asking, &done],
+                Vec::new(),
+            ),
             (
                 vec![&his, &asking, &failed, &peer],
                 vec![&retry, &asking, &done],
@@ -699,6 +715,26 @@ mod tests {
                  error pi tried again"
             );
         }
+    }
+
+    #[test]
+    fn a_reading_kept_before_errors_were_named_takes_any_bare_edit_as_the_retry() {
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let edit = r#"{"type":"context_edit","targetId":"s","replacement":null}"#.to_owned();
+        let mut kept: Carried = serde_json::from_value(serde_json::json!({
+            "tools": [], "failed": [], "earlier": [], "from": opened,
+            "errored": true, "crossed": true
+        }))
+        .expect("a reading kept before");
+        for text in [edit, called(&["bash"]), ended("stop", "Fixed.")] {
+            line(&text, &mut kept);
+        }
+        assert_eq!(
+            kept.answers,
+            vec![(opened, at)],
+            "a reading kept before the errored entry was named lost his retry"
+        );
     }
 
     #[test]

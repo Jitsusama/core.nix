@@ -74,8 +74,11 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
         to: None,
         ..sent("u", "sent to no one yet")
     };
+    // Carried by the keeper's own line here, so that line is its miss.
+    let mut quoted = sent("q", "fuck.");
+    quoted.carried = true;
     let colour = sent("e1", "the bar is the wrong colour");
-    let kept = [colour, void, carried, unsent];
+    let kept = [colour, void, carried, unsent, quoted];
     write(&ledger, &kept, OFFSET, 0).expect("written");
     write(&ledger, &kept, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
@@ -93,9 +96,9 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
     // One the keeper carried first is still a miss, which needs a test
     // that runs, though the keeper's ledger tracks its fix.
     assert_eq!(
-        (&lines[2]["pain"], &lines[2]["carried"]),
-        (&json!("s/c"), &json!(true)),
-        "a pain carried before it was written wasn't written as carried"
+        (&lines[2]["pain"], &lines[2]["owner"], &lines[2]["carried"]),
+        (&json!("s/c"), &json!("ABC123"), &json!(true)),
+        "a pain carried before it was written wasn't written as carried, to its owner"
     );
     assert!(
         fs::read_to_string(&ledger)

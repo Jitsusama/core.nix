@@ -18,12 +18,13 @@
 //! pain-points is the ledger's only writer, under its lock, and nobody
 //! writes it by hand; a line changed is still written whole only once the
 //! ledger reads as it did before, read again just ahead of the rename
-//! that replaces it, so a write from outside the lock is never lost but
-//! left for the next run.
+//! that replaces it, so a write from outside the lock is lost only in the
+//! moment between that read and the rename, and is otherwise left for the
+//! next run.
 
 pub mod tested;
 
-use super::heard::Heard;
+use super::heard::{self, Heard};
 use super::stalled;
 use serde_json::{Value, json};
 use std::fs::{self, File, TryLockError};
@@ -133,8 +134,9 @@ fn locked(lock: &File, name: &str) -> Result<(), String> {
 }
 
 /// What the ledger `text` becomes for `owed`: the whole of it, when a line
-/// of a pain closed or carried since says so, and the lines of pains not
-/// carried it holds none of, to add at its end.
+/// of a pain closed or carried since says so, and the lines of pains it
+/// holds none of, to add at its end. A pain carried by a line written into
+/// it by hand is that line's miss, so it isn't added beside it.
 fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<String>) {
     let mut held = Vec::new();
     let mut changed = false;
@@ -166,9 +168,11 @@ fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<S
             read.to_string()
         })
         .collect();
+    let by_hand = heard::ledger(text);
     let added = owed
         .iter()
         .filter(|h| !held.contains(&h.key))
+        .filter(|h| !(h.carried && heard::carried(&h.words, &by_hand)))
         .map(|h| line_of(h, offset_s))
         .collect();
     let whole = changed.then(|| lines.into_iter().map(|line| line + "\n").collect());
