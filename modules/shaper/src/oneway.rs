@@ -2961,6 +2961,13 @@ mod tests {
             way.judged_full(after + 0.1, full),
             "a download filling its hold past the cut's few seconds wasn't full"
         );
+        // The few seconds are pinned in seconds, not in the constant, so a
+        // longer window that would hold a call's download for a cut over
+        // one gone quiet fails here (shaper holds round 2's F3 and F8).
+        assert!(
+            !way.judged_full(16.0, 0.0),
+            "a cut 6 s ago over a download gone quiet was still full"
+        );
         let mut sliver = Way::new(Some(100_000.0));
         sliver.cut(10.0, 40.0, 1_000.0, true);
         assert!(sliver.rate < 100_000.0, "a cut over a sliver didn't halve");
