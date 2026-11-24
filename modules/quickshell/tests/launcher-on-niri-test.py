@@ -2746,7 +2746,8 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     try:
         shell.type_in("tada", selecting="Party popper")
     except AssertionError as failed:
-        raise AssertionError(f"{failed}; Emoji's search: {shell.searching('emoji')}") from failed
+        said = f"{failed}; Emoji's search: {shell.searching('emoji')}"
+        raise AssertionError(said) from failed
     shell.close_launcher()
 
 
