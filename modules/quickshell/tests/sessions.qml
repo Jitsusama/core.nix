@@ -1212,6 +1212,17 @@ ShellRoot {
             !askedAgain && Niri.spawns.length === goneFrom + 1
             && root.unhostedWhy === "disowned",
             `${askedAgain} ${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // Once the window that came for it closes, a stray listed before
+        // the ask holds the name alone: the refusal goes with the window it
+        // was of, so Go To opens its own again, saying why, rather than
+        // saying disowned of a window that came for no ask.
+        Niri.windows = Object.assign({}, unforged, { "88": forged });
+        root.unhostedWhy = "";
+        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
+            here: true });
+        expect("once the window that came closes, Go To opens its own again, said so",
+            Niri.spawns.length === goneFrom + 2 && root.unhostedWhy === "unowned",
+            `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
         // A stray come long after an ask that never came isn't taken for
         // that ask's own refused, so Go To would open its own beside it.
         const stale = "pi-hosted.s-stale";
