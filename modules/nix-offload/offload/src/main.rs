@@ -854,6 +854,25 @@ fn nearby_listed() -> Vec<there::Nearby> {
         .unwrap_or_default()
 }
 
+/// Who stands in for a builder that doesn't come: a VM builder past the
+/// first leaves its tests to the first; the first and second lent builders
+/// stand in for each other, and the first stands in for a VM builder given
+/// a spill.
+fn fallbacks<'a>(
+    spill: Option<&'a PathBuf>,
+    first_dir: &'a PathBuf,
+    more_dir: &'a PathBuf,
+    vm_dirs: &'a [PathBuf],
+) -> Vec<(&'a PathBuf, &'a PathBuf)> {
+    spill
+        .map(|spill| (spill, first_dir))
+        .into_iter()
+        .chain(std::iter::once((more_dir, first_dir)))
+        .chain(there::lends(more_dir).then_some((first_dir, more_dir)))
+        .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
+        .collect()
+}
+
 fn there(arguments: &[String]) -> Result<(), Failure> {
     if let Some(failure) = marked(arguments) {
         return Err(failure);
@@ -923,28 +942,17 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let first_dir = dir;
     let general = [&first_dir, &more_dir];
     let room = vm_room();
-    let picked = left_to(
+    // The spill's claim holds its lane's room for as long as the run goes.
+    let (left_dir, spill, _spill_claim) = left_to(
         left.is_some(),
         general,
         (&vm_dirs, &vm_parts),
         room,
         &scratch,
     );
-    // The spill's claim holds its lane's room for as long as the run goes.
-    let (left_dir, spill, _spill_claim) = picked;
     let mut parts: Vec<(&PathBuf, Option<there::Asked>)> = vm_dirs.iter().zip(vm_parts).collect();
     parts.push((&left_dir, left));
-    // A VM builder past the first that doesn't come leaves its tests to
-    // the first; the first and second lent builders stand in for each
-    // other, and the first stands in for a VM builder given a spill.
-    let fallbacks: Vec<(&PathBuf, &PathBuf)> = spill
-        .as_ref()
-        .map(|spill| (spill, &first_dir))
-        .into_iter()
-        .chain(std::iter::once((&more_dir, &first_dir)))
-        .chain(there::lends(&more_dir).then_some((&first_dir, &more_dir)))
-        .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
-        .collect();
+    let fallbacks = fallbacks(spill.as_ref(), &first_dir, &more_dir, &vm_dirs);
     let vm_dirs: Vec<&PathBuf> = vm_dirs.iter().collect();
     let sends = Sends {
         vm_dirs: &vm_dirs,
