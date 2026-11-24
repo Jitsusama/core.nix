@@ -1456,8 +1456,50 @@ ShellRoot {
         Sessions.heardWindow(slowRefused);
         const lateRefusedLeft = JSON.stringify(Sessions.reopening);
         const endedOnLateRefused = Sessions.reopening === null;
+        // Taken as its ask's own, it holds off a second ask while listed.
+        const lateRefusedHolds = Sessions.refusedOwn(lateRefused)
+            && !Sessions.viewerComing(lateRefused);
         Sessions.reopening = null;
         Sessions.forgetAsk(lateRefused);
+        Niri.windows = listedBeforeSlow;
+        // But only while the script could still answer for its ask: a
+        // window of that name come minutes after is a stray, which leaves
+        // the walk holding it late and refuses nothing.
+        const strayLate = "pi-hosted.s-stray-late";
+        const heldLate = { id: "s-stray-late", classed: strayLate, opened: null };
+        Sessions.reopening = { waiting: null, late: [heldLate], queue: [], placed: [],
+            behind: [], begun: ["s-stray-late"], looking: null, settling: false, back: null,
+            focused: false };
+        Sessions.viewWith(view.slice(0, -1).concat(["s-stray-late"]), strayLate, null, "walk");
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { [strayLate]: Date.now() - 300000 });
+        const strayAfter = { id: 100, pid: 880, opened: strayLate };
+        Niri.windows = Object.assign({}, listedBeforeSlow, { "100": strayAfter });
+        Sessions.heardWindow(strayAfter);
+        const strayLeft = JSON.stringify(Sessions.reopening);
+        const heldOnStray = Sessions.reopening?.late.includes(heldLate) === true
+            && !(strayLate in Sessions.refusedAsks);
+        Sessions.reopening = null;
+        Sessions.forgetAsk(strayLate);
+        Niri.windows = listedBeforeSlow;
+        // Nor does the moment between its ask's patience and the walk's,
+        // both 30 s, keep one still waited on from being taken as its own.
+        const waitedLate = "pi-hosted.s-waited-late";
+        const stillWaited = { id: "s-waited-late", classed: waitedLate, opened: null };
+        Sessions.reopening = { waiting: stillWaited, late: [], queue: [], placed: [],
+            behind: [], begun: ["s-waited-late"], looking: null, settling: false, back: null,
+            focused: false };
+        Sessions.viewWith(view.slice(0, -1).concat(["s-waited-late"]), waitedLate, null, "walk");
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { [waitedLate]: Date.now() - Sessions.viewPatience - 1 });
+        const waitedRefusedLate = { id: 101, pid: 880, opened: waitedLate };
+        Niri.windows = Object.assign({}, listedBeforeSlow, { "101": waitedRefusedLate });
+        Sessions.heardWindow(waitedRefusedLate);
+        const waitedLeft = JSON.stringify(Sessions.reopening);
+        const goneOnWaited = Sessions.reopening === null
+            || Sessions.reopening.waiting !== stillWaited;
+        Sessions.reopening = null;
+        Sessions.forgetAsk(waitedLate);
         Niri.windows = listedBeforeSlow;
         // Beside another still late, or behind the lock, where the walk is
         // settled once the lock lets go (placeBehind), it goes on without
@@ -1496,6 +1538,12 @@ ShellRoot {
             lateLeft);
         expect("nor one whose window came refused once its patience gave up, so it ends",
             endedOnLateRefused, lateRefusedLeft);
+        expect("and holds off a second ask while that window is listed", lateRefusedHolds,
+            JSON.stringify(Sessions.refusedAsks));
+        expect("but a window of its name come minutes after is a stray, refusing nothing",
+            heldOnStray, strayLeft);
+        expect("nor waits on one whose window came refused as its patience ends", goneOnWaited,
+            waitedLeft);
         expect("nor beside another still late, the walk going on", besideLate.on,
             besideLate.left);
         expect("nor behind the lock, the walk left for the lock's end to settle",
