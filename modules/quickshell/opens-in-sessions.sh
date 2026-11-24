@@ -31,12 +31,16 @@
 # niri gives what it starts no output (its utils/spawning.rs sets stdin,
 # stdout and stderr to null), so a run given none runs again once with
 # them in the journal, told when it was first started; one given output
-# of its own, as a test's, keeps it.
+# of its own, as a test's, keeps it. Only once the journal is seen to
+# take a stream: systemd-cat that can't make one ends before running
+# what it was given (its cat.c), which would open no window and tell
+# the shell nothing.
 
 asked=$(date +%s%3N)
 if [ -z "${OPENS_IN_SESSIONS_ASKED:-}" ] && [ /proc/self/fd/2 -ef /dev/null ] &&
-  command -v systemd-cat > /dev/null; then
-  OPENS_IN_SESSIONS_ASKED=$asked exec systemd-cat --identifier=opens-in-sessions \
+  command -v systemd-cat > /dev/null &&
+  systemd-cat --identifier=opens-in-sessions true 2> /dev/null; then
+  exec env "OPENS_IN_SESSIONS_ASKED=$asked" systemd-cat --identifier=opens-in-sessions \
     sh "$0" "$@"
 fi
 asked=${OPENS_IN_SESSIONS_ASKED:-$asked}
