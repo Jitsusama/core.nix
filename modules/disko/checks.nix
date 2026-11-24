@@ -70,7 +70,7 @@
     );
 
   # The root's data chunks are given back each night, from a bounded unit
-  # that waits behind other work.
+  # that waits behind other work and stops as the machine goes to sleep.
   chunks-are-given-back-each-night =
     let
       machine = bareNixos [
@@ -82,14 +82,17 @@
           };
         }
       ];
-      service = machine.config.systemd.services.chunks-given-back.serviceConfig;
+      unit = machine.config.systemd.services.chunks-given-back;
+      service = unit.serviceConfig;
       timer = machine.config.systemd.timers.chunks-given-back;
       inherit (timer) timerConfig;
     in
     holds "chunks-are-given-back-each-night"
-      "The root's empty data chunks aren't given back by night, bounded and behind other work."
+      "The root's empty chunks aren't given back by night, bounded, behind work, stopped by sleep."
       (
         lib.hasSuffix "/bin/chunks-given-back /" service.ExecStart
+        && lib.elem "sleep.target" unit.conflicts
+        && lib.elem "sleep.target" unit.before
         && service.Type == "oneshot"
         && service.Slice == "background.slice"
         && lib.elem "timers.target" timer.wantedBy

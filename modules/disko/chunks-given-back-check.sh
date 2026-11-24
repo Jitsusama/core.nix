@@ -5,11 +5,12 @@
 # kept in files, and each balance step adds what a file of steps gives
 # that step, fails, runs until timeout ends it at 06:00, outlives that by
 # a minute and is killed, or is killed by day. date reads a clock a step
-# can move, and timeout notes each step's deadline. It balances only
-# from 01:00 to 06:00 and while short, ends a step at 06:00, stops at the
-# first step that frees enough, goes past a step that fails or is killed
-# by day, stops at half-full chunks, and fails when it ends short or
-# can't read the usage.
+# can move, on a day whose 06:00 a file can bring forward as a night the
+# clocks go forward does, and timeout notes each step's deadline. It
+# balances only from 01:00 to 06:00 and while short, ends a step at
+# 06:00, stops at the first step that frees enough, goes past a step that
+# fails or is killed by day, stops at half-full chunks, and fails when it
+# ends short or can't read the usage.
 set -euo pipefail
 
 given=$1
@@ -47,6 +48,11 @@ ends)
   echo 06:00:00 >"$work/clock"
   exit 124
   ;;
+ends+*)
+  echo \$((\$(cat "$work/free") + \${gives#ends+})) >"$work/free"
+  echo 06:00:00 >"$work/clock"
+  exit 124
+  ;;
 killed)
   echo 06:01:00 >"$work/clock"
   exit 137
@@ -56,13 +62,22 @@ killed-by-day) exit 137 ;;
 esac
 EOF
 
+# The day starts at a round epoch, and 06:00 falls the seconds in the
+# shift file after the hour the clock face says.
 cat >"$work/bin/date" <<EOF
 #!$BASH
-if [ "\$*" != "+%H:%M:%S" ]; then
+day=864000000
+case "\$*" in
+"+%H:%M:%S %s")
+  IFS=: read -r h m s <"$work/clock"
+  echo "\$h:\$m:\$s \$((day + 10#\$h * 3600 + 10#\$m * 60 + 10#\$s))"
+  ;;
+"-d 06:00 +%s") echo \$((day + 21600 + \$(cat "$work/shift"))) ;;
+*)
   echo "the stand-in for date was asked: \$*" >&2
   exit 99
-fi
-cat "$work/clock"
+  ;;
+esac
 EOF
 
 cat >"$work/bin/timeout" <<EOF
@@ -93,15 +108,18 @@ disk() {
     read -r step gives after <<<"$line"
     case "$gives" in
     fails | ends | killed | killed-by-day) echo "$step $gives $after" >>"$work/gives" ;;
+    ends+*) echo "$step ends+$((${gives#ends+} * gib)) $after" >>"$work/gives" ;;
     *) echo "$step $((gives * gib)) $after" >>"$work/gives" ;;
     esac
   done
 }
 
-# Runs the script at CLOCK (03:00:00 unless given), and notes how it ended.
+# Runs the script at CLOCK (03:00:00 unless given), on a night whose
+# 06:00 is SHIFT seconds off the clock face's, and notes how it ended.
 give() {
   local status=0
   echo "${CLOCK:-03:00:00}" >"$work/clock"
+  echo "${SHIFT:-0}" >"$work/shift"
   PATH="$work/bin:$PATH" bash "$given" / >"$work/out" 2>"$work/err" || status=$?
   echo "$status" >"$work/status"
 }
@@ -224,6 +242,26 @@ if grep -qF "needs files gone" "$work/out" "$work/err"; then
   echo "a half-full step ended at 06:00 said files must go, though the night was cut short"
   exit 1
 fi
+
+disk 950 0 "0 ends+50" "5 50"
+CLOCK=05:30:00 give
+expect "0 " 0 "a step ended at 06:00 that freed enough leaves enough"
+expect_said "GiB is in no chunk now" "a step ended at 06:00 that freed enough says so"
+
+disk 950 0 "0 50"
+CLOCK=01:30:00 SHIFT=-3600 give
+expect_deadlines "12600 " "a night the clocks go forward gives a step only the time until 06:00"
+
+for last in fails killed-by-day; do
+  disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 $last"
+  give
+  expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step $last fails short"
+  expect_said "up to half full didn't finish" "a half-full step that $last says it didn't finish"
+  if grep -qF "needs files gone" "$work/out" "$work/err"; then
+    echo "a half-full step that $last said files must go, though it didn't finish"
+    exit 1
+  fi
+done
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"
 CLOCK=05:30:00 give

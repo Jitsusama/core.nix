@@ -70,15 +70,20 @@ usage() {
 
 # Reads into left the seconds until 06:00, or 0 outside 01:00 to 06:00,
 # so the night's hours can be checked without a function in a condition,
-# where set -e is off.
+# where set -e is off. The seconds are counted to 06:00 by the epoch, so
+# a night the clocks go forward still ends its step at 06:00.
 read_clock() {
-  local now hours minutes seconds since
-  now=$(date +%H:%M:%S)
+  local now epoch six hours minutes seconds since
+  now=$(date '+%H:%M:%S %s')
+  read -r now epoch <<<"$now"
   IFS=: read -r hours minutes seconds <<<"$now"
   since=$((10#$hours * 3600 + 10#$minutes * 60 + 10#$seconds))
   left=0
   if [ "$since" -ge 3600 ] && [ "$since" -lt 21600 ]; then
-    left=$((21600 - since))
+    six=$(date -d 06:00 +%s)
+    if [ "$six" -gt "$epoch" ]; then
+      left=$((six - epoch))
+    fi
   fi
 }
 
@@ -104,6 +109,7 @@ fi
 echo "$((free / gib)) GiB of $mount is in no chunk, short of $((want / gib))," \
   "so data chunks are balanced"
 ran=0
+finished=0
 for full in 0 5 10 20 30 40 50; do
   read_clock
   if [ "$left" -eq 0 ]; then
@@ -113,15 +119,18 @@ for full in 0 5 10 20 30 40 50; do
   fi
   status=0
   ended=0
+  finished=0
   timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" || status=$?
   if [ "$status" -eq 0 ]; then
     ran=$((ran + 1))
+    finished=1
   elif [ "$status" -eq 124 ]; then
     ended=1
     echo "balancing data chunks up to $full% full was ended at 06:00"
   elif [ "$status" -eq 137 ]; then
-    # Any kill gives 137: timeout's a minute after TERM, or the kernel's
-    # OOM killer's at any hour, so only the clock says which it was.
+    # Any SIGKILL gives 137: timeout's a minute after TERM, or the
+    # kernel's OOM killer's at any hour, so only the clock says which.
+    # A TERM from anything but timeout gives 143, said as a failure.
     read_clock
     if [ "$left" -eq 0 ]; then
       ended=1
@@ -145,6 +154,11 @@ for full in 0 5 10 20 30 40 50; do
 done
 if [ "$ran" -eq 0 ]; then
   echo "no balance step finished, so $((free / gib)) GiB is still in no chunk" >&2
+elif [ "$finished" -eq 0 ]; then
+  # Files gone would be guessing: the half-full step that would have
+  # said so didn't finish.
+  echo "balancing chunks up to half full didn't finish, so $((free / gib)) GiB" \
+    "is still in no chunk" >&2
 else
   echo "$((free / gib)) GiB is in no chunk after chunks up to half full," \
     "so what's left needs files gone" >&2

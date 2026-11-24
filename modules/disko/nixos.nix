@@ -252,6 +252,11 @@ in
   config.systemd.services.chunks-given-back = {
     description = "Give Btrfs back room for its metadata";
     restartIfChanged = false;
+    # timeout counts no time asleep, so a laptop shut at 05:30 would wake
+    # to a step running on past 06:00. Going to sleep stops the unit
+    # instead, which cancels the balance as 06:00 does.
+    conflicts = [ "sleep.target" ];
+    before = [ "sleep.target" ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${chunksGivenBack}/bin/chunks-given-back /";
