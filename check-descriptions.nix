@@ -1952,6 +1952,11 @@
     the Linux VM's collection, run for a collecting key, collects all that's dead, or at most the
     GiB asked, or nothing for free, prints the store's free bytes, and refuses anything else
   '';
+  linux-builder-gives-up-on-a-guest-that-stops-answering = ''
+    the Mac's ssh to the Linux VM waits 90 seconds for a guest to greet it and, once in, gives up
+    after four asks 15 seconds apart go unanswered, each setting said once, so a build sent to a
+    guest that stopped answering fails and frees its locks; it reads the settings, not ssh's acts
+  '';
   linux-builder-lets-collecting-keys-only-collect = ''
     a Mac's Linux VM lets a collecting key in only restricted to its collection, never plainly as
     a builder, and is changed from the cached guest so it keeps room
