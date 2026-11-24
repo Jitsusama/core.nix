@@ -611,9 +611,10 @@ impl Still {
     }
 
     /// Its places are to be kept again at `at`, as a place closed is let
-    /// go then.
+    /// go then, or sooner if that's asked already: a write tried again
+    /// soon never puts off a let-go due first, nor the other way round.
     pub fn again(&mut self, at: Instant) {
-        self.again = Some(at);
+        self.again = Some(self.again.map_or(at, |again| again.min(at)));
     }
 
     /// Whether they've been still long enough at `at`, after which nothing

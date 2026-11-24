@@ -586,13 +586,20 @@ fn serve(args: Args) -> Result<(), Failure> {
             }
             inputs.hear(one, &paths);
         }
-        if still.due(Instant::now())
-            && let Some(let_go) = inputs.keep_places(&paths.arrangement)
-        {
-            // A place closed by hand goes once its time comes, though no
-            // window moves meanwhile.
-            let now = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
-            still.again(Instant::now() + arrangement::again_in(let_go, now));
+        if still.due(Instant::now()) {
+            inputs.keep_kept_places(&paths.kept_places);
+            if let Some(let_go) = inputs.keep_places(&paths.arrangement) {
+                // A place closed by hand goes once its time comes, though no
+                // window moves meanwhile.
+                let now = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+                still.again(Instant::now() + arrangement::again_in(let_go, now));
+            }
+        }
+        // Kept places whose write failed, at the shell's word or just now,
+        // are tried again soon, though the shell says nothing more.
+        let now = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        if let Some(again) = inputs.kept_places_again_at(now) {
+            still.again(Instant::now() + arrangement::again_in(again, now));
         }
         let moved = served.take(inputs.made());
         // The landings are read again only once they were made again, and

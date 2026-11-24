@@ -333,7 +333,8 @@ impl Inputs {
             }
         } else if path == paths.kept_places {
             // As with the arrangement: while their write has failed,
-            // memory holds what the shell said last and the file doesn't.
+            // memory holds what the shell said last and the file doesn't,
+            // until a try soon after writes it (keep_kept_places).
             if self.kept_places_unwritten.is_some() {
                 return;
             }
@@ -561,7 +562,9 @@ mod tests {
 
     #[test]
     fn kept_places_heard_written_while_their_write_has_failed_leave_memory_as_it_is() {
-        let folder = std::env::temp_dir().join(format!("agents-kept-{}", std::process::id()));
+        // A folder of its own, as cases run side by side.
+        let folder =
+            std::env::temp_dir().join(format!("agents-kept-unwritten-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(&folder).expect("a folder");
         let paths = paths_in(&folder);
@@ -585,14 +588,22 @@ mod tests {
             inputs.kept_places, said,
             "memory ahead of the file isn't thrown back to it"
         );
-        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        inputs.keep_kept_places(&paths.kept_places);
         assert_eq!(
             (
-                inputs.kept_places_unwritten,
+                inputs.kept_places_unwritten.clone(),
                 KeptPlaces::read(&paths.kept_places)
             ),
             (None, Some(said)),
-            "once the shell says them again, they're written and read as they land"
+            "the next try writes them, though the shell says nothing more"
+        );
+        let by_hand = KeptPlaces::said(&json!({"01-b": {"workspace": 4, "column": 1, "at": 8}}))
+            .expect("places");
+        by_hand.write(&paths.kept_places).expect("written");
+        inputs.hear(Heard::Files(vec![paths.kept_places.clone()]), &paths);
+        assert_eq!(
+            inputs.kept_places, by_hand,
+            "and once they're written, a file another hand writes is read as it lands"
         );
         let _ = fs::remove_dir_all(&folder);
     }

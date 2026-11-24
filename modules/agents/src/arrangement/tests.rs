@@ -814,6 +814,13 @@ fn places_are_kept_once_the_windows_are_still() {
         still.due(start + Duration::from_secs(72)),
         "and is kept then"
     );
+    still.again(start + Duration::from_secs(90));
+    still.again(start + Duration::from_secs(95));
+    assert_eq!(
+        still.wait(start + Duration::from_secs(80)),
+        Some(Duration::from_secs(10)),
+        "of two asked, as a let-go and a write tried again, the sooner is waited for"
+    );
 }
 
 #[test]

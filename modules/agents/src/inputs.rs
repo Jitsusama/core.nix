@@ -180,12 +180,13 @@ pub struct Inputs {
     pub screens: Held,
     /// Where each session's window sat, as kept.
     pub arrangement: Arrangement,
-    /// Why the last write of `arrangement` failed, while it holds more
+    /// The last write of `arrangement` that failed, while it holds more
     /// than its file does, so the next keep writes it though nothing
-    /// moved, and the journal hears a failure once until it changes.
+    /// moved, the file isn't read back over it, and the journal hears
+    /// it as [`write_heard`] says.
     pub unwritten: Option<Unwritten>,
-    /// The last write of `kept_places` that failed, while it holds more
-    /// than its file does, so the file isn't read back over it.
+    /// The same of `kept_places`, tried again each [`WRITE_AGAIN_MS`]
+    /// though the shell says nothing more.
     pub kept_places_unwritten: Option<Unwritten>,
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
@@ -428,26 +429,38 @@ impl Inputs {
         self.kept_places_written(kept, path, at);
     }
 
-    /// Writes the kept places again while their last write failed.
-    pub fn keep_kept_places(&mut self, _path: &Path) {}
-
-    /// When, from `at`, the kept places are to be written again.
-    #[must_use]
-    pub fn kept_places_again_at(&self, _at: u64) -> Option<u64> {
-        None
+    /// Writes the kept places to `path` again while their last write
+    /// failed, so the file catches up though the shell says nothing more,
+    /// and a daemon started again reads what it said.
+    pub fn keep_kept_places(&mut self, path: &Path) {
+        if self.kept_places_unwritten.is_some() {
+            self.write_kept_places(self.kept_places.clone(), path);
+        }
     }
 
-    /// [`Inputs::write_kept_places`] at `at`.
+    /// When, from `at`, the kept places are to be written again: in
+    /// [`WRITE_AGAIN_MS`] while their last write failed, else never.
+    #[must_use]
+    pub fn kept_places_again_at(&self, at: u64) -> Option<u64> {
+        self.kept_places_unwritten
+            .as_ref()
+            .map(|_| at.saturating_add(WRITE_AGAIN_MS))
+    }
+
+    /// [`Inputs::write_kept_places`] at `at`, journalled as
+    /// [`write_heard`] says, as the arrangement is.
     fn kept_places_written(&mut self, kept: KeptPlaces, path: &Path, at: u64) {
         let why = kept.write(path).err().map(|why| why.to_string());
-        if let Some(why) = &why {
-            eprintln!("agents: can't keep {}: {why}", path.display());
+        let (heard, unwritten) = write_heard(
+            path,
+            why.as_deref(),
+            self.kept_places_unwritten.as_ref(),
+            at,
+        );
+        if let Some(heard) = heard {
+            eprintln!("{heard}");
         }
-        self.kept_places_unwritten = why.map(|why| Unwritten {
-            why,
-            since: at,
-            said: at,
-        });
+        self.kept_places_unwritten = unwritten;
         self.kept_places = kept;
     }
 
