@@ -35,6 +35,14 @@ const STALL_FLOOR: u64 = 1 << 30;
 /// Twenty minutes keeps the survey each pass begins with a small share.
 pub const ROUTINE_LONGEST: f64 = 20.0 * 60.0;
 
+/// The longest a pass reaching for room on a disk no worse than filling
+/// goes before it ends unfinished, so the next step surveys again. On 23
+/// November an account's reach judged its survey's 88,000 offers for 15
+/// hours, never offered what had come since and never saying a pass. A
+/// fuller disk's goes on, since a survey's walk there clears nothing while
+/// it runs; on a filling one, two hours keeps a 40-minute walk a fraction.
+pub const REACH_LONGEST: f64 = 2.0 * 60.0 * 60.0;
+
 /// The filesystem a pass works on.
 pub trait Disk {
     fn space(&mut self) -> io::Result<Space>;
@@ -98,8 +106,9 @@ pub enum End {
     Stalled,
     /// A stop came, and what was left waits for the next start.
     Stopped,
-    /// A routine pass ran `ROUTINE_LONGEST`, and what was left is due again
-    /// at the next step.
+    /// A routine pass ran `ROUTINE_LONGEST`, or one reaching for room on a
+    /// disk no worse than filling ran `REACH_LONGEST`, and what was left is
+    /// due again at the next step.
     Unfinished,
     /// A pass reaching for room kept garbage for a rest or another process
     /// and left what costs more to lose for when that's over.
@@ -329,7 +338,12 @@ pub fn pass(
             Goal::Reach => Some(thresholds.target - before.free),
         };
         // Checked once a batch is measured, so what it freed is counted.
-        if goal == Goal::Upkeep && disk.now() - began >= ROUTINE_LONGEST {
+        let longest = match goal {
+            Goal::Upkeep => Some(ROUTINE_LONGEST),
+            Goal::Reach if report.band <= Band::Filling => Some(REACH_LONGEST),
+            Goal::Reach | Goal::Produce | Goal::Clear => None,
+        };
+        if longest.is_some_and(|longest| disk.now() - began >= longest) {
             report.end = End::Unfinished;
             return report;
         }

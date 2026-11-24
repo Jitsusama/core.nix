@@ -202,6 +202,16 @@ or launchd, and [`home.nix`][2] the account's.
   thread of its own while the pass beats, since the desktop calls a guard
   silent for two minutes dead. `src/pace.rs` holds it; `pacing` in the
   config sets the batch and the rest.
+- **Length.** Each offer is judged against every process, so a pass is as
+  long as what it was handed. Upkeep ends `unfinished` after 20 minutes,
+  and a pass reaching for room in a band no worse than filling after two
+  hours, the rest due at the next step, which surveys again and doesn't
+  rest. On 12 November a laptop's upkeep held a day and a half of
+  entries, and on 23 November an account's reach judged 88,000 offers for
+  15 hours, never offered what came after its survey. A pass for a nearly
+  or critically full disk goes on to its target or its last offer, since
+  a survey's walk there clears nothing while it runs. `ROUTINE_LONGEST`
+  and `REACH_LONGEST` in `src/pass.rs` hold them.
 - **Stopping.** A daemon takes its stop signal between steps, and a
   waiting stop ends a rest and starts no new command. A survey only
   reads, and its walks take minutes on a full home, so it asks as it
@@ -396,8 +406,8 @@ or launchd, and [`home.nix`][2] the account's.
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. A pass is
   `passing` from its start, with its disk, band and why, since one
-  reaching for room a disk can't give judges every offer it was handed:
-  on 23 November one ran 15 hours. While one is at work on a disk, that
+  reaching for room runs up to two hours, and on a fuller disk to its
+  last offer. While one is at work on a disk, that
   disk isn't `exhausted`, and the pass before it gives no notice. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the

@@ -2437,9 +2437,11 @@ impl Guard {
             let unheard = scan.went_unheard();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
-                // A pass that gave way to a disk shorter of room, or to a
-                // stop, fell short of nothing; its disk is due again.
-                watched.rest = (!matches!(end, End::Reached | End::Stopped)).then(|| {
+                // A pass that gave way to a disk shorter of room, to a
+                // stop or to its own length fell short of nothing; its disk
+                // is due again.
+                let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
+                watched.rest = fell_short.then(|| {
                     let seconds = watched.rest.map_or(FIRST_REST, |rest| {
                         (rest.seconds * 2.0).min(longest_rest(band))
                     });
