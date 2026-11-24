@@ -46,20 +46,26 @@ pub fn key(address: &str) -> String {
 /// 2026-11-14, a2101591): it runs to 47 to 282 letters in each of Joel's
 /// 202 drawers that day, which as the ruling's second fact wrapped past
 /// the first screen of a 288-pixel drawer, hiding every figure after it.
-const GLANCE: [&[&str]; 5] = [
+/// What its focused plan does next comes last, for the same reason: it
+/// runs to 120 letters, and last its wrapping hides nothing (Joel's
+/// 13:44 bar of 2026-11-24, that the launcher says what a cell is for
+/// and its plans as the map and the command line do).
+const GLANCE: [&[&str]; 6] = [
     &["wants", "step"],
     &["last-turn"],
     &["spent"],
     &["context"],
     &["under", "host"],
+    &["next"],
 ];
 
 /// Its fold under z a, in order: its figures that move least and its
 /// wiring (VKCF3Z, 2b03e43c), then every fact its glance once held, so
-/// none is lost, what its quest is about last where what it stands for
-/// at the top is its prose. A step that gave way to what it needs Joel
-/// for is in neither.
-const FOLD: [&str; 14] = [
+/// none is lost, its focused plan and the newest choice in its quest's
+/// Journey after its quest, and what its quest is about last where what
+/// it stands for at the top is its prose. A step that gave way to what
+/// it needs Joel for is in neither.
+const FOLD: [&str; 16] = [
     "model",
     "turns",
     "tokens",
@@ -70,6 +76,8 @@ const FOLD: [&str; 14] = [
     "last-landing",
     "budget",
     "task",
+    "plan",
+    "chose",
     "own",
     "host",
     "machine",
@@ -233,6 +241,7 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
     }
     told.extend(last(session, &title, words, known));
     told.extend(hears(session, words));
+    told.extend(doing(session, words));
     let facts: Vec<Value> = GLANCE
         .iter()
         .filter_map(|place| place.iter().find_map(|id| taken(&mut told, id)))
@@ -307,6 +316,30 @@ fn hears(session: Session, words: &Words) -> Option<Told> {
     }
     let said = json!({"label": words.names.word("hears"), "value": hears.join(", ")});
     Some(("hears".to_owned(), said))
+}
+
+/// What its focused plan does next, the plan by its id, and the newest
+/// choice in its quest's Journey, as the quest workflow puts them on its
+/// presence as `doing` (the harness's lib/internal/quest/sessions/
+/// doing.ts); none where no plan is focused. Its next step is words,
+/// standing under its name, so its length never turns the table of
+/// figures above it into names over values (Drawer.qml's proseFact).
+fn doing(session: Session, words: &Words) -> Vec<Told> {
+    let doing = session
+        .presence()
+        .and_then(|presence| presence.get("doing"));
+    ["next", "plan", "chose"]
+        .into_iter()
+        .map(|fact| (fact, text(doing, &format!("/{fact}"))))
+        .filter(|(_, value)| !value.is_empty())
+        .map(|(fact, value)| {
+            let mut said = json!({"label": words.names.word(fact), "value": value});
+            if fact == "next" {
+                said["words"] = json!(true);
+            }
+            (fact.to_owned(), said)
+        })
+        .collect()
 }
 
 /// What it's doing, its step alone; what it needs Joel for, its want then
@@ -663,6 +696,47 @@ mod tests {
         assert!(
             !facts.contains("Doing") && !folded(&drawn).contains("Doing"),
             "it said its step as well: {facts}"
+        );
+    }
+
+    /// What its focused plan does next is its glance's last fact, after its
+    /// host, where its wrapping hides no figure; the plan and its quest's
+    /// newest choice are folded after its quest (Joel, 13:44 on
+    /// 2026-11-24: "any interface i'm in should be directly engagable to a
+    /// meaningful level"). A session with no plan focused says none.
+    #[test]
+    fn its_plans_next_step_ends_its_glance_and_its_plan_is_folded() {
+        let mut presence = busy();
+        presence["doing"] = json!({"plan": "PLAN-20261116-6L09KV", "item": 17,
+            "next": "I. Follow-ups: the drawer says the plan",
+            "chose": "Put Next last in the glance", "at": "2026-11-10T20:50:00Z"});
+        let mut planned = record(&presence);
+        planned["here"] = json!(false);
+        let drawn = drawer(Session(&planned), false, &words(), &known(None, None));
+        let glance = facts(&drawn);
+        assert!(
+            glance.ends_with(
+                "; Machine=skiff; Next Step=I. Follow-ups: the drawer says the plan:words"
+            ),
+            "its next step after its host: {glance}"
+        );
+        let fold = folded(&drawn);
+        assert!(
+            fold.contains(
+                "Quest=QEST-1; Plan=PLAN-20261116-6L09KV; Last Choice=Put Next last in the glance"
+            ),
+            "its plan and its choice after its quest: {fold}"
+        );
+        let bare = drawer(
+            Session(&record(&busy())),
+            false,
+            &words(),
+            &known(None, None),
+        );
+        let said = format!("{} {}", facts(&bare), folded(&bare));
+        assert!(
+            !said.contains("Next Step") && !said.contains("Plan=") && !said.contains("Last Choice"),
+            "no plan, none said: {said}"
         );
     }
 
