@@ -12,6 +12,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 /// The folder runtime properties set through systemd's manager land in,
 /// which a unit's own settings leave out.
@@ -37,9 +38,10 @@ pub const MARK: &str = "jobs-sorter-set-these";
 
 /// The units whose folders in `control`, the runtime control folder, the
 /// sorter marked ([`mark`]) and start with one of `prefixes`: services
-/// alone, never a template, whose settings every instance shares, and
-/// never a folder reached through a link, which could point anywhere. A
-/// control folder not there yet holds none.
+/// alone, never a template, whose settings every instance shares, never
+/// a folder reached through a link, which could point anywhere, and never
+/// a name systemctl would read as a pattern, whose answer could stand for
+/// other units. A control folder not there yet holds none.
 pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>> {
     let entries = match fs::read_dir(control) {
         Ok(entries) => entries,
@@ -57,6 +59,7 @@ pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>>
                 && prefixes.iter().any(|prefix| unit.starts_with(prefix))
                 && unit.ends_with(".service")
                 && !unit.ends_with("@.service")
+                && !unit.contains(['*', '?', '[', ']', '\\'])
                 && entry.path().join(MARK).exists();
             ours.then_some(unit)
         })
@@ -96,6 +99,15 @@ pub enum Active {
     /// Anything else, starting, stopping or running, keeps them.
     Runs,
 }
+
+/// How long `systemctl is-active` may take to answer before it's stopped
+/// and the sweep counts as unable to ask: it runs on the look that ranks
+/// the units Joel is at, which waits on it.
+pub const ASK_WITHIN: Duration = Duration::from_secs(2);
+
+/// How long after an ask that failed the sweep asks again, so a user
+/// manager that can't answer isn't asked on every look.
+pub const ASK_AGAIN_AFTER: Duration = Duration::from_secs(30);
 
 /// The words `systemctl` is given to say whether each of `units` runs,
 /// one state a line in their order; `--` ends its options, so a unit's
@@ -366,6 +378,10 @@ MemoryLow=10%
         folder("pi-conversation-x.scope", &ours, true);
         folder("pi-host-work.slice", &ours, true);
         folder("kitty-1-2.scope", &ours, true);
+        // systemctl takes a name with a pattern's characters as a pattern, which may answer for
+        // more units than were asked, or others, and shift each state onto the wrong one.
+        folder("pi-host-work-*.service", &ours, true);
+        folder("pi-host-work-[ab].service", &ours, true);
         let elsewhere = control.join("elsewhere");
         folder("elsewhere/pi-host-work-linked.service", &ours, true);
         std::os::unix::fs::symlink(
@@ -401,7 +417,7 @@ MemoryLow=10%
                 "pi-host-work-gone.service",
             ],
             "only services of the prefixes the sorter marked, no template, no other kind of \
-             unit, none set by hand and none through a link"
+             unit, none set by hand, none through a link and none systemctl reads as a pattern"
         );
         assert_eq!(
             (taken, linked),

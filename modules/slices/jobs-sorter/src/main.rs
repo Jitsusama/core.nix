@@ -1471,11 +1471,44 @@ fn take_back_left_settings(
     // systemctl answers for every unit even as it leaves with a failure for those not active,
     // so what it says is read whatever its status; an answer short of a unit is refused below.
     let ask = |units: &[String]| {
-        Command::new("systemctl")
+        let mut asked = Command::new("systemctl")
             .args(own::is_active_call(units))
-            .output()
-            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
-            .map_err(|error| format!("couldn't run systemctl: {error}"))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| format!("couldn't run systemctl: {error}"))?;
+        let mut out = asked
+            .stdout
+            .take()
+            .ok_or_else(|| "systemctl gave no output to read".to_owned())?;
+        let reading = thread::spawn(move || {
+            let mut answer = Vec::new();
+            io::Read::read_to_end(&mut out, &mut answer).map(|_| answer)
+        });
+        // It runs on the look that ranks the units Joel is at, so it's stopped past its time.
+        let deadline = std::time::Instant::now() + own::ASK_WITHIN;
+        loop {
+            match asked.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    thread::sleep(Duration::from_millis(20));
+                }
+                _ => {
+                    let _ = asked.kill();
+                    let _ = asked.wait();
+                    return Err(format!(
+                        "systemctl didn't answer within {:?}",
+                        own::ASK_WITHIN
+                    ));
+                }
+            }
+        }
+        let answer = reading
+            .join()
+            .map_err(|_| "reading systemctl's answer failed".to_owned())?
+            .map_err(|error| format!("couldn't read systemctl's answer: {error}"))?;
+        Ok(String::from_utf8_lossy(&answer).into_owned())
     };
     let now = std::time::Instant::now();
     sweep(control, &prefixes, seen, hosts, now, ask);
@@ -1500,6 +1533,9 @@ fn sweep(
 ) {
     hosts.leave(seen, now);
     if hosts.sweep.done && hosts.sweep.pending.is_empty() {
+        return;
+    }
+    if hosts.sweep.held_off.is_some_and(|until| now < until) {
         return;
     }
     let mut say = |why: String| {
@@ -1537,8 +1573,10 @@ fn sweep(
                     asked.len()
                 )
             }));
+            hosts.sweep.held_off = Some(now + own::ASK_AGAIN_AFTER);
             return;
         };
+        hosts.sweep.held_off = None;
         for (unit, state) in asked.into_iter().zip(states) {
             match state {
                 own::Active::Stopped => {
@@ -3686,34 +3724,52 @@ mod tests {
         let gone = "pi-host-work-gone.service".to_owned();
         let control = control_with("sweep-cant-ask", &[&gone]);
         let mut hosts = hosts::Hosts::default();
+        let start = std::time::Instant::now();
         let mut asks = 0;
-        for answer in [
-            Err("no bus".to_owned()),
-            Ok(String::new()),
-            Ok("inactive\n".to_owned()),
-        ] {
+        // Each look: how long after the first it comes, what systemctl says, and whether it's
+        // asked at all: after a failed ask, not again until ASK_AGAIN_AFTER has passed.
+        let again = own::ASK_AGAIN_AFTER;
+        let looks = [
+            (Duration::ZERO, Err("no bus".to_owned()), true),
+            (again / 2, Ok("inactive\n".to_owned()), false),
+            (again, Ok(String::new()), true),
+            (again * 2, Ok("inactive\n".to_owned()), true),
+        ];
+        for (after, answer, asked) in looks {
+            let before = asks;
             let ask = |_: &[String]| {
                 asks += 1;
                 answer.clone()
             };
             let swept = hosts.sweep.done;
+            let said = hosts.sweep.failed;
             sweep(
                 Some(&control),
                 &["pi-host-"],
                 &[],
                 &mut hosts,
-                std::time::Instant::now(),
+                start + after,
                 ask,
+            );
+            assert_eq!(
+                asks > before,
+                asked,
+                "asked at {after:?} after a first look whose ask failed"
             );
             assert!(
                 swept
-                    || hosts.sweep.done == answer.as_deref().is_ok_and(|answer| !answer.is_empty()),
+                    || hosts.sweep.done
+                        == (asked && answer.as_deref().is_ok_and(|answer| !answer.is_empty())),
                 "a sweep counts as done only once systemctl answers for every unit: {answer:?}"
+            );
+            assert!(
+                !said || hosts.sweep.failed || hosts.sweep.done,
+                "a failure said stays said until an ask works, so it's said once: {answer:?}"
             );
         }
         assert_eq!(
             asks, 3,
-            "a sweep that couldn't ask is tried on the next look"
+            "a sweep that couldn't ask is tried again, held off a while"
         );
         assert!(
             !hosts.sweep.failed,
@@ -3900,7 +3956,14 @@ mod tests {
         let mut hosts = hosts::Hosts::default();
         let mut kernel = HashMap::from([("a.service".to_owned(), focus::MOST)]);
         let viewers = ["b.service"; 3];
-        hard_look(&holding, &mut hosts, &mut kernel, &units, &viewers, |unit| unit != "a.service");
+        hard_look(
+            &holding,
+            &mut hosts,
+            &mut kernel,
+            &units,
+            &viewers,
+            |unit| unit != "a.service",
+        );
         let kept: usize = kernel.values().sum();
         assert!(
             kept <= focus::MOST,

@@ -322,6 +322,9 @@ pub struct Sweep {
     pub done: bool,
     /// Whether a failure to ask which units stopped has been said.
     pub failed: bool,
+    /// When the sweep may ask again after an ask that failed
+    /// (`crate::own::ASK_AGAIN_AFTER`).
+    pub held_off: Option<Instant>,
     /// Whether a failure to mark a unit's settings as the sorter's
     /// (`crate::own::mark`) has been said.
     pub unmarked: bool,
