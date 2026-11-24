@@ -239,6 +239,16 @@ QtObject {
             refusal("nowhere: skiff lacks system macos; tern is out of reach"),
             "nowhere: skiff lacks system macos; tern is out of reach; "
                 + "once one can take it, say it again");
+        for (const never of ["nowhere: skiff lacks system macos",
+            "nowhere: skiff lacks system macos, is out of reach; tern isn't kestrel",
+            "nowhere: the realm knows no machine"]) {
+            Expect.same(`one no machine will ever take is told in its own words: ${never}`,
+                refusal(never), never);
+        }
+        Expect.same("one a machine lacking nothing may yet take says to say it again",
+            refusal("nowhere: skiff lacks tool gh; tern holds the 8 sessions it holds at most"),
+            "nowhere: skiff lacks tool gh; tern holds the 8 sessions it holds at most; "
+                + "once one can take it, say it again");
         Expect.same("one whose node's socket is missing says to say it again once it runs",
             refusal("the node couldn't be reached: No such file or directory (os error 2)"),
             "the node couldn't be reached: No such file or directory (os error 2); "
