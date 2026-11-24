@@ -143,14 +143,15 @@ it("refuses a case escaped any other way", () => {
 
 /**
  * The cases `written` holds, each whether it is an address and its text, failing on a line
- * written any way but one, a carriage return in it included (README.md, The Address Cases).
+ * written any way but one, or on a carriage return anywhere, a note's included (README.md,
+ * The Address Cases).
  */
 function casesIn(written: string): [boolean, string][] {
+  assert.ok(!written.includes("\r"), `${JSON.stringify(written)} should hold no carriage return`);
   return written
     .split("\n")
     .filter((line) => line !== "" && !line.startsWith("#"))
     .map((line) => {
-      assert.ok(!line.includes("\r"), `${JSON.stringify(line)} should hold no carriage return`);
       const [kind, ...rest] = line.split(" ");
       assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
       return [kind === "is", caseText(rest.join(" "))];
@@ -158,7 +159,7 @@ function casesIn(written: string): [boolean, string][] {
 }
 
 it("refuses a line written any other way", () => {
-  for (const written of ["is T\r", "not T\r\n", "is T\n\r", "IS T", "maybe T"]) {
+  for (const written of ["is T\r", "not T\r\n", "is T\rU", "# a note\r\nis T", "IS T", "maybe T"]) {
     assert.throws(() => casesIn(written), `${JSON.stringify(written)} should be refused`);
   }
   assert.deepEqual(
