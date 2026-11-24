@@ -10149,6 +10149,42 @@ mod tests {
     }
 
     #[test]
+    fn runs_that_spill_at_once_take_one_lane_between_them() {
+        use std::sync::Barrier;
+        let folders: Vec<_> = (0..5)
+            .map(|_| tempfile::tempdir().expect("a folder"))
+            .collect();
+        let lanes: Vec<PathBuf> = folders.iter().map(|dir| dir.path().to_owned()).collect();
+        // Unlocked, each run found no spill before any claimed, so most
+        // rounds of runs let go together took a lane apiece.
+        for round in 0..50 {
+            let (asked, held) = (Barrier::new(4), Barrier::new(4));
+            let took = thread::scope(|scope| {
+                let runs: Vec<_> = (1..5)
+                    .map(|index| {
+                        let (lanes, asked, held) = (&lanes, &asked, &held);
+                        scope.spawn(move || {
+                            asked.wait();
+                            let claim = claim_only_spill(lanes, index, VM_ROOM);
+                            // Every claim stands until every run has asked.
+                            held.wait();
+                            claim.is_some()
+                        })
+                    })
+                    .collect();
+                runs.into_iter()
+                    .map(thread::ScopedJoinHandle::join)
+                    .filter(|took| matches!(took, Ok(true)))
+                    .count()
+            });
+            assert_eq!(
+                took, 1,
+                "round {round}: runs spilling at once took {took} lanes"
+            );
+        }
+    }
+
+    #[test]
     fn a_lane_with_vm_tests_sent_or_waiting_takes_no_spill() {
         let sent = tempfile::tempdir().expect("a folder");
         let _vm = claim(sent.path(), 1).expect("a VM test's claim");

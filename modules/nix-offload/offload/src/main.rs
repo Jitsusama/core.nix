@@ -942,8 +942,9 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let first_dir = dir;
     let general = [&first_dir, &more_dir];
     let room = vm_room();
-    // The spill's claim holds its lane's room for as long as the run goes.
-    let (left_dir, spill, _spill_claim) = left_to(
+    // The spill's claim holds its lane only while the builds spilled there
+    // go, not while the run's VM tests go on elsewhere (`at_once`).
+    let (left_dir, spill, spill_claim) = left_to(
         left.is_some(),
         general,
         (&vm_dirs, &vm_parts),
@@ -957,6 +958,7 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let sends = Sends {
         vm_dirs: &vm_dirs,
         spill: spill.as_deref(),
+        spill_claim: &std::sync::Mutex::new(spill_claim),
         room,
         fallbacks: &fallbacks,
     };
@@ -1230,6 +1232,7 @@ fn warm_of(
 struct Sends<'a> {
     vm_dirs: &'a [&'a PathBuf],
     spill: Option<&'a Path>,
+    spill_claim: &'a std::sync::Mutex<Option<there::Claim>>,
     room: usize,
     fallbacks: &'a [(&'a PathBuf, &'a PathBuf)],
 }
@@ -1241,9 +1244,11 @@ struct Sends<'a> {
 /// many as its room, and are claimed there while they go. What's left sent
 /// to the spill's VM builder isn't a VM part: it claims the builder's
 /// whole room while it goes, so VM tests go elsewhere rather than beside
-/// big builds. Says how each ran, with when it began and ended and the
-/// seconds it waited for room and for its builder to stand, in the order
-/// given. Each waits for its builder as `waiting` says.
+/// big builds, and its claim goes as that part ends: held to the run's
+/// end, a lane stood claimed and idle while the run's VM tests went on
+/// elsewhere. Says how each ran,
+/// with when it began and ended and the seconds it waited for room and
+/// for its builder to stand, in the order given. Each waits for its builder as `waiting` says.
 fn at_once<'a>(
     parts: &'a [(&PathBuf, Option<there::Asked>)],
     sends: &Sends,
@@ -1253,6 +1258,7 @@ fn at_once<'a>(
     let Sends {
         vm_dirs,
         spill,
+        spill_claim,
         room,
         fallbacks,
     } = *sends;
@@ -1286,6 +1292,9 @@ fn at_once<'a>(
                     let roomed = now().saturating_sub(began);
                     let waits = [first, waiting];
                     let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waits);
+                    if spilled && let Ok(mut held) = spill_claim.lock() {
+                        held.take();
+                    }
                     (part, began, now(), roomed + stood, ran)
                 })
             })
@@ -1543,6 +1552,8 @@ fn left_to(
 /// None while none is, or while another run's spill holds a lane: one at
 /// a time, never the first lane, and the last asked first, as
 /// `there::spill_order` says, so VM runs keep the lanes they reach first.
+/// A lane taken between its probe and its claim sends the run to the next,
+/// saying so, rather than leaving it on the full builders unsaid.
 fn spilled_onto(
     vm_dirs: &[PathBuf],
     parts: &[Option<there::Asked>],
@@ -1552,7 +1563,7 @@ fn spilled_onto(
     if vm_dirs.iter().any(|dir| there::spilled(dir)) {
         return None;
     }
-    let index = there::spill_order(vm_dirs.len()).find(|&index| {
+    let quiet = |&index: &usize| {
         let dir = &vm_dirs[index];
         let open = parts.get(index).is_none_or(Option::is_none)
             && there::lends(dir)
@@ -1562,26 +1573,40 @@ fn spilled_onto(
         standing(dir)
             .filter(|_| open)
             .is_some_and(|store| there::takes_spill(there::pressure(&store, scratch, "ssh")))
-    });
-    let Some(index) = index else {
-        eprintln!(
-            "nix-offload: both lent builders are full, but no VM builder stands idle and quiet \
-             to take this, so it waits on them"
-        );
-        return None;
     };
-    // The lane is probed unlocked, since a probe is an ssh; the claim is
-    // made only while still no lane holds a spill, so runs that start
-    // together spill once between them.
-    let claim = there::claim_only_spill(vm_dirs, index, room)?;
-    let idle = vm_dirs[index].clone();
+    // Each lane is probed unlocked, since a probe is an ssh, and only as
+    // the one before it is passed over; the claim is made only while still
+    // no lane holds a spill, so runs that start together spill once
+    // between them.
+    for index in there::spill_order(vm_dirs.len()).filter(quiet) {
+        let idle = &vm_dirs[index];
+        if let Some(claim) = there::claim_only_spill(vm_dirs, index, room) {
+            eprintln!(
+                "nix-offload: both lent builders' tasks wait past {:.0}% of the time for their \
+                 CPUs, so this goes to the idle VM builder in {}",
+                there::FULL,
+                idle.display()
+            );
+            return Some((idle.clone(), claim));
+        }
+        if vm_dirs.iter().any(|dir| there::spilled(dir)) {
+            eprintln!(
+                "nix-offload: another run's builds took an idle VM builder first, and one \
+                 spills at a time, so this waits on the lent builders"
+            );
+            return None;
+        }
+        eprintln!(
+            "nix-offload: the VM builder in {} couldn't be claimed, given VM tests as this \
+             asked for it or its folder unwritable, so the next is asked",
+            idle.display()
+        );
+    }
     eprintln!(
-        "nix-offload: both lent builders' tasks wait past {:.0}% of the time for their CPUs, \
-         so this goes to the idle VM builder in {}",
-        there::FULL,
-        idle.display()
+        "nix-offload: both lent builders are full, but no VM builder stands idle and quiet \
+         to take this, so it waits on them"
     );
-    Some((idle, claim))
+    None
 }
 
 /// How many VM tests each VM builder runs at once, as XDG's config folder
