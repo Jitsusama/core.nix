@@ -16,7 +16,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::builders;
-use crate::day::{self, Day};
+use crate::day::{self, Day, passed, phases};
 use crate::findings;
 use crate::findings::{gone, hubs};
 use crate::gate;
@@ -27,7 +27,6 @@ use crate::machine;
 use crate::mesh::{self, Mesh};
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
-use crate::{passed, phases};
 
 /// Whom the day is told to: the orchestrator its note, each owner its
 /// findings by the prefix of their keys, and the watcher what no owner has.

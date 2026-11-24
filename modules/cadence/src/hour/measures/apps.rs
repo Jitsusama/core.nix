@@ -20,6 +20,9 @@ const OWNER: &str = "5193FV";
 /// write is forgiven and a stopped one isn't taken for passing.
 const STALE: i64 = 2 * 3600;
 
+/// What each figure's key opens with, before its name in the hour.
+pub const FIGURE: &str = "apps:";
+
 /// The key the one line takes when there's no hour to read.
 const UNREAD: &str = "apps-under-load";
 
@@ -35,8 +38,9 @@ const LOST: f64 = 6.0;
 /// target it falls, in its own units, so every line reads as at most a
 /// target like the rest of the card. Each figure past its target is filed
 /// with its own owner, so how one compares with another only says which
-/// the drag line names. A figure that doesn't say which way is better is
-/// left out rather than guessed. With no hour, one older than two, or one
+/// the drag line names. A figure with no reading, or that doesn't say
+/// which way is better, is said unread rather than guessed or left out, so
+/// a drag on it stays open until it reads again. With no hour, one older than two, or one
 /// with no figure to read, a single line says which, judged once the last
 /// hour read is `LOST` hours old.
 #[must_use]
@@ -85,12 +89,25 @@ fn when(at: &Value) -> Option<i64> {
         .or_else(|| super::seconds(at))
 }
 
-/// One figure as a measure, or none without a name or a reading.
+/// One figure as a measure, or none without a name: one with no reading,
+/// or no word on which way is better, is unjudged, since leaving it out
+/// would read its drag as closed on a figure dropped.
 fn figure(m: &Value) -> Option<Measure> {
     let measure = m["measure"].as_str()?;
-    let now = m["now"].as_f64()?;
+    let now = m["now"].as_f64();
+    let lower = m["lower_is_better"].as_bool();
+    let (Some(now), Some(lower)) = (now, lower) else {
+        return Some(Measure {
+            key: format!("{FIGURE}{measure}"),
+            class: Class::Apps,
+            says: format!("{measure}, unread: no reading, or which way is better unsaid"),
+            now: 0.0,
+            target: None,
+            owner: m["owner"].as_str().unwrap_or(OWNER).to_owned(),
+            behind: Vec::new(),
+        });
+    };
     let target = m["target"].as_f64();
-    let lower = m["lower_is_better"].as_bool()?;
     let (says, now, target) = match target {
         Some(target) if !lower => (
             format!("{measure} short of {}", super::super::lines::figure(target)),
@@ -100,7 +117,7 @@ fn figure(m: &Value) -> Option<Measure> {
         _ => (measure.to_owned(), now, target),
     };
     Some(Measure {
-        key: format!("apps:{measure}"),
+        key: format!("{FIGURE}{measure}"),
         class: Class::Apps,
         says,
         now,
@@ -132,7 +149,7 @@ mod tests {
              "lower_is_better": true},
             {"measure": "slack input to paint ms", "now": 90.0, "target": null,
              "lower_is_better": true},
-            // Which way is better unsaid, so not guessed.
+            // Which way is better unsaid, so said unread, not guessed.
             {"measure": "chrome fps", "now": 20.0, "target": 60.0},
         ]})
         .to_string()
@@ -172,6 +189,12 @@ mod tests {
                     90.0,
                     None
                 ),
+                (
+                    "apps:chrome fps",
+                    "chrome fps, unread: no reading, or which way is better unsaid",
+                    0.0,
+                    None
+                ),
             ]
         );
         assert_eq!(read[0].behind, ["encoder starved"]);
@@ -205,7 +228,20 @@ mod tests {
         assert_eq!(old[0].past(), None, "two hours is a call, not yet a fault");
         let lost = apps(Some(&hour(NOW - 7 * 3600)), NOW);
         assert!(lost[0].past().is_some(), "seven hours unread is a fault");
-        assert_eq!(apps(Some(&hour(NOW - STALE + 1)), NOW).len(), 4);
+        assert_eq!(apps(Some(&hour(NOW - STALE + 1)), NOW).len(), 5);
+    }
+
+    #[test]
+    fn a_figure_written_with_no_reading_is_said_unread_not_dropped() {
+        let text = serde_json::json!({"at": NOW, "measures": [
+            {"measure": "call fps p10", "now": null, "target": 30.0, "lower_is_better": false},
+        ]})
+        .to_string();
+        let read = apps(Some(&text), NOW);
+        assert_eq!(read.len(), 1, "the figure is kept, not the hour's one line");
+        assert_eq!(read[0].key, "apps:call fps p10");
+        assert_eq!(read[0].target, None, "unjudged, so a drag on it stays open");
+        assert!(read[0].says.contains("unread"), "{}", read[0].says);
     }
 
     #[test]
@@ -214,14 +250,14 @@ mod tests {
         read["at"] = serde_json::json!(1_794_699_399.5);
         assert_eq!(
             apps(Some(&read.to_string()), NOW).len(),
-            4,
+            5,
             "seconds with a fraction"
         );
         let moment = jiff::Timestamp::from_second(NOW - 600).expect("a moment");
         read["at"] = serde_json::json!(moment.to_string());
         assert_eq!(
             apps(Some(&read.to_string()), NOW).len(),
-            4,
+            5,
             "an RFC 3339 moment"
         );
     }

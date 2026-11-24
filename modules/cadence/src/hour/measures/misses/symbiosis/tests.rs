@@ -1378,6 +1378,36 @@ fn a_file_moved_away_holds_the_mark_and_one_unreadable_holds_the_count() {
 }
 
 #[test]
+fn a_file_unread_holds_the_mark_back_behind_a_newer_one_read() {
+    // Two hours behind the newest, past the hour of slack the next
+    // reading takes anyway, so only holding the mark back reads it again.
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let listed = |one: &Posted, ago: i64| {
+        let name = format!("{}.json", one.id);
+        (root.path().join(&name), name, (NOW - ago) * 1000)
+    };
+    let newer = finding(30, "IKQ63G", "IKQ63G: newer");
+    put(root.path(), &newer, 30);
+    let shut = finding(7_200, "IKQ63G", "IKQ63G: shut");
+    put(root.path(), &shut, 7_200);
+    let (path, ..) = listed(&shut, 7_200);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).expect("shut");
+    // Never written, so it reads as moved since it was listed.
+    let gone = finding(7_300, "IKQ63G", "IKQ63G: moved away");
+    for (unread, ago, why) in [
+        (listed(&gone, 7_300), 7_300, "moved away"),
+        (listed(&shut, 7_200), 7_200, "shut"),
+    ] {
+        let read = opened(vec![unread, listed(&newer, 30)], NOW * 1000, 0);
+        assert_eq!(
+            (read.through_ms, read.posted.len()),
+            ((NOW - ago) * 1000, 1),
+            "a file {why} two hours before the newest let the mark pass it"
+        );
+    }
+}
+
+#[test]
 fn a_file_dated_ahead_ages_from_when_it_was_first_written_here() {
     let one = finding(0, "IKQ63G", "IKQ63G finding for A2VLJN: x");
     let kept = vec![written(&one, 3_600)];
