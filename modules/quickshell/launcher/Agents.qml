@@ -2003,7 +2003,7 @@ Provider {
         });
     }
     // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
-    // node's places, World's zones among them.
+    // node's places, a big repository's zones among them.
     function startWheres() {
         return Wheres.wheres(source("quests")?.folders() ?? [], startPlaces);
     }

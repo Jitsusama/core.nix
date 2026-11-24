@@ -4,9 +4,9 @@
 // Where Start New Work's words can be said, each one of its In rows: the
 // folders his open quests work in (modules/quests/src/folders.rs), then
 // the places the realm's node says work can begin in (mycelium's Places,
-// asked through the agents daemon's places.rs: World's zones by name,
-// checkouts, folders lately begun in), so typing "aquifer" finds
-// //system/aquifer (Joel, 24 November: "the list of things to start in
+// asked through the agents daemon's places.rs: a big repository's zones by
+// name, checkouts, folders lately begun in), so typing "pond" finds
+// //system/pond (Joel, 24 November: "the list of things to start in
 // was shit"). The node's words are drawn, so each is read again here as
 // Sprouting reads a page's.
 
@@ -14,7 +14,7 @@
 // letter Joel types in Start New Work.
 const MOST_PLACES = 2000;
 
-// What opens a World zone's name, which the node starts it by.
+// What opens a zone's name, which the node starts it by.
 const ZONE = "//";
 
 // Whether `text` is a plain, non-empty line: nothing a control, format or

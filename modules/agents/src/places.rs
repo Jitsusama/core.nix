@@ -1,8 +1,8 @@
 //! Where Start New Work can begin, as the launcher asks for it
 //! (launcher/Places.js): the places the realm's node says work can begin
-//! in, World's zones by name among them, asked as the node's own `Places`
+//! in, a big repository's zones by name among them, asked as the node's `Places`
 //! (mycelium's PROTOCOL.md) on the line `mycelium places` sends, so the
-//! launcher's In rows find a zone such as //system/aquifer by name (Joel,
+//! launcher's In rows find a zone such as //system/pond by name (Joel,
 //! 24 November: "the list of things to start in was shit"). Only the
 //! shell may ask (asker.rs), since the node lists them as its view of
 //! Joel's folders reaches, and this daemon is taken for him.
@@ -81,15 +81,15 @@ mod tests {
         let (socket, asked) = node(
             "listed",
             concat!(
-                r#"{"Ok": {"Places": [{"folder": "/home/j/world/trees/root/src/areas/system/"#,
-                r#"aquifer", "name": "//system/aquifer", "kind": "zone", "out": false}]}}"#,
+                r#"{"Ok": {"Places": [{"folder": "/home/j/big/src/areas/system/pond", "#,
+                r#""name": "//system/pond", "kind": "zone", "out": false}]}}"#,
             ),
         );
         let answer = answer(Ok(()), Some(&socket));
         assert_eq!(
             answer,
-            json!({"places": [{"folder": "/home/j/world/trees/root/src/areas/system/aquifer",
-                "name": "//system/aquifer", "kind": "zone", "out": false}]}),
+            json!({"places": [{"folder": "/home/j/big/src/areas/system/pond",
+                "name": "//system/pond", "kind": "zone", "out": false}]}),
             "the node's places, as it says them"
         );
         let line = asked.join().expect("the node stood in");

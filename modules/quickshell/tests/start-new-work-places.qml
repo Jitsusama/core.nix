@@ -13,19 +13,19 @@ QtObject {
 
     function cases() {
         const quests = [{ folder: "/home/j/src/core", name: "~/src/core" }];
-        const aquifer = { folder: "/home/j/world/trees/root/src/areas/system/aquifer",
-            name: "//system/aquifer", kind: "zone", out: false };
-        const unchecked = { folder: "/home/j/world/trees/root/src/areas/system/reef",
+        const pond = { folder: "/home/j/big/src/areas/system/pond",
+            name: "//system/pond", kind: "zone", out: false };
+        const unchecked = { folder: "/home/j/big/src/areas/system/reef",
             name: "//system/reef", kind: "zone", out: true };
         const harness = { folder: "/home/j/src/harness", name: "~/src/harness",
             kind: "checkout", out: false };
 
-        // Joel, 24 November: he wanted to start in World's aquifer zone, and the
+        // Joel, 24 November: he wanted to start in a big repository's zone, and the
         // list offered only his quests' folders.
         Expect.same("the quests' folders, then the node's places, in its order",
-            Wheres.wheres(quests, [aquifer, harness]), [
+            Wheres.wheres(quests, [pond, harness]), [
                 { folder: "/home/j/src/core", name: "~/src/core", start: "/home/j/src/core" },
-                { folder: aquifer.folder, name: "//system/aquifer", start: "//system/aquifer" },
+                { folder: pond.folder, name: "//system/pond", start: "//system/pond" },
                 { folder: harness.folder, name: "~/src/harness", start: harness.folder }
             ]);
         Expect.same("a zone not checked out is listed, started by its name",
