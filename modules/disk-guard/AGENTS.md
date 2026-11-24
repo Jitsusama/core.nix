@@ -394,7 +394,11 @@ or launchd, and [`home.nix`][2] the account's.
   gigabytes every few minutes swing the two-minute rate passes plan by
   either way by tens of gigabytes an hour. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
-  sentence says so rather than that the guard is clearing. While a disk
+  sentence says so rather than that the guard is clearing. A pass is
+  `passing` from its start, with its disk, band and why, since one
+  reaching for room a disk can't give judges every offer it was handed:
+  on 23 November one ran 15 hours. While one is at work on a disk, that
+  disk isn't `exhausted`, and the pass before it gives no notice. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the
   space: the ten biggest folders the sources name, each straight under a

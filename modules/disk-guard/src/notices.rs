@@ -130,7 +130,13 @@ pub fn standing(status: &Status) -> Option<Notice> {
             .find(|filesystem| filesystem.path == path)
             .map_or(Band::Healthy, |filesystem| filesystem.band)
     };
+    // A pass at work on the same disk may clear what the one before
+    // couldn't, so the one before isn't told while it runs.
     if let Some(last) = &status.last
+        && status
+            .passing
+            .as_ref()
+            .is_none_or(|passing| passing.path != last.path)
         && last.end != "reached"
         && band(&last.path) != Band::Healthy
         && last.band >= band(&last.path)

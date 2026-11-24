@@ -368,6 +368,9 @@ pub struct Guard {
     /// or ones that free nothing, until a pass on its disk frees some or
     /// finds it no longer filling.
     failed: Option<LastPass>,
+    /// The pass at work, while one is, so the status each beat writes
+    /// again says so.
+    passing: Option<Passing>,
     saved_at: Option<f64>,
     written: Option<(f64, Status)>,
     /// The status last written, which each beat writes again fresh.
@@ -566,6 +569,10 @@ pub struct Status {
     /// The last things cleared, newest first.
     pub cleared: Vec<ClearedStatus>,
     pub last: Option<LastPass>,
+    /// The pass running as this was written, if one is. `last` is the one
+    /// before it, which says nothing of what this one has cleared since.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub passing: Option<Passing>,
     /// The pass whose clearing failed, while its failing stands: until a
     /// pass on its disk frees some or finds it no longer filling.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -687,6 +694,19 @@ pub struct Preview {
     pub taken: Vec<crate::plan::Candidate>,
 }
 
+/// A pass at work: since when, on which disk, in what band and why. One
+/// reaching for room a disk can't give judges every offer it was handed,
+/// and on 23 November one ran from 08:51 to past 23:00 while the status
+/// still told the pass before it, which freed nothing, and its notice to
+/// delete something by hand.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Passing {
+    pub since: f64,
+    pub path: PathBuf,
+    pub band: Band,
+    pub why: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct LastPass {
     pub at: f64,
@@ -787,6 +807,7 @@ impl Guard {
             watched: BTreeMap::new(),
             last: None,
             failed: None,
+            passing: None,
             saved_at: None,
             written: None,
             beaten: Arc::default(),
@@ -2685,6 +2706,18 @@ impl Guard {
         }) else {
             return Ok(End::Exhausted);
         };
+        // Told before it starts, since each beat as it works writes the
+        // status again as it was, and a pass can judge for hours.
+        self.passing = Some(Passing {
+            since: wall_now(),
+            path: path.clone(),
+            band,
+            why: why.word().to_owned(),
+        });
+        if let Err(error) = self.write_status(tick.wall) {
+            self.passing = None;
+            return Err(error);
+        }
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
         let since = self.stepped;
@@ -2729,6 +2762,7 @@ impl Guard {
             goal,
             &mut self.memory.learned,
         );
+        self.passing = None;
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
@@ -2992,6 +3026,10 @@ impl Guard {
                     says: String::new(),
                     exhausted: self.last.as_ref().is_some_and(|last| {
                         last.path == watched.path
+                            && self
+                                .passing
+                                .as_ref()
+                                .is_none_or(|passing| passing.path != watched.path)
                             && last.end == "exhausted"
                             && watched.band != Band::Healthy
                             && last.band >= watched.band
@@ -3026,6 +3064,7 @@ impl Guard {
             filesystems,
             cleared,
             last: self.last.clone(),
+            passing: self.passing.clone(),
             failed: self.failed.clone(),
             frozen: self.memory.frozen.clone(),
             writer: self
