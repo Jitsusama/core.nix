@@ -324,7 +324,10 @@ pub fn transcribe_take(
 fn heard_or_left_out(
     heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
 ) -> (Option<String>, Vec<Word>) {
-    heard.expect("a take wasn't heard")
+    heard.unwrap_or_else(|why| {
+        eprintln!("call-transcripts: a take wasn't heard: {why}");
+        (None, Vec::new())
+    })
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,

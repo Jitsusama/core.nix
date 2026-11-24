@@ -449,6 +449,31 @@ fn a_piece_holding_only_the_end_of_a_note_isnt_worded() {
 }
 
 #[test]
+fn words_in_a_piece_left_unembedded_word_the_piece_before() {
+    // Splitting gives the words of a piece the speaker model left out to
+    // the run before it, so they count toward that piece's voice here
+    // too, or the two would disagree about who spoke.
+    let mut writing = Writing::default();
+    let start = 40 * SECOND;
+    let said = [
+        word("Mm.", start),
+        word("Not", start + 4 * SECOND),
+        word("yet.", start + 5 * SECOND),
+    ];
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (BO.to_vec(), start + 6 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(0), &said, pieces);
+    let worded: Vec<bool> = writing.heard.iter().map(|heard| heard.worded).collect();
+    assert_eq!(
+        worded,
+        [true, false],
+        "words in a piece left unembedded didn't word the piece before"
+    );
+}
+
+#[test]
 fn a_piece_in_no_voice_takes_its_takes_voice_and_stays_in_its_line() {
     let mut writing = Writing {
         whole: true,
@@ -583,8 +608,8 @@ impl Hears for Scripted {
 #[test]
 fn a_takes_words_find_the_pieces_they_were_said_in() {
     // Parakeet times a take's words from the take's start and its pieces
-    // are timed from the call's, so words left unmoved 40 s in would find
-    // no piece, and no line would be given a voice.
+    // are timed from the call's, so words left unmoved 40 s in would all
+    // fall in the take's first piece, and a later voice would get none.
     let start = 40 * SECOND;
     let mut scripted = Scripted {
         words: Some(vec![word("Not", 0), word("yet.", 4 * SECOND)]),
