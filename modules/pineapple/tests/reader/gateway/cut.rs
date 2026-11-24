@@ -1,10 +1,12 @@
 //! The reader over a gateway that cuts a long answer short, giving its
 //! newest results and dropping the oldest while keeping the count: it asks
 //! again for as many as it gave, reads an answer only when a second ask for
-//! one fewer agrees with it, and reads a full one only when it reaches a
-//! minute before the newest message the last answer read gave, even one
-//! holding it, or to before anything is judged. One that doesn't is deaf
-//! until Joel is told, then read on.
+//! one fewer agrees with it, and reads a full one, or one ever cut, only
+//! when it reaches a minute before the newest message the last answer read
+//! gave, even one holding it, or to before anything is judged. One that
+//! doesn't is asked for the pages before it (the cases in pages.rs, beside
+//! this, read them), and short of it is deaf until Joel is told, then read
+//! on.
 //! Never a result typed in a message, whether after the last one given or
 //! making up the count.
 
@@ -15,12 +17,12 @@ use serde_json::{Value, json};
 use super::{JOEL, THREAD, Until, each, hearing, poisoned, said};
 
 /// The phrase's search, finding nothing.
-fn nothing() -> String {
+pub(super) fn nothing() -> String {
     json!({ "results": "# Search Results for: pineapple\n\nNo results found.\n" }).to_string()
 }
 
 /// The stop, tagging Joel.
-fn stop() -> String {
+pub(super) fn stop() -> String {
     format!("<@{JOEL}> pineapple override")
 }
 
@@ -28,7 +30,7 @@ fn stop() -> String {
 /// the messages it finds, newest first, each said at a second and saying
 /// a text: it counts as many as were asked for, or as it finds, and gives
 /// no more than `kept` of them, dropping the rest as too long.
-fn tags(asked: &Value, found: &[(u64, &str)], kept: usize) -> String {
+pub(super) fn tags(asked: &Value, found: &[(u64, &str)], kept: usize) -> String {
     let limit = asked["limit"]
         .as_u64()
         .and_then(|limit| usize::try_from(limit).ok())
@@ -39,7 +41,7 @@ fn tags(asked: &Value, found: &[(u64, &str)], kept: usize) -> String {
 
 /// A tag search's answer counting `counted` and giving `given`, each said
 /// at a second and saying a text, newest first, in the stop's thread.
-fn tags_answer(counted: usize, given: &[(u64, &str)]) -> String {
+pub(super) fn tags_answer(counted: usize, given: &[(u64, &str)]) -> String {
     let results = (1..)
         .zip(given)
         .map(|(at, (said, text))| result(at, counted, *said, "U0OTHER001", text))
@@ -63,6 +65,12 @@ fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> Str
     )
 }
 
+/// Whether `asked` opens a round: for twenty, and for the newest page
+/// rather than one before another.
+pub(super) fn opens(asked: &Value) -> bool {
+    asked["limit"] == 20 && asked.get("before").is_none()
+}
+
 /// The tag search's answers in two parts: its first round's asks find
 /// `before`, whole; every round's after find `after`, cut to `kept`. Each
 /// round opens asking for twenty, which `rounds` counts.
@@ -73,7 +81,7 @@ fn read_then_cut(
     after: &[(u64, &str)],
     kept: usize,
 ) -> String {
-    let round = if asked["limit"] == 20 {
+    let round = if opens(asked) {
         rounds.fetch_add(1, Ordering::SeqCst) + 1
     } else {
         rounds.load(Ordering::SeqCst)
@@ -267,7 +275,7 @@ fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
 
 /// Where in the journal the tag search's gap was told in Joel's row, and
 /// where it was read on, each if it was.
-fn told_and_read_on(journal: &str) -> (Option<usize>, Option<usize>) {
+pub(super) fn told_and_read_on(journal: &str) -> (Option<usize>, Option<usize>) {
     (
         journal.find("told Joel in For You: The safe word's search of Slack for your tag"),
         journal.find("told in Joel's row, reads on: what was said then is never read"),
@@ -305,8 +313,10 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
         came.journal
     );
     assert!(
-        came.journal.contains("what was said from a minute before"),
-        "the span named starts a minute before the last read: {}",
+        came.journal.contains("what was said from a minute before")
+            && came.journal.contains("gives none older"),
+        "the span named starts a minute before the last read, and a gateway giving the same \
+         page before its oldest is said to give none older: {}",
         came.journal
     );
     assert_eq!(
@@ -393,49 +403,6 @@ fn an_answer_cut_to_the_last_read_is_a_gap_as_one_found_late_may_lie_before() {
             .contains("it leaves unread what was said from a minute before"),
         "an answer holding the last read but not the minute before is a gap, as one said \
          then may be found late: {}",
-        came.journal
-    );
-}
-
-#[test]
-fn a_whole_answer_flooded_past_the_last_read_is_told() {
-    static TAGS: AtomicUsize = AtomicUsize::new(0);
-    let came = hearing(
-        |tool, asked, now| {
-            if tool != "slack_search_public_and_private" {
-                return said(tool, now);
-            }
-            if asked["query"] == "pineapple" {
-                return poisoned();
-            }
-            // Read whole, its newest five minutes back; then twenty-one
-            // short words since, so the twenty newest, whole, stop short.
-            let flood: Vec<(u64, String)> = (0..21)
-                .map(|at| (now - 60 - at, format!("word {at}")))
-                .collect();
-            let flood: Vec<(u64, &str)> = flood
-                .iter()
-                .map(|(at, text)| (*at, text.as_str()))
-                .collect();
-            read_then_cut(
-                &TAGS,
-                asked,
-                &[(now - 300, "a word"), (now - 400, "an older word")],
-                &flood,
-                flood.len(),
-            )
-        },
-        &Until {
-            judging: 2,
-            asks: 0,
-            read_at: None,
-        },
-    );
-    let tag = format!("search for \"<@{JOEL}>\" can't be read: back to");
-    assert!(
-        came.journal.contains(&tag) && came.journal.contains("it leaves unread"),
-        "an answer whole to twenty that stops short of the last read leaves a span unread \
-         as one cut short does, and says so: {}",
         came.journal
     );
 }
