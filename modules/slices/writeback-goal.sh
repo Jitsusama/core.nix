@@ -38,30 +38,41 @@ if [ -z "$disk" ] || { [ "$goal" != kernel ] && [[ -z $goal || $goal == *[!0-9]*
   exit 64
 fi
 if [ ! -e "$held" ]; then
-  # A disk gone by the time it's given back has nothing to give back, but
-  # one that's missing as its goal is set is a name that reaches nothing,
+  # A disk gone by the time it's given back has nothing to give back, and
+  # its record goes, so a disk taking its name later records its own. One
+  # that's missing as its goal is set is a name that reaches nothing,
   # which the unit's failing says rather than the A/B measuring nothing.
-  [ "$goal" = kernel ] && exit 0
+  if [ "$goal" = kernel ]; then
+    rm -f "$record"
+    exit 0
+  fi
   echo "writeback-goal: $disk has no writeback throttle under /sys/block" >&2
   exit 1
 fi
 if [ "$goal" = kernel ]; then
   # What the disk had before the first goal was set comes back, so a
   # throttle BFQ or io.cost stood down, which reads 0, stays down. With no
-  # record, as after a boot, -1 is the kernel's default goal, set by hand:
-  # a later io.cost won't stand it down until the next boot.
+  # record, as after a boot, -1 is the kernel's default goal, set by hand,
+  # which disk-order stands down if io.cost takes the disk later. A record
+  # that isn't a number gives the default back too, rather than nothing.
+  before=-1
   if [ -e "$record" ]; then
-    cat "$record" > "$held"
-    rm -f "$record"
-  else
-    echo -1 > "$held"
+    kept=$(< "$record")
+    [[ -n $kept && $kept != *[!0-9]* ]] && before=$kept
   fi
+  echo "$before" > "$held"
+  rm -f "$record"
   exit 0
 fi
 # Only the first goal's record is kept, so a goal set twice gives back
-# the disk's own, not the first goal.
+# the disk's own, not the first goal. It's written whole, through a file
+# renamed into place, and only when the throttle reads as a number.
 if [ ! -e "$record" ]; then
-  mkdir -p "${record%/*}"
-  cat "$held" > "$record"
+  now=$(< "$held")
+  if [[ -n $now && $now != *[!0-9]* ]]; then
+    mkdir -p "${record%/*}"
+    echo "$now" > "$record.new"
+    mv "$record.new" "$record"
+  fi
 fi
 echo "$goal" > "$held"
