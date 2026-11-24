@@ -56,7 +56,12 @@ fn section(text: &str) -> Section {
             last.push_str(more.trim_start());
         }
     }
-    let field = |name: &str| items.iter().find_map(|i| i.strip_prefix(name)).map(str::trim);
+    let field = |name: &str| {
+        items
+            .iter()
+            .find_map(|i| i.strip_prefix(name))
+            .map(str::trim)
+    };
     Section {
         title: title.trim().to_owned(),
         keys: field("Measures:").map(spans).unwrap_or_default(),
@@ -68,7 +73,11 @@ fn section(text: &str) -> Section {
 
 /// The text inside each pair of backticks in `text`.
 fn spans(text: &str) -> Vec<String> {
-    text.split('`').skip(1).step_by(2).map(str::to_owned).collect()
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect()
 }
 
 /// What a target's words hold a measure to: the number they open with,
@@ -105,8 +114,14 @@ fn unsaid(page: &[Section]) -> Vec<String> {
         let lacks: Vec<&str> = [
             (s.keys.is_empty(), "no measure"),
             (s.target.is_none(), "no target"),
-            (!s.joel.as_deref().is_some_and(quoted), "no dated line of Joel's"),
-            (s.cost.as_deref().is_none_or(str::is_empty), "no cost to him"),
+            (
+                !s.joel.as_deref().is_some_and(quoted),
+                "no dated line of Joel's",
+            ),
+            (
+                s.cost.as_deref().is_none_or(str::is_empty),
+                "no cost to him",
+            ),
         ]
         .into_iter()
         .filter_map(|(lacking, what)| lacking.then_some(what))
