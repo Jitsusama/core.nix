@@ -27,11 +27,15 @@ pub struct Promise {
 /// A `met` holds only on a date the ask has since moved on from, so its
 /// last date is kept by landing alone, and only when it came after its
 /// date was given, since a step can't be kept before it was promised.
+/// An entry that isn't an object, as twenty bare strings were on 24
+/// November, says no date, so it's passed over rather than read as one
+/// that hides the move after the date before it.
 pub fn promised(ask: &Value) -> Vec<Promise> {
     let mut given: Vec<(Option<i64>, Option<i64>, Option<i64>)> = ask["promised"]
         .as_array()
         .into_iter()
         .flatten()
+        .filter(|p| p.is_object())
         .map(|p| {
             (
                 seconds(&p["expected"]),
