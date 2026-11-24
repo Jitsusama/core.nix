@@ -3285,7 +3285,11 @@ Singleton {
     FileView {
         id: sessionsKittyFile
         path: `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.pid`
-        blockLoading: true
+        // Every read waits for the file, not only the first: once loaded,
+        // a reload otherwise reads in the background and text() answers
+        // the old pid meanwhile, so a kitty started again had its first
+        // viewer refused (readKittyPid).
+        blockAllReads: true
         printErrors: false
         watchChanges: true
         onFileChanged: root.readKittyPid()
