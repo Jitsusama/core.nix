@@ -1,7 +1,7 @@
 """A meter stays its moment from the frame niri first shows of it, on niri.
 
-modules/quickshell/checks/shell.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts. A meter (modules/quickshell/Meter.qml) shows for a moment as a
+modules/quickshell/checks/shell.nix runs this through pytest inside tests/lib/nested-niri.sh, with
+the shell launcher_on_niri.py starts. A meter (modules/quickshell/Meter.qml) shows for a moment as a
 level changes. Its moment was timed from the change, so on a builder whose frames came 1.3 to 2 s
 apart it was gone before niri had drawn it, and the desktop test's meter over dictation never
 said it was drawn (17 and 18 November). Here niri is held stopped for longer than the moment as

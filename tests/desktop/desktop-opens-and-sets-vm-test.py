@@ -3,8 +3,8 @@
 Here the launcher opens and sets what the machine has: sound and its outputs' parts, the
 power profile, displays, Wi-Fi, the addresses, Joel's timers and the VMs virsh lists.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -1945,7 +1945,7 @@ def test_the_addresses_name_each_connection_its_parts_a_step_in(desktop: Desktop
 def test_a_cable_says_how_its_link_is_doing(desktop: Desktop) -> None:
     """A cable says how its link is doing, as it changes."""
     machine = desktop.machine
-    # tests/desktop.nix gives this area a cable, cable0, at a gigabit.
+    # tests/desktop/desktop.nix gives this area a cable, cable0, at a gigabit.
     machine.wait_until_succeeds(
         "ip -4 address show cable0 | grep -q 'inet 10.9.0'", timeout=timedelta(seconds=60)
     )
@@ -2111,7 +2111,7 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     machine.wait_until_succeeds(
         "ip -4 address show cable0 | grep -q 'inet 10.9.0'", timeout=timedelta(seconds=60)
     )
-    # tests/desktop.nix puts a switch at the cable's other end, its own
+    # tests/desktop/desktop.nix puts a switch at the cable's other end, its own
     # second card, which says what it is over LLDP every few seconds.
     machine.wait_until_succeeds(
         "networkctl lldp cable0 | grep -q switch0", timeout=timedelta(seconds=60)
@@ -2149,7 +2149,7 @@ def test_ethernet_in_network_holds_each_cable_its_lease_and_its_neighbour(
     )
     desktop.type_in("lease", selecting="Lease")
     desktop.step_in("ret")
-    # No name servers: the cable asks for none (tests/desktop.nix), and
+    # No name servers: the cable asks for none (tests/desktop/desktop.nix), and
     # QEMU's server offers only what's asked.
     lease = ["Server \u00b7 10.9.0.2", "Given For \u00b7 1 d"]
     desktop.launcher_until(lambda shown: set(lease) <= set(reads(shown)))
@@ -2262,7 +2262,7 @@ def test_a_vm_virsh_lists_is_in_programs_with_its_figures_and_starts_from_its_ac
 ) -> None:
     """A VM virsh lists is in Programs with its state and figures, and Start It starts it."""
     machine = desktop.machine
-    # tests/desktop.nix gives the launcher a stand-in virsh, whose session
+    # tests/desktop/desktop.nix gives the launcher a stand-in virsh, whose session
     # holds web, which libvirt says is shut off, and which keeps each run
     # in virsh-asked.
     asked = "/run/user/1000/virsh-asked"

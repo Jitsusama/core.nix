@@ -5,7 +5,7 @@ other areas' screen is too small to hold the card and its drawer at: 1.5, as the
 as the laptop does. A found row's note is in the serif, on its name's baseline, a step on, and
 home's own foot and the empty places' cat are held here too, each shot for a person to measure.
 It's an area of its own, rather than more of looks, so the looks areas run side by side rather
-than one after another; what they share is in looks_session.py. tests/desktop.nix runs this
+than one after another; what they share is in looks_session.py. tests/desktop/desktop.nix runs this
 through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
 test proves. Every test asks for the desktop, started once a run (desktop_session.py), and leaves
 it as it found it.

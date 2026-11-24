@@ -8,9 +8,9 @@ pixel: a notice's title, eyebrow and words, a time server's and a device's facts
 a chord's keys, and Now's head and groups, each shot in the gallery for a person to measure too.
 It's an area of its own, rather than more of looks, so the looks areas run side by side rather than
 one after another;
-what they share is in looks_session.py. tests/desktop.nix runs this through pytest inside the driver
-(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks for the
-desktop, started once a run (desktop_session.py), and leaves it as it found it.
+what they share is in looks_session.py. tests/desktop/desktop.nix runs this through pytest inside
+the driver (tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test
+asks for the desktop, started once a run (desktop_session.py), and leaves it as it found it.
 """
 
 from __future__ import annotations
@@ -143,7 +143,7 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
     """A time server's plate, and a device's, has its facts from the beat under the title."""
-    # chrony keeps the clock by the VM's own time server (tests/desktop.nix), whose plate
+    # chrony keeps the clock by the VM's own time server (tests/desktop/desktop.nix), whose plate
     # holds every figure chronyd has of it.
     desktop.machine.wait_until_succeeds(
         "chronyc -c -N sources | grep -q '^^,[*],time.harbour.test,'",

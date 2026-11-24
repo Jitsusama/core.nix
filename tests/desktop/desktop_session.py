@@ -1,7 +1,7 @@
 """The desktop every area of the desktop test drives: its boot, and the helpers each area shares.
 
-tests/desktop.nix gives this to the driver as a module of its Python, which pytest takes as a
-plugin, and its opening comment says what the test proves. So every area finds the fixtures here
+tests/desktop/desktop.nix gives this to the driver as a module of its Python, which pytest takes as
+a plugin, and its opening comment says what the test proves. So every area finds the fixtures here
 without declaring or importing them: the desktop, made once a run by `started`, the launcher
 closed after each test, for an area that asks for it, and the stand-in Google. A helper two
 areas use comes here too, and nothing here is a test.
@@ -37,12 +37,12 @@ if TYPE_CHECKING:
 
 
 class Values(TypedDict):
-    """What tests/desktop.nix gives the test: the account, the theme and paths in the store."""
+    """What desktop.nix gives the test: the account, the theme and paths in the store."""
 
     # The account the desktop runs as, and its password.
     account: str
     secret: str
-    # The programs tests/desktop.nix writes for the test to run inside the machine.
+    # The programs tests/desktop/desktop.nix writes for the test to run inside the machine.
     asking: str
     ask_portal: str
     choose_a_file: str
@@ -369,7 +369,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
     """The account's desktop on the test's machine, and what every area does with it."""
 
     def __init__(self, machine: QemuMachine, values: Values) -> None:
-        """Drive the desktop on that machine, with what tests/desktop.nix gave the test.
+        """Drive the desktop on that machine, with what tests/desktop/desktop.nix gave the test.
 
         It's QEMU's, since the desktop is seen on its screen and typed at by its keys.
         """
@@ -1662,8 +1662,8 @@ def charged(desktop: Desktop) -> str:
 
 # What opens-files, which opens what Chrome downloaded and goes to a Neovim's buffer, shares
 # with looks-programs, which shoots both programs' pages: Chrome's lists, files the stand-in's
-# listers print (tests/desktop.nix), in the form chrome-recent-sites prints them, and Neovims in
-# kitty windows, read only from outside, so the account's own configuration is what runs.
+# listers print (tests/desktop/desktop.nix), in the form chrome-recent-sites prints them, and
+# Neovims in kitty windows, read only from outside, so the account's own configuration is what runs.
 CHROME_VISITED = "/run/user/1000/chrome-visited"
 CHROME_OPEN = "/run/user/1000/chrome-open"
 CHROME_DOWNLOADS = "/run/user/1000/chrome-downloads"

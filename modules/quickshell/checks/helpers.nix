@@ -186,7 +186,7 @@ let
 
   # The account's shell on its real niri, with its own configuration,
   # nested in a headless sway in the sandbox rather than in a machine
-  # (tests/nested-niri.sh): a command run against it, which starts the
+  # (tests/lib/nested-niri.sh): a command run against it, which starts the
   # shell from the folder its root is in, as quickshell, and logs to logs.
   # The account says what its shell does, as the desktop test's does, and
   # counts as away after so many seconds of nothing typed or moved. Its
@@ -292,7 +292,7 @@ let
         )}
         ${lib.optionalString (root != null) "install -m 644 ${root} quickshell/shell.qml"}
         ${lib.optionalString (size != null) "export NESTED_SIZE=${size}"}
-        ${lib.getExe pkgs.bash} ${../../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           ${lib.getExe pkgs.bash} ${../tests/notices-beside.sh} ${command}
         touch $out
       '';

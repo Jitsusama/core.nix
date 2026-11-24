@@ -303,7 +303,7 @@ pub fn answer(niri: &Path, request: &Value) -> Option<Value> {
     stream.set_read_timeout(Some(ASKING)).ok()?;
     // The request goes as one line in one write: serde_json says a value
     // in many small pieces, each its own write on a bare socket, and a
-    // reader taking it a read at a time (tests/screens-off-on-niri-test.py's
+    // reader taking it a read at a time (modules/quickshell/tests/screens-off-on-niri-test.py's
     // proxy) saw a request cut in two.
     stream.write_all(format!("{request}\n").as_bytes()).ok()?;
     let mut line = String::new();

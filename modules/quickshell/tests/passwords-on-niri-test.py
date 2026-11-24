@@ -1,7 +1,7 @@
 """The Passwords place, asking the passwords daemon the shell runs as its own child, on niri.
 
-modules/quickshell/checks/passwords.nix runs this through pytest in tests/nested-niri.sh. The daemon
-is the store's own, which the check gives the shell to run, with no socket, with one password
+modules/quickshell/checks/passwords.nix runs this through pytest in tests/lib/nested-niri.sh. The
+daemon is the store's own, which the check gives the shell to run, with no socket, with one password
 manager: a stand-in for 1Password's, named as 1Password's is (tests/passwords-stand-in.sh),
 which never runs op, and logs where this file's environment says. It starts signed out. Nothing
 asks it anything until Joel steps into Passwords, which asks it once, and while it's signed out

@@ -3,8 +3,8 @@
 Here the launcher answers from the machine: the battery, heat, lights, disks, network, queue,
 firmware and the processor, and the place and time it follows.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -1056,7 +1056,7 @@ def test_a_place_set_by_hand_holds_until_the_laptop_is_found_again(desktop: Desk
 
 
 def kept_by_the_stand_in(desktop: Desktop) -> None:
-    """Wait until chrony keeps the clock by the VM's own time server (tests/desktop.nix)."""
+    """Wait until chrony keeps the clock by the VM's own time server (tests/desktop/desktop.nix)."""
     desktop.machine.wait_until_succeeds(
         "chronyc -c -N sources | grep -q '^^,[*],time.harbour.test,'",
         timeout=dt.timedelta(seconds=90),
