@@ -2676,10 +2676,15 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
     assert drawer["nerd"] == ["Code Points"], f"its code points went unnamed: {drawer}"
     # Unicode's first emoji, the grinning face, has keywords, so a drawer without them, or
     # with other words beside their name, lost them between the served row and the made
-    # drawer. Its title is held first, so a list that leads with another fails as itself.
+    # drawer. Its title is held first, so a list that leads with another fails as itself. The
+    # words are read beside the drawn facts' names, the list they come from, since the drawn
+    # card drops a fact that repeats its title; and a value still being asked is said as such.
     assert title == "Grinning face", f"Unicode's first emoji isn't the grinning face: {drawer}"
     assert drawer["facts"] == ["Keywords"], f"its keywords went unnamed or missing: {drawer}"
-    assert "grin" in str(drawer["values"][0] or "").split(", "), f"its keywords were lost: {drawer}"
+    assert drawer["drawnFacts"] == ["Keywords"], f"its drawer didn't draw its keywords: {drawer}"
+    keywords = drawer["values"][0]
+    assert keywords is not None, f"its keywords were still being asked: {drawer}"
+    assert "grin" in str(keywords).split(", "), f"its keywords were lost: {drawer}"
     since = shell.mark()
     shell.send_chars("j")
     shell.launcher_until(functools.partial(drawer_moved, title))
