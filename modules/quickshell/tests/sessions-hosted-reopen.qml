@@ -965,36 +965,26 @@ ShellRoot {
         }
         stage = "quiet";
     }
-    // Looked at once the walk's settle pass is done, nothing's being
-    // placed, and an arranging pass, asked here as the shell's tick asks
-    // it, has taken workspaces home: every move of s-kelp's window names
-    // it by id, or focuses it first to move its column, and its workspace
-    // stays on the screen it's named on.
-    property bool arrangeAsked: false
-    property bool arrangedNow: false
+    // Looked at once the walk's settle pass is done and nothing's being
+    // placed: every move of s-kelp's window names it by id, or focuses it
+    // first to move its column, and its workspace stays on the screen
+    // it's named on. No screen went, so no workspace waits to go home
+    // (comeHome), and Reopen Them All wasn't asked (putBackOpen), so the
+    // arranging tick has nothing it could move.
     function quiet() {
         if (Sessions.placingNow())
             return;
-        if (!arrangeAsked) {
-            arrangeAsked = true;
-            Sessions.lookAtScreens(() => {
-                Sessions.comeHome();
-                Sessions.putBackOpen();
-                root.arrangedNow = true;
-            });
-            return;
-        }
-        if (!arrangedNow)
-            return;
+        Expect.expect("no workspace waits to go home, so arranging moves none",
+            Object.keys(Sessions.awayFrom).length === 0, JSON.stringify(Sessions.awayFrom));
         Expect.expect("one sent by name to a workspace on another screen than kept "
-            + "stays there, the walk settled and workspaces arranged",
+            + "stays there once the walk settled",
             !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93
                 || act.MoveWindowToMonitor?.id === 93
                 || act.FocusWindow?.id === 93
                 || act.ConsumeOrExpelWindowLeft?.id === 93
                 || act.MoveWorkspaceToIndex?.reference?.Id === 44
                 || act.MoveWorkspaceToMonitor?.reference?.Id === 44),
-            `${JSON.stringify(Sessions.awayFrom)} ${JSON.stringify(Niri.acts)}`);
+            JSON.stringify(Niri.acts));
         console.log("a hosted viewer reopens where it was, in "
             + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
         Qt.exit(0);
