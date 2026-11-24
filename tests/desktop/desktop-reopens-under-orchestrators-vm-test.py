@@ -44,6 +44,9 @@ if TYPE_CHECKING:
 
 # How long every window of a list may take to come back where it sat, on a loaded builder.
 BACK = 240
+# How long a line holding a page's link drops keys from opening (Prompt.qml's linkQuiet), and a
+# little more.
+LINK_QUIET = 0.8
 # Where a window sits: its workspace's number, its column and its tile in that column.
 Sits = tuple[int, int, int]
 
@@ -1008,10 +1011,73 @@ def test_a_link_refused_for_want_of_a_repository_steps_back_to_the_folders(
         desktop.launcher_until(
             lambda shown: shown["open"] is True and shown["rows"][:1] == ["From a Link"]
         )
+        picks_the_folder(desktop, link)
     finally:
         desktop.launcher_left_closed()
         quests_listed(desktop, [])
         desktop.as_account("rm -rf ~/src/github.com/harbour")
+
+
+def test_a_pages_link_refused_for_want_of_a_repository_steps_into_the_folders(
+    desktop: Desktop,
+) -> None:
+    """A link a page offered, refused for want of a repository, steps into the folders too.
+
+    A page's link opens From a Link over Agents' own rows (the launcher's newWork), not over
+    Start New Work's, so stepping out of it alone would leave Joel on Agents with no folder in
+    sight; the step back goes into Start New Work's folders instead (#6373's review, F30).
+    """
+    machine = desktop.machine
+    link = "https://github.com/harbour/nowhere/issues/10"
+    folder = "/home/jitsusama/src/github.com/harbour/lighthouse"
+    desktop.as_account(f"mkdir -p {folder}")
+    quests_listed(desktop, [listed_quest("QEST-20261124-HARBQB", "Harbour", start=folder)])
+    since = desktop.mark()
+    try:
+        did = json.loads(
+            desktop.as_account(f"qs ipc call launcher newWork {shlex.quote(f'words:{link}')} from:")
+        )
+        assert did["done"], did
+        # A page's words hold Return until the caret reaches their end, so End goes there.
+        time.sleep(LINK_QUIET)
+        desktop.launcher_until(
+            lambda shown: shown["open"] and shown["typed"] == link and shown["caret"] == 0
+        )
+        machine.send_key("end")
+        desktop.launcher_until(lambda shown: shown["caret"] == len(link))
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)}"
+                " | grep -q 'launcher: new work wanted a repository; asking where it starts'"
+            ),
+            timeout=dt.timedelta(seconds=60),
+        )
+        desktop.launcher_until(
+            lambda shown: shown["open"] is True and shown["rows"][:1] == ["From a Link"]
+        )
+        picks_the_folder(desktop, link)
+    finally:
+        desktop.launcher_left_closed()
+        quests_listed(desktop, [])
+        desktop.as_account("rm -rf ~/src/github.com/harbour")
+
+
+def picks_the_folder(desktop: Desktop, link: str) -> None:
+    """Pick the Harbour quest's folder, stepped back to, and find the link carried into it.
+
+    It's the folder he's asked to pick, so its field opens on his words with the caret past
+    their end, where Return gives them again (Launcher's ask, a row's carried words). The
+    folder's row is waited on first, since the quests daemon may list it a moment late.
+    """
+    ends = "harbour/lighthouse"
+    shown = desktop.launcher_until(lambda shown: any(row.endswith(ends) for row in shown["rows"]))
+    desktop.down_to(next(row for row in shown["rows"] if row.endswith(ends)))
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (shown["mode"], shown["typed"], shown["caret"]) == ("insert", link, len(link))
+    )
 
 
 def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
