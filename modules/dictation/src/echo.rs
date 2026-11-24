@@ -479,6 +479,20 @@ mod tests {
     }
 
     #[test]
+    fn a_word_only_joels_microphone_heard_doesnt_break_their_echo() {
+        // Echo comes in quiet over his room, so his side may hear a word
+        // in it theirs didn't: their "noon" must still be cut after it.
+        let theirs = timed("Lunch at noon", 5_000);
+        let mut mine = timed("Fine by me.", 1_000);
+        mine.extend(timed("Lunch at the noon", 5_050));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["Fine by me. the"],
+            "a word of theirs after one only Joel's side heard was written as his"
+        );
+    }
+
+    #[test]
     fn one_word_of_joels_heard_just_after_theirs_is_his_own() {
         // A lone "Okay" is as likely his own as their echo.
         let theirs = timed("Okay so the next item", 2_000);
