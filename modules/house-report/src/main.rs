@@ -9,7 +9,9 @@
 //! the bytes its uplink has sent since the reporter started, and its own
 //! clock in milliseconds since then. Given the house's key in FILE, it
 //! signs each (src/signed.rs), reading FILE each second, so a key put
-//! there or swapped while it runs is taken without a restart. The uplink
+//! there or swapped while it runs is taken without a restart, where FILE
+//! is the key itself rather than a copy made at start, as systemd's
+//! credentials are (nixos.nix restarts it for those). The uplink
 //! is INTERFACE, or, without one, the interface this machine's routes
 //! send to ADDRESS by that second, so a
 //! Mac given a cable beside its Wi-Fi is counted by the one it sends by.
@@ -335,11 +337,22 @@ mod tests {
             "a report went unsigned while its key couldn't be read"
         );
         assert!(!troubles.unkeyed.said, "a key read again wasn't said to be");
+        let now = signed::unix_ms().expect("a clock past 1970");
         let words: Vec<&str> = signed.as_deref().unwrap_or_default().split(' ').collect();
+        let ["1500", "2000", clock, _] = words.as_slice() else {
+            panic!("a report under a key wasn't the text, a clock and a mac: {signed:?}");
+        };
+        let clock: u128 = clock.parse().expect("a clock in ms");
+        // Stamped by the wall clock, not the reporter's own, and signed
+        // with the key's bytes, not its path (house signing round 1's F6).
         assert!(
-            matches!(words.as_slice(), ["1500", "2000", clock, mac]
-                if clock.parse::<u128>().is_ok() && mac.len() == 32),
-            "a report under a key wasn't the text, a clock and a 32-digit mac: {signed:?}"
+            now.abs_diff(clock) <= 5_000,
+            "a report stamped {clock}, {now} by the wall clock"
+        );
+        assert_eq!(
+            signed.as_deref(),
+            Some(signed::signed("1500 2000", &[9_u8; 32], clock).as_str()),
+            "a report under a key wasn't signed with its bytes"
         );
     }
 

@@ -9,8 +9,25 @@ in
   imports = [ ./system.nix ];
 
   # Its account is made for each start and may read nothing of root's, so
-  # systemd hands it the key as a credential, readable by it alone.
+  # systemd hands it the key as a credential, readable by it alone. The
+  # credential is a copy made as the service starts, so a key put there or
+  # swapped restarts it (`house-report-key`), and one missing at start
+  # fails the start, said by systemd, until it's there five seconds on.
   jitsusama.house-report.keyPath = lib.mkIf (keyFile != null) "%d/house.key";
+
+  systemd.paths.house-report-key = lib.mkIf (keyFile != null) {
+    description = "Watches the house's key, so house-report signs with the one there";
+    wantedBy = [ "multi-user.target" ];
+    pathConfig.PathChanged = keyFile;
+  };
+
+  systemd.services.house-report-key = lib.mkIf (keyFile != null) {
+    description = "Restarts house-report on the house's key as it stands";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${config.systemd.package}/bin/systemctl try-restart house-report.service";
+    };
+  };
 
   systemd.services.house-report = {
     description = "Tells the shaped machine on this line what this one sends up";

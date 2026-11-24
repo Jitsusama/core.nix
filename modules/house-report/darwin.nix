@@ -22,11 +22,16 @@ in
       chown nobody:nobody ${log}
       chmod 0644 ${log}
     ''
-    # The daemon reads its key as nobody, so a key put in place is made
-    # nobody's alone; until one is there, it reports nothing and says so.
+    # The daemon reads its key as nobody, so a key in place as the machine
+    # switches is made nobody's alone; until one is there, it reports
+    # nothing and says so. A link is left as it is, said, so a key file
+    # made a link to another of root's files never hands that one over.
     + lib.optionalString (keyFile != null) ''
-      if [ -f ${lib.escapeShellArg keyFile} ]; then
-        chown nobody:nobody ${lib.escapeShellArg keyFile}
+      if [ -L ${lib.escapeShellArg keyFile} ]; then
+        echo "house-report: "${lib.escapeShellArg keyFile}" is a link, so it isn't made" \
+          "nobody's" >&2
+      elif [ -f ${lib.escapeShellArg keyFile} ]; then
+        chown -h nobody:nobody ${lib.escapeShellArg keyFile}
         chmod 0400 ${lib.escapeShellArg keyFile}
       fi
     ''

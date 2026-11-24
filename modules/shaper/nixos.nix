@@ -250,7 +250,10 @@ in
                   taken by its address alone. The path is read by the
                   shaper, which runs as root, so make it root's alone:
                   `head -c 32 /dev/urandom`, the same bytes on both
-                  machines. Never a Nix path or a value in the store.
+                  machines. The shaper's service sees no /root, /home or
+                  /tmp, so keep it elsewhere, as under /var/lib; houses
+                  naming one address name one key. Never a Nix path or a
+                  value in the store.
                 '';
               };
             }
@@ -337,6 +340,43 @@ in
 
   # The shaper makes the IFBs it needs, one per link; the module's own two
   # would only sit there.
+  # The shaper's service sees an empty /root, /home and /tmp, so a key kept
+  # there would read as missing; and the ear holds each address to one
+  # key, so two houses naming one address must name the same key.
+  config.assertions =
+    let
+      keyed = lib.filter (house: house.keyFile != null) houses;
+      unseen = [
+        "/root/"
+        "/home/"
+        "/tmp/"
+      ];
+      hidden = map (house: toString house.keyFile) (
+        lib.filter (house: lib.any (dir: lib.hasPrefix dir (toString house.keyFile)) unseen) keyed
+      );
+      naming = address: lib.filter (house: lib.elem address house.from) keyed;
+      keysOf = address: lib.unique (map (house: house.keyFile) (naming address));
+      shared = lib.filter (address: lib.length (keysOf address) > 1) (
+        lib.unique (lib.concatMap (house: house.from) keyed)
+      );
+    in
+    [
+      {
+        assertion = hidden == [ ];
+        message =
+          "jitsusama.shaper.networks: a house's keyFile can't be under /root, /home "
+          + "or /tmp, which the shaper's service can't see: "
+          + lib.concatStringsSep ", " hidden;
+      }
+      {
+        assertion = shared == [ ];
+        message =
+          "jitsusama.shaper.networks: houses naming one address must name one "
+          + "keyFile: "
+          + lib.concatStringsSep ", " shared;
+      }
+    ];
+
   config.boot.extraModprobeConfig = "options ifb numifbs=0";
 
   # udev gives every new link systemd's default .link, whose name, address

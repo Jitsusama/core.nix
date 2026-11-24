@@ -25,7 +25,12 @@
 //! it, in hex. One stamped more than `FRESH` from this machine's clock,
 //! either way, or no later than the last taken from its address, is
 //! refused, so one caught off the line replays for at most `FRESH`, and
-//! only in place of a newer one. An unsigned report is refused there too,
+//! from its own address only in place of a newer one. The mac doesn't
+//! cover the address, so one sent again from another address the house
+//! names is taken there once, but the house reads the most its fresh
+//! addresses say, and copies of true reports say about what the true ones
+//! do: a replay there keeps an old word alive and can only tighten the
+//! hold. An unsigned report is refused there too,
 //! so a forger can't fall back to the old shape. A house with no key
 //! takes a signed report's first two words, so a reporter given the key
 //! before this machine is heard as before.
@@ -158,23 +163,64 @@ fn hex(text: &str) -> Option<Vec<u8>> {
 /// machine's wall clock, when the last report taken from its address was
 /// stamped `last`: the report, and its stamp to take as the next `last`.
 /// The mac is checked in constant time, and before the stamp, so nothing
-/// is said of a stamp a forger chose.
+/// is said of a stamp a forger chose. The ear reads the parts before the
+/// key (`Ear::take`), and the tests read the two together.
+#[cfg(test)]
 fn signed(
     text: &str,
     key: &[u8],
     now_ms: u64,
     last: Option<u64>,
 ) -> Result<(Report, u64), Refused> {
-    let (stamped, mac) = text.rsplit_once(' ').ok_or(Refused::Unsigned)?;
-    let (plain, stamp) = stamped.rsplit_once(' ').ok_or(Refused::Unsigned)?;
-    let report = report(plain).ok_or(Refused::Unsigned)?;
-    let stamp: u64 = stamp.parse().map_err(|_| Refused::Unsigned)?;
-    let mac = hex(mac)
-        .filter(|mac| mac.len() == MAC_BYTES)
-        .ok_or(Refused::Forged)?;
+    verified(&Signed::of(text)?, key, now_ms, last)
+}
+
+/// A signed report's parts, read before its key is: the text its mac is
+/// over, the report, its stamp and its mac.
+struct Signed<'a> {
+    stamped: &'a str,
+    report: Report,
+    stamp: u64,
+    mac: Vec<u8>,
+}
+
+impl Signed<'_> {
+    /// The parts of `text`, or why it's refused: a text of another shape
+    /// costs no read of the key nor an HMAC, so a flood of them takes
+    /// the ear's one thread no longer than unsigned reports did.
+    fn of(text: &str) -> Result<Signed<'_>, Refused> {
+        let (stamped, mac) = text.rsplit_once(' ').ok_or(Refused::Unsigned)?;
+        let (plain, stamp) = stamped.rsplit_once(' ').ok_or(Refused::Unsigned)?;
+        let report = report(plain).ok_or(Refused::Unsigned)?;
+        let stamp: u64 = stamp.parse().map_err(|_| Refused::Unsigned)?;
+        let mac = hex(mac)
+            .filter(|mac| mac.len() == MAC_BYTES)
+            .ok_or(Refused::Forged)?;
+        Ok(Signed {
+            stamped,
+            report,
+            stamp,
+            mac,
+        })
+    }
+}
+
+/// `signed`'s report and stamp once its parts are read.
+fn verified(
+    signed: &Signed<'_>,
+    key: &[u8],
+    now_ms: u64,
+    last: Option<u64>,
+) -> Result<(Report, u64), Refused> {
+    let &Signed {
+        stamped,
+        report,
+        stamp,
+        ref mac,
+    } = signed;
     let mut hash = <Hmac<Sha256>>::new_from_slice(key).expect("any key fits an HMAC");
     hash.update(stamped.as_bytes());
-    hash.verify_truncated_left(&mac)
+    hash.verify_truncated_left(mac)
         .map_err(|_| Refused::Forged)?;
     let fresh = u64::try_from(FRESH.as_millis()).unwrap_or(u64::MAX);
     if now_ms.abs_diff(stamp) > fresh {
@@ -261,6 +307,51 @@ fn unheard_said(address: IpAddr, why: &Unheard) -> Option<String> {
 /// unsaid, so a forger sending between the true reports writes the
 /// journal a line or two a minute rather than one a second.
 const SAID_APART: Duration = Duration::from_secs(60);
+
+/// What the journal has said of the house's addresses: each whose first
+/// report it said was heard, and when it last said each's reports held
+/// nothing.
+#[derive(Debug, Default)]
+struct Said {
+    first: BTreeSet<IpAddr>,
+    troubled: BTreeMap<IpAddr, Instant>,
+}
+
+impl Said {
+    /// The journal's lines for a datagram from `address` heard `now`,
+    /// taken, or refused for why (`Ear::take`): its first report heard; a
+    /// refusal at most once each `SAID_APART` for an address, whatever
+    /// kinds of refusal come; and, once that has passed, its reports taken
+    /// again.
+    fn of(&mut self, address: IpAddr, taken: Result<(), &Unheard>, now: Instant) -> Vec<String> {
+        let lately = self
+            .troubled
+            .get(&address)
+            .is_some_and(|&said| now.saturating_duration_since(said) < SAID_APART);
+        let mut lines = Vec::new();
+        match taken {
+            Ok(()) => {
+                if self.first.insert(address) {
+                    lines.push(format!("the house's first report from {address} was heard"));
+                }
+                if !lately && self.troubled.remove(&address).is_some() {
+                    lines.push(format!(
+                        "the house's reports from {address} are taken again"
+                    ));
+                }
+            }
+            Err(why) => {
+                if let Some(said) = unheard_said(address, why)
+                    && !lately
+                {
+                    lines.push(said);
+                    self.troubled.insert(address, now);
+                }
+            }
+        }
+        lines
+    }
+}
 
 /// This machine's wall clock in milliseconds since 1970, or 0 on a clock
 /// set before it, which refuses every signed report as stale.
@@ -371,8 +462,7 @@ impl Ear {
     fn listen(&self, socket: &UdpSocket, reporters: &Reporters) {
         let mut buf = [0_u8; 128];
         let mut failed = false;
-        let mut first = BTreeSet::new();
-        let mut troubled: BTreeMap<IpAddr, Instant> = BTreeMap::new();
+        let mut said = Said::default();
         loop {
             let (n, peer) = match socket.recv_from(&mut buf) {
                 Ok(heard) => heard,
@@ -393,28 +483,9 @@ impl Ear {
             failed = false;
             let address = canonical(peer.ip());
             let now = Instant::now();
-            let said_lately = |troubled: &BTreeMap<IpAddr, Instant>| {
-                troubled
-                    .get(&address)
-                    .is_some_and(|&said| now.saturating_duration_since(said) < SAID_APART)
-            };
-            match self.take(reporters, address, &buf[..n], now, unix_ms()) {
-                Ok(address) => {
-                    if first.insert(address) {
-                        eprintln!("the house's first report from {address} was heard");
-                    }
-                    if !said_lately(&troubled) && troubled.remove(&address).is_some() {
-                        eprintln!("the house's reports from {address} are taken again");
-                    }
-                }
-                Err(why) => {
-                    if let Some(said) = unheard_said(address, &why)
-                        && !said_lately(&troubled)
-                    {
-                        eprintln!("{said}");
-                        troubled.insert(address, now);
-                    }
-                }
+            let taken = self.take(reporters, address, &buf[..n], now, unix_ms());
+            for line in said.of(address, taken.as_ref().map(|_| ()), now) {
+                eprintln!("{line}");
             }
         }
     }
@@ -438,10 +509,12 @@ impl Ear {
         let report = match key {
             None => unkeyed(text).ok_or(Unheard::Ignored)?,
             Some(path) => {
+                let parts = Signed::of(text).map_err(Unheard::Refused)?;
                 let key = key_in(path).map_err(Unheard::Unkeyed)?;
                 let mut stamps = self.stamps.lock().unwrap_or_else(PoisonError::into_inner);
                 let last = stamps.get(&address).copied();
-                let (report, stamp) = signed(text, &key, now_ms, last).map_err(Unheard::Refused)?;
+                let (report, stamp) =
+                    verified(&parts, &key, now_ms, last).map_err(Unheard::Refused)?;
                 stamps.insert(address, stamp);
                 report
             }
@@ -940,6 +1013,21 @@ mod tests {
         let short = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
         fs::write(&path, vector_key()).expect("a key");
         let unsigned = ear.take(&keyed, mac, b"1500 2000", at, STAMP);
+        // A forgery stamped ahead of the true report, and one stamped long
+        // ago, are refused as forged, and their stamps never become the
+        // last the true one is read against (house signing round 1's F7).
+        let ahead = format!(
+            "1500 2000 {} ad712c900326603c04326ac069041fe5",
+            STAMP + 2_000
+        );
+        let ahead = ear.take(&keyed, mac, ahead.as_bytes(), at, STAMP);
+        let long_ago = ear.take(
+            &keyed,
+            mac,
+            b"1500 2000 1 ad712c900326603c04326ac069041fe5",
+            at,
+            STAMP,
+        );
         let taken = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
         let again = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
         let _ = fs::remove_dir_all(&folder);
@@ -952,7 +1040,18 @@ mod tests {
             "a 15-byte key was taken: {short:?}"
         );
         assert_eq!(unsigned, Err(Unheard::Refused(Refused::Unsigned)));
-        assert_eq!(taken, Ok(mac), "the signed report wasn't taken");
+        for (forged, why) in [(ahead, "ahead"), (long_ago, "long ago")] {
+            assert_eq!(
+                forged,
+                Err(Unheard::Refused(Refused::Forged)),
+                "a forgery stamped {why} wasn't refused as forged"
+            );
+        }
+        assert_eq!(
+            taken,
+            Ok(mac),
+            "the signed report wasn't taken after forgeries"
+        );
         assert_eq!(
             again,
             Err(Unheard::Refused(Refused::Repeated)),
@@ -967,6 +1066,63 @@ mod tests {
             unheard_said(mac, &Unheard::Ignored),
             None,
             "a stray datagram is said"
+        );
+    }
+
+    #[test]
+    fn refusals_are_said_once_a_minute_an_address_and_their_end_after() {
+        let mut said = Said::default();
+        let mac: IpAddr = "192.0.2.7".parse().expect("an address");
+        let other: IpAddr = "192.0.2.8".parse().expect("an address");
+        let at = Instant::now();
+        let secs = |s: u64| at + Duration::from_secs(s);
+        let forged = Unheard::Refused(Refused::Forged);
+        let unsigned = Unheard::Refused(Refused::Unsigned);
+        assert_eq!(
+            said.of(mac, Ok(()), at).len(),
+            1,
+            "the first report went unsaid"
+        );
+        assert!(
+            said.of(mac, Ok(()), secs(1)).is_empty(),
+            "a second report was said"
+        );
+        assert_eq!(
+            said.of(mac, Err(&forged), secs(2)).len(),
+            1,
+            "a forgery went unsaid"
+        );
+        assert!(
+            said.of(mac, Err(&unsigned), secs(3)).is_empty(),
+            "another kind of refusal within the minute was said"
+        );
+        assert_eq!(
+            said.of(other, Err(&unsigned), secs(3)).len(),
+            1,
+            "another address's refusal went unsaid"
+        );
+        assert!(
+            said.of(mac, Ok(()), secs(30)).is_empty(),
+            "a report taken within the minute was said taken again"
+        );
+        assert!(
+            said.of(mac, Ok(()), secs(62))
+                .iter()
+                .any(|line| line.contains("taken again")),
+            "a report taken past the minute wasn't said taken again"
+        );
+        assert!(
+            said.of(mac, Ok(()), secs(63)).is_empty(),
+            "taken again said twice"
+        );
+        assert_eq!(
+            said.of(other, Err(&unsigned), secs(64)).len(),
+            1,
+            "a refusal past the minute went unsaid"
+        );
+        assert!(
+            said.of(mac, Err(&Unheard::Ignored), secs(65)).is_empty(),
+            "a stray was said"
         );
     }
 

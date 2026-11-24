@@ -72,12 +72,17 @@ in
         A file holding the house's key, the same bytes as the shaped
         machine's house names in its `keyFile`, at least 16, which each
         report is signed with, so a device on the line can't forge one
-        from this machine's address. It's read each second, so a key put
-        there or swapped is taken without a restart, and while it can't
-        be read nothing is reported and the log says why. On Linux the
-        service reads it through systemd's credentials, so it may be
-        root's alone; on a Mac the service runs as nobody, so the file
-        must be nobody's. Never a Nix path or a value in the store.
+        from this machine's address. On Linux the service reads it
+        through systemd's credentials, a copy made as it starts, so it
+        may be root's alone: a key put there or swapped restarts the
+        service, and while none is there the service fails to start,
+        systemd saying why, and tries again every 5 s. On a Mac the
+        service runs as nobody and reads the file each second, so a key
+        swapped is taken without a restart, but the file must be
+        nobody's, 0400, as activation makes one already there: one put
+        there after, root's, can't be read until it's made nobody's or
+        the machine switches, and the log says it can't be read. Never a
+        symbolic link, a Nix path or a value in the store.
       '';
     };
     keyPath = lib.mkOption {
