@@ -78,6 +78,7 @@ let
     houseReportKey=${lib.escapeShellArg keyFile}
     houseReportCopy=${copy}
     houseReportWhy=
+    houseReportLeaked="make it anew on both machines, since a new mode leaves what leaked good"
     /usr/bin/install -d -o root -g wheel -m 0755 ${copied} \
       || houseReportWhy="has nowhere to be copied to"
     houseReportFolder=$(cd -P "$(/usr/bin/dirname "$houseReportKey")" 2>/dev/null && pwd -P) \
@@ -104,9 +105,9 @@ let
     elif [ "$(/usr/bin/stat -f %u "$houseReportRead")" != 0 ]; then
       houseReportWhy="isn't root's"
     elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +077)" ]; then
-      houseReportWhy="may be read by an account other than root's"
+      houseReportWhy="may be read by an account other than root's: $houseReportLeaked"
     elif /bin/ls -le "$houseReportRead" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then
-      houseReportWhy="has an access list letting another account in"
+      houseReportWhy="has an access list letting another account in: $houseReportLeaked"
     elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportRead" "$houseReportNew" \
       || ! /bin/mv -f "$houseReportNew" "$houseReportCopy"; then
       houseReportWhy="couldn't be copied for nobody"
