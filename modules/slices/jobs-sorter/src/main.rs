@@ -1520,9 +1520,10 @@ fn take_back_left_settings(
 /// `seen` running, and after it, those of the units ranked before that
 /// have gone ([`hosts::Hosts::leave`]), as `ask` says of them all in one
 /// call. A unit seen has processes, so it runs and isn't asked after.
-/// Each unit's settings taken back are forgotten, so it's ranked afresh
-/// should it start again. A sweep that can't ask is said once and tried
-/// again on the next look.
+/// One systemctl says hasn't stopped is asked after again a while later,
+/// until it has. Each unit's settings taken back are forgotten, so it's
+/// ranked afresh should it start again. A sweep that can't ask is said
+/// once and tried again a while later.
 fn sweep(
     control: Option<&Path>,
     prefixes: &[&str],
@@ -1532,7 +1533,13 @@ fn sweep(
     ask: impl FnOnce(&[String]) -> Result<String, String>,
 ) {
     hosts.leave(seen, now);
-    if hosts.sweep.done && hosts.sweep.pending.is_empty() {
+    let due = |later: &HashMap<String, std::time::Instant>, unit: &String| {
+        later.get(unit).is_some_and(|due| now >= *due)
+    };
+    if hosts.sweep.done
+        && hosts.sweep.pending.is_empty()
+        && !hosts.sweep.later.values().any(|due| now >= *due)
+    {
         return;
     }
     if hosts.sweep.held_off.is_some_and(|until| now < until) {
@@ -1547,19 +1554,28 @@ fn sweep(
         say("no user id to find the runtime control folder by".to_owned());
         return;
     };
-    let asked: Vec<String> = match own::left_behind(control, prefixes) {
+    let left: Vec<String> = match own::left_behind(control, prefixes) {
         Ok(units) => units
             .into_iter()
             .filter(|unit| !seen.contains(unit))
-            .filter(|unit| !hosts.sweep.done || hosts.sweep.pending.contains_key(unit))
             .collect(),
         Err(error) => {
             say(format!("couldn't read {}: {error}", control.display()));
             return;
         }
     };
+    let asked: Vec<String> = left
+        .iter()
+        .filter(|unit| {
+            !hosts.sweep.done
+                || hosts.sweep.pending.contains_key(*unit)
+                || due(&hosts.sweep.later, unit)
+        })
+        .cloned()
+        .collect();
     // A unit gone with no settings of the sorter's left has nothing to take back.
     hosts.sweep.pending.retain(|unit, _| asked.contains(unit));
+    hosts.sweep.later.retain(|unit, _| left.contains(unit));
     if !asked.is_empty() {
         let answer = ask(&asked);
         let Some(states) = answer
@@ -1582,6 +1598,7 @@ fn sweep(
                 own::Active::Stopped => {
                     let (taken, error) = own::forget(control, &unit);
                     hosts.forget(&unit);
+                    hosts.sweep.later.remove(&unit);
                     match error {
                         None => {
                             eprintln!(
@@ -1602,8 +1619,11 @@ fn sweep(
                 // reset, so they stay.
                 own::Active::Failed => {
                     hosts.sweep.pending.remove(&unit);
+                    hosts.sweep.later.insert(unit, now + own::ASK_AGAIN_AFTER);
                 }
-                own::Active::Runs => {}
+                own::Active::Runs => {
+                    hosts.sweep.later.insert(unit, now + own::ASK_AGAIN_AFTER);
+                }
             }
         }
     }
@@ -3717,6 +3737,53 @@ mod tests {
             "with none left to ask after, nothing is asked"
         );
         let _ = fs::remove_dir_all(&control);
+    }
+
+    #[test]
+    fn a_unit_not_yet_stopped_when_first_asked_is_asked_again_until_it_is() {
+        // A unit still stopping when the sorter starts, or failed and kept loaded until it's
+        // reset, isn't one the sorter ranked, so nothing else would ever ask after it again.
+        for first in ["deactivating\n", "failed\n"] {
+            let gone = "pi-host-work-gone.service".to_owned();
+            let control = control_with("sweep-not-yet-stopped", &[&gone]);
+            let mut hosts = hosts::Hosts::default();
+            let start = std::time::Instant::now();
+            let again = own::ASK_AGAIN_AFTER;
+            let mut asks = 0;
+            let looks = [
+                (Duration::ZERO, first, true),
+                (again / 2, "inactive\n", false),
+                (again, first, true),
+                (again * 2, "inactive\n", true),
+                (again * 3, "inactive\n", false),
+            ];
+            for (after, answer, asked) in looks {
+                let before = asks;
+                let ask = |_: &[String]| {
+                    asks += 1;
+                    Ok(answer.to_owned())
+                };
+                sweep(
+                    Some(&control),
+                    &["pi-host-"],
+                    &[],
+                    &mut hosts,
+                    start + after,
+                    ask,
+                );
+                assert_eq!(
+                    asks > before,
+                    asked,
+                    "asked at {after:?} after a first look that found it {first:?}"
+                );
+            }
+            let left = control.join(format!("{gone}.d")).exists();
+            let _ = fs::remove_dir_all(&control);
+            assert!(
+                !left,
+                "its settings went once it stopped, after a first look found it {first:?}"
+            );
+        }
     }
 
     #[test]

@@ -332,6 +332,12 @@ pub struct Sweep {
     /// whose settings are taken back once systemd says they stopped: one
     /// just gone may still be stopping ([`Hosts::leave`]).
     pub pending: HashMap<String, Instant>,
+    /// The units systemctl last said were stopping, running or failed
+    /// though none of their processes were seen, each with when to ask
+    /// after it again (`crate::own::ASK_AGAIN_AFTER`): one failed is kept
+    /// loaded, its settings listed, until it's reset, and one not ranked
+    /// since the sorter started is never pending.
+    pub later: HashMap<String, Instant>,
     /// The units whose settings couldn't all be taken back, so each is
     /// said once.
     pub unswept: HashSet<String>,
