@@ -287,8 +287,9 @@ impl Inputs {
     /// Nothing's kept on a boot Linux doesn't name, nor worked out while
     /// the windows daemon lists no window: that would take the last window
     /// Joel closed as orphaned, never let go, and write this boot's other
-    /// windows' places as none. What a failed write left unwritten is
-    /// written all the same. It answers when, in ms since the epoch, a
+    /// windows' places as none. A place closed by hand is still let go
+    /// when due, and what a failed write left unwritten is written all
+    /// the same. It answers when, in ms since the epoch, a
     /// place closed by hand is to be let go, so it's kept again then, or
     /// soon after a write that failed, so the file catches up though no
     /// window moves.
@@ -298,8 +299,10 @@ impl Inputs {
         }
         let at = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
         if self.windows.records().next().is_none() {
-            self.unwritten.as_ref()?;
-            self.write_places(self.arrangement.clone(), path);
+            let kept = self.arrangement.let_go(&self.boot, at);
+            if kept != self.arrangement || self.unwritten.is_some() {
+                self.write_places(kept, path);
+            }
             return self.kept_again_at(at);
         }
         let sessions: Vec<Session> = self
@@ -345,7 +348,9 @@ impl Inputs {
     }
 
     /// When the places are to be kept again from `at`: the first let-go
-    /// due, or sooner while a write has failed.
+    /// due, or sooner while a write has failed. Every let-go left is
+    /// still to come, so a failed write is tried every [`WRITE_AGAIN_MS`]
+    /// rather than as often as the daemon may wake.
     fn kept_again_at(&self, at: u64) -> Option<u64> {
         let let_go = self.arrangement.let_go_at(&self.boot);
         if self.unwritten.is_some() {

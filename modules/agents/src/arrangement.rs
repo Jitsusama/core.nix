@@ -501,6 +501,32 @@ impl Arrangement {
         kept
     }
 
+    /// It with `boot`'s places closed by hand for [`CLOSED_FOR`] by `at`
+    /// let go, and nothing else changed, for while no window is listed to
+    /// work the rest out from: a place closed before the last window went
+    /// still goes when due, never reopened at the next boot. A mark
+    /// stamped ahead of `at` counts from `at`, as [`Self::kept`] has it.
+    #[must_use]
+    pub fn let_go(&self, boot: &str, at: u64) -> Self {
+        let mut kept = self.clone();
+        if let Some(Value::Object(places)) = kept.boots.get_mut(boot) {
+            places.retain(|_, place| {
+                let Some(place) = place.as_object_mut() else {
+                    return true;
+                };
+                match place.get("closed").and_then(Value::as_u64) {
+                    Some(closed) if closed > at => {
+                        place.insert("closed".to_owned(), json!(at));
+                        true
+                    }
+                    Some(closed) => at.saturating_sub(closed) < closed_for(),
+                    None => true,
+                }
+            });
+        }
+        kept
+    }
+
     /// When, in ms since the epoch, the first of `boot`'s places marked
     /// closed is to be let go, or none while none is.
     #[must_use]
