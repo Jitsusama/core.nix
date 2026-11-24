@@ -873,12 +873,16 @@ in
   # meaningful level". Where the table says a surface has an act, the file
   # it names holds its words, or the locked mycelium's help for the command
   # says them; a pi tool is taken by its name, since the harness isn't an
-  # input. So it can't pass by reading nothing, each way of straying is
-  # shown to fail first. It proves the acts are offered, not that they work.
+  # input. Where a surface lists its acts in a file, an act there the table
+  # doesn't name fails, so one a surface gains is seen. So it can't pass by
+  # reading nothing, each way of straying is shown to fail first. It proves
+  # each act's words are where the table says, not that the code offers or
+  # works it, nor that an act is worded alike on each surface.
   mycelium-surfaces-stay-even =
     let
       table = ./surfaces/acts.toml;
-      acts = (builtins.fromTOML (builtins.readFile table)).act;
+      read = builtins.fromTOML (builtins.readFile table);
+      acts = read.act;
       named = lib.unique (
         lib.concatMap (
           act:
@@ -890,11 +894,17 @@ in
             lib.optional (has ? file) has.file
           ) (lib.attrNames act)
         ) acts
+        ++ map (offered: offered.file) (read.offered or [ ])
+        # The strays' own file, named here so they don't rest on the table.
+        ++ [ "modules/mycelium/site/acts.ts" ]
       );
       # Only the files the table names, so an edit elsewhere rebuilds nothing.
+      # One renamed away is left out rather than stopping evaluation, so the
+      # check says which is gone.
+      kept = file: lib.fileset.maybeMissing (../.. + "/${file}");
       root = lib.fileset.toSource {
         root = ../..;
-        fileset = lib.fileset.unions (map (file: ../.. + "/${file}") named);
+        fileset = lib.fileset.unions (map kept named);
       };
       locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
       untested = locked.overrideAttrs { doCheck = false; };
@@ -918,6 +928,94 @@ in
         '';
       # Each way of straying the check has to catch, with what it says.
       strays = [
+        {
+          table = act "gone" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher.has]
+            file = "modules/mycelium/site/nowhere.ts"
+            holds = "Go"
+          '';
+          says = "go on the launcher: modules/mycelium/site/nowhere.ts isn't there";
+        }
+        {
+          table = act "ownerless" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher.owed]
+            by = "soon"
+            due = "2026-11-24 17:00"
+          '';
+          says = "go on the launcher is owed by no cell's address";
+        }
+        {
+          table = act "helpless" ''
+            [act.cli.has]
+            command = "flies"
+            holds = "to the moon"
+            [act.launcher]
+            waived = "none"
+          '';
+          says = "go on the mycelium command: mycelium flies --help failed, exited";
+        }
+        {
+          table = act "whyless" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher.owed]
+            by = "KP0L6A"
+            due = "2026-11-24 17:00"
+          '';
+          says = "go on the launcher is owed with no why";
+        }
+        {
+          table = act "unpadded" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher.owed]
+            by = "KP0L6A"
+            due = "2026-11-24 9:00"
+            why = "soon"
+          '';
+          says = "go on the launcher is owed with no due time";
+        }
+        {
+          table = act "unoffered" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher]
+            waived = "none"
+            [[offered]]
+            surface = "map"
+            file = "modules/mycelium/site/acts.ts"
+            pattern = '^  ([a-z]+): "'
+            [offered.acts]
+            go = "go"
+            sprout = "go"
+            forage = "go"
+            gone = "go"
+          '';
+          says = "what the map lists: talk is no act of the table, nor set apart with a reason";
+        }
+        {
+          table = act "unlisted" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher]
+            waived = "none"
+            [[offered]]
+            surface = "map"
+            file = "modules/mycelium/site/acts.ts"
+            pattern = '^  ([a-z]+): "'
+            [offered.acts]
+            go = "go"
+            talk = "go"
+            sprout = "go"
+            forage = "go"
+            gone = "go"
+          '';
+          says = "what the map lists: modules/mycelium/site/acts.ts no longer lists gone";
+        }
         {
           table = act "left-out" ''
             [act.cli]

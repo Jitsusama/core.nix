@@ -2293,11 +2293,13 @@
     service before the mycelium that reads it
   '';
   mycelium-surfaces-stay-even = ''
-    every act Joel takes on his cells is offered on the mycelium command, a pi session, the map
-    and the launcher, or owed by a cell by a time, or waived with a reason: a file said to have
-    it holds its words and the locked mycelium's help says a command's, a surface left out, two
-    standings, a missing file or word, an owing with no time, a waiver with no reason and an act
-    naming no way to it each failing first
+    every act Joel takes on his cells is on the mycelium command, a pi session, the map and the
+    launcher, or owed by a cell by a time, or waived with a reason: a file said to have it holds
+    its words and the locked mycelium's help says a command's, and an act the launcher's verbs or
+    the map drawer's words list is one of the table's; a surface left out, two standings, a
+    missing file or word, a help that fails, an owing with no cell, time or why, a waiver with no
+    reason, an act naming no way to it, and an act a surface lists that the table doesn't, or no
+    longer lists, each failing first
   '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a

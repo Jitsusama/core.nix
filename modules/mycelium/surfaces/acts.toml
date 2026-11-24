@@ -15,8 +15,16 @@
 # surface that brings an act calls what the others call.
 #
 # A surface left out fails (stays-even.py), so an act one surface gains is
-# owed by every other until it's there or waived. The pi tools aren't read,
-# since the harness that holds them isn't an input of core.nix.
+# owed by every other until it's there or waived. Where a surface lists its
+# acts in a file of its own, an offered entry at the end reads that list, and
+# an act in it the table doesn't name fails, so a gained act can't go unseen.
+# The pi tools aren't read, since the harness that holds them isn't an input
+# of core.nix; each session has says where its tool does the act.
+#
+# A has proves its words are where it says, not that the surface's code
+# offers the act, which the surfaces' own tests prove, nor that an act is
+# worded the same on each surface. An owing's due time is read by people and
+# J7XHQN, not by the check, which has no clock.
 
 [[act]]
 name = "needs"
@@ -145,6 +153,7 @@ by = "KP0L6A"
 due = "2026-11-25 12:00"
 why = "sprout takes a folder; a zone by name waits on mycelium#425 and its pin"
 
+# mesh_sprout starts new work as a cell of its own, from words or a link.
 [act.session.has]
 tool = "mesh_sprout"
 
@@ -166,6 +175,8 @@ through = "mycelium forage -o json"
 command = "forage"
 holds = "what each cell is for"
 
+# quest show reads any quest's README and plans by id, loaded or not, and
+# mesh_groups says which quest each cell is on.
 [act.session.has]
 tool = "quest"
 
@@ -180,7 +191,7 @@ why = "its drawer says what a cell is for, and none of its plans"
 
 [[act]]
 name = "hold"
-says = "hold a cell, or wake it"
+says = "pause a cell, or resume it"
 through = "mycelium steer ADDRESS with act pause or resume, and holds ID again for one parked"
 
 [act.cli.has]
@@ -195,11 +206,57 @@ why = "a session steers by running mycelium steer, with no tool of its own"
 [act.map.owed]
 by = "KP0L6A"
 due = "2026-11-25 18:00"
-why = "a cell's drawer offers no pause or wake"
+why = "a cell's drawer offers no pause or resume"
 
 [act.launcher.has]
 file = "modules/quickshell/launcher/words/agents.json"
-holds = ['"id": "verb:agent:pause"', '"id": "verb:agent:wake"']
+holds = ['"id": "verb:agent:pause"', '"id": "verb:agent:resume"']
+
+[[act]]
+name = "stop"
+says = "stop what a cell is doing, its turn ended and the cell kept"
+through = "mycelium steer ADDRESS with act stop"
+
+[act.cli.has]
+command = "steer"
+holds = "stops, closes"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 20:00"
+why = "a session steers by running mycelium steer, with no tool of its own"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "a cell's drawer offers no stop"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/agents.json"
+holds = '"id": "verb:agent:stop"'
+
+[[act]]
+name = "close"
+says = "close a cell, its session ended for good"
+through = "mycelium steer ADDRESS with act close"
+
+[act.cli.has]
+command = "steer"
+holds = "stops, closes"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 20:00"
+why = "a session steers by running mycelium steer, with no tool of its own"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "a cell's drawer offers no close"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/agents.json"
+holds = '"id": "verb:agent:close"'
 
 [[act]]
 name = "park"
@@ -208,8 +265,8 @@ through = "the harness's parking steer, which 5HJZ8Z is bringing"
 
 [act.cli.owed]
 by = "KP0L6A"
-due = "2026-11-26 12:00"
-why = "mycelium steer takes no park until the harness does"
+due = "2026-11-24 21:00"
+why = "mycelium steer takes act park on mycelium's train 53, then core's pin of it"
 
 [act.session.owed]
 by = "85PKB2"
@@ -224,7 +281,7 @@ why = "a cell's drawer offers no park"
 [act.launcher.owed]
 by = "42P0R4"
 due = "2026-11-26 12:00"
-why = "it offers Pause alone, until the harness can park"
+why = "it wakes a parked cell, and parks none until the harness can"
 
 [[act]]
 name = "looks"
@@ -249,3 +306,34 @@ why = "the map draws cells, and none of his looks"
 [act.launcher.has]
 file = "modules/quickshell/launcher/words/on.json"
 holds = '"id": "for-you:kind:look"'
+
+# The acts a surface lists in a file of its own, each its word there and
+# the act of the table it is, or set apart with why it is no act on a cell.
+
+[[offered]]
+surface = "launcher"
+file = "modules/quickshell/launcher/words/agents.json"
+pattern = '"id": "verb:agent:([a-z-]+)"'
+
+[offered.acts]
+switch = "go"
+talk = "talk"
+pause = "hold"
+resume = "hold"
+wake = "park"
+stop = "stop"
+close = "close"
+
+[offered.apart]
+take-back = "it undoes what the talk line's void did, an act on his own words, not on a cell"
+
+[[offered]]
+surface = "map"
+file = "modules/mycelium/site/acts.ts"
+pattern = '^  ([a-z]+): "'
+
+[offered.acts]
+go = "go"
+talk = "talk"
+sprout = "sprout"
+forage = "forage"
