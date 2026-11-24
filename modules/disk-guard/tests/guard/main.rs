@@ -16,6 +16,7 @@ mod config;
 mod coredumps;
 #[cfg(target_os = "linux")]
 mod daemon;
+mod dead;
 mod decide;
 mod dedupe;
 #[cfg(target_os = "linux")]
