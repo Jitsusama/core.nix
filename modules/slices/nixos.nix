@@ -450,12 +450,13 @@ in
       The kernel's writeback throttle's latency goal on each disk named, by
       its name under /sys/block, in microseconds; 0 turns the throttle off.
       It's set as a switch brings it in and as the disk appears, and a
-      switch without it gives back the kernel's default goal, 2 ms on a
-      solid disk, set by hand, so io.cost added to that disk later won't
-      stand the throttle down until the next boot; one stood down before the
-      first goal was set, by BFQ or by io.cost, stays down. A name that
-      reaches no throttle, such as a partition's, fails its unit. The name is the
-      kernel's, which follows the order disks are found in: on a machine
+      switch without it gives back the goal the disk had before its first
+      goal, so one stood down before, by BFQ or by io.cost, stays down.
+      Where nothing whole was recorded, as after a boot, it's the kernel's
+      default, 2 ms on a solid disk, set by hand; io.cost added to that disk
+      later still stands it down, since disk-order turns it off as it
+      starts. A name that reaches no throttle, such as a partition's, fails
+      its unit. The name is the kernel's, which follows the order disks are found in: on a machine
       with two of a kind, the goal can land on the other one. A disk
       io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
       already turns its throttle off and giving it back would turn it on.

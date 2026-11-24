@@ -3,7 +3,7 @@
 # refuses a wrong call before it looks for the disk, fails on a name that
 # reaches no throttle, gives back nothing quietly for a disk that's gone,
 # and gives back what the disk had before its first goal, or the kernel's
-# default where nothing was recorded; disk-order stands the throttle down
+# default where nothing whole was recorded; disk-order stands the throttle down
 # as io.cost takes the disk and gives the kernel's default back as it hands
 # it back.
 # Usage: disk-throttle-test <writeback-goal> <disk-order>, run in an empty
@@ -78,6 +78,39 @@ reads "$throttle" 0
 # With nothing recorded, as after a boot, the kernel's default comes back.
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" -1
+# A record that isn't a number, empty or written by something else, gives
+# the kernel's default back rather than nothing, and goes with it.
+for kept in "" 20x; do
+  echo 0 > "$throttle"
+  printf %s "$kept" > "$WRITEBACK_GOAL_RUN/nvme0n1"
+  exits 0 "$goal" nvme0n1 kernel
+  reads "$throttle" -1
+  if [[ -e $WRITEBACK_GOAL_RUN/nvme0n1 ]]; then
+    echo "a record reading '$kept' outlived its giving back"
+    exit 1
+  fi
+done
+# A throttle that reads as no number is recorded as the kernel's default,
+# so a second goal doesn't record the first and give that back.
+echo busy > "$throttle"
+exits 0 "$goal" nvme0n1 0
+exits 0 "$goal" nvme0n1 75000
+reads "$throttle" 75000
+exits 0 "$goal" nvme0n1 kernel
+reads "$throttle" -1
+# A name that isn't one disk's is a wrong call, so nothing outside the
+# records is removed.
+exits 64 "$goal" ../nvme0n1 kernel
+# A disk gone by its giving back drops its record, so a disk taking its
+# name later records its own goal rather than giving back the old one's.
+disk sdy 4000
+exits 0 "$goal" sdy 0
+mv "$sys/block/sdy" "$PWD/sdy-gone"
+exits 0 "$goal" sdy kernel
+disk sdy 8000
+exits 0 "$goal" sdy 0
+exits 0 "$goal" sdy kernel
+reads "$sys/block/sdy/queue/wbt_lat_usec" 8000
 
 # disk-order stands the throttle down beside io.cost, whatever stopped
 # before it, clears a latency target left on the disk, and gives the
