@@ -1234,6 +1234,29 @@ ShellRoot {
         Sessions.untaken("pi-hosted.s-own", String(Date.now()));
         expect("while one the shell asked for by itself is told to no one",
             root.unhosted === "", root.unhosted);
+        // A stray niri listed before its viewer was asked for, first heard
+        // as it changes while that ask stands, is no ask's own refused.
+        const before = "pi-hosted.s-before";
+        const listedStray = { id: 95, pid: 880, opened: before };
+        Niri.windows = Object.assign({}, unforged,
+            { "88": forged, "93": cameRefused, "95": listedStray });
+        Sessions.viewWith(view.slice(0, -1).concat(["s-before"]), before, null, "before");
+        Niri.windowOpenedOrChanged(listedStray);
+        expect("a stray listed before its ask is no ask's own refused as it changes",
+            !(before in Sessions.refusedAsks), JSON.stringify(Sessions.refusedAsks));
+        Sessions.forgetAsk(before);
+        // Nor does Reopen Them All's walk take a stray for the viewer it
+        // waits on, whose kept place would go to it.
+        const walked = { id: 96, pid: 880, opened: "pi-hosted.s-walked" };
+        Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused,
+            "96": walked });
+        const waitedOn = { id: "s-walked", classed: walked.opened, opened: null };
+        Sessions.reopening = { waiting: waitedOn, late: [] };
+        Sessions.reopenedWindow(96);
+        Sessions.reopening = null;
+        expect("nor is one the walk waits on", waitedOn.opened === null,
+            JSON.stringify(waitedOn));
+        Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
         const startedNamed = "pi-session.3";
