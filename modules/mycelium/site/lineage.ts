@@ -6,7 +6,7 @@
 // this machine's cells are known that way. From that, which network grows
 // out of which, as a hypha branches from another.
 
-import { type Held, object, text } from "../../local-sites/kit/records.ts";
+import { type Held, object, type Record, text } from "../../local-sites/kit/records.ts";
 
 /** A cell and the cell that started it, each by its address. */
 interface Started {
@@ -48,8 +48,19 @@ function startedOf(cells: Held, forages: Held | undefined): Started[] {
       by.set(cell, starter);
     }
   };
+  // A cell moving between machines can be listed by both for a while, the
+  // one it left still saying what it last knew. The map draws the copy
+  // started most recently, so its starter is that copy's.
+  const latest = new Map<string, Record>();
   for (const record of cells.all()) {
-    say(text(record, "name"), text(record, "started_by"));
+    const name = text(record, "name");
+    const had = name ? latest.get(name) : undefined;
+    if (name && (!had || (text(record, "since") ?? "") > (text(had, "since") ?? ""))) {
+      latest.set(name, record);
+    }
+  }
+  for (const [name, record] of latest) {
+    say(name, text(record, "started_by"));
   }
   for (const record of forages?.all() ?? []) {
     say(text(record, "cell"), text(object(record, "lineage") ?? {}, "started_by"));

@@ -1531,8 +1531,8 @@ def test_a_cell_whose_own_record_names_its_starter_grows_a_branch_with_no_forage
     browser: Browser, mycelium_served: Served, mycelium_node: StandIn
 ) -> None:
     # This node serves no forages, so only the cell's record can say who
-    # started it, as it does for a cell on another machine, where no forage
-    # reaches: HERON1 runs on osprey and SKIFF1 on kestrel.
+    # started it. That is all a map has for a cell on another machine, where
+    # no forage reaches; the geometry is the forage case's, osprey to kestrel.
     root, _ = mycelium_served
     opened = Opened(browser, f"{root}mycelium/#net={GROWN}", SIZES[-1], "light")
     try:

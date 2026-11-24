@@ -73,6 +73,26 @@ it("a cell's own record is believed before its forage, which fills in where it i
   );
 });
 
+it("a cell two machines list while it moves names the starter of the copy started latest", () => {
+  const stale = record("HERON1", "osprey", {
+    key: "cell:HERON1@osprey",
+    since: "2026-11-19T00:00:00Z",
+    started_by: "GULL01",
+  });
+  const moved = record("HERON1", "kestrel", {
+    since: "2026-11-19T00:30:00Z",
+    started_by: "SKIFF1",
+  });
+  assert.deepEqual(nowOf(told(undefined, [stale, moved]), AT).started, [
+    { cell: "HERON1", by: "SKIFF1" },
+  ]);
+  assert.deepEqual(
+    nowOf(told(undefined, [moved, stale]), AT).started,
+    [{ cell: "HERON1", by: "SKIFF1" }],
+    "the copy told first should not win over the one started latest",
+  );
+});
+
 it("a record naming itself, a blank or nobody, with no forage served, names nobody", () => {
   const cells = [
     record("SELF01", "kestrel", { started_by: "SELF01" }),
