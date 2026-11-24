@@ -190,7 +190,7 @@ let
         "the gate's own mount rules refuse localSite's network and the shared kit: ${lib.concatStringsSep "; " (faultsOf pages passed)}"
     ++
       lib.optional (passed.network.localSitePages != [ pages.Network ])
-        "localSite names the network site's pages otherwise than its one index.html, so a page it serves may go unjudged";
+        "localSite names the network site's pages otherwise than its one index.html, so a page it serves may go unjudged (a page added to that site is named here, in this check, as in pages)";
 
   # Said in the build's log, where a change's checks show why it failed,
   # rather than at evaluation, where they'd show only that it didn't.
