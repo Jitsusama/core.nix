@@ -23,9 +23,21 @@ pub struct Spent {
     /// any part of its size, so it adds none, nor does one this machine
     /// couldn't size.
     pub bytes: u64,
-    /// How many copies went up, whether they ended well or not, one sent
-    /// again for a scope refused counting with it, as one.
+    /// How many copies ran, whether they ended well or not, one sent
+    /// again for a scope refused counting with it, as one. One whose
+    /// `nix` never started sent nothing, so it isn't one.
     pub copies: u32,
+}
+
+/// How a copy up went, as [`sent`] counts it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Went {
+    /// It went up whole, so its bytes count.
+    Whole,
+    /// It ran and failed or was stopped, having sent any part of itself.
+    Short,
+    /// Its `nix` never started, so it sent nothing and took no time.
+    Unrun,
 }
 
 impl Spent {
@@ -79,13 +91,17 @@ pub fn waited<T>(wait: impl FnOnce() -> T) -> T {
     turn
 }
 
-/// Runs `copy`, a copy up of `bytes` where they're known, counting it,
-/// and its bytes only where `went` says it went up whole.
-pub fn sent<T>(bytes: Option<u64>, copy: impl FnOnce() -> T, went: impl FnOnce(&T) -> bool) -> T {
+/// Runs `copy`, a copy up of `bytes` where they're known, counting it
+/// where `went` says it ran, and its bytes only where it went up whole.
+pub fn sent<T>(bytes: Option<u64>, copy: impl FnOnce() -> T, went: impl FnOnce(&T) -> Went) -> T {
     let began = Instant::now();
     let ended = copy();
     let took = began.elapsed();
-    let carried = if went(&ended) { bytes.unwrap_or(0) } else { 0 };
+    let carried = match went(&ended) {
+        Went::Unrun => return ended,
+        Went::Short => 0,
+        Went::Whole => bytes.unwrap_or(0),
+    };
     SO_FAR.with(|so_far| {
         let mut spent = so_far.get();
         spent.sending += took;
@@ -104,8 +120,8 @@ mod tests {
     fn a_run_counts_its_waits_and_copies_and_is_taken_whole() {
         begun();
         waited(|| std::thread::sleep(Duration::from_millis(20)));
-        let ended = sent(Some(300), || 7, |_| true);
-        sent(None, || (), |()| true);
+        let ended = sent(Some(300), || 7, |_| Went::Whole);
+        sent(None, || (), |()| Went::Whole);
         let spent = taken();
         assert_eq!(ended, 7, "a copy's own answer comes back");
         assert!(
@@ -119,7 +135,7 @@ mod tests {
 
     #[test]
     fn a_run_begun_drops_what_came_before_on_its_thread() {
-        sent(Some(5), || (), |()| true);
+        sent(Some(5), || (), |()| Went::Whole);
         begun();
         assert!(!taken().any(), "nothing was spent since it began");
     }
@@ -127,10 +143,10 @@ mod tests {
     #[test]
     fn runs_on_threads_of_their_own_count_apart() {
         begun();
-        sent(Some(1), || (), |()| true);
+        sent(Some(1), || (), |()| Went::Whole);
         let other = std::thread::spawn(|| {
             begun();
-            sent(Some(40), || (), |()| true);
+            sent(Some(40), || (), |()| Went::Whole);
             taken()
         })
         .join()
@@ -148,7 +164,7 @@ mod tests {
                 std::thread::sleep(Duration::from_millis(10));
                 false
             },
-            |went| *went,
+            |_| Went::Short,
         );
         let spent = taken();
         assert!(!ended, "a copy's own answer comes back");
@@ -161,6 +177,17 @@ mod tests {
             spent.sending >= Duration::from_millis(10),
             "a failed copy's time didn't count: {spent:?}"
         );
+    }
+
+    // A copy whose nix couldn't be run sent nothing, so a run whose every
+    // try failed so would otherwise say it went to the uplink.
+    #[test]
+    fn a_copy_whose_nix_never_started_isnt_counted() {
+        begun();
+        let ended = sent(Some(900), || "couldn't run nix", |_| Went::Unrun);
+        let spent = taken();
+        assert_eq!(ended, "couldn't run nix", "a copy's own answer comes back");
+        assert!(!spent.any(), "a copy that never ran was counted: {spent:?}");
     }
 
     #[test]

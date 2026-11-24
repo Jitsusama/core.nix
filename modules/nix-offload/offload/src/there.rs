@@ -1271,19 +1271,13 @@ fn sent_up(
         ))
     };
     // Unsized: asking the store their sizes would cost every send a walk.
-    // A copy sent again for a scope refused counts with it, as one.
-    let (went, heard) = uplink::sent(
+    let (went, heard) = counted_up(
         None,
-        || {
-            scoped_or_again(
-                upload_scope(),
-                sending,
-                |went| *went,
-                "nix-offload: the send couldn't be given a scope of its own, since the user \
-                 manager's bus refused it, so it goes again outside one",
-            )
-        },
-        |sent| matches!(sent, Ok((true, _))),
+        upload_scope(),
+        sending,
+        |went| *went,
+        "nix-offload: the send couldn't be given a scope of its own, since the user manager's \
+         bus refused it, so it goes again outside one",
     )?;
     if went {
         return Ok(());
@@ -1551,10 +1545,14 @@ fn derivations_up(
     };
     let turn = uplink::waited(|| uplink_turn(rank, &about));
     let within = turn_within(size);
-    let (ended, heard) = uplink::sent(
+    let (ended, heard) = copied_up(
+        [nix, alive],
         size,
-        || copied_up([nix, alive], upload_scope(), &copying, turn, within, &about),
-        |copied| matches!(copied, Ok((Ok(status), _)) if status.success()),
+        upload_scope(),
+        &copying,
+        turn,
+        within,
+        &about,
     )
     .map_err(Uncopied::failed)?;
     match ended {
@@ -1569,12 +1567,14 @@ fn derivations_up(
 /// How a copy up of `args` to `nix` ended and what it heard, its ssh
 /// given the keepalive `alive`, run in a scope of `systemd_run`'s where
 /// one is named ([`uploading`]) and waited on as [`waited_giving_back`]
-/// does with its uplink `turn`. When its scope couldn't be made
-/// ([`UNSCOPED_SAID`]), the copy never ran, so it runs once again outside
-/// one, keeping its turn, rather than give up the wait that won it. Why
-/// not when `nix` can't be run.
+/// does with its uplink `turn`, and counted as [`counted_up`] counts a
+/// copy of `bytes`. When its scope couldn't be made ([`UNSCOPED_SAID`]),
+/// the copy never ran, so it runs once again outside one, keeping its
+/// turn, rather than give up the wait that won it. Why not when `nix`
+/// can't be run.
 fn copied_up(
     [nix, alive]: [&str; 2],
+    bytes: Option<u64>,
     systemd_run: Option<&str>,
     args: &[String],
     mut turn: Option<Turn>,
@@ -1593,7 +1593,8 @@ fn copied_up(
         let ended = waited_giving_back(&mut copied.child, &mut turn, within, about, &mut say);
         Ok::<_, String>((ended, copied.heard()))
     };
-    scoped_or_again(
+    counted_up(
+        bytes,
         systemd_run,
         run,
         |ended| matches!(ended, Ok(status) if status.success()),
@@ -1604,24 +1605,37 @@ fn copied_up(
     )
 }
 
-/// What `copy` gave and heard, run in a scope of `systemd_run`'s where one
-/// is named, and once more outside one when its scope couldn't be made
-/// ([`UNSCOPED_SAID`]), since the copy never ran then; `went` says whether
-/// a try went up, and `again` is said before the second. Every copy up
-/// that a scope holds goes through it, so a copy and the one sent again
-/// for it are told apart, and counted, in one place.
-fn scoped_or_again<T, E>(
+/// What `copy`, a copy up of `bytes` where they're known, gave and heard,
+/// run in a scope of `systemd_run`'s where one is named, and once more
+/// outside one when its scope couldn't be made ([`UNSCOPED_SAID`]), since
+/// the copy never ran then; `went` says whether a try went up, and
+/// `again` is said before the second. Every copy up goes through it, so a
+/// copy and the one sent again for it count as one on the run's uplink
+/// ([`uplink::sent`]), its bytes only where it went up whole, and one
+/// whose `nix` couldn't be started, `copy`'s error, not at all.
+fn counted_up<T, E>(
+    bytes: Option<u64>,
     systemd_run: Option<&str>,
     mut copy: impl FnMut(Option<&str>) -> Result<(T, Heard), E>,
     went: impl Fn(&T) -> bool,
     again: &str,
 ) -> Result<(T, Heard), E> {
-    let (ended, heard) = copy(systemd_run)?;
-    if went(&ended) || systemd_run.is_none() || !heard.unscoped {
-        return Ok((ended, heard));
-    }
-    eprintln!("{again}");
-    copy(None)
+    uplink::sent(
+        bytes,
+        || {
+            let (ended, heard) = copy(systemd_run)?;
+            if went(&ended) || systemd_run.is_none() || !heard.unscoped {
+                return Ok((ended, heard));
+            }
+            eprintln!("{again}");
+            copy(None)
+        },
+        |sent| match sent {
+            Ok((ended, _)) if went(ended) => uplink::Went::Whole,
+            Ok(_) => uplink::Went::Short,
+            Err(_) => uplink::Went::Unrun,
+        },
+    )
 }
 
 /// How many bytes the store paths `nix path-info --json` prints from
@@ -2561,21 +2575,15 @@ fn sent_held(
         let ended = finished_within(&mut copying.child, within);
         Ok::<_, std::io::Error>((ended, copying.heard()))
     };
-    let ended = uplink::sent(
+    let ended = counted_up(
         Some(size),
-        || {
-            scoped_or_again(
-                upload_scope(),
-                send,
-                |ended| ended.is_some_and(|status| status.success()),
-                &format!(
-                    "nix-offload: the send {about} couldn't be given a scope of its own, since \
-                     the user manager's bus refused it, so it goes again outside one, keeping \
-                     its turn"
-                ),
-            )
-        },
-        |sent| matches!(sent, Ok((Some(status), _)) if status.success()),
+        upload_scope(),
+        send,
+        |ended| ended.is_some_and(|status| status.success()),
+        &format!(
+            "nix-offload: the send {about} couldn't be given a scope of its own, since the user \
+             manager's bus refused it, so it goes again outside one, keeping its turn"
+        ),
     )
     .map(|(ended, _)| ended);
     match ended {
@@ -6414,11 +6422,7 @@ mod tests {
             };
             Ok::<_, String>((scope.is_none(), heard))
         };
-        let copied = uplink::sent(
-            Some(512),
-            || scoped_or_again(Some("systemd-run"), copy, |went| *went, "again"),
-            |copied| matches!(copied, Ok((true, _))),
-        );
+        let copied = counted_up(Some(512), Some("systemd-run"), copy, |went| *went, "again");
         let spent = uplink::taken();
         assert!(
             matches!(copied, Ok((true, _))),
@@ -6429,6 +6433,24 @@ mod tests {
             (spent.copies, spent.bytes),
             (1, 512),
             "a copy and the one sent again for it didn't count as one, with its bytes"
+        );
+    }
+
+    #[test]
+    fn a_copy_whose_nix_couldnt_be_run_counts_for_nothing() {
+        uplink::begun();
+        let copied = counted_up(
+            Some(512),
+            Some("systemd-run"),
+            |_| Err::<(bool, Heard), _>("couldn't run nix"),
+            |went| *went,
+            "again",
+        );
+        let spent = uplink::taken();
+        assert!(copied.is_err(), "the copy's error didn't come back");
+        assert!(
+            !spent.any(),
+            "a copy whose nix never started was counted: {spent:?}"
         );
     }
 
@@ -6892,6 +6914,7 @@ mod tests {
         let copying = std::thread::spawn(move || {
             copied_up(
                 ["sh", COPY_ALIVE],
+                None,
                 Some(&systemd_run),
                 &args,
                 Some(turn),
