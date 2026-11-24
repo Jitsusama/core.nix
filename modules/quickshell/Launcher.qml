@@ -10342,9 +10342,6 @@ Scope {
                 title: root.drawerShows?.title ?? "",
                 facts: (root.drawerShows?.facts ?? []).filter(fact => fact)
                     .map(fact => fact.label ?? ""),
-                // And what each says, in the same order.
-                values: (root.drawerShows?.facts ?? []).filter(fact => fact)
-                    .map(fact => String(fact.value ?? "")),
                 body: root.drawerShows?.body ?? "",
                 // Its words as drawn, a run laid in lines (Drawer.qml's bodySaid),
                 // with the parts of it laid under them while the keys are in it.
