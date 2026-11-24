@@ -275,13 +275,10 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
         return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
     }
     // An unread file leaves only its one line, never a figure, so a drag
-    // isn't closed while its figure can't be seen. A drag filed for one of
-    // a figure's owners carries the figure's key before the owner.
-    let figure_of = |m: &Measure| {
-        key.strip_prefix(m.key.as_str())
-            .is_some_and(|owner| owner.is_empty() || owner.starts_with(':'))
-    };
-    if key.starts_with(apps::FIGURE) && !measures.iter().any(figure_of) {
+    // isn't closed while its figure can't be seen; a figure written with no
+    // reading is still its figure, unjudged. His apps aren't routed, so a
+    // figure's drag is filed under its key alone.
+    if key.starts_with(apps::FIGURE) && !measures.iter().any(|m| m.key == key) {
         return measures.iter().any(|m| m.key.starts_with(apps::FIGURE));
     }
     // The ask for a check closes once the check merged and only a measure
@@ -840,7 +837,15 @@ mod tests {
             ledger[0].open,
             "a drag closed while its apps' file went unread"
         );
-        file(&mut ledger, &[renamed], "2026-11-22", 8200);
+        let written_unread = measure("apps:wait per wakeup", Class::Apps, 0.0, None);
+        let unread_figure = [written_unread, renamed.clone()];
+        file(&mut ledger, &unread_figure, "2026-11-22", 5800);
+        assert!(
+            ledger[0].open,
+            "a drag closed while its figure was written with no reading"
+        );
+        let longer = measure("apps:wait per wakeup p99", Class::Apps, 1.0, Some(2.0));
+        file(&mut ledger, &[longer, renamed], "2026-11-22", 8200);
         assert!(
             !ledger[0].open,
             "a drag on a figure gone from a file read whole stayed open for good"

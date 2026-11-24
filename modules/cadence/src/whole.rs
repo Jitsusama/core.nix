@@ -16,8 +16,9 @@ const LEFT_AFTER: Duration = Duration::from_secs(3600);
 /// so an hour run by hand can't write into the one the timer's renames,
 /// and removed if it fails, as no later run shares it. It's synced
 /// first, so a crash leaves a file whole: a kept reading that won't parse
-/// holds the hour's findings unjudged. Staged copies of the same file a
-/// killed run left are swept first, so they don't pile up beside it.
+/// holds the hour's findings unjudged. Staged copies a killed run left in
+/// the same folder are swept first, so they don't pile up there, even
+/// beside a file named for its day that is never written again.
 pub fn write_whole(path: &Path, text: &str) -> io::Result<()> {
     sweep_left(path);
     let staged = path.with_extension(format!("new.{}", std::process::id()));
@@ -32,15 +33,11 @@ pub fn write_whole(path: &Path, text: &str) -> io::Result<()> {
     done
 }
 
-/// Removes the copies of `path` staged by runs long gone: those named as
-/// `write_whole` stages it, under any process, older than `LEFT_AFTER`.
-/// A folder that can't be read is left as it is, as a write into it will
-/// say why on its own.
+/// Removes the copies staged beside `path` by runs long gone: those named
+/// as `write_whole` stages any file, under any process, older than
+/// `LEFT_AFTER`. A folder that can't be read is left as it is, as a write
+/// into it will say why on its own.
 fn sweep_left(path: &Path) {
-    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
-        return;
-    };
-    let staged = format!("{stem}.new.");
     let folder = path
         .parent()
         .filter(|folder| !folder.as_os_str().is_empty())
@@ -53,15 +50,18 @@ fn sweep_left(path: &Path) {
         let name = entry.file_name();
         let named = name
             .to_str()
-            .and_then(|name| name.strip_prefix(&staged))
-            .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()));
+            .and_then(|name| name.rsplit_once(".new."))
+            .is_some_and(|(_, pid)| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()));
+        if !named {
+            continue;
+        }
         let left = entry
             .metadata()
             .and_then(|meta| meta.modified())
             .ok()
             .and_then(|at| now.duration_since(at).ok())
             .is_some_and(|age| age > LEFT_AFTER);
-        if named && left {
+        if left {
             let _ = fs::remove_file(entry.path());
         }
     }
@@ -71,11 +71,8 @@ fn sweep_left(path: &Path) {
 mod tests {
     use super::*;
 
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("cadence-whole-{name}-{}", std::process::id()));
-        fs::remove_dir_all(&dir).ok();
-        fs::create_dir_all(&dir).expect("a scratch folder");
-        dir
+    fn scratch() -> tempfile::TempDir {
+        tempfile::tempdir().expect("a scratch folder")
     }
 
     fn names(dir: &Path) -> Vec<String> {
@@ -90,7 +87,8 @@ mod tests {
 
     #[test]
     fn a_file_is_written_whole_and_leaves_no_staged_copy() {
-        let dir = scratch("written");
+        let scratch = scratch();
+        let dir = scratch.path();
         let path = dir.join("hour.json");
         write_whole(&path, "{}").expect("it writes");
         write_whole(&path, "{\"a\": 1}").expect("it writes over the last");
@@ -100,7 +98,7 @@ mod tests {
             "the second write didn't replace the first"
         );
         assert_eq!(
-            names(&dir),
+            names(dir),
             ["hour.json"],
             "a staged copy was left behind after its rename"
         );
@@ -108,7 +106,8 @@ mod tests {
 
     #[test]
     fn a_failed_rename_takes_its_staged_copy_with_it() {
-        let dir = scratch("unrenamed");
+        let scratch = scratch();
+        let dir = scratch.path();
         // A folder where the file goes can't be renamed over.
         let path = dir.join("hour.json");
         fs::create_dir(&path).expect("a folder in the file's place");
@@ -117,7 +116,7 @@ mod tests {
             "a rename over a folder was taken for written"
         );
         assert_eq!(
-            names(&dir),
+            names(dir),
             ["hour.json"],
             "the staged copy was left behind by a failed rename"
         );
@@ -125,7 +124,8 @@ mod tests {
 
     #[test]
     fn copies_a_killed_run_staged_are_swept_and_a_running_ones_are_not() {
-        let dir = scratch("swept");
+        let scratch = scratch();
+        let dir = scratch.path();
         let stage = |name: &str, age: u64| {
             let file = fs::File::create(dir.join(name)).expect("a staged copy");
             let at = SystemTime::now() - Duration::from_secs(age);
@@ -133,13 +133,14 @@ mod tests {
         };
         stage("hour.new.1", 7200);
         stage("hour.new.2", 60);
-        stage("card.new.3", 7200);
+        // A day's file, never written again, leaves its copy beside the hour.
+        stage("2026-11-22.new.3", 7200);
         stage("hour.new.notes", 7200);
         write_whole(&dir.join("hour.json"), "{}").expect("it writes");
         assert_eq!(
-            names(&dir),
-            ["card.new.3", "hour.json", "hour.new.2", "hour.new.notes"],
-            "only the hour's copy a killed run left should go"
+            names(dir),
+            ["hour.json", "hour.new.2", "hour.new.notes"],
+            "only the copies killed runs left should go"
         );
     }
 }

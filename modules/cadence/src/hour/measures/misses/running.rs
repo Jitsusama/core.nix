@@ -20,8 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
-use std::time::Duration;
+use std::sync::{OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -578,8 +578,19 @@ fn merge_judged(repo: &str, rev: Option<&str>, path: &str, number: u64) -> Optio
 /// run reading 920 MB/s at 3.7 GB for over ten minutes, every hour, on a
 /// machine already short of memory.
 fn merge_of(path: &str, number: u64) -> Option<String> {
-    merge_within(path, number, WALK_FOR)
+    let first = *WALKS_FROM.get_or_init(Instant::now);
+    let left = WALKS_FOR.saturating_sub(first.elapsed());
+    merge_within(path, number, WALK_FOR.min(left))
 }
+
+/// When this run's first walk for a merge began, so every walk after it
+/// shares `WALKS_FOR`.
+static WALKS_FROM: OnceLock<Instant> = OnceLock::new();
+
+/// How long all of a run's walks for merges may read together: one hour
+/// may hold several merges not yet on main, and walks run one after
+/// another under the hour's half-hour limit.
+const WALKS_FOR: Duration = Duration::from_secs(300);
 
 /// How long a walk for a merge reads before it's left: a merge not yet on
 /// main is walked for to its root, which took 41 s on an idle machine and
@@ -605,7 +616,11 @@ fn merge_within(path: &str, number: u64, within: Duration) -> Option<String> {
             sent.send(merge).ok();
         });
     }
-    let merge = found.recv_timeout(within).ok().flatten();
+    // Said, since a merge read unfound keeps its miss open on the card.
+    let merge = found.recv_timeout(within).unwrap_or_else(|_| {
+        eprintln!("cadence: #{number}'s merge walk in {path} left at {within:?}, read as unfound");
+        None
+    });
     // A walk that already ended has nothing to stop, and one stopped here is
     // only reaped, so neither result says anything the merge found doesn't;
     // its end closes the pipe, which ends the reading thread too.

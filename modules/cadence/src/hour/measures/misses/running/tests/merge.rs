@@ -82,8 +82,10 @@ fn a_merge_not_on_main_is_left_at_its_time() {
     let (path, _, object) = endless_below("merge-unfound");
     let (sent, answer) = std::sync::mpsc::channel();
     let within = std::time::Duration::from_secs(1);
+    let began = std::time::Instant::now();
     std::thread::spawn(move || sent.send(merge_within(&path, 8, within)).ok());
     let answer = answer.recv_timeout(std::time::Duration::from_secs(30));
+    let took = began.elapsed();
     if answer.is_err() {
         std::fs::OpenOptions::new().write(true).open(&object).ok();
     }
@@ -92,6 +94,8 @@ fn a_merge_not_on_main_is_left_at_its_time() {
         Ok(None),
         "a walk for a merge not on main wasn't left at its time"
     );
+    // A walk that ended on its own, short of its time, didn't wait for one.
+    assert!(took >= within, "the walk ended in {took:?}, before its time");
 }
 
 #[test]
