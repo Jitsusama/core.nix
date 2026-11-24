@@ -48,7 +48,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 use agents::acts;
-use agents::arrangement::{self, Arrangement, Still};
+use agents::arrangement::{Arrangement, Still};
 use agents::asker;
 use agents::cells;
 use agents::clock;
@@ -586,14 +586,7 @@ fn serve(args: Args) -> Result<(), Failure> {
             }
             inputs.hear(one, &paths);
         }
-        if still.due(Instant::now())
-            && let Some(let_go) = inputs.keep_places(&paths.arrangement)
-        {
-            // A place closed by hand goes once its time comes, though no
-            // window moves meanwhile.
-            let now = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
-            still.again(Instant::now() + arrangement::again_in(let_go, now));
-        }
+        inputs.keep_when_still(&mut still, &paths, Instant::now());
         let moved = served.take(inputs.made());
         // The landings are read again only once they were made again, and
         // only what moved is told: 4,997 of them, read and cloned at every
