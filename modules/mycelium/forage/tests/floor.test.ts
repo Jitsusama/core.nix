@@ -226,9 +226,9 @@ it("cuts a line deeper than the floor at its top, keeping the 48 nearest the cur
   // C12's starter isn't drawn, so no branch leads to it; C13's is.
   assert.ok(!floor.includes('data-cell="C12" d='), floor);
   assert.ok(floor.includes('data-cell="C13" d='), floor);
-  // Its line leaves room for the cell C50 started, so it's cut a cell higher
-  // and C51 is drawn with it, and a step to C50 keeps the floor around it.
-  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(4, 51));
+  // C51 only claims C50 as its starter, so C50's line keeps the whole floor
+  // and C51 is left off, and a step to C50 keeps the floor around it.
+  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(3, 50));
   assert.equal(stepsOff(floorFor(CHAIN, "C50"), "C50"), false);
 });
 
