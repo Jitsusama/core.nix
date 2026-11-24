@@ -31,5 +31,5 @@ function goesOn(lastWords, typed) {
 // finding nothing grades it.
 function whileAsked(last, typed) {
     const rows = holding(last, typed);
-    return { rows: rows, grade: rows.length > 0 ? 0 : 3 };
+    return { rows, grade: rows.length > 0 ? 0 : 3 };
 }
