@@ -1880,6 +1880,18 @@
       "by": "tuple"
     },
     {
+      "id": "tuple:camera",
+      "name": "Show My Camera in the Call",
+      "verb": "show",
+      "states": {
+        "on": {
+          "name": "Stop My Camera in the Call",
+          "verb": "stop"
+        }
+      },
+      "by": "tuple"
+    },
+    {
       "id": "tuple:leave",
       "command": "leave",
       "name": "Leave the Call",
