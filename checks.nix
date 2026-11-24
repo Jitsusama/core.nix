@@ -637,6 +637,7 @@ gather {
     ./modules/niri/checks.nix
     ./modules/nix-daemon/checks.nix
     ./modules/nix-offload/checks.nix
+    ./modules/nixpkgs/checks.nix
     ./modules/noise-cancelled/checks.nix
     ./modules/notices/checks.nix
     ./modules/onepassword/checks.nix

@@ -45,6 +45,10 @@ let
     pkgs.runCommand "camera-config-${module}"
       {
         nativeBuildInputs = [ pkgs._7zz ];
+        # The name nixpkgs allows it by, whatever the board, since a name
+        # parsed from the derivation's would end at a board that opens with a
+        # digit or an underscore.
+        pname = "dell-xps-14-camera-config";
         meta.license = lib.licenses.unfree;
       }
       ''
@@ -223,15 +227,16 @@ in
   };
   # Intel's camera binaries and the vision chip's firmware, which
   # hardware.ipu7 installs, are unfree, and so is the HAL's settings with
-  # Dell's tuning in them, for a machine that names its board. That one is
-  # named as nixpkgs names it, which drops a board's name that opens with a
-  # digit as though it were a version.
+  # Dell's tuning in them, for a machine that names its board. The firmware
+  # is named twice: the system's compressed copy of it keeps its licence but
+  # not its pname, and nixpkgs reads that copy's name, whose version opens
+  # with "unstable", as ivsc-firmware-unstable.
   nixpkgs.config.allowUnfreePackages = [
     "ipu7-camera-bins"
     "ivsc-firmware"
     "ivsc-firmware-unstable"
   ]
-  ++ lib.optional (module != null) (lib.getName "camera-config-${module}");
+  ++ lib.optional (module != null) "dell-xps-14-camera-config";
   # Its relay makes the loopback with the default buffers, which nixos-hardware
   # measured at a few frames a second, so the camera service below runs the
   # relay instead.
