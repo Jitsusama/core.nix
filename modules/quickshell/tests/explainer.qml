@@ -102,7 +102,7 @@ ShellRoot {
 
     function answering() {
         expect("its pi is told the session's title",
-            ask.posed.includes("Its title: Tidy the Rows"), ask.posed);
+            ask.posed.includes("Its title: \"Tidy the Rows\""), ask.posed);
         expect("and never its quest", !ask.posed.includes("QEST-"), ask.posed);
         expect("and never its folder", !ask.posed.includes("/home/"), ask.posed);
         same("while its pi thinks, the act says so", [explainer.shown("a")?.name,
@@ -200,16 +200,19 @@ ShellRoot {
             });
     }
 
-    // A session waiting on Joel is asked of with its want and its row's acts: a
-    // look's Open and Go To, a session asking having no Talk (Now.qml's cellActs).
+    // A session waiting on Joel is asked of with its want and the acts its row
+    // hands in, here Go To alone, as a session asking has no Talk; which acts
+    // a look's row hands in is LookForm.presses's (for-you.qml).
     function wanting() {
-        explainer.explain("w", "WANTS", ["Open", "Go To"]);
+        explainer.explain("w", "WANTS", ["Go To"]);
         until("a session waiting on Joel is asked of its pi",
-            () => explainer.shown("w", ["Open", "Go To"])?.note === "asking", () => {
+            () => explainer.shown("w", ["Go To"])?.note === "asking", () => {
                 expect("its pi is told what it asks, quoted",
                     ask.posed.includes("It asks the person: \"Which tide?"), ask.posed);
-                expect("and what the row offers to answer it",
-                    ask.posed.includes("The person can press: \"Open\", \"Go To\""), ask.posed);
+                expect("and what the row hands in to answer it, alone",
+                    JSON.stringify(ask.posed.split("\n")
+                        .filter(line => line.startsWith("The person can press")))
+                        === JSON.stringify(["The person can press: \"Go To\""]), ask.posed);
                 expect("and to end with the one that answers",
                     ask.posed.startsWith("Say what this is, ending with what answers it."),
                     ask.posed);
