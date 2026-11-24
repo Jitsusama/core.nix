@@ -1232,7 +1232,8 @@ Provider {
             const moved = Looks.movedOn(one, Sessions.running, Sessions.parked);
             const told = provider.launcher?.toldGone(moved) === true;
             console.warn(`Now: no session held for look ${JSON.stringify(one.id)} to go to:`
-                + ` cell ${JSON.stringify(one.cell ?? null)},`
+                + ` cell ${JSON.stringify(one.cell ?? null)}`
+                + ` (led by ${JSON.stringify(Looks.cellNamed(one))}),`
                 + ` quest ${JSON.stringify(one.quest ?? null)},`
                 + ` session ${JSON.stringify(one.session ?? null)}, the daemon says`
                 + ` ${JSON.stringify(Looks.cellGoes(one, cellsDaemon.held))},`
@@ -1737,8 +1738,8 @@ Provider {
         // so (Looks.js's taken), or settled while the daemon hasn't told it
         // yet, and every one while the daemon serves none. Few, they're made
         // here and sorted with what else the shell holds, each led to its
-        // cell as a served one is (doneWith).
-        const apart = from === undefined ? lookedApart(looked).map(Looks.doneWith) : [];
+        // cell as a served one is (Looks.js's cellFor).
+        const apart = from === undefined ? lookedApart(looked) : [];
         const ours = from === undefined ? apart.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
@@ -1841,12 +1842,13 @@ Provider {
     // opened, and its drawer says who it's from. Its acts hold Open, then
     // Talk, Go To and Explain It on the cell behind it (cellActs), as a
     // waiting look's do, so a look done with still leads to the cell that
-    // sent it, as it is now; one naming no cell, by its address (doneWith).
+    // sent it, as it is now; one naming no cell, by the one its session
+    // goes by (Looks.js's cellNamed).
     function lookServed(row, key) {
         const held = row.held ?? {};
         // Open and Return lead where Talk does, a terminal look's Open being
-        // its only way to its cell (doneWith).
-        const one = () => Looks.doneWith(provider.lookHeld(held));
+        // its only way to its cell.
+        const one = () => provider.lookHeld(held);
         const opens = held.kind === "terminal" ? "verb:on:waiting:go" : "verb:on:look:open";
         const inside = () => [thing({
             key: `verb:on:look:open:${held.id}`,

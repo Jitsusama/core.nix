@@ -12,12 +12,16 @@
 // manager of the account whose slice it is: PipeWire, its PulseAudio
 // server, WirePlumber, each service that runs a PipeWire of its own, as a
 // tuning chain does, and each PipeWire wants in session.slice, as
-// noise-cancelled is, as pipewire/nixos.nix lists them. Anything else
-// there, an app's scope, another service, or a unit an agent starts with
-// systemd-run, keeps rtkit's own answer, and so does a process below one,
-// which a sound service's own never are. rtkit still holds each thread to
-// priority 20 and 200 ms at a time. polkit's own engine reads this, in the
-// JavaScript it knows.
+// noise-cancelled is, as pipewire/sound-services.nix chooses them. One
+// home-manager gives is a sound service only in the manager of the account
+// it was given to. Anything else there, an app's scope, another service, or
+// a unit an agent starts with systemd-run, keeps rtkit's own answer, and so
+// does a process below one, which a sound service's own never are.
+//
+// The names are no boundary against the account's own processes, which
+// could start a unit by one of them: what holds them is rtkit, which keeps
+// each thread to priority 20 and 200 ms at a time, below the account's own
+// limits. polkit's own engine reads this, in the JavaScript it knows.
 //
 // A grant's line is written through record, which the slices module's
 // agents-ask-first.rules defines; without it a grant is given unlogged.
@@ -37,16 +41,25 @@ function soundPlaceOf(subject) {
   }
 }
 
-// The sound services' unit names, as nixos.nix writes them in JSON.
+// The sound services' unit names, as nixos.nix writes them in JSON: the
+// system's, for every account, and each account's own, by its name.
 var soundServices = @services@;
 var servicePlace = new RegExp(
   "^/user\\.slice/user-([0-9]+)\\.slice/user@\\1\\.service/" +
     "(?:session|app)\\.slice/([^/]+)\\.service$"
 );
 
-function isSoundService(place) {
+// Whether the service at place is a sound service of the system's, or of
+// user's own; an account's name is looked up as its own, never as one of
+// an object's.
+function isSoundService(place, user) {
   var found = place === null ? null : servicePlace.exec(place);
-  return found !== null && soundServices.indexOf(found[2]) !== -1;
+  if (found === null) {
+    return false;
+  }
+  var homes = soundServices.homes;
+  var own = Object.prototype.hasOwnProperty.call(homes, user) ? homes[user] : [];
+  return soundServices.system.indexOf(found[2]) !== -1 || own.indexOf(found[2]) !== -1;
 }
 
 polkit.addRule(function (action, subject) {
@@ -57,12 +70,14 @@ polkit.addRule(function (action, subject) {
     return polkit.Result.NOT_HANDLED;
   }
   var place = soundPlaceOf(subject);
-  if (isSoundService(place)) {
+  if (isSoundService(place, subject.user)) {
     // A grant leaves a line, as the slices' refusals do, so whether sound
     // took real time this boot, and which program took it, is read from
     // the journal, not its threads.
     if (typeof record === "function") {
       var command = typeof commandOf === "function" ? commandOf(subject) : null;
+      // A process gone before it's read is said to run something unknown, not null.
+      command = command === null ? "unknown" : command;
       record(
         "granted " + action.id + " to pid " + subject.pid + " (" + command + ") in " + place
       );

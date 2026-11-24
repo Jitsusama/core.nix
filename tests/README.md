@@ -19,8 +19,7 @@ and why.
 | a program's or device's stand-in, its patch | beside its test, or `stand-ins/`          |
 | a patch a test's machine takes, not a stand-in's | beside its test, `<what>.patch`      |
 
-This folder holds nothing else of its own: each file is in one of the
-folders below.
+Besides this README, each file here is in one of the folders below.
 
 ## Its Folders
 

@@ -2674,9 +2674,12 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
     title = drawer["title"]
     assert drawer["eyebrow"] == FIRST_GROUP, f"the emoji's drawer named no group: {drawer}"
     assert drawer["nerd"] == ["Code Points"], f"its code points went unnamed: {drawer}"
-    # Unicode's first emoji, the grinning face, has keywords, so a drawer without them lost
-    # them between the served row and the made drawer.
+    # Unicode's first emoji, the grinning face, has keywords, so a drawer without them, or
+    # with other words beside their name, lost them between the served row and the made
+    # drawer. Its title is held first, so a list that leads with another fails as itself.
+    assert title == "Grinning face", f"Unicode's first emoji isn't the grinning face: {drawer}"
     assert drawer["facts"] == ["Keywords"], f"its keywords went unnamed or missing: {drawer}"
+    assert "grin" in drawer["values"][0].split(", "), f"its keywords were lost: {drawer}"
     since = shell.mark()
     shell.send_chars("j")
     shell.launcher_until(functools.partial(drawer_moved, title))

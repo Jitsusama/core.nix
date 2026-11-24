@@ -14,14 +14,24 @@
 //! is taken up by an answer but closed by no landing, since one rarely
 //! fixes them all; and the keeper's note of new pains asks nothing of
 //! anyone, so says nothing of any.
+//!
+//! A landing that names the pain's own entry, `#entry`, closes it whatever
+//! its thread, as its owner says outright what it fixed: the one way to
+//! close a pain whose thread was never seen, or whose question held
+//! others.
+//!
+//! A pain stays open until its fix runs, however long that takes, so its
+//! thread is kept with it and each run reads only the messages sent since
+//! the last: a week of the mesh is some 600 megabytes, too much to read
+//! again every five minutes.
 
-use super::heard::Heard;
+use super::heard::{Heard, Landing};
 use super::route::FOR_THE_KEEPER;
 use super::{ASK_AT_MOST, DAY_MS, Ears, stalled};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Read;
+use std::io::Read as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -29,6 +39,46 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 /// The most of a message file read: the mesh's are a few kilobytes, and a
 /// run is held to 256 megabytes.
 const READ_AT_MOST: u64 = 256 * 1024;
+
+/// How long before the newest message a run read the next reads again,
+/// for one whose file came after its sending, as one relayed from another
+/// machine.
+const LATE_AT_MOST_MS: i64 = 30 * 60_000;
+
+/// The most of a landing's note kept, its first line, to say what fixed a
+/// pain.
+const SAID_AT_MOST: usize = 300;
+
+/// Where a run's reading of the mesh is kept between runs.
+const READ_FILE: &str = "read.json";
+
+/// Where the last run's reading of the mesh ended: the sending of the
+/// newest message it read, and each message it read since
+/// `LATE_AT_MOST_MS` before then, so a late one is read once.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Read {
+    pub at: i64,
+    pub seen: Vec<String>,
+}
+
+/// What a run of `stand` found: why no pain can close, when none can, and
+/// where its reading ended, to keep once the pains are kept.
+#[derive(Debug, Default)]
+pub struct Stood {
+    pub unclosed: Option<String>,
+    pub read: Option<Read>,
+}
+
+/// The last run's reading kept in `state`, if one was.
+pub(super) fn last_read(state: &Path) -> Option<Read> {
+    serde_json::from_slice(&fs::read(state.join(READ_FILE)).ok()?).ok()
+}
+
+/// Keeps a run's reading in `state` for the next.
+pub(super) fn keep_read(state: &Path, read: &Read) -> Result<(), String> {
+    let text = serde_json::to_string(read).map_err(|e| e.to_string())?;
+    crate::write_whole(&state.join(READ_FILE), &text)
+}
 
 /// A message on the mesh, as its file says it.
 #[derive(Debug, Clone, Deserialize)]
@@ -43,29 +93,66 @@ pub struct Message {
     pub text: String,
 }
 
-/// Who took a pain up, and the commit that closed it, if one has.
+/// Who took a pain up, and the commit that closed it, if one has: how its
+/// tests read a thread followed whole.
+#[cfg(test)]
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Standing {
     pub taken_by: Option<String>,
     pub closed_by: Option<String>,
 }
 
-/// Takes up and closes, from the mesh and the machine, each pain of the
-/// last day still open to it; `asker` is who sent the questions. Says why
-/// none can close when the messages, the core the machine runs, or the
-/// git to ask of it can't be read, so a fix that never closes doesn't
-/// read as one not on the machine yet.
-pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Option<String> {
-    let still = |h: &Heard| h.closed_by.is_none() && !stalled::is(h) && h.at >= ears.at - DAY_MS;
+/// Takes up and closes, from the mesh and the machine, each pain sent and
+/// still open, however old; `asker` is who sent the questions, and `read`
+/// where the last run's reading ended. Says why none can close when the
+/// messages, the core the machine runs, or the git to ask of it can't be
+/// read, so a fix that never closes doesn't read as one not on the
+/// machine yet. A first run reads from the oldest question of the last
+/// day, so threads begun before it are followed.
+pub(super) fn stand(
+    ears: &Ears,
+    asker: Option<&str>,
+    kept: &mut [Heard],
+    read: Option<&Read>,
+) -> Stood {
+    let still = |h: &Heard| h.closed_by.is_none() && !stalled::is(h) && h.routed_at.is_some();
+    let Some(asker) = asker else {
+        return Stood::default();
+    };
     let since = kept
         .iter()
         .filter(|h| still(h))
         .filter_map(|h| h.routed_at)
         .min();
-    let (Some(asker), Some(since)) = (asker, since) else {
-        return None;
+    let Some(since) = since else {
+        // Nothing waits on the mesh, so nothing is read: the next
+        // question is sent after now.
+        let read = Read {
+            at: ears.at,
+            seen: Vec::new(),
+        };
+        return Stood {
+            unclosed: None,
+            read: Some(read),
+        };
     };
-    let messages = messages(&ears.messages, since - 60_000);
+    // However long it was stopped, or wherever a clock put the last
+    // reading, a run reads at most a day of the mesh, as a first one does.
+    let first = (since - 60_000).max(ears.at - DAY_MS);
+    let from = read
+        .map_or(first, |r| r.at.min(ears.at) - LATE_AT_MOST_MS)
+        .max(ears.at - DAY_MS);
+    let seen: BTreeSet<&str> = read
+        .map(|r| r.seen.iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    let batch: Vec<(i64, Message)> = messages(&ears.messages, from)
+        .into_iter()
+        .filter(|(_, m)| !seen.contains(m.id.as_str()))
+        .collect();
+    let next = ears
+        .messages
+        .is_dir()
+        .then(|| read_after(read, from, ears.at, &batch));
     let core = core_on(&fs::read_to_string(&ears.switches).unwrap_or_default());
     let mut unclosed = match &core {
         _ if !ears.messages.is_dir() => {
@@ -80,6 +167,14 @@ pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Opt
     };
     let entries: Vec<String> = kept.iter().map(|h| h.entry.clone()).collect();
     let held: Vec<&str> = entries.iter().map(String::as_str).collect();
+    let sent: BTreeSet<&str> = batch.iter().filter_map(|(_, m)| short(&m.id)).collect();
+    let mut listed: Option<BTreeSet<String>> = None;
+    let mut is_id = |word: &str| {
+        sent.contains(word)
+            || listed
+                .get_or_insert_with(|| listed_ids(&ears.messages))
+                .contains(word)
+    };
     let mut known = BTreeMap::new();
     let mut on = |commit: &str| {
         let (Some(core), None) = (&core, &unclosed) else {
@@ -115,17 +210,160 @@ pub(super) fn stand(ears: &Ears, asker: Option<&str>, kept: &mut [Heard]) -> Opt
         }
     };
     for h in kept.iter_mut().filter(|h| still(h)) {
-        let found = standing(h, asker, &held, &messages, &mut on);
-        h.taken_by = h.taken_by.take().or(found.taken_by);
-        h.closed_by = found.closed_by;
+        for (_, m) in &batch {
+            follow(h, asker, &held, m, &mut is_id);
+        }
+        h.closed_by = closing(h, &mut on);
+        if h.closed_by.is_some() {
+            h.closed_at.get_or_insert(ears.at);
+        }
     }
-    unclosed
+    Stood {
+        unclosed,
+        read: next,
+    }
+}
+
+/// Where a reading from `from` of `batch` at `now` ends, after `read`'s:
+/// at the newest sending either read, or `LATE_AT_MOST_MS` before now
+/// where that is later, so a quiet mesh isn't read again from an old
+/// start, with each message read since `LATE_AT_MOST_MS` before it. It
+/// never ends past `now`, so a message named as sent ahead of it can't
+/// carry the next run's start past what is sent meanwhile.
+fn read_after(read: Option<&Read>, from: i64, now: i64, batch: &[(i64, Message)]) -> Read {
+    let before = read
+        .map_or(from, |r| r.at)
+        .min(now)
+        .max(now - LATE_AT_MOST_MS);
+    let newest = batch
+        .iter()
+        .map(|(sent, _)| *sent)
+        .filter(|&sent| sent <= now)
+        .max();
+    let at = newest.map_or(before, |sent| sent.max(before));
+    let mut seen: Vec<String> = read.map(|r| r.seen.clone()).unwrap_or_default();
+    seen.extend(batch.iter().map(|(_, m)| m.id.clone()));
+    seen.retain(|id| sent_of(id).is_some_and(|sent| sent >= at - LATE_AT_MOST_MS));
+    seen.sort_unstable();
+    seen.dedup();
+    Read { at, seen }
+}
+
+/// When a message was sent, as its id opens with it.
+fn sent_of(id: &str) -> Option<i64> {
+    id.split('-').next()?.parse().ok()
+}
+
+/// The short form of every message kept in `folder` and its days', for a
+/// landing naming one read on an earlier run.
+fn listed_ids(folder: &Path) -> BTreeSet<String> {
+    let mut ids = BTreeSet::new();
+    let mut list = |dir: &Path| {
+        for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(id) = name.strip_suffix(".json").and_then(short) {
+                ids.insert(id.to_owned());
+            }
+        }
+    };
+    list(folder);
+    for entry in fs::read_dir(folder).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if entry.file_type().is_ok_and(|t| t.is_dir()) && name.starts_with("20") {
+            list(&entry.path());
+        }
+    }
+    ids
+}
+
+/// Follows one message, `m`, in `pain`'s thread. A question `asker` sent
+/// naming it joins the thread, since a send that timed out after the node
+/// took it is sent again; `held` are the entries of every pain kept, to
+/// tell a question that held this one alone. Another's message replying
+/// in the thread, or naming it to a peer, takes it up; one naming one
+/// landing keeps it to close the pain once a switch carries it. `is_id`
+/// says whether a word is a message's short form.
+fn follow(
+    pain: &mut Heard,
+    asker: &str,
+    held: &[&str],
+    m: &Message,
+    is_id: &mut dyn FnMut(&str) -> bool,
+) {
+    if m.from.eq_ignore_ascii_case(asker) {
+        if let Some(id) = short(&m.id)
+            && names(&m.text, &pain.entry)
+            && !m.text.contains(FOR_THE_KEEPER)
+        {
+            add(&mut pain.thread, id);
+            pain.shared |= held.iter().filter(|e| names(&m.text, e)).count() != 1;
+        }
+        return;
+    }
+    let by_entry = names(&m.text, &pain.entry);
+    if pain.thread.is_empty() && !by_entry {
+        return;
+    }
+    let in_thread = |word: &str| pain.thread.iter().any(|id| id == word);
+    let replies = m.re.as_deref().and_then(short).is_some_and(in_thread);
+    let names_it = words(&m.text).any(in_thread);
+    // A note of two landings says which fixed nothing in particular, and
+    // one naming several messages which it answers.
+    let named = if names_it {
+        let named: BTreeSet<&str> = words(&m.text)
+            .filter(|&w| in_thread(w) || is_id(w))
+            .collect();
+        named.len()
+    } else {
+        0
+    };
+    if replies || ((names_it || by_entry) && m.to.iter().any(|to| to.starts_with('@'))) {
+        pain.taken_by.get_or_insert_with(|| m.from.clone());
+    }
+    if let [commit] = merged_at(&m.text)[..]
+        && (by_entry || replies || (names_it && named == 1))
+        && !pain.landed.iter().any(|l| l.commit == commit)
+    {
+        pain.landed.push(Landing {
+            commit: commit.to_owned(),
+            said: said_of(&m.text),
+            by_entry,
+        });
+    }
+    if let (true, Some(id)) = (replies, short(&m.id)) {
+        add(&mut pain.thread, id);
+    }
+}
+
+/// Adds `id` to a thread once.
+fn add(thread: &mut Vec<String>, id: &str) {
+    if !thread.iter().any(|t| t == id) {
+        thread.push(id.to_owned());
+    }
+}
+
+/// The first line of a landing's note, as much as is kept.
+fn said_of(text: &str) -> String {
+    let first = text.lines().next().unwrap_or_default().trim();
+    first.chars().take(SAID_AT_MOST).collect()
+}
+
+/// The commit that closes `pain`: the first landing kept that `on` says
+/// the machine runs. A question that held other pains is closed only by a
+/// landing naming its entry, since one rarely fixes them all.
+fn closing(pain: &Heard, on: &mut dyn FnMut(&str) -> bool) -> Option<String> {
+    pain.landed
+        .iter()
+        .filter(|l| l.by_entry || !pain.shared)
+        .find(|l| on(l.commit.as_str()))
+        .map(|l| l.commit.clone())
 }
 
 /// How a pain stands from the thread of the question `asker` sent of it.
 /// `held` are the entries of every pain kept, to tell a question that held
 /// this one alone; `messages` are in the order they were sent; `on` says
 /// whether the machine runs a commit.
+#[cfg(test)]
 pub fn standing(
     pain: &Heard,
     asker: &str,
@@ -133,55 +371,15 @@ pub fn standing(
     messages: &[Message],
     on: &mut dyn FnMut(&str) -> bool,
 ) -> Standing {
-    // Each question naming the pain starts its thread, since a send that
-    // timed out after the node took it is sent again.
-    let questions: Vec<(usize, &str)> = messages
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| {
-            m.from.eq_ignore_ascii_case(asker)
-                && names(&m.text, &pain.entry)
-                && !m.text.contains(FOR_THE_KEEPER)
-        })
-        .filter_map(|(at, m)| short(&m.id).map(|id| (at, id)))
-        .collect();
-    let Some(&(at, _)) = questions.first() else {
-        return Standing::default();
-    };
-    let alone = questions
-        .iter()
-        .all(|&(at, _)| held.iter().filter(|e| names(&messages[at].text, e)).count() == 1);
     let ids: BTreeSet<&str> = messages.iter().filter_map(|m| short(&m.id)).collect();
-    let mut thread: BTreeSet<&str> = questions.iter().map(|&(_, id)| id).collect();
-    let mut standing = Standing::default();
-    for m in &messages[at + 1..] {
-        if m.from.eq_ignore_ascii_case(asker) {
-            continue;
-        }
-        let replies =
-            m.re.as_deref()
-                .and_then(short)
-                .is_some_and(|re| thread.contains(re));
-        let named: BTreeSet<&str> = words(&m.text).filter(|w| ids.contains(w)).collect();
-        let names_it = named.iter().any(|id| thread.contains(id));
-        if replies || (names_it && m.to.iter().any(|to| to.starts_with('@'))) {
-            standing.taken_by.get_or_insert_with(|| m.from.clone());
-        }
-        // A note of two landings says which fixed nothing in particular,
-        // and one naming several messages which it answers.
-        if let [commit] = merged_at(&m.text)[..]
-            && alone
-            && (replies || (names_it && named.len() == 1))
-            && standing.closed_by.is_none()
-            && on(commit)
-        {
-            standing.closed_by = Some(commit.to_owned());
-        }
-        if let (true, Some(id)) = (replies, short(&m.id)) {
-            thread.insert(id);
-        }
+    let mut pain = pain.clone();
+    for m in messages {
+        follow(&mut pain, asker, held, m, &mut |w| ids.contains(w));
     }
-    standing
+    Standing {
+        closed_by: closing(&pain, on),
+        taken_by: pain.taken_by,
+    }
 }
 
 /// Whether text names a log entry as `#entry`, and not one that begins
@@ -251,16 +449,16 @@ fn merged_at(text: &str) -> Vec<&str> {
 /// with. A hidden file has no time to open with, so isn't read; a link
 /// and a file too big to be a message are passed over, and so is a day's
 /// folder last written to before.
-pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
+pub fn messages(folder: &Path, since_ms: i64) -> Vec<(i64, Message)> {
     let mut found = Vec::new();
     let mut gather = |dir: &Path| {
         for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
             let sent = name.split('-').next().and_then(|ms| ms.parse::<i64>().ok());
             let json = entry.path().extension().is_some_and(|ext| ext == "json");
-            if !json || sent < Some(since_ms) {
+            let Some(sent) = sent.filter(|&sent| json && sent >= since_ms) else {
                 continue;
-            }
+            };
             // A dir entry's type is its own, never a link's; what's read
             // is held to the limit however the file grew since.
             let plain = entry.file_type().is_ok_and(|t| t.is_file());
@@ -292,7 +490,7 @@ pub fn messages(folder: &Path, since_ms: i64) -> Vec<Message> {
         }
     }
     found.sort_by(|a, b| (a.0, &a.1.id).cmp(&(b.0, &b.1.id)));
-    found.into_iter().map(|(_, m)| m).collect()
+    found
 }
 
 /// The core the machine switched to last, from integration's switches; a

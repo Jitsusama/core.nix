@@ -237,9 +237,11 @@ pub(super) const RUN: &str = ".run";
 /// names is found as one that isn't a folder yet has more than one link,
 /// not by its type, so this find reads apart from the bring-back step's.
 /// Each folder is made the far line's own to read, write and enter as it
-/// is unpacked, since an archive's folder modes are kept and one closed
-/// to its owner would leave its contents unchecked and its copy behind;
-/// a file's mode stays as the near side sent it. Each archive's list of
+/// is unpacked, an unpacking that failed partway included, since an
+/// archive's folder modes are kept and one closed to its owner would
+/// leave its contents unchecked and its copy behind; one that still
+/// won't open fails the search after it, which can't read it. A file's
+/// mode stays as the near side sent it. Each archive's list of
 /// names is made new where nothing is, as the run's file is.
 pub(super) fn copying() -> String {
     format!(
@@ -262,8 +264,9 @@ pub(super) fn copying() -> String {
           return 1 ;;
       esac
     done < "$work.names"
-    tar -xf "$job/{TREE}/$part" -C "$work" || return 2
+    tar -xf "$job/{TREE}/$part" -C "$work"; unpacked=$?
     find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || return 2
+    [ "$unpacked" -eq 0 ] || return 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
       -o ! -type d -links +1) || return 2
     [ -z "$odd" ] || {{

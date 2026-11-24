@@ -322,6 +322,9 @@ pub struct Sweep {
     pub done: bool,
     /// Whether a failure to ask which units stopped has been said.
     pub failed: bool,
+    /// When the sweep may ask again after an ask that failed
+    /// (`crate::own::ASK_AGAIN_AFTER`).
+    pub held_off: Option<Instant>,
     /// Whether a failure to mark a unit's settings as the sorter's
     /// (`crate::own::mark`) has been said.
     pub unmarked: bool,
@@ -329,6 +332,12 @@ pub struct Sweep {
     /// whose settings are taken back once systemd says they stopped: one
     /// just gone may still be stopping ([`Hosts::leave`]).
     pub pending: HashMap<String, Instant>,
+    /// The units systemctl last said were stopping, running or failed
+    /// though none of their processes were seen, each with when to ask
+    /// after it again (`crate::own::ASK_AGAIN_AFTER`): one failed is kept
+    /// loaded, its settings listed, until it's reset, and one not ranked
+    /// since the sorter started is never pending.
+    pub later: HashMap<String, Instant>,
     /// The units whose settings couldn't all be taken back, so each is
     /// said once.
     pub unswept: HashSet<String>,
@@ -963,8 +972,9 @@ mod tests {
         hosts.fail("b", || panic!("a unit set before isn't read"));
         assert_eq!(hosts.hard_left(), 1, "b's one is left as its call fails");
         hosts.keep_only(&["a".to_owned()]);
-        assert!(
-            !hosts.failing.contains("b") && !hosts.held.contains_key("b"),
+        assert_eq!(
+            hosts.kept("b"),
+            None,
             "a stopped host's floors went with its unit, its failure with them"
         );
         assert_eq!(hosts.hard_left(), 0, "so none is left");

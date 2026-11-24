@@ -49,10 +49,12 @@
 # before it, keeps it in day/ beside them, and sends the orchestrator a
 # note of what got worse and better, so a regression is named the day it
 # appears.
-# Each finding stays in findings.jsonl until its figure is back two days,
-# goes once to the owner `owners` names for it, and once it's still open
-# past its date, to each holder of its subject's hub in turn, kept as a
-# need, then to the orchestrator once no holder is left to give it to.
+# Each finding stays in findings.jsonl until its owner has said what fixed
+# it, with `cadence owe --done`, and its figure is back two days. It goes
+# once to the owner `owners` names for it, again once its figure is back
+# with no fix said, and once it's still open past its date, to each holder
+# of its subject's hub in turn, kept as a need, then to the orchestrator
+# once no holder is left to give it to.
 #
 # The owners are also written to ~/.config/cadence/owners.txt, one
 # `prefix=ADDRESS` a line, the very lines the tick takes as `--owner`, so

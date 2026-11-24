@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 // Hands Sessions (modules/quickshell/Sessions.qml) five sessions to open, as
 // the harness's quest spawn does, with niri stood in and the harness's
-// spawn-decide too (stand-ins/spawn-decide.sh). Each fresh one is asked of
+// spawn-decide too (modules/quickshell/tests/stand-ins/spawn-decide.sh). Each fresh one is asked of
 // the decider first: the one it hosts opens no window, the one it keeps out
 // opens told why, the one it says nothing of in three seconds opens once
 // it's ended, and the one it fails on opens as before; a saved one opens

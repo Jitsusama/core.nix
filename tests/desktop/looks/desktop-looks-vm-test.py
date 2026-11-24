@@ -322,9 +322,10 @@ def a_programs_plate_lies_on_the_lines(desktop: Desktop, scale: str, keeping: li
 def the_desk_lights_plate_lies_on_the_lines(desktop: Desktop, scale: str) -> None:
     """Hold the desk light's plate to the lines, as a sound device's.
 
-    A stand-in Litra Glow (desk-light-stand-in.py) is plugged in, lit as a Glow first is, and
-    the desk light answer's drawer says where it is and what it is over the light's own name,
-    then its output in lumens of its range, its HID device and its serial (VKCF3Z, 2026-11-08).
+    A stand-in Litra Glow (tests/stand-ins/desk-light-stand-in.py) is plugged in, lit as a Glow
+    first is, and the desk light answer's drawer says where it is and what it is over the light's
+    own name, then its output in lumens of its range, its HID device and its serial (VKCF3Z,
+    2026-11-08).
     It's unplugged again after, so no later shot holds a light that test order put there.
     systemd's hwdb opens a Litra to the seat by its USB parent, which a uhid stand-in hasn't, so
     its node is given to the account here, as udev gives a real one; `litra watch` tries again
@@ -2171,7 +2172,8 @@ def recent_drawer(desktop: Desktop, shot: str) -> None:
 WIFID = "/run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
 LANTERN = '{"name":"Lantern","password":"glowing in the dark"}'
 # Signing in at Lantern's front desk, which signs in whatever is posted to it
-# (desktop/stand-ins/front-desk.py), over bash's own connection, since the machine has no curl.
+# (tests/desktop/stand-ins/front-desk.py), over bash's own connection, since the
+# machine has no curl.
 SIGN_IN = (
     "bash -c 'exec 3<>/dev/tcp/10.42.0.1/80"
     ' && printf "POST /sign-in HTTP/1.0\\r\\nContent-Length: 0\\r\\n\\r\\n" >&3'

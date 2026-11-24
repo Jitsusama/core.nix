@@ -10,8 +10,10 @@ FramePresentation, attached to any window, asks wp_presentation for
 feedback on the first frame begun after ask(), from the render thread
 just before that frame is drawn and committed, and answers with which
 frame it was (counted as framesBegun counts) and when it was shown on
-the monotonic clock, or that it was discarded. Asking again on each
-answer follows every frame. With no wp_presentation global, available is
+the monotonic clock, or that it was discarded. While following is set,
+every frame begun asks the same of itself, drawing none of its own:
+asking again on each answer misses a frame begun before the answer
+reaches the GUI thread. With no wp_presentation global, available is
 false and every ask is answered as discarded.
 
 timesOf(frame) says when that frame's sync began and ended, its render
@@ -72,7 +74,7 @@ new file mode 100644
 index 0000000..4b3f5c5
 --- /dev/null
 +++ b/src/wayland/presentation/qml.cpp
-@@ -0,0 +1,272 @@
+@@ -0,0 +1,283 @@
 +#include "qml.hpp"
 +#include <cstdint>
 +#include <ctime>
@@ -214,6 +216,14 @@ index 0000000..4b3f5c5
 +	if (this->mWindow) this->mWindow->update();
 +}
 +
++// Asks for no frame of its own, so following a window draws nothing it
++// wouldn't have drawn.
++void FramePresentation::setFollowing(bool following) {
++	if (following == this->mFollowing) return;
++	this->mFollowing = following;
++	emit this->followingChanged();
++}
++
 +void FramePresentation::onWindowConnected() {
 +	auto* window = this->proxyWindow ? this->proxyWindow->backingWindow() : nullptr;
 +	if (window == this->mWindow) return;
@@ -319,7 +329,10 @@ index 0000000..4b3f5c5
 +	auto frame = ++this->begun;
 +	this->drawing.frame = frame;
 +	this->drawing.rendering = monotonicNow();
-+	if (!this->asked.exchange(false)) return;
++	// An ask is spent whether or not the window is followed, so one made
++	// while following isn't left to answer a later frame.
++	auto asked = this->asked.exchange(false);
++	if (!asked && !this->mFollowing) return;
 +
 +	auto* manager = impl::Presentation::instance();
 +	auto* window = this->mWindow ? dynamic_cast<QWaylandWindow*>(this->mWindow->handle()) : nullptr;
@@ -350,7 +363,7 @@ new file mode 100644
 index 0000000..1e911f1
 --- /dev/null
 +++ b/src/wayland/presentation/qml.hpp
-@@ -0,0 +1,168 @@
+@@ -0,0 +1,177 @@
 +#pragma once
 +
 +#include <array>
@@ -438,7 +451,8 @@ index 0000000..1e911f1
 +/// `presented` gives which frame it was and the time on the monotonic clock
 +/// in milliseconds, the clock QElapsedTimer reads, so it can be set against
 +/// when something asked for it. Asks made before a frame begins are answered
-+/// by it once; asking again on each answer follows every frame.
++/// by it once. To follow every frame, set `following`: asking again on each
++/// answer misses a frame begun before the answer reaches the GUI thread.
 +///
 +/// [presentation-time]: https://wayland.app/protocols/presentation-time
 +class FramePresentation: public QObject {
@@ -449,6 +463,9 @@ index 0000000..1e911f1
 +	/// being the one a frameSwapped handler was told of. Read when needed,
 +	/// as it changes every frame and notifies nothing.
 +	Q_PROPERTY(int framesBegun READ framesBegun);
++	/// Whether each frame begun asks to be told when it's shown, as `ask()`
++	/// asks of the next, while drawing no frame of its own.
++	Q_PROPERTY(bool following READ following WRITE setFollowing NOTIFY followingChanged);
 +	QML_ELEMENT;
 +	QML_UNCREATABLE("FramePresentation can only be used as an attached object.");
 +	QML_ATTACHED(FramePresentation);
@@ -458,6 +475,8 @@ index 0000000..1e911f1
 +
 +	[[nodiscard]] static bool available();
 +	[[nodiscard]] int framesBegun() const { return this->begun; }
++	[[nodiscard]] bool following() const { return this->mFollowing; }
++	void setFollowing(bool following);
 +
 +	/// Asks to be told when the next frame begun from now is shown, and asks
 +	/// for that frame.
@@ -481,6 +500,7 @@ index 0000000..1e911f1
 +	void presented(int frame, double at);
 +	/// The frame asked for was never shown, as one drawn while hidden isn't.
 +	void discarded(int frame);
++	void followingChanged();
 +
 +private slots:
 +	void onWindowConnected();
@@ -510,6 +530,8 @@ index 0000000..1e911f1
 +	QPointer<ProxyWindowBase> proxyWindow;
 +	QPointer<QQuickWindow> mWindow;
 +	std::atomic<bool> asked = false;
++	// Read on the render thread as each frame begins.
++	std::atomic<bool> mFollowing = false;
 +	std::atomic<int> begun = 0;
 +	// The frame being drawn, touched only on the render thread.
 +	Times drawing;

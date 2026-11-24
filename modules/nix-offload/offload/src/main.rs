@@ -3173,7 +3173,10 @@ fn kept(
              and no new build goes there until the way to it carries one"
         ),
         Some(false) if !keeper.health.dropped() => {
-            eprintln!("nix-offload: {name} failed a proof; another in a row gives it back");
+            eprintln!(
+                "nix-offload: {name} failed a proof; another in a row and no new build goes \
+                 there"
+            );
         }
         Some(true) if state == State::Full && was != State::Full => eprintln!(
             "nix-offload: {name} has {} GB free, under the {} GB floor, so builders with room \
@@ -3210,23 +3213,36 @@ fn ticked(settings: &Settings, sleep: &mut sleep::Sleep) -> Tick {
 
 /// Give back `builder` as `event` says: as one unanswered when its
 /// proofs in `keeper` say it failed them, keeping them for its folder to
-/// say so until another stands, else forgetting them.
+/// say so until another stands, else forgetting them. Says what it was
+/// given back as, which the hold after it is worked out from.
 fn given_back(
     settings: &Settings,
     machines: &mut Machines,
     builder: Lent,
     event: Event,
     keeper: &mut Option<Keeper>,
-) {
-    let unanswered = keeper
-        .as_ref()
-        .is_some_and(|keeper| keeper.health.builder == builder.name && keeper.health.dropped());
+) -> Event {
+    let unanswered = failed(keeper.as_ref(), &builder.name);
     if unanswered {
         give_back_unanswered(settings, machines, builder);
     } else {
         *keeper = None;
         give_back(settings, machines, builder, event);
     }
+    gone_as(unanswered, event)
+}
+
+/// Whether `builder`'s proofs in `keeper` say it failed them.
+fn failed(keeper: Option<&Keeper>, builder: &str) -> bool {
+    keeper.is_some_and(|keeper| keeper.health.builder == builder && keeper.health.dropped())
+}
+
+/// What a builder given back as `event` says goes as: lost whenever it
+/// failed its proofs (`unanswered`), as one kept while it answered and
+/// then left idle does, so another is asked for at once rather than after
+/// an idle builder's hold.
+fn gone_as(unanswered: bool, event: Event) -> Event {
+    if unanswered { Event::Lost } else { event }
 }
 
 /// Name the one `lent`, if any, in every file a build reads, and say how
@@ -3253,9 +3269,27 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
 /// proofs, so it says each once while that lasts.
 #[derive(Default)]
 struct SaidKept {
+    /// The builder this is said of, so the next one starts afresh.
+    builder: String,
     reached: bool,
     stalled: bool,
     busy: bool,
+    /// How many times in a row the builder hasn't said whether it answers.
+    silent: u32,
+}
+
+impl SaidKept {
+    /// What's said of `builder` from now: a builder lent after one given
+    /// back doesn't take its count of missed answers, or it could go at
+    /// its first miss.
+    fn of(&mut self, builder: &str) {
+        if self.builder != builder {
+            *self = Self {
+                builder: builder.to_owned(),
+                ..Self::default()
+            };
+        }
+    }
 }
 
 /// Whether `builder`, which a build `reached` this tick or not, is given
@@ -3270,6 +3304,7 @@ fn unanswered(
     said: &mut SaidKept,
     [ssh, nix]: [&str; 2],
 ) -> bool {
+    said.of(&builder.name);
     let dropped = kept(settings, keeper, builder, at, [ssh, nix]);
     let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
     // One that builds but can't take a copy has a way to it that's full,
@@ -3277,9 +3312,50 @@ fn unanswered(
     // be lent again over the same way, cold, and a VM builder takes 17
     // minutes to warm.
     let stalled = keeper.as_ref().is_some_and(|keeper| keeper.health.stalled);
-    let unanswered = decide::proven_lost(dropped, failures, reached || stalled, || {
-        answers(settings, builder, ssh)
-    });
+    let silent_before = said.silent;
+    // Whether it was asked if it answers, as proven_lost decided, so what
+    // is said can't drift from the decision.
+    let mut asked = false;
+    let unanswered = decide::proven_lost(
+        dropped,
+        failures,
+        reached || stalled,
+        &mut said.silent,
+        || {
+            asked = true;
+            answers(settings, builder, ssh)
+        },
+    );
+    if unanswered {
+        let reaching = if reached || stalled {
+            "though builds reach it"
+        } else {
+            "and no build is seen to reach it"
+        };
+        eprintln!(
+            "nix-offload: {} didn't say whether it answers {} times in a row, so it's lost \
+             {reaching}",
+            builder.name, said.silent
+        );
+    }
+    if !unanswered && said.silent > silent_before && builder.store.is_none() {
+        eprintln!(
+            "nix-offload: {} has no store of its own to ask whether it answers, {} of {} in a \
+             row, so it keeps what it builds for now",
+            builder.name,
+            said.silent,
+            decide::SILENT_WHILE_REACHED
+        );
+    } else if !unanswered && said.silent > silent_before {
+        eprintln!(
+            "nix-offload: {} didn't say within {} s whether it answers, {} of {} in a row, so \
+             it keeps what it builds for now",
+            builder.name,
+            proof::ANSWERING.as_secs(),
+            said.silent,
+            decide::SILENT_WHILE_REACHED
+        );
+    }
     if dropped && !unanswered && stalled && !std::mem::replace(&mut said.stalled, true) {
         eprintln!(
             "nix-offload: {} builds but couldn't carry a copy up {failures} proofs in a row, \
@@ -3290,7 +3366,8 @@ fn unanswered(
         );
     }
     said.stalled &= dropped && stalled;
-    if dropped && !unanswered && !stalled && !std::mem::replace(&mut said.reached, true) {
+    if dropped && !unanswered && !stalled && reached && !std::mem::replace(&mut said.reached, true)
+    {
         eprintln!(
             "nix-offload: {} failed {failures} proofs in a row, so no new build goes there, but \
              builds still reach it, so it's kept until they end, or once it has failed {} in a \
@@ -3300,7 +3377,7 @@ fn unanswered(
         );
     }
     said.reached &= dropped;
-    let busy = dropped && !unanswered && failures >= decide::FAILS_WHILE_REACHED;
+    let busy = dropped && !unanswered && said.silent == 0 && asked;
     if busy && !std::mem::replace(&mut said.busy, true) {
         eprintln!(
             "nix-offload: {} still answers, so it's busy rather than lost, and keeps what it \
@@ -3308,7 +3385,8 @@ fn unanswered(
             builder.name
         );
     }
-    said.busy &= dropped;
+    // Said again once it answers after a miss.
+    said.busy &= dropped && said.silent == 0;
     unanswered
 }
 
@@ -3335,10 +3413,9 @@ fn answers(settings: &Settings, builder: &Lent, ssh: &str) -> bool {
 /// at once, as after any builder lost.
 fn give_back_unanswered(settings: &Settings, machines: &mut Machines, builder: Lent) {
     eprintln!(
-        "nix-offload: {} failed {} proofs in a row, so no build goes there, its relay ends \
-         and it's given back",
-        builder.name,
-        proof::FAILS
+        "nix-offload: {} failed its last proofs, so no build goes there, its relay ends and \
+         it's given back",
+        builder.name
     );
     machines.proven(None, State::Dropped);
     give_back(settings, machines, builder, Event::Lost);
@@ -3447,7 +3524,8 @@ fn serve(settings: &Settings) -> bool {
                 let (used, ends) = (builder.used, builder.ends);
                 match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
-                        given_back(settings, &mut machines, builder, event, &mut keeper);
+                        let event =
+                            given_back(settings, &mut machines, builder, event, &mut keeper);
                         hold = decide::next_after(event, tick.wants, used, ends, tick.woke, now());
                         None
                     }
@@ -5126,6 +5204,44 @@ exit 0
         );
         assert!(runs(&mut builder.helper), "its helper still runs");
         end(&mut builder.helper);
+    }
+
+    // A builder kept while it answered goes back idle, as Stopped, but
+    // the hold after it must be a lost one's, or none is asked for for
+    // half an hour with work queued.
+    #[test]
+    fn a_builder_that_failed_its_proofs_goes_as_lost_whatever_gave_it_back() {
+        assert_eq!(gone_as(true, Event::Stopped), Event::Lost, "left idle");
+        assert_eq!(gone_as(false, Event::Stopped), Event::Stopped, "it passed");
+        // Long enough after its making for an idle builder's hold to apply.
+        let now = decide::IDLE + 100;
+        let after = |event| decide::next_after(event, true, 0, u64::MAX, false, now).until;
+        assert_eq!(
+            after(gone_as(true, Event::Stopped)),
+            now,
+            "another is asked for at once"
+        );
+        assert!(
+            after(Event::Stopped) > now,
+            "as Stopped it would have waited an idle builder's hold"
+        );
+    }
+
+    #[test]
+    fn a_builder_lent_anew_doesnt_take_the_last_ones_missed_answers() {
+        let mut said = SaidKept::default();
+        said.of("lend-5");
+        said.silent = decide::SILENT_WHILE_REACHED;
+        said.busy = true;
+        said.of("lend-5");
+        assert_eq!(
+            said.silent,
+            decide::SILENT_WHILE_REACHED,
+            "the same builder keeps it"
+        );
+        said.of("lend-6");
+        assert_eq!(said.silent, 0, "the next builder starts at none");
+        assert!(!said.busy, "nor is it said to be busy");
     }
 
     #[test]

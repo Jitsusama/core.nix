@@ -243,6 +243,14 @@ fn snapshot(
                 })
                 .is_some();
         }
+        // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
+        // its window without waiting for a CPU, so its time blocked is read beside its waits.
+        if apps::is_app(thread)
+            && let Some(ns) =
+                kernel::blocked(&kernel::text(&thread.schedstat.with_file_name("sched")))
+        {
+            s.blocked.insert(thread.clone(), ns);
+        }
         let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
             if hidden {
@@ -677,6 +685,46 @@ mod tests {
         assert_eq!(s.threads.keys().collect::<Vec<_>>(), [&hidden_drawing]);
         assert!(s.lowered.is_empty(), "{:?}", s.lowered);
         assert!(s.resting.is_empty(), "{:?}", s.resting);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_app_thread_s_time_blocked_is_read_shown_or_hidden_and_no_one_else_s() {
+        let dir = std::env::temp_dir().join(format!("lag-watch-blocked-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let thread = |label: &'static str, pid: &str, nice: i64, blocked: Option<&str>| {
+            let at = dir.join(format!("{pid}/task/{pid}"));
+            fs::create_dir_all(&at).unwrap();
+            fs::write(at.join("schedstat"), "10 20 3\n").unwrap();
+            let stat = format!("{pid} (slack) S 70 1 1 0 -1 0 1 0 0 0 5 6 0 0 20 {nice} 30 0\n");
+            fs::write(at.join("stat"), &stat).unwrap();
+            fs::write(dir.join(pid).join("stat"), &stat).unwrap();
+            if let Some(ms) = blocked {
+                let sched = format!("slack ({pid}, #threads: 9)\nstats.sum_block_runtime : {ms}\n");
+                fs::write(at.join("sched"), sched).unwrap();
+            }
+            kernel::Thread {
+                label,
+                name: "slack".into(),
+                schedstat: at.join("schedstat"),
+                call: false,
+            }
+        };
+        let shown = thread("slack-ui", "81", 0, Some("12.500000"));
+        let hidden = thread("chrome-ui", "82", 5, Some("3.000000"));
+        let unkept = thread("slack-ui", "83", 0, None);
+        let niri = thread("niri", "84", 0, Some("7.000000"));
+        let s = snapshot(
+            &dir,
+            &dir,
+            &[shown.clone(), hidden.clone(), unkept, niri],
+            BTreeMap::new(),
+        );
+        assert_eq!(
+            s.blocked,
+            BTreeMap::from([(shown, 12_500_000), (hidden, 3_000_000)]),
+            "only the apps' threads, shown or hidden, had their time blocked read"
+        );
         fs::remove_dir_all(&dir).unwrap();
     }
 

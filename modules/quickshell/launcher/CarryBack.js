@@ -25,25 +25,6 @@ function asked(served) {
     return { ask: "carry", quest, to };
 }
 
-// The states of a carry still on its way, ordered by an orchestrator or
-// carrying, as the agents daemon serves them (modules/agents/src/carries.rs).
-const UNDER_WAY = ["ordered", "carrying"];
-
-// What For You holds of a carry Agents lists under Carried, `served` as
-// the daemon serves its row, while it is under way: a thing to read since
-// it was made, which asks nothing of Joel, rings no bell and adds to no
-// count (ForYou.js's NEVER_LIFTED), and goes as it arrives, is refused or
-// comes back. Null for any other row (DCU5J4's third item: a carry Joel
-// didn't make is seen, never pressed on him), and for one he made himself,
-// by `person` as the node judged who asked, since he knows it's on its way.
-function underWay(served) {
-    const held = served?.held;
-    if (served?.kind !== "carry" || !UNDER_WAY.includes(held?.state) || held.by === "person") {
-        return null;
-    }
-    return { kind: "read", since: typeof held.at === "string" ? held.at : null };
-}
-
 // How the node's answer to it ended: `{ done: true }` once the carry has
 // ended carried, else `{ done: false, why }` with the node's own words
 // for its refusal, or `said`'s where it gave none or never answered.

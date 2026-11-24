@@ -16,7 +16,7 @@ const STATES = ["waiting", "opened", "cleared", "resolved", "expired"];
 const VERSION = 1;
 // What's read from a look's file only for the shell's own use, never
 // written back.
-const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
+const OWN = ["since", "resolved", "file", "words", "offers"];
 // How many of a look's choices are offered, as the harness writes at most
 // four (85PKB2, 2026-11-12).
 const OFFERED = 4;
@@ -53,13 +53,10 @@ function look(text) {
     if (!whole(read)) {
         return null;
     }
-    // A lent cell is the shell's own mark (doneWith), never a file's, so one
-    // a file carries can't drop its own cell from the settled text, nor can
-    // one under a "__proto__" key, which as an own key of the parse would
-    // become the copy's prototype and lend it that way.
+    // Never a "__proto__" key, which as an own key of the parse would
+    // become the copy's prototype and so lend it a cell it doesn't name.
     const kept = {};
-    for (const key of Object.keys(read).filter(name => name !== "cellLent"
-        && name !== "__proto__")) {
+    for (const key of Object.keys(read).filter(name => name !== "__proto__")) {
         kept[key] = read[key];
     }
     return Object.assign(kept, {
@@ -131,7 +128,7 @@ function answer(one, choice, cell, at) {
     const live = leftIt(one, cell);
     const upper = name => String(name ?? "").toUpperCase();
     const itself = live && (leftByItsId(one, cell)
-        || [one.address, one.cell].some(name => upper(name) !== ""
+        || [one.address, cellNamed(one)].some(name => upper(name) !== ""
             && upper(name) === upper(cell.address)));
     const address = upper((itself ? cell.address : live ? one.address : quest)
         || one.address);
@@ -213,11 +210,12 @@ function servedSettles(one, opened) {
 
 // Whether `cell`, the session a look's Talk reaches, left look `one`: by
 // the session or an address the look names (ForYou.leftBy), or as the very
-// cell the look names, so Joel's answer and who asks go where Talk does.
+// cell the look names (cellNamed), so Joel's answer and who asks go where
+// Talk does.
 function leftIt(one, cell) {
-    const upper = name => String(name ?? "").toUpperCase();
+    const named = cellNamed(one).toUpperCase();
     return cell !== null && cell !== undefined && (ForYou.leftBy(one, cell)
-        || (upper(one.cell) !== "" && upper(one.cell) === upper(cell.address)));
+        || (named !== "" && named === String(cell.address ?? "").toUpperCase()));
 }
 
 // Whether `session` is the one that left look `one`, by pi's own id for it,
@@ -227,12 +225,32 @@ function leftByItsId(one, session) {
         && session.presence?.session === one.session;
 }
 
-// The address the agents daemon says the cell a look names (`cell`) goes
-// to now, by its `agent-cell` records by key, `cells`
+// pi's id for a session, as the harness gives each one.
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+// How many of its id's hex digits the address a session goes by holds.
+const ADDRESS_DIGITS = 8;
+
+// The cell a look names: its own `cell`, else, for one left before looks
+// named their cell, the address the session that left it goes by now,
+// which the harness makes from pi's id for it as it makes a look's `cell`
+// (lib/mesh/address.ts's sessionAddress: its last eight hex digits, in
+// capitals), though it went by another as it left the look, so a look
+// still waiting from then is led as a new one is;
+// else "", for one naming no session of pi's.
+function cellNamed(one) {
+    if (typeof one.cell === "string" && one.cell !== "") {
+        return one.cell;
+    }
+    const id = typeof one.session === "string" ? one.session : "";
+    return SESSION_ID.test(id) ? id.split("-").join("").slice(-ADDRESS_DIGITS).toUpperCase() : "";
+}
+
+// The address the agents daemon says the cell a look names (cellNamed)
+// goes to now, by its `agent-cell` records by key, `cells`
 // (modules/agents/src/cells.rs): null where the record says it goes
 // nowhere, and "" where it names no cell or the daemon holds no record.
 function cellGoes(one, cells) {
-    const cell = typeof one.cell === "string" ? one.cell : "";
+    const cell = cellNamed(one);
     const record = cell === "" ? undefined : cells?.[`agent-cell:agents:${cell}`];
     if (record !== undefined && record !== null && record.goes === null) {
         return null;
@@ -260,17 +278,16 @@ function cellGoes(one, cells) {
 // is, since sessions on no quest share nothing, and there a session that
 // merely lists the cell's address is never found. The daemon and the
 // lists each read the node and either can be a beat behind, so a cell
-// back again wins over an older answer. A look naming no cell searches
-// every session until every look names its cell, by Mon 23 Nov 2026.
+// back again wins over an older answer. A look left before looks named
+// their cell is led by the one its session goes by (cellNamed), so no
+// look searches every quest's sessions.
 function cellFor(one, cells, running, parked) {
-    if (typeof one.cell !== "string" || one.cell === "") {
-        return cellOf(one, running, parked);
-    }
+    const cell = cellNamed(one);
     const goes = cellGoes(one, cells);
     const held = (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
     const quest = typeof one.quest === "string" ? one.quest : "";
-    const itself = held.find(session => session.address === one.cell
+    const itself = cell === "" ? undefined : held.find(session => session.address === cell
         && (quest === "" || questOf(session) === "" || onQuest(session, quest)));
     if (itself !== undefined) {
         return itself;
@@ -310,19 +327,6 @@ function movedOn(one, running, parked) {
     return held.some(session => (leftByItsId(one, session)
         || (address !== "" && session.address === address))
         && questOf(session) !== "" && (quest === "" || !onQuest(session, quest)));
-}
-
-// A look done with, as History leads it to its cell: one written before
-// looks named their cell names it by its address, the session that left
-// it, so cellFor holds it to that cell, the daemon's answer for it and its
-// own quest, never the open search, which History, keeping every look done
-// with, would otherwise keep past Mon 23 Nov 2026. The cell is only lent
-// (cellLent), so the look as the shell writes it when settled names none,
-// as its file still does once the daemon has settled it.
-function doneWith(one) {
-    const named = typeof one.cell === "string" && one.cell !== "";
-    return named || typeof one.address !== "string" || one.address === "" ? one
-        : Object.assign({}, one, { cell: one.address, cellLent: true });
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
@@ -451,8 +455,7 @@ function looks(files, kept, now) {
 // by Joel or cleared: everything it said, and how and when it ended.
 function rewritten(one, state, how, now) {
     const kept = {};
-    for (const key of Object.keys(one).filter(name => !OWN.includes(name)
-        && !(name === "cell" && one.cellLent === true))) {
+    for (const key of Object.keys(one).filter(name => !OWN.includes(name))) {
         kept[key] = one[key];
     }
     return JSON.stringify(Object.assign(kept, { state, how,

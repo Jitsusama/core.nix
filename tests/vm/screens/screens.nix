@@ -269,6 +269,15 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         isNormalUser = true;
         uid = 1000;
         initialPassword = "correct-horse";
+        # Polkit asks a member of wheel for their own password.
+        extraGroups = [ "wheel" ];
+      };
+      # Starting a system service is something only an admin may do, so
+      # systemd asks polkit, and polkit asks the account through its agent,
+      # whose prompt must come up on a screen that's there.
+      systemd.services.polkit-allowed = {
+        serviceConfig.Type = "oneshot";
+        script = "touch /run/polkit-allowed";
       };
       home-manager.users.${account} = {
         home.stateVersion = "26.05";

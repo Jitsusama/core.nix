@@ -12,6 +12,7 @@
 use std::fs;
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 /// The folder runtime properties set through systemd's manager land in,
 /// which a unit's own settings leave out.
@@ -37,9 +38,10 @@ pub const MARK: &str = "jobs-sorter-set-these";
 
 /// The units whose folders in `control`, the runtime control folder, the
 /// sorter marked ([`mark`]) and start with one of `prefixes`: services
-/// alone, never a template, whose settings every instance shares, and
-/// never a folder reached through a link, which could point anywhere. A
-/// control folder not there yet holds none.
+/// alone, never a template, whose settings every instance shares, never
+/// a folder reached through a link, which could point anywhere, and never
+/// a name systemctl would read as a pattern, whose answer could stand for
+/// other units. A control folder not there yet holds none.
 pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>> {
     let entries = match fs::read_dir(control) {
         Ok(entries) => entries,
@@ -57,6 +59,7 @@ pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>>
                 && prefixes.iter().any(|prefix| unit.starts_with(prefix))
                 && unit.ends_with(".service")
                 && !unit.ends_with("@.service")
+                && !unit.contains(['*', '?', '[', ']', '\\'])
                 && entry.path().join(MARK).exists();
             ours.then_some(unit)
         })
@@ -67,21 +70,32 @@ pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>>
 
 /// Marks `unit`'s folder in `control` as holding settings the sorter set,
 /// once they've landed there; a folder not there, or reached through a
-/// link, is left unmarked, so its settings are never taken back.
+/// link, is left unmarked, so its settings are never taken back. The mark
+/// is made anew and never opened through a link, so whatever is already
+/// in its place, the sorter's own or another's, is left as it is.
 pub fn mark(control: &Path, unit: &str) -> io::Result<()> {
+    use std::io::Write;
     let folder = control.join(format!("{unit}.d"));
-    if !fs::symlink_metadata(&folder)?.is_dir() {
-        return Ok(());
+    match fs::symlink_metadata(&folder) {
+        Ok(folder) if folder.is_dir() => {}
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
     }
-    let mark = folder.join(MARK);
-    if mark.exists() {
-        return Ok(());
+    // Made anew, as O_CREAT and O_EXCL do, which refuses any link in its place, even one to
+    // nothing, so the mark is never written through to where a link points.
+    let opened = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(folder.join(MARK));
+    match opened {
+        Ok(mut mark) => mark.write_all(
+            b"The jobs sorter set this unit's 50-*.conf settings here, and takes them back once \
+              it stops.\n",
+        ),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(error),
     }
-    fs::write(
-        mark,
-        "The jobs sorter set this unit's 50-*.conf settings here, and takes them back once it \
-         stops.\n",
-    )
 }
 
 /// What `systemctl is-active` says of a unit, as far as taking back its
@@ -96,6 +110,15 @@ pub enum Active {
     /// Anything else, starting, stopping or running, keeps them.
     Runs,
 }
+
+/// How long `systemctl is-active` may take to answer before it's stopped
+/// and the sweep counts as unable to ask: it runs on the look that ranks
+/// the units Joel is at, which waits on it.
+pub const ASK_WITHIN: Duration = Duration::from_secs(2);
+
+/// How long after an ask that failed the sweep asks again, so a user
+/// manager that can't answer isn't asked on every look.
+pub const ASK_AGAIN_AFTER: Duration = Duration::from_secs(30);
 
 /// The words `systemctl` is given to say whether each of `units` runs,
 /// one state a line in their order; `--` ends its options, so a unit's
@@ -332,6 +355,30 @@ MemoryLow=10%
     }
 
     #[test]
+    fn a_mark_is_never_written_where_no_folder_is_or_through_a_link() {
+        let control = std::env::temp_dir().join(format!("own-mark-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&control);
+        fs::create_dir_all(&control).unwrap();
+        let missing = mark(&control, "pi-host-work-never.service");
+        // A mark already there as a link, which writing through would send anywhere.
+        let folder = control.join("pi-host-work-linked.service.d");
+        fs::create_dir_all(&folder).unwrap();
+        let target = control.join("elsewhere");
+        std::os::unix::fs::symlink(&target, folder.join(MARK)).unwrap();
+        let linked = mark(&control, "pi-host-work-linked.service");
+        let written = target.exists();
+        let _ = fs::remove_dir_all(&control);
+        assert!(
+            missing.is_ok(),
+            "a unit with no folder is left unmarked, not an error: {missing:?}"
+        );
+        assert!(
+            !written,
+            "a mark that's a link is never written through: {linked:?}"
+        );
+    }
+
+    #[test]
     fn only_a_gone_units_settings_the_sorter_marked_are_taken_back_and_anothers_left() {
         let control = std::env::temp_dir().join(format!("own-control-{}", std::process::id()));
         let _ = fs::remove_dir_all(&control);
@@ -366,6 +413,10 @@ MemoryLow=10%
         folder("pi-conversation-x.scope", &ours, true);
         folder("pi-host-work.slice", &ours, true);
         folder("kitty-1-2.scope", &ours, true);
+        // systemctl takes a name with a pattern's characters as a pattern, which may answer for
+        // more units than were asked, or others, and shift each state onto the wrong one.
+        folder("pi-host-work-*.service", &ours, true);
+        folder("pi-host-work-[ab].service", &ours, true);
         let elsewhere = control.join("elsewhere");
         folder("elsewhere/pi-host-work-linked.service", &ours, true);
         std::os::unix::fs::symlink(
@@ -401,7 +452,7 @@ MemoryLow=10%
                 "pi-host-work-gone.service",
             ],
             "only services of the prefixes the sorter marked, no template, no other kind of \
-             unit, none set by hand and none through a link"
+             unit, none set by hand, none through a link and none systemctl reads as a pattern"
         );
         assert_eq!(
             (taken, linked),
@@ -427,12 +478,19 @@ MemoryLow=10%
         let folder = control.join("pi-host-x.service.d");
         fs::create_dir_all(folder.join("50-CPUWeight.conf")).unwrap();
         fs::write(folder.join("50-MemoryMin.conf"), "[Service]\n").unwrap();
+        mark(&control, "pi-host-x.service").unwrap();
         let (taken, error) = forget(&control, "pi-host-x.service");
+        let marked = folder.join(MARK).exists();
         let _ = fs::remove_dir_all(&control);
         assert_eq!(
             (taken, error.is_some()),
             (1, true),
             "a file that can't be removed leaves the others taken, and is said"
+        );
+        // Taken with the mark, a setting left would never be tried again.
+        assert!(
+            marked,
+            "the mark stays while a setting does, so the next look tries again"
         );
     }
 
