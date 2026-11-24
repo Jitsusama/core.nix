@@ -74,13 +74,16 @@ pub struct Meeting<'a> {
 
 /// A meeting's errors: each side's as written down, and as heard alone,
 /// and Joel's side's as it would be written with none of his words taken
-/// for the others' echo. A meeting's sides hold no echo (meetings.nix), so
-/// where that's lower, the echo filter left out words he said.
+/// for the others' echo, and with only his words cut by time and
+/// loudness, none of his lines left out whole for repeating theirs. A
+/// clean meeting's sides hold no echo (meetings.nix), so where either is
+/// lower there, the echo filter left out words he said.
 #[derive(Default)]
 struct Scored {
     written: [Errors; 2],
     alone: [Errors; 2],
     unfiltered: Errors,
+    cut_by_word: Errors,
 }
 
 /// A take heard as a line, with its words timed from the start of its
@@ -233,12 +236,18 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
             .flat_map(|line| words(&line.text))
             .collect();
         scored.unfiltered = Errors::count(&spoken(Side::Mine), &heard);
+        let cut_by_word: Vec<String> = joels(&cut)
+            .iter()
+            .flat_map(|line| words(&line.text))
+            .collect();
+        scored.cut_by_word = Errors::count(&spoken(Side::Mine), &cut_by_word);
         println!("{}", report(name, &scored));
         for i in 0..2 {
             all.written[i] += scored.written[i];
             all.alone[i] += scored.alone[i];
         }
         all.unfiltered += scored.unfiltered;
+        all.cut_by_word += scored.cut_by_word;
     }
     println!("{}", report("all", &all));
     println!("{}", all_times.describe("all"));
@@ -361,6 +370,13 @@ fn report(name: &str, scored: &Scored) -> String {
         "{name} with none of Joel's words taken for an echo: Joel's side {} ({})",
         rate(&scored.unfiltered),
         kinds(&scored.unfiltered),
+    );
+    out.push('\n');
+    let _ = write!(
+        out,
+        "{name} with only Joel's words cut, no line of his left out whole: Joel's side {} ({})",
+        rate(&scored.cut_by_word),
+        kinds(&scored.cut_by_word),
     );
     out
 }
