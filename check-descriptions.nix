@@ -2001,8 +2001,9 @@
   '';
   local-sites-refuses-renamed-look-acts = ''
     local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
-    in place or by a later entry keyed by a list of one, naming only the act's old and new word
-    though another word is renamed beside it, and takes core's own words
+    in place or by a later entry keyed by a list of one set words.json writes as the id, naming
+    only the act's old and new word though another word is renamed beside it, and takes core's
+    own words
   '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,
@@ -4132,7 +4133,8 @@
     scripts run in Node: over looks either side of each rule and of every kind and state, which it
     reads, which wait, what each offers and what follows each, and when it lapses as Looks.js and
     Now.qml's lookOffers and followsOf give them, what the second form leads with (its parts
-    ended by a stop, a bang, an ellipsis or a quote, empty, padded or missing) and its act as
+    ended by each stop or none and each closing mark, none or two, holding a stop inside, empty,
+    padded or missing) and its act as
     LookForm.js gives them, and what it links as Now.qml's drawer names its kinds, each kind at a
     web address; the launcher's
     act names as Now.qml and core's joined words give them, the last of an id's winning; and the

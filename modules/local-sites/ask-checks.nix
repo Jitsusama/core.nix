@@ -59,8 +59,9 @@ in
 # They evaluate the graphical machine, whose launcher has the words.
 // onLinux {
   # The home module refuses a machine whose launcher renames one of its acts
-  # on a look, in place or by an entry after core's (its id a list of one,
-  # as the shell's Words.qml keys it all the same), naming only the act's
+  # on a look, in place or by an entry after core's (its id a list of one
+  # set words.json writes as the id, as the shell's Words.qml keys it all
+  # the same), naming only the act's
   # old and new word, and takes core's own words. Each case's machine is
   # evaluated once, since an evaluation is most of what this costs.
   local-sites-refuses-renamed-look-acts =
@@ -97,7 +98,9 @@ in
       appended = coreWords // {
         things = coreWords.things ++ [
           {
-            id = [ clear ];
+            # Written to words.json as the id itself, as toJSON writes a set
+            # with an outPath.
+            id = [ { outPath = clear; } ];
             name = "Dismiss";
           }
           {
@@ -114,7 +117,7 @@ in
       lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry keyed by a list of one, refuses core's own words, or doesn't name only the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry keyed by a list of one set words.json writes as the id, refuses core's own words, or doesn't name only the act's old and new word."
       (
         refusals.core == null
         && says "inPlace" "acts on a look (${clear} from Clear It to Drop It),"

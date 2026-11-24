@@ -157,6 +157,10 @@ const LOOK = {
   },
 };
 
+/** The stops and closing marks a part's end is tried with, and none of either. */
+const TRIED_STOPS = ["", ".", "!", "?", "\u2026", ",", ":", ";"];
+const TRIED_CLOSERS = ["", '"', "'", "\u2019", "\u201d", ")", "]", '")'];
+
 /** Each kind and state a look may say, and one of each For You doesn't know. */
 const KINDS = ["pr", "page", "file", "diff", "terminal", "folder"];
 const STATES = ["waiting", "opened", "cleared", "resolved", "expired", "quiet"];
@@ -184,6 +188,22 @@ const LOOKS: Record<string, object> = {
   "one mattering only spaces": { ...LOOK, matters: "  " },
   "one with no word of why it matters": { ...LOOK, matters: undefined },
   "one padded with spaces": { ...LOOK, happened: " Ready! ", matters: " It's said. " },
+  "one with a stop inside each part, none ending it": {
+    ...LOOK,
+    happened: "Merged v1.2 of the kit",
+    matters: "Done. Then more",
+  },
+  // Each stop ENDED takes or doesn't, then each mark it lets close one,
+  // none or two, so its anchor, its set of stops and of closers and how
+  // many it takes all show.
+  ...Object.fromEntries(
+    TRIED_STOPS.flatMap((stop) =>
+      TRIED_CLOSERS.map((closer) => [
+        `one ending ${JSON.stringify(`${stop}${closer}`)}`,
+        { ...LOOK, happened: `Done${stop}${closer}`, matters: `It said${stop}${closer}` },
+      ]),
+    ),
+  ),
   ...Object.fromEntries(
     KINDS.map((kind) => [
       `one of kind ${kind}`,
@@ -195,6 +215,7 @@ const LOOKS: Record<string, object> = {
   ...Object.fromEntries(
     Object.keys(TARGETS).map((kind) => [`one of kind ${kind} at a web address`, { ...LOOK, kind }]),
   ),
+  "one at a plain http address": { ...LOOK, target: "http://example.com/review" },
   ...Object.fromEntries(STATES.map((state) => [`one in state ${state}`, { ...LOOK, state }])),
   "five plain choices": {
     ...LOOK,

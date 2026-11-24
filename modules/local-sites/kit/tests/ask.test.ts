@@ -253,6 +253,11 @@ it("a look about a session or a file links nowhere, even at a web address", () =
   }
 });
 
+it("a plain http address links as https does", () => {
+  const plain = { ...first, kind: "page", target: "http://example.com/" };
+  assert.equal(asked(plain, NOW)?.opens, "http://example.com/");
+});
+
 it("a link opens the address as the browser parsed it", () => {
   const spaced = { ...first, target: "HTTPS://Example.com/a b" };
   assert.equal(asked(spaced, NOW)?.opens, "https://example.com/a%20b");
@@ -342,7 +347,10 @@ it("a page's timer waits until a look lapses, but never past a browser timer's l
   const far = asked({ ...second, at: undefined, expiresAt: NOW + month }, NOW);
   assert.ok(far !== null);
   assert.equal(far.lapses, NOW + month);
-  assert.equal(waitFor(far, NOW), LONGEST_WAIT, "a month's wait would fire at once");
+  // A browser's timer waits at most 2^31 - 1 ms, written here as the limit
+  // itself, so the kit's constant can't drift with what it's held to.
+  assert.equal(LONGEST_WAIT, 2_147_483_647);
+  assert.equal(waitFor(far, NOW), 2_147_483_647, "a month's wait would fire at once");
   const never = asked({ ...second, at: undefined }, NOW);
   assert.ok(never !== null);
   assert.equal(waitFor(never, NOW), null);
