@@ -549,10 +549,12 @@ import {
         purpose: windowed || c.title === UNNAMED ? null : c.title || null,
         quest: c.quest || null,
         doing: receptor ? sensedWords(c.counts || {}) : c.doing || null,
-        wants: c.asks || null,
+        // A newer node's field of another kind reads as none, rather
+        // than stopping the drawer that says it.
+        wants: typeof c.asks === "string" ? c.asks : null,
         // The whole text it asked in, where its session says more than
         // the one line `asks` holds.
-        asked: c.asked || null,
+        asked: typeof c.asked === "string" ? c.asked : null,
         repo: c.repo || null,
         usage: c.usage || {},
         standing: receptor ? (c.state === "reading" ? "moving" : "quiet") : STANDING_OF_CELL[c.standing] || "quiet",
@@ -3398,8 +3400,9 @@ import {
           : `<p class="led"><a class="inline"${a.act === "go" ? " data-go-to" : ""} href="${esc(a.href)}">${esc(a.words)}</a></p>`,
       )
       .join("");
-    // What it asks, whole, said before anything else, since it is what
-    // he came for; its Doing then says only that it waits on him.
+    // What it asks, whole, said straight after Go to It, since reaching
+    // it is what he came for and a long question must not push the way
+    // there below the fold; its Doing then says only that it waits on him.
     const asked = s.standing === "asks" ? askedOf(s) : [];
     const asks = asked.length
       ? `<section class="asked" aria-labelledby="asked-title"><h3 id="asked-title">It Asks You</h3>${asked.map((lines) => `<p>${lines.map(esc).join("<br>")}</p>`).join("")}</section>`
@@ -3409,8 +3412,8 @@ import {
       backButton(netOf(s) ? netOf(s).name : "Now") +
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
-      asks +
       (asks ? acts : "") +
+      asks +
       glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(doing)}</span></span>`, cellHealth(s)) +
       (asks ? "" : acts) +
       factList(facts) +

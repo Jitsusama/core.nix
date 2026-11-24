@@ -70,10 +70,10 @@ CELLS = 8
 # a cell is named, how the map's motion is timed, where everything stands,
 # what the ground layer's canvas touches, a reading's shape, what new work
 # hands the Launcher and what a cell's drawer offers were read in modules of
-# their own; about 668 KB since the
-# builders, the legend's moving samples and new work's line, and since no
-# comment is sent, view.js's and the styles' included, with a little room
-# above; new work's line and its hidden controls draw about 20 elements of the
+# their own; about 668 KB since the builders, the legend's moving samples and
+# new work's line, and since no comment is sent, view.js's and the styles'
+# included, a little more with the drawer's acts and its whole question, and
+# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
 # 611.
 BUDGET = Budget(files=33, kilobytes=677, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
@@ -883,6 +883,17 @@ FIRST_ACT = """(() => {
   const act = document.querySelector("#panel-body a, #panel-body button:not(.back)");
   return [act?.textContent, act?.getAttribute("href")];
 })()"""
+# Whether the question comes after Go to It, and each of its paragraphs' line
+# breaks, which an inner text read whitespace-folded would not show.
+ASKED_SHAPE = """(() => {
+  const body = document.querySelector("#panel-body");
+  const go = body.querySelector("a[data-go-to]");
+  const asked = body.querySelector(".asked");
+  const after = !!go && !!asked
+    && !!(go.compareDocumentPosition(asked) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const paragraphs = [...body.querySelectorAll(".asked p")];
+  return [after, paragraphs.map((p) => p.querySelectorAll("br").length)];
+})()"""
 
 
 def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
@@ -899,6 +910,9 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     )
     first = page.evaluate(FIRST_ACT)
     assert first == ["Go to It", GONE_TO], f"the drawer's first act was {first}"
+    shape = page.evaluate(ASKED_SHAPE)
+    breaks = [paragraph.count("\n") for paragraph in ASKED_WHOLE]
+    assert shape == [True, breaks], f"after Go to It, and its breaks, were {shape}"
     # g goes there as the link does, and t still talks rather than goes.
     page.evaluate(TALK_HELD)
     page.locator("#map-view").focus()

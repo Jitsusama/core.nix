@@ -1464,9 +1464,11 @@ body {
   font: italic 400 var(--step-small) / 1.5 var(--serif);
 }
 
+/* Its lines keep the indentation a nested list or code is said in. */
 .asked p {
   margin: 0;
   color: var(--strong);
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 

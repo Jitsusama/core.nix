@@ -82,23 +82,28 @@ export interface Asking {
   readonly asked?: string | null | undefined;
 }
 
-// A blank line, which parts one paragraph from the next.
-const PARAGRAPHS = /\n[^\S\n]*\n\s*/u;
+// One or more blank lines, which part one paragraph from the next; the
+// next paragraph's own indentation is kept.
+const PARAGRAPHS = /\n(?:[^\S\n]*\n)+/u;
 
 /**
  * What the cell asks, whole: its paragraphs in order, each its lines, so a
- * list it asked in reads as the list it is. The whole text where its session
- * says it, else its short line, and none where it asks nothing.
+ * list it asked in reads as the list it is, and a line's indentation, for
+ * a nested list or code, is kept. The whole text where its session says it,
+ * else its short line, and none where it asks nothing.
  */
 export const askedOf = (s: Asking): readonly (readonly string[])[] => {
-  const whole = (s.asked ?? "").replace(/\r\n?/gu, "\n").trim();
-  const said = whole === "" ? (s.wants ?? "").trim() : whole;
+  const whole = typeof s.asked === "string" ? s.asked.replace(/\r\n?/gu, "\n") : "";
+  const wants = typeof s.wants === "string" ? s.wants : "";
+  // Only blank lines are cut from either end, so the first line's
+  // indentation stands.
+  const said = (whole.trim() === "" ? wants : whole).replace(/^(?:[^\S\n]*\n)+|\s+$/gu, "");
   return said
     .split(PARAGRAPHS)
     .map((paragraph) =>
       paragraph
         .split("\n")
-        .map((line) => line.trim())
+        .map((line) => line.trimEnd())
         .filter((line) => line !== ""),
     )
     .filter((lines) => lines.length > 0);

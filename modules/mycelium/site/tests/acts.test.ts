@@ -55,7 +55,9 @@ it("offers no way to a cell whose address no link may carry", () => {
 
 it("offers a receptor only what it is for, since there is no window to go to", () => {
   assert.deepEqual(
-    cellActs({ ...session, address: "slack@kestrel", receptor: true }).map((each) => each.act),
+    // An address a session's link would carry, so only `receptor` withholds
+    // Go to It and talking.
+    cellActs({ ...session, receptor: true }).map((each) => each.act),
     ["forage"],
     "a receptor should offer neither Go to It nor talking",
   );
@@ -66,21 +68,34 @@ it("offers a receptor only what it is for, since there is no window to go to", (
   );
 });
 
-it("says what a cell asks whole, its paragraphs and its list's lines kept", () => {
+it("says what a cell asks whole, its paragraphs, lines and indentation kept", () => {
   const asked =
-    "The signing key is ready to deploy, and the house reports sign with it.\r\n\r\n" +
-    "Three things are left:\n1. The Mac's copy job.\n  2. The signing pause: yes, no or partly?\n\n\n";
+    "\n  The signing key is ready to deploy, and the house reports sign with it.\r\n\r\n" +
+    "Three things are left:\r1. The Mac's copy job.\n  2. The signing pause: yes, no or partly?  \n\n\n";
   assert.deepEqual(
     askedOf({ wants: "2. The signing pause: yes, no or partly?", asked }),
     [
-      ["The signing key is ready to deploy, and the house reports sign with it."],
+      ["  The signing key is ready to deploy, and the house reports sign with it."],
       [
         "Three things are left:",
         "1. The Mac's copy job.",
-        "2. The signing pause: yes, no or partly?",
+        "  2. The signing pause: yes, no or partly?",
       ],
     ],
-    "the whole question should be said, never only its last line",
+    "the whole question should be said, never only its last line, its old Mac line ends read as breaks",
+  );
+});
+
+it("reads a whole text or short line of another kind as none", () => {
+  assert.deepEqual(
+    askedOf({ wants: "Which thread?", asked: 7 as unknown as string }),
+    [["Which thread?"]],
+    "a whole text that isn't words should fall back to the short line",
+  );
+  assert.deepEqual(
+    askedOf({ wants: ["Which"] as unknown as string }),
+    [],
+    "a short line that isn't words should say nothing rather than throw",
   );
 });
 
