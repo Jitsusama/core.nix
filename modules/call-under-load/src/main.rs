@@ -200,6 +200,12 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     let Some(meeting) = camera::due(&calendar, now, &starts) else {
         return Ok(());
     };
+    if let Some(other) = camera::near(&calendar, now) {
+        return said(format!(
+            "the camera waits: {} is on or under a quarter hour off",
+            other.title
+        ));
+    }
     // Asked up to three times, since one slow answer under the heaviest
     // load would leave the minute unchecked.
     let mut asked = gate::a_call();

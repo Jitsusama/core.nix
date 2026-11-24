@@ -72,8 +72,10 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
-  # The camera before each of Joel's meetings: three to six minutes out, with
-  # no call on, a loopback is read for five frames, none kept, and any other
+  # The camera before each of Joel's meetings: 18 to 20 minutes out, with
+  # no call on and no meeting on or a quarter hour off, so he never sees
+  # his camera in use as he sets up, a loopback is read for five frames,
+  # none kept, and any other
   # camera only asked, so Meet always gets it; a camera giving no picture is
   # told to him then rather than seen by those he meets. The built-in's
   # first frame can take 40 s under memory pressure, so the read is given

@@ -3,8 +3,9 @@
 //! told to him before he joins rather than seen by those he meets.
 //!
 //! Each minute its timer runs `call-under-load camera`. When a meeting of
-//! his starts between three and six minutes from now, no call is on and
-//! that meeting wasn't checked yet, it takes the camera his programs take:
+//! his starts between 18 and 20 minutes from now, no call is on, no
+//! meeting is on or less than 15 minutes off while it reads, and that
+//! meeting wasn't checked yet, it takes the camera his programs take:
 //! one plugged in that he can open, as Joel chose for the camera program,
 //! and otherwise the machine's own. Only a loopback, which hands its frames
 //! to every reader at once, is read: for five frames, each sent to
@@ -29,12 +30,19 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const MIN_MS: u64 = 60_000;
-/// The latest a meeting may start for its check to begin: six minutes out,
-/// so two minutes of waiting end with four left to choose another camera.
-const LEAD_MS: u64 = 6 * MIN_MS;
-/// The soonest: one starting sooner has no time left for a check to help,
-/// and Meet may be opening the camera already.
-const SOONEST_MS: u64 = 3 * MIN_MS;
+/// The latest a meeting may start for its check to begin: 20 minutes out,
+/// giving the window three runs of the timer.
+const LEAD_MS: u64 = 20 * MIN_MS;
+/// The soonest: a read begun later could still be lighting the camera
+/// inside the quarter hour before the meeting, when Joel may be setting
+/// up and a camera in use is one he sees and didn't start (24 Nov 09:51).
+const SOONEST_MS: u64 = 18 * MIN_MS;
+/// How long before a meeting, and through it, no camera is read: Joel's
+/// own, from the hold of 24 Nov after he saw his camera in use.
+const UNREAD_MS: u64 = 15 * MIN_MS;
+/// The longest a check holds a camera, from its first ask of systemd to
+/// its last, rounded up: both asks and the wait, with room to spare.
+const READ_MS: u64 = 3 * MIN_MS;
 /// How long a loopback is given to send its frames.
 pub const WAIT: Duration = Duration::from_secs(120);
 /// How long any other camera is given to answer.
@@ -203,6 +211,15 @@ pub fn judged(
         }
         gave => gave,
     }
+}
+
+/// Whether a check begun at `now` could hold a camera inside the quarter
+/// hour before any meeting or during one, as one between two meetings
+/// close together would, so no check begins.
+pub fn near(calendar: &Calendar, now: u64) -> Option<&Meeting> {
+    calendar.meetings.iter().find(|meeting| {
+        meeting.start.saturating_sub(UNREAD_MS) < now + READ_MS && now < meeting.end
+    })
 }
 
 /// The soonest meeting due its check at `now`, of those not in `checked`.
@@ -465,48 +482,82 @@ mod tests {
     }
 
     #[test]
-    fn the_soonest_meeting_is_checked_once_between_three_and_six_minutes_before() {
+    fn the_soonest_meeting_is_checked_once_between_18_and_20_minutes_before() {
         let now = 100 * MIN_MS;
         let calendar = at(&[
-            now + 7 * MIN_MS,
-            now + 5 * MIN_MS,
-            now + 3 * MIN_MS - 1,
-            now + 4 * MIN_MS,
+            now + 21 * MIN_MS,
+            now + 19 * MIN_MS + 30_000,
+            now + 18 * MIN_MS - 1,
+            now + 19 * MIN_MS,
         ]);
         let start = |m: Option<&Meeting>| m.map(|m| m.start);
         assert_eq!(
             start(due(&calendar, now, &[])),
-            Some(now + 4 * MIN_MS),
+            Some(now + 19 * MIN_MS),
             "the soonest meeting in the window wasn't the one due"
         );
         assert_eq!(
-            start(due(&calendar, now, &[now + 4 * MIN_MS])),
-            Some(now + 5 * MIN_MS),
+            start(due(&calendar, now, &[now + 19 * MIN_MS])),
+            Some(now + 19 * MIN_MS + 30_000),
             "a meeting already checked was checked again"
         );
         assert_eq!(
             start(due(
                 &calendar,
                 now + MIN_MS,
-                &[now + 4 * MIN_MS, now + 5 * MIN_MS]
+                &[now + 19 * MIN_MS, now + 19 * MIN_MS + 30_000]
             )),
-            Some(now + 7 * MIN_MS),
-            "a meeting six minutes out wasn't due"
+            Some(now + 21 * MIN_MS),
+            "a meeting 20 minutes out wasn't due"
         );
         assert_eq!(
-            start(due(&at(&[now + 3 * MIN_MS]), now, &[])),
-            Some(now + 3 * MIN_MS),
-            "a meeting three minutes out wasn't due"
+            start(due(&at(&[now + 18 * MIN_MS]), now, &[])),
+            Some(now + 18 * MIN_MS),
+            "a meeting 18 minutes out wasn't due"
         );
         assert_eq!(
-            start(due(&at(&[now + 3 * MIN_MS - 1]), now, &[])),
+            start(due(&at(&[now + 18 * MIN_MS - 1]), now, &[])),
             None,
-            "a meeting under three minutes out was checked"
+            "a meeting under 18 minutes out was checked, its read running into the quarter hour"
         );
         assert_eq!(
-            start(due(&at(&[now + 6 * MIN_MS + 1]), now, &[])),
+            start(due(&at(&[now + 20 * MIN_MS + 1]), now, &[])),
             None,
-            "a meeting over six minutes out was checked"
+            "a meeting over 20 minutes out was checked"
+        );
+    }
+
+    #[test]
+    fn no_check_reads_a_camera_during_a_meeting_or_its_quarter_hour_before() {
+        let now = 100 * MIN_MS;
+        let start = |m: Option<&Meeting>| m.map(|m| m.start);
+        // The one due: its quarter hour begins after the read has ended.
+        let due_alone = at(&[now + 18 * MIN_MS]);
+        assert_eq!(
+            start(near(&due_alone, now)),
+            None,
+            "the meeting due its check kept its own check from running"
+        );
+        // Another meeting on now, ending ten minutes before the one due.
+        let on = at(&[now - 20 * MIN_MS, now + 20 * MIN_MS]);
+        assert_eq!(
+            start(near(&on, now)),
+            Some(now - 20 * MIN_MS),
+            "a camera was read during a meeting"
+        );
+        // Another starting in 17 minutes, whose quarter hour the read's
+        // three minutes would reach.
+        let soon = at(&[now + 17 * MIN_MS + 59_999, now + 19 * MIN_MS]);
+        assert_eq!(
+            start(near(&soon, now)),
+            Some(now + 17 * MIN_MS + 59_999),
+            "a read ran into another meeting's quarter hour before it"
+        );
+        let ended = at(&[now - 30 * MIN_MS]);
+        assert_eq!(
+            start(near(&ended, now)),
+            None,
+            "a meeting already over kept the camera from its check"
         );
     }
 
@@ -705,8 +756,8 @@ mod tests {
     #[test]
     fn a_fault_is_told_once_the_window_has_no_minute_left_or_at_once_if_it_s_final() {
         let start = 100 * MIN_MS;
-        let early = start - 5 * MIN_MS;
-        let last = start - 5 * MIN_MS + 1;
+        let early = start - 20 * MIN_MS;
+        let last = start - 20 * MIN_MS + 1;
         assert_eq!(
             settled(Ok(()), start, early),
             Outcome::Fine,

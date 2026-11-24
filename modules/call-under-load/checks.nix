@@ -32,7 +32,8 @@ onLinux {
   # can't be told under three a side or from a journal not read whole,
   # the hour is written in cadence's shape, and Joel's own calls' sending
   # waits are summed into a line the hour reads and no test run is taken for,
-  # and the camera is checked once, three to six minutes before each meeting,
+  # and the camera is checked once, 18 to 20 minutes before each meeting and
+  # never during one or the quarter hour before,
   # one plugged in he can open taken over the machine's, only a loopback
   # read and its frames sent to /dev/null, the notice's words plain, and a
   # program given its time and no more.
