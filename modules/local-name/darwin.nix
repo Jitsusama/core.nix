@@ -10,11 +10,14 @@
 # lasts can't have it and macOS trading the name (keep.sh says why). A Mac
 # that declares no local name is left as it is.
 #
-# Nothing here advertises a service to make name.local answer. macOS puts
+# Nothing here advertises a service to make name.local answer, so it
+# answers from other machines only while something else does. macOS puts
 # its address records on every interface, loopback aliases too, only while
-# some service names the host as its target. A job that did so from 23
-# November left a Mac with about 370 loopback aliases probing them, and when
-# its cable came out, its name service spun a core on their conflicts.
+# some service names the host as its target. A job here did so from 23
+# November: on a Mac with about 370 loopback aliases, each became a record
+# its name service probed, and when its cable came out, the service spun a
+# core on their conflicts. Any service advertised for the host, Remote
+# Login's included, brings the records back.
 {
   config,
   lib,

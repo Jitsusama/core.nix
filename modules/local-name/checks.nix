@@ -23,18 +23,24 @@ let
     networking.localHostName = "its-own-name";
   };
   job = named.local-name.serviceConfig or { };
+  # A job running dns-sd, which advertising for the host would take: the
+  # module's header says why none may.
+  advertises = lib.any (
+    daemon: lib.elem "/usr/bin/dns-sd" (daemon.serviceConfig.ProgramArguments or [ ])
+  ) (lib.attrValues named);
 in
 {
   # A Mac with a local name runs, as root, keep.sh with that name and its
   # stamp, from its start, whenever macOS writes its network settings and
   # once a minute, under bash, finding scutil only in macOS's own folders
   # and saying what it does in its log; a Mac with a host name but no local
-  # name runs nothing.
+  # name runs nothing; and no job runs dns-sd to advertise for the host.
   local-name-is-kept-by-a-job =
     holds "local-name-is-kept-by-a-job"
-      "A Mac's local name isn't kept by a root job running keep.sh under bash with its local name from its start, watching its network settings, finding its tools only in macOS's own folders and saying what it does in its log, or a Mac with no local name runs one."
+      "A Mac's local name isn't kept by a root job running keep.sh under bash with its local name from its start, watching its network settings, finding its tools only in macOS's own folders and saying what it does in its log, or a Mac with no local name runs one, or a job runs dns-sd to advertise for the host."
       (
-        lib.hasSuffix "/bin/bash" (lib.head (job.ProgramArguments or [ "" ]))
+        !advertises
+        && lib.hasSuffix "/bin/bash" (lib.head (job.ProgramArguments or [ "" ]))
         &&
           lib.drop 1 (job.ProgramArguments or [ ]) == [
             "${./keep.sh}"
