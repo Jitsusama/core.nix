@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import shlex
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -225,22 +226,12 @@ def test_a_report_forged_without_the_key_holds_nothing(rig: Rig) -> None:
         timeout=QUIETING,
     )
     holds, refused = rig.said("the house's ceiling holds"), rig.said(FORGED)
-    # Five a second, the counter climbing 3 Mbit/s on the forger's own
-    # clock from nought, as a reporter just started sends, so the shaper
-    # would take them in step were the mac not checked.
-    forger = f"""
-start=$(date +%s%3N)
-for i in $(seq 750); do
-  now=$(date +%s%3N)
-  ms=$((now - start))
-  text="$((ms * {SENDS // 8})) $ms $now"
-  mac=$(printf %s "$text" | openssl dgst -sha256 -hmac "{WRONG_KEY}" -r | cut -c1-32)
-  printf %s "$text $mac" | socat -u - UDP:192.168.1.1:47110,bind={FORGED_FROM}
-  sleep 0.2
-done
-"""
-    rig.house.succeed(f"cat > /root/forger <<'EOF'\n{forger}EOF")
-    rig.house.succeed(f"systemd-run --unit=forger --setenv=PATH={BIN} {BIN}/bash /root/forger")
+    # The counter climbing 3 Mbit/s, SENDS // 8 bytes a millisecond, under
+    # another key (house-forger.sh).
+    rig.house.succeed(
+        f"systemd-run --unit=forger {BIN}/house-forger"
+        f" {shlex.quote(WRONG_KEY)} {SENDS // 8} {FORGED_FROM} 192.168.1.1"
+    )
     try:
         rig.client.wait_until_succeeds(
             f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "{FORGED}")" -gt {refused}',
