@@ -352,7 +352,7 @@ ShellRoot {
         stage = "asked";
         Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", way: "boot" },
             { id: "s-stale", cwd: "/tmp", way: "boot" },
-            { id: "s-napped", cwd: "/tmp", way: "boot" },
+            { id: "s-napped", cwd: "/tmp", way: "boot", orchestratedBy: "NAPLED" },
             { id: "s-carried", cwd: "/tmp", way: "carried" },
             { id: "s-drifted", cwd: "/tmp", way: "boot" }, waitingEntry("s-floated")],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
@@ -409,6 +409,13 @@ ShellRoot {
         Expect.expect("its place kept for its window as it wakes", place?.slept === true
             && place?.asleep === true && typeof place?.workspace === "number",
             JSON.stringify(Sessions.keptPlaces));
+        // Led by an orchestrator, it wakes where it was kept, never sent to
+        // its orchestrator's workspace, nor one made and named for it, as
+        // Reopen Them All puts back the rest of what it kept.
+        Expect.expect("one led by an orchestrator wakes where it was kept, naming nothing",
+            !Niri.acts.some(act => act.SetWorkspaceName?.name === "NAPLED")
+            && Niri.workspaces[place?.workspace]?.name !== "NAPLED",
+            `${JSON.stringify(place)} ${JSON.stringify(Niri.acts)}`);
         // Kept nowhere as the boot ended, it had no window, so it comes back
         // held without one, and the walk goes on without waiting for one.
         // Its folder and its carry-on go as the shell's own `$1` and `$0`,
