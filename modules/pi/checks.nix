@@ -21,9 +21,11 @@ let
   };
 in
 # The hosts' own checks change with host.nix alone, the harness's settings
-# check with harness-settings.nix alone, and the timers' checks with
-# timers.nix alone, so they sit beside them.
+# check with harness-settings.nix alone, the timers' checks with
+# timers.nix alone, and the log rewrite's with compressed-logs.nix alone,
+# so they sit beside them.
 import ./host-checks.nix args
+// import ./compressed-logs-checks.nix args
 // import ./harness-settings-checks.nix args
 // import ./timer-checks.nix args
 // {
