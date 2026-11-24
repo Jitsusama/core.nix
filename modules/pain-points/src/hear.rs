@@ -374,7 +374,13 @@ pub fn hear(
         }
     }
 
-    hear_logs(ears, &mut following, &mut kept, (&ledgers, &cells), since);
+    hear_logs(
+        ears,
+        &mut following,
+        &mut kept,
+        (&ledgers, &cells, &routes),
+        since,
+    );
     keep_stalls(ears, &following, &mut kept, since);
 
     // What it heard is kept before anything is sent, and again after each
@@ -443,7 +449,7 @@ fn hear_logs(
     ears: &Ears,
     following: &mut BTreeMap<String, Following>,
     kept: &mut Vec<Heard>,
-    (ledgers, cells): (&[String], &BTreeMap<String, Cell>),
+    (ledgers, cells, routes): (&[String], &BTreeMap<String, Cell>, &Routes),
     since: i64,
 ) {
     let mut present = Vec::new();
@@ -485,6 +491,7 @@ fn hear_logs(
                 routed_at: None,
                 tries: 0,
                 taken_by: None,
+                answered_at: None,
                 closed_by: None,
                 closed_at: None,
                 thread: Vec::new(),
@@ -493,11 +500,14 @@ fn hear_logs(
             });
         }
         // An answer read while the node names no cell for the session
-        // waits in its reading for a run that does.
+        // waits in its reading for a run that does; one by a cell the
+        // routes refuse, as the void begun elsewhere, takes nothing up.
         if let Some(cell) = cells.get(&log.session)
             && let Some(at) = log.carried.answered.take()
+            && let Some(asked) = log.carried.asked.take()
+            && !routes.refuses(&cell.address)
         {
-            answered(kept, &log.session, at, &cell.address);
+            answered(kept, &log.session, (asked, at), &cell.address);
         }
     }
     following.retain(|name, _| present.contains(name));
@@ -509,13 +519,18 @@ fn hear_logs(
 /// replies to the question, as one did on 20 November after a restart cut
 /// its first turn short. A stall is no words of his to answer, the void
 /// has no cell to take anything, and a pain a carried-on log moved to
-/// another session waits for that one's answer.
-fn answered(kept: &mut [Heard], session: &str, at: i64, by: &str) {
+/// another session waits for that one's answer. Only the pains said from
+/// the message it answered, `asked`, are taken, so one a failed turn left
+/// open before isn't taken by an answer to something else.
+fn answered(kept: &mut [Heard], session: &str, (asked, at): (i64, i64), by: &str) {
     for h in kept
         .iter_mut()
-        .filter(|h| h.session == session && h.at < at && !h.void && !stalled::is(h))
+        .filter(|h| h.session == session && !h.void && !stalled::is(h))
     {
-        h.taken_by.get_or_insert_with(|| by.to_owned());
+        if (asked..at).contains(&h.at) && h.taken_by.is_none() {
+            h.taken_by = Some(by.to_owned());
+            h.answered_at = Some(at);
+        }
     }
 }
 

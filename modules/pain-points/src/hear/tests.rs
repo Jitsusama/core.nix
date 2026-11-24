@@ -6,6 +6,7 @@ use serde_json::json;
 use std::fs;
 use std::io::Write;
 
+mod answered;
 mod standing;
 mod troubles;
 
@@ -723,58 +724,10 @@ fn what_he_hits_most_leads_the_hour() {
     );
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
     assert_eq!(hour.worst_hits, 2, "{hour:?}");
-    assert_eq!(hour.taken, 0, "nothing in the log answered him: {hour:?}");
     assert!(
         hour.worst
             .as_deref()
             .is_some_and(|w| w.contains("slow to open")),
         "{hour:?}"
     );
-}
-
-/// The agent ending its turn at `stamp` as `stop`, saying it was done.
-fn ended(stamp: &str, stop: &str) -> String {
-    json!({"type": "message", "id": "s", "parentId": "r", "timestamp": stamp,
-           "message": {"role": "assistant", "stopReason": stop, "timestamp": 0,
-                       "content": [{"type": "text", "text": "Done: it opens again."}]}})
-    .to_string()
-}
-
-#[test]
-fn a_pain_its_session_answered_him_on_is_taken_by_that_cell() {
-    let place = Place::new("answered");
-    place.routes();
-    let mut live = vec![user(
-        "a",
-        "2026-11-16T19:10:00.000Z",
-        "no, that's broken again",
-    )];
-    live.extend(tool("bash"));
-    live.extend([
-        ended("2026-11-16T19:30:00.000Z", "stop"),
-        user("b", "2026-11-16T19:40:00.000Z", "wtf, the bar is wrong now"),
-    ]);
-    live.extend(tool("edit"));
-    live.push(ended("2026-11-16T19:50:00.000Z", "error"));
-    place.log("src", "s-live", Path::new("/home/j/src"), &live);
-    // A run whose node names no cell for the session keeps the answer for
-    // the run that does.
-    let unnamed = r#"{"Ok":{"Sessions":[{"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
-    hear(&place.ears(), unnamed, &mut |_, _| true).expect("a run with no cell for the session");
-    assert!(
-        place.heard().iter().all(|h| h.taken_by.is_none()),
-        "a pain was taken with no cell for its session"
-    );
-    let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
-    let heard = place.heard();
-    let taken: Vec<(&str, Option<&str>)> = heard
-        .iter()
-        .map(|h| (h.entry.as_str(), h.taken_by.as_deref()))
-        .collect();
-    assert_eq!(
-        taken,
-        vec![("a", Some("ABC123")), ("b", None)],
-        "the pain its cell answered is taken, the one a failed turn left isn't"
-    );
-    assert_eq!((hour.open, hour.taken), (1, 1), "{hour:?}");
 }
