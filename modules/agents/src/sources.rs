@@ -350,7 +350,7 @@ impl Inputs {
             // hand edit made meanwhile is ignored, then written over, as
             // the journal says.
             if self.unwritten.is_some() {
-                behind_ignored(path);
+                self.behind_ignored(path);
                 return;
             }
             if let Some(kept) = Arrangement::read(path) {
@@ -363,7 +363,7 @@ impl Inputs {
             // (keep_kept_places), so a hand edit made meanwhile is ignored,
             // as the journal says, then written over.
             if self.kept_places_unwritten.is_some() {
-                behind_ignored(path);
+                self.behind_ignored(path);
                 return;
             }
             if let Some(kept) = KeptPlaces::read(path) {
@@ -379,16 +379,17 @@ impl Inputs {
             });
         }
     }
-}
 
-/// Journals a change to a places file at `path` left unread, as memory is
-/// ahead of it while its write fails and is written over it at the next
-/// try, so a hand edit lost that way is seen.
-fn behind_ignored(path: &Path) {
-    eprintln!(
-        "agents: ignored a change to {}, as its write is behind and memory goes over it",
-        path.display()
-    );
+    /// Journals a change to a places file at `path` left unread, as memory
+    /// is ahead of it while its write fails and is written over it at the
+    /// next try, so a hand edit lost that way is seen, and holds which.
+    fn behind_ignored(&mut self, path: &Path) {
+        eprintln!(
+            "agents: ignored a change to {}, as its write is behind and memory goes over it",
+            path.display()
+        );
+        self.ignored = Some(path.to_path_buf());
+    }
 }
 
 #[cfg(test)]
@@ -590,6 +591,11 @@ mod tests {
             inputs.arrangement, ahead,
             "memory ahead of the file isn't thrown back to it, let-gos and all"
         );
+        assert_eq!(
+            inputs.ignored.as_deref(),
+            Some(paths.arrangement.as_path()),
+            "and the journal hears the change left unread"
+        );
         inputs.unwritten = None;
         inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
         assert_eq!(
@@ -626,6 +632,11 @@ mod tests {
         assert_eq!(
             inputs.kept_places, said,
             "memory ahead of the file isn't thrown back to it"
+        );
+        assert_eq!(
+            inputs.ignored.as_deref(),
+            Some(paths.kept_places.as_path()),
+            "and the journal hears the change left unread"
         );
         // Written by the next try, as the loop's case has it.
         inputs.keep_kept_places(&paths.kept_places);
@@ -677,6 +688,15 @@ mod tests {
             "windows moving put off no try of the kept places"
         );
         fs::remove_file(folder.join("agents")).expect("the way cleared");
+        inputs.keep_when_still(&mut still, &paths, woken + Duration::from_secs(9));
+        assert_eq!(
+            (
+                inputs.kept_places_unwritten.is_some(),
+                KeptPlaces::read(&paths.kept_places)
+            ),
+            (true, None),
+            "woken sooner, as by a source, it tries nothing until the 10 s are up"
+        );
         let tried = woken + ten;
         inputs.keep_when_still(&mut still, &paths, tried);
         assert_eq!(

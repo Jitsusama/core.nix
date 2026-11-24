@@ -1,8 +1,9 @@
 //! The arrangement's cases, apart from its code.
 //!
 //! Long because each is one rule of where a window goes back, when its
-//! place is let go, and when the daemon wakes to keep it, on the private
-//! parts it reads, which a split by rule would only make each share again.
+//! place is let go, and when the daemon wakes to keep it, built on this
+//! file's fixtures (held, desk_parts, untold, in_kitty, session), which a
+//! split by rule would have to share across files.
 
 use super::*;
 
@@ -848,6 +849,10 @@ fn places_are_kept_once_the_windows_are_still() {
         still.wait(start + Duration::from_secs(100)),
         Some(Duration::from_secs(1)),
         "a write tried again is waited for though the windows move, the sooner of two"
+    );
+    assert!(
+        !still.retried(start + Duration::from_secs(100)),
+        "a write tried again isn't due before its time"
     );
     assert!(
         !still.due(start + Duration::from_secs(101))
