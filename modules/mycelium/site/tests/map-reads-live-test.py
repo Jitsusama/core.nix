@@ -849,7 +849,7 @@ NAMED = (
 def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
-    talk = page.locator('#panel-body a[href^="mycelium:cell/"]')
+    talk = page.locator('#panel-body a[href^="mycelium:cell/"]:not([data-go-to])')
     for named in NAMED:
         page.evaluate("location.hash = ''")
         expect(talk, "the last cell's drawer stayed open").to_have_count(0)
@@ -865,6 +865,48 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) 
     expect(talk, "a stray % opened a cell").to_have_count(0)
     page.evaluate(f"location.hash = '#cell={NAMED[1]}'")
     expect(talk, "the map stopped answering after a stray %").to_have_count(1)
+
+
+# What node.json's TERN02 asks, whole, a paragraph a line, where its `asks`
+# holds only the last; and where its Go to It goes, on the machine it runs on.
+ASKED_WHOLE = (
+    (
+        "The waxed thread holds in salt but stiffens in the cold.\n"
+        "The plain runs smoother and wears sooner."
+    ),
+    "Which thread: the waxed or the plain?",
+)
+GONE_TO = f"mycelium:cell/{NEEDING[0]}@kestrel/go"
+# The drawer's first act, past its way back: the first link or button after it.
+FIRST_ACT = """(() => {
+  const act = document.querySelector("#panel-body a, #panel-body button:not(.back)");
+  return [act?.textContent, act?.getAttribute("href")];
+})()"""
+
+
+def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
+    body = page.locator("#panel-body")
+    expect(body.locator("#panel-title"), "the asking cell's drawer never opened").to_be_visible()
+    # Its inner text, where each line break the drawer keeps reads as one.
+    expect(body.locator(".asked p"), "its question wasn't said whole").to_have_text(
+        list(ASKED_WHOLE), use_inner_text=True
+    )
+    first = page.evaluate(FIRST_ACT)
+    assert first == ["Go to It", GONE_TO], f"the drawer's first act was {first}"
+    # g goes there as the link does, and t still talks rather than goes.
+    page.evaluate(TALK_HELD)
+    page.locator("#map-view").focus()
+    page.keyboard.press("g")
+    gone = page.evaluate("window.talkedTo")
+    assert gone == GONE_TO, f"g went to {gone}"
+    page.keyboard.press("t")
+    talked = page.evaluate("window.talkedTo")
+    assert talked == f"mycelium:cell/{NEEDING[0]}@kestrel", f"t talked to {talked}"
 
 
 # What new work's line hands the Launcher, said back once the line closes,

@@ -117,7 +117,7 @@ it("lists every act it can ask, so the drawing can say it does each", () => {
     pageKey(press("Escape"), standing({ nowOpen: true })),
     pageKey(press("n"), all),
     pageKey(press("N", { shiftKey: true }), all),
-    ...[".", "a", "t", "m", "0", "i", "o", "-"].map((key) => pageKey(press(key), standing())),
+    ...[".", "a", "g", "t", "m", "0", "i", "o", "-"].map((key) => pageKey(press(key), standing())),
   ];
   assert.deepEqual(new Set(page), new Set(EVERY_PAGE_ACT), "the page's list isn't what it asks");
 });
@@ -157,6 +157,7 @@ it("says what each of the page's letters asks, with nothing open", () => {
     s: "sprout",
     ".": "now",
     a: "needs-you",
+    g: "go",
     t: "talk",
     m: "machines",
     "0": "fit",

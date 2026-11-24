@@ -2358,8 +2358,9 @@
     its day only off the reading's and a lease's time left, and how each set of cells and each
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
-    what each spent today, most first, ten to a list and the rest counted and summed, and what
-    waits on each cell and what holds stand, oldest first, said as the page names each
+    what each spent today, most first, ten to a list and the rest counted and summed, what
+    waits on each cell and what holds stand, oldest first, said as the page names each, and a
+    cell drawer's acts in order, Go to It first, and its question whole, paragraphs and lines kept
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
@@ -2376,6 +2377,7 @@
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
     the branch going with the forage, the builders standing under the machines in rounded boxes,
     dashed while taking no builds, their words read unopened, opened by link and let go by m,
+    an asking cell's drawer saying its question whole and leading with Go to It, which g follows,
     a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
