@@ -21,7 +21,12 @@ use slack_people::Account;
 use super::{LOOK_BACK, MICROS, MILLIS, SLACK_RESUMES_LIVE, millis, seconds};
 
 /// The safe word, as its search asks for it.
-const PHRASE: &str = "pineapple";
+pub(super) const PHRASE: &str = "pineapple";
+
+/// Joel's tag, as its search asks for it.
+pub(super) fn tag(me: &str) -> String {
+    format!("<@{me}>")
+}
 
 /// What the reader acts with: where replies go, the words they say, and
 /// whether its stops, replies and resumes are only written down.
@@ -61,7 +66,7 @@ pub(super) fn round(
              leaves it, so it reads from ten minutes back"
         );
     }
-    let tag = format!("<@{me}>");
+    let tag = tag(me);
     // A sign-in refused or missing for the first isn't asked for again; an
     // answer that couldn't be read is, so the other may still be heard.
     let now = seconds();
