@@ -599,6 +599,17 @@ class Account:
                 if watch.say({"id": id_, "records": records}):
                     self.watches.append(watch)
                 return None
+            if asked.get("ask") == "list":
+                # One answer of the kind asked, as src/daemon.rs's listed() gives it, which the
+                # camera guard and call-under-load's calendar read ask for.
+                kind = asked.get("kind")
+                records = [record for record in self.said.values() if record["kind"] == kind]
+                return {
+                    "id": id_,
+                    "records": records,
+                    "read": self.heard,
+                    "sources": {"google": "signed-out" if SIGNED_OUT else "answering"},
+                }
             if asked.get("ask") == "unwatch":
                 self.watches = [
                     one for one in self.watches if not (one.shell is shell and one.id == id_)
