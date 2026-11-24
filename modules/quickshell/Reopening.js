@@ -212,10 +212,14 @@ function inUseFor(placed, now, screens) {
 
 // The connectors Reopen Them All's sessions were given (`places`, Places.js's placed, of the
 // places `kept`), as whereKept's `given`, so its windows put back after take the same twin
-// connectors as their sessions, whatever order they come back in: none for one gone.
-function givenBy(kept, places) {
-    return kept.map((at, index) => ({ at, output: places[index]?.away ? undefined
+// connectors as their sessions, whatever order they come back in: none for one gone. Those
+// windows put back took `before` stay only for a connector kept that no session's place was, so
+// they never contradict the sessions' and leave the other twin's windows none to go to.
+function givenBy(kept, places, before) {
+    const given = kept.map((at, index) => ({ at, output: places[index]?.away ? undefined
         : places[index]?.output })).filter(one => one.at);
+    const said = new Set(given.map(one => one.at.output));
+    return given.concat((before ?? []).filter(was => !said.has(was.at.output)));
 }
 
 // Reopen Them All's queue with `more` joined at its end, but for each one

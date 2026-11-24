@@ -1559,11 +1559,11 @@ Singleton {
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Its windows go back by the screen in use as its own sessions are
         // placed, and to the twin connectors they're given, not as a
-        // hand-over meanwhile places others, beside those any window back
-        // before them took.
+        // hand-over meanwhile places others, and what windows back before
+        // took where the sessions' say nothing.
         if (puttingBack !== null && walk && !("inUse" in puttingBack)) {
             puttingBack.inUse = inUse;
-            puttingBack.given = Reopening.givenBy(placeable, places).concat(puttingBack.given);
+            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given);
         }
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,

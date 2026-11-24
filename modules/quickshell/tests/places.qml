@@ -148,6 +148,19 @@ QtObject {
             [Places.whereKept(twins[0], twins, bothBack,
                 { given: sessionsGiven, inUse: "Virtual-3" }).output,
                 sessionsGiven.map(one => one.output)], ["Virtual-4", ["Virtual-3", "Virtual-4"]]);
+        // A window back before its sessions were placed gives way to them,
+        // so the other twin's windows still have a connector to go to; one
+        // whose twin's sessions said nothing keeps what it took.
+        const early = [{ at: twins[0], output: "Virtual-3" }];
+        const seeded = Reopening.givenBy(twinsLast,
+            Places.placed(twinsLast, bothBack, "Virtual-3", [twins, twins]), early);
+        expect("a window back before its sessions gives way to them",
+            [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
+                { given: seeded, inUse: "Virtual-3" }).output],
+            [["Virtual-3", "Virtual-4"], "Virtual-3"]);
+        expect("one whose twin's sessions said nothing keeps what it took",
+            Places.whereKept(twins[1], twins, bothBack,
+                { given: Reopening.givenBy([], [], early), inUse: "eDP-1" }).output, "Virtual-4");
         // A twin gone gives its windows no connector, so none is kept from
         // them, and one kept nowhere gives nothing.
         const oneTwin = [twins[0], twins[1], null];
