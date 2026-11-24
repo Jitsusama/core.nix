@@ -2965,11 +2965,15 @@ mod tests {
             way.judged_full(after + 0.1, full),
             "a download filling its hold past the cut's few seconds wasn't full"
         );
-        // The few seconds are pinned in seconds, not in the constant, from
-        // both sides: a window of 6 s or more would hold a call's download
-        // for a cut over one gone quiet, and one under 4 s would miss the
-        // seconds a cut download carries under its new rate (shaper holds
-        // round 2's F3 and F8, round 3's F2, F9 and F13).
+        // The constant is pinned in seconds, not by itself, from both
+        // sides: 6 s or more would stretch further the window a call's
+        // download is held for a cut over one gone quiet, and under 4 s
+        // would miss the seconds a cut download carries under its new rate
+        // (shaper holds round 2's F3 and F8, round 3's F2, F9 and F13).
+        // It bounds the constant, counted on the recorder's second: the
+        // room hears that second for up to CARRIED_MS after (src/live.rs),
+        // so it may see a cut a second or two longer, and as long again
+        // should the recorder stall (round 4's F5, F13 and F14).
         assert!(
             !way.judged_full(16.0, 0.0),
             "a cut 6 s ago over a download gone quiet was still full"

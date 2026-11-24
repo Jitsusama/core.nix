@@ -100,12 +100,12 @@ CALL_TINS = slice(TINS.index("video"), None)
 # temporarily unavailable". But the server starts the call once it hears every connect, so a
 # reply lost coming down leaves the call's own data to come first, and the error ends with
 # whatever errno an earlier call left: "No such file or directory" on 22 November, the server
-# having heard both connects. Either is a handshake lost, which the counters read as lost
-# coming down when the server heard more connects than replies reached the client, and going
-# up otherwise.
-# The error alone is any early read failure, so a handshake counts as lost only where the
-# counters show one missing: a connect the client sent that the server never heard, or one
-# it heard that no reply reached the client for.
+# having heard both connects. The error alone is any early read failure, so a handshake
+# counts as lost only where the counters show a datagram missing: a connect the client sent
+# that the server never heard, lost going up, or a reply the server sent that never reached
+# the client, lost coming down. A connect the server heard and never answered lost nothing on
+# the way; that is the server's, which counts heard and replied alike, unshaped.
+# (shaper holds round 4's F1, F8 and F15)
 UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
@@ -292,11 +292,11 @@ class Rig:
         """Hold calls at once from an app, both unless named, and give what iperf3 made of each.
 
         When a call's handshake goes unanswered and its loss is excused (lost going up, or
-        anywhere while the IFB dropped nothing in CALL_TINS), and no call failed any other way,
-        every call is made again, so the calls that count ran together, up to HANDSHAKES times
-        in all. A
-        call whose handshake is never answered still fails, saying how many times it was made
-        and what was heard.
+        anywhere while the IFB dropped nothing in CALL_TINS), or the server heard its connect
+        and left it unanswered, as iperf3 racing its own next listener may, and no call failed
+        any other way, every call is made again, so the calls that count ran together, up to
+        HANDSHAKES times in all. A call whose handshake is never answered still fails, saying
+        how many times it was made, why the making stopped and what was heard.
         """
         held = names or list(CALLS)
         for made in range(1, HANDSHAKES + 1):
@@ -367,9 +367,14 @@ class Rig:
         # A call unanswered with nothing lost on the way fails as iperf3's own error, the
         # counts beside it saying whether the server left a connect unanswered or the client
         # never took a reply that came.
-        for name in failed + unheeded:
+        for name in failed:
             if unanswered(results[name]):
                 results[name]["error"] += f" ({said[name]}, so no datagram was lost between them)"
+        for name in unheeded:
+            results[name]["error"] += (
+                f" (made {made} of {HANDSHAKES} times, {said[name]}, so no datagram was lost"
+                f" between them, {stopped(made, failed, over, down)})"
+            )
         return results
 
     def handshakes(self, machine: BaseMachine, way: str = "heard") -> dict[str, int]:
@@ -776,7 +781,7 @@ def over_the_bar(results: dict[str, Json], ran: list[str]) -> dict[str, int]:
 
 
 def stopped(made: int, failed: list[str], over: dict[str, int], down: list[str]) -> str:
-    """Give why a lost handshake's calls stopped, so a count short of the most reads right."""
+    """Give why an unanswered call's tries stopped, so a count short of the most reads right."""
     if made == HANDSHAKES:
         return "on the last"
     if failed:

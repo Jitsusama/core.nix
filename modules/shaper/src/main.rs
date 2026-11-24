@@ -915,13 +915,8 @@ impl Pinner {
     /// transaction.
     fn step(&mut self, primary: Option<&Shaped>, calling: bool, now: Instant) -> String {
         let uplink = primary.map(|s| (s.uplink.name.as_str(), s.network.as_str()));
-        if let Some((link, network)) = uplink
-            && let Some(first) = self.pinning.network(link, network)
-        {
-            eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
-        }
-        if uplink.is_none() {
-            self.pinning.no_primary();
+        if let Some((first, why)) = self.pinning.primary(uplink) {
+            eprintln!("{}", pin::let_go(first, why));
         }
         let unnamed = uplink.is_some_and(|(_, network)| pin::unnamed(network));
         self.unnamed_since = unnamed.then(|| self.unnamed_since.unwrap_or(now));
