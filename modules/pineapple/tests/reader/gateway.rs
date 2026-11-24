@@ -432,6 +432,25 @@ struct Came {
     wrote_live: bool,
     /// Its rows saying what a search read on past was never read.
     missed: Value,
+    /// Each stop's record it kept, by its file's name.
+    stops: Vec<Value>,
+}
+
+/// Each stop's record kept in `folder`, by its file's name.
+fn kept_stops(folder: &Path) -> Vec<Value> {
+    let mut named: Vec<_> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|it| it == "json"))
+        .collect();
+    named.sort();
+    named
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .filter_map(|record| serde_json::from_str(&record).ok())
+        .collect()
 }
 
 fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
@@ -520,6 +539,7 @@ fn hearing_in(answer: fn(&str, &Value, u64) -> String, until: &Until, before: fn
         journal: journal(&home),
         wrote_live: named.exists(),
         missed: read("missed.json"),
+        stops: kept_stops(&own.join("stops")),
     };
     std::fs::remove_dir_all(&home).expect("the case's home goes");
     came

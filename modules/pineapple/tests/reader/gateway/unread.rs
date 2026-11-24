@@ -6,7 +6,7 @@
 //! that keeps cutting is asked again only so often, and its row is what
 //! lets a gap be read on.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use serde_json::{Value, json};
 
@@ -295,8 +295,9 @@ fn a_stop_in_an_answer_still_cut_after_asking_again_is_kept() {
         came.journal
             .lines()
             .filter(|line| line.contains("in an answer no second ask agreed with:"))
-            .all(|line| line.trim_end().ends_with("agreed with:")),
-        "each could be typed, so the stop links nowhere its text names: {}",
+            .all(|line| !line.contains("https://") && line.contains(":unconfirmed:")),
+        "each could be typed, so the stop links nowhere its text names, and is named by the \
+         key it's kept under: {}",
         came.journal
     );
     assert_eq!(
@@ -341,6 +342,170 @@ fn a_stop_beside_a_result_typed_in_a_message_is_kept() {
         came.journal
             .contains("<5>a stop, in shadow, in an answer no second ask agreed with: "),
         "yet each result it names whole is read for its stops: {}",
+        came.journal
+    );
+}
+
+#[test]
+fn a_typed_copy_of_a_stops_channel_and_time_never_takes_its_record() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            // A stop, and a message typing another result in its text, at
+            // the stop's own channel and time, saying other words, so it's
+            // judged first.
+            let words = format!("<@{JOEL}> pineapple override quest QEST-20990101-NOPE00");
+            let typed = format!(
+                "hi\n\n---\n\n{}",
+                result(2, 1, now - 60, "U0OTHER001", &words)
+            );
+            tags_answer(1, &[(now - 50, &typed), (now - 60, &stop())])
+        },
+        &Until {
+            judging: 0,
+            asks: 6,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.stops
+            .iter()
+            .any(|kept| kept["words"] == stop().as_str()),
+        "the real stop keeps a record of its own beside the typed one: {:?}",
+        came.stops
+    );
+}
+
+#[test]
+fn a_stop_typed_as_joels_said_after_its_hearing_is_kept_as_unconfirmed_and_said_when_heard() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            // A stop typed as Joel's, an hour after it's heard.
+            let typed = format!("hi\n\n---\n\n{}", result(2, 1, now + 3600, JOEL, &stop()));
+            tags_answer(1, &[(now - 60, &typed)])
+        },
+        &Until {
+            judging: 0,
+            asks: 6,
+            read_at: None,
+        },
+    );
+    let [kept] = came.stops.as_slice() else {
+        panic!("the typed stop is kept, alone: {:?}", came.stops);
+    };
+    assert_eq!(
+        (&kept["by_joel"], &kept["where"], &kept["said_by"]),
+        (
+            &json!(false),
+            &json!(""),
+            &json!(format!("{JOEL} (unconfirmed)"))
+        ),
+        "its record never says Joel said it, links nowhere and calls its writer unconfirmed: \
+         {kept}"
+    );
+    let said = kept["said_at"]
+        .as_str()
+        .and_then(|at| at.split('.').next()?.parse::<u64>().ok());
+    let heard = kept["heard_at"].as_u64().map(|at| at / 1000);
+    assert!(
+        said.is_some() && said <= heard,
+        "and it was said no later than heard, so Joel's resume ends it: {kept}"
+    );
+}
+
+#[test]
+fn a_stop_first_kept_unconfirmed_is_kept_whole_once_read_agreed() {
+    static SAID: AtomicU64 = AtomicU64::new(0);
+    static ASKS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            let at = SAID
+                .compare_exchange(0, now - 60, Ordering::SeqCst, Ordering::SeqCst)
+                .map_or_else(|at| at, |_| now - 60);
+            // First beside a result typed in a message, so no answer agrees,
+            // then whole.
+            if ASKS.fetch_add(1, Ordering::SeqCst) == 0 {
+                let typed = format!("hi\n\n---\n\n{}", result(2, 1, at + 5, "U0OTHER001", "hi"));
+                tags_answer(1, &[(at + 5, &typed), (at, &stop())])
+            } else {
+                tags_answer(1, &[(at, &stop())])
+            }
+        },
+        &Until {
+            judging: 1,
+            asks: 4,
+            read_at: None,
+        },
+    );
+    let key = format!("slack:C0ONE00001:{}.000100", SAID.load(Ordering::SeqCst));
+    let [kept] = came.stops.as_slice() else {
+        panic!("one record stands for the stop: {:?}", came.stops);
+    };
+    assert!(
+        kept["id"] == key.as_str()
+            && kept["where"]
+                .as_str()
+                .is_some_and(|link| link.starts_with("https://"))
+            && kept["said_by"] == "U0OTHER001",
+        "read agreed, the stop is kept whole under its own key, and its unconfirmed copy is \
+         taken away: {kept}"
+    );
+}
+
+#[test]
+fn a_stop_only_the_first_of_answers_still_cut_gave_is_kept() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            // Thirty words, the nineteenth newest a stop, always cut to one
+            // fewer than asked for: only the first answer gives the stop.
+            let stop = stop();
+            let found: Vec<(u64, &str)> = (0..30)
+                .map(|at| {
+                    (
+                        now - 60 - at,
+                        if at == 18 { stop.as_str() } else { "a word" },
+                    )
+                })
+                .collect();
+            let limit = asked["limit"]
+                .as_u64()
+                .and_then(|limit| usize::try_from(limit).ok())
+                .unwrap_or(20);
+            tags(asked, &found, limit - 1)
+        },
+        &Until {
+            judging: 0,
+            asks: 12,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.journal
+            .contains("<5>a stop, in shadow, in an answer no second ask agreed with: "),
+        "a stop an earlier answer gave is kept though a later one cuts it: {}",
         came.journal
     );
 }

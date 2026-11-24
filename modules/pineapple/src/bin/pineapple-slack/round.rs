@@ -77,19 +77,23 @@ pub(super) fn round(
         phrase => (phrase, ears.search(&tag, &judged.back_to(&tag, now))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
-    // What a deaf search gave: only a stop is taken from what no second
-    // ask agreed with, and it's judged again once read; what one agreed
-    // with is judged with the rest, in the order it was said.
+    // What a deaf search gave, or a page a search read on past: only a
+    // stop is taken from what no second ask agreed with, and it's judged
+    // again once read; what one agreed with in a deaf search is judged
+    // with the rest, in the order it was said.
     let mut partly = Vec::new();
     for (query, answer) in [(PHRASE, &phrase), (tag.as_str(), &tagged)] {
-        if answer.as_ref().err() == Some(&unread) {
+        let deaf = answer.as_ref().err() == Some(&unread);
+        if deaf || answer.is_ok() {
             let Unread { agreed, unagreed } = ears.unread(query);
             for message in &unagreed {
                 if judged.is_new(message) && !alert(&joel, message) {
                     judge(ears, reader, account, state, &joel, message, false);
                 }
             }
-            partly.extend(agreed);
+            if deaf {
+                partly.extend(agreed);
+            }
         }
     }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
@@ -174,9 +178,13 @@ fn alert(joel: &Joel, message: &Message) -> bool {
 /// with by a second ask, it could be typed, so only a stop it says is
 /// kept, with nothing written, answered or resumed. Its writer is taken as
 /// it says, so Joel's own stop isn't waved for want of his tag, as a stop
-/// may come from anyone, yet its record never says Joel said it; it links
-/// nowhere, as its link could point anywhere, and was said no later than
-/// it was heard, so Joel's resume ends it whatever time it types. Nor is
+/// may come from anyone, yet its record never says Joel said it and calls
+/// its writer unconfirmed; it links nowhere, as its link could point
+/// anywhere, and was said no later than it was heard, so Joel's resume
+/// ends it whatever time it types. It's kept under a key of its own
+/// ([`unconfirmed`]), so a typed copy of a stop's channel and time never
+/// takes the stop's record; once read agreed, the stop is kept whole under
+/// its own key and its unconfirmed copy is taken away. Nor is
 /// the thread it names read, as that could be any, each round it's deaf:
 /// with no thread, a stop reaches what its words name, else its channel's
 /// lanes, else everything.
@@ -219,7 +227,11 @@ fn judge(
         },
         joel,
     );
-    let key = message.key();
+    let key = if agreed {
+        message.key()
+    } else {
+        unconfirmed(message)
+    };
     let thread = message.thread_key();
     let source = Source {
         key: &key,
@@ -266,9 +278,11 @@ fn judge(
         }
     }
     if decision.stops() {
+        let records = state.join("stops");
         let mut stop = record::stop(&source, &decision, now, reader.shadow);
         if !agreed {
             stop["by_joel"] = false.into();
+            stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
         }
         let shadow = if reader.shadow { ", in shadow" } else { "" };
         let unagreed = if agreed {
@@ -276,10 +290,22 @@ fn judge(
         } else {
             ", in an answer no second ask agreed with"
         };
-        match record::keep(&state.join("stops"), &key, &stop) {
-            Ok(true) => eprintln!("<5>a stop{shadow}{unagreed}: {link}"),
+        let kept = record::keep(&records, &key, &stop);
+        match &kept {
+            // An unagreed stop is named by the key it's kept under, as its
+            // link could point anywhere.
+            Ok(true) => eprintln!(
+                "<5>a stop{shadow}{unagreed}: {}",
+                if agreed { link } else { key.as_str() }
+            ),
             Ok(false) => {}
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
+        }
+        if agreed
+            && kept.is_ok()
+            && let Err(error) = record::forget(&records, &unconfirmed(message))
+        {
+            eprintln!("<3>couldn't take away a stop's unconfirmed copy: {error}");
         }
     }
     if agreed && decision.verdict == Verdict::Resume && decision.by_joel {
@@ -292,6 +318,20 @@ fn judge(
             reader.shadow,
         );
     }
+}
+
+/// The key a stop from an answer no second ask agreed with is kept under:
+/// its message's own, which could be typed, beside a hash of the writer it
+/// names and its words. A typed copy saying other words of the same
+/// channel and time is kept beside it rather than in its place, and the
+/// same words read again are the same stop.
+fn unconfirmed(message: &Message) -> String {
+    let said = format!("{}\0{}", message.author, message.text)
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    format!("{}:unconfirmed:{said:016x}", message.key())
 }
 
 /// Ends the stops Joel's own "pineapple resume" names (src/resume.rs):

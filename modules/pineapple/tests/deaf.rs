@@ -544,6 +544,12 @@ fn each_span_never_read_is_kept_a_week_beside_the_others() {
             && std::fs::read_to_string(&file).is_ok_and(|kept| kept == "not JSON"),
         "a file it can't read may hold rows, so it isn't written over"
     );
+    std::fs::write(&file, r#"{"v":2}"#).expect("a file holding no rows it can read");
+    assert!(
+        keep_missed(&file, row(Search::Tag, AT), AT).is_err()
+            && std::fs::read_to_string(&file).is_ok_and(|kept| kept == r#"{"v":2}"#),
+        "nor is one that reads but holds no rows, as it may be a newer shape"
+    );
     std::fs::remove_file(&file).expect("taken away");
     let first = AT - week - 1;
     keep_missed(&file, row(Search::Tag, first), first).expect("written where none was");

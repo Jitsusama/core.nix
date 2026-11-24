@@ -279,6 +279,9 @@ impl Through {
         let mut answer = self.newest(query, count, before)?;
         let mut asked = count;
         let mut cuts = Vec::new();
+        // What each answer gave, as one cut by size drops its oldest, so a
+        // stop an earlier one gave is kept though a later one cuts it.
+        let mut gave = gateway::given(&answer);
         for _ in 0..CUTS {
             let Some(given) = gateway::cut_to(&answer).filter(|given| *given < asked) else {
                 break;
@@ -286,7 +289,13 @@ impl Through {
             cuts.push(given.to_string());
             asked = given;
             answer = self.newest(query, asked, before)?;
+            for message in gateway::given(&answer) {
+                if !gave.contains(&message) {
+                    gave.push(message);
+                }
+            }
         }
+        gave.sort_by_key(|message| slack::micros(&message.ts));
         // Still cut once it's asked again as often as it may, it's said so,
         // as a gateway that keeps cutting is no answer short by chance.
         let still = if cuts.len() == CUTS && gateway::cut_to(&answer).is_some() {
@@ -300,7 +309,7 @@ impl Through {
         let found = match gateway::found(&answer) {
             Ok(found) => found,
             Err(why) => {
-                self.unagreed(query, gateway::given(&answer));
+                self.unagreed(query, gave);
                 return Err(unread(cut_to(format!("{still}{why}"))));
             }
         };
@@ -340,8 +349,8 @@ impl Through {
     /// doesn't reach back to it, if it doesn't: each page must be read and
     /// agreed, hold the oldest message of the one after it, so none between
     /// the two goes unread, and add some older. A refused or missing
-    /// sign-in keeps its own meaning, with the pages after it kept as
-    /// agreed beside what it gave.
+    /// sign-in keeps its own meaning; as the last read stays put, what the
+    /// pages before it found is read again once signed in.
     fn paged(
         &mut self,
         query: &str,
@@ -377,10 +386,7 @@ impl Through {
                     let why = format!("its page before {before} goes unanswered");
                     return Ok((found, Some(why)));
                 }
-                Err(round) => {
-                    self.unread.entry(query.to_owned()).or_default().agreed = found;
-                    return Err(round);
-                }
+                Err(round) => return Err(round),
             };
             let meets = given.contains(&oldest);
             let whole = holds_all(given.len(), &cuts);
@@ -491,8 +497,8 @@ impl Ears for Through {
             // so it's judged with the rest, though the span before the oldest
             // of the one after it stays unread; what a page that can't be
             // read gave is kept for its stops.
-            let paged = self.unread.remove(query).unwrap_or_default();
-            found.extend(paged.agreed);
+            let Unread { agreed, unagreed } = self.unread.remove(query).unwrap_or_default();
+            found.extend(agreed);
             found.sort_by_key(|message| slack::micros(&message.ts));
             let unheard = cut_to(unheard);
             let gaps = self.gaps.entry(query.to_owned()).or_default();
@@ -508,7 +514,7 @@ impl Ears for Through {
             if !told || !(self.record)(query, skipped) {
                 let found = Unread {
                     agreed: found,
-                    unagreed: paged.unagreed,
+                    unagreed,
                 };
                 self.unread.insert(query.to_owned(), found);
                 return Err(unread(unheard));
@@ -517,6 +523,13 @@ impl Ears for Through {
                 "<4>the gateway's search for {query:?}, {unheard}, told in Joel's row, reads \
                  on: what was said then is never read"
             );
+            // What a page that can't be read gave is still judged for its
+            // stops in the round that reads on past it.
+            let kept = Unread {
+                agreed: Vec::new(),
+                unagreed,
+            };
+            self.unread.insert(query.to_owned(), kept);
         } else if found.len() > asked {
             eprintln!(
                 "<5>the gateway's search for {query:?} read {} messages in pages, back to the \
