@@ -436,7 +436,10 @@ Scope {
     // What was being asked when the daemon couldn't answer, gone or not yet there, as
     // `{ words, most }`, asked again once it says hello, or null. Nothing else asks it till the
     // next key, so the rows held from an answer before would stand for what's typed, as Emoji
-    // holds those of a word what's typed goes on from while it's asked.
+    // holds those of a word what's typed goes on from while it's asked. Kept only while the
+    // rows are drawn, as Programs, Code and Capture never end their search as the launcher
+    // shuts, and only while its words are what's searched, so a backspace to words whose
+    // answer is held lets it go.
     property var lost: null
     // Whether the daemon said it can't search, so a place that can matches
     // its rows itself, as it did before, said once in the journal. It's
@@ -454,6 +457,8 @@ Scope {
     // The daemon's answer to `words` if it's held, else null, asking it,
     // for at most `most` rows where the place shows no more.
     function search(words, most) {
+        if (lost !== null && lost.words !== words)
+            lost = null;
         if (found.words === words)
             return found;
         const asks = !searchless || Date.now() - searchlessAt > searchlessFor;
@@ -503,12 +508,14 @@ Scope {
     // is let go, and so is an answer still to come: taken once the
     // launcher had shut, it stood at the next opening for what's typed on
     // from its words, Emoji making as many as a hundred rows of it. What's
-    // typed next is asked anew.
+    // typed next is asked anew, inside a row as at home, so an answer to
+    // what was typed inside one is let go too (typedAgain).
     function ended() {
         letFoundGo();
         asking = "";
         lost = null;
         searchesEnded += 1;
+        typedAgain();
     }
 
     // What was found let go, as rows moving under it ask it again; an
@@ -519,10 +526,10 @@ Scope {
             delete foundMade[key];
     }
 
-    // An answer taken, unless it was asked before the search last ended,
-    // though it's to words typed over since. One that didn't come, the
-    // daemon gone, is asked again once it's back (`lost`), if it's still
-    // what's asked.
+    // An answer taken, even one to words typed over since, unless it was
+    // asked before the search last ended. One that didn't come, the daemon
+    // gone, is asked again once it's back (`lost`), if it's still what's
+    // asked and the rows are drawn.
     function answered(words, answer, ending, most) {
         if (ending !== searchesEnded)
             return;
@@ -530,7 +537,7 @@ Scope {
         if (awaited)
             asking = "";
         if (answer === null) {
-            if (awaited)
+            if (awaited && drawn)
                 lost = { words, most };
             return;
         }
@@ -1360,6 +1367,7 @@ Scope {
         }
         saying = {};
         filling = null;
+        lost = null;
     }
 
     // The rows whose words the clock has moved on since they were made,

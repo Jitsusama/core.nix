@@ -43,6 +43,7 @@ Provider {
         make: (row, key) => provider.made(row, key)
         drawerMaker: row => Drawer.made(row, provider.drawerWords)
         maker: provider
+        drawn: provider.launcher?.open ?? false
         onSearched: words => provider.foundMore(
             Date.now() - Math.max(provider.askedAt, ready.typedAt) < provider.freshFor)
     }

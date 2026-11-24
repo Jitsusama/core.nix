@@ -420,10 +420,12 @@ Scope {
             answer = JSON.parse(line);
         } catch (error) {
             // Said once a connection, so a daemon speaking garbage can't
-            // flood the journal, but an answer lost this way is named.
+            // flood the journal, but an answer lost this way is named: by
+            // its length only, as the clipboard history's lines carry what
+            // was copied, a password among it.
             if (!unreadSaid)
                 console.warn(`${heardAs}: a line that isn't JSON let go, `
-                    + `${line.length} characters: ${line.slice(0, 80)}`);
+                    + `${line.length} characters`);
             unreadSaid = true;
             return;
         }
