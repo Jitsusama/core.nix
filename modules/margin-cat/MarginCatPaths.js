@@ -462,11 +462,11 @@ function holdsOn(route, t) {
 
 // Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
 // far ahead as it was told of late; one walked as one screen
-// (MarginCatStacked.js) where niri's slide has the ground it's on.
+// (MarginCatStacked.js) where niri's slide has the ground it's on, by `carried`.
 function frame(route, t) {
     const at = Ways.frame(route, t + (route.ahead ?? 0));
     const off = view(route, t);
-    return off === 0 ? at : Object.assign(at, { y: at.y + off });
+    return off === 0 ? at : Object.assign(at, { y: at.y + off, carried: off });
 }
 
 // What a walk set off from `drawn`, a frame as frame() gives it, takes

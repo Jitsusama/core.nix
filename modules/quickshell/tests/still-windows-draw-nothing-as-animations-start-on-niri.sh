@@ -19,13 +19,12 @@ export QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QSG_RENDER_LOOP=threaded QSG_
 # which window it asks for each frame; they stay in the log for whoever
 # reads a failure.
 export QT_LOGGING_RULES=qt.scenegraph.renderloop.debug=true
-# The shell's own setting (home.nix's Environment, and its reason there):
-# Qt's default takes a window as no longer shown once niri's frame callback
-# is 100 ms late. On a loaded builder Qt then found one and two windows
-# shown at a stop and a start, and the still window drew one frame over
-# the ten starts (21 November), by its return or by the timer's stop
-# asking the one window left shown. With none, every window stays shown.
-export QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0
+# The shell runs with no frame callback timeout, as Joel's does, given by
+# checks/helpers.nix from its unit: Qt's default takes a window as no
+# longer shown once niri's frame callback is 100 ms late, and on a loaded
+# builder Qt then found one and two windows shown at a stop and a start,
+# and the still window drew one frame over the ten starts (21 November).
+: "${QT_WAYLAND_FRAME_CALLBACK_TIMEOUT:?set by checks/helpers.nix from the shell unit}"
 
 said=$logs/shell.log
 ran=0

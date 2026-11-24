@@ -246,6 +246,44 @@ let
           '';
         };
       inherit (pkgs) mesa;
+      # A setting of the account's shell unit, by its name: the last assignment of it in
+      # its Environment, as systemd takes the last, each entry's words split at its spaces.
+      # systemd also reads quotes, escapes, tabs, newlines and % specifiers, and resets the
+      # list at an empty entry, so an entry holding any of them fails the evaluation rather
+      # than being misread. So does a setting the unit no longer sets, or unsets, which systemd does
+      # last, by its bare name or by the very assignment taken, the two ways systemd.exec(5)
+      # says remove it. Only the settings named below are carried; the unit's others aren't.
+      unitSets =
+        setting:
+        let
+          asked = "${setting}=";
+          unit = home.systemd.user.services.quickshell.Service;
+          given = lib.toList (unit.Environment or [ ]);
+          unsetting = lib.toList (unit.UnsetEnvironment or [ ]);
+          misread =
+            entry:
+            entry == ""
+            || lib.any (mark: lib.hasInfix mark entry) [
+              "\""
+              "'"
+              "\\"
+              "\t"
+              "\n"
+              "%"
+            ];
+          unread = lib.findFirst misread null (given ++ unsetting);
+          words = lib.concatMap (lib.splitString " ");
+          said = lib.findFirst (lib.hasPrefix asked) null (lib.reverseList (words given));
+          unsets = words unsetting;
+        in
+        if unread != null then
+          throw "The shell's unit has an entry unitSets can't read: ${builtins.toJSON unread}."
+        else if said == null then
+          throw "The shell's unit no longer sets ${setting}."
+        else if lib.elem setting unsets || lib.elem said unsets then
+          throw "The shell's unit unsets ${setting}, so the checks can't run with it set."
+        else
+          lib.removePrefix asked said;
     in
     pkgs.runCommandLocal name
       {
@@ -278,6 +316,13 @@ let
             unit = home.xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf".text;
           in
           lib.removePrefix asked (lib.findFirst (lib.hasPrefix asked) "" (lib.splitString "\n" unit));
+        # Never taking a window for hidden however late niri's frame callback, as the shell's
+        # unit has it (home.nix, its reason there): the one of the unit's settings carried,
+        # since it decides when Qt draws. With Qt's default of 100 ms, a loaded
+        # builder's niri answered late, and Qt stopped drawing a window, then drew it again as
+        # the answer came: the margin cat drew a frame beside each of the launcher's while held
+        # under it, 3 to 8 in five of 66 runs, though Joel's shell never does (2026-11-22).
+        QT_WAYLAND_FRAME_CALLBACK_TIMEOUT = unitSets "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT";
         NOTICES_DAEMON = home.systemd.user.services.notices.Service.ExecStart;
         NOTICES_LOG = "logs/notices.log";
         # The step a switch runs before it restarts the shell, as the

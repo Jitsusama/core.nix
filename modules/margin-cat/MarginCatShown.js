@@ -78,6 +78,15 @@ function begun(at, from, held, openFrom) {
     return at - from - held - (openFrom === null ? 0 : at - openFrom);
 }
 
+// Whether niri is asked of every frame the cat's surface begins: while
+// it walks, plays or moves (`going`), where the shell can say how frames
+// were shown (`available`), unless it's held under the launcher's card
+// (`up`), which what Joel's hand set off (`byHand`) never is. Following
+// draws no frame of its own, so a held cat stays still.
+function follows(available, going, up, byHand) {
+    return available && going && (!up || byHand);
+}
+
 function heldTimes(times) {
     return times === 1 ? "once" : `${times} times`;
 }
