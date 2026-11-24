@@ -1292,8 +1292,10 @@ mod tests {
         );
         // A pin taken long before the silence stands APART from its start,
         // not from when it took hold (shaper holds round 3's F6).
-        let mut long_held = Pinning::default();
-        long_held.coming = Some((Some(pin_at(30_006)), start));
+        let mut long_held = Pinning {
+            coming: Some((Some(pin_at(30_006)), start)),
+            ..Pinning::default()
+        };
         assert!(
             long_held.take_hold(start).is_some(),
             "the pin didn't take hold"

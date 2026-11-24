@@ -76,10 +76,10 @@ impl Room {
         line: Option<u64>,
     ) -> (Option<u64>, Option<String>) {
         let room = line.filter(|_| call).map(|line| whole(float(line) * ROOM));
-        let carries = carried
+        let fills = carried
             .zip(line)
             .is_some_and(|(carried, line)| carried >= float(line) * ROOM);
-        let full = cut || carries;
+        let full = cut || fills;
         let was = self.held.take();
         let kept = |room: u64| {
             was.as_ref()
@@ -92,7 +92,7 @@ impl Room {
             (_, Some(room)) if !kept(room) => Some(format!(
                 "{name}: a call is on and {}, so it's held to {room} kbit/s, where its own \
                  queue puts the call first",
-                if carries {
+                if fills {
                     "the download fills the line"
                 } else {
                     "the controller holds the download under a full line"
