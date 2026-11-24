@@ -563,7 +563,10 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
     );
     // First, so neither a win nor the gone run's absence below is read
     // while its planting never got that far.
-    assert!(home.join("planted").exists(), "the two runs weren't planted: {err}");
+    assert!(
+        home.join("planted").exists(),
+        "the two runs weren't planted: {err}"
+    );
     let heard = relay(said(&home).as_slice(), "1");
     assert!(
         code == Some(75) && heard == Heard::Untaken,

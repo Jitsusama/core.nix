@@ -1,4 +1,4 @@
-use super::{Heard, Missed, bring_back, listed, plain_quest, quoted, script, travels, within_tree};
+use super::{Missed, bring_back, listed, script, travels, within_tree};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
@@ -8,6 +8,7 @@ mod heard;
 mod leaving;
 mod sweeping;
 mod unpacking;
+mod words;
 
 pub(super) fn kind(setup: &str) -> Kind {
     Kind {
@@ -148,33 +149,6 @@ fn only_what_the_kind_brings_back_comes_home_once_listed_whole() {
             size: 2
         }]),
         "something outside what the kind brings back was taken"
-    );
-}
-
-#[test]
-fn a_quest_names_a_folder_and_nothing_more() {
-    assert!(
-        plain_quest("QEST-20261115-ABC123"),
-        "a quest's id was refused"
-    );
-    for odd in ["QEST-20261115-ABC12/", "../QEST", "QEST-2026111-ABC123", ""] {
-        assert!(!plain_quest(odd), "{odd:?} was taken for a quest");
-    }
-    assert_eq!(
-        Heard::Started.line("1-2"),
-        "elsewhere: running 1-2",
-        "the start line moved"
-    );
-}
-
-#[test]
-fn a_word_is_quoted_only_when_a_shell_would_split_it() {
-    assert_eq!(quoted("-workers"), "-workers", "a plain word was quoted");
-    assert_eq!(quoted(""), "''", "an empty word was lost");
-    assert_eq!(
-        quoted("$HOME"),
-        "'$HOME'",
-        "a variable was left for the far shell"
     );
 }
 
