@@ -258,7 +258,10 @@ in
                   either machine ever let another account read is
                   replaced on both by new bytes, made once that way,
                   rather than given a new mode or copied back in, since
-                  a copy taken of it stays good. The shaper's service sees no /root, /home,
+                  a copy taken of it stays good. Each machine's file is
+                  made anew by that `install` before the bytes go in,
+                  since a write into a file already there keeps its
+                  mode. The shaper's service sees no /root, /home,
                   /tmp or /var/tmp, so keep it elsewhere, as under
                   /var/lib, spelled plainly and not through a link;
                   houses naming one address name one key. Never a Nix

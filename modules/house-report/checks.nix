@@ -280,8 +280,8 @@ in
       (
         "A Mac given /etc/house.key doesn't copy it again, as root, by activation's own text, "
         + "whenever /etc/house.key or /etc changes and each minute, or says a refusal "
-        + "otherwise than at each switch, forgetting what the job said, and once in the "
-        + "job's log until it changes."
+        + "otherwise than at each switch, forgetting what the job said and the one once "
+        + "kept in the copy's folder, and once in the job's log until it changes."
       )
       (
         lib.take 2 (watching.ProgramArguments or [ ]) == [
@@ -296,9 +296,13 @@ in
         && lib.hasInfix ("houseReportAtSwitch=1\n" + watched) keyedPrepared
         && !lib.hasInfix "houseReportAtSwitch=" watched
         && lib.hasInfix refusing watched
-        # Nothing else reads or writes `said` (made anew round 1's F5).
-        && times "$houseReportSaid" watched == 4
+        # Nothing else reads or writes `said`, under its name, braced or
+        # not, or spelled as its path (made anew round 1's F5; round 2's
+        # F2, F4, F5, F7 and F10).
+        && times "houseReportSaid" watched == 5
         && times "houseReportSaid=" watched == 1
+        && times "house-report.said" watched == 1
+        && times "house-report/said" watched == 1
         && watching.UserName or null == null
         && watching.RunAtLoad or null == true
         && watching.StartInterval or null == 60

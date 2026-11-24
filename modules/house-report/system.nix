@@ -83,7 +83,10 @@ in
         another account read is replaced on both by new bytes, made once
         that way, rather than given a new mode or copied back in, since a
         copy taken of it stays good (house keys round 2's F5 and F7; made
-        anew round 1's F2, F9 and F11). On Linux the service reads it
+        anew round 1's F2, F9 and F11). Each machine's file is made anew
+        by that `install` before the bytes go in, since a write into a
+        file already there keeps its mode (made anew round 2's F1 and
+        F9). On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,
