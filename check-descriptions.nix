@@ -2437,7 +2437,7 @@
     the worker machines it made as that file in the Nix store, rather than one in the account's
     config folder, its fields exactly those the locked mycelium's lender parses the file into, by
     name and type, from structs that derive Deserialize with only deny_unknown_fields over them
-    and no field attribute but default, which a scan shown to refuse eight other layouts reads,
+    and no field attribute but default, which a scan shown to refuse nine other layouts reads,
     and the lender joins a relative upstream onto its runtime folder; the budget kinds the lend
     takes, and the one it writes where none is said, are the lowercased variants of the lender's
     Kind and the one marked default, read from an enum that derives Deserialize with one lowercase

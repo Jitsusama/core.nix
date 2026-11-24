@@ -1443,8 +1443,20 @@ in
           # field says more than default. So the scan reads every attribute
           # and doc line above the struct, back to a blank line or the end
           # of another item, and throws on any other line there or in the
-          # body, on attributes across that blank line, and on a struct no
-          # longer found, rather than passing what it didn't read.
+          # body, on anything but that end past the blank lines, and on a
+          # struct no longer found, rather than passing what it didn't read.
+          # Past any blank lines over an item's attributes stands the end of
+          # the item before, a line ending ';' or the file's start: never a
+          # comment or an attribute left unread.
+          ended =
+            past:
+            let
+              gap = lib.lists.findFirstIndex (line: line != "") (lib.length past) past;
+              line = lib.elemAt past gap;
+            in
+            gap == lib.length past
+            || line == "}"
+            || lib.hasSuffix ";" line && !lib.hasPrefix "/" line && !lib.hasPrefix "#" line;
           scan =
             lines: struct:
             let
@@ -1456,9 +1468,6 @@ in
               before = lib.reverseList (lib.take from lines);
               reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
               above = lib.take reach before;
-              bounded = reach < lib.length before;
-              bound = lib.elemAt before reach;
-              across = reach + 1 < lib.length before && marked (lib.elemAt before (reach + 1));
               # A derive naming Deserialize itself, not one named like it.
               derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
               deriving = line: builtins.match derive line != null;
@@ -1472,10 +1481,8 @@ in
             in
             if from == null || to == null then
               throw "mycelium's lender has no lines 'struct ${struct} {' to '}'"
-            else if bounded && bound != "" && bound != "}" then
-              fail "has a line over its attributes that is neither blank nor an item's end"
-            else if bounded && bound == "" && across then
-              fail "has attributes across the blank line over it"
+            else if !ended (lib.drop reach before) then
+              fail "has over its attributes, past blank lines, other than an item's end"
             else if
               !lib.all told above
               || !lib.any deriving above
@@ -1528,6 +1535,11 @@ in
           unread = [
             (changedVm 0 [
               "#[serde(rename_all = \"kebab-case\")]"
+              ""
+            ])
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              "// A machine lent to."
               ""
             ])
             (changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ])
@@ -1616,9 +1628,6 @@ in
               before = lib.reverseList (lib.take from lines);
               reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
               above = lib.take reach before;
-              bounded = reach < lib.length before;
-              bound = lib.elemAt before reach;
-              across = reach + 1 < lib.length before && marked (lib.elemAt before (reach + 1));
               derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
               deriving = line: builtins.match derive line != null;
               renaming = "#[serde(rename_all = \"lowercase\")]";
@@ -1631,10 +1640,8 @@ in
             in
             if from == null || to == null then
               throw "mycelium's lender has no lines 'enum Kind {' to '}'"
-            else if bounded && bound != "" && bound != "}" then
-              fail "has a line over its attributes that is neither blank nor an item's end"
-            else if bounded && bound == "" && across then
-              fail "has attributes across the blank line over it"
+            else if !ended (lib.drop reach before) then
+              fail "has over its attributes, past blank lines, other than an item's end"
             else if !lib.all told above || count deriving != 1 || count (l: l == renaming) != 1 then
               fail "has over it other than doc lines, a Deserialize derive and a lowercase rename"
             else if !lib.all (line: line == defaulted || variant line != null) body then
@@ -1677,9 +1684,9 @@ in
               ""
               "/// What a budget's upstream is."
             ])
-            (changedKind 2 [
+            (changedKind 0 [
               "#[serde("
-              "    rename_all = \"lowercase\","
+              "    deny_unknown_fields,"
               ")]"
             ])
             (changedKind 1 [ "#[derive(Debug, Default, DeserializeFromStr)]" ])
