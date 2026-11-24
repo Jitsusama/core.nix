@@ -579,7 +579,9 @@ the image processor appears, so a machine without the camera never runs it.
 
 The relay starts and stops the camera on its one main loop, and starting
 blocks it for as long as the camera takes to set up: 75 ms idle, but 38 s
-during a switch on 9 November. A call that gave up and came back in that
+during a switch on 9 November. That setup was likely the buffers'
+compaction that [the kernel guide's camera fix][41] is for, though
+nothing measured it then. A call that gave up and came back in that
 time had its stop and start handled late, and the camera was left running
 with nothing asking it for frames until the relay was restarted by hand.
 A patch has the relay start the camera's pipeline again once a client has
@@ -1829,3 +1831,4 @@ sealed to.
 [38]: https://github.com/aurora-silicon
 [39]: ../hardware/microsoft-surface-laptop-4-1958/touch/package.nix
 [40]: https://github.com/intel/crashlog
+[41]: kernel.md#the-patches
