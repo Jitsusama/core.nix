@@ -239,7 +239,7 @@ fn a_range_round_reads_from_the_base_it_records() {
         (
             id('9').as_str(),
             json!(id('e').to_uppercase()),
-            Some(String::new()),
+            Some(id('e')),
         ),
     ]
     .map(|(base, from, read)| (base.to_owned(), Some(from), read));
@@ -468,16 +468,47 @@ fn newest_round_files_of_another_shape_are_said_so() {
     assert!(said.contains("record shape"), "{said}");
 }
 
-// A mirrored range's base stands here only as a full commit id in git's
-// own spelling, 40 or 64 lowercase hex: a ref, an uppercase id or a short
-// one is no base, and a change's round, with no base, keeps none.
+// A refusal names a base by what it is: a full commit id of either length
+// short; an empty one as no commit id; anything else, a hex short id as
+// much as a ref, whole, since cut short it names nothing, but bounded and
+// with no control character to move the terminal it's printed to.
+#[test]
+fn a_base_is_named_short_only_as_a_full_commit_id() {
+    let sha256 = "e".repeat(64);
+    let long_name = "x".repeat(LONGEST_NAME + 20);
+    let cases = [
+        (String::new(), "no commit id recorded".to_owned()),
+        (id('8'), "8".repeat(12)),
+        (sha256, "e".repeat(12)),
+        ("0123abc".to_owned(), "0123abc".to_owned()),
+        (
+            "origin/release-2026".to_owned(),
+            "origin/release-2026".to_owned(),
+        ),
+        ("a\u{1b}[31mb\nc".to_owned(), "a?[31mb?c".to_owned()),
+        (long_name, format!("{}...", "x".repeat(LONGEST_NAME))),
+        ("x".repeat(LONGEST_NAME), "x".repeat(LONGEST_NAME)),
+    ];
+    for (base, named) in cases {
+        assert_eq!(
+            base_named(&base),
+            named,
+            "the base {base:?} was named wrongly"
+        );
+    }
+}
+
+// A mirrored range's base stands here only as a full commit id, 40 or 64
+// hex, in git's own spelling, lowercase, which an id in capitals is given:
+// a ref or a short id is no base, and a change's round, with no base,
+// keeps none.
 #[test]
 fn a_mirrored_base_stands_here_only_as_a_commit_id() {
     let sha256 = "e".repeat(64);
     let cases = [
         (Some(id('8')), Some(id('8'))),
         (Some(sha256.clone()), Some(sha256)),
-        (Some(id('e').to_uppercase()), Some(String::new())),
+        (Some(id('e').to_uppercase()), Some(id('e'))),
         (Some("origin/main".to_owned()), Some(String::new())),
         (Some("eeeeeee".to_owned()), Some(String::new())),
         (None, None),

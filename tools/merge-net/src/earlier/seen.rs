@@ -127,13 +127,9 @@ pub fn mirrored(root: &Path) -> Mirrored {
 /// A mirrored round as it can stand here: a range's base spelled as a ref
 /// becomes no base, which is on no main.
 fn as_read_here(read: Read) -> Read {
-    let from = read.from.map(|base| {
-        if is_commit_id(&base) {
-            base
-        } else {
-            String::new()
-        }
-    });
+    let from = read
+        .from
+        .map(|base| as_commit_id(&base).unwrap_or_default());
     Read { from, ..read }
 }
 
@@ -276,10 +272,7 @@ fn read_in(text: &str) -> Vec<Read> {
             // records none, from before rounds did, falls back to the name.
             let from = named.as_ref().map(|named| match round.get("from") {
                 None => named.clone(),
-                Some(from) => from
-                    .as_str()
-                    .filter(|from| is_commit_id(from))
-                    .map_or_else(String::new, str::to_owned),
+                Some(from) => from.as_str().and_then(as_commit_id).unwrap_or_default(),
             });
             round["witness"]
                 .as_str()
@@ -299,6 +292,14 @@ fn read_in(text: &str) -> Vec<Read> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// `text` as a full commit id in git's own spelling, lowercase, when it's
+/// one in either case, since git reads an id in capitals as the same
+/// commit; otherwise none.
+fn as_commit_id(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    is_commit_id(&lower).then_some(lower)
 }
 
 /// Whether `witness` is a full commit id, which is all a round names, so
@@ -354,19 +355,41 @@ pub fn unread(short: &str) -> String {
 }
 
 /// How a range round's base is named where it's refused: a commit id
-/// short, a ref as the range spelled it, whole, since cut short it names
-/// no ref; and a base that's no commit id here, which `read_in` and
-/// `as_read_here` keep as empty whether the round recorded a ref, a short
-/// id or nothing, as that.
+/// short; a base `read_in` and `as_read_here` keep as empty, as no commit
+/// id recorded, since they blank whatever a round recorded that's no
+/// commit id (a ref, a short id, null); and the range's own name, which
+/// only a round of this machine that recorded no base at all falls back
+/// to, as the range spelled it. That name is shown whole up to
+/// `LONGEST_NAME` characters, since a ref cut short names no ref, with each
+/// control character as a question mark, so it can't move the terminal it
+/// is printed to. A ref may point elsewhere by the time it's read.
 pub fn base_named(base: &str) -> String {
     if base.is_empty() {
         "no commit id recorded".to_owned()
     } else if is_commit_id(base) {
         crate::short(base).to_owned()
     } else {
-        base.to_owned()
+        let mut named: String = base
+            .chars()
+            .take(LONGEST_NAME)
+            .map(|character| {
+                if character.is_control() {
+                    '?'
+                } else {
+                    character
+                }
+            })
+            .collect();
+        if base.chars().nth(LONGEST_NAME).is_some() {
+            named.push_str("...");
+        }
+        named
     }
 }
+
+/// The most characters of a range's name a refusal shows: git's longest
+/// refs run to about 60, and a name past this is no ref anyone typed.
+const LONGEST_NAME: usize = 100;
 
 /// Why `commit`, which only rounds over a range of commits read, may not
 /// merge: each read from a base that's on no main, or that it recorded as

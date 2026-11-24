@@ -587,9 +587,13 @@ mod tests {
     #[test]
     fn a_head_read_only_from_no_base_is_told_apart_from_one_unread() {
         let off = "0123456789abcdef0123456789abcdef01234567";
+        // Another base whose short form is the same, which the fixture's
+        // own set can't fold into the first, so the refusal's folding is
+        // what names it once.
+        let beside = "0123456789ab0000000000000000000000000000";
         let rounds = HashSet::from([
             round("ddd", Some(off)),
-            round("ddd", Some(off)),
+            round("ddd", Some(beside)),
             round("ddd", Some("")),
             round("ddd", Some("origin/release-2026")),
             round("eee", Some("elsewhere")),
@@ -606,6 +610,29 @@ mod tests {
         assert!(!refused.contains("elsewhere"), "{refused}");
         let unread = read_in("ccc", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
         assert_eq!(unread, seen::unread("ccc"));
+    }
+
+    // A base git can't check, as in a repo it can't open, reads as one off
+    // main, so the refusal names it, which is how a reader tells the two
+    // apart.
+    #[test]
+    fn a_base_git_cannot_check_is_named() {
+        let repo = env::temp_dir().join(format!("merge-net-no-repo-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        let base = "0123456789abcdef0123456789abcdef01234567";
+        let rounds = HashSet::from([round("ddd", Some(base))]);
+        let refused = read_in(
+            "ddd",
+            &rounds,
+            on_main_at(&repo, "main"),
+            |_| Vec::new(),
+            |read| read,
+        )
+        .unwrap_err();
+        assert!(
+            refused.contains("couldn't check (read from: 0123456789ab)"),
+            "a base git couldn't check wasn't named: {refused}"
+        );
     }
 
     // Each base is a git, and on 21 November the rounds held about 2,300,
