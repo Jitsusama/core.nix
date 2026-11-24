@@ -2105,11 +2105,15 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
             // move's old address stands only until its last word is stale.
             // Where the house names no key, one forged from the address it
             // is sending by replaces that address's word, so it can still
-            // loosen the hold; under a key, only a signed one is taken.
+            // loosen the hold; under a key, only a signed one is taken. A
+            // house naming no address is heard as itself, from wherever
+            // its key's reports come.
             let sent = h
                 .from
                 .iter()
-                .filter_map(|&address| ear.sent(address, now))
+                .map(|&address| ear.sent(address, now))
+                .chain([ear.sent(house::Source::House(network.clone()), now)])
+                .flatten()
                 .filter(|&(_, age)| age <= house::FRESH)
                 .max_by(|a, b| a.0.total_cmp(&b.0));
             let most = house::held(h.most, sent, least)?;
@@ -3644,6 +3648,40 @@ mod tests {
             house_said(&quiet).contains("holds nothing"),
             "{}",
             house_said(&quiet)
+        );
+    }
+
+    // A keyed house naming no address holds by what its key's reports
+    // said, from wherever they came, and an address's own word holds it
+    // nothing, as no address is its.
+    #[test]
+    fn a_house_naming_no_address_holds_by_its_own_word() {
+        let network = "00:00:5e:00:53:01".to_string();
+        let houses = networks::Houses::from([(
+            network.clone(),
+            networks::House {
+                most: 7_000,
+                from: Vec::new(),
+                key: Some("/etc/house.key".into()),
+            },
+        )]);
+        let ear = house::Ear::default();
+        let at = Instant::now();
+        let report = |bytes, ms| house::Report { bytes, ms };
+        let mac: std::net::IpAddr = "192.0.2.7".parse().expect("an address");
+        ear.hear(mac, report(0, 0), at);
+        ear.hear(mac, report(312_500, 1_000), at);
+        assert!(
+            house_holds(&houses, Some(&ear), at).is_empty(),
+            "an address's own word held a house naming none"
+        );
+        let own = || house::Source::House(network.clone());
+        ear.hear(own(), report(0, 0), at);
+        ear.hear(own(), report(312_500, 1_000), at);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), at).get(&network),
+            Some(&(2_500, 4_500)),
+            "the house's own word didn't hold it"
         );
     }
 

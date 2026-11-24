@@ -126,8 +126,8 @@ let
         }).config.from
         true
     )).success;
-  # A list is held to the same check in each of its addresses, and to one
-  # at least.
+  # A list is held to the same check in each of its addresses; one of
+  # none is the assertions' to judge, by whether its house names a key.
   misread =
     lib.filter (text: !address.check text) taken
     ++ lib.filter address.check refused
@@ -135,8 +135,7 @@ let
     ++ lib.optional (takes [
       "192.0.2.7"
       "the mac"
-    ]) "a list holding a name"
-    ++ lib.optional (takes [ ]) "a list of none";
+    ]) "a list holding a name";
   # What the shaper's assertions refuse of a machine whose networks name
   # `houses`, by network: their messages, the machine's others left out.
   keyRefusals =
@@ -189,6 +188,28 @@ let
       ${other}.from = "192.0.2.7";
     };
   };
+  # A keyed house naming no address, heard from any by its key alone,
+  # opens the port to the whole line and builds; one naming no key is
+  # refused, since nothing would say a report was its.
+  anywhere =
+    (bareNixos [
+      self.nixosModules.shaper
+      {
+        jitsusama.shaper.networks.${one} = {
+          up = 12000;
+          house = {
+            most = 7000;
+            keyFile = "/var/lib/house.key";
+          };
+        };
+      }
+    ]).config.networking.firewall;
+  anywhereRules = lib.filter (line: line != "") (lib.splitString "\n" anywhere.extraInputRules);
+  unaddressed = {
+    keyed = keyRefusals { ${one}.keyFile = "/var/lib/house.key"; };
+    keyless = keyRefusals { ${one} = { }; };
+    said = lib.concatStringsSep "; " unaddressed.keyed;
+  };
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -235,6 +256,23 @@ onLinux {
     else
       "A house's address check misreads: ${lib.concatStringsSep ", " misread}"
   ) (opened && misread == [ ]);
+
+  shaper-hears-a-keyed-house-from-any-address =
+    holds "shaper-hears-a-keyed-house-from-any-address"
+      (
+        if anywhereRules != [ "udp dport ${port} accept" ] then
+          "A keyed house naming no address doesn't open UDP port ${port} to the line alone: "
+          + lib.concatStringsSep "; " anywhereRules
+        else if unaddressed.keyed != [ ] then
+          "A keyed house naming no address was refused: ${unaddressed.said}"
+        else
+          "A house naming neither an address nor a key was taken."
+      )
+      (
+        anywhereRules == [ "udp dport ${port} accept" ]
+        && unaddressed.keyed == [ ]
+        && unaddressed.keyless != [ ]
+      );
 
   # A house's key the shaper's service can't see, under /root, /home,
   # /tmp or /var/tmp or spelled through them, is refused as the machine

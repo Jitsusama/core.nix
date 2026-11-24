@@ -96,8 +96,11 @@ let
   # An address as the firewall and src/networks.rs read it alike.
   address = import ./address.nix lib;
   # A house's addresses, one written alone taken as a list of one, so a
-  # machine that named one before names it the same way still.
-  addresses = lib.types.coercedTo address lib.toList (lib.types.nonEmptyListOf address);
+  # machine that named one before names it the same way still. None is
+  # allowed only beside a key, which alone then says who sent a report.
+  addresses = lib.types.coercedTo address lib.toList (lib.types.listOf address);
+  # Houses heard by their key alone, from any address on the line.
+  unaddressed = lib.filter (house: house.from == [ ]) houses;
 in
 {
   imports = [
@@ -202,6 +205,7 @@ in
               };
               options.from = lib.mkOption {
                 type = addresses;
+                default = [ ];
                 example = [
                   "192.0.2.7"
                   "192.0.2.8"
@@ -227,7 +231,12 @@ in
                   temporary IPv6 address, are dropped without a word, and
                   the house holds nothing. house-report sends over IPv4
                   alone, for that reason. With a `keyFile`, a report from
-                  one of these is taken only when it's signed.
+                  one of these is taken only when it's signed. Left empty,
+                  which needs a `keyFile`, a signed report is taken from
+                  any address, so the house is heard wherever a lease or
+                  a cable moves the other machine; the port is then open
+                  to every device on the line, and the key and its stamp
+                  alone keep one from holding this machine's upload.
                 '';
               };
               options.keyFile = lib.mkOption {
@@ -333,11 +342,16 @@ in
   # Only the house's other machine reaches the port its reports go to. The
   # rule holds on every network, but a report holds only the links of the
   # network that names the house.
-  config.networking.firewall.extraInputRules = lib.concatMapStrings (address: ''
-    ${
-      if lib.hasInfix ":" address then "ip6" else "ip"
-    } saddr ${address} udp dport ${toString housePort} accept
-  '') (lib.unique (lib.concatMap (house: house.from) houses));
+  # A house naming no address is heard from any, by its key alone.
+  config.networking.firewall.extraInputRules =
+    lib.concatMapStrings (address: ''
+      ${
+        if lib.hasInfix ":" address then "ip6" else "ip"
+      } saddr ${address} udp dport ${toString housePort} accept
+    '') (lib.unique (lib.concatMap (house: house.from) houses))
+    + lib.optionalString (unaddressed != [ ]) ''
+      udp dport ${toString housePort} accept
+    '';
 
   # The shaper's service sees an empty /root, /home, /tmp and /var/tmp, so
   # a key kept there would read as missing, as would one spelled through
@@ -380,6 +394,12 @@ in
           + "/tmp or /var/tmp, which the shaper's service can't see, nor spelled with "
           + "//, /./ or /../: "
           + lib.concatStringsSep ", " hidden;
+      }
+      {
+        assertion = lib.all (house: house.keyFile != null) unaddressed;
+        message =
+          "jitsusama.shaper.networks: a house naming no address in `from` must name "
+          + "a keyFile, since its key alone says a report is the other machine's";
       }
       {
         assertion = shared == [ ];
