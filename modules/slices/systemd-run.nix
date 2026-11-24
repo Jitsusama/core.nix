@@ -7,11 +7,13 @@
 # options the given systemd takes. A machine built elsewhere, for a
 # platform its builder can't run, has the table held to the builder's own
 # systemd instead where that's built from the same source and patches,
-# since run.c lists the same options on every platform, and is warned as
-# it's evaluated where it isn't, or the builder can't have systemd at all.
-# Any difference fails the machine's build, a harmless one too, rather
-# than guessing which a wrapper would misread; the way on is a change to
-# the table in core, as the hold's refusal says.
+# since run.c lists the same options on every platform. Where it's neither,
+# or the builder can't have systemd at all, the wrapper says it isn't held
+# (held, and unheld for the warning a machine raises), so a machine's
+# evaluation warns. Where the hold runs, any difference fails the machine's
+# build, a harmless one too, rather than guessing which a wrapper would
+# misread; the way on is a change to the table in core, as the hold's
+# refusal says.
 {
   buildPackages,
   jq,
@@ -51,6 +53,10 @@ let
       buildPackages.systemd
     else
       null;
+  named = if systemd ? version then "systemd ${systemd.version}" else "one of unknown version";
+  unheld =
+    "systemd-run's wrapper isn't held to ${named}: the builder can't run "
+    + "it and has no systemd built as it is, so a call it misreads goes unseen";
   holds = runCommandLocal "systemd-run-options-hold" { nativeBuildInputs = [ jq ]; } ''
     ${buildPackages.bash}/bin/bash ${./systemd-run-options-hold.sh} ${./systemd-run-options.txt} \
       ${asked}/bin/systemd-run
@@ -61,14 +67,11 @@ lib.hiPrio (writeShellApplication {
   name = "systemd-run";
   # Asked for so the wrapper can't be built while its table doesn't hold. The
   # hold runs where the machine is built, so its bash is the builder's.
-  derivationArgs =
-    if asked == null then
-      lib.warn (
-        "systemd-run's wrapper isn't held to systemd ${systemd.version}: the builder can't run "
-        + "it and has no systemd built as it is, so a call it misreads goes unseen"
-      ) { }
-    else
-      { inherit holds; };
+  derivationArgs = lib.optionalAttrs (asked != null) { inherit holds; };
+  passthru = {
+    held = asked != null;
+    inherit holds unheld;
+  };
   text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
     builtins.readFile ./systemd-run.sh
   );

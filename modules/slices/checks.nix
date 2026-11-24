@@ -660,9 +660,49 @@
   # never the command's, bundled and shortened as its parser takes them, by
   # a table the wrapper is built only once it holds to the options of the
   # systemd it wraps, nixpkgs' here, and isn't built without: given another
-  # systemd, as a machine's own patched one, it holds the table to that one.
+  # systemd, as a machine's own patched one, it holds the table to that one,
+  # and a hold over a systemd-run that can't list its options fails its
+  # build, saying so. Cross-built for aarch64 it holds the table to the
+  # builder's own systemd, built as the machine's is; with the machine's
+  # systemd patched, or of no version, it's built unheld and says so for
+  # the machine's warnings, never throwing. Those are read as evaluated.
   an-agents-run-stays-in-its-slice =
     let
+      cross = pkgs.pkgsCross.aarch64-multiplatform;
+      crossRun = cross.callPackage ./systemd-run.nix {
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      builders = builtins.unsafeDiscardStringContext (
+        lib.getExe' cross.buildPackages.systemd "systemd-run"
+      );
+      heldToBuilders = crossRun.held && lib.hasInfix builders crossRun.holds.drvAttrs.buildCommand;
+      patchedCross = cross.callPackage ./systemd-run.nix {
+        systemd = cross.systemd.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+        });
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      versionless = cross.callPackage ./systemd-run.nix {
+        systemd = pkgs.runCommandLocal "a-systemd" { } "mkdir $out";
+        real = "/x";
+        cgroup = "cgroup";
+      };
+      unheld = run: !run.held && !(run.drvAttrs ? holds) && lib.hasInfix "isn't held" run.unheld;
+      # A systemd-run that can't list its options, for the hold to refuse.
+      mute = pkgs.runCommandLocal "a-mute-systemd" { inherit (pkgs.systemd) version; } ''
+        mkdir -p $out/bin
+        printf '#!%s\nexit 1\n' ${pkgs.runtimeShell} >$out/bin/systemd-run
+        chmod +x $out/bin/systemd-run
+      '';
+      refused =
+        pkgs.testers.testBuildFailure
+          (pkgs.callPackage ./systemd-run.nix {
+            systemd = mute;
+            real = "/x";
+            cgroup = "cgroup";
+          }).holds;
       run = pkgs.callPackage ./systemd-run.nix {
         real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
         cgroup = "cgroup";
@@ -682,7 +722,13 @@
     in
     assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
     assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
+    assert lib.assertMsg heldToBuilders "a cross-built systemd-run isn't held to the builder's";
+    assert lib.assertMsg (unheld patchedCross) "a cross-built, patched systemd-run is held";
+    assert lib.assertMsg (
+      unheld versionless && lib.hasInfix "unknown version" versionless.unheld
+    ) "a cross-built systemd-run of no version isn't said unheld";
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      grep -q "can't list its options" ${refused}/testBuildFailure.log
       ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
         ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
         ${pkgs.systemd}/bin/systemd-run
