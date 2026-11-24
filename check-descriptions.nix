@@ -2330,8 +2330,10 @@
   '';
   mycelium-takes-its-link-key-s-words = ''
     the words a link key pins mycelium to, read from the line a machine's system writes, are ones
-    the locked mycelium takes, so a renamed action or flag fails the check rather than the first
-    link or attach
+    the locked mycelium takes: run as sshd runs them for a login, with no command asked, they
+    parse whole and reach the action, which refuses the login and keeps the refusal naming the
+    machine the key is from, so a renamed or newly required action or flag fails the check rather
+    than the first link or attach
   '';
   mycelium-map-check-answers-soon = ''
     mycelium-map-check says what its last reading found and when, with the day if not today, then
