@@ -3,6 +3,7 @@
 //! take any.
 
 use super::*;
+use serde_json::Value;
 
 /// The agent ending its turn at `stamp` as `stop`, saying it was done.
 fn ended(stamp: &str, stop: &str) -> String {
@@ -115,4 +116,45 @@ fn an_answer_takes_up_only_what_it_answered_and_never_for_a_refused_cell() {
         heard.len() == 3 && heard.iter().all(|h| h.taken_by.is_none()),
         "a cell the routes refuse took a pain up: {heard:?}"
     );
+}
+
+#[test]
+fn an_answer_kept_before_answers_takes_what_it_took_then() {
+    // 19:25 and 19:30 UTC on 16 November 2026.
+    let (asked, at) = (AT - 35 * 60_000, AT - 30 * 60_000);
+    for (name, kept_asked, taken) in [
+        ("answered-asked", Some(asked), vec![None, Some("ABC123")]),
+        ("answered-older", None, vec![Some("ABC123"), Some("ABC123")]),
+    ] {
+        let place = Place::new(name);
+        place.routes();
+        let live = [
+            user("a", "2026-11-16T19:10:00.000Z", "no, that's broken again"),
+            user("c", "2026-11-16T19:25:00.000Z", "wtf, make the bar green"),
+        ];
+        place.log("src", "s-live", Path::new("/home/j/src"), &live);
+        let unnamed = r#"{"Ok":{"Sessions":[{"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
+        hear(&place.ears(), unnamed, &mut |_, _| true).expect("a run with no cell for it");
+        // The reading as the code before answers kept it: its one answer,
+        // and the message that answer answered where it kept one.
+        let following_at = place.root.join("state/hear.json");
+        let read = fs::read(&following_at).expect("hear.json");
+        let mut following: Value = serde_json::from_slice(&read).expect("hear.json reads");
+        for log in following.as_object_mut().expect("logs by name").values_mut() {
+            log["carried"]["answered"] = json!(at);
+            if let Some(asked) = kept_asked {
+                log["carried"]["asked"] = json!(asked);
+            }
+        }
+        fs::write(&following_at, following.to_string()).expect("hear.json written");
+        hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+        let heard = place.heard();
+        let took: Vec<Option<&str>> = heard.iter().map(|h| h.taken_by.as_deref()).collect();
+        assert_eq!(
+            took,
+            taken,
+            "an answer kept before answers didn't take, from the message it answered \
+             or else from the start, what it took then: {name}"
+        );
+    }
 }

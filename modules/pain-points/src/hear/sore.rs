@@ -88,8 +88,16 @@ const REASSURING: [&str; 10] = [
 ];
 
 /// Phrases that give up on the agent, which no ease beside them softens:
-/// "it's fine, i'll do it myself" is no reassurance.
-const GIVING_UP: [&str; 4] = ["myself", "forget it", "never mind", "whatever"];
+/// "it's fine, i'll do it myself" is no reassurance. Each is whole words,
+/// so "i blame myself" gives up on nothing; a bare "whatever" gives up
+/// only as a sentence of its own.
+const GIVING_UP: [&str; 4] = ["do it myself", "do this myself", "forget it", "never mind"];
+
+/// The marks that end a sentence, a full-width question mark among them.
+const ENDS: [char; 5] = ['.', '!', '?', '\u{ff1f}', ';'];
+
+/// The marks that ask.
+const ASKS: [char; 2] = ['?', '\u{ff1f}'];
 
 /// A message's words, lowered, as whole words with their apostrophes.
 fn words_of(low: &str) -> Vec<&str> {
@@ -115,8 +123,8 @@ fn swears(low: &str) -> bool {
         return false;
     }
     let sentences: Vec<(bool, Vec<&str>)> = low
-        .split_inclusive(['.', '!', '?', ';'])
-        .map(|sentence| (sentence.trim_end().ends_with('?'), words_of(sentence)))
+        .split_inclusive(ENDS)
+        .map(|sentence| (sentence.trim_end().ends_with(ASKS), words_of(sentence)))
         .collect();
     let eased = sentences
         .iter()
@@ -124,7 +132,8 @@ fn swears(low: &str) -> bool {
     let asked_swearing = sentences
         .iter()
         .any(|(asked, words)| *asked && swore(words));
-    let gave_up = GIVING_UP.iter().any(|up| said(&each, up));
+    let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
+        || sentences.iter().any(|(_, words)| words[..] == ["whatever"]);
     !eased || asked_swearing || gave_up
 }
 
@@ -326,12 +335,33 @@ mod tests {
         }
         for hurt in [
             "shit, that's fine?",
+            "shit. that's fine?",
+            "shit, that's fine\u{ff1f}",
             "that's fine. why the fuck is it slow?",
             "it's fine, i'll do it myself, fuck this",
+            "shit, it's fine. whatever.",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
                 "ease elsewhere, asked or beside giving up spared a swear: {hurt}"
+            );
+        }
+        for up in GIVING_UP {
+            let hurt = format!("shit, it's fine, {up}");
+            assert!(
+                kinds(&hurt, AT, &[]).contains(&"swore"),
+                "ease beside giving up spared a swear: {hurt}"
+            );
+        }
+        for eased in [
+            "shit, it's fine. can you check the logs?",
+            "shit, it's fine, i blame myself",
+            "shit, that's fine, whatever works for you",
+        ] {
+            assert_eq!(
+                kinds(eased, AT, &[]),
+                none,
+                "a plain ask, self-blame or a passing whatever undid ease: {eased}"
             );
         }
         assert_eq!(kinds("now do the backlight", AT, &[]), none);
