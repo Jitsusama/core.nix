@@ -22,8 +22,9 @@ pub type Ceilings = BTreeMap<String, f64>;
 /// A network's house: the most the upload this machine and another on the
 /// same line send between them may come to, in kbit/s, and the addresses
 /// the other reports what it sends from, one for each interface it may
-/// send by (src/house.rs), and the file holding the key its reports are
-/// signed with, where it names one.
+/// send by (src/house.rs), or none for a keyed house heard by its key
+/// alone, and the file holding the key its reports are signed with, where
+/// it names one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct House {
     pub most: u64,
@@ -128,8 +129,8 @@ pub fn ceilings(path: &Path) -> Ceilings {
 const HOUSE_MOST_KBIT: f64 = 10_000_000.0;
 
 /// The houses written at `path`, or none where there is no such file or it
-/// can't be read as one, leaving out one with no address, or one that
-/// isn't one, or is IPv4's written as IPv6, mapped or compatible
+/// can't be read as one, leaving out one naming neither an address nor a
+/// key, or an address that isn't one, or is IPv4's written as IPv6, mapped or compatible
 /// (`Ipv6Addr::to_ipv4`, as nixos.nix refuses), which the firewall and the
 /// ear would read apart, or whose ceiling is under the least a trial may
 /// set or past the most, as nixos.nix refuses too. One naming a key file

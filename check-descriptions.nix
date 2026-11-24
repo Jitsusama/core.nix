@@ -3810,8 +3810,8 @@
   '';
   shaper-hears-a-keyed-house-from-any-address = ''
     a keyed house naming no address, whose reports its key alone says are its, opens the port the
-    shaper hears them on to the whole line, in one rule naming no address, and builds, while a
-    house naming neither an address nor a key is refused as the machine builds
+    shaper hears them on to every private IPv4 address, in one rule naming no other, and builds,
+    while a house naming neither an address nor a key is refused as the machine builds
   '';
   shaper-hears-only-the-house = ''
     a network's house opens the port the shaper hears its reports on, the one src/house.rs names,

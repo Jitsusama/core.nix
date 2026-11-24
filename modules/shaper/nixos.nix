@@ -235,8 +235,10 @@ in
                   which needs a `keyFile`, a signed report is taken from
                   any address, so the house is heard wherever a lease or
                   a cable moves the other machine; the port is then open
-                  to every device on the line, and the key and its stamp
-                  alone keep one from holding this machine's upload.
+                  to every private IPv4 address, on every link, so the
+                  other machine must report over IPv4, as house-report
+                  does, and the key and its stamp alone keep a device that
+                  reaches it from holding this machine's upload.
                 '';
               };
               options.keyFile = lib.mkOption {
@@ -339,10 +341,13 @@ in
     sed -i '/cgroupv2 level [0-9]* @/d' ruleset.conf
   '';
 
-  # Only the house's other machine reaches the port its reports go to. The
-  # rule holds on every network, but a report holds only the links of the
-  # network that names the house.
-  # A house naming no address is heard from any, by its key alone.
+  # A house's addresses alone reach the port its reports go to. The rule
+  # holds on every network, but a report holds only the links of the
+  # network that names the house. A keyed house naming no address is
+  # heard from any private IPv4 address, house-report sending over IPv4
+  # alone, on every link, since the machine moves between them; its key
+  # alone says a report is its own (house any round 1's F3, F11, F16 and
+  # F18).
   config.networking.firewall.extraInputRules =
     lib.concatMapStrings (address: ''
       ${
@@ -350,7 +355,7 @@ in
       } saddr ${address} udp dport ${toString housePort} accept
     '') (lib.unique (lib.concatMap (house: house.from) houses))
     + lib.optionalString (unaddressed != [ ]) ''
-      udp dport ${toString housePort} accept
+      ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } udp dport ${toString housePort} accept
     '';
 
   # The shaper's service sees an empty /root, /home, /tmp and /var/tmp, so

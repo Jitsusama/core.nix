@@ -189,8 +189,10 @@ let
     };
   };
   # A keyed house naming no address, heard from any by its key alone,
-  # opens the port to the whole line and builds; one naming no key is
-  # refused, since nothing would say a report was its.
+  # opens the port to private IPv4 addresses alone and builds; one naming
+  # no key is refused, since nothing would say a report was its.
+  anywhereRule =
+    "ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } " + "udp dport ${port} accept";
   anywhere =
     (bareNixos [
       self.nixosModules.shaper
@@ -260,8 +262,8 @@ onLinux {
   shaper-hears-a-keyed-house-from-any-address =
     holds "shaper-hears-a-keyed-house-from-any-address"
       (
-        if anywhereRules != [ "udp dport ${port} accept" ] then
-          "A keyed house naming no address doesn't open UDP port ${port} to the line alone: "
+        if anywhereRules != [ anywhereRule ] then
+          "A keyed house naming no address doesn't open UDP port ${port} to private IPv4 alone: "
           + lib.concatStringsSep "; " anywhereRules
         else if unaddressed.keyed != [ ] then
           "A keyed house naming no address was refused: ${unaddressed.said}"
@@ -269,9 +271,9 @@ onLinux {
           "A house naming neither an address nor a key was taken."
       )
       (
-        anywhereRules == [ "udp dport ${port} accept" ]
+        anywhereRules == [ anywhereRule ]
         && unaddressed.keyed == [ ]
-        && unaddressed.keyless != [ ]
+        && lib.any (lib.hasInfix "naming no address") unaddressed.keyless
       );
 
   # A house's key the shaper's service can't see, under /root, /home,
