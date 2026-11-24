@@ -352,15 +352,17 @@ def go_to_pressed(desktop: Desktop, session: str) -> float:
     # lone session holds only acts, so Ctrl+] goes to its row in Agents rather than into it
     # (Joel, 2026-11-11: no menu of acts alone), or found as Agents' own row, into its acts,
     # until Ctrl+] keeps out of an acts-only row (#3972). Go To is its act there as its drawer
-    # names it, once the launcher knows a window to go to or a hold to attach one to, or the act
-    # selected, done by its command.
+    # names it, once the launcher knows a window to go to or a hold to attach one to, or among
+    # the acts stepped into, Talk selected as Return's, done by its command once it's selected.
     desktop.follow()
 
     def offers_go_to(shown: Json) -> bool:
         acts = (shown.get("drawer") or {}).get("acts") or []
         selected = (shown["selected"] or {}).get("name")
         return shown["held"][:1] == ["agents"] and (
-            selected == "Go To" or any(str(act).endswith("Go To") for act in acts)
+            selected == "Go To"
+            or "Go To" in shown["rows"]
+            or any(str(act).endswith("Go To") for act in acts)
         )
 
     try:
@@ -368,11 +370,15 @@ def go_to_pressed(desktop: Desktop, session: str) -> float:
     except AssertionError as failed:
         msg = (
             f"the launcher offers no Go To: {desktop.showing()['drawer']},"
+            f" rows {desktop.showing()['rows']},"
             f" the agents daemon {agents_serving(desktop, session)},"
             f" while the node says {node_row(desktop, session)}"
             f" and niri {desktop.as_account('niri msg --json windows')}"
         )
         raise AssertionError(msg) from failed
+    # A line runs the acts of the row selected, and Talk's are its own, so Go To is selected first.
+    if "Go To" in desktop.showing()["rows"]:
+        desktop.down_to("Go To")
     desktop.normal()
     machine.send_chars(":")
     desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
