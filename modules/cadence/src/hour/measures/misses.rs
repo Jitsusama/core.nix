@@ -19,11 +19,13 @@ use crate::{axes, command, write_whole};
 mod held;
 mod running;
 mod symbiosis;
+mod tested;
 
 pub use held::{BLIND, HELD, held};
 use running::LASTING;
 pub use running::{UNRUN, UNSEEN, hosts_started};
 pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
+pub use tested::{UNTESTED, untested};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -235,15 +237,7 @@ fn judged<T>(
     switches: &str,
     then: impl FnOnce(&Checkouts, &Judged<'_>) -> T,
 ) -> io::Result<T> {
-    let mut repos = Checkouts::from([
-        ("core".to_owned(), folder.join("core.git")),
-        ("harness".to_owned(), axes::landings::harness_mirror()),
-    ]);
-    for named in checkouts {
-        if let Some((name, path)) = named.split_once('=') {
-            repos.insert(name.to_lowercase(), path.into());
-        }
-    }
+    let repos = checkouts_of(folder, checkouts);
     let kept_at = folder.join("merged.json");
     let known = std::fs::read_to_string(&kept_at)
         .ok()
@@ -263,6 +257,22 @@ fn judged<T>(
         here: here.trim(),
     };
     Ok(then(&repos, &judged))
+}
+
+/// The checkouts whose mains cadence reads: core's and the harness's, as
+/// `folder` and pi-packages keep them, and each of `checkouts`, as
+/// `NAME=PATH`.
+fn checkouts_of(folder: &Path, checkouts: &[String]) -> Checkouts {
+    let mut repos = Checkouts::from([
+        ("core".to_owned(), folder.join("core.git")),
+        ("harness".to_owned(), axes::landings::harness_mirror()),
+    ]);
+    for named in checkouts {
+        if let Some((name, path)) = named.split_once('=') {
+            repos.insert(name.to_lowercase(), path.into());
+        }
+    }
+    repos
 }
 
 /// The changes the misses' checks name now that have merged: only these
