@@ -179,6 +179,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         return Ok(());
     };
     let ledger_at = folder.join("findings.jsonl");
+    let _held = findings::lock(&ledger_at)?;
     let mut ledger = findings::read(&ledger_at);
     let told = file(&mut ledger, &measures, &today(now), now);
     let mesh = Mesh {

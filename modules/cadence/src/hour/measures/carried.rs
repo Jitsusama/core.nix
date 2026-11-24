@@ -1,10 +1,12 @@
 //! Where the realm's sessions run, machine by machine, from each realm's
 //! `mycelium sessions` answer: how many are busy and how many listen on
 //! each, with the busy ones on this machine, the one Joel works at,
-//! judged. On 23 November he found 30 sessions busy here and none on the
+//! first. On 23 November he found 30 sessions busy here and none on the
 //! cloud machines, the morning after he asked for load to be spread off
 //! it ("WE NEED TO FOCUS ON SPREADING LOAD NOW!", 22 November), and
-//! nothing had said so.
+//! nothing had said so. It is shown, never judged: at 17:52 that day he
+//! took back the most it was held to ("i want to distribute load until
+//! we have the cloud ready"), so no count here is out of spec.
 
 use std::collections::BTreeMap;
 
@@ -15,11 +17,6 @@ use super::{Class, Measure, count};
 /// Who moves sessions between machines and sets the order work starts in
 /// (WCJQSG, 23 November).
 const OWNER: &str = "1OGSE7";
-
-/// The most sessions busy on the machine Joel works at, so his apps and
-/// calls keep their room, the rest running elsewhere or waiting (WCJQSG,
-/// 23 November).
-const BUSY_HERE: f64 = 10.0;
 
 /// One machine's sessions, as the nodes list them.
 #[derive(Default)]
@@ -51,31 +48,22 @@ impl Lively {
     }
 }
 
-/// One session as the realms list it: how lively, on which machine, none
-/// where it names none, and whether it was matched across realms by its
-/// id or address.
+/// One session as the realms list it: how lively, and on which machine,
+/// none where it names none.
 struct Listing {
     lively: Lively,
     machine: String,
-    matched: bool,
 }
 
 /// The measure, from each realm's `sessions` answer beside its name and
 /// each realm's `machines` answer, on `here`, the machine the hour runs
-/// on: its busy sessions against `BUSY_HERE`, with each machine's busy and
+/// on: its busy sessions, unjudged, with each machine's busy and
 /// listening behind, busiest first. A machine a realm names but no session
 /// runs on is named too, so an idle cloud machine shows, and sessions
 /// naming no machine are a row of their own among them.
 ///
 /// Whatever may leave the count here short is said: a realm's node didn't
 /// answer, no node names this machine, or busy sessions name no machine.
-/// It is unjudged while that could put the count past the most: always for
-/// a silent realm; for a machine no node names, when every busy session
-/// could be here; for busy sessions naming no machine, when they with this
-/// machine's would pass it. A count surely past the most is judged all the
-/// same, since what wasn't counted could only add to it; sessions with no
-/// id or address count towards that only where one realm answered, as
-/// two realms may each list one.
 #[must_use]
 pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -> Measure {
     let answered: Vec<Vec<Value>> = machines
@@ -93,12 +81,8 @@ pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -
     let named_here = each.contains_key(here) || listed.iter().any(|l| l.machine == here);
     each.entry(here.to_owned()).or_default();
     let shown = each.len();
-    let one_realm = sessions.len() - unread.len() <= 1;
     let mut unplaced = Carried::default();
-    let mut sure = 0;
     for listing in listed {
-        let busy_here = listing.lively == Lively::Busy && listing.machine == here;
-        sure += usize::from(busy_here && (listing.matched || one_realm));
         let one = if listing.machine.is_empty() {
             &mut unplaced
         } else {
@@ -113,13 +97,11 @@ pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -
     let busy = each.values().map(|one| one.busy).sum::<usize>();
     let mine = each.get(here).map_or(0, |one| one.busy);
     let mut unsure = Vec::new();
-    let mut short = sessions.is_empty() || !unread.is_empty();
     if sessions.is_empty() {
         unsure.push("no realm was asked".to_owned());
     }
     unsure.extend(silent(&unread));
     if !sessions.is_empty() && !named_here {
-        short |= count(busy + unplaced.busy) > BUSY_HERE;
         let unnamed = if machines_read {
             format!("no node names this machine, {here}")
         } else {
@@ -128,10 +110,8 @@ pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -
         unsure.push(unnamed);
     }
     if unplaced.busy > 0 {
-        short |= count(mine + unplaced.busy) > BUSY_HERE;
         unsure.push(format!("{} busy naming no machine", unplaced.busy));
     }
-    let target = (!short || count(sure) > BUSY_HERE).then_some(BUSY_HERE);
     let why = if unsure.is_empty() {
         String::new()
     } else {
@@ -143,7 +123,7 @@ pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -
         class: Class::Apps,
         says,
         now: count(mine),
-        target,
+        target: None,
         owner: OWNER.to_owned(),
         behind: rows(each, unplaced),
     }
@@ -172,16 +152,12 @@ fn listings<'a>(sessions: &'a [(String, String)], here: &str) -> (Vec<Listing>, 
             let listing = Listing {
                 lively: Lively::of(session),
                 machine: session["machine"].as_str().unwrap_or_default().to_owned(),
-                matched: true,
             };
             let id = ["id", "address"]
                 .into_iter()
                 .find_map(|key| session[key].as_str().filter(|id| !id.is_empty()));
             match id {
-                None => each.push(Listing {
-                    matched: false,
-                    ..listing
-                }),
+                None => each.push(listing),
                 Some(id) if matched.get(id).is_none_or(|was| key(was) < key(&listing)) => {
                     matched.insert(id.to_owned(), listing);
                 }
