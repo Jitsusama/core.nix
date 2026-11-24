@@ -85,8 +85,8 @@ class Rig:
         link = next((link for link in status if link["name"] == "eth1"), {})
         return int(link.get("up", 0))
 
-    def heard(self) -> list[Json]:
-        """Give each traced second of eth1 that heard the house, oldest first."""
+    def traced(self) -> list[Json]:
+        """Give each traced second of eth1, oldest first."""
         # Read as it stands, so a missing file can't bury the failure it explains.
         _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl")
         seconds = []
@@ -95,9 +95,13 @@ class Rig:
                 step: Json = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if step.get("link") == "eth1" and "house_most" in step:
+            if step.get("link") == "eth1":
                 seconds.append(step)
         return seconds
+
+    def heard(self) -> list[Json]:
+        """Give each traced second of eth1 that heard the house, oldest first."""
+        return [step for step in self.traced() if "house_most" in step]
 
     def journal(self) -> str:
         """Give what the shaper said."""
@@ -145,7 +149,10 @@ def held(rig: Rig) -> None:
 
     def holding(_last_try: bool) -> bool:
         """Say whether the shaper heard the house's upload and holds under what it leaves."""
-        last = (rig.heard() or [{}])[-1]
+        # The newest second alone, which leaves the house's figures out
+        # while the house holds nothing, so a hold heard before the house
+        # went quiet can't pass for one now (house signing round 3's F5).
+        last = (rig.traced() or [{}])[-1]
         sent, most = int(last.get("house_sent", 0)), int(last.get("house_most", MOST))
         return sent >= HEARD and most <= HELD
 
