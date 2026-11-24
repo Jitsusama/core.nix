@@ -7,8 +7,9 @@
 
 - [The page](index.html): a headline counting the machines and how they
   stand, the machines drawn as the piers of a bridge, a section for
-  each machine with its four ties and what can be done with it through
-  the launcher, then the other three parts across them, each with its
+  each machine in reach with its four ties and what can be done with it
+  through the launcher, those out of reach named together with when each
+  was last heard, then the other three parts across them, each with its
   health (good, watch, bad or not read), walked by keyboard or pointer.
 - [The page as text](index.md): how each is judged, the keys, and what
   the data holds.

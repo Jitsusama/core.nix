@@ -367,6 +367,20 @@ It fails on a relative link that resolves to nothing, and on a backticked
 path starting with one of the repository's own top folders that names
 nothing, read from the root or the doc's folder. Code blocks aren't read.
 
+Its code comments are held the same way, through another:
+
+```nix
+comments-name-what-exists = core.lib.commentsNameWhatExists pkgs {
+  src = ./.;
+  # Each mention of a path gone, as `file path`, once for each, until fixed.
+  waiting = [ ];
+};
+```
+
+It fails on a comment naming a path from one of the repository's top folders
+that names nothing, and on a waiting line listed more often than it's found,
+so the list only shrinks. It reads code comments and Python docstrings, not markdown.
+
 Every folder says what it holds, as core's do, through another:
 
 ```nix
