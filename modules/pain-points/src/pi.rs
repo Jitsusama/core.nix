@@ -37,6 +37,9 @@ pub enum Stop {
     Tool,
     Error,
     Aborted,
+    /// Cut short by pi itself, to compact the context: an abort he
+    /// didn't ask for, which hands the turn back all the same.
+    Compacted,
 }
 
 /// One call to the model: when it began, in milliseconds since 1970, how
@@ -100,6 +103,10 @@ pub struct Log {
     /// first token, which the harness logs just before the call itself.
     #[serde(default)]
     pub next: Option<(i64, i64)>,
+    /// A compaction was asked for and hasn't landed. pi's compaction
+    /// aborts the call it cuts, so an abort while one is asked is pi's.
+    #[serde(default)]
+    pub compacting: bool,
 }
 
 impl Log {
@@ -169,6 +176,12 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
             last = Some(text);
         } else if head_has(&line, r#""customType":"harness-call""#) {
             log.next = harness_call(&line);
+        } else if head_has(&line, r#""customType":"compaction-asked""#) {
+            log.compacting = true;
+        } else if head_has(&line, r#""type":"compaction""#)
+            || head_has(&line, r#""customType":"compaction-settled""#)
+        {
+            log.compacting = false;
         } else if log.open
             && begins_with_role(&line, "assistant")
             && let (Some(turn), Some(mut call)) = (log.turns.last_mut(), call(&line))
@@ -178,6 +191,9 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 .take()
                 .filter(|(of, _)| *of == call.start)
                 .map(|(_, first)| first);
+            if std::mem::take(&mut log.compacting) && call.stop == Stop::Aborted {
+                call.stop = Stop::Compacted;
+            }
             // A call that answers or is stopped hands the turn back: what
             // runs after it was set off by something else, a mesh message
             // or a job's result, not by him.
@@ -429,6 +445,20 @@ mod tests {
         ) + "\n"
     }
 
+    fn compaction_asked(at: i64) -> String {
+        format!(
+            r#"{{"type":"custom","customType":"compaction-asked","data":{{"at":{at},"resume":true}},"id":"k","parentId":"d","timestamp":"{}"}}"#,
+            iso(at)
+        ) + "\n"
+    }
+
+    fn compaction(at: i64) -> String {
+        format!(
+            r#"{{"type":"compaction","id":"m","parentId":"k","timestamp":"{}","summary":"what was said"}}"#,
+            iso(at)
+        ) + "\n"
+    }
+
     fn mesh(at: i64) -> String {
         format!(
             r#"{{"type":"custom_message","customType":"mesh","content":"Mesh message from a peer","timestamp":"{}"}}"#,
@@ -474,6 +504,46 @@ mod tests {
             "calls a mesh message set off after his reply aren't his turn's"
         );
         assert!(!log.open, "the answer handed the turn back");
+    }
+
+    #[test]
+    fn an_abort_pi_makes_to_compact_is_not_his_stop() {
+        // As a session's log read on 23 November: a tool's result, the
+        // harness asking to compact, the call it cut ending at once, the
+        // compaction, and the run resumed by an automated message.
+        let text = typed(AT, AT, "check the gate")
+            + &reply(AT + 500, 20_000, "toolUse")
+            + &tool_ended(AT + 20_800, "edit")
+            + &compaction_asked(AT + 20_860)
+            + &reply(AT + 20_975, 0, "aborted")
+            + &compaction(AT + 21_600)
+            + &typed(
+                AT + 22_200,
+                AT + 22_300,
+                "[Automated message, no human input: the context was compacted]",
+            )
+            + &reply(AT + 22_400, 9000, "toolUse");
+        let log = read(&text);
+        let stops: Vec<Stop> = log.turns[0].calls.iter().map(|c| c.stop).collect();
+        assert_eq!(stops, [Stop::Tool, Stop::Compacted]);
+        assert!(!log.compacting, "the compaction landed");
+        let stopped: u32 = painful(&[&log.turns], AT - 1, AT + 1)
+            .iter()
+            .map(|p| match &p.signs {
+                Signs::Pi(signs) => signs.stopped,
+                _ => 0,
+            })
+            .sum();
+        assert_eq!(stopped, 0, "pi cut its own call, he stopped nothing");
+
+        let after = text
+            + &typed(AT + 60_000, AT + 60_000, "look at the launcher")
+            + &reply(AT + 60_500, 4000, "aborted");
+        assert_eq!(
+            read(&after).turns[1].calls[0].stop,
+            Stop::Aborted,
+            "once the compaction has landed, an abort is his again"
+        );
     }
 
     #[test]
@@ -673,6 +743,7 @@ mod tests {
             open: true,
             turns: vec![turn(AT - 10, &[]), turn(AT - 5, &[])],
             next: None,
+            compacting: false,
         };
         log.prune(AT);
         assert_eq!(log.turns.len(), 1, "the older is gone");
