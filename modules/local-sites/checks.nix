@@ -84,6 +84,7 @@ in
         FOR_YOU=${launcher + "/ForYou.js"} ORDER=${launcher + "/Order.js"} \
         NOW_QML=${launcher + "/Now.qml"} ON_WORDS=${launcher + "/words/on.json"} \
         AGENT_WORDS=${launcher + "/words/agents.json"} \
+        LOOK_ACTS=${pkgs.writeText "look-acts.json" (builtins.toJSON (import ./look-acts.nix))} \
         ${lib.getExe pkgs.nodejs} --test --test-reporter=spec tests/ask-as-for-you.test.ts
       touch $out
     '';

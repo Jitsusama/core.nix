@@ -1,14 +1,17 @@
 // The kit's ask row reads a look as the launcher's For You does, held
 // against the launcher's own code rather than against what ask.ts says it
 // copied, so a rule changed on either side fails here. Looks.js's `look`,
-// `quieted` and `asksNothing` and Now.qml's own lookOffers decide, over
-// looks at each boundary and of every kind and state, which a page reads,
-// which wait, what each offers and what follows each, and when it stops;
-// LookForm.js's actOf decides its act, beside the launcher's act names as
-// Now.qml's lookActNames and its words name them; and every character,
-// within, leading and ending a name, is read and judged as LookForm.js
-// reads and judges it. A side saying nothing (no lapse, no act) agrees only
-// where the other has nothing to say. The launcher's scripts run in Node,
+// `quieted` and `asksNothing` and Now.qml's own lookOffers and followsOf
+// decide, over looks at each boundary and of every kind and state, which a
+// page reads, which wait, what each offers and what follows each, and when
+// it stops; Now.qml's lookDrawer, which kinds it links, at a web address
+// only, the page's own rule; LookForm.js's actOf decides its act, beside
+// the launcher's act names as Now.qml's lookActNames and its words name
+// them, and the ids local-sites' home module guards as Now.qml lists them;
+// and every character, within, leading and ending a name, once and twice,
+// is read and judged as LookForm.js reads and judges it. A side saying
+// nothing (no lapse, no link) agrees only where the other has nothing to
+// say. The launcher's scripts run in Node,
 // not in Qt's engine, which tests/for-you.qml holds them in. The check
 // the-ask-row-reads-as-for-you hands it the launcher's files by the names
 // `launcher` reads.
@@ -33,6 +36,10 @@ interface ForYou {
   readonly looks: Script;
   readonly form: Script;
   readonly offers: (one: Read) => Read["offers"];
+  /** Whether a choice's drawer says what follows it, as Now.qml's followsOf decides. */
+  readonly shows: (one: Read, choice: Read["offers"][number]) => boolean;
+  /** The kinds Now.qml's drawer names a target for, which a page may link. */
+  readonly linked: readonly string[];
   readonly acts: readonly string[];
   readonly open: string | undefined;
 }
@@ -43,6 +50,10 @@ const QT_LINE = /^\.(?:pragma|import)\b.*$/gmu;
 const ACT_IDS = /lookActNames:\s*\[([^\]]*)\]/u;
 /** Now.qml's lookOffers, its body as written. */
 const LOOK_OFFERS = /function lookOffers\(one\) \{\n([\s\S]*?)\n {4}\}/u;
+/** What keeps Now.qml's followsOf from saying what follows a choice. */
+const FOLLOWS_UNSAID = /const followsOf = choice => (.+?) \? \{\} : \{/u;
+/** The kinds Now.qml's lookDrawer names a target for. */
+const DRAWN_KINDS = /const target = (\[[^\]]*\])\.includes\(one\.kind\)/u;
 const QUOTED = /"([^"]+)"/gu;
 /** What For You calls opening a look, which its act is where it names none. */
 const OPEN_ID = "verb:on:look:open";
@@ -100,12 +111,24 @@ function launcherWords(): Map<string, string> {
   );
 }
 
-/** The launcher's act names on a look, as Now.qml's lookActNames names them. */
-function actNames(): string[] {
+/** The launcher's acts on a look, by their words' ids, as Now.qml's lookActNames lists them. */
+function actIds(): string[] {
   const ids = ACT_IDS.exec(launcher("NOW_QML"))?.[1];
   assert.ok(ids !== undefined, "Now.qml holds no lookActNames list to read");
+  return Array.from(ids.matchAll(QUOTED), ([, id]) => id ?? "");
+}
+
+/** The launcher's act names on a look, as Now.qml's lookActNames names them. */
+function actNames(): string[] {
   const names = launcherWords();
-  return Array.from(ids.matchAll(QUOTED), ([, id]) => names.get(id ?? "") ?? `no ${id}`);
+  return actIds().map((id) => names.get(id) ?? `no ${id}`);
+}
+
+/** A piece of Now.qml, as `pattern` finds it. */
+function nowSays(pattern: RegExp, what: string): string {
+  const found = pattern.exec(launcher("NOW_QML"))?.[1];
+  assert.ok(found !== undefined, `Now.qml holds no ${what} to read`);
+  return found;
 }
 
 /** The launcher's own scripts and words, loaded as For You loads them. */
@@ -117,14 +140,17 @@ function forYou(): ForYou {
     LookForm: form,
     Order: order,
   });
-  const body = LOOK_OFFERS.exec(launcher("NOW_QML"))?.[1];
-  assert.ok(body !== undefined, "Now.qml holds no lookOffers to run");
   const acts = actNames();
-  const offers = runInNewContext(`(function lookOffers(one) {${body}})`, {
-    LookForm: form,
-    lookActNames: acts,
-  }) as ForYou["offers"];
-  return { looks, form, offers, acts, open: launcherWords().get(OPEN_ID) };
+  const offers = runInNewContext(
+    `(function lookOffers(one) {${nowSays(LOOK_OFFERS, "lookOffers")}})`,
+    { LookForm: form, lookActNames: acts },
+  ) as ForYou["offers"];
+  const shows = runInNewContext(
+    `(function shows(one, choice) { return !(${nowSays(FOLLOWS_UNSAID, "followsOf")}); })`,
+    { LookForm: form },
+  ) as ForYou["shows"];
+  const linked = JSON.parse(nowSays(DRAWN_KINDS, "lookDrawer's kinds")) as string[];
+  return { looks, form, offers, shows, linked, acts, open: launcherWords().get(OPEN_ID) };
 }
 
 /** When the looks below came, and when those of them that expire do, a day on. */
@@ -178,6 +204,7 @@ const TARGETS: Record<string, string> = {
 const LOOKS: Record<string, object> = {
   "a look of the second form": LOOK,
   "one of the first form": { ...LOOK, happened: "", act: "" },
+  "one saying only spaces happened": { ...LOOK, happened: "  " },
   ...Object.fromEntries(
     KINDS.map((kind) => [
       `one of kind ${kind}`,
@@ -236,28 +263,44 @@ const sent = ({ value, label, follows }: Read["offers"][number]): string =>
 /** A moment past every quiet and expiry the looks above say. */
 const LONG_AFTER = CAME + QUIET_AFTER + DAY;
 
+/** The schemes a page links, its own rule, since For You hands any target to xdg-open. */
+const LINKS = ["http:", "https:"];
+
+/** Where a page's act should take him: a kind For You's drawer names, at a web address. */
+function linkFor(
+  { kind, target }: { kind?: unknown; target?: unknown },
+  linked: readonly string[],
+): string | null {
+  if (typeof kind !== "string" || typeof target !== "string" || !linked.includes(kind)) {
+    return null;
+  }
+  const address = URL.canParse(target) ? new URL(target) : null;
+  return address !== null && LINKS.includes(address.protocol) ? address.href : null;
+}
+
 /** Where the row and For You part, for one look at one moment: none where they agree. */
 function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou): string[] {
   if (ask === null || read === null) {
     return ask === null && read === null ? [] : ["read whole otherwise"];
   }
-  const { looks, form, offers, acts, open } = shell;
+  const { looks, form, offers, shows, linked, acts, open } = shell;
   const held = looks.quieted(read as never, now as never) as Read;
   const waits = held.state === "waiting" && looks.asksNothing(held as never) === false;
   // For You offers a waiting look's choices under To Read too, where the
   // row, stricter, offers none on a look not asking (ask.ts). It says what
-  // follows each only in the second form, as Now.qml's followsOf does.
-  const said = form.secondForm(read as never) === true;
+  // follows each where Now.qml's own followsOf does.
   const offered = waits
-    ? offers(held).map((one) => sent({ ...one, follows: said ? one.follows : "" }))
+    ? offers(held).map((one) => sent({ ...one, follows: shows(read, one) ? one.follows : "" }))
     : [];
+  const opens = linkFor(read as never, linked);
   const act = (form.actOf(read as never, acts as never) as string) || open;
   const lapsed = (at: number): boolean =>
     (looks.quieted(read as never, at as never) as Read).state !== "waiting";
   return [
     ask.asks === waits ? "" : "waits otherwise",
     ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
-    (ask.act === null) === (ask.opens === null) ? "" : "links otherwise than it acts",
+    ask.opens === opens ? "" : `opens ${ask.opens}, not ${opens}`,
+    (ask.act === null) === (opens === null) ? "" : "links otherwise than it acts",
     ask.act === null || ask.act === act ? "" : `acts as ${ask.act}, not ${act}`,
     ask.lapses === null || (!lapsed(ask.lapses - 1) && lapsed(ask.lapses))
       ? ""
@@ -280,11 +323,19 @@ it("reads, holds waiting, offers, acts and lapses as Looks.js, LookForm.js and l
 
 /**
  * Whether `character` reads and is judged alike by both, within a name,
- * leading one and ending one, and against a name it could pass for or by a
- * turn pose as.
+ * leading one and ending one, alone and twice over (so a pattern taking
+ * only one, or only the first, shows), and against a name it could pass
+ * for or by a turn pose as.
  */
-function alike(form: Script, character: string): boolean {
-  return [`Keep${character} It`, `${character}tI peeK`, `Keep It${character}`].every(
+function alike(form: Script, c: string): boolean {
+  return [
+    `Keep${c} It`,
+    `${c}tI peeK`,
+    `Keep It${c}`,
+    `Keep${c}${c} It`,
+    `${c}${c}tI peeK`,
+    `Keep It${c}${c}`,
+  ].every(
     (name) =>
       readAs(name) === form.readAs(name as never) &&
       poses(name, ["Keep It"]) === form.poses(name as never, ["Keep It"] as never),
@@ -309,4 +360,9 @@ it("reads and judges every character as LookForm.js does, wherever it stands in 
 
 it("names the launcher's acts as Now.qml's lookActNames and its words do", () => {
   assert.deepEqual([...LAUNCHER_ACTS], actNames(), "the kit names the launcher's acts otherwise");
+  assert.deepEqual(
+    JSON.parse(launcher("LOOK_ACTS")),
+    actIds(),
+    "local-sites' home module guards other acts than Now.qml lists",
+  );
 });

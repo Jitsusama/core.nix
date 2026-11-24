@@ -189,7 +189,11 @@ function written(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-/** When `value` falls, from milliseconds or an ISO time, as ForYou.js's `when`; or null. */
+/**
+ * When `value` falls, from milliseconds or an ISO time, as ForYou.js's `when`;
+ * or null. A time written otherwise is read as each engine reads it, so Qt's
+ * may read one a browser reads otherwise; a session writes ISO times.
+ */
 function when(value: unknown): number | null {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : null;
@@ -214,7 +218,11 @@ function whole(look: Fields): boolean {
   );
 }
 
-/** What a link opens for a look about a web page, as Now.qml opens these kinds. */
+/**
+ * The kinds a page links, as Now.qml's drawer names a target for them. For
+ * You hands any target but a session's to xdg-open, a file's too, which a
+ * browser can't open from a page, and only a web address is ever linked.
+ */
 const LINKED: readonly Kind[] = ["pr", "page", "diff"];
 
 /**
