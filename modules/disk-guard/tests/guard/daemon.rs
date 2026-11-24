@@ -37,14 +37,17 @@ const CALM: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         memory: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         cpu: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
     },
 };
@@ -504,6 +507,7 @@ fn busy() -> Senses {
     let stalling = disk_guard::moments::Stall {
         some: 50.0,
         full: 5.0,
+        full_minute: 5.0,
     };
     Senses {
         pressure: Pressure {
@@ -966,6 +970,82 @@ fn a_restarted_guard_beats_on_the_last_status_before_its_first_step() {
     assert_eq!(status["says"], "left by the last guard");
 }
 
+/// A guard only starting has no pass at work, so its first beats never
+/// carry on telling the pass the guard before it left mid-way.
+#[test]
+fn a_restarted_guard_beats_without_the_pass_the_last_one_left() {
+    let home = Home::new();
+    fs::write(
+        home.root.join("status.json"),
+        r#"{ "version": 2, "heartbeat": 1, "says": "left by the last guard",
+              "passing": { "since": 1, "path": "/", "band": "filling", "why": "reach" } }"#,
+    )
+    .unwrap();
+    let guard = home.guard(home.config("0%", "0%"));
+    guard.beating()();
+    let status = home.status();
+    assert_eq!(
+        status["says"], "left by the last guard",
+        "the rest of what the last guard said is kept"
+    );
+    assert!(
+        status["passing"].is_null(),
+        "beat on as at work: {}",
+        status["passing"]
+    );
+}
+
+/// A pass says it's at work in the status for as long as it judges, so
+/// the desktop and the notice it withholds read it, and says so no longer
+/// once it's done.
+#[test]
+fn a_pass_is_told_at_work_while_it_runs_and_not_after() {
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let seen = home.root.join("seen.json");
+    let mut config = home.config("100%", "100%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!(
+                    "cp {} {}",
+                    home.root.join("status.json").display(),
+                    seen.display()
+                ),
+            ],
+            path: home.root.clone(),
+            every: None,
+            from: Some(Band::Filling),
+            watch: Vec::new(),
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let mut guard = home.guard(config);
+    guard.step(&tick_at(3600.0), &CALM).unwrap();
+    let during: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&seen).expect("the producer never ran")).unwrap();
+    assert_eq!(
+        during["passing"]["why"], "reach",
+        "not told at work mid-pass: {}",
+        during["passing"]
+    );
+    assert!(
+        home.status()["passing"].is_null(),
+        "still told at work once the pass ended: {}",
+        home.status()["passing"]
+    );
+    guard.beating()();
+    assert!(
+        home.status()["passing"].is_null(),
+        "a beat told the ended pass again: {}",
+        home.status()["passing"]
+    );
+}
+
 /// A restarted guard's first measure of home takes minutes, in which its
 /// status named no holders: on 13 November a switch left the user guard's
 /// list empty while the system guard's came back. It says what the ledger
@@ -1039,6 +1119,7 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         filesystems: vec![one],
         cleared: Vec::new(),
         last: None,
+        passing: None,
         failed: None,
         frozen: Vec::new(),
         writer: None,
@@ -1093,6 +1174,7 @@ fn a_disks_counts_alone_are_no_news_and_its_health_or_a_disk_coming_is() {
         filesystems: Vec::new(),
         cleared: Vec::new(),
         last: None,
+        passing: None,
         failed: None,
         frozen: Vec::new(),
         writer: None,
@@ -1294,6 +1376,50 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     assert!(
         status.says.contains("is clearing everything"),
         "{}",
+        status.says
+    );
+}
+
+/// Every reader of the status file takes `full_at` as a moment still to
+/// come: the bar's Disks piece turned amber and said "full in 0 s" beside
+/// 104 GiB free once a long pass outlived its forecast.
+#[test]
+fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    let bands = Bands {
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Filling,
+        free: 200,
+        total: 1000,
+        size: 1000,
+        used: 800,
+        forecast: Some(60.0),
+        fill_per_hour: Some(36_000.0),
+        full_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    let space = Space {
+        total: 1000,
+        free: 200,
+        btrfs: None,
+    };
+    status.measured(&space, &bands, 1960.0, None);
+    assert_eq!(
+        status.full_at, None,
+        "a disk with room left at its forecast's moment hasn't filled"
+    );
+    assert!(
+        !status.says.contains("fills in"),
+        "said no fill once its moment passed: {}",
         status.says
     );
 }
@@ -2187,6 +2313,43 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
         "{:?}",
         home.journal()
     );
+}
+
+#[test]
+fn a_reach_that_only_kept_teaches_nothing_of_how_long_a_pass_takes() {
+    // A reach that judged its one build and kept it, as cargo held it,
+    // ends in moments; learned, it drew the forecast's lead to its floor.
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    let lock_path = deps.parent().unwrap().join(".cargo-lock");
+    fs::write(&lock_path, "").unwrap();
+    let lock = fs::File::open(&lock_path).unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::LockShared).unwrap();
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    let later = Tick {
+        wall: wall() + 301.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+    let journal = home.journal();
+    let actions: Vec<_> = journal
+        .iter()
+        .filter(|line| line["event"] == "action")
+        .collect();
+    assert!(
+        !actions.is_empty() && actions.iter().all(|line| line["outcome"] == "kept"),
+        "the reach didn't judge and keep alone, so this case tests nothing: {journal:?}"
+    );
+    assert_eq!(
+        home.memory()["pass_seconds"],
+        serde_json::Value::Null,
+        "learned from a reach that only kept: {journal:?}"
+    );
+    drop(lock);
 }
 
 #[test]

@@ -19,7 +19,8 @@ pragma ComponentBehavior: Bound
 // it (modules/quickshell/tests/sessions-hosted-reopen.qml), the rest reopened
 // held in its own folder, one pi never saved started under its own id with its
 // quest, and Reopen Them All reopens even when niri never answers its ask
-// for the screens, and by the daemon's places when given none; what
+// for the screens, counting the lists given before it does as one walk,
+// and by the daemon's places when given none; what
 // another machine carried here, or pi's host gave back, is offered after
 // it; forgetting one and putting the last boot off are asked of the
 // daemon; and a window it had joined to a session another machine holds
@@ -751,6 +752,16 @@ ShellRoot {
     // Why each that didn't open as asked didn't, as its caller is told:
     // the id, the folder gone and where it started afresh instead.
     property var unopened: []
+    // What Reopen Them All's walk said it found, reading by reading.
+    property var tallied: []
+    // Whether s-counted, its folder gone, was found so, and s-uncounted,
+    // whose walk counts nothing.
+    property bool countedGone: false
+    property bool uncountedGone: false
+    function tally(now) {
+        tallied = tallied.concat([`${now.gone} gone, ${now.reopened} reopened`]);
+        Qt.callLater(root.check);
+    }
     function told(id) {
         return (cwd, startedIn) => {
             unopened = unopened.concat([`${id} ${cwd} ${startedIn}`]);
@@ -800,17 +811,33 @@ ShellRoot {
         Sessions.resume("s-kept", "QEST-KEPT", "/tmp", told("s-kept"));
         Sessions.resume("s-gone", "QEST-GONE", root.state, told("s-gone"));
         Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
+        // A walk begun with nothing to count, as the harness begins one,
+        // holds s-uncounted, its folder gone, so Reopen Them All's lists
+        // below join a walk with no tally of their own, and their count
+        // is the one they bring; s-uncounted counts in none.
+        Sessions.reopenAll([{ id: "s-uncounted", cwd: "/gone/s-uncounted" }], () => {
+            root.uncountedGone = true;
+            Qt.callLater(root.check);
+        }, id => null, undefined);
         // Asked as the launcher asks, with no places of its own, the walk
         // takes the daemon's: the boot being restored kept places, so one
         // that sat here kept nowhere had no window, and comes back held.
         // Asked first, since niri here opens no window for the next to
         // wait on.
         Sessions.reopenAll([{ id: "s-unkept", cwd: "/tmp", way: "boot" }], told("s-unkept"),
-            undefined, Sessions.carryOn);
+            undefined, Sessions.carryOn, root.tally);
         // Reopen Them All asks niri for its screens first, and niri here
-        // never answers, as it doesn't a request it refused. s-patient
-        // follows s-unkept by the walk's pace.
-        Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null);
+        // never answers, as it doesn't a request it refused. Given before
+        // it would, Sessions joins each list to the one walk after, and
+        // they count as one. s-counted, its folder gone, is found so as
+        // s-unkept is begun, before s-patient, whose window niri never
+        // opens; s-patient follows by the walk's pace.
+        Sessions.reopenAll([{ id: "s-counted", cwd: "/gone/s-counted" }], () => {
+            root.countedGone = true;
+            Qt.callLater(root.check);
+        }, id => null, undefined, root.tally);
+        Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null,
+            undefined, root.tally);
         patience.start();
     }
     // Saying what the walk still waits on, since s-unkept opened in a
@@ -855,8 +882,15 @@ ShellRoot {
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
             || !("UNSAID" in root.asleep) && !Niri.spawns.some(one => one.includes("s-unsaid"))
-            || !Niri.spawns.some(one => one.includes("s-unkept")))
+            || !Niri.spawns.some(one => one.includes("s-unkept")) || !countedGone
+            || !uncountedGone)
             return;
+        // Chosen as each list was given, before niri said its screens,
+        // the tally would count each list alone, "1 gone, 0 reopened"
+        // (core.nix#6126's round 3); and left with the walk they join,
+        // which counts nothing, it would tell none.
+        expect("lists given before the walk begins count as one walk, its own",
+            tallied.join("; ") === "1 gone, 2 reopened", tallied.join("; "));
         expect("one the daemon's boot kept nowhere comes back held, with no window",
             Niri.spawns.filter(one => one.includes(" pi --session s-unkept ")).length === 1
             && Niri.spawns.some(one => one.includes(" pi --session s-unkept ")
@@ -1357,7 +1391,7 @@ ShellRoot {
         const waitedRefused = { id: "s-refused-walk", classed: refusedWalk.opened, opened: null };
         const walkNext = { one: { id: "s-walk-next", cwd: "/tmp", hosted: true }, at: null };
         Sessions.reopening = { waiting: waitedRefused, late: [], queue: [walkNext], placed: [],
-            behind: [], begun: ["s-refused-walk"], looking: false, settling: false, back: null,
+            behind: [], begun: ["s-refused-walk"], looking: null, settling: false, back: null,
             focused: false };
         Sessions.reopenStartedAt = Date.now();
         Sessions.viewWith(view.slice(0, -1).concat(["s-refused-walk"]), refusedWalk.opened,
@@ -1396,7 +1430,7 @@ ShellRoot {
         const lateWalk = "pi-hosted.s-late-walk";
         const givenUp = { id: "s-late-walk", classed: lateWalk, opened: null };
         Sessions.reopening = { waiting: null, late: [givenUp], queue: [], placed: [],
-            behind: [], begun: ["s-late-walk"], looking: false, settling: false, back: null,
+            behind: [], begun: ["s-late-walk"], looking: null, settling: false, back: null,
             focused: false };
         Sessions.viewWith(view.slice(0, -1).concat(["s-late-walk"]), lateWalk, null, "walk");
         Sessions.untaken(lateWalk, String(Date.now()));
@@ -1410,7 +1444,7 @@ ShellRoot {
         const lateRefused = "pi-hosted.s-late-refused";
         const refusedLate = { id: "s-late-refused", classed: lateRefused, opened: null };
         Sessions.reopening = { waiting: null, late: [refusedLate], queue: [], placed: [],
-            behind: [], begun: ["s-late-refused"], looking: false, settling: false, back: null,
+            behind: [], begun: ["s-late-refused"], looking: null, settling: false, back: null,
             focused: false };
         Sessions.viewWith(view.slice(0, -1).concat(["s-late-refused"]), lateRefused, null,
             "walk");
@@ -1432,7 +1466,7 @@ ShellRoot {
             const given = { id: named.slice("pi-hosted.".length), classed: named, opened: null };
             Sessions.reopening = { waiting: null, late: [given].concat(others), queue: [],
                 placed: [], behind: [], begun: [given.id].concat(others.map(one => one.id)),
-                looking: false, settling: false, back: null, focused: false };
+                looking: null, settling: false, back: null, focused: false };
             Sessions.behindTheLock = locked;
             Sessions.viewWith(view.slice(0, -1).concat([given.id]), named, null, "walk");
             Sessions.untaken(named, String(Date.now()));

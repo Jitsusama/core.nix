@@ -1,8 +1,8 @@
 // How the launcher says where a pi session stands, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-says-how-each-session-stands` check copies
-// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js
-// and Landed.js beside this file and runs
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js,
+// Landed.js and ReopenTally.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. How each session stands, in
 // the one order every list keeps (needs you, working, in line, listening,
 // paused, parked), is the agents daemon's (modules/agents/src/standing.rs),
@@ -15,6 +15,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
 import "SessionRow.js" as SessionRow
 import "Landed.js" as Landed
+import "ReopenTally.js" as ReopenTally
 import "Reading.js" as Reading
 
 QtObject {
@@ -552,6 +553,24 @@ QtObject {
             const said = SessionRow.footNameOf(undefined, session, titleOf);
             if (said !== want)
                 failures.push(`footNameOf, ${what}: "${said}", not "${want}"`);
+        }
+
+        // What Joel hears of a walk, as Sessions counts it (tests/places.qml
+        // holds the count): one folder gone or many, then how many
+        // reopened, in Agents' words, and nothing where a word is missing.
+        const words = { folderGone: "folder gone", foldersGone: "folders gone",
+            reopened: "reopened" };
+        const toldOf = [
+            ["one folder gone", { gone: 1, reopened: 2 }, words,
+                '[["1","folder gone"],["2","reopened"]]'],
+            ["many folders gone", { gone: 2, reopened: 1 }, words,
+                '[["2","folders gone"],["1","reopened"]]'],
+            ["no words", { gone: 1, reopened: 0 }, {}, '[["1",""],["0",""]]']
+        ];
+        for (const [what, now, said, want] of toldOf) {
+            const got = JSON.stringify(ReopenTally.told(now, said));
+            if (got !== want)
+                failures.push(`told, ${what}: ${got}, not ${want}`);
         }
 
         for (const failure of failures)

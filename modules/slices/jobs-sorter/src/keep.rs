@@ -285,6 +285,11 @@ impl Keeping {
         }
     }
 
+    /// The windows kept at a floor, by unit.
+    pub fn units(&self) -> impl Iterator<Item = &str> {
+        self.kept.keys().map(String::as_str)
+    }
+
     /// Forgets the windows no longer among `units`, which have closed.
     pub fn keep_only(&mut self, units: &[String]) {
         self.kept.retain(|unit, _| units.contains(unit));

@@ -252,6 +252,35 @@ fn status_tells_of_each_guard_that_wrote_one() {
     assert_eq!(both["system"]["filesystems"][0]["band"], "healthy");
 }
 
+// On 23 November `status` said its last pass was 15 h ago and freed
+// nothing, while the pass after it had been clearing all that time.
+#[test]
+fn status_says_a_pass_at_work_beside_the_one_before() {
+    let machine = Machine::new();
+    let now = wall();
+    let mut written: serde_json::Value =
+        serde_json::from_str(&status(now - 15.0 * 3600.0, "filling")).unwrap();
+    written["heartbeat"] = now.into();
+    written["passing"] = serde_json::json!({
+        "since": now - 14.0 * 3600.0, "path": "/home", "band": "filling", "why": "reach",
+    });
+    write_file(&machine.env.status, &written.to_string());
+    let (code, out, _) = machine.run("status");
+    assert_eq!(code, 0, "{out}");
+    let at_work = out
+        .lines()
+        .find(|line| line.contains("pass at work  since 14 h"))
+        .unwrap_or_else(|| panic!("the pass at work and when it began: {out}"));
+    assert!(
+        at_work.ends_with(" ago on /home · filling · reach"),
+        "where, in what band and why: {out}"
+    );
+    assert!(
+        out.contains("last pass     15 h ago on /home"),
+        "the pass before, still: {out}"
+    );
+}
+
 #[test]
 fn status_says_what_a_second_version_guard_says_in_words() {
     let machine = Machine::new();

@@ -6,7 +6,7 @@ use crate::anchor::Dir;
 use crate::band::{Band, Space, Thresholds};
 use crate::clock::Tick;
 use crate::config::{Config, Source};
-use crate::decide::{Decision, Fill, Situation, calm, decide, overloaded, powered, spare};
+use crate::decide::{Decision, Fill, Situation, calm, decide, overloaded, powered, roomy, spare};
 use crate::dedupe::{self, Deduped};
 use crate::discover;
 use crate::finished::{self, Answers, Predicate};
@@ -255,6 +255,12 @@ const DELETE_REST: f64 = 4.0;
 /// core each time, was tried again six times in two hours.
 const LISTING_REST: f64 = 9.0;
 
+/// The longest a filling store's listing that's due waits for the machine
+/// to have room before it begins at idle priority anyway, so a machine
+/// whose disk or memory never quiets still lists a filling store before
+/// it's nearly full.
+const ROOM_AWAITED_LONGEST: f64 = 6.0 * 3600.0;
+
 /// How often the guard looks for an owner that has ended: a tree's last
 /// holder, a quest finished or parked, a boot, or a guard with new rules.
 /// Reading every quest's README and a few processes takes milliseconds, and
@@ -368,6 +374,9 @@ pub struct Guard {
     /// or ones that free nothing, until a pass on its disk frees some or
     /// finds it no longer filling.
     failed: Option<LastPass>,
+    /// The pass at work, while one is, so the status each beat writes
+    /// again says so.
+    passing: Option<Passing>,
     saved_at: Option<f64>,
     written: Option<(f64, Status)>,
     /// The status last written, which each beat writes again fresh.
@@ -389,6 +398,13 @@ pub struct Guard {
     listing_out: Option<(f64, Listening)>,
     /// When the last listing ended, and how long it took.
     listing_ended: Option<(f64, f64)>,
+    /// Since when a listing that's due has waited for the machine to have
+    /// room.
+    room_awaited: Option<f64>,
+    /// What a reach cut short at its length judged, by the filesystem it
+    /// reached on, so the next reach there takes up from where it stopped
+    /// rather than judging the same again.
+    reached_short: BTreeMap<u64, BTreeSet<PathBuf>>,
     /// What a system daemon hears from user daemons.
     hearing: Option<Hearing>,
     /// For a user daemon, the filesystems the system daemon collects
@@ -566,6 +582,10 @@ pub struct Status {
     /// The last things cleared, newest first.
     pub cleared: Vec<ClearedStatus>,
     pub last: Option<LastPass>,
+    /// The pass running as this was written, if one is. `last` is the one
+    /// before it, which says nothing of what this one has cleared since.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub passing: Option<Passing>,
     /// The pass whose clearing failed, while its failing stands: until a
     /// pass on its disk frees some or finds it no longer filling.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -659,6 +679,11 @@ impl FilesystemStatus {
         self.total = space.total;
         self.size = space.total;
         self.used = space.total.saturating_sub(space.free);
+        // A forecast outlived by a long pass goes, rather than being told as
+        // "full in 0 s" by every reader of the status, the bar's included.
+        if self.full_at.is_some_and(|at| at <= now) {
+            self.full_at = None;
+        }
         let full_in = self.full_at.map(|at| at - now);
         self.says = crate::words::filesystem(&self.room(full_in), home);
     }
@@ -685,6 +710,19 @@ pub struct Preview {
     pub target: u64,
     pub end: String,
     pub taken: Vec<crate::plan::Candidate>,
+}
+
+/// A pass at work: since when, on which disk, in what band and why. One
+/// reaching for room a disk can't give judges every offer it was handed,
+/// and on 23 November one ran from 08:51 to past 23:00 while the status
+/// still told the pass before it, which freed nothing, and its notice to
+/// delete something by hand.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Passing {
+    pub since: f64,
+    pub path: PathBuf,
+    pub band: Band,
+    pub why: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -787,6 +825,7 @@ impl Guard {
             watched: BTreeMap::new(),
             last: None,
             failed: None,
+            passing: None,
             saved_at: None,
             written: None,
             beaten: Arc::default(),
@@ -794,6 +833,8 @@ impl Guard {
             stepped: Instant::now(),
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
+            room_awaited: None,
+            reached_short: BTreeMap::new(),
             listing,
             listing_path,
             listing_out: None,
@@ -1351,7 +1392,7 @@ impl Guard {
         // October.
         self.measure_holders(tick.wall);
         self.watch_roots();
-        self.list_garbage(tick.wall, spare_moment, overload);
+        self.list_garbage(tick.wall, spare_moment, overload, roomy(senses.pressure));
         self.collect_garbage(tick.wall, &mut due);
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
@@ -1894,10 +1935,12 @@ impl Guard {
     /// process holding paths ends on a filling disk, six hours on at a spare
     /// moment, or a day on whenever there's power, at idle priority; and
     /// when the store's filesystem is filling and the listing is an hour
-    /// old. While the machine is overloaded only a filling store's listing
-    /// begins, at idle priority short of nearly full;
-    /// one asked for meanwhile waits.
-    fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool) {
+    /// old. Short of nearly full, a listing begins only while the machine
+    /// is `roomy`, or a filling store's once it has waited
+    /// `ROOM_AWAITED_LONGEST` for room, at idle priority, and while it's
+    /// overloaded only a filling store's does; one asked for meanwhile
+    /// waits.
+    fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool, roomy: bool) {
         if self.listing_out.is_some() {
             return;
         }
@@ -1912,11 +1955,6 @@ impl Guard {
         if overloaded && !pressed {
             return;
         }
-        // On an overloaded machine a filling store's listing takes only
-        // what the rest leaves: on 8 November it took half a processor at
-        // load 74. Near full it can't wait on that, since idle priority on
-        // a busy machine may never finish.
-        let idle = !pressed || overloaded && band < Band::NearlyFull;
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
         let retry = if pressed {
@@ -1941,8 +1979,21 @@ impl Guard {
                         spare && listed >= LISTING_FRESH
                     });
         if !due {
+            self.room_awaited = None;
             return;
         }
+        // Short of nearly full a listing takes only what the rest leaves:
+        // on 8 November one took half a processor at load 74, and on 23
+        // November a filling store's ran 10 to 15 minutes at io full 17 to
+        // 36 over the minute. Near full it can't wait on that, since idle
+        // priority on a busy machine may never finish, and a filling
+        // store's waits no longer than `ROOM_AWAITED_LONGEST`.
+        let idle = band < Band::NearlyFull;
+        let awaited = now - *self.room_awaited.get_or_insert(now);
+        if idle && !roomy && !(pressed && awaited >= ROOM_AWAITED_LONGEST) {
+            return;
+        }
+        self.room_awaited = None;
         let nix = self.config.nix.bin.clone();
         let (tell, out) = mpsc::channel();
         let listing = std::thread::Builder::new()
@@ -2363,6 +2414,28 @@ impl Guard {
     }
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
+    /// Keeps what a reach on `device` judged, by how it `end`ed, for the
+    /// next to skip. A reach its length cut short takes up from where it
+    /// stopped, as does one that waited, stalled or was stopped before
+    /// getting through; one that got through what it was offered, or ran
+    /// at a band no length cuts, starts afresh, and a disk due for anything
+    /// but a reach is past the spell a cut reach belonged to.
+    fn note_reached_short(&mut self, device: u64, decision: Decision, end: &End) {
+        let cuttable = matches!(decision, Decision::Reach(band) if band <= Band::Filling);
+        match end {
+            End::Unfinished if cuttable => {
+                self.reached_short
+                    .entry(device)
+                    .or_default()
+                    .extend(self.tried.iter().cloned());
+            }
+            End::Waiting | End::Stalled | End::Stopped if cuttable => {}
+            _ => {
+                self.reached_short.remove(&device);
+            }
+        }
+    }
+
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
@@ -2374,7 +2447,18 @@ impl Guard {
             let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
             (scan, self.garbage_offers(tick), None)
         } else {
-            let (scan, offers, seconds) = self.offers(tick, None)?;
+            // A survey can walk for most of an hour before any judging, so
+            // the first disk it's for is told as at work from its start.
+            let first = due.iter().find_map(|&(device, decision, _)| {
+                let watched = self.watched.get(&device)?;
+                (decision != Decision::Collect).then(|| (watched.path.clone(), aim(decision, None)))
+            });
+            if let Some((path, aimed)) = first {
+                self.tell_passing(tick, &path, aimed.band, aimed.why)?;
+            }
+            let (scan, offers, seconds) = self
+                .offers(tick, None)
+                .inspect_err(|_| self.end_passing())?;
             // Kept for a plan to read; one that can't be kept only means
             // the next plan surveys for itself.
             let kept = crate::surveyed::Surveyed::new(tick.wall, &offers);
@@ -2392,12 +2476,20 @@ impl Guard {
             // cargo build disk held 28 GiB of the system disk, and its own
             // passes came only once the image itself filled.
             let reaching = matches!(decision, Decision::Reach(_));
+            // Only a reach that its length can cut skips what a cut one
+            // judged: one at a worse band runs on, sees every offer, and so
+            // never calls a disk exhausted over offers it wasn't shown.
+            let judged = match decision {
+                Decision::Reach(band) if band <= Band::Filling => self.reached_short.get(&device),
+                _ => None,
+            };
             let here: Vec<Offer> = offers
                 .iter()
                 .filter(|offer| {
                     offer.device == device || reaching && self.backs(device, offer.device)
                 })
                 .filter(|offer| !self.taken(offer))
+                .filter(|offer| judged.is_none_or(|judged| !judged.contains(&offer.candidate.path)))
                 .cloned()
                 .collect();
             let offered = if decision == Decision::Collect {
@@ -2410,15 +2502,18 @@ impl Guard {
             if decision == Decision::Collect {
                 self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
             }
+            self.note_reached_short(device, decision, &end);
             let Decision::Reach(band) = decision else {
                 continue;
             };
             let unheard = scan.went_unheard();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
-                // A pass that gave way to a disk shorter of room, or to a
-                // stop, fell short of nothing; its disk is due again.
-                watched.rest = (!matches!(end, End::Reached | End::Stopped)).then(|| {
+                // A pass that gave way to a disk shorter of room, to a
+                // stop or to its own length fell short of nothing; its disk
+                // is due again.
+                let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
+                watched.rest = fell_short.then(|| {
                     let seconds = watched.rest.map_or(FIRST_REST, |rest| {
                         (rest.seconds * 2.0).min(longest_rest(band))
                     });
@@ -2662,6 +2757,59 @@ impl Guard {
                     .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))))
     }
 
+    /// Learns what a pass that `started` teaches: how long a pass takes,
+    /// from a reach that reclaimed, or when upkeep was last done, from an
+    /// upkeep pass that got through what was due.
+    fn learn_from_pass(
+        &mut self,
+        tick: &Tick,
+        (goal, why): (Goal, Why),
+        report: &Report,
+        scan: &Scan,
+        started: Instant,
+    ) {
+        if teaches_pass_length(goal, why, report) {
+            let seconds = started.elapsed().as_secs_f64();
+            self.memory.pass_seconds = Some(match self.memory.pass_seconds {
+                Some(before) => before + PASS_WEIGHT * (seconds - before),
+                None => seconds,
+            });
+        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
+            // Only a pass that got through what was due counts as upkeep:
+            // one cut short by its length or a stop leaves the rest due.
+            self.memory.upkept = Some(if self.kept_unvouched(scan, report) {
+                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
+            } else {
+                tick.wall
+            });
+        }
+    }
+
+    /// Tells the status a pass is at work on `path` for `why` in `band`,
+    /// from when the first of its steps began, its survey or its judging,
+    /// and writes it, telling none if the write fails.
+    fn tell_passing(&mut self, tick: &Tick, path: &Path, band: Band, why: Why) -> io::Result<()> {
+        let since = self
+            .passing
+            .as_ref()
+            .filter(|passing| passing.path == path)
+            .map_or_else(wall_now, |passing| passing.since);
+        self.passing = Some(Passing {
+            since,
+            path: path.to_owned(),
+            band,
+            why: why.word().to_owned(),
+        });
+        self.write_status(tick.wall)
+            .inspect_err(|_| self.end_passing())
+    }
+
+    /// Says no pass is at work, in the status the beats write as well, so
+    /// a step that fails before its next status leaves none told.
+    fn end_passing(&mut self) {
+        no_pass_at_work(&mut self.passing, &self.beaten);
+    }
+
     /// Runs a pass over what lies on the watched filesystem `device` and
     /// journals it.
     fn pass_on(
@@ -2685,6 +2833,9 @@ impl Guard {
         }) else {
             return Ok(End::Exhausted);
         };
+        // Told before it starts, since each beat as it works writes the
+        // status again as it was, and a pass can judge for hours.
+        self.tell_passing(tick, &path, band, why)?;
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
         let since = self.stepped;
@@ -2729,24 +2880,12 @@ impl Guard {
             goal,
             &mut self.memory.learned,
         );
+        // Only these two fields, as what reclaims still holds the journal.
+        no_pass_at_work(&mut self.passing, &self.beaten);
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        if teaches_pass_length(goal, &report) {
-            let seconds = started.elapsed().as_secs_f64();
-            self.memory.pass_seconds = Some(match self.memory.pass_seconds {
-                Some(before) => before + PASS_WEIGHT * (seconds - before),
-                None => seconds,
-            });
-        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
-            // Only a pass that got through what was due counts as upkeep:
-            // one cut short by its length or a stop leaves the rest due.
-            self.memory.upkept = Some(if self.kept_unvouched(scan, &report) {
-                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
-            } else {
-                tick.wall
-            });
-        }
+        self.learn_from_pass(tick, (goal, why), &report, scan, started);
         self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
@@ -2992,6 +3131,10 @@ impl Guard {
                     says: String::new(),
                     exhausted: self.last.as_ref().is_some_and(|last| {
                         last.path == watched.path
+                            && self
+                                .passing
+                                .as_ref()
+                                .is_none_or(|passing| passing.path != watched.path)
                             && last.end == "exhausted"
                             && watched.band != Band::Healthy
                             && last.band >= watched.band
@@ -3026,6 +3169,7 @@ impl Guard {
             filesystems,
             cleared,
             last: self.last.clone(),
+            passing: self.passing.clone(),
             failed: self.failed.clone(),
             frozen: self.memory.frozen.clone(),
             writer: self
@@ -3126,8 +3270,16 @@ impl Guard {
             let saved = match beaten.as_mut() {
                 None => restamp(&path, now),
                 Some(status) => {
+                    let beaten_for = now - status.heartbeat;
                     status.heartbeat = now;
                     for filesystem in &mut status.filesystems {
+                        // A band's forecast is a span from when it was
+                        // made, so it counts down beat by beat through a
+                        // long pass rather than standing still.
+                        filesystem.forecast = filesystem
+                            .forecast
+                            .map(|left| left - beaten_for)
+                            .filter(|left| *left > 0.0);
                         if let Ok(space) = crate::sys::space(&filesystem.path) {
                             filesystem.measured(&space, &bands, now, home.as_deref());
                         }
@@ -3349,12 +3501,28 @@ fn wall_now() -> f64 {
         .map_or(0.0, |since| since.as_secs_f64())
 }
 
+/// Says no pass is at work in `passing` and in the status `beaten` keeps
+/// for the beats to write.
+fn no_pass_at_work(passing: &mut Option<Passing>, beaten: &Mutex<Option<Status>>) {
+    *passing = None;
+    if let Some(status) = beaten
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_mut()
+    {
+        status.passing = None;
+    }
+}
+
 /// Writes the status file a guard left again with a fresh heartbeat and
 /// all else as it said, or nothing when there's none or none that reads.
 fn restamp(path: &Path, now: f64) -> io::Result<()> {
     match state::load::<serde_json::Map<String, serde_json::Value>>(path) {
         Ok(Some(mut left)) => {
             left.insert("heartbeat".to_owned(), now.into());
+            // A guard only starting has no pass at work, whatever the one
+            // before was doing as it left.
+            left.remove("passing");
             state::save(path, &left)
         }
         _ => Ok(()),
@@ -3548,13 +3716,22 @@ fn stale(outcome: &Outcome) -> bool {
 
 /// Whether a pass says how long reaching for room takes. One that ends
 /// waiting or at a stop ends in moments, not when its work is done, and so
-/// does one that judged nothing, as on a disk with nothing to clear or a
-/// forecast's past its target: learned, each drew the forecast's lead
-/// toward its floor.
-fn teaches_pass_length(goal: Goal, report: &Report) -> bool {
+/// does one that reclaimed nothing, as on a disk with nothing to clear, a
+/// forecast's past its target, or one whose every find was kept: learned,
+/// each drew the forecast's lead toward its floor. A reach that deleted a
+/// batch and then waits is left out too, on purpose: it took real time,
+/// but not the time its work needs, and so is one its length cut short,
+/// which would draw the lead toward that length. An asked collection
+/// reaches only for generations and garbage, so it says nothing of a
+/// whole reach.
+fn teaches_pass_length(goal: Goal, why: Why, report: &Report) -> bool {
     goal == Goal::Reach
-        && !report.actions.is_empty()
-        && !matches!(report.end, End::Waiting | End::Stopped)
+        && !matches!(why, Why::Collect)
+        && report
+            .actions
+            .iter()
+            .any(|(_, outcome)| matches!(outcome, Outcome::Reclaimed))
+        && !matches!(report.end, End::Waiting | End::Stopped | End::Unfinished)
 }
 
 /// How a pass ended, in the journal's words.
