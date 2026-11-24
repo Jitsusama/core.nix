@@ -176,12 +176,16 @@ pub fn tilde(path: &Path, home: Option<&Path>) -> String {
 
 /// A length of time as people read one, in its largest two units as
 /// every command says one (docs/commands.md, Figures and Words): `15 h
-/// 2 m` rather than `15.0 h`, to the nearest second.
+/// 2 m` rather than `15.0 h`, to the nearest second. One that never ends,
+/// as a producer whose folder changed is offered idle, says `forever`.
 pub fn span(seconds: f64) -> String {
+    if seconds.is_infinite() {
+        return "forever".to_owned();
+    }
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "a span is never negative, and the guard's are far short of a u64 of seconds"
+        reason = "a span is never negative, and a finite one is far short of a u64 of seconds"
     )]
     let whole = seconds.max(0.0).round() as u64;
     terminal_kit::time::span(whole)

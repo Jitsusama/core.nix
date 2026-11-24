@@ -1,5 +1,5 @@
 use disk_guard::band::Band;
-use disk_guard::words::{Room, cleared, filesystem, machine};
+use disk_guard::words::{Room, cleared, filesystem, machine, span};
 use std::path::Path;
 
 const GIB: u64 = 1 << 30;
@@ -190,5 +190,17 @@ fn what_was_cleared_is_said_by_what_it_was() {
         cleared("something-new", Path::new("/x"), 2048, home),
         "Cleared /x (2.0 KiB of files).",
         "a kind it doesn't know is said by its path alone"
+    );
+}
+
+#[test]
+fn a_span_that_never_ends_says_forever() {
+    // A producer whose folder changed is offered as idle forever, and the
+    // plan's table once said that as 213503982334601 d 7 h.
+    assert_eq!(span(f64::INFINITY), "forever", "a span that never ends");
+    assert_eq!(
+        span(90.0),
+        "1 m 30 s",
+        "a span that ends still says its length"
     );
 }
