@@ -1486,7 +1486,8 @@ ShellRoot {
         // While its unit starts again, the file is gone, which reads as one
         // saying nothing (Quickshell's FileViewReader::read gives a missing
         // file no text): the pid read last still says which windows are
-        // its, rather than any.
+        // its, rather than any: the window is refused, not taken as come
+        // (which would forget the ask, refusal and all).
         kittyPidFile.setText("");
         Sessions.readKittyPid();
         Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
@@ -1495,8 +1496,8 @@ ShellRoot {
         Niri.windowOpenedOrChanged(between);
         Niri.windows = unforged;
         expect("while it says none, another program's is still no viewer",
-            Sessions.viewerComing(named) && Sessions.sessionsKittyPid === "7171",
-            `${Sessions.sessionsKittyPid} ${JSON.stringify(Sessions.attaching)}`);
+            Sessions.refusedAsks[named] === "91" && Sessions.sessionsKittyPid === "7171",
+            `${Sessions.sessionsKittyPid} ${JSON.stringify(Sessions.refusedAsks)}`);
         // A window refused once isn't read for again as it changes, as a
         // stray one retitling would read the file with every title.
         kittyPidFile.setText("880\n");
