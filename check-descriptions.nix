@@ -5212,8 +5212,10 @@
     Brio back when its unit's timeout ends the run, says a Brio unplugged midway is the seat's once
     plugged in, says it gave the Brio back only when udev's record of every node shows it tagged
     for the seat and unmarked, and that the seat has it only when udev recorded every camera,
-    warning with the way out otherwise, and warns nothing on a machine with no camera or a run
-    that went right
+    warning with the way out, named for its nodes, otherwise, waits out adds the boot still has
+    queued rather than calling them lost, points at udevadm's own words for an add it refused,
+    and warns nothing, udevadm included, on a machine with no camera, a boot whose adds came late
+    or a run that went right
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the

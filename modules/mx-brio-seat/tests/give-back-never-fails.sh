@@ -7,8 +7,11 @@
 # answers; the add follows the removal even when the unit's timeout ends the
 # run; it says the Brio was given back only when udev's record of every
 # node shows it was, and that the seat has it only when udev recorded every
-# camera, warning with the way out otherwise; and it warns nothing on a run
-# that went right or a machine with no camera.
+# camera, warning with the way out otherwise; it waits out an add the boot
+# still has queued rather than calling it lost, and points at udevadm's own
+# words for an add udevadm refused; and it warns nothing on a run that went
+# right, a boot whose adds came late or a machine with no camera, udevadm
+# included.
 #
 # Usage: give-back-never-fails.sh GIVE_BACK_SCRIPT UNIT_TIMEOUT_SECONDS
 set -euo pipefail
@@ -188,15 +191,21 @@ machine "$held" "$given"
 touch "$work/root/adds-fail"
 give_back "a Brio removed and never added"
 expect warned "udev holds no record of the MX Brio at $work/root/dev/video0"
-expect warned "replugged or udevadm trigger --action=add adds it"
+expect warned "replugged or udevadm trigger --action=add $work/root/dev/video0 adds it"
+expect warned "udevadm's words above say why the add didn't come"
+refuse warned "journalctl -u systemd-udevd"
 refuse warned "systemctl restart mx-brio-seat"
 refuse said "Gave the seat back"
 # Run again, it finds no Brio to replay, and says why rather than that the
-# seat has it.
+# seat has it, replaying nothing.
 rm "$work/root/adds-fail"
+: >"$work/root/triggers"
+: >"$work/root/settles"
 give_back "a rerun after a Brio removed and never added"
 expect warned "udev holds no record of the cameras at $work/root/dev/video0 $work/root/dev/video1"
+expect warned "udevadm trigger --action=add $work/root/dev/video0 $work/root/dev/video1 adds it"
 refuse said "No MX Brio is held"
+replayed ""
 
 machine "$held" "$given"
 touch "$work/root/after/video0.unplugged" "$work/root/after/video1.unplugged"
@@ -217,6 +226,35 @@ machine "$given" "$given"
 give_back "a Brio the seat has"
 expect said "No MX Brio is held for a relay"
 quiet "a Brio the seat has"
+replayed ""
+
+# A boot whose adds udev has queued and not yet handled: the Brio's nodes
+# hold only the kernel's keys until udev settles.
+queued() {
+  mkdir "$work/root/queued"
+  local node
+  for node in video0 video1; do
+    mv "$work/root/facts/$node" "$work/root/queued/$node"
+    printf 'DEVNAME=/dev/%s\nSUBSYSTEM=video4linux\n' "$node" >"$work/root/facts/$node"
+  done
+}
+
+machine "$held" "$given"
+queued
+give_back "a boot whose adds came late"
+expect said "Gave the seat back the MX Brio."
+quiet "a boot whose adds came late"
+replayed "$both"
+
+machine "$held" "$given"
+queued
+touch "$work/root/hangs"
+give_back "a boot udev hasn't caught up with"
+brio_nodes="$work/root/dev/video0 $work/root/dev/video1"
+expect warned "udev hasn't finished adding the cameras at $brio_nodes in"
+expect warned "isn't known yet"
+refuse warned "holds no record"
+refuse said "No MX Brio is held"
 replayed ""
 
 machine "$given" "$given"
