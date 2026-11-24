@@ -95,6 +95,9 @@ in
     Unit.Description = "Checks Joel's camera before each meeting, each minute";
     Timer = {
       OnCalendar = "minutely";
+      # On the minute, not anywhere in it as systemd's default allows, so
+      # a camera read again next minute is still inside its window.
+      AccuracySec = "1s";
       Persistent = false;
     };
     Install.WantedBy = [ "timers.target" ];

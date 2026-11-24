@@ -69,10 +69,11 @@ pub enum Outcome {
     Late(Fault),
 }
 
-/// Whether the next minute's check would fall outside the window, so a
-/// fault seen now must be told now.
+/// Whether the next minute's check could fall outside the window, so a
+/// fault seen now must be told now. The next run is given a minute's
+/// slack past its own, since under load it can start late.
 pub fn last_chance(start: u64, now: u64) -> bool {
-    start < now + SOONEST_MS + MIN_MS
+    start < now + SOONEST_MS + 2 * MIN_MS
 }
 
 /// What a check of the meeting starting at `start`, ended at `now`, comes
@@ -118,14 +119,15 @@ pub fn relay_run() -> Option<String> {
 }
 
 /// What a read came to, given the relay's run before and after it: frames
-/// from a relay that started again in between aren't the camera's.
+/// from a relay that started again in between aren't the camera's, and a
+/// camera that couldn't be opened then was only between runs.
 pub fn judged(
     gave: Result<(), Fault>,
     before: Option<&str>,
     after: Option<&str>,
 ) -> Result<(), Fault> {
     match gave {
-        Ok(()) if before != after => Err(Fault::Restarted),
+        Ok(()) | Err(Fault::Ended(_)) if before != after => Err(Fault::Restarted),
         gave => gave,
     }
 }
@@ -623,7 +625,7 @@ mod tests {
     fn a_fault_is_told_once_the_window_has_no_minute_left_or_at_once_if_it_s_final() {
         let start = 100 * MIN_MS;
         let early = start - 5 * MIN_MS;
-        let last = start - 3 * MIN_MS - 1;
+        let last = start - 5 * MIN_MS + 1;
         assert_eq!(
             settled(Ok(()), start, early),
             Outcome::Fine,
@@ -660,8 +662,8 @@ mod tests {
             "a meeting already begun was told as starting"
         );
         assert!(
-            !last_chance(start, start - 4 * MIN_MS) && last_chance(start, last),
-            "the last minute of the window wasn't told from the rest"
+            !last_chance(start, early) && last_chance(start, last),
+            "a check whose next run had no minute's slack wasn't told now"
         );
     }
 
@@ -681,6 +683,24 @@ mod tests {
             judged(Ok(()), None, None),
             Ok(()),
             "a machine with no relay unit had its frames refused"
+        );
+        assert_eq!(
+            judged(
+                Err(Fault::Ended("v4l2-ctl ended 1".into())),
+                Some("a"),
+                Some("b")
+            ),
+            Err(Fault::Restarted),
+            "a camera between its relay's runs was told as one that can't be opened"
+        );
+        assert_eq!(
+            judged(
+                Err(Fault::Ended("v4l2-ctl ended 1".into())),
+                Some("a"),
+                Some("a")
+            ),
+            Err(Fault::Ended("v4l2-ctl ended 1".into())),
+            "a camera that can't be opened was told as a restart"
         );
         assert_eq!(
             judged(Err(Fault::Silent), Some("a"), Some("b")),
