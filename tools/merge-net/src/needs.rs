@@ -24,8 +24,40 @@ pub fn needs(base: &str) -> Result<ExitCode, String> {
     let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
     if clean && let Ok(head) = git(&["rev-parse", "HEAD"]) {
         print!("{}", macs::said(&ready::record(&head), short(&head)));
+        if base.ends_with("origin/main") {
+            try_on_main(&head, base);
+        }
     }
     answered
+}
+
+/// Start a trial of `head` merged onto `base`'s main when its own gate
+/// passed but main has since moved files it shares, so the run `ready`
+/// would otherwise ask for has gone by the time it asks (`train::trial`).
+/// A head with no pass of its own, on main, or whose pass still speaks for
+/// it is left alone.
+fn try_on_main(head: &str, base: &str) {
+    if ready::record(head).is_empty() {
+        return;
+    }
+    let Ok(main) = git(&["rev-parse", base]) else {
+        return;
+    };
+    let on_main = |commit: &str| {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", commit, &main])
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    let Ok(judged) = crate::earlier::judged(head, &main, &on_main) else {
+        return;
+    };
+    if judged.behind
+        && matches!(judged.before, ready::Before::Shares(..))
+        && let Some(said) = crate::train::trial::offer(head, &main)
+    {
+        println!("{said}");
+    }
 }
 
 /// Say whether the branch's change runs VM tests before merging, and which.
