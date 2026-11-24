@@ -308,6 +308,17 @@ enum Carrying {
     Enough,
 }
 
+impl Carrying {
+    /// How a link failing or carrying badly two choices running carried.
+    fn of(failing: bool, bad: bool) -> Self {
+        match (failing, bad) {
+            (true, _) => Self::Failing,
+            (false, true) => Self::Badly,
+            (false, false) => Self::Enough,
+        }
+    }
+}
+
 /// Why a trial went back.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Against {
@@ -424,12 +435,7 @@ impl Chooser {
             && measured.lost <= LOSSY
             && (!resting(measured) || !slow_air)
             && heard(measured, signal) >= i32::from(FAINTEST);
-        let carrying = match (failing, bad) {
-            (true, _) => Carrying::Failing,
-            (false, true) => Carrying::Badly,
-            (false, false) => Carrying::Enough,
-        };
-        let judging = (carrying, queued_lately, holds_wide);
+        let judging = (Carrying::of(failing, bad), queued_lately, holds_wide);
         if let Some(judged) = self.judge(now, (point, measured), judging) {
             return judged;
         }
@@ -755,7 +761,6 @@ impl Chooser {
         on: (&str, &Measured),
         (carrying, queued, holds_wide): (Carrying, bool, bool),
     ) -> Option<Choice> {
-        let failing = carrying == Carrying::Failing;
         let (point, measured) = on;
         let mut trial = self.trial.take()?;
         // What the card's on now isn't what was tried, as when the move
@@ -802,7 +807,7 @@ impl Chooser {
             return Some(Choice::Stay);
         }
         let under_load = !trial.banded && loaded(&trial.before) && loaded(measured);
-        if queued && !failing && !under_load {
+        if queued && carrying != Carrying::Failing && !under_load {
             let waited = self
                 .moved
                 .is_some_and(|moved| now.duration_since(moved) >= TRIAL + SETTLE);
@@ -845,7 +850,7 @@ impl Chooser {
         // for waits out its trial as before, lest a point that carried no
         // better stand on two minutes. A banded one goes back for carrying
         // badly alone, as it would at its end.
-        if !over && !failing && why.is_none() {
+        if !over && carrying != Carrying::Failing && why.is_none() {
             self.trial = Some(trial);
             return Some(Choice::Stay);
         }
