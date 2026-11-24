@@ -246,6 +246,10 @@ QtObject {
             Expect.same(`one no machine will ever take is told in its own words: ${never}`,
                 refusal(never), never);
         }
+        Expect.same("one placed nowhere now, a machine out of reach would do, says it too",
+            refusal("nowhere now, though a machine out of reach would do: tern is out of reach"),
+            "nowhere now, though a machine out of reach would do: tern is out of reach; "
+                + "once one can take it, say it again");
         Expect.same("one a machine lacking nothing may yet take says to say it again",
             refusal("nowhere: skiff lacks tool gh; tern holds the 8 sessions it holds at most"),
             "nowhere: skiff lacks tool gh; tern holds the 8 sessions it holds at most; "

@@ -352,7 +352,9 @@ const NEVER_TAKES = /^\S+ (?:lacks|isn't) |, (?:lacks|isn't) /u;
 // one placed nowhere, whose words say each machine's reasons (needs it
 // lacks, reach, room, its time), is said again once one of those can take
 // it, unless each lacks what the work needs or isn't the machine it names,
-// which waiting never changes (mayYetTake). One whose node's socket is
+// which waiting never changes (mayYetTake); one placed nowhere now, as the
+// node's nowhere_now says one a machine out of reach would take, is said
+// again so too. One whose node's socket is
 // missing or refuses, as the agents daemon's sprout.rs says from Rust's own
 // words for the two, is said again once the node runs; any other failure to
 // reach it isn't a node that's down. A refusal none of these knows is told in its own words alone.
@@ -363,6 +365,8 @@ const ACTS = [
         act: "actRepository" },
     { says: / isn't a folder here$/u, cut: null, act: "actRepository" },
     { says: /^nowhere: /u, cut: null, act: "actPlaced", only: mayYetTake },
+    { says: /^nowhere now, though a machine out of reach would do: /u, cut: null,
+        act: "actPlaced" },
     { says: /^the node couldn't be reached: (?:No such file or directory|Connection refused) /u,
         cut: null, act: "actNode" }
 ];
