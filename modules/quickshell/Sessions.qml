@@ -2772,7 +2772,9 @@ Singleton {
         const resting = root.resting.find(one => one.presence.session === id);
         const window = running.find(one => one.here && one.presence.session === id)?.window
             ?? (resting ? windowOf(resting, windows.pids, windows.opened) : null);
-        const place = /^[A-Za-z0-9-]+$/.test(id) ? Viewers.placeOf(window, Date.now()) : null;
+        // Only one whose viewer can be named (viewerNamed), as none other
+        // could ever open there again.
+        const place = viewerNamed(id) !== "" ? Viewers.placeOf(window, Date.now()) : null;
         if (place === null)
             return "no window to keep";
         keepPlaces(Object.assign({}, keptPlaces, { [id]: Object.assign(place, marks ?? {}) }));
