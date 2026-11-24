@@ -311,7 +311,9 @@ fn follow(last: Option<&Held>, measures: &[Measure]) -> (Option<String>, u32) {
     }
 }
 
-fn owner_or_none(owner: &str) -> &str {
+/// `owner`, or "no owner" when it's empty.
+#[must_use]
+pub fn owner_or_none(owner: &str) -> &str {
     if owner.is_empty() { "no owner" } else { owner }
 }
 

@@ -11,13 +11,18 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
 
-use super::card::Kept;
+use super::card::{Kept, owner_or_none};
 use super::lines::figure;
-use super::measures::Measure;
+use super::measures::{Class, FINDINGS, Measure};
+use super::owing::by_owner;
 use crate::DAY;
 
 /// How long a measure stays out of spec before the card names it.
 const RUNNING: i64 = 3 * DAY;
+
+/// How far from the hour its timer may fire, so a run three days old but
+/// for a few minutes is named on that hour rather than the next.
+const SLACK: i64 = 10 * 60;
 
 /// A measure's run out of its target: when the hour first judged it out,
 /// and when it last did.
@@ -32,24 +37,30 @@ pub struct Out {
 /// ends its run. One the hour couldn't judge, or didn't read, leaves its
 /// run as it was, since an hour that couldn't look says nothing of it;
 /// though one unjudged for a whole day is let go, so a measure the card no
-/// longer reads can't stay out for good.
+/// longer reads can't stay out for good. Two measures under one key are
+/// one run, out while either is. A clock set back can't leave a run begun
+/// or seen after `now`, which would never be named nor let go.
 pub fn track(out: &mut BTreeMap<String, Out>, measures: &[Measure], now: i64) {
-    for m in measures {
-        if m.target.is_none() {
-            continue;
-        }
-        if m.past().is_some() {
-            out.entry(m.key.clone())
-                .and_modify(|run| run.seen = now)
+    let mut judged: BTreeMap<&str, bool> = BTreeMap::new();
+    for m in measures.iter().filter(|m| m.target.is_some()) {
+        *judged.entry(m.key.as_str()).or_default() |= m.past().is_some();
+    }
+    for (key, past) in judged {
+        if past {
+            out.entry(key.to_owned())
+                .and_modify(|run| {
+                    run.since = run.since.min(now);
+                    run.seen = now;
+                })
                 .or_insert(Out {
                     since: now,
                     seen: now,
                 });
         } else {
-            out.remove(&m.key);
+            out.remove(key);
         }
     }
-    out.retain(|_, run| run.seen > now - DAY);
+    out.retain(|_, run| run.seen > now - DAY && run.seen <= now);
 }
 
 /// Carries `kept`'s runs to `now`, and names on `card` the measures out
@@ -87,31 +98,44 @@ pub fn named(
     tz: &TimeZone,
 ) -> String {
     let mut lines = String::new();
+    let due = now - RUNNING + SLACK;
     for m in measures {
         let (Some(target), Some(_)) = (m.target, m.past()) else {
             continue;
         };
-        let Some(run) = out.get(&m.key).filter(|run| run.since <= now - RUNNING) else {
+        let Some(run) = out.get(&m.key).filter(|run| run.since <= due) else {
             continue;
         };
         let began = date(run.since, tz);
-        let owner = if m.owner.is_empty() {
-            "no owner"
-        } else {
-            m.owner.as_str()
-        };
         let _ = writeln!(
             lines,
-            "  - {}: {} against at most {}, out since {began}, {owner}",
+            "  - {}: {} against at most {}, out since {began}, {}",
             m.says,
             figure(m.now),
             figure(target),
+            whose(m),
         );
     }
     if lines.is_empty() {
         return lines;
     }
     format!("Out of spec three days running, each with its owner:\n{lines}")
+}
+
+/// Who owns `m`, as its drag would be filed: each miss or finding by its
+/// own owner, a clean or cell measure's lines by the owners they name, and
+/// any other by the measure's owner.
+fn whose(m: &Measure) -> String {
+    let owners = by_owner(m);
+    if m.class == Class::Miss {
+        "each miss's owner".to_owned()
+    } else if m.key == FINDINGS {
+        "each finding's owner".to_owned()
+    } else if owners.is_empty() {
+        owner_or_none(&m.owner).to_owned()
+    } else {
+        owners.into_keys().collect::<Vec<_>>().join(", ")
+    }
 }
 
 #[cfg(test)]
