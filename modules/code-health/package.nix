@@ -19,6 +19,9 @@
 }:
 let
   providers = callPackage ./providers.nix { };
+  # Where tofu finds them, on a system they're built for.
+  mirror = lib.optionalString (providers != null) mirrored;
+  mirrored = "--set-default CODE_HEALTH_TERRAFORM_PROVIDERS ${providers}";
   linter = tflint.withPlugins (plugins: [ plugins.tflint-ruleset-google ]);
 in
 rustPlatform.buildRustPackage rec {
@@ -50,9 +53,7 @@ rustPlatform.buildRustPackage rec {
         linter
         trivy
       ]
-    } ${
-      lib.optionalString (providers != null) "--set-default CODE_HEALTH_TERRAFORM_PROVIDERS ${providers}"
-    }
+    } ${mirror}
   '';
   meta = {
     description = "Writes the day's figures of how messy each repository it's given is";

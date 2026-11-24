@@ -4,7 +4,8 @@
 # release, as OpenTofu publishes it, for the systems this flake builds.
 # Elsewhere it's null and code-health has none at hand, as with its
 # variable unset, so a repository built on core for another system can
-# still take the checks that run it.
+# still take the checks that run it; there, tofu can't validate a
+# workspace that needs google, and the measure counts it invalid.
 {
   fetchurl,
   linkFarm,
