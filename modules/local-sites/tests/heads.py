@@ -19,15 +19,17 @@ at the first tag or words a head can't hold, and a second `<head>` is ignored.
 A browser keeps an attribute's first value, and a template or noscript in the
 head holds its own. What `<template>`, `<noscript>` or an element read as words
 holds, what a shut `<dialog>` or `<details>` holds past its summary, and what's
-`hidden`, a `popover` no script has shown or styled out by its own `style`, is
-never drawn; nor is it heard, and neither is what's `inert` or under
-`aria-hidden`. A `<base>` anywhere moving where links read from fails, since
-the sheet can't be known to be the kit's. What a sheet's rules hide, and what a
-script later puts in the head, are the page's own tests' to hold; Home's
-standing line is the one its build fills (home.py), so its template writes the
-status around what's filled. The gate reads each page's source, which matches
-what's served while each skip link ends its line, since site.sh puts the strip
-after that line.
+`hidden` or a `popover` no script has shown, unless its own `style` displays it,
+or styled out by its own `style`'s display, visibility or opacity, each
+declaration's last value read, is never drawn; nor is it heard, and neither is
+what's `inert` or under `aria-hidden`. What's in one undrawn is too, though its
+own style shows it again, which fails closed. A `<base>` anywhere moving where
+links read from fails, since the sheet can't be known to be the kit's. What a
+sheet's rules hide, and what a script later puts in the head, are the page's
+own tests' to hold; Home's standing line is the one its build fills (home.py),
+so its template writes the status around what's filled. The gate reads each
+page's source, which matches what's served while each skip link is a line of
+its own before the head, since site.sh puts the strip after that line.
 
 Long because it holds both a reader of markup as a browser parses it and the
 head's rules over what it reads, which change together: each way found that a
@@ -43,6 +45,7 @@ change and fails when any must.
 """
 
 import argparse
+import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -122,6 +125,9 @@ ENDS_A_P = {
 # outside one, and what else a `<head>` may hold without ending.
 HEAD_ONLY = {"base", "link", "meta", "style", "title"}
 HEAD_HOLDS = HEAD_ONLY | {"head", "noscript", "script", "template"}
+# What a parser puts back in the head after `</head>` rather than begin the
+# body at, as its after-head mode does: a noscript there begins the body.
+AFTER_HEAD = HEAD_ONLY | {"basefont", "bgsound", "noframes", "script", "template"}
 
 # The headings, any of which may be the page's first.
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
@@ -261,7 +267,11 @@ STYLED_OUT = {
     ("visibility", "hidden"),
     ("visibility", "collapse"),
     ("content-visibility", "hidden"),
+    ("opacity", "0"),
 }
+
+# A declaration's mark of weight, which CSS lets a space split.
+IMPORTANT = re.compile(r"!\s*important\s*$")
 
 # The sheet that draws the head, as a mounted page links it and as Home does
 # from the root.
@@ -290,22 +300,33 @@ class Element:
         """Say whether it's drawn as the part with this tag and class."""
         return self.tag == tag and (name is None or name in self.classes())
 
+    def styled(self) -> dict[str, str]:
+        """Give what its own style declares, each property's value as a browser takes it."""
+        # The last declaration of a property wins, but not over an important one.
+        declared: dict[str, tuple[str, bool]] = {}
+        for name, colon, value in (
+            each.partition(":") for each in self.attributes.get("style", "").split(";")
+        ):
+            said = value.strip(SPACE).lower()
+            weighty = IMPORTANT.search(said) is not None
+            key = name.strip(SPACE).lower()
+            if colon and (weighty or not declared.get(key, ("", False))[1]):
+                declared[key] = (IMPORTANT.sub("", said).strip(SPACE), weighty)
+        return {key: value for key, (value, _) in declared.items()}
+
     def hides(self) -> bool:
         """Say whether it draws none of itself: hidden, a popover never shown, or styled out."""
         # A hidden link or meta still does its work; only what's drawn is hidden.
         if self.tag in HEAD_ONLY:
             return False
-        declared = {
-            (name.strip().lower(), value.lower().replace("!important", "").strip())
-            for name, _, value in (
-                each.partition(":") for each in self.attributes.get("style", "").split(";")
-            )
-        }
-        return (
-            "hidden" in self.attributes
-            or "popover" in self.attributes
-            or bool(declared & STYLED_OUT)
+        styled = self.styled()
+        # hidden and an unshown popover hide by the browser's display: none,
+        # which the element's own display beats; hidden=until-found doesn't.
+        held = ("hidden" in self.attributes or "popover" in self.attributes) and (
+            "display" not in styled
+            or self.attributes.get("hidden", "").strip(SPACE).lower() == "until-found"
         )
+        return held or any(each in STYLED_OUT for each in styled.items())
 
     def within(self) -> list[Element]:
         """Give every element drawn inside it, in the order they're written."""
@@ -489,9 +510,11 @@ class Reader(HTMLParser):
         if tag == "head" and (self.head is not None or self.bodied):
             return
         # The body begins at its tag, or at the first tag a head can't hold,
-        # though not within a template or noscript there, which hold their own.
+        # though not within a template or noscript there, which hold their own;
+        # after the head's end, at any but what goes back in it.
+        holds = AFTER_HEAD if self.head is not None and not self.in_head() else HEAD_HOLDS
         if tag == "body" or (
-            tag not in HEAD_HOLDS
+            tag not in holds
             and tag != "html"
             and ((self.in_head() and not self.held_in_head()) or self.before_body())
         ):
@@ -514,10 +537,14 @@ class Reader(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Add an element written closed: closed in SVG or MathML, else left open."""
-        if tag in VOID or tag in FOREIGN or self.foreign():
+        if self.foreign():
             self.add(tag, attrs)
-        else:
-            self.handle_starttag(tag, attrs)
+            return
+        # Written closed or not, it begins the body, implies the head or ends
+        # a p as its start tag does; a void one opens nothing either way.
+        self.handle_starttag(tag, attrs)
+        if tag in FOREIGN and self.open.tag == tag and self.open.parent is not None:
+            self.open = self.open.parent
 
     def handle_endtag(self, tag: str) -> None:
         """Close the nearest open element of this tag, and any left open in it."""
@@ -579,22 +606,43 @@ def head_faults(markup: str) -> list[str]:
             f"its head sits in a {where}, where a header is no banner:"
             " draw it before, as the page's own"
         )
+    faults.extend(banner_faults(head, everything))
+    faults.extend(title_faults(head, everything))
+    if any(isinstance(each, str) and each.strip(SPACE) for each in head.content):
+        faults.append("its head writes words outside its parts: keep every word in a part")
+    return faults + parts_faults(head) + speaking_faults(head)
+
+
+def banner_faults(head: Element, everything: list[Element]) -> list[str]:
+    """Say what the page must change for the head to be its one banner, its skip link before."""
+    faults = []
     banners = [element for element in everything if element.is_banner()]
     if banners and banners[0] is not head:
-        where = "around" if head.inside(banners[0]) else "above"
+        if head.inside(banners[0]):
+            where = "around"
+        elif everything.index(banners[0]) < everything.index(head):
+            where = "above"
+        else:
+            where = "below"
         faults.append(
-            f"it draws a {named(banners[0])} {where} its head: let the kit's head be its first"
+            f"it draws a {named(banners[0])} {where} its head: let the kit's head be its one banner"
         )
-    later = [banner for banner in banners[1:] if not banner.inside(head)]
+    # A role is heard wherever it's marked, so one in the head is a second banner.
+    later = [
+        banner for banner in banners[1:] if not banner.inside(head) or banner.role() == "banner"
+    ]
     if banners and banners[0] is head and later:
         faults.append(
             f"it draws a {named(later[0])} below its head as well:"
             " let the kit's head be its one banner"
         )
-    faults.extend(title_faults(head, everything))
-    if any(isinstance(each, str) and each.strip(SPACE) for each in head.content):
-        faults.append("its head writes words outside its parts: keep every word in a part")
-    return faults + parts_faults(head) + speaking_faults(head)
+    skips = [element for element in everything if element.is_part("a", "skip")]
+    if any(everything.index(skip) > everything.index(head) for skip in skips):
+        faults.append(
+            "its skip link sits in or after its head, where the strip site.sh puts after it"
+            " would split what holds it: write it before the head"
+        )
+    return faults
 
 
 def title_faults(head: Element, everything: list[Element]) -> list[str]:
@@ -655,7 +703,8 @@ def phrases(element: Element, stop: Element) -> list[str]:
         elif isinstance(each, str):
             sides[-1] += each
         elif stop.inside(each):
-            inner = phrases(each, stop)
+            # What's unheard around the dot still splits it, but says nothing.
+            inner = phrases(each, stop) if each.says() else ["", ""]
             sides[-1] += inner[0]
             sides.extend(inner[1:])
         elif each.says():
@@ -774,16 +823,22 @@ BASED = (
 # What a page whose skip link shares its line must change, since site.sh puts
 # the strip after the line holding it, which would put it inside what follows.
 SKIP_LINE = (
-    "its skip link shares its line with what follows, and the strip goes after that line:"
-    " end the line at the link's </a>"
+    "its skip link shares its line, and the strip goes after that line:"
+    " write the link, from its <a to its </a>, on a line of its own"
 )
 
 
 def skip_line_faults(markup: str) -> list[str]:
-    """Say whether a skip link's line holds anything after it, which the strip would split."""
+    """Say whether a skip link's line holds more than it, which the strip would split."""
     for line in markup.splitlines():
-        _, skip, after = line.partition('<a class="skip"')
-        if skip and after.partition("</a>")[2].strip(SPACE):
+        if '<a class="skip"' not in line:
+            continue
+        alone = line.strip(SPACE)
+        if not (
+            alone.startswith('<a class="skip"')
+            and alone.endswith("</a>")
+            and alone.count("</a>") == 1
+        ):
             return [SKIP_LINE]
     return []
 

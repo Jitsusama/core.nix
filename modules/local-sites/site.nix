@@ -53,11 +53,20 @@ in
   */
   shared =
     webKit:
-    pkgs.runCommandLocal "local-sites-shared" { } ''
-      mkdir $out
-      ln -s ${kit}/kit $out/kit
-      ln -s ${webKit} $out/web
-    '';
+    # It serves no page, and says so as a localSite says its pages, so the
+    # heads gate holds it to that rather than to its name.
+    pkgs.runCommandLocal "local-sites-shared"
+      {
+        passthru = {
+          localSitePages = [ ];
+          sharedBySites = true;
+        };
+      }
+      ''
+        mkdir $out
+        ln -s ${kit}/kit $out/kit
+        ln -s ${webKit} $out/web
+      '';
 
   /**
     The site `name`, from its source `src` (modules/<name>/site), its page

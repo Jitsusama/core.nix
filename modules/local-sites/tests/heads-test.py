@@ -4,6 +4,9 @@ The head sites.md writes for every live page is the case it must pass, read
 from the skill itself, so the gate and the pattern it holds pages to can't
 drift apart. Each other case changes one thing about that head and expects
 the one line saying what to change back.
+
+Long because it holds a case for each way a browser reads a head and each
+rule heads.py holds it to, and they are read together, beside heads.py.
 """
 
 import os
@@ -114,6 +117,7 @@ def test_a_sheet_from_the_root_or_for_all_media_draws_the_head(link: str) -> Non
     [
         f"<!doctype html><html>{LINK}<body>{{head}}</body></html>",
         f"<!doctype html><html><head></head>{LINK}<body>{{head}}</body></html>",
+        f"<!doctype html><html>{LINK.replace('>', '/>')}<body>{{head}}</body></html>",
     ],
 )
 def test_a_sheet_in_a_head_the_parser_implies_draws_the_head(markup: str) -> None:
@@ -179,7 +183,25 @@ def test_a_skip_link_sharing_its_line_is_named() -> None:
     """The strip goes after the skip link's line, so the head on it would hold the strip."""
     skip = '<a class="skip" href="#main">Skip to the sites</a>'
     assert heads.page_faults(page(skip + written())) == [SKIP_LINE]
-    assert heads.page_faults(page(f"{skip} \n{written()}")) == []
+    assert heads.page_faults(page(f"\n{skip} \n{written()}")) == []
+
+
+def test_a_skip_link_written_over_two_lines_is_named() -> None:
+    """The strip goes after the line its start tag opens on, inside the link."""
+    skip = '<a class="skip"\n  href="#main">Skip to the sites</a>'
+    assert heads.page_faults(page(f"{skip}\n{written()}")) == [SKIP_LINE]
+
+
+def test_a_skip_link_in_the_head_is_named() -> None:
+    """The strip's nav, put after a skip link in the eyebrow, would end the eyebrow early."""
+    head = changed(
+        '<p class="eyebrow">your sites',
+        '<p class="eyebrow"><a class="skip" href="#main">Skip</a>\nyour sites',
+    )
+    assert (
+        "its skip link sits in or after its head, where the strip site.sh puts after it"
+        " would split what holds it: write it before the head"
+    ) in heads.page_faults(page(head))
 
 
 @pytest.mark.parametrize(
@@ -192,13 +214,21 @@ def test_a_skip_link_sharing_its_line_is_named() -> None:
             "<body>{head}</body></html>"
         ),
         f"<!doctype html><html><body><head>{LINK}</head>{{head}}</body></html>",
+        (
+            f"<!doctype html><html><head></head><noscript></noscript>{LINK}"
+            "<body>{head}</body></html>"
+        ),
+        f"<!doctype html><html><head><br/>{LINK}</head><body>{{head}}</body></html>",
+        f'<!doctype html><html><img src="x" /><head>{LINK}</head><body>{{head}}</body></html>',
+        f"<!doctype html><html><head><svg/>{LINK}</head><body>{{head}}</body></html>",
     ],
 )
 def test_a_sheet_after_the_body_begins_is_in_the_body(markup: str) -> None:
     """The body begins where a browser begins it, and a head written in it is ignored.
 
-    After the head, before it, at words in it, or as a second head in the body:
-    each link lands in the body, where it draws the head late.
+    After the head, before it, at words in it, as a second head in the body, at a
+    noscript after the head, or at a void or SVG element written closed: each
+    link lands in the body, where it draws the head late.
     """
     assert heads.page_faults(markup.format(head=written())) == [NO_SHEET]
 
@@ -234,7 +264,7 @@ def test_a_banner_kept_above_the_head_is_named() -> None:
         '<header class="hero"><p class="wordmark">Mine</p></header>' + written()
     )
     assert faults == [
-        'it draws a <header class="hero"> above its head: let the kit\'s head be its first'
+        'it draws a <header class="hero"> above its head: let the kit\'s head be its one banner'
     ]
 
 
@@ -255,13 +285,31 @@ def test_a_sections_own_header_below_the_head_is_no_banner() -> None:
     """A header in an article is the article's, not a second banner."""
     post = "<main><article><header><h2>A post</h2></header></article></main>"
     assert heads.head_faults(written() + post) == []
+    region = '<div role="region"><header><h2>A part</h2></header></div>'
+    assert heads.head_faults(written() + region) == []
+
+
+def test_a_banner_after_a_head_that_isnt_one_is_named_below() -> None:
+    """A head in a main is no banner, and the page's own header after it is below it."""
+    faults = heads.head_faults(f'<main>{written()}</main><header class="hero"><p>Mine</p></header>')
+    assert (
+        'it draws a <header class="hero"> below its head: let the kit\'s head be its one banner'
+    ) in faults
+
+
+def test_a_banner_marked_inside_the_head_is_a_second() -> None:
+    """A role is heard wherever it's marked, so a banner in the lede is one more."""
+    faults = heads.head_faults(changed("Seven sites", '<span role="banner">Seven</span> sites'))
+    assert faults == [
+        ("it draws a <span> below its head as well: let the kit's head be its one banner")
+    ]
 
 
 def test_a_banner_wrapped_around_the_head_is_named() -> None:
     """A page's own banner holding the kit's head is still drawn first, and heard as the banner."""
     faults = heads.head_faults('<header class="mast"><p>Mine</p>' + written() + "</header>")
     assert faults == [
-        'it draws a <header class="mast"> around its head: let the kit\'s head be its first'
+        'it draws a <header class="mast"> around its head: let the kit\'s head be its one banner'
     ]
 
 
@@ -290,10 +338,23 @@ def test_a_head_in_open_details_is_drawn() -> None:
 
 @pytest.mark.parametrize(
     "marked",
-    ["hidden", "popover", 'style="display:none"', 'style="color: red; display: NONE !important"'],
+    [
+        "hidden",
+        "popover",
+        'style="display:none"',
+        'style="color: red; display: NONE !important"',
+        'style="display: none ! important"',
+        'style="display: block; display: none"',
+        'style="display: none !important; display: block"',
+        'style="opacity: 0"',
+        'hidden="until-found" style="display: block"',
+    ],
 )
 def test_a_hidden_head_is_no_head(marked: str) -> None:
-    """A head hidden, a popover no script has shown, or styled out is never drawn."""
+    """A head hidden, a popover no script has shown, or styled out is never drawn.
+
+    A property's last value counts, but not over an important one.
+    """
     head = changed('<header class="page-head">', f'<header class="page-head" {marked}>')
     faults = heads.head_faults('<div class="hero"><h2>Mine</h2></div>' + head)
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
@@ -307,11 +368,22 @@ def test_a_head_held_in_a_popover_is_no_head() -> None:
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
 
 
-def test_a_head_styled_otherwise_is_drawn() -> None:
-    """A style that hides nothing leaves the head drawn."""
-    head = changed(
-        '<header class="page-head">', '<header class="page-head" style="display: block">'
-    )
+@pytest.mark.parametrize(
+    "marked",
+    [
+        'style="display: block"',
+        'style="overflow: hidden"',
+        'style="border-style: none"',
+        'style="visibility: visible"',
+        'style="--x: none"',
+        'style="display: none; display: block"',
+        'hidden style="display: block"',
+        'popover style="display: flex"',
+    ],
+)
+def test_a_head_styled_otherwise_is_drawn(marked: str) -> None:
+    """A style that hides nothing leaves the head drawn, and its own display beats hidden."""
+    head = changed('<header class="page-head">', f'<header class="page-head" {marked}>')
     assert heads.head_faults(head) == []
 
 
@@ -326,14 +398,14 @@ def test_words_loose_in_the_head_are_named() -> None:
 def test_a_banner_marked_by_role_above_the_head_is_named() -> None:
     """A div a screen reader hears as the banner is a banner, whatever its tag."""
     faults = heads.head_faults('<div role="banner"><p>Mine</p></div>' + written())
-    assert faults == ["it draws a <div> above its head: let the kit's head be its first"]
+    assert faults == ["it draws a <div> above its head: let the kit's head be its one banner"]
 
 
 def test_a_banner_marked_by_role_around_the_head_is_named() -> None:
     """A banner landmark holding the kit's head is still heard first."""
     faults = heads.head_faults('<div class="mast" role="banner"><p>Mine</p>' + written() + "</div>")
     assert faults == [
-        'it draws a <div class="mast"> around its head: let the kit\'s head be its first'
+        'it draws a <div class="mast"> around its head: let the kit\'s head be its one banner'
     ]
 
 
@@ -534,6 +606,10 @@ def test_an_eyebrow_dotted_as_text_beside_the_kits_is_named() -> None:
         ("</span>on this machine", "</span> "),
         ("your sites<span", "<span hidden>your sites</span><span"),
         ("your sites<span", '<span aria-hidden="true">your sites</span><span'),
+        (
+            'your sites<span class="sep">·</span>',
+            '<span aria-hidden="true">your sites<span class="sep">·</span></span>',
+        ),
         ("</span>on this machine", "</span><template>on this machine</template>"),
     ],
 )
