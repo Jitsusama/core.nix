@@ -131,6 +131,58 @@ def test_a_base_moving_the_sheets_path_is_named() -> None:
 
 
 @pytest.mark.parametrize(
+    "holder", [("<div hidden>", "</div>"), ("<dialog>", "</dialog>"), ("<div popover>", "</div>")]
+)
+def test_a_base_written_where_nothing_is_drawn_is_named(holder: tuple[str, str]) -> None:
+    """A browser reads links from a base wherever it's parsed, drawn or not."""
+    opens, closes = holder
+    base = f'{opens}<base href="/elsewhere/a/">{closes}'
+    assert heads.page_faults(page(base + written())) == [heads.BASED]
+
+
+def test_a_base_in_a_template_moves_nothing() -> None:
+    """A template's markup is its own fragment, so a base in it moves no link."""
+    base = '<template><base href="/elsewhere/a/"></template>'
+    assert heads.page_faults(page(base + written())) == []
+
+
+@pytest.mark.parametrize("holder", ["template", "noscript"])
+def test_a_template_or_noscript_in_the_head_keeps_the_head(holder: str) -> None:
+    """What a head's template or noscript holds is its own, so the body doesn't begin there."""
+    markup = (
+        f"<!doctype html><html><head><{holder}><div></div></{holder}>{LINK}</head>"
+        f"<body>{written()}</body></html>"
+    )
+    assert heads.page_faults(markup) == []
+
+
+def test_a_link_after_a_no_break_space_in_the_head_is_in_the_body() -> None:
+    """A no-break space is a word to HTML, so the body begins at it."""
+    markup = f"<!doctype html><html><head>&nbsp;{LINK}</head><body>{written()}</body></html>"
+    assert heads.page_faults(markup) == [NO_SHEET]
+
+
+def test_an_attribute_written_twice_is_read_as_its_first() -> None:
+    """A browser keeps a repeated attribute's first value, so own.css is what loads."""
+    link = '<link rel="stylesheet" href="own.css" href="../local-sites/kit/head.css">'
+    markup = f"<!doctype html><html><head>{link}</head><body>{written()}</body></html>"
+    assert heads.page_faults(markup) == [NO_SHEET]
+    lede = changed('<p class="lede">', '<p class="lede" aria-live="polite" aria-live="off">')
+    assert heads.head_faults(lede) == [SPEAKS]
+
+
+# What the gate says of a skip link sharing its line with what follows.
+SKIP_LINE = heads.SKIP_LINE
+
+
+def test_a_skip_link_sharing_its_line_is_named() -> None:
+    """The strip goes after the skip link's line, so the head on it would hold the strip."""
+    skip = '<a class="skip" href="#main">Skip to the sites</a>'
+    assert heads.page_faults(page(skip + written())) == [SKIP_LINE]
+    assert heads.page_faults(page(f"{skip} \n{written()}")) == []
+
+
+@pytest.mark.parametrize(
     "markup",
     [
         f"<!doctype html><html><head></head><div>{{head}}</div>{LINK}</html>",
@@ -186,6 +238,25 @@ def test_a_banner_kept_above_the_head_is_named() -> None:
     ]
 
 
+def test_a_banner_kept_below_the_head_is_named() -> None:
+    """A page half moved, its own banner still drawn after the kit's, is heard as two."""
+    faults = heads.head_faults(
+        written() + '<header class="hero"><p class="wordmark">Mine</p></header>'
+    )
+    assert faults == [
+        (
+            'it draws a <header class="hero"> below its head as well:'
+            " let the kit's head be its one banner"
+        )
+    ]
+
+
+def test_a_sections_own_header_below_the_head_is_no_banner() -> None:
+    """A header in an article is the article's, not a second banner."""
+    post = "<main><article><header><h2>A post</h2></header></article></main>"
+    assert heads.head_faults(written() + post) == []
+
+
 def test_a_banner_wrapped_around_the_head_is_named() -> None:
     """A page's own banner holding the kit's head is still drawn first, and heard as the banner."""
     faults = heads.head_faults('<header class="mast"><p>Mine</p>' + written() + "</header>")
@@ -217,11 +288,31 @@ def test_a_head_in_open_details_is_drawn() -> None:
     assert heads.head_faults(markup) == []
 
 
-def test_a_hidden_head_is_no_head() -> None:
-    """A head marked hidden is never drawn, so the page's own shows."""
-    head = changed('<header class="page-head">', '<header class="page-head" hidden>')
+@pytest.mark.parametrize(
+    "marked",
+    ["hidden", "popover", 'style="display:none"', 'style="color: red; display: NONE !important"'],
+)
+def test_a_hidden_head_is_no_head(marked: str) -> None:
+    """A head hidden, a popover no script has shown, or styled out is never drawn."""
+    head = changed('<header class="page-head">', f'<header class="page-head" {marked}>')
     faults = heads.head_faults('<div class="hero"><h2>Mine</h2></div>' + head)
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
+
+
+def test_a_head_held_in_a_popover_is_no_head() -> None:
+    """A popover draws nothing it holds until a script shows it."""
+    faults = heads.head_faults(
+        f'<div class="hero"><h2>Mine</h2></div><div popover>{written()}</div>'
+    )
+    assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
+
+
+def test_a_head_styled_otherwise_is_drawn() -> None:
+    """A style that hides nothing leaves the head drawn."""
+    head = changed(
+        '<header class="page-head">', '<header class="page-head" style="display: block">'
+    )
+    assert heads.head_faults(head) == []
 
 
 def test_words_loose_in_the_head_are_named() -> None:
@@ -278,6 +369,18 @@ def test_a_title_marked_no_heading_is_named(role: str) -> None:
     ]
 
 
+@pytest.mark.parametrize("role", ["main", "region", "article", "navigation", "complementary"])
+def test_a_head_inside_an_element_marked_a_section_is_named(role: str) -> None:
+    """A header in an element marked a section is as much the section's as in its tag."""
+    markup = page(f'<div role="{role}">{written()}</div>')
+    assert heads.page_faults(markup) == [
+        (
+            f'its head sits in a <div role="{role}">, where a header is no banner:'
+            " draw it before, as the page's own"
+        )
+    ]
+
+
 @pytest.mark.parametrize("section", ["main", "article", "section", "aside", "nav"])
 def test_a_head_inside_a_section_is_named(section: str) -> None:
     """A header inside a section is that section's, not the page's banner."""
@@ -311,29 +414,44 @@ def test_a_hidden_part_is_named(old: str, name: str) -> None:
 def test_a_hidden_title_is_named() -> None:
     """A hidden title leaves the page with no first heading in its head."""
     assert heads.head_faults(changed("<h1>", "<h1 hidden>")) == [
-        "its first heading, heading, sits outside its head: make the head's title first",
+        "it draws no heading: make the head's title its first",
         "its head hides its <h1>: draw every part",
     ]
 
 
-@pytest.mark.parametrize(
-    "old", ['<p class="eyebrow">', "<h1>", '<p class="lede">', '<div class="quiet">']
-)
-def test_a_part_screen_readers_never_hear_is_named(old: str) -> None:
-    """A part drawn but aria-hidden says nothing to a screen reader."""
-    head = changed(old, old.replace(">", ' aria-hidden="true">', 1))
+def test_a_heading_in_the_head_before_its_title_is_named() -> None:
+    """An eyebrow marked a heading is heard as the page's first, before the title."""
+    head = changed("your sites", '<span role="heading" aria-level="1">your sites</span>')
     assert heads.head_faults(head) == [
-        (
-            f"its head hides its {heads.named(heads.read(old).children[0])}"
-            " from screen readers: let them hear every part"
-        )
+        "its first heading is a <span> in its head: make the head's title its first"
     ]
+
+
+@pytest.mark.parametrize(
+    ("old", "name"),
+    [
+        ('<p class="eyebrow">', '<p class="eyebrow">'),
+        ("<h1>", "<h1>"),
+        ('<p class="lede">', '<p class="lede">'),
+        ('<div class="quiet">', '<div class="quiet">'),
+    ],
+)
+def test_a_part_screen_readers_never_hear_is_named(old: str, name: str) -> None:
+    """A part drawn but aria-hidden or inert says nothing to a screen reader."""
+    for marked in (' aria-hidden="true">', " inert>"):
+        head = changed(old, old.replace(">", marked, 1))
+        assert heads.head_faults(head) == [
+            f"its head hides its {name} from screen readers: let them hear every part"
+        ], marked
 
 
 def test_a_head_screen_readers_never_hear_is_named() -> None:
     """An aria-hidden head is drawn, but heard as nothing at all."""
-    head = changed('<header class="page-head">', '<header class="page-head" aria-hidden="true">')
-    assert heads.head_faults(head) == ["its head is hidden from screen readers: let them hear it"]
+    for marked in (' aria-hidden="true">', " inert>"):
+        head = changed('<header class="page-head">', f'<header class="page-head"{marked}')
+        assert heads.head_faults(head) == [
+            "its head is hidden from screen readers: let them hear it"
+        ], marked
 
 
 def test_a_head_drawn_as_another_element_is_named() -> None:
@@ -387,6 +505,12 @@ def test_an_eyebrow_of_one_phrase_is_named() -> None:
     assert heads.head_faults(head) == [f"its eyebrow has 1 phrase: {heads.EYEBROW}"]
 
 
+def test_an_eyebrow_with_its_dot_hidden_is_one_phrase() -> None:
+    """A sep hidden draws no dot, so the eyebrow reads as one phrase, not a dot as text."""
+    head = changed('<span class="sep">', '<span class="sep" hidden>')
+    assert heads.head_faults(head) == [f"its eyebrow has 1 phrase: {heads.EYEBROW}"]
+
+
 def test_an_eyebrow_dotted_as_text_is_named() -> None:
     """The pages write their dot as text today; the kit spaces only its own."""
     head = changed('<span class="sep">·</span>', " · ")
@@ -405,7 +529,13 @@ def test_an_eyebrow_dotted_as_text_beside_the_kits_is_named() -> None:
 
 @pytest.mark.parametrize(
     ("old", "new"),
-    [("your sites<span", "<span"), ("</span>on this machine", "</span> ")],
+    [
+        ("your sites<span", "<span"),
+        ("</span>on this machine", "</span> "),
+        ("your sites<span", "<span hidden>your sites</span><span"),
+        ("your sites<span", '<span aria-hidden="true">your sites</span><span'),
+        ("</span>on this machine", "</span><template>on this machine</template>"),
+    ],
 )
 def test_an_eyebrow_with_an_empty_phrase_is_named(old: str, new: str) -> None:
     """A dot with nothing on one side of it is one phrase drawn as two."""
@@ -435,6 +565,8 @@ def test_a_standing_line_with_no_status_is_named() -> None:
         ('role="status"', 'role="status" aria-live="off"'),
         ('role="status"', 'role="status" aria-live="assertive"'),
         ('role="status"', 'role="status" hidden'),
+        ('role="status"', 'role="status" inert'),
+        ('role="status"', 'role="status" style="visibility:hidden"'),
         ('<p class="standing">', '<p class="standing" aria-hidden="true">'),
         (
             '<span class="glyph" aria-hidden="true"></span>',
@@ -461,10 +593,12 @@ def test_a_standing_line_speaking_otherwise_is_named(old: str, new: str) -> None
         ('role="status"', 'role="wobble status"'),
         ('role="status"', 'role="status" aria-live=""'),
         ("Reaching its daemon.</span>", 'Reaching its daemon.</span><span aria-live="">.</span>'),
+        ("Reaching its daemon.</span>", 'Reaching its daemon.</span><span role="timer">1s</span>'),
+        ("Reaching its daemon.</span>", 'Reaching its daemon.</span><span role="marquee">.</span>'),
     ],
 )
 def test_a_status_as_a_browser_reads_it_passes(old: str, new: str) -> None:
-    """A role a browser skips to reach status, and an empty aria-live, which is off."""
+    """A role skipped to reach status, an empty aria-live, and a timer or marquee, all off."""
     assert heads.head_faults(changed(old, new)) == []
 
 

@@ -76,14 +76,23 @@ in
       looks ? webKit.looks,
     }:
     # The site carries the web kit it was built on, so a folder laid out
-    # from it copies the same one in, and the page it was built from, so
-    # the heads gate can see every page a machine mounts. The page's name
-    # is localSite's own, as a src any derivation may carry is not.
+    # from it copies the same one in, and every page it serves, each at the
+    # top of its source as site.sh copies them, so the heads gate can see
+    # every page a machine mounts. The pages' name is localSite's own, as a
+    # src any derivation may carry is not. Only a src that's a path in the
+    # tree names its pages as heads.nix's pages does, so any other carries
+    # none, and the gate refuses it rather than naming a store path.
     pkgs.runCommandLocal "${name}-site"
       {
         passthru = {
           inherit webKit;
-          localSitePage = src + "/index.html";
+        }
+        // lib.optionalAttrs (builtins.isPath src) {
+          localSitePages = map (page: src + "/${page}") (
+            lib.filter (lib.hasSuffix ".html") (
+              lib.attrNames (lib.filterAttrs (_: kind: kind != "directory") (builtins.readDir src))
+            )
+          );
         };
       }
       ''

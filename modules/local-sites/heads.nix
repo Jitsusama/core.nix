@@ -30,18 +30,26 @@ let
   fromTheRoot = page: lib.removePrefix (toString ../.. + "/") (toString page);
 
   # What a set of mounts does that would leave a page unjudged. Each mount
-  # serving a page must be a localSite, which says what page it was built
-  # from, so a site mounted some other way fails rather than going
-  # unjudged; and each such page must be named in `pages`. Home, which no
-  # mount serves, is named there by hand.
+  # serving pages must be a localSite built from a path in the tree, which
+  # says every page it serves, so a site mounted some other way fails
+  # rather than going unjudged; and each such page must be named in
+  # `pages`. Home, which no mount serves, is named there by hand. A mount
+  # named pageless must serve no page, so the name alone exempts nothing.
   faultsOf =
     mounts:
     let
       sited = removeAttrs mounts pageless;
-      unsourced = lib.attrNames (lib.filterAttrs (_: site: !(site ? localSitePage)) sited);
+      unsourced = lib.attrNames (lib.filterAttrs (_: site: !(site ? localSitePages)) sited);
       unnamed = lib.filter (page: !(lib.elem page (lib.attrValues pages))) (
-        lib.mapAttrsToList (_: site: site.localSitePage) (
-          lib.filterAttrs (_: site: site ? localSitePage) sited
+        lib.concatLists (
+          lib.mapAttrsToList (_: site: site.localSitePages) (
+            lib.filterAttrs (_: site: site ? localSitePages) sited
+          )
+        )
+      );
+      paging = lib.attrNames (
+        lib.filterAttrs (_: site: site ? localSitePages) (
+          lib.getAttrs (lib.filter (name: mounts ? ${name}) pageless) mounts
         )
       );
     in
@@ -50,16 +58,21 @@ let
     ) "a machine in a realm mounts no page, so the gate can't tell what it misses"
     ++
       lib.optional (unsourced != [ ])
-        "${lib.concatStringsSep ", " unsourced} mount no localSite, so their pages can't be judged: build them with localSite, or name them in pageless"
+        "${lib.concatStringsSep ", " unsourced} mount no localSite built from a path in the tree, so their pages can't be judged: build them so, or name them in pageless"
     ++
       lib.optional (unnamed != [ ])
         "name ${
           lib.concatMapStringsSep ", " fromTheRoot unnamed
-        } in heads.nix's pages, by the name Joel knows each by";
+        } in heads.nix's pages, by the name Joel knows each by"
+    ++
+      lib.optional (paging != [ ])
+        "${lib.concatStringsSep ", " paging} serve pages, though pageless names them as serving none: take them out of pageless";
 
-  # The faults of what a machine in a realm mounts: every mount core's own
-  # modules declare there, the sites under a realm and under repository
-  # roots both. Mounts a machine's own repository adds aren't seen.
+  # The faults of what the realm workstation in checks.nix mounts: the
+  # sites core's own modules turn on there, under a realm and under
+  # repository roots both. A mount behind an option that machine doesn't
+  # turn on isn't seen, so turn its option on there too; mounts a machine's
+  # own repository adds aren't seen either.
   mountFaults = faultsOf mounts;
 
   # The mount rules hold of a mount built each other way, so the gate is
@@ -77,13 +90,29 @@ let
     };
     "a page pages doesn't name" = {
       x = {
-        localSitePage = ./nowhere/index.html;
+        localSitePages = [ ./nowhere/index.html ];
+      };
+    };
+    "a second page pages doesn't name" = {
+      x = {
+        localSitePages = [
+          pages.Forage
+          ./nowhere/cell.html
+        ];
+      };
+    };
+    "a pageless mount serving a page" = {
+      forage = {
+        localSitePages = [ pages.Forage ];
+      };
+      local-sites = {
+        localSitePages = [ pages.Map ];
       };
     };
   };
   passed = {
     forage = {
-      localSitePage = pages.Forage;
+      localSitePages = [ pages.Forage ];
     };
     local-sites = pkgs.emptyDirectory;
   };

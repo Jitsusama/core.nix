@@ -16,13 +16,22 @@ void elements hold nothing, a `<p>` ends where a block starts, a non-void
 element written closed stays open outside SVG and MathML, a `<head>` left
 unwritten or unclosed is implied where the parser implies it, the body begins
 at the first tag or words a head can't hold, and a second `<head>` is ignored.
-What `<template>`, `<noscript>` or an element read as words holds, what a
-shut `<dialog>` or `<details>` holds past its summary, and what's `hidden`, is
-never drawn; nor is it heard, and neither is what's under `aria-hidden`. A
-`<base>` moving where links read from fails, since the sheet can't be known
-to be the kit's. What a script later puts in the head
-is the page's own tests' to hold; Home's standing line is the one its build
-fills (home.py), so its template writes the status around what's filled.
+A browser keeps an attribute's first value, and a template or noscript in the
+head holds its own. What `<template>`, `<noscript>` or an element read as words
+holds, what a shut `<dialog>` or `<details>` holds past its summary, and what's
+`hidden`, a `popover` no script has shown or styled out by its own `style`, is
+never drawn; nor is it heard, and neither is what's `inert` or under
+`aria-hidden`. A `<base>` anywhere moving where links read from fails, since
+the sheet can't be known to be the kit's. What a sheet's rules hide, and what a
+script later puts in the head, are the page's own tests' to hold; Home's
+standing line is the one its build fills (home.py), so its template writes the
+status around what's filled. The gate reads each page's source, which matches
+what's served while each skip link ends its line, since site.sh puts the strip
+after that line.
+
+Long because it holds both a reader of markup as a browser parses it and the
+head's rules over what it reads, which change together: each way found that a
+browser reads a head otherwise moves both the reader and a rule.
 
 A page not yet moved to the head is named as waiting, and passes. A waiting
 page that keeps to the head fails until it is taken off the list, and a name
@@ -141,8 +150,13 @@ UNDRAWN = {
 # What draws only its summary, or nothing, until it's open.
 SHUT = {"details", "dialog"}
 
-# Where a header is a section's, not the page's banner.
+# Where a header is a section's, not the page's banner: in one of these, or
+# in an element marked as one, as HTML-AAM maps a header.
 SECTIONS = {"article", "aside", "main", "nav", "section"}
+SECTION_ROLES = {"article", "complementary", "main", "navigation", "region"}
+
+# What HTML counts as space between words; a no-break space is a word's.
+SPACE = " \t\n\f\r"
 
 # The roles a head may be marked with and still be the page's banner.
 BANNER = {None, "banner"}
@@ -236,8 +250,18 @@ ROLES = {
     "treeitem",
 }
 
-# The roles a screen reader speaks the changes of, beside aria-live.
-LIVE_ROLES = {"status", "alert", "log", "marquee", "timer"}
+# The roles a screen reader speaks the changes of, beside aria-live; a
+# marquee's and a timer's are off unless they say otherwise.
+LIVE_ROLES = {"status", "alert", "log"}
+
+# What an element's own style may say that draws none of it, as a browser
+# reads each declaration; a sheet's rules are the live tests' to hold.
+STYLED_OUT = {
+    ("display", "none"),
+    ("visibility", "hidden"),
+    ("visibility", "collapse"),
+    ("content-visibility", "hidden"),
+}
 
 # The sheet that draws the head, as a mounted page links it and as Home does
 # from the root.
@@ -266,12 +290,28 @@ class Element:
         """Say whether it's drawn as the part with this tag and class."""
         return self.tag == tag and (name is None or name in self.classes())
 
+    def hides(self) -> bool:
+        """Say whether it draws none of itself: hidden, a popover never shown, or styled out."""
+        # A hidden link or meta still does its work; only what's drawn is hidden.
+        if self.tag in HEAD_ONLY:
+            return False
+        declared = {
+            (name.strip().lower(), value.lower().replace("!important", "").strip())
+            for name, _, value in (
+                each.partition(":") for each in self.attributes.get("style", "").split(";")
+            )
+        }
+        return (
+            "hidden" in self.attributes
+            or "popover" in self.attributes
+            or bool(declared & STYLED_OUT)
+        )
+
     def within(self) -> list[Element]:
         """Give every element drawn inside it, in the order they're written."""
         found = []
         for child in self.children:
-            # A hidden link or meta still does its work; only what's drawn is hidden.
-            if "hidden" in child.attributes and child.tag not in HEAD_ONLY:
+            if child.hides():
                 continue
             found.append(child)
             if child.tag in SHUT and "open" not in child.attributes:
@@ -285,15 +325,34 @@ class Element:
 
     def shown(self) -> list[Element]:
         """Give the children drawn in it, leaving out those hidden."""
-        return [
-            child
-            for child in self.children
-            if "hidden" not in child.attributes or child.tag in HEAD_ONLY
-        ]
+        return [child for child in self.children if not child.hides()]
 
-    def text(self) -> str:
-        """Give the words written in it, in order."""
-        return "".join(each if isinstance(each, str) else each.text() for each in self.content)
+    def written(self) -> list[Element]:
+        """Give every element parsed inside it, drawn or not, but for what's read as words."""
+        found = []
+        for child in self.children:
+            found.append(child)
+            if child.tag not in UNDRAWN:
+                found.extend(child.written())
+        return found
+
+    def words(self) -> str:
+        """Give the words drawn and heard in it, in order."""
+        return "".join(
+            each if isinstance(each, str) else each.words()
+            for each in self.content
+            if isinstance(each, str) or each.says()
+        )
+
+    def says(self) -> bool:
+        """Say whether what it holds is drawn and heard where it sits, as a child's words."""
+        return not (
+            self.hides()
+            or self.tag in UNDRAWN
+            or (self.tag in SHUT and "open" not in self.attributes)
+            or self.attributes.get("aria-hidden", "").strip(SPACE).lower() == "true"
+            or "inert" in self.attributes
+        )
 
     def role(self) -> str | None:
         """Give the role a browser takes it as: the first it knows, or an output's status."""
@@ -302,12 +361,12 @@ class Element:
         return known or ("status" if self.tag == "output" else None)
 
     def heard(self) -> bool:
-        """Say whether a screen reader hears it: nothing hidden or under aria-hidden is."""
+        """Say whether a screen reader hears it: nothing undrawn, inert or under aria-hidden is."""
         element: Element | None = self
         while element is not None:
-            if element.attributes.get("aria-hidden", "").strip().lower() == "true":
+            if element.attributes.get("aria-hidden", "").strip(SPACE).lower() == "true":
                 return False
-            if "hidden" in element.attributes and element.tag not in HEAD_ONLY:
+            if element.hides() or "inert" in element.attributes:
                 return False
             element = element.parent
         return True
@@ -316,14 +375,26 @@ class Element:
         """Say whether a screen reader speaks its changes; an explicit aria-live decides."""
         if not self.heard():
             return False
-        said = self.attributes.get("aria-live", "").strip().lower()
+        said = self.attributes.get("aria-live", "").strip(SPACE).lower()
         if said in {"polite", "assertive", "off"}:
             return said != "off"
         return self.role() in LIVE_ROLES
 
+    def section(self) -> Element | None:
+        """Give the section it sits in, by its tag or the role it's marked with, if any."""
+        section = self.parent
+        while section is not None and not (
+            section.tag in SECTIONS or section.role() in SECTION_ROLES
+        ):
+            section = section.parent
+        return section
+
     def is_banner(self) -> bool:
-        """Say whether it's drawn or heard as a banner: a header, or marked one."""
-        return self.tag == "header" or self.role() == "banner"
+        """Say whether it's heard as the page's banner: marked one, or a header in no section."""
+        role = self.role()
+        return role == "banner" or (
+            self.tag == "header" and role is None and self.section() is None
+        )
 
     def is_heading(self) -> bool:
         """Say whether it's drawn or heard as a heading: h1 to h6, or marked one."""
@@ -331,7 +402,7 @@ class Element:
 
     def interrupts(self) -> bool:
         """Say whether it cuts in on what's being read, as an alert does."""
-        return self.attributes.get("aria-live", "").strip().lower() == "assertive"
+        return self.attributes.get("aria-live", "").strip(SPACE).lower() == "assertive"
 
     def inside(self, ancestor: Element) -> bool:
         """Say whether it sits somewhere within `ancestor`."""
@@ -355,8 +426,11 @@ class Reader(HTMLParser):
         self.bodied = False
 
     def add(self, tag: str, attrs: list[tuple[str, str | None]]) -> Element:
-        """Put an element under the one open now."""
-        element = Element(tag, {name: value or "" for name, value in attrs}, self.open)
+        """Put an element under the one open now, keeping each attribute's first value."""
+        attributes: dict[str, str] = {}
+        for name, value in attrs:
+            attributes.setdefault(name, value or "")
+        element = Element(tag, attributes, self.open)
         self.open.children.append(element)
         self.open.content.append(element)
         return element
@@ -388,6 +462,15 @@ class Reader(HTMLParser):
             element = element.parent
         return False
 
+    def held_in_head(self) -> bool:
+        """Say whether the open element sits in a template or noscript the head holds."""
+        element: Element | None = self.open
+        while element is not None and element is not self.head:
+            if element.tag in UNDRAWN:
+                return True
+            element = element.parent
+        return False
+
     def head_for(self, tag: str) -> Element | None:
         """Give the `<head>` a parser puts `tag` in when written outside one before the body."""
         if tag not in HEAD_ONLY or self.bodied or self.open.tag not in {"#document", "html"}:
@@ -405,9 +488,12 @@ class Reader(HTMLParser):
         # A browser ignores a second head, and one written in the body.
         if tag == "head" and (self.head is not None or self.bodied):
             return
-        # The body begins at its tag, or at the first tag a head can't hold.
+        # The body begins at its tag, or at the first tag a head can't hold,
+        # though not within a template or noscript there, which hold their own.
         if tag == "body" or (
-            tag not in HEAD_HOLDS and tag != "html" and (self.in_head() or self.before_body())
+            tag not in HEAD_HOLDS
+            and tag != "html"
+            and ((self.in_head() and not self.held_in_head()) or self.before_body())
         ):
             self.bodied = True
             while self.in_head() and self.open.parent is not None:
@@ -443,7 +529,7 @@ class Reader(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         """Keep the words written where they're written; words before the body begin it."""
-        if data.strip() and (self.before_body() or self.open is self.head):
+        if data.strip(SPACE) and (self.before_body() or self.open is self.head):
             self.bodied = True
             if self.open is self.head and self.open.parent is not None:
                 self.open = self.open.parent
@@ -483,12 +569,14 @@ def head_faults(markup: str) -> list[str]:
         faults.append(
             f'its head is marked role="{head.role()}": leave the header its own role, the banner'
         )
-    section = head.parent
-    while section is not None and section.tag not in SECTIONS:
-        section = section.parent
+    section = head.section()
     if section is not None:
+        marked = section.role()
+        where = f"<{section.tag}>"
+        if marked in SECTION_ROLES:
+            where = f'<{section.tag} role="{marked}">'
         faults.append(
-            f"its head sits in a <{section.tag}>, where a header is no banner:"
+            f"its head sits in a {where}, where a header is no banner:"
             " draw it before, as the page's own"
         )
     banners = [element for element in everything if element.is_banner()]
@@ -497,15 +585,30 @@ def head_faults(markup: str) -> list[str]:
         faults.append(
             f"it draws a {named(banners[0])} {where} its head: let the kit's head be its first"
         )
-    titles = [element for element in everything if element.is_heading()]
-    if not titles or not titles[0].inside(head):
-        first = named(titles[0]) if titles else "heading"
+    later = [banner for banner in banners[1:] if not banner.inside(head)]
+    if banners and banners[0] is head and later:
         faults.append(
-            f"its first heading, {first}, sits outside its head: make the head's title first"
+            f"it draws a {named(later[0])} below its head as well:"
+            " let the kit's head be its one banner"
         )
-    if any(isinstance(each, str) and each.strip() for each in head.content):
+    faults.extend(title_faults(head, everything))
+    if any(isinstance(each, str) and each.strip(SPACE) for each in head.content):
         faults.append("its head writes words outside its parts: keep every word in a part")
     return faults + parts_faults(head) + speaking_faults(head)
+
+
+def title_faults(head: Element, everything: list[Element]) -> list[str]:
+    """Say what the page must change for the head's title to be its first heading."""
+    titles = [element for element in everything if element.is_heading()]
+    title = next((child for child in head.shown() if child.tag == "h1"), None)
+    if not titles:
+        return ["it draws no heading: make the head's title its first"]
+    if titles[0] is title:
+        return []
+    first = named(titles[0])
+    if titles[0].inside(head):
+        return [f"its first heading is a {first} in its head: make the head's title its first"]
+    return [f"its first heading, {first}, sits outside its head: make the head's title first"]
 
 
 def parts_faults(head: Element) -> list[str]:
@@ -544,7 +647,7 @@ def parts_faults(head: Element) -> list[str]:
 
 
 def phrases(element: Element, stop: Element) -> list[str]:
-    """Give the words written in `element` on each side of `stop`."""
+    """Give the words drawn and heard in `element` on each side of `stop`."""
     sides = [""]
     for each in element.content:
         if each is stop:
@@ -555,8 +658,8 @@ def phrases(element: Element, stop: Element) -> list[str]:
             inner = phrases(each, stop)
             sides[-1] += inner[0]
             sides.extend(inner[1:])
-        else:
-            sides[-1] += each.text()
+        elif each.says():
+            sides[-1] += each.words()
     return sides
 
 
@@ -567,7 +670,7 @@ EYEBROW = 'say two, what this is <span class="sep">·</span> whose or where'
 def eyebrow_faults(eyebrow: Element) -> list[str]:
     """Say what the eyebrow must change to be two phrases split by the kit's dot."""
     stops = [element for element in eyebrow.within() if element.is_part("span", "sep")]
-    if not stops and "·" in eyebrow.text():
+    if not stops and "·" in eyebrow.words():
         return ['its eyebrow writes its dot as text: write it as <span class="sep">·</span>']
     if len(stops) != 1:
         count = len(stops) + 1
@@ -575,7 +678,7 @@ def eyebrow_faults(eyebrow: Element) -> list[str]:
     sides = phrases(eyebrow, stops[0])
     if any("·" in side for side in sides):
         return ["its eyebrow writes a dot as text beside the kit's: keep the one sep"]
-    if any(not side.strip() for side in sides):
+    if any(not side.strip(SPACE) for side in sides):
         return [f"its eyebrow has an empty phrase: {EYEBROW}"]
     return []
 
@@ -668,16 +771,35 @@ BASED = (
 )
 
 
+# What a page whose skip link shares its line must change, since site.sh puts
+# the strip after the line holding it, which would put it inside what follows.
+SKIP_LINE = (
+    "its skip link shares its line with what follows, and the strip goes after that line:"
+    " end the line at the link's </a>"
+)
+
+
+def skip_line_faults(markup: str) -> list[str]:
+    """Say whether a skip link's line holds anything after it, which the strip would split."""
+    for line in markup.splitlines():
+        _, skip, after = line.partition('<a class="skip"')
+        if skip and after.partition("</a>")[2].strip(SPACE):
+            return [SKIP_LINE]
+    return []
+
+
 def page_faults(markup: str) -> list[str]:
     """Say what a whole page must change to open with the kit's head."""
-    document = read(markup).within()
-    if any(element.tag == "base" and "href" in element.attributes for element in document):
+    parsed = read(markup)
+    document = parsed.within()
+    # A browser reads links from the first base wherever it's parsed, drawn or not.
+    if any(element.tag == "base" and "href" in element.attributes for element in parsed.written()):
         sheet = [BASED]
     elif any(links_the_sheet(element, document) for element in document):
         sheet = []
     else:
         sheet = [NO_SHEET]
-    return sheet + head_faults(markup)
+    return sheet + skip_line_faults(markup) + head_faults(markup)
 
 
 def main() -> int:
