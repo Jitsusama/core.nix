@@ -6,7 +6,8 @@
 // VKCF3Z's design orders them (RSCH-20261028-2NK1E5, Components): opening
 // Joel's room first, so Return twice does it on purpose, since Tuple has
 // no window of its own and its row steps in; then the call that rings or
-// is live, showing it, whether Joel's Muted, sharing and leaving; then
+// is live, showing it, whether Joel's Muted, sharing, his camera and
+// leaving; then
 // joining the call whose link is copied; and copying his room's link
 // last of all, after Tuple's Recent, Notices and Shortcuts, as every Copy
 // is (Applications.qml). A ringing or live call is in Now as well.

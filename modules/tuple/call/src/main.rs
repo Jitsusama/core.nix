@@ -69,7 +69,7 @@ const DOMAIN: Domain = Domain {
     named_only: &[],
 };
 use tuple_call::recent::Recent;
-use tuple_call::stream::{self, Line};
+use tuple_call::stream::{self, Line, Live};
 
 /// What follows the tuple command for its stream.
 const STATE: [&str; 5] = ["--format", "json", "state", "follow", "--raw"];
@@ -349,6 +349,19 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
     }
 }
 
+/// Journals Joel's camera turning on or off in a call, as Tuple's stream
+/// says it. Whether Tuple's Linux build says so at all is yet to be
+/// seen (package.nix), and the launcher's camera row turns to Stop only
+/// if it does, so a call's journal answers it with no camera opened to
+/// find out.
+fn says_camera(was: Option<&Live>, is: Option<&Live>) {
+    let on = |call: Option<&Live>| call.is_some_and(|live| live.joel.camera);
+    if on(was) != on(is) {
+        let now = if on(is) { "on" } else { "off" };
+        eprintln!("<6>Tuple says Joel's camera is {now} in the call");
+    }
+}
+
 /// Follows Tuple's stream until it ends, saying why it did.
 fn follow(shared: &Shared, tuple: &str) -> String {
     let mut child = match Command::new(tuple)
@@ -390,6 +403,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 daemon.held.contacts = contacts;
                 daemon.held.personal = room;
                 if let Some(call) = call {
+                    says_camera(daemon.held.live.as_ref(), call.as_ref());
                     daemon.held.follow(call, now());
                 }
                 let standing = if signed_in {
@@ -404,6 +418,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
+                says_camera(daemon.held.live.as_ref(), call.as_ref());
                 daemon.held.follow(call, now());
                 changed(shared, &mut daemon);
             }
@@ -628,11 +643,17 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     match output {
         Ok(output) if output.status.success() => {
             // Once Tuple says it's done, which it does as well when he
-            // already was, that's how Joel stands, ahead of its stream.
-            if let Act::Mute { muted } = asked {
+            // already was, that's how Joel stands, ahead of its stream. A
+            // camera stopped is off as well, so the launcher offers the
+            // picker again at once; a picker opened shares nothing until
+            // he picks, so only the stream says his camera is on.
+            if matches!(asked, Act::Mute { .. } | Act::Camera { on: false }) {
                 let mut daemon = lock(shared);
                 if let Some(live) = &mut daemon.held.live {
-                    live.joel.muted = *muted;
+                    match asked {
+                        Act::Mute { muted } => live.joel.muted = *muted,
+                        _ => live.joel.camera = false,
+                    }
                 }
                 changed(shared, &mut daemon);
             }
