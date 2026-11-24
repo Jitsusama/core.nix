@@ -595,7 +595,17 @@ fn a_far_line_stopped_before_its_run_s_file_leaves_another_run_s_copy() {
         &[(step, &stopping)],
     );
     let died_by = std::fs::read_to_string(home.join("signal")).unwrap_or_default();
-    assert_eq!((code, died_by.as_str()), (None, "15"), "it wasn't stopped: {err}");
+    assert_eq!(
+        (code, died_by.as_str()),
+        (None, "15"),
+        "it wasn't stopped: {err}"
+    );
+    // Only the stop's own clearing takes the files still crossing, so a
+    // line the signal killed outright leaves them.
+    assert!(
+        !handover(&home).join(crate::far::TREE).exists(),
+        "the stop's clearing never ran: {err}"
+    );
     let runs = work(&home);
     assert!(
         std::fs::read_to_string(runs.join("1.run")).ok().as_deref() == Some("theirs\n")

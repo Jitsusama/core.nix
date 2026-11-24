@@ -316,9 +316,10 @@ say() {{ printf '\n%s\n' "$1"; }}
 # A plain run's file at its name is another run's of this very job, since
 # a job's number is never used twice and the sweep took a gone run's, or
 # one another job of the quest put there; either way it stands and this
-# line's write loses, as the near side then hears. A line that lost its write clears
-# nothing that run holds, the copy, its names or the job's tree, and one
-# that never made it leaves the tree to the near side's clearing.
+# line's write loses, as the near side then hears. A line that lost its
+# write clears nothing that run holds, the copy, its names or the job's
+# tree, and one that never made it leaves the tree to the near side's
+# clearing.
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
