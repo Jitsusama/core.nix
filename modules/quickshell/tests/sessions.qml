@@ -1184,6 +1184,56 @@ ShellRoot {
         expect("one whose own came refused is asked for no more, said so",
             Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // Nor by a row's Reopen, nor by the shell's own asks, once its
+        // patience has run out, and none of them lets Go To ask again.
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { [named]: Date.now() - Sessions.viewPatience - 1 });
+        root.unhostedWhy = "";
+        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
+        expect("nor by a row's Reopen, said so",
+            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned",
+            `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        const askedAgain = Sessions.viewWith(view, named, null, "forged");
+        root.unhostedWhy = "";
+        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
+            here: true });
+        expect("nor by the shell's own asks, after which Go To still asks none",
+            !askedAgain && Niri.spawns.length === goneFrom + 1
+            && root.unhostedWhy === "disowned",
+            `${askedAgain} ${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // A stray come long after an ask that never came isn't taken for
+        // that ask's own refused, so Go To would open its own beside it.
+        const stale = "pi-hosted.s-stale";
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { [stale]: Date.now() - Sessions.viewPatience - 1 });
+        const lateStray = { id: 94, pid: 880, opened: stale };
+        Niri.windows = Object.assign({}, unforged, { "94": lateStray });
+        Niri.windowOpenedOrChanged(lateStray);
+        expect("a stray come after its ask's patience is no ask's own refused",
+            !(stale in Sessions.refusedAsks), JSON.stringify(Sessions.refusedAsks));
+        Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
+        const unstale = Object.assign({}, Sessions.attaching);
+        delete unstale[stale];
+        Sessions.attaching = unstale;
+        // A press held back over the shell's own ask takes it over, so a
+        // give-up is said to it; one the shell made by itself tells no one.
+        const heldWords = view.slice(0, -1).concat(["s-held"]);
+        Sessions.viewWith(heldWords, "pi-hosted.s-held", null, "held");
+        Sessions.goTo({ address: "HELD", presence: { hosted: true, session: "s-held" },
+            attach: heldWords, here: true });
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken("pi-hosted.s-held", String(Date.now()));
+        expect("a press held back is told when none took the window it waited on",
+            root.unhosted === "HELD" && root.unhostedWhy === "untaken",
+            `${root.unhosted} ${root.unhostedWhy}`);
+        const byItself = { address: "BYITSELF", presence: { hosted: true, session: "s-own" },
+            attach: view.slice(0, -1).concat(["s-own"]), here: true };
+        Sessions.view(byItself, null);
+        root.unhosted = "";
+        Sessions.untaken("pi-hosted.s-own", String(Date.now()));
+        expect("while one the shell asked for by itself is told to no one",
+            root.unhosted === "", root.unhosted);
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
         const startedNamed = "pi-session.3";

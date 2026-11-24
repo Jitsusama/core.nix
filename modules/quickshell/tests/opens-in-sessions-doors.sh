@@ -28,18 +28,30 @@ failed=0
 # launch failing counts as a wait, as the real one's answer can take a
 # minute, so the clock tells a time read as the script started from one
 # read once it has failed.
+# A kitty's launch says too whether what it opens would inherit the
+# script's first start, which it never should.
 for program in kitten systemd-run qs; do
-  printf '#!%s\necho "%s $*" >> "%s/asked"\n[ ! -f "%s/%s-fails" ] && exit\n' \
-    "$BASH" "$program" "$work" "$work" "$program" > "$stand_ins/$program"
+  printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" \
+    > "$stand_ins/$program"
+  if [ "$program" != qs ]; then
+    printf '[ -z "${OPENS_IN_SESSIONS_ASKED+x}" ] || echo "%s inherited" >> "%s/inherited"\n' \
+      "$program" "$work" >> "$stand_ins/$program"
+  fi
+  printf '[ ! -f "%s/%s-fails" ] && exit\n' "$work" "$program" >> "$stand_ins/$program"
   if [ "$program" != qs ]; then
     printf 'echo . >> "%s/waits"\n' "$work" >> "$stand_ins/$program"
   fi
   echo "exit 1" >> "$stand_ins/$program"
 done
 # The journal, as the script's own output when niri gave it none: says
-# what it was asked and runs the rest, its output into said.
-printf '#!%s\necho "systemd-cat $*" >> "%s/asked"\nshift\nexec "$@" 2>> "%s/said"\n' \
+# what it was asked and runs the rest, its output into said, or, while
+# systemd-cat-fails is there, fails without running it, as systemd-cat
+# does when it can't reach the journal. Each counts as a wait, so a
+# rerun that read the clock afresh would tell a later time.
+printf '#!%s\necho "systemd-cat $*" >> "%s/asked"\necho . >> "%s/waits"\n' \
   "$BASH" "$work" "$work" > "$stand_ins/systemd-cat"
+printf '[ ! -f "%s/systemd-cat-fails" ] || exit 1\nshift\nexec "$@" 2>> "%s/said"\n' \
+  "$work" "$work" >> "$stand_ins/systemd-cat"
 # The shell's own clock, only when asked in ms, as the shell's handler
 # takes it: asked any other way, it answers what it was asked, which no
 # case wants. Its clock moves 200 ms with each wait, the script's or a
@@ -73,6 +85,7 @@ trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 fresh() {
   rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails
   : > "$work/asked"
+  : > "$work/inherited"
   : > "$work/said"
   : > "$work/waits"
   echo 0 > "$work/main-pid"
@@ -202,18 +215,33 @@ sessions: the shell didn't hear that no kitty took pi-hosted.s-12" said
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 # As niri starts it, with no output (its spawning.rs gives a child none):
-# it runs again once with its output in the journal, telling the shell
-# when it was first started.
+# once the journal is found to take its words, it runs again once with
+# its output there, telling the shell when it was first started.
 touch "$work/kitten-fails"
 HOME=/home/joel PATH="$stand_ins:$PATH" "$sh" "$script" "$work/kitty.sock" pi-hosted.s-13 pi \
   2> /dev/null || true
 expect "one started with no output says why in the journal, told its first start" \
-  "systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-13 pi
+  "systemd-cat --identifier=opens-in-sessions true
+systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-13 pi
 kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-13 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-13 pi
 qs ipc call sessions untaken pi-hosted.s-13 1700000000000" asked
 expect "the journal hears it opened nothing" \
   "sessions: the sessions kitty opened no pi-hosted.s-13" said
+expect "nothing it launches inherits its first start" "" inherited
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+# With a journal that won't take its words, as systemd-cat finds when it
+# can't make its stream, it runs on as it was, never ending there.
+touch "$work/kitten-fails" "$work/systemd-cat-fails"
+HOME=/home/joel PATH="$stand_ins:$PATH" "$sh" "$script" "$work/kitty.sock" pi-hosted.s-14 pi \
+  2> /dev/null || true
+expect "one whose journal won't take its words still asks, and tells the shell" \
+  "systemd-cat --identifier=opens-in-sessions true
+kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
+--os-window-class pi-hosted.s-14 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-14 pi
+qs ipc call sessions untaken pi-hosted.s-14 1700000000000" asked
 
 # The shell's handler takes what the script tells it: its target, the
 # function's name, and an argument for each word after it.
