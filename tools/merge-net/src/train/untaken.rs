@@ -4,10 +4,40 @@
 //! again alone, told why.
 
 use std::path::Path;
+use std::time::Duration;
 
 use super::fall;
+use super::gated::Gated;
 use super::splitting::{Splitting, UNTAKEN_FOR};
 use crate::state::short;
+
+/// How long the train waits after a candidate no builder took before it
+/// cuts the next.
+const UNTAKEN_PAUSE: Duration = Duration::from_mins(1);
+
+/// After the gate said nothing of the riders `merged` into `candidate`,
+/// as `gated` answered: tell them, and while they stay aboard, wait
+/// before the train cuts the next candidate.
+pub(super) fn wait_untaken(
+    root: &Path,
+    gated: &Gated,
+    candidate: &str,
+    log: &Path,
+    merged: &[String],
+    splitting: &mut Splitting,
+) {
+    let untaken = Untaken {
+        candidate,
+        log,
+        unstarted: match gated {
+            Gated::Unstarted(why) => Some(why.as_str()),
+            _ => None,
+        },
+    };
+    if unsent(root, &untaken, merged, splitting, crate::state::now()) {
+        std::thread::sleep(UNTAKEN_PAUSE);
+    }
+}
 
 /// A candidate whose gate said nothing of its riders: no builder took
 /// it, or, as `unstarted` says, it never started.

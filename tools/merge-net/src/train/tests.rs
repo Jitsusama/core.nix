@@ -3,6 +3,7 @@
 
 use super::installed::newer;
 use super::splitting::UNTAKEN_FOR;
+use super::untaken::{Untaken, unsent};
 use super::*;
 
 /// A state folder of the test's own.

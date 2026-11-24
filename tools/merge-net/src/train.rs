@@ -60,7 +60,6 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -86,7 +85,7 @@ use landing::{Landing, land};
 use pulls::aboard;
 pub use pulls::drafted;
 use splitting::{After, Splitting};
-use untaken::{Untaken, unsent};
+use untaken::wait_untaken;
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -435,10 +434,6 @@ fn systemctl(arguments: &[&str]) -> String {
 /// before it goes back to run again.
 const RECUTS: usize = 5;
 
-/// How long the train waits after a candidate no builder took before it
-/// cuts the next.
-const UNTAKEN_PAUSE: Duration = Duration::from_mins(1);
-
 /// Ride the train until no one waits on it: `merge-net ride`, as its unit
 /// runs it.
 ///
@@ -538,18 +533,14 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             gated @ (Gated::Unsent | Gated::Unstarted(_)) => {
                 // The train stays in its ride rather than waiting for a
                 // ready, since a rider is told it needn't ask again.
-                let now = crate::state::now();
-                let untaken = Untaken {
-                    candidate: &candidate,
-                    log: &log,
-                    unstarted: match &gated {
-                        Gated::Unstarted(why) => Some(why.as_str()),
-                        _ => None,
-                    },
-                };
-                if unsent(&root, &untaken, &done.merged, &mut splitting, now) {
-                    std::thread::sleep(UNTAKEN_PAUSE);
-                }
+                wait_untaken(
+                    &root,
+                    &gated,
+                    &candidate,
+                    &log,
+                    &done.merged,
+                    &mut splitting,
+                );
                 continue;
             }
         }
