@@ -5415,10 +5415,12 @@ Scope {
     // The row Return last changed something with, kept among what's found
     // until Joel types or steps again, so Wi-Fi Off that became Wi-Fi On
     // still shows it, though "wifi off" no longer finds it.
+    // Shown as a search's find is (Steady.searched), though the step's rows
+    // still mark it waiting unseen.
     property var acted: null
     function stillActed(found) {
         const row = acted ? onOffer(acted.key) : undefined;
-        return row && !found.some(one => one.key === row.key) ? [row] : [];
+        return row && !found.some(one => one.key === row.key) ? Steady.searched([row]) : [];
     }
 
     // Given `gaveWay`, an answer there only while nothing else was has given
@@ -5460,8 +5462,9 @@ Scope {
     // again, or stepped into and back out of. Only those, as Emoji's
     // search finds hundreds, none of them waiting. seenHere gives what was
     // found as it's shown (Steady.searched). Plain, so keeping notifies
-    // nothing, and let go as the launcher closes.
-    property var seenFound: ({})
+    // nothing, and let go as the launcher closes. Of no prototype, as its
+    // keys are row ids, one of which may be `__proto__`.
+    property var seenFound: Object.create(null)
     function seenHere(rows) {
         const here = seenFound[stepsTaken] ?? Object.create(null);
         for (const row of rows) {
@@ -5472,7 +5475,7 @@ Scope {
         return Steady.searched(rows);
     }
     function seenSearched() {
-        return Object.keys(seenFound[stepsTaken] ?? {});
+        return Object.keys(seenFound[stepsTaken] ?? Object.create(null));
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -7154,9 +7157,11 @@ Scope {
         if (holdsWords)
             held[held.length - 1].row.worded?.(letters);
         if (asking) {
+            // An ask lists nothing to come in, so says no "1 new".
             matches = [];
             answer = null;
             current = 0;
+            waitingRows = 0;
             return;
         }
         // A category's word and a space step into it, unless a name goes on
@@ -11280,7 +11285,7 @@ Scope {
             prompt.unlinked();
             answersLate = null;
             waitingRows = 0;
-            seenFound = {};
+            seenFound = Object.create(null);
         }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.

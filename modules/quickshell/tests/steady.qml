@@ -255,8 +255,9 @@ QtObject {
                 presses ? { pressing: true } : {},
                 again ? { repeated: true } : {}, gone ? { gone: true, went: true } : {});
         });
+        // Said again "+", gone "-", and waiting unseen "?".
         const readHeaded = list => list.map(row => row.key + (row.repeated ? "+" : "")
-            + (row.gone ? "-" : "")).join(" ");
+            + (row.gone ? "-" : "") + (row.unseen === true ? "?" : "")).join(" ");
         const headings = [
             ["a row new to another cell's end gets its heading", "#A a1 #B b1", "#A a1 a2 #B b1",
                 "#A a1 #B b1 #A+ a2"],
@@ -290,7 +291,7 @@ QtObject {
             ["a heading new to the list comes only with a new row", "a1 c1",
                 "#Y=a1 a1 #C=c1 c1", "a1 c1"],
             ["kept, a row of no heading comes in, for the list shown to withhold",
-                "#A=a1 a1", "#A=a1 a1 look", "#A a1 look"],
+                "#A=a1 a1", "#A=a1 a1 look", "#A a1 look?"],
             ["a fold new to Repositories gets its heading past Projects", "#R r1 #P p1",
                 "#R r1 r:more #P p1", "#R r1 #P p1 #R+ r:more"],
             ["with no heading, a new row comes in", "a1", "a1 x", "a1 x"],
@@ -449,17 +450,28 @@ QtObject {
                 + `"${readHeaded(clearedUnfound.rows)}" with ${clearedUnfound.waiting}`);
         // Found once, it stays seen as the step is made again, hands it back
         // marked and lists it after other lists were shown, as when Joel
-        // searches again or steps into a row and back out. It stands at the
-        // end, under the last heading, where a list laid afresh puts To
-        // Look At too: Joel found it by name, so it isn't hidden again, and
-        // nothing yet ends a heading before the rows of none (a follow-up,
-        // not the reading this pins as right).
+        // searches again or steps into a row and back out: Joel found it by
+        // name, so it isn't hidden again. Where it stands is no part of
+        // this, since nothing yet ends a heading before the rows of none.
         const madeAgain = Steady.kept(lateStep, underHeadings("#A=a1 a1 look"), id);
         const clearedLater = Steady.seen(Steady.seenAmong(madeAgain, typedFound.map(id), id));
-        if (madeAgain[2]?.unseen !== true || readHeaded(clearedLater.rows) !== "#A a1 look"
+        if (madeAgain[2]?.unseen !== true || !clearedLater.rows.some(row => row.key === "look")
+                || clearedLater.rows.some(row => row.unseen === true)
                 || clearedLater.waiting !== 0)
             failures.push(`a row found, then the step made again and listed: `
                 + `"${readHeaded(clearedLater.rows)}" with ${clearedLater.waiting} waiting`);
+        // Held still with a row shown that waits unseen, as one Return acted
+        // on may be, the rows held are those the rows shown put back, so a
+        // cell's new row waits too, rather than slip in among them.
+        const heldUnseen = Steady.held(lateStep, underHeadings("#A=a1,a2 a1 a2 look"), id);
+        if (readHeaded(heldUnseen.rows) !== "#A a1" || heldUnseen.waiting !== 2)
+            failures.push(`held, a row shown that waits unseen: `
+                + `"${readHeaded(heldUnseen.rows)}" with ${heldUnseen.waiting} waiting`);
+        // A row's id may name what every object has, and is kept as any.
+        const ownNames = Steady.refreshed(underHeadings("a1 constructor"),
+            underHeadings("a1 constructor __proto__ toString"), id);
+        if (readHeaded(ownNames.rows) !== "a1 constructor __proto__ toString")
+            failures.push(`rows named as an object's own: "${readHeaded(ownNames.rows)}"`);
         // A row of no cell that comes while a held step's rows are made again,
         // and leaves before it's shown, stops being counted once it's gone.
         const waitedFrom = underHeadings("#A=a1 a1");
