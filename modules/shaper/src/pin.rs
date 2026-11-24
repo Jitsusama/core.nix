@@ -593,7 +593,9 @@ impl Pinning {
     /// pin waits for the router's name to judge it, keeping a good pin
     /// through docking onto the same network. A round may go at once,
     /// since the VPN opens a new socket on a new network. Gives the first
-    /// of the pair let go.
+    /// of the pair let go. Main steps the primary by `primary`; this is
+    /// the tests' shorter spelling of a step with one.
+    #[cfg(test)]
     pub fn network(&mut self, link: &str, network: &str) -> Option<u16> {
         self.judge(link, network).map(|(first, _)| first)
     }
