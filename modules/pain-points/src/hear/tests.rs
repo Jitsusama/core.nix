@@ -36,6 +36,7 @@ impl Place {
             state: self.root.join("state"),
             ledgers: vec![self.root.join("asks.jsonl"), self.root.join("misses.jsonl")],
             misses: self.root.join("misses.jsonl"),
+            misses_from: 0,
             void: self.root.join("void"),
             messages: self.root.join("messages"),
             switches: self.root.join("switches.jsonl"),

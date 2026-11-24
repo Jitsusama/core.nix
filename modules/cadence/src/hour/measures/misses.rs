@@ -422,9 +422,12 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             .unwrap_or_default()
     };
     // A pain the hearer wrote that the keeper carried into the asks since
-    // is tracked there from then, not twice.
+    // is tracked there from then, not twice; one it closed was closed by a
+    // commit it found in the core this machine switched to, so its fix
+    // runs here, whatever change its check names.
     let open: Vec<(String, String, String)> = lines(text)
         .filter(|miss| miss["carried"].as_bool() != Some(true))
+        .filter(|miss| !(miss["heard_by"] == PAIN_POINTS && miss["closed_by"].is_string()))
         .filter_map(|miss| {
             let changes = changes(&miss);
             let elsewhere = miss["machine"].as_str().filter(|machine| {
@@ -511,6 +514,9 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             .collect(),
     }
 }
+
+/// What a line the pain listener wrote says heard it.
+const PAIN_POINTS: &str = "pain-points";
 
 /// What the misses measure says after its words when the ledger wasn't
 /// read whole, and so judges nothing.
@@ -599,6 +605,38 @@ mod tests {
         serde_json::json!({"at": AT, "words": "w", "what": "the cat waits", "owner": "XY9H5C",
             "check": check})
         .to_string()
+    }
+
+    #[test]
+    fn a_pain_the_keeper_carried_or_the_listener_closed_is_no_open_miss() {
+        let text = [
+            serde_json::json!({"at": AT, "words": "still open", "owner": "ABC123",
+                "pain": "s/e1", "heard_by": "pain-points"}),
+            serde_json::json!({"at": AT, "words": "carried on", "owner": "ABC123",
+                "pain": "s/e2", "heard_by": "pain-points", "carried": true}),
+            serde_json::json!({"at": AT, "words": "closed here", "owner": "ABC123",
+                "pain": "s/e3", "heard_by": "pain-points", "check": "landed it",
+                "closed_by": "255494bb414c"}),
+            serde_json::json!({"at": AT, "words": "said closed", "owner": "KNURBN",
+                "closed_by": "255494bb414c"}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let open = misses(&text, &repos(), &BTreeSet::new(), &BTreeSet::new());
+        let named: Vec<&str> = open
+            .behind
+            .iter()
+            .filter_map(|line| line.rsplit_once(" · "))
+            .map(|(what, _)| what)
+            .collect();
+        assert_eq!(
+            named,
+            ["still open", "said closed"],
+            "a carried pain counted twice, or one closed by a commit running here stayed, \
+             or another writer's closed_by closed a miss"
+        );
     }
 
     #[test]

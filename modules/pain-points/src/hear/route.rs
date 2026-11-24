@@ -331,6 +331,7 @@ mod tests {
             tries: 0,
             taken_by: None,
             closed_by: None,
+            closed_at: None,
             thread: Vec::new(),
             shared: false,
             landed: Vec::new(),

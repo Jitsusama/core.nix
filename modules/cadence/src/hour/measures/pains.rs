@@ -79,8 +79,9 @@ fn unread(read: &Value, now: i64) -> Option<String> {
 /// A pain is open until someone takes it up, however old, unless the
 /// ledgers carry it, as the hearer counts it; one it calls lost, past a
 /// day with its question's thread never seen, counts with them. Its
-/// class comes last, so it takes the drag only once the rest are in: the hearer routes each pain to its owner itself, and a
-/// drag every hour would keep broken checks and slow merges from theirs.
+/// class comes last, so it takes the drag only once the rest are in:
+/// the hearer routes each pain to its owner itself, and a drag every
+/// hour would keep broken checks and slow merges from theirs.
 #[must_use]
 pub fn pains(summary: Option<&str>, now: i64, owner: &str) -> Measure {
     let mut measure = Measure {
@@ -195,9 +196,14 @@ mod tests {
     fn a_lost_pain_counts_open_and_says_how_it_closes() {
         let text = json!({"at": (NOW - 60) * 1000, "open": 2, "lost": 3}).to_string();
         let m = pains(Some(&text), NOW, "WCJQSG");
-        assert!(m.now > 4.9 && m.now < 5.1, "open and lost both count: {m:?}");
         assert!(
-            m.behind.iter().any(|b| b.starts_with("3 lost") && b.contains("naming its entry")),
+            m.now > 4.9 && m.now < 5.1,
+            "open and lost both count: {m:?}"
+        );
+        assert!(
+            m.behind
+                .iter()
+                .any(|b| b.starts_with("3 lost") && b.contains("naming its entry")),
             "the lost weren't said with how they close: {m:?}"
         );
     }

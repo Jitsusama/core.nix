@@ -76,8 +76,8 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
     };
     let colour = sent("e1", "the bar is the wrong colour");
     let kept = [colour, void, carried, unsent];
-    write(&ledger, &kept, OFFSET).expect("written");
-    write(&ledger, &kept, OFFSET).expect("written again");
+    write(&ledger, &kept, OFFSET, 0).expect("written");
+    write(&ledger, &kept, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
     assert_eq!(lines.len(), 2, "the keeper's and the one sent: {lines:?}");
     assert_eq!(
@@ -105,11 +105,11 @@ fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
         sent("e1", "the bar is the wrong colour"),
         sent("e2", "the clock is out"),
     ];
-    write(&ledger, &kept, OFFSET).expect("written");
+    write(&ledger, &kept, OFFSET, 0).expect("written");
     let mut carried = kept[1].clone();
     carried.carried = true;
     let later = [closed(kept[0].clone()), carried];
-    write(&ledger, &later, OFFSET).expect("written again");
+    write(&ledger, &later, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
     assert_eq!(lines.len(), 2, "no line twice: {lines:?}");
     assert_eq!(
@@ -123,7 +123,7 @@ fn a_pain_closed_since_gains_its_check_and_a_carried_one_says_so() {
     assert_eq!(lines[1]["carried"], true, "the keeper carries it from now");
     let first = folder("closed-first").join("misses.jsonl");
     let first_closed = [closed(kept[0].clone())];
-    write(&first, &first_closed, OFFSET).expect("written");
+    write(&first, &first_closed, OFFSET, 0).expect("written");
     assert_eq!(
         read(&first)[0]["closed_by"],
         "255494bb414c",
@@ -143,7 +143,31 @@ fn a_ledger_held_by_another_writer_is_left_and_said() {
         .expect("the lock");
     held.lock().expect("held");
     let one = [sent("e1", "the bar")];
-    let why = write(&ledger, &one, OFFSET).expect_err("it waits");
+    let why = write(&ledger, &one, OFFSET, 0).expect_err("it waits");
     assert!(why.contains("stayed locked"), "{why}");
     assert!(!ledger.exists(), "nothing written past the lock");
+}
+
+#[test]
+fn a_ledger_written_whole_ends_each_line_once_and_holds_no_pain_sent_before_it() {
+    let ledger = folder("whole").join("misses.jsonl");
+    let keepers = r#"{"at":"2026-11-21T20:30:00-05:00","words":"fuck.","owner":"KP0L6A"}"#;
+    let pain = sent("e1", "the bar is the wrong colour");
+    let mut early = sent("e0", "said before the ledger's start");
+    early.routed_at = Some(AT);
+    let theirs = format!("{}\n{keepers}", line_of(&pain, OFFSET));
+    fs::write(&ledger, theirs).expect("a ledger ending mid-line");
+    let kept = [closed(pain), early];
+    write(&ledger, &kept, OFFSET, AT + 30_000).expect("written");
+    let text = fs::read_to_string(&ledger).expect("the ledger");
+    assert!(
+        !text.contains("\n\n") && text.ends_with("}\n"),
+        "a blank line, or one left open: {text}"
+    );
+    let lines = read(&ledger);
+    assert_eq!(lines.len(), 2, "the closed one and the keeper's: {lines:?}");
+    assert_eq!(
+        lines[0]["closed_by"], "255494bb414c",
+        "the one sent since its start is checked"
+    );
 }

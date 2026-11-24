@@ -341,9 +341,9 @@ fn a_pain_past_a_day_stays_open_until_a_landing_naming_it_runs() {
     message(&messages, 1000, "ABC123", "b85417d8", "", named);
     let hour = hear(&ears, CELLS, &mut |_, _| true).expect("a later run");
     assert_eq!(
-        (hour.open, hour.taken, hour.lost),
-        (1, 1, 0),
-        "a landing naming its entry closed the lost one: {hour:?}"
+        (hour.open, hour.taken, hour.lost, hour.closed),
+        (1, 1, 0, 1),
+        "a landing naming its entry closed the lost one, counted today: {hour:?}"
     );
     let heard = place.heard();
     let third = heard.iter().find(|h| h.entry == "e3").expect("kept");

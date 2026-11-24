@@ -71,6 +71,10 @@ pub struct Heard {
     /// a switch carried.
     #[serde(default)]
     pub closed_by: Option<String>,
+    /// When a run first saw it closed, so one closed today counts with the
+    /// day's however old, and stays kept a day for the ledger's check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_at: Option<i64>,
     /// The short ids of its question's thread so far: each question sent
     /// of it, and each reply to one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -158,6 +162,7 @@ mod tests {
             tries: 0,
             taken_by: None,
             closed_by: None,
+            closed_at: None,
             thread: Vec::new(),
             shared: false,
             landed: Vec::new(),

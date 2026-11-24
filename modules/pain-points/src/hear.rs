@@ -4,16 +4,18 @@
 //! (said.rs), and sends each pain no one has yet as a finding to the cell
 //! that was working on it (route.rs), once, ranked by how often he hits
 //! the same thing (heard.rs). His orchestrator's asks and misses ledgers
-//! are read: a pain they carry goes to no one again, and
-//! the keeper of the ledgers hears of each new one. Each pain sent is
-//! written into his misses ledger too (missed.rs), and stays open there
-//! and here until a landing a switch carried closes it. Nothing is ever
-//! sent to the void, and nothing is posted anywhere.
+//! are read: a pain they carry goes to no one again, and the keeper of
+//! the ledgers hears of each new one. Each pain sent is written into his
+//! misses ledger too (missed.rs), and stays open there and here until a
+//! landing a switch carried closes it. Nothing is ever sent to the void,
+//! and nothing is posted anywhere.
 //!
 //! Unlike `read`, which keeps kinds and timings alone, `hear` keeps his
 //! words, since a finding without them can't be acted on. They stay in
-//! its own state (heard.jsonl, a fortnight of it) and go only over the
-//! machine's own mycelium socket to the cell that owns what hurt. For the
+//! its own state (heard.jsonl, a fortnight of it, and each pain sent past
+//! that until its fix runs) and in his misses ledger, where the cells
+//! that keep his misses read them, and go only over the machine's own
+//! mycelium socket to the cell that owns what hurt. For the
 //! moment a send runs they are in mycelium's command line too, which any
 //! account here can read, since `mycelium send` takes its text no other
 //! way.
@@ -76,8 +78,10 @@ pub struct Ears {
     pub state: PathBuf,
     /// The asks and misses ledgers, read.
     pub ledgers: Vec<PathBuf>,
-    /// The misses ledger, which each pain sent is written into.
+    /// The misses ledger, which each pain sent is written into, and when
+    /// the first it holds was sent.
     pub misses: PathBuf,
+    pub misses_from: i64,
     /// The void's folder: a session begun there is the void.
     pub void: PathBuf,
     /// The mesh's messages, for the threads of the questions it sent.
@@ -183,6 +187,7 @@ pub fn listen(
         state: own,
         ledgers: vec![mission.join("asks.jsonl"), mission.join("misses.jsonl")],
         misses: mission.join("misses.jsonl"),
+        misses_from: missed::FROM_MS,
         void: take("--void").map_or_else(|| state.join("void"), PathBuf::from),
         messages: take("--messages").map_or_else(
             || state.join("pi/agentic-harness.pi/mesh-workflow/messages"),
@@ -348,7 +353,9 @@ pub fn hear(
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .filter(|h: &Heard| {
-            h.at >= ears.at - heard::KEPT_MS || (h.is_miss() && h.closed_by.is_none())
+            h.at >= ears.at - heard::KEPT_MS
+                || (h.is_miss() && h.closed_by.is_none())
+                || h.closed_at.is_some_and(|at| at >= ears.at - DAY_MS)
         })
         .collect();
     let ledgers: Vec<String> = ears
@@ -358,9 +365,11 @@ pub fn hear(
         .collect();
     let cells = route::cells(cells_printed);
     // A pain the keeper has carried since it was heard is closed, though
-    // it was open on an earlier run.
+    // it was open on an earlier run, and one still open is looked for
+    // however old, as the keeper may carry it any day.
     for h in &mut kept {
-        if !h.carried && !stalled::is(h) && h.at >= ears.at - DAY_MS {
+        let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
+        if !h.carried && !stalled::is(h) && looked {
             h.carried = heard::carried(&h.words, &ledgers);
         }
     }
@@ -406,7 +415,7 @@ pub fn hear(
     // A listener nobody set up writes nothing of his.
     let ledgered = routes
         .sends()
-        .then(|| missed::write(&ears.misses, &kept, ears.offset_s).err())
+        .then(|| missed::write(&ears.misses, &kept, ears.offset_s, ears.misses_from).err())
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
@@ -477,6 +486,7 @@ fn hear_logs(
                 tries: 0,
                 taken_by: None,
                 closed_by: None,
+                closed_at: None,
                 thread: Vec::new(),
                 shared: false,
                 landed: Vec::new(),

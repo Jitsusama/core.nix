@@ -7,6 +7,16 @@
 //! was written is marked carried, as that ledger tracks it from then. No
 //! other line of the ledger is changed, and a pain closes only on its
 //! fix, never on how long it has been quiet.
+//!
+//! Only pains sent from `FROM_MS` on are written: the 214 sent before it
+//! had no thread kept, so most would only ever read as lost, and would
+//! each ask its owner for a check at once. They still count as open or
+//! lost in the hour until a landing naming each closes it.
+//!
+//! The keeper writes the ledger by hand and takes no lock, so a line
+//! changed is written whole only once the ledger reads as it did before,
+//! read again just ahead of the rename that replaces it; one changed
+//! between is left for the next run.
 
 use super::heard::Heard;
 use super::stalled;
@@ -22,19 +32,26 @@ pub const PAIN: &str = "pain";
 /// How long a run waits for another writer to let go of the ledger.
 const LOCK_AT_MOST: Duration = Duration::from_secs(2);
 
-/// Writes each of `kept` sent to a cell, and carried by no ledger, into
-/// the ledger at `ledger` once, at his time by `offset_s`, and the check
-/// of each closed since, or that it is carried. Lines are added at its
-/// end; the ledger is written whole only when a line changes, under its
-/// lock either way, so the keeper's own writes aren't lost.
+/// When the first pain written was sent: 24 November 2026 at midnight,
+/// Joel's time, in ms.
+pub const FROM_MS: i64 = 1_795_496_400_000;
+
+/// Writes each of `kept` sent to a cell from `from_ms` on, and carried by
+/// no ledger, into the ledger at `ledger` once, at his time by
+/// `offset_s`, and the check of each closed since, or that it is carried.
+/// Lines are added at its end; the ledger is written whole only when a
+/// line changes, under its lock either way, so the keeper's own writes
+/// aren't lost.
 ///
 /// # Errors
 ///
-/// When the ledger or its lock can't be read or written, or stays locked.
-pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64) -> Result<(), String> {
+/// When the ledger or its lock can't be read or written, or stays locked,
+/// or the ledger changed as a line of it was being written.
+pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Result<(), String> {
     let owed: Vec<&Heard> = kept
         .iter()
         .filter(|h| h.to.is_some() && !h.void && !stalled::is(h))
+        .filter(|h| h.routed_at.is_some_and(|at| at >= from_ms))
         .collect();
     if owed.is_empty() {
         return Ok(());
@@ -58,14 +75,19 @@ pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64) -> Result<(), String>
     };
     let (checked, added) = written(&text, &owed, offset_s);
     let new: String = added.into_iter().map(|line| line + "\n").collect();
+    if let Some(checked) = checked {
+        if fs::read_to_string(ledger).unwrap_or_default() != text {
+            return Err(format!(
+                "{name} changed as its pains were checked, so they wait for the next run"
+            ));
+        }
+        return crate::write_whole(ledger, &(checked + &new));
+    }
     let gap = if text.is_empty() || text.ends_with('\n') {
         ""
     } else {
         "\n"
     };
-    if let Some(checked) = checked {
-        return crate::write_whole(ledger, &format!("{checked}{gap}{new}"));
-    }
     if new.is_empty() {
         return Ok(());
     }

@@ -31,7 +31,7 @@ use super::{ASK_AT_MOST, DAY_MS, Ears, stalled};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Read;
+use std::io::Read as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -134,8 +134,12 @@ pub(super) fn stand(
             read: Some(read),
         };
     };
+    // However long it was stopped, or wherever a clock put the last
+    // reading, a run reads at most a day of the mesh, as a first one does.
     let first = (since - 60_000).max(ears.at - DAY_MS);
-    let from = read.map_or(first, |r| r.at - LATE_AT_MOST_MS);
+    let from = read
+        .map_or(first, |r| r.at.min(ears.at) - LATE_AT_MOST_MS)
+        .max(ears.at - DAY_MS);
     let seen: BTreeSet<&str> = read
         .map(|r| r.seen.iter().map(String::as_str).collect())
         .unwrap_or_default();
@@ -208,6 +212,9 @@ pub(super) fn stand(
             follow(h, asker, &held, m, &mut is_id);
         }
         h.closed_by = closing(h, &mut on);
+        if h.closed_by.is_some() {
+            h.closed_at.get_or_insert(ears.at);
+        }
     }
     Stood {
         unclosed,
@@ -218,10 +225,20 @@ pub(super) fn stand(
 /// Where a reading from `from` of `batch` at `now` ends, after `read`'s:
 /// at the newest sending either read, or `LATE_AT_MOST_MS` before now
 /// where that is later, so a quiet mesh isn't read again from an old
-/// start, with each message read since `LATE_AT_MOST_MS` before it.
+/// start, with each message read since `LATE_AT_MOST_MS` before it. It
+/// never ends past `now`, so a message named as sent ahead of it can't
+/// carry the next run's start past what is sent meanwhile.
 fn read_after(read: Option<&Read>, from: i64, now: i64, batch: &[(i64, Message)]) -> Read {
-    let before = read.map_or(from, |r| r.at).max(now - LATE_AT_MOST_MS);
-    let at = batch.last().map_or(before, |(sent, _)| (*sent).max(before));
+    let before = read
+        .map_or(from, |r| r.at)
+        .min(now)
+        .max(now - LATE_AT_MOST_MS);
+    let newest = batch
+        .iter()
+        .map(|(sent, _)| *sent)
+        .filter(|&sent| sent <= now)
+        .max();
+    let at = newest.map_or(before, |sent| sent.max(before));
     let mut seen: Vec<String> = read.map(|r| r.seen.clone()).unwrap_or_default();
     seen.extend(batch.iter().map(|(_, m)| m.id.clone()));
     seen.retain(|id| sent_of(id).is_some_and(|sent| sent >= at - LATE_AT_MOST_MS));

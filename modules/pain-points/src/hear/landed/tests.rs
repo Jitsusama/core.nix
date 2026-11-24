@@ -73,6 +73,7 @@ fn taken(by: &str) -> Standing {
     Standing {
         taken_by: Some(by.into()),
         closed_by: None,
+        closed_at: None,
     }
 }
 
@@ -377,7 +378,7 @@ fn a_reading_ends_at_its_newest_and_keeps_what_may_come_late() {
         late(1000, "aaaaaaaa"),
         late(LATE_AT_MOST_MS + 5000, "bbbbbbbb"),
     ];
-    let read = read_after(None, 0, 0, &batch);
+    let read = read_after(None, 0, LATE_AT_MOST_MS + 10_000, &batch);
     assert_eq!(read.at, LATE_AT_MOST_MS + 5000, "at the newest");
     assert_eq!(
         read.seen,
@@ -389,5 +390,34 @@ fn a_reading_ends_at_its_newest_and_keeps_what_may_come_late() {
         (quiet.at, quiet.seen.len()),
         (9 * LATE_AT_MOST_MS, 0),
         "a quiet mesh moves the start on"
+    );
+    let ahead = [late(20 * LATE_AT_MOST_MS, "dddddddd")];
+    let held = read_after(Some(&quiet), quiet.at, 10 * LATE_AT_MOST_MS, &ahead);
+    assert_eq!(
+        (held.at, held.seen.len()),
+        (9 * LATE_AT_MOST_MS, 1),
+        "one named as sent ahead is read once and moves nothing"
+    );
+}
+
+#[test]
+fn every_message_kept_is_listed_by_its_short_form() {
+    let folder = std::env::temp_dir().join(format!("listed-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&folder);
+    fs::create_dir_all(folder.join("2026-11-16")).expect("a day folder");
+    fs::create_dir_all(folder.join("stale")).expect("another folder");
+    for name in [
+        "30-A-1-cccccccc.json",
+        "2026-11-16/20-A-1-bbbbbbbb.json",
+        "stale/10-A-1-aaaaaaaa.json",
+        "40-A-1-dddddddd.part",
+    ] {
+        fs::write(folder.join(name), "{}").expect("a file");
+    }
+    let listed: Vec<String> = listed_ids(&folder).into_iter().collect();
+    assert_eq!(
+        listed,
+        ["bbbbbbbb", "cccccccc"],
+        "its own and its days', and nothing else"
     );
 }
