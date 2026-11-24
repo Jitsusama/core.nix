@@ -1228,6 +1228,8 @@ Provider {
             told = TalkAnswers.filled(said.takesOnly ?? "", {
                 choices: answers.choices.map(one => String(one.label ?? one.value))
                     .join(" \u00b7 ") });
+            // A walk from a terminal is told so, as nothing went (Launcher.qml's walkedRun).
+            launcher?.walkRefused?.(told);
             return;
         }
         const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
@@ -1242,8 +1244,14 @@ Provider {
             ? { value: answer.value } : { other: answer.other });
         answerWant(session.address, fields, (put, why) => {
             keep(TalkAnswers.put(one, put, why));
-            if (put)
+            // His words stay only for the ask they were meant for: once it asks something else,
+            // given back they'd answer the new ask with words for the old one, so they show
+            // only as not delivered, and the foot says why.
+            const now = answersOf(sessionAt(session.address) ?? session);
+            if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
                 launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            if (!put && why !== "")
+                told = why;
         });
     }
 
@@ -1574,9 +1582,12 @@ Provider {
                     const text = words.trim();
                     if (text === "")
                         return;
-                    // What the Talk showed it asking when he pressed Return, where it drew it.
-                    const answers = draft in provider.answersShown
-                        ? provider.answersShown[draft] : asks();
+                    // What the Talk showed it asking when he pressed Return, while that Talk is
+                    // the one held; a walk from a terminal, which draws none, answers what it
+                    // asks now.
+                    const held = provider.launcher?.asking?.draft === draft
+                        && draft in provider.answersShown;
+                    const answers = held ? provider.answersShown[draft] : asks();
                     if (answers !== null) {
                         provider.answerIn(current(), text, answers);
                         return;

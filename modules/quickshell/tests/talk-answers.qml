@@ -116,20 +116,28 @@ QtObject {
             Expect.same("a new answer goes first", Answers.kept([one], later), [later, one]);
             Expect.same("one put stays in its place, a newer one said since kept first",
                 Answers.kept([later, one], put), [later, put]);
-            const four = [3, 2, 1].map(n => Answers.said(`${n}`, at + n * 1000, "q@2"));
+            const three = [3, 2, 1].map(n => Answers.said(`${n}`, at + n * 1000, "q@2"));
             Expect.same("only the newest three are kept",
-                Answers.kept(four, later).map(kept => kept.words), ["No", "3", "2"]);
+                Answers.kept(three, later).map(kept => kept.words), ["No", "3", "2"]);
             Expect.same("one dropped never comes back once put",
-                Answers.kept(four, Answers.put(Answers.said("0", at, "q@2"), true, "")),
-                four);
+                Answers.kept(three, Answers.put(Answers.said("0", at, "q@2"), true, "")),
+                three);
             const shownAt = at + 20 * 60 * 1000;
             Expect.same("while it asks, only answers to what it asks show",
-                Answers.standing([four[0], put], answers.want, shownAt), [put]);
+                Answers.standing([three[0], put], answers.want, shownAt), [put]);
             Expect.same("once it asks nothing, those said in the last quarter hour show",
-                Answers.standing([four[0], put], "", at + 10 * 60 * 1000), [four[0], put]);
+                Answers.standing([three[0], put], "", at + 10 * 60 * 1000), [three[0], put]);
             Expect.same("and none said longer ago", Answers.standing([put], "", shownAt), []);
-            Expect.same("while it asks what he can't answer here, none show",
+            Expect.same("while it asks what he can't answer here, none answered show",
                 Answers.standing([put], null, at + 1000), []);
+            // Refused for answering an ask since replaced, as the node refuses one (wants.rs).
+            const refused = Answers.put(one, false, "it asks something else now");
+            Expect.same("one not delivered shows under the ask that replaced its own",
+                Answers.standing([three[0], refused], "q@2", at + 1000), [three[0], refused]);
+            Expect.same("and under one he can't answer here",
+                Answers.standing([refused], null, at + 1000), [refused]);
+            Expect.same("but not once a quarter hour has gone",
+                Answers.standing([refused], "q@2", shownAt), []);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

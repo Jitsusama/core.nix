@@ -109,10 +109,13 @@ function kept(list, one) {
 // Which of a session's answers its Talk shows at `nowMs`: those to the want it asks, `want`,
 // while it asks one, and none for a null `want`, one he can't answer here; else, once it asks
 // nothing (""), those said in the last SHOWN_AFTER_MS, so one long done, or to an ask since
-// replaced, never leads a later Talk.
+// replaced, never leads a later Talk. One not delivered in that time shows under any ask,
+// since the node refuses an answer to an ask since replaced, and the refusal is shown under
+// the ask that replaced it.
 function standing(list, want, nowMs) {
-    return (list ?? []).filter(one => (want === "" ? nowMs - Date.parse(one.at) < SHOWN_AFTER_MS
-        : one.want === want));
+    const recent = one => nowMs - Date.parse(one.at) < SHOWN_AFTER_MS;
+    return (list ?? []).filter(one => (want === "" ? recent(one)
+        : one.want === want || (one.stage === "failed" && recent(one))));
 }
 
 // What the node's put made of the answer `one`: answered where it went, failed with `why`
