@@ -115,7 +115,8 @@ pub fn hear_take(
 /// `side`'s `takes`, whose sound came from `file`, heard onto `lines`,
 /// each line's words kept in `words` by where it falls in them. Unlike
 /// the daemon, the first take not heard stops it, so no check passes on
-/// a model that fails.
+/// a model that fails, naming the file and the second the take starts
+/// at, so a builder's failure says where to listen.
 pub fn hear_side(
     speech: &mut impl Hears,
     side: Side,
@@ -125,7 +126,8 @@ pub fn hear_side(
     words: &mut HashMap<usize, Vec<Word>>,
 ) -> Result<(), String> {
     for take in takes {
-        let (heard, took) = hear_take(speech, side, take)?;
+        let (heard, took) = hear_take(speech, side, take)
+            .map_err(|why| format!("hearing {file} at {} s: {why}", take.start / RATE))?;
         eprintln!("call-transcripts: {}", took.describe(speech.device()));
         if let Some((line, its_words)) = heard {
             words.insert(lines.len(), its_words);
