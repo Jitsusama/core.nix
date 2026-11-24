@@ -893,6 +893,49 @@ def test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder(
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=timedelta(seconds=30))
 
 
+@pytest.mark.usefixtures("google")
+def test_no_agent_opens_a_camera_near_a_meeting_and_joels_programs_still_do(
+    desktop: Desktop,
+) -> None:
+    """No agent opens a camera near a meeting, and Joel's programs still do.
+
+    The stand-in's Design Review starts five minutes after it does, inside the quarter hour
+    before a meeting camera-guard keeps agents' slices off the camera for, as the read Joel saw
+    at 09:51 on 24 Nov should have been. The camera is only opened, never read, so its light
+    would stay off.
+    """
+    machine = desktop.machine
+    # A process in each of the agents' slices, as pi's always are on the laptop, so the cgroups
+    # are there for the guard to find.
+    for slice_ in ("agents.slice", "jobs-work.slice"):
+        desktop.as_account(
+            f"systemd-run --user --slice={slice_} --unit=agent-in-{slice_.removesuffix('.slice')}"
+            " sleep infinity"
+        )
+
+    def opens(slice_: str) -> str:
+        return desktop.in_session(
+            f"systemd-run --user --slice={slice_} --wait --pipe --quiet"
+            " -- sh -c ': < /dev/video9'"
+        )
+
+    try:
+        # Started again, so it asks the calendar now rather than within its minute.
+        machine.succeed("systemctl restart camera-guard")
+        machine.wait_until_fails(opens("agents.slice"), timeout=timedelta(seconds=30))
+        machine.fail(opens("jobs-work.slice"))
+        machine.succeed(opens("app.slice"))
+        said = machine.succeed("journalctl -u camera-guard --no-pager --output=cat")
+        assert "agents may open no camera until Design Review ends" in said, said
+    finally:
+        # Without the meeting it last said, the guard comes down as it starts again.
+        desktop.as_account("systemctl --user stop google.service")
+        machine.succeed("rm -f /var/lib/camera-guard/meetings.json")
+        machine.succeed("systemctl restart camera-guard")
+        machine.wait_until_succeeds(opens("agents.slice"), timeout=timedelta(seconds=30))
+        desktop.as_account("systemctl --user stop agent-in-agents agent-in-jobs-work")
+
+
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:
     """Quickshell warned of nothing it drew all along.
 

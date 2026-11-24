@@ -727,6 +727,15 @@
     pages, read in the allocator's order: the failed size kept right after stepping down from
     it, outside the loop over pieces, and each piece's size held to it before it's asked for
   '';
+  camera-guard-keeps-agents-off-the-camera = ''
+    camera-guard keeps agents off the camera from a quarter hour before each of Joel's meetings
+    until it ends, reading a meeting as call-under-load does, keeps the meetings it last read
+    through a calendar that can't be read and across restarts, guards a slice made again at its
+    next look, says each change once, and its program refuses a camera's node and no other
+  '';
+  camera-guard-passes-clippy = ''
+    clippy finds nothing in camera-guard or its tests
+  '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the
     builds' own filesystem, the disk guard collects there two levels down, and the machine
@@ -6397,7 +6406,8 @@
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and
-    videos by the keys, and says how long a recording has run
+    videos by the keys, and says how long a recording has run; and near a meeting no agent's
+    slice may open the camera while Joel's programs in app.slice still do
   '';
   vm-desktop-keeps-copies = ''
     the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V

@@ -369,6 +369,7 @@
         btrfs = ./modules/btrfs/nixos.nix;
         call-transcripts = ./modules/call-transcripts/nixos.nix;
         camera = ./modules/camera/nixos.nix;
+        camera-guard = ./modules/camera-guard/nixos.nix;
         cargo = ./modules/cargo/nixos.nix;
         chrome = ./modules/chrome/nixos.nix;
         chrony = ./modules/chrony/nixos.nix;
