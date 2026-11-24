@@ -972,8 +972,9 @@ mod tests {
         hosts.fail("b", || panic!("a unit set before isn't read"));
         assert_eq!(hosts.hard_left(), 1, "b's one is left as its call fails");
         hosts.keep_only(&["a".to_owned()]);
-        assert!(
-            !hosts.failing.contains("b") && !hosts.held.contains_key("b"),
+        assert_eq!(
+            hosts.kept("b"),
+            None,
             "a stopped host's floors went with its unit, its failure with them"
         );
         assert_eq!(hosts.hard_left(), 0, "so none is left");

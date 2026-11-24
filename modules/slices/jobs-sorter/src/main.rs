@@ -1083,6 +1083,40 @@ fn children(pid: u32) -> Vec<u32> {
 /// keeping writeback off on one given back that's among `kept`.
 fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
+    set_holds_by(held, pis, ranks, |unit, hard, scope| {
+        let hold = hard.is_some();
+        match Command::new("busctl")
+            .args(holds::hold_call(
+                unit,
+                hard,
+                kept.iter().any(|kept| kept == scope),
+            ))
+            .stdout(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(format!(
+                "Couldn't {} {unit}: {}",
+                if hold { "hold" } else { "give back" },
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => {
+                let what = if hold { "hold" } else { "give back" };
+                Err(format!("Couldn't run busctl to {what} {unit}: {error}"))
+            }
+        }
+    });
+}
+
+/// Holds each of `held` not held yet and gives back each held no longer
+/// through `call`, given each one's unit, the hard floor it's held with or
+/// none to give it back, and its scope, and saying why one failed.
+fn set_holds_by(
+    held: &[PathBuf],
+    pis: &[String],
+    ranks: &mut Ranks,
+    mut call: impl FnMut(&str, Option<u64>, &Path) -> Result<(), String>,
+) {
     // A host's give-back that failed leaves its hard floors with the kernel, so they count
     // against the pis' as a pi's own failed give-back does.
     ranks.holding.elsewhere = ranks.hosts.hard_left();
@@ -1093,12 +1127,8 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
             .to_string_lossy()
             .into_owned();
         let hard = hold.then(|| ranks.holding.hard_floor(&scope, pis));
-        let result = Command::new("busctl")
-            .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
-            .stdout(Stdio::null())
-            .output();
-        match result {
-            Ok(output) if output.status.success() => {
+        match call(&unit, hard, &scope) {
+            Ok(()) => {
                 // A failure after this one is said again, so a give-back that keeps failing, as
                 // it would leave a hard floor behind, isn't silent.
                 ranks.holding.failed = false;
@@ -1120,19 +1150,9 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
                     None => eprintln!("Gave back {unit}, a window Joel was just at."),
                 }
             }
-            Ok(output) => {
+            Err(why) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
-                    eprintln!(
-                        "Couldn't {} {unit}: {}",
-                        if hold { "hold" } else { "give back" },
-                        String::from_utf8_lossy(&output.stderr).trim()
-                    );
-                }
-            }
-            Err(error) => {
-                if !std::mem::replace(&mut ranks.holding.failed, true) {
-                    let what = if hold { "hold" } else { "give back" };
-                    eprintln!("Couldn't run busctl to {what} {unit}: {error}");
+                    eprintln!("{why}");
                 }
             }
         }
@@ -3959,8 +3979,9 @@ mod tests {
             let mut hosts = hosts::Hosts::default();
             let mut kernel = HashMap::new();
             hard_look(&holding, &mut hosts, &mut kernel, &units, before, all);
-            // Two looks with a's calls failing, a pi held beside them as `set_holds` gives it its
-            // floor, counting what a's failed calls left, then two with a's calls landing again.
+            // Three looks with a's calls failing, a pi held beside them from the third as
+            // `set_holds` gives it its floor, counting what a's failed calls left, then two with
+            // a's calls landing again.
             for look in 1..=5 {
                 if look == 3 {
                     holding.elsewhere = hosts.hard_left();
@@ -3984,6 +4005,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_pi_is_held_with_no_hard_floor_while_a_hosts_failed_give_back_keeps_them_all() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = PathBuf::from("/cg/agents.slice/mycelium-pi-1.scope");
+        let mut ranks = Ranks::default();
+        // A host this sorter never set, whose give-back fails, keeps every hard floor.
+        ranks.hosts.fail("a.service", || focus::MOST);
+        let mut given = Vec::new();
+        set_holds_by(
+            std::slice::from_ref(&pi),
+            &pis,
+            &mut ranks,
+            |unit, hard, _| {
+                given.push((unit.to_owned(), hard));
+                Ok(())
+            },
+        );
+        assert_eq!(
+            given,
+            [("mycelium-pi-1.scope".to_owned(), Some(0))],
+            "a pi Joel is at is held, but with none of the floors the failing host keeps"
+        );
+        assert_eq!(ranks.holding.hard(), 0, "so no pi counts as holding one");
     }
 
     #[test]
