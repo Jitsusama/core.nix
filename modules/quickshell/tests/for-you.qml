@@ -479,6 +479,16 @@ QtObject {
                 LookForm.poses("\u202etI raelC", [])],
             [true, true, true, true, true, true, true, true, true, true, true, true, true,
                 true, true, false, false, false]);
+        // Explain It is told a terminal look's Open beside its cell's acts, by
+        // the name its row shows, as that Open goes to the cell's window; any
+        // other look's Open answers the look, so it is told none.
+        const cellNames = ["Talk"];
+        expect("Explain It is told a terminal look's Open by its row's name, after the cell's"
+            + " acts, and no other look's",
+            [LookForm.presses({ kind: "terminal" }, cellNames, "Review It"),
+                LookForm.presses({ kind: "terminal" }, [], "Go To"),
+                LookForm.presses({ kind: "page" }, ["Talk", "Go To"], "Open"), cellNames],
+            [["Talk", "Review It"], ["Go To"], ["Talk", "Go To"], ["Talk"]]);
         expect("it asks back wanting a choice or his words, or offering choices, in the second"
             + " form only",
             [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },

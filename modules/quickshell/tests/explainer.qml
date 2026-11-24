@@ -200,19 +200,19 @@ ShellRoot {
             });
     }
 
-    // A session waiting on Joel is asked of with its want and its row's acts,
-    // which are Go To alone: a session asking has no Talk, and a look's Open
-    // never reaches its cell's acts (Now.qml's cellActs).
+    // A session waiting on Joel is asked of with its want and the acts its row
+    // hands in, here Go To alone, as a session asking has no Talk; which acts
+    // a look's row hands in is LookForm.presses's (for-you.qml).
     function wanting() {
         explainer.explain("w", "WANTS", ["Go To"]);
         until("a session waiting on Joel is asked of its pi",
             () => explainer.shown("w", ["Go To"])?.note === "asking", () => {
                 expect("its pi is told what it asks, quoted",
                     ask.posed.includes("It asks the person: \"Which tide?"), ask.posed);
-                expect("and what the row offers to answer it",
-                    ask.posed.includes("The person can press: \"Go To\""), ask.posed);
-                expect("and no act its row doesn't offer",
-                    !ask.posed.includes("Open") && !ask.posed.includes("Talk"), ask.posed);
+                expect("and what the row hands in to answer it, alone",
+                    JSON.stringify(ask.posed.split("\n")
+                        .filter(line => line.startsWith("The person can press")))
+                        === JSON.stringify(["The person can press: \"Go To\""]), ask.posed);
                 expect("and to end with the one that answers",
                     ask.posed.startsWith("Say what this is, ending with what answers it."),
                     ask.posed);

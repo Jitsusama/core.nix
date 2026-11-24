@@ -2444,6 +2444,15 @@ ShellRoot {
             JSON.stringify(servedActs) === JSON.stringify(["verb:on:look:open:h",
                 "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
             JSON.stringify(servedActs));
+        // A terminal look's Open in History goes by the name its waiting row
+        // gave it, the one Explain It is told (Now.qml's cellActs).
+        const servedOpen = now.lookServed({ held: { id: "r", kind: "terminal",
+            title: "Read R", target: "", state: "opened", happened: "It ran.",
+            act: "Review It", cell: "ACTED" } }, "row:looks-history:r").verbs()
+            .find(act => act.key === "verb:on:look:open:r");
+        expect("a terminal look's Open in History goes by its own words, as its row did",
+            servedOpen !== undefined && servedOpen.name === "Review It",
+            JSON.stringify(servedOpen?.name));
         const unnamedActs = historyActs({ session: "s-old", address: "ACTED", quest: "QEST-E" });
         expect("a look done with naming no cell leads to the session that left it",
             JSON.stringify(unnamedActs) === JSON.stringify(["verb:on:look:open:h",
