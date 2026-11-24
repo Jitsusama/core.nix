@@ -172,6 +172,8 @@ interface Kin {
   readonly line: (start: number, known: ReadonlySet<number>, most: number) => readonly number[];
   /** The cells that grew from the cell at `parent`, in the list's order. */
   readonly children: (parent: number) => readonly number[];
+  /** Whether each cell from `first` to before `end` grew from the cell at `top`. */
+  readonly under: (top: number, first: number, end: number) => boolean;
 }
 
 /** How the cells of `forages` grew from each other, each from the cell `grewFrom` says. */
@@ -195,7 +197,16 @@ function kinOf(forages: readonly Forage[], grewFrom: Tie<string | undefined>): K
   };
   const children = (parent: number): readonly number[] =>
     from.flatMap((by, place) => (by === parent ? [place] : []));
-  return { line, children };
+  const none = new Set<number>();
+  const under = (top: number, first: number, end: number): boolean => {
+    for (let at = first; at < end; at += 1) {
+      if (!line(at, none, forages.length).includes(top)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  return { line, children, under };
 }
 
 /** The places of a list `length` long, from `centre` outward, nearest first. */

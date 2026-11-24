@@ -53,6 +53,9 @@ run by Node's own test runner when the local sites build the page.
   over the list it was worked out for; and that with no cursor a floor
   whose own cell ends goes back to the first 48, and stays there when
   that cell comes back.
+- `floors.ts` builds the forages that one draws, and reads what the floor
+  drew of them: its compartments, what stands along its main line, and
+  the runs that line is broken into.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.

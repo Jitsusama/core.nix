@@ -9,35 +9,7 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { floorAfter, floorFor, floorOf, floorStepped, stepsOff, UNDRAWN } from "../draw.ts";
 import type { Forage } from "../model.ts";
-
-/** A forage for `cell` with `more` over its fields, its documents none. */
-function forage(cell: string, more: Partial<Forage> = {}): Forage {
-  return {
-    cell,
-    machine: "kestrel",
-    quest: `QEST-20261116-${cell}`,
-    purpose: `${cell} learns to hover.`,
-    status: "active",
-    documents: [],
-    waits: [],
-    startedBy: undefined,
-    booked: false,
-    parent: undefined,
-    splitFrom: undefined,
-    splitInto: [],
-    serves: [],
-    relies: [],
-    depth: 0,
-    ...more,
-  };
-}
-
-/** The cell at `at` in the lists below. */
-const named = (at: number): string => `C${String(at).padStart(2, "0")}`;
-
-/** The cells from `first` to `last`, both drawn. */
-const span = (first: number, last: number): string[] =>
-  Array.from({ length: last - first + 1 }, (_, at) => named(first + at));
+import { along, compartments, floorAt, forage, MAIN, named, runs, span } from "./floors.ts";
 
 /** Sixty top cells, C00 to C59, with a starter at C10 and the cell it booked at C55. */
 const LONG: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
@@ -47,33 +19,6 @@ const LONG: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
 /** `LONG` with `cell` started by `by`. */
 const startedOn = (list: readonly Forage[], cell: string, by: string): readonly Forage[] =>
   list.map((each) => (each.cell === cell ? { ...each, startedBy: by, depth: 1 } : each));
-
-/** The cells `floor` draws a compartment for, in the order it draws them. */
-const compartments = (floor: string): string[] =>
-  [...floor.matchAll(/<rect class="[^"]*" data-cell="([^"]+)"/gu)].map((match) => match[1] ?? "");
-
-/**
- * What `floor` draws along its main line, left to right: each compartment's
- * cell, and an ellipsis for each gap where it skips cells of its list.
- */
-const along = (floor: string): string[] =>
-  [
-    ...[...floor.matchAll(/<rect class="[^"]*" data-cell="([^"]+)" x="([^"]+)"/gu)].map(
-      (match) => ({ mark: match[1] ?? "", x: Number(match[2]) + 11 }),
-    ),
-    ...[...floor.matchAll(/<text class="gap" x="([^"]+)"/gu)].map((match) => ({
-      mark: "\u2026",
-      x: Number(match[1]),
-    })),
-  ]
-    .sort((one, other) => one.x - other.x)
-    .map((each) => each.mark);
-
-/** The main line, the one hypha naming no cell. */
-const MAIN = /<path class="hypha" d="([^"]+)"/u;
-
-/** The runs `floor`'s main line is drawn in, broken at each gap. */
-const runs = (floor: string): number => (floor.match(MAIN)?.[1] ?? "").split("M").length - 1;
 
 /** A ringed compartment, naming its cell. */
 const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
@@ -88,13 +33,6 @@ const LEAST_PX = 12;
 
 /** The cell whose compartment `floor` rings. */
 const ringed = (floor: string): string | undefined => floor.match(RINGED)?.[1];
-
-/** The floor of `list` drawn around `around`, ringing `cursor`. */
-const floorAt = (
-  list: readonly Forage[],
-  cursor: string | null,
-  around: string | null = cursor,
-): string => floorOf(floorFor(list, around), cursor, "kestrel");
 
 it("draws every cell of a list that fits, whatever the cursor", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 5), "C04")), span(0, 4));
