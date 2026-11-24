@@ -183,14 +183,36 @@ function theInternet(context: Context): Child[] {
 }
 
 /** What's worth a look: net's concerns, and any source that didn't answer. */
+/** What's worth a look: the concerns, then the sources that didn't answer. */
+function worthOf(network: Network): { worth: readonly Concern[]; quiet: readonly Source[] } {
+  return {
+    // The internet being the limit is how a home line is, not a fault, so
+    // it's said under The Internet rather than among what's worth a look.
+    worth: network.concerns.filter((concern) => concern.kind !== "ceiling"),
+    // A source that didn't answer is worth a look too, one row a source, its
+    // reason folded in, so a skim reads one problem rather than two.
+    quiet: network.sources.filter((source) => source.state !== "answering"),
+  };
+}
+
+/** How many devices use the network: every one read, less the eeros and the modem. */
+function users(context: Context): number {
+  const { network, shape } = context;
+  return network.devices.length - shape.points.length - (shape.modem === undefined ? 0 : 1);
+}
+
+/** What stands now, in one sentence: the head's lede. */
+function standsNow(context: Context): string {
+  const { network, shape } = context;
+  const { worth, quiet } = worthOf(network);
+  const looks = worth.length + quiet.length;
+  const asks = looks === 0 ? "nothing needs a look" : `${plural(looks, "thing")} worth a look`;
+  return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, and ${asks}.`;
+}
+
 function worthALook(context: Context): HTMLElement {
   const { network } = context;
-  // The internet being the limit is how a home line is, not a fault, so
-  // it's said under The Internet rather than among what's worth a look.
-  const worth = network.concerns.filter((concern) => concern.kind !== "ceiling");
-  // A source that didn't answer is worth a look too, one row a source, its
-  // reason folded in, so a skim reads one problem rather than two.
-  const quiet = network.sources.filter((source) => source.state !== "answering");
+  const { worth, quiet } = worthOf(network);
   if (worth.length === 0 && quiet.length === 0) {
     return h("p", { class: "hint" }, "Nothing needs a look.");
   }
@@ -202,7 +224,6 @@ function worthALook(context: Context): HTMLElement {
 /** How the whole network stands. */
 function overview(context: Context): Child[] {
   const { network, shape } = context;
-  const boxes = shape.points.length + (shape.modem === undefined ? 0 : 1);
   const joins =
     shape.modem === undefined
       ? "no modem was read."
@@ -213,7 +234,7 @@ function overview(context: Context): Child[] {
     h(
       "p",
       { class: "what-it-is" },
-      `${plural(network.devices.length - boxes, "device")} use `,
+      `${plural(users(context), "device")} use `,
       `${plural(shape.points.length, "eero")}, the Wi-Fi points, on `,
       `${plural(shape.floors.length, "floor")}; ${joins}`,
     ),
@@ -260,4 +281,4 @@ function found(context: Context, query: string): Child[] {
 }
 
 export type { Context };
-export { concernRows, found, overview, row };
+export { concernRows, found, overview, row, standsNow };

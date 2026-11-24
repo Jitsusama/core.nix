@@ -2,13 +2,13 @@
 // with its radios and the devices on it, and the gateway's floor with the
 // switch, the modem and the internet. It watches net's devices, links,
 // sources, internet and concerns over the sites' server, so the map moves
-// the moment net's does, and the line under it says whether what it shows
-// is live and since when.
+// the moment net's does, and the head's standing line says whether what it
+// shows is live and since when.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { said } from "../../local-sites/kit/status.ts";
+import { said, tell } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
 import { details } from "./device.ts";
@@ -16,7 +16,7 @@ import { type Child, h } from "./elements.ts";
 import { type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
-import { type Context, found, overview } from "./panel.ts";
+import { type Context, found, overview, standsNow } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
 import { el } from "./svg.ts";
 import { drawTree, heedTree, markOpened } from "./tree.ts";
@@ -39,7 +39,8 @@ const body = element("#panel-body", HTMLDivElement);
 const tree = element("#tree", HTMLDivElement);
 const find = element("#find", HTMLInputElement);
 const where = element("#where", HTMLParagraphElement);
-const asof = element("#asof", HTMLParagraphElement);
+const lede = element("#lede", HTMLParagraphElement);
+const asof = element("#asof", HTMLSpanElement);
 const keys = element("#keys", HTMLDialogElement);
 
 /** The ring round the device the keys are on, outside its box. */
@@ -78,8 +79,15 @@ function sayWhen(): void {
   )[0];
   const problems = [...(network?.unread ?? []), ...heard.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${stands === undefined ? "" : said(stands)}${trouble}`;
-  asof.dataset["state"] = stands?.state ?? "connecting";
+  tell(asof, `${stands === undefined ? "" : said(stands)}${trouble}`, stands?.state ?? "connecting");
+}
+
+/** Says what stands now in the head's lede, writing only when it changes. */
+function sayLede(at: Context): void {
+  const words = standsNow(at);
+  if (lede.textContent !== words) {
+    lede.textContent = words;
+  }
 }
 
 function context(): Context | undefined {
@@ -153,6 +161,10 @@ function render(): void {
     return;
   }
   shape = study(network);
+  const at = context();
+  if (at !== undefined) {
+    sayLede(at);
+  }
   drawn = drawMap(draw, network, shape, now());
   map.shows(drawn);
   fitFirst(network);

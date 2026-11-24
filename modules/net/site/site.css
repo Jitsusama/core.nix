@@ -38,11 +38,57 @@ body {
 
 .head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--mark) var(--groups);
   padding: var(--mark) var(--inset);
   border-block-end: 1px solid var(--rule);
+}
+
+/* The kit's head (head.css), laid as one bar over the map rather than its
+   column, so the map keeps the screen: the eyebrow over the title on the
+   left, the lede over the standing line beside them, and the quiet row at
+   the far edge. Where the bar is too narrow, its parts stack again. */
+:root .head .page-head {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 var(--groups);
+  margin: 0;
+}
+
+.page-head .eyebrow {
+  grid-area: 1 / 1;
+}
+
+.page-head h1 {
+  grid-area: 2 / 1;
+}
+
+:root .head .page-head .lede {
+  grid-area: 1 / 2;
+  max-inline-size: none;
+  font-size: var(--step-base);
+}
+
+.page-head .standing {
+  grid-area: 2 / 2;
+}
+
+.page-head .quiet {
+  grid-area: 1 / 3 / 3;
+  flex-direction: row;
+}
+
+@media (max-width: 48rem) {
+  :root .head .page-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--tie);
+  }
+
+  :root .head .page-head > * {
+    grid-area: auto;
+  }
 }
 
 .mark {
@@ -50,7 +96,7 @@ body {
   flex: none;
 }
 
-.head h1 {
+:root .head .page-head h1 {
   font-size: var(--step-large);
   line-height: 1.2;
 }
@@ -61,16 +107,9 @@ body {
   color: color-mix(in oklab, var(--tint) 60%, var(--strong));
 }
 
-.head .keys {
-  margin-inline-start: auto;
-  color: var(--text);
-  font-size: var(--step-small);
-  visibility: hidden;
-}
-
 /* The key line promises keys only once the script that answers them runs. */
-.js .head .keys {
-  visibility: visible;
+html:not(.js) .head .keys {
+  visibility: hidden;
 }
 
 /* The line is already the small step, so its keys keep its size rather
@@ -176,12 +215,6 @@ body {
   color: var(--strong);
   font-size: var(--step-small);
   line-height: 1.4;
-}
-
-.asof {
-  color: var(--text);
-  font: 400 var(--step-small) / 1.4 var(--mono);
-  font-feature-settings: var(--mono-features);
 }
 
 /* The zoom's buttons are a fieldset, named by its legend for a reader, so

@@ -206,7 +206,6 @@ let
     "Forage"
     "Machines"
     "Map"
-    "Network"
   ];
 in
 pkgs.runCommandLocal "heads-are-the-kits"
