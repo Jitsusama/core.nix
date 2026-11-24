@@ -241,6 +241,7 @@ QtObject {
                 + "once one can take it, say it again");
         for (const never of ["nowhere: skiff lacks system macos",
             "nowhere: skiff lacks system macos, is out of reach; tern isn't kestrel",
+            "nowhere: skiff is out of reach, lacks system macos",
             "nowhere: the realm knows no machine"]) {
             Expect.same(`one no machine will ever take is told in its own words: ${never}`,
                 refusal(never), never);
