@@ -10,15 +10,17 @@
    private static var network: vmnet_network_ref?
  
    /// The host's NAT. With its DNS proxy, macOS's Internet Sharing has mDNSResponder
-@@ -218,6 +219,13 @@
+@@ -218,6 +219,15 @@
      guard #available(macOS 26.0, *) else {
        throw VZVMError.config("dnsProxy: false needs macOS 26 or newer")
      }
 +    // Each boot after the first builds its configuration again. On 23 November the one
 +    // after an idle stop asked vmnet for a second network on the subnet the first still
 +    // held, was refused with status 1001 and the process exited, failing the build that
-+    // woke it. So a later boot is put on the first network again.
++    // woke it. So a later boot is put on the first network again. If a guest then fails to
++    // start, the process still exits, and launchd starts one that makes a new network.
 +    if let network {
++      Log.info("guest network: the process's shared vmnet again")
 +      return VZVmnetNetworkDeviceAttachment(network: network)
 +    }
      var status: vmnet_return_t = .VMNET_SUCCESS
