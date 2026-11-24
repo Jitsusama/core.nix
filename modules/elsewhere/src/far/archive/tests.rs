@@ -1,4 +1,4 @@
-use super::{CLOSED, Part, archived, at_most, record, taken, write};
+use super::{CLOSE, CLOSED, Part, archived, at_most, record, taken, write, writing};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -318,9 +318,19 @@ fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
             "a third archive past {all} bytes in all wasn't refused: {refused:?}"
         );
         assert!(
-            !parts.join("2.tar").exists(),
+            !parts.join("2.tar").exists() && !parts.join(writing(2)).exists(),
             "the archive past the total was begun before it was refused"
         );
+        // What a share would carry: only closed archives, never the one
+        // still open when c was refused.
+        for part in std::fs::read_dir(&parts).unwrap() {
+            let name = part.unwrap().file_name().to_string_lossy().into_owned();
+            let data = std::fs::read(parts.join(&name)).unwrap();
+            assert!(
+                name.starts_with('.') || data.ends_with(&[0; CLOSE]),
+                "{name} lay under its own name unclosed, in all {all}"
+            );
+        }
         let lying: u64 = std::fs::read_dir(&parts)
             .unwrap()
             .map(|part| part.unwrap().metadata().unwrap().len())
