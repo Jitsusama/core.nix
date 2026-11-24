@@ -1787,13 +1787,17 @@ in
       mycelium = lib.getExe (locked.overrideAttrs { doCheck = false; });
     in
     assert lib.assertMsg (pinned != null) "no link key line pins mycelium: ${line}";
+    # Kept in Nix because the locked mycelium and the words its key line
+    # pins come from this evaluation, and a script of its own would only be
+    # handed them back as words.
     pkgs.runCommandLocal "mycelium-takes-its-link-key-s-words" { } ''
       mkdir -p home state/mycelium
       ended=0
       env -u SSH_ORIGINAL_COMMAND HOME="$PWD/home" XDG_STATE_HOME="$PWD/state" \
-        timeout 60 ${mycelium} ${lib.escapeShellArgs words} < /dev/null > said 2> told \
+        timeout -k 10 60 ${mycelium} ${lib.escapeShellArgs words} < /dev/null > said 2> told \
         || ended=$?
-      # A refusal ends 1; clap's own refusal of the words ends 2.
+      # mycelium's errors end 1, its refusal among them, and clap's refusal
+      # of the words 2; the record kept below says which error it was.
       case $ended in
         1) ;;
         0) echo "mycelium took a login on its link key's words"; exit 1 ;;
