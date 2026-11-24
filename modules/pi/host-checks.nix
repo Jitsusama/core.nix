@@ -176,6 +176,65 @@ in
         ]
       );
 
+  # jobs-sorter finds each host's unit and each conversation's by the name
+  # it's given in slices/nixos.nix (`--hosts`, `--conversations`), and ranks
+  # and sorts nothing whose name doesn't start with it, saying nothing: so
+  # each name host.nix renders for a realm's hosts and conversations, on a
+  # machine with both, starts with what the sorter is told for it alone.
+  jobs-sorter-knows-pi-units-by-their-names =
+    let
+      runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}";
+      machine = bareNixos [
+        self.nixosModules.workstation
+        self.nixosModules.graphical
+        {
+          home-manager.users.someone.jitsusama.pi.hosts.one = {
+            pi = "${runtime}/pi";
+            node = "${runtime}/node";
+            proof = proofOf { inherit runtime; };
+          };
+        }
+      ];
+      words = lib.splitString " " (
+        lib.replaceStrings [ "'" ] [ "" ]
+          machine.config.systemd.user.services.jobs-sorter.serviceConfig.ExecStart
+      );
+      # The word after a flag, or null when the sorter isn't given it.
+      after =
+        flag:
+        let
+          at = lib.lists.findFirstIndex (word: word == flag) null words;
+        in
+        if at == null then null else lib.elemAt words (at + 1);
+      hosts = after "--hosts";
+      conversations = after "--conversations";
+      # Each unit known by what it says it holds, not by its name, so a
+      # rename on one side alone is what fails. home-manager keeps a unit's
+      # settings as lists.
+      said =
+        holding:
+        lib.attrNames (
+          lib.filterAttrs (
+            _: unit:
+            let
+              description = lib.head (lib.toList (unit.Unit.Description or ""));
+            in
+            lib.hasPrefix holding description && lib.hasInfix " in the one realm" description
+          ) (account machine).systemd.user.services
+        );
+      conversationUnits = said "Holds one of ";
+      hostUnits = lib.subtractLists conversationUnits (said "Holds ");
+      starts = prefix: name: prefix != null && lib.hasPrefix prefix name;
+    in
+    holds "jobs-sorter-knows-pi-units-by-their-names"
+      "A pi host's or a conversation's unit is named otherwise than jobs-sorter is told to find it."
+      (
+        lib.length hostUnits == 2
+        && lib.length conversationUnits == 2
+        && lib.all (name: starts hosts name && !(starts conversations name)) hostUnits
+        && lib.all (name: starts conversations name && !(starts hosts name)) conversationUnits
+      );
+
   # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
   # on the runtime it is in: a proof of another runtime, of one whose name
   # merely starts the same, or not a proof at all fails evaluation, naming the

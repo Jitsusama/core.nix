@@ -1763,6 +1763,11 @@
     the jobs broker makes a scope only into agents' own work, for a process already an agent's and
     named by the kernel, refuses a status of anything not a unit's name, and knows no stop or start
   '';
+  jobs-sorter-knows-pi-units-by-their-names = ''
+    each pi host's unit and each conversation's that host.nix renders for a realm, on a machine
+    with the sorter, starts with the name the sorter is told to find it by, and with the other's
+    name never
+  '';
   jobs-sorter-passes-clippy = ''
     clippy finds nothing in the jobs sorter or its tests
   '';
