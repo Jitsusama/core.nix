@@ -1,5 +1,5 @@
 use super::crossing::refusing;
-use super::{Left, far_line, far_line_in, far_run, kind, said, work};
+use super::{Left, far_line, far_line_in, far_run, handover, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
 use terminal_kit::Exit;
@@ -496,6 +496,77 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_tree_left_in_several_archives_is_unpacked_from_each() {
+    // Each archive's list of names is made new where the one before's
+    // lay, so a second archive is never refused as already listed.
+    let (code, err, home) = far_line(
+        Left::Parts,
+        &[("a", "a"), ("b", "b"), ("c/d", "d")],
+        "cat a b c/d > ../ran",
+        &kind(""),
+        None,
+        &[],
+    );
+    let list = std::fs::read_to_string(handover(&home).join(crate::far::LEFT)).unwrap_or_default();
+    assert_eq!(
+        list.matches(".tar\n").count(),
+        3,
+        "the files weren't left in an archive each: {list:?}"
+    );
+    assert_eq!(code, Some(0), "a tree left in parts wasn't taken: {err}");
+    assert_eq!(
+        std::fs::read_to_string(work(&home).join("ran"))
+            .ok()
+            .as_deref(),
+        Some("abd"),
+        "a file of a later archive wasn't unpacked: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_run_s_file_it_lost_the_write_of_is_left_with_its_copy_to_the_winner() {
+    // Another run of the job writes its run's file, its copy and its names
+    // the moment this one has cleared the name, once, so this line's
+    // noclobber write loses.
+    let (step, winning) = refusing(
+        "rm",
+        "*\" -f \"*.run\" \"*",
+        "if [ ! -e \"$2.won\" ]; then rm \"$@\" && : > \"$2.won\" && echo theirs > \"$2\" && \
+         mkdir -p \"${2%.run}\" && : > \"${2%.run}/theirs\" && : > \"${2%.run}.names\"; \
+         exit 0; fi",
+    );
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "x")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[(step, &winning)],
+    );
+    let heard = relay(said(&home).as_slice(), "1");
+    assert!(
+        code == Some(75) && heard == Heard::Untaken,
+        "a run that lost its run's file read as {heard:?}, ending {code:?}: {err}"
+    );
+    let runs = work(&home);
+    assert_eq!(
+        std::fs::read_to_string(runs.join("1.run")).ok().as_deref(),
+        Some("theirs\n"),
+        "the winner's run's file was cleared or written over: {err}"
+    );
+    assert!(
+        runs.join("1/theirs").exists() && runs.join("1.names").exists(),
+        "the winner's copy or names were cleared: {err}"
+    );
+    assert!(
+        !runs.join("ran").exists(),
+        "the job ran though it lost: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
