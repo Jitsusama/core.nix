@@ -1325,6 +1325,33 @@ ShellRoot {
         const endedOnLate = Sessions.reopening === null;
         Sessions.reopening = null;
         Sessions.forgetAsk(lateWalk);
+        // Beside another still late, or behind the lock, where the walk is
+        // settled once the lock lets go (placeBehind), it goes on without
+        // it: neither late nor begun, so a press asks for it again.
+        const lateGoesOn = (named, others, locked) => {
+            const given = { id: named.slice("pi-hosted.".length), classed: named, opened: null };
+            Sessions.reopening = { waiting: null, late: [given].concat(others), queue: [],
+                placed: [], behind: [], begun: [given.id].concat(others.map(one => one.id)),
+                looking: false, settling: false, back: null, focused: false };
+            Sessions.behindTheLock = locked;
+            Sessions.viewWith(view.slice(0, -1).concat([given.id]), named, null, "walk");
+            Sessions.untaken(named, String(Date.now()));
+            const going = Sessions.reopening;
+            const left = JSON.stringify(going);
+            const on = going !== null && going.late.length === others.length
+                && !going.begun.includes(given.id)
+                && others.every(one => going.late.includes(one) && going.begun.includes(one.id));
+            // Let go with no walk left for it, and at once, as the cases
+            // after it place what they open.
+            Sessions.reopening = null;
+            Sessions.behindTheLock = false;
+            Sessions.lockLetGo = true;
+            Sessions.forgetAsk(named);
+            return { on, left };
+        };
+        const stillLate = { id: "s-still-late", classed: "pi-hosted.s-still-late", opened: null };
+        const besideLate = lateGoesOn("pi-hosted.s-late-beside", [stillLate], false);
+        const lockedLate = lateGoesOn("pi-hosted.s-late-locked", [], true);
         expect("the walk waits no more on one whose window came refused", goneOnRefused,
             JSON.stringify(waitedRefused));
         expect("nor on one no kitty took, which a press asks for again", goneOnUntaken,
@@ -1333,6 +1360,10 @@ ShellRoot {
         expect("and once it has passed, is begun", wentOn, "left queued");
         expect("nor keeps one its patience gave up on, so the walk ends", endedOnLate,
             lateLeft);
+        expect("nor beside another still late, the walk going on", besideLate.on,
+            besideLate.left);
+        expect("nor behind the lock, the walk left for the lock's end to settle",
+            lockedLate.on, lockedLate.left);
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
