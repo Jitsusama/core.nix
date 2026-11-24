@@ -14,9 +14,9 @@ use crate::score::percent;
 
 /// The least share of the far end's words, in tenths of a percent, that
 /// may be timed while the reference says one of theirs is speaking.
-/// The clean meetings time 98.1% of 2,218 so (99.4% on ES2004a, 92.6% on
-/// IS1009a, 100.0% on TS3003a), and none outside its take or before the
-/// word ahead; this floor sits a tenth under, so a model or a split that
+/// The clean meetings time 98.1% of 2,218 so (99.4%, 92.6% and 100.0%,
+/// meeting by meeting), and none outside its take or before the word
+/// ahead; this floor sits a tenth under, so a model or a split that
 /// moves the far end's word times off their speech fails the check.
 pub const INSIDE: usize = 980;
 
