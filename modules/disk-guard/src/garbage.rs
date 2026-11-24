@@ -256,39 +256,42 @@ const DESCRIBE_TIMEOUT: Duration = Duration::from_mins(5);
 /// 4 MiB, and a chunk's description about 3.
 const OUTPUT_LIMIT: usize = 256 << 20;
 
-/// Every dead path, through `nix-store --gc --print-dead` beside `nix`,
-/// and what each weighs and refers to, through `nix path-info`. With
-/// `idle`, at idle priority. A path that died since is found at the next
-/// listing; one that came alive is refused by Nix when it's deleted.
+/// Every dead path in the store at `store`, and what each weighs and
+/// refers to, through `nix path-info` beside `nix`. With `idle`, at idle
+/// priority. A path that died since is found at the next listing; one
+/// that came alive is refused by Nix when it's deleted, since deleting
+/// takes Nix's lock and looks again.
 ///
-/// The listing asks for no experimental features. With content-addressed
+/// The dead are worked out without Nix's garbage collector lock
+/// (`unlocked_dead`), and asked of `nix-store --gc --print-dead` only
+/// where Nix keeps the outputs of what's live, or can't say whether it
+/// does. The lock is the one every other collection waits on,
+/// Nix's own near `min-free` included, and the listing held it for up to
+/// `LIST_TIMEOUT`: on 24 November a laptop's ran 24 minutes, with its
+/// builds and tests waiting on the lock behind it.
+///
+/// The locked listing asks for no experimental features. With content-addressed
 /// derivations on and `keep-outputs`, Nix parses and hashes every
 /// derivation the trace meets to look up its outputs' realisations: on 7
 /// November a store of 101,000 paths, none of them floating or impure,
 /// took 675 s of CPU to list that way and 137 s without. A floating
 /// output that only a realisation keeps is listed dead, and Nix, deleting
 /// with the machine's own settings, refuses it as alive.
-pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
-    let store = nix.with_file_name("nix-store");
-    let listed = ran(
-        &[
-            store.as_os_str(),
-            "--option".as_ref(),
-            "experimental-features".as_ref(),
-            "".as_ref(),
-            "--gc".as_ref(),
-            "--print-dead".as_ref(),
-        ],
-        LIST_TIMEOUT,
-        idle,
-    )?;
+pub fn list(nix: &Path, store: &Path, idle: bool) -> Result<Vec<Listed>, String> {
+    let listed = if said_off(nix, "keep-outputs", idle) {
+        let derivers = !said_off(nix, "keep-derivations", idle);
+        unlocked_dead(nix, store, derivers, idle)?
+    } else {
+        locked_dead(nix, idle)?
+    };
     // Nix's own temporary files in the store's directory, its .tmp-link-s
     // and the tmp- folders it adds a path through, are listed too and gone
     // a moment later, and asking about one fails the whole listing: on 9
     // November the system guard's failed 44 times so. A store path's name
     // starts with its hash, never a dot or tmp-.
     let paths: Vec<&str> = listed
-        .lines()
+        .iter()
+        .map(String::as_str)
         .filter(|line| line.starts_with('/'))
         .filter(|line| {
             Path::new(line).file_name().is_some_and(|name| {
@@ -352,6 +355,154 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
             path
         })
         .collect())
+}
+
+/// Whether Nix says its `setting` is off. With `keep-outputs` it keeps
+/// every output of a live derivation, even one no longer built from it,
+/// which only its own collector follows; with `keep-derivations`, its
+/// default, the derivation that built a live path. Where Nix can't say,
+/// as though it were on, which keeps the more.
+fn said_off(nix: &Path, setting: &str, idle: bool) -> bool {
+    let argv: Vec<&OsStr> = std::iter::once(nix.as_os_str())
+        .chain(NIX_COMMAND.iter().map(OsStr::new))
+        .chain(["config", "show", setting].map(OsStr::new))
+        .collect();
+    ran(&argv, Duration::from_secs(30), idle).is_ok_and(|said| said.trim() == "false")
+}
+
+/// The dead as Nix's own collector lists them, under its lock.
+fn locked_dead(nix: &Path, idle: bool) -> Result<Vec<String>, String> {
+    let store = nix.with_file_name("nix-store");
+    let listed = ran(
+        &[
+            store.as_os_str(),
+            "--option".as_ref(),
+            "experimental-features".as_ref(),
+            "".as_ref(),
+            "--gc".as_ref(),
+            "--print-dead".as_ref(),
+        ],
+        LIST_TIMEOUT,
+        idle,
+    )?;
+    Ok(listed.lines().map(str::to_owned).collect())
+}
+
+/// The dead worked out with no lock: every entry in the store at `store`,
+/// read first, less what Nix's roots keep, read after. The roots come
+/// from `nix-store --gc --print-roots`, which reads them as the collector
+/// does, its temporary and running processes' roots included, without
+/// its lock; what they keep is their closure, from `nix-store --query
+/// --requisites`, and with `derivers` the derivation Nix recorded as
+/// building each path kept, and its closure in turn, as Nix's collector
+/// keeps them under `keep-derivations`. Reading the entries first means
+/// a path added between the two is either rooted by then or not listed.
+fn unlocked_dead(
+    nix: &Path,
+    store: &Path,
+    derivers: bool,
+    idle: bool,
+) -> Result<Vec<String>, String> {
+    let mut entries: Vec<String> = std::fs::read_dir(store)
+        .map_err(|error| format!("reading {}: {error}", store.display()))?
+        .filter_map(Result::ok)
+        .filter_map(|entry| entry.path().into_os_string().into_string().ok())
+        .collect();
+    entries.sort_unstable();
+    let nix_store = nix.with_file_name("nix-store");
+    let asked = |words: &[&str], paths: &[&String]| -> Result<String, String> {
+        let argv: Vec<&OsStr> = std::iter::once(nix_store.as_os_str())
+            .chain(words.iter().map(OsStr::new))
+            .chain(paths.iter().map(OsStr::new))
+            .collect();
+        ran(&argv, LIST_TIMEOUT, idle)
+    };
+    let roots: HashSet<String> = asked(&["--gc", "--print-roots"], &[])?
+        .lines()
+        .filter_map(|line| line.rsplit_once(" -> "))
+        .filter_map(|(_, path)| store_path(store, path))
+        .collect();
+    let mut live: HashSet<String> = roots.clone();
+    let mut asking: Vec<String> = roots.into_iter().collect();
+    asking.sort_unstable();
+    // Each path kept is asked for its deriver once, and each deriver kept
+    // for what it keeps in turn, until a round finds nothing new.
+    let mut walked: HashSet<String> = HashSet::new();
+    loop {
+        let mut fresh: Vec<String> = Vec::new();
+        let asking_refs: Vec<&String> = asking.iter().collect();
+        for chunk in asking_refs.chunks(CHUNK) {
+            for kept in kept_by(&asked, chunk)? {
+                if walked.insert(kept.clone()) {
+                    fresh.push(kept.clone());
+                }
+                live.insert(kept);
+            }
+        }
+        if !derivers || fresh.is_empty() {
+            break;
+        }
+        fresh.sort_unstable();
+        let fresh_refs: Vec<&String> = fresh.iter().collect();
+        let mut next: Vec<String> = Vec::new();
+        for chunk in fresh_refs.chunks(CHUNK) {
+            // A path with none recorded is said `unknown-deriver`.
+            next.extend(
+                asked(&["--query", "--deriver"], chunk)?
+                    .lines()
+                    .filter(|line| line.starts_with('/') && !walked.contains(*line))
+                    .map(str::to_owned),
+            );
+        }
+        next.sort_unstable();
+        next.dedup();
+        if next.is_empty() {
+            break;
+        }
+        asking = next;
+    }
+    Ok(entries
+        .into_iter()
+        .filter(|entry| !live.contains(entry))
+        .collect())
+}
+
+/// A question put to `nix-store`: its words, then the paths it's about.
+type Asked<'a> = dyn Fn(&[&str], &[&String]) -> Result<String, String> + 'a;
+
+/// What the valid roots among `roots` keep, through `asked`. A root not
+/// valid, a path a build or a fetch is making, keeps only itself, and
+/// asking about it would fail the whole question; one deleted between
+/// asking which are valid and what they keep is asked about once more.
+fn kept_by(asked: &Asked, roots: &[&String]) -> Result<Vec<String>, String> {
+    let mut tried = 0;
+    loop {
+        let invalid: HashSet<String> = asked(&["--check-validity", "--print-invalid"], roots)?
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let valid: Vec<&String> = roots
+            .iter()
+            .filter(|root| !invalid.contains(root.as_str()))
+            .copied()
+            .collect();
+        if valid.is_empty() {
+            return Ok(Vec::new());
+        }
+        match asked(&["--query", "--requisites"], &valid) {
+            Ok(kept) => return Ok(kept.lines().map(str::to_owned).collect()),
+            Err(_) if tried == 0 => tried += 1,
+            Err(why) => return Err(why),
+        }
+    }
+}
+
+/// The store path `path` lies in under `store`, as a root may name a file
+/// within one; None for a path outside the store.
+fn store_path(store: &Path, path: &str) -> Option<String> {
+    let within = Path::new(path).strip_prefix(store).ok()?;
+    let name = within.components().next()?;
+    store.join(name).into_os_string().into_string().ok()
 }
 
 /// How long deleting one batch may take, every run of Nix it takes

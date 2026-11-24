@@ -1944,12 +1944,13 @@ impl Guard {
             return;
         }
         let nix = self.config.nix.bin.clone();
+        let store = self.config.nix.store.clone();
         let (tell, out) = mpsc::channel();
         let listing = std::thread::Builder::new()
             .name(GARBAGE.to_owned())
             .spawn(move || {
                 // A guard that stopped meanwhile has no one to hear it.
-                let _ = tell.send(garbage::list(&nix, idle));
+                let _ = tell.send(garbage::list(&nix, &store, idle));
             });
         self.listing_begun = Some(now);
         self.relist = false;

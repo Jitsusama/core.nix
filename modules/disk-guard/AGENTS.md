@@ -298,9 +298,19 @@ or launchd, and [`home.nix`][2] the account's.
   large store takes a core for minutes. A listing that expired generations
   or found its batches stale brings another, though on a healthy disk not
   until the last has rested nine times its own length, a rest a restart
-  keeps, so listing takes at most a tenth of its time. It lists with no
-  experimental features, since content-addressed derivations made Nix parse
-  and hash every derivation it met, five times the CPU; one that only a
+  keeps, so listing takes at most a tenth of its time. It lists without
+  Nix's garbage collector lock, which every other collection waits on,
+  Nix's own near `min-free` included, and which a laptop's listing held
+  24 minutes on 24 November: the store's entries are read first, then
+  the roots through `nix-store --gc --print-roots`, which takes no lock,
+  and the dead are the entries outside the roots' closures, with each
+  kept path's deriver and its closure while `keep-derivations` is on, as
+  Nix keeps them. A path added between the two readings is rooted by
+  then or not listed, and deleting takes the lock and refuses one that
+  came alive. With `keep-outputs` on, or where Nix can't say, it asks
+  Nix's own `--print-dead`, under the lock, with no experimental
+  features, since content-addressed derivations made Nix parse and hash
+  every derivation it met, five times the CPU; one that only a
   realisation keeps is listed dead, and Nix refuses it when it's deleted.
   The garbage's own pass, which comes once something let go of some, rests
   after one that left every path it was offered, two minutes doubling to
