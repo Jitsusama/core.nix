@@ -23,10 +23,11 @@ pub struct Config {
     /// The folder of documents sessions write, served below every mount.
     pub documents: PathBuf,
     /// The folder the home's builder writes the home's own files into,
-    /// each served at `/<name>` ahead of the documents, and its page at
-    /// `/`. Sessions write none of it, so its pages are served as a
-    /// mount's are rather than as a document (files.rs); none where the
-    /// home is written among the documents.
+    /// absolute or under the user's runtime folder, each served at
+    /// `/<name>` ahead of the documents, and its page at `/`. Sessions
+    /// write none of it (a fenced one doesn't even see the runtime folder),
+    /// so its pages are served as a mount's are rather than as a document
+    /// (files.rs); none where the home is written among the documents.
     pub home: Option<PathBuf>,
     /// Folders Nix built, each served at `/<name>/` ahead of the documents.
     pub mounts: BTreeMap<String, PathBuf>,
@@ -55,8 +56,8 @@ pub struct Kind {
 }
 
 impl Config {
-    /// Reads the config from its JSON, a relative socket taken as under
-    /// `runtime`, the user's runtime folder.
+    /// Reads the config from its JSON, a relative socket or home taken as
+    /// under `runtime`, the user's runtime folder.
     pub fn from_json(text: &str, runtime: Option<&Path>) -> Result<Self, String> {
         let said: Value =
             serde_json::from_str(text).map_err(|why| format!("it isn't JSON: {why}"))?;
@@ -75,9 +76,10 @@ impl Config {
         let documents = PathBuf::from(text_of(&said, "documents")?);
         let home = match said.get("home") {
             None | Some(Value::Null) => None,
-            Some(home) => Some(PathBuf::from(
-                home.as_str().ok_or("home isn't a path")?,
-            )),
+            Some(home) => {
+                let home = home.as_str().ok_or("home isn't a path")?;
+                Some(under(home, runtime).ok_or("home is under the runtime folder, and none is set")?)
+            }
         };
         let mounts = said
             .get("mounts")
@@ -122,15 +124,9 @@ fn feed_of(name: &str, said: &Value, runtime: Option<&Path>) -> Result<Feed, Str
         .get("socket")
         .and_then(Value::as_str)
         .ok_or_else(|| format!("feed {name} names no socket"))?;
-    let socket = if Path::new(socket).is_absolute() {
-        PathBuf::from(socket)
-    } else {
-        runtime
-            .ok_or_else(|| {
-                format!("feed {name}'s socket is under the runtime folder, and none is set")
-            })?
-            .join(socket)
-    };
+    let socket = under(socket, runtime).ok_or_else(|| {
+        format!("feed {name}'s socket is under the runtime folder, and none is set")
+    })?;
     let kinds = said
         .get("kinds")
         .and_then(Value::as_object)
@@ -157,6 +153,16 @@ fn feed_of(name: &str, said: &Value, runtime: Option<&Path>) -> Result<Feed, Str
         })
         .collect::<Result<_, String>>()?;
     Ok(Feed { socket, kinds })
+}
+
+/// `path` as it stands where it's absolute, else under `runtime`, or none
+/// where it's relative and no runtime folder is set.
+fn under(path: &str, runtime: Option<&Path>) -> Option<PathBuf> {
+    if Path::new(path).is_absolute() {
+        Some(PathBuf::from(path))
+    } else {
+        runtime.map(|runtime| runtime.join(path))
+    }
 }
 
 fn text_of<'a>(said: &'a Value, field: &str) -> Result<&'a str, String> {
@@ -224,6 +230,13 @@ mod tests {
         let unpathed = WHOLE.replace(r#""mounts""#, r#""home": 7, "mounts""#);
         let why = Config::from_json(&unpathed, Some(Path::new("/run"))).expect_err("refused");
         assert!(why.contains("home isn't a path"), "{why}");
+        let running = WHOLE.replace(r#""mounts""#, r#""home": "local-sites/home", "mounts""#);
+        let config = Config::from_json(&running, Some(Path::new("/run/user/1000"))).expect("it reads");
+        assert_eq!(
+            config.home,
+            Some(PathBuf::from("/run/user/1000/local-sites/home")),
+            "a relative home is under the runtime folder, as a socket is"
+        );
     }
 
     #[test]

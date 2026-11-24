@@ -416,7 +416,7 @@ fn a_sandboxed_document_cant_open_a_feed() {
 }
 
 /// The policy every document is served under.
-const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms";
+const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-ancestors 'self'";
 
 /// The policy every page of the sites' own is served under.
 const OWN: &str =
@@ -456,6 +456,13 @@ fn the_sites_own_pages_run_only_their_own_scripts_and_share_their_code() {
     }
     let (_, home) = get(served.port, &host, "/");
     assert_eq!(home, "<h1>home</h1>", "the home's own folder comes first");
+    let strip = served.folder.join("sites/strip.css");
+    std::fs::write(strip, "h1 { display: none }").expect("a session's sheet");
+    let (status, _) = get(served.port, &host, "/strip.css");
+    assert_eq!(
+        status, "HTTP/1.1 503 Service Unavailable",
+        "a session's sheet stood in for one the home's builder hasn't written"
+    );
     let (_, sheet, _) = asked(served.port, &host, "GET /kit/theme.css", "");
     let shared = header(&sheet, "access-control-allow-origin");
     assert_eq!(shared, Some("*"), "a sandboxed document couldn't read the kit");

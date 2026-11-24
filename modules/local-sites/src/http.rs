@@ -50,8 +50,9 @@ const PATIENCE: Duration = Duration::from_secs(10);
 
 /// The sandbox every document runs in: its scripts, its forms and the
 /// windows it opens, each in an origin of no one's, never this server's,
-/// and no way out of it to the page holding it or a window it opens.
-const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms";
+/// and no way out of it to the page holding it or a window it opens; and
+/// held in a frame only by a page served here.
+const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-ancestors 'self'";
 
 /// What the sites' own pages may run and be held in: only scripts served
 /// from here, none written into the page or evaluated from words, no
@@ -226,6 +227,13 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
             "Forbidden",
             "text/plain",
             b"that path is refused\n",
+        ),
+        Found::Unready => send(
+            stream,
+            503,
+            "Service Unavailable",
+            "text/plain",
+            b"the home is still being written\n",
         ),
     }
 }

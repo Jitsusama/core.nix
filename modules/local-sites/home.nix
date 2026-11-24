@@ -61,11 +61,13 @@ let
   # home read from the one copy the sites share.
   webKit = config.xdg.dataFile."jitsusama/web".source;
   documents = "${config.xdg.dataHome}/jitsusama/sites";
-  # Where the home's builder writes the home's own page and files: a folder
-  # no session writes, so the server serves them as the sites' own rather
-  # than sandboxed as a document is (src/http.rs says why), and the home can
-  # read Joel's feeds and answer what he's asked.
-  homeFolder = "${config.xdg.stateHome}/local-sites/home";
+  # Where the home's builder writes the home's own page and files, under the
+  # runtime folder: a fenced session neither sees nor writes it, so the
+  # server serves them as the sites' own rather than sandboxed as a document
+  # is (src/http.rs says why), and the home can read Joel's feeds and answer
+  # what he's asked. A reboot empties it, which costs nothing, since the
+  # home is built whole from its record before the server serves.
+  homeFolder = "local-sites/home";
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
     builtins.toJSON {
@@ -237,10 +239,13 @@ let
   # machine serves, for a reader such as the hourly card to count with
   # --json (map-check.nix).
   mapCheck = import ./map-check.nix { inherit lib pkgs; };
-  build = lib.escapeShellArgs [
+  # The home's builder, then what it builds from; its folder goes between,
+  # where the runtime folder is known (systemd's %t, or the activation's).
+  builder = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
-    "--into=${homeFolder}"
+  ];
+  builtFrom = lib.escapeShellArgs [
     "${import ./home-source.nix}"
     "${config.xdg.dataHome}/jitsusama/sites"
     "${webKit}/theme.css"
@@ -648,8 +653,13 @@ in
 
   # A switch builds the home too, since a changed builder or page changes
   # no file the path unit watches. A run that changes nothing writes nothing.
+  # Only where the runtime folder stands, as it does wherever the server
+  # runs; its unit builds the home at login on a machine that has none yet.
   config.home.activation.localSitesHome = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    run ${build}
+    localSitesRuntime="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    if [ -d "$localSitesRuntime" ]; then
+      run ${builder} "--into=$localSitesRuntime/${homeFolder}" ${builtFrom}
+    fi
   '';
 
   config.systemd.user.services = {
@@ -657,13 +667,20 @@ in
       Unit.Description = "Builds the home of Joel's local sites from its record";
       Service = {
         Type = "oneshot";
-        ExecStart = build;
+        ExecStart = "${builder} --into=%t/${homeFolder} ${builtFrom}";
         Slice = "background.slice";
       };
+      # At login too, since a reboot empties the runtime folder the home is in.
+      Install.WantedBy = [ "default.target" ];
     };
 
     local-sites = {
-      Unit.Description = "Serves Joel's local sites, on loopback only";
+      Unit = {
+        Description = "Serves Joel's local sites, on loopback only";
+        # The home is built first, or its page answers that it isn't ready.
+        Wants = [ "local-sites-home.service" ];
+        After = [ "local-sites-home.service" ];
+      };
       Service = {
         ExecStartPre = "${lib.getExe' pkgs.coreutils "mkdir"} -p ${root}";
         # Its command line says its name, as a daemon's does (docs/daemons.md).

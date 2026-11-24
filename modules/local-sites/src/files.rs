@@ -18,7 +18,9 @@
 //! folder of its own: its page at `/`, and each of its files at `/<name>`.
 //! What a path finds says who made it, Nix or the home's builder or a
 //! session, since a page a session wrote is served where its script can't
-//! act as one of the sites' own (http.rs).
+//! act as one of the sites' own (http.rs). The home's own names never fall
+//! through to the documents: until its builder has written one, it isn't
+//! ready, so a page or sheet a session left there can't stand in for it.
 
 use std::path::{Path, PathBuf};
 
@@ -26,6 +28,18 @@ use crate::config::Config;
 
 /// The one file a mount may be answered with from the documents.
 const HOMES: &str = "homes.json";
+
+/// The files the home's builder writes into the home's folder (home.py's
+/// `OWN` and `FILES`), which only that folder answers.
+const HOME_OWN: [&str; 7] = [
+    "index.html",
+    "favicon.svg",
+    "home.css",
+    "strip.css",
+    "llms.txt",
+    "index.md",
+    "rows.json",
+];
 
 /// Who made a file a path found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +61,8 @@ pub enum Found {
     Missing,
     /// A path reaching out of its root, or one no file may have.
     Refused,
+    /// One of the home's own files, which its builder hasn't written yet.
+    Unready,
 }
 
 /// Finds the file `path`, a request's path without its query, names.
@@ -61,8 +77,10 @@ pub fn find(config: &Config, path: &str) -> Found {
     {
         return Found::Refused;
     }
-    if let Some(own) = home_file(config, &parts) {
-        return Found::File(own, Made::Built);
+    match home_file(config, &parts) {
+        Some(Some(own)) => return Found::File(own, Made::Built),
+        Some(None) => return Found::Unready,
+        None => {}
     }
     let (root, rest, guarded) = match parts.split_first() {
         Some((first, rest)) if config.mounts.contains_key(*first) => {
@@ -97,14 +115,20 @@ pub fn find(config: &Config, path: &str) -> Found {
 
 /// The home's own file `parts` names, its page for none: one file in its
 /// folder, never a folder, so every deeper path is a mount's or a document.
-fn home_file(config: &Config, parts: &[&str]) -> Option<PathBuf> {
+/// Answers none where the home has no folder or the name isn't its, and
+/// `Some(None)` for one of its own names its builder hasn't written.
+fn home_file(config: &Config, parts: &[&str]) -> Option<Option<PathBuf>> {
     let name = match parts {
         [] => "index.html",
         [name] => *name,
         _ => return None,
     };
     let file = config.home.as_deref()?.join(name);
-    file.is_file().then_some(file)
+    if file.is_file() {
+        Some(Some(file))
+    } else {
+        HOME_OWN.contains(&name).then_some(None)
+    }
 }
 
 /// What a file is, by its name, as a browser is told it.
@@ -265,6 +289,29 @@ mod tests {
             find(&folders.config, "/note.html"),
             Found::File(documents.join("note.html"), Made::Written),
             "a file the home doesn't hold is still a document"
+        );
+    }
+
+    #[test]
+    fn the_homes_own_names_wait_for_its_builder_rather_than_fall_to_a_document() {
+        let mut folders = folders("unready");
+        let home = folders.top.join("home");
+        fs::create_dir_all(&home).expect("its folder");
+        let documents = folders.config.documents.clone();
+        fs::write(documents.join("index.html"), "a session's home").expect("a document");
+        fs::write(documents.join("strip.css"), "a session's strip").expect("a document");
+        folders.config.home = Some(home);
+        assert_eq!(find(&folders.config, "/"), Found::Unready, "a session's page stood as the home");
+        assert_eq!(
+            find(&folders.config, "/strip.css"),
+            Found::Unready,
+            "a session's sheet stood as the home's"
+        );
+        folders.config.home = None;
+        assert_eq!(
+            find(&folders.config, "/"),
+            Found::File(documents.join("index.html"), Made::Written),
+            "a home written among the documents is found there"
         );
     }
 
