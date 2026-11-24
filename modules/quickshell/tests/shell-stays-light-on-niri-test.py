@@ -1,9 +1,9 @@
 """Opening every place again keeps no more of the shell's JavaScript heap live, on niri.
 
-modules/quickshell/checks/shell.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts. A place's first opening builds what it keeps, so the first round
-may grow the heap; every round after it must land where the one before it did. Joel's shell grew
-from 108 MB a minute after a start to 150 and more with use (2026-11-11), while the lab fed his
+modules/quickshell/checks/shell.nix runs this through pytest inside tests/lib/nested-niri.sh, with
+the shell launcher_on_niri.py starts. A place's first opening builds what it keeps, so the first
+round may grow the heap; every round after it must land where the one before it did. Joel's shell
+grew from 108 MB a minute after a start to 150 and more with use (2026-11-11), while the lab fed his
 records kept 38 to 42 MB live after every round, so a round that keeps more each time is a leak,
 and this is where it's caught.
 

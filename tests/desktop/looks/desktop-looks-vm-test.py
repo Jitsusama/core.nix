@@ -9,9 +9,9 @@ keyboard's layout and the launcher, and comes back plugged in. The Home Network 
 daemon's record, and Bluetooth's Nearby hears a device of BlueZ's emulator while it's open, and only
 then. The launcher's rows, vi modes, plates and file picker are looks areas of their own
 (desktop-looks-*-vm-test.py), so the looks areas run side by side rather than one after another;
-what they share is in looks_session.py. tests/desktop.nix runs this through pytest inside the driver
-(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks for the
-desktop, started once a run (desktop_session.py), and leaves it as it found it.
+what they share is in looks_session.py. tests/desktop/desktop.nix runs this through pytest inside
+the driver (tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test
+asks for the desktop, started once a run (desktop_session.py), and leaves it as it found it.
 """
 
 from __future__ import annotations
@@ -95,11 +95,11 @@ def stepped_down_to_beyond_the_named(desktop: Desktop, name: str) -> None:
 def home_network_laid_out(desktop: Desktop, at_each_scale: list[str]) -> None:
     """Hold the Home Network to the eero daemon's record, and each thing's plate whole.
 
-    The record the stand-in serves (tests/desktop.nix) reaches the place: the map first, warning
-    with what net finds, then the internet, then the gateway node with its devices under it, and
-    each node after the one it hangs from. A device's step in opens the map on it first. A node's,
-    a device's and a profile's plates lay their facts out one way, every name and value whole, at
-    both of Joel's scales. WARP, beside it in Network, is shot at each scale too.
+    The record the stand-in serves (tests/desktop/desktop.nix) reaches the place: the map first,
+    warning with what net finds, then the internet, then the gateway node with its devices under it,
+    and each node after the one it hangs from. A device's step in opens the map on it first. A
+    node's, a device's and a profile's plates lay their facts out one way, every name and value
+    whole, at both of Joel's scales. WARP, beside it in Network, is shot at each scale too.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session('test -S "$XDG_RUNTIME_DIR/eero/socket"'),
@@ -2000,7 +2000,7 @@ def test_an_unplugged_ergodox_is_shown_nowhere_until_its_back(
         desktop.as_account("rm -f ~/.config/ergodox/layout.json $XDG_RUNTIME_DIR/keyboard-layer")
 
 
-# How long a wait lasts before Now lists Lag, as tests/desktop.nix sets it.
+# How long a wait lasts before Now lists Lag, as tests/desktop/desktop.nix sets it.
 LAG_LASTS = 3600
 
 
@@ -2167,7 +2167,7 @@ def recent_drawer(desktop: Desktop, shot: str) -> None:
 
 
 # wifid, as varlinkctl reaches it, and Lantern, the stand-in network every desktop machine hears
-# (tests/desktop.nix), with the password its access point is given.
+# (tests/desktop/desktop.nix), with the password its access point is given.
 WIFID = "/run/wifid/io.jitsusama.Wifi io.jitsusama.Wifi"
 LANTERN = '{"name":"Lantern","password":"glowing in the dark"}'
 # Signing in at Lantern's front desk, which signs in whatever is posted to it

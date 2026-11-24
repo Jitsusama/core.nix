@@ -1,7 +1,7 @@
 """What the launcher's journal says of a lagging key while reports are off, on niri.
 
-modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell's reports off. A key slower to its frame than launcher/Trials.js's FELT_MS is said in the
+modules/quickshell/checks/core.nix runs this through pytest inside tests/lib/nested-niri.sh, with
+the shell's reports off. A key slower to its frame than launcher/Trials.js's FELT_MS is said in the
 journal by what it was (Presented.timedShown): words typed by how many letters, a step by its
 arrow and the letters of the row it named, and a key the launcher names itself, an arrow, whole,
 since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which

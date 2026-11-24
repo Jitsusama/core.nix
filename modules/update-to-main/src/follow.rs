@@ -63,7 +63,7 @@ const SWITCH_EVERY: Duration = Duration::from_mins(30);
 /// The least time between switches once nobody has been at the machine for
 /// `AWAY_AFTER`, since a restart nobody's hands are under costs nobody that
 /// slow first opening. On 11 November the launcher took keys after each of
-/// five shell restarts in ten minutes (`tests/opening-on-niri-test.py`).
+/// five shell restarts in ten minutes (`modules/quickshell/tests/opening-on-niri-test.py`).
 const SWITCH_EVERY_AWAY: Duration = Duration::from_mins(10);
 
 /// How long the machine must have gone untouched, as the follower's looks

@@ -1,6 +1,6 @@
 """The margin's cat sits over the column the keys are in, on niri, and follows them.
 
-modules/quickshell/checks/margin.nix runs this through pytest in tests/nested-niri.sh, with the
+modules/quickshell/checks/margin.nix runs this through pytest in tests/lib/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run, as the graphical account has it with the cat's
 module (modules/margin-cat). Where over a column it sits, beside the margin's marks or nowhere,
 is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml), as are a walk's beats; here,

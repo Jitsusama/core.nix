@@ -1,7 +1,7 @@
 """The launcher answers what's typed, on the account's whole shell on niri.
 
-modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
-shell launcher_on_niri.py starts once a run. Each case here needs only the launcher or the
+modules/quickshell/checks/core.nix runs this through pytest inside tests/lib/nested-niri.sh, with
+the shell launcher_on_niri.py starts once a run. Each case here needs only the launcher or the
 notices, what they're typed and what they draw, so none boots a machine; a case needing the
 machine's battery, lights, services, other programs or niri's binds pressed stays in
 tests/desktop/. Every test starts with the

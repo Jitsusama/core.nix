@@ -1,7 +1,7 @@
 """The account's whole shell on a nested niri, for checks that type into the launcher.
 
 modules/quickshell/checks/helpers.nix's launcherOnNiri runs a file of tests
-through pytest inside tests/nested-niri.sh, in the build sandbox: the shell's
+through pytest inside tests/lib/nested-niri.sh, in the build sandbox: the shell's
 own QML on niri's real surfaces, typed at through wtype, in seconds rather than
 a machine booted for it. wtype's keys reach the surface holding the keyboard,
 the launcher's, but never niri's binds, so what a bind runs

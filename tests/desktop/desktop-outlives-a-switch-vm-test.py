@@ -13,8 +13,8 @@ as a unit with no switch method is, it waited for that stop before starting agai
 2026-11-10 disk-guard's stop ran to its 90 s timeout, and the desktop had no launcher, notices
 or lock client all that time. Restarted, it was gone about a second each switch.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it, so any test runs alone.
 """
 
@@ -51,7 +51,7 @@ UNITS_OWN = frozenset(
     }
 )
 
-# How long the slow unit's stop takes (tests/desktop.nix).
+# How long the slow unit's stop takes (tests/desktop/desktop.nix).
 SLOW_STOP = 30
 
 

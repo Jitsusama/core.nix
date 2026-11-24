@@ -13,8 +13,8 @@ it. The programs are tests/stand-ins/pi-stand-in.sh, whose in-place modes stand 
 join and the viewer; how the real pi goes quiet and the real join decides are proven in the
 harness's own tests.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 
@@ -49,7 +49,8 @@ FRAMES = "/run/user/1000/move-frames"
 # Joel would see, as desktop-launcher-finds-sessions judges a spawn's.
 ENCODER_NOISE = 40
 CHANGED_SHARE = 500
-# Where the realm's holds keep their records, the realm being the one tests/desktop.nix gives.
+# Where the realm's holds keep their records, the realm being the one tests/desktop/desktop.nix
+# gives.
 HOLDS = "$XDG_RUNTIME_DIR/mycelium/harbour.held"
 # How long a step of the move may take on a loaded builder.
 STEP = dt.timedelta(seconds=60)

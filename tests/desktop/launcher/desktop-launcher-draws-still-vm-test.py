@@ -5,8 +5,8 @@ and marks. That it draws nothing left still, stands a selection on its row in an
 frame, draws it on its row and reads on a long name is proven on a nested niri, in
 modules/quickshell/tests/launcher-on-niri-test.py.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and waits at its start for what it needs, so any test runs alone.
 """
 

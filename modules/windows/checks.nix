@@ -36,7 +36,7 @@ onLinux {
   # Every window core opens says what it holds, rather than only which
   # program it is, which reads alike among the launcher's windows and in a
   # line said about one: the account's niri, nested in the sandbox
-  # (tests/nested-niri.sh), opens the account's reader on a page and a
+  # (tests/lib/nested-niri.sh), opens the account's reader on a page and a
   # kitty running the account's shell, and each title must say more than
   # its app id or any process in it (tests/every-window-says-what-it-holds.py).
   # The camera needs a device, so its real viewfinder's title is held in
@@ -81,7 +81,7 @@ onLinux {
         )}
         ln -s ${shell}/.zshrc ${shell}/.zshenv .
         printf '# Tides\n\nWhen the water comes in.\n' > tides.md
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests/every-window-says-what-it-holds.py} "reader $PWD/tides.md" kitty
         touch $out
       '';
@@ -128,7 +128,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests/closes-agents-password-prompts.py} ${lib.getExe told}
         touch $out
       '';

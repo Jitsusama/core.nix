@@ -11,8 +11,8 @@ shows whether the builder took the time or ran slow. That text a program types a
 searched once, and a Return among it acts on what it found, is proven on a nested niri, in
 modules/quickshell/tests/launcher-on-niri-test.py. Long because its keys, steps and openings
 are each timed against the same loaded desktop, and a split would boot it again.
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it.
 """
 

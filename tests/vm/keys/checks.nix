@@ -19,8 +19,8 @@ onLinux {
   vm-a-yubikey-answers-only-once-in = import ./yubikey-touch.nix { inherit self pkgs; };
   # A password an agent asks for reaches its one command only on Joel's own
   # keys, through the launcher, the shell and the passwords daemon, an area
-  # of the desktop's one machine (tests/desktop.nix).
-  vm-desktop-answers-secret-asks = import ../../desktop.nix {
+  # of the desktop's one machine (tests/desktop/desktop.nix).
+  vm-desktop-answers-secret-asks = import ../../desktop/desktop.nix {
     inherit self pkgs;
     area = "answers-secret-asks";
   };
