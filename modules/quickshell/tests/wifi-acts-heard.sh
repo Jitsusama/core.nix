@@ -5,7 +5,7 @@
 # wifid keys a join as verb:wifi-join whatever the network, so its line reads the same with
 # reports on: this guards that nothing typed into a join reaches the journal, not how the two
 # modes differ: a refusal with reports off is refusal-lines-heard.sh's, and with them on
-# refusalShown's in pacing.qml.
+# codeShown's in pacing.qml, which a join's refused line is said by.
 set -euo pipefail
 said=$1
 failed=0

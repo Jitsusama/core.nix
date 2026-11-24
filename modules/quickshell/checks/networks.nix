@@ -248,7 +248,8 @@ in
   # wifid's words (modules/quickshell/tests/wifi-acts.qml, read by
   # wifi-acts-heard.sh). How a refusal reads with reports off is
   # the-launcher-keeps-a-daemons-words-out-of-its-journal's, and with them on
-  # the-launcher-paces-its-refreshes' (refusalShown's cases in tests/pacing.qml).
+  # the-launcher-paces-its-refreshes' (codeShown's cases in tests/pacing.qml,
+  # which a join's refused line is said by, whatever the reports setting).
   wifi-asks-each-word-a-join-needs-first =
     wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml
       ../tests/wifi-acts-heard.sh;

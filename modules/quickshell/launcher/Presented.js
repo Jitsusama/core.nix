@@ -466,17 +466,20 @@ function whomShown(whom, whole) {
 
 // The session new work a link offered is from, by its address as Sprouting.js's offered gives it:
 // whole where `whole`, and otherwise by how many letters, as whomShown says a link's session, or
-// as none where the link named no session here.
+// as none where the link named no session here. Sprouting.js gives only an address it found, but
+// it's escaped as actShown's are all the same, so no address could break the line.
 function whenceShown(address, whole) {
     if (address === undefined) {
         return "from no session here";
     }
-    return whole ? `from ${address}` : `from a session, ${typedShown(address, false)}`;
+    return whole ? `from ${quoted(String(address)).slice(1, -1)}`
+        : `from a session, ${typedShown(address, false)}`;
 }
 
 // The rows a walk from outside or a terminal took, by their names where `whole`, and otherwise
 // each by its kind as rowShown says it, since a source named them, escaped as actShown's are,
-// since a launcher's own kind of key, as `place:`, is said whole to its 64th letter.
+// since a key of the launcher's own kinds, as `place:`, is said to its 64th letter, and a
+// daemon's row may be keyed so too: the escape stops its line breaks, never its letters.
 function pathShown(rows, whole) {
     return whole ? quoted(rows.map(row => row.name).join(" \u203a "))
         : quoted(rows.map(row => rowShown(row, false)).join(" \u203a ")).slice(1, -1);
