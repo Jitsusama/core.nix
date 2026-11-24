@@ -279,7 +279,7 @@ function ended(answer, said) {
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
         return answer.error.code === "unanswered" ? { started: false, unanswered: true, why }
-            : { started: false, why };
+            : { started: false, why, refusal: String(answer.error.refusal ?? "") };
     }
     return { started: false, why: String(said.unread ?? "") };
 }
@@ -359,7 +359,8 @@ const NEVER_TAKES = /^\S+ (?:lacks|isn't) |, (?:lacks|isn't) /u;
 // words for the two, is said again once the node runs; any other failure to
 // reach it isn't a node that's down. A refusal none of these knows is told in its own words alone.
 const ACTS = [
-    { says: /^it needs a repository to work in, /u, cut: /: say which, as `[^`]*`$/u,
+    { says: /^it needs a repository to work in, /u,
+        cut: /: say which, as `[^`]*`(?:; `mycelium places` lists the places)?$/u,
         act: "actRepository" },
     { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
         act: "actRepository" },
@@ -411,7 +412,8 @@ function acted(why, said) {
 const unplacedBy = why =>
     ACTS.find(one => one.act === "actRepository" && one.says.test(String(why ?? "")));
 function asksWhere(how) {
-    return how?.started === false && how.unanswered !== true && unplacedBy(how.why) !== undefined;
+    return how?.started === false && how.unanswered !== true
+        && (how.refusal === "needs_folder" || unplacedBy(how.why) !== undefined);
 }
 
 // Whether `launcher` may step Joel back to pick where act `key` starts: he's
@@ -429,10 +431,10 @@ function toldWhere(how, said) {
     const words = String(how.why ?? "");
     const known = unplacedBy(words);
     const where = String(said?.askedWhere ?? "");
-    if (known === undefined || where === "" || (known.cut !== null && !known.cut.test(words))) {
+    if (where === "" || (known?.cut && !known.cut.test(words))) {
         return told(how, said);
     }
-    return `${known.cut === null ? words : words.replace(known.cut, "")}; ${where}`;
+    return `${known?.cut ? words.replace(known.cut, "") : words}; ${where}`;
 }
 
 // What the act that ran says of how it ended, in `said`'s words: one

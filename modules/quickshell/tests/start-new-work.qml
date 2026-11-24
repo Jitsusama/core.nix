@@ -133,7 +133,11 @@ QtObject {
         Expect.same("refused, in the node's or the daemon's words",
             Sprouting.ended({ id: "ask-3", error: { code: "unsprouted",
                 message: "only the launcher starts new work here" } }, said),
-            { started: false, why: "only the launcher starts new work here" });
+            { started: false, why: "only the launcher starts new work here", refusal: "" });
+        Expect.same("refused with the node's code for it, which goes with its words",
+            Sprouting.ended({ error: { code: "unsprouted", message: "no folder",
+                refusal: "needs_folder" } }, said),
+            { started: false, why: "no folder", refusal: "needs_folder" });
         Expect.same("a node the daemon heard fall silent is unanswered, in its words",
             Sprouting.ended({ error: { code: "unanswered", message: "it may still start it" } },
                 said), { started: false, unanswered: true, why: "it may still start it" });
@@ -228,6 +232,11 @@ QtObject {
             refusal("it needs a repository to work in, and /home/j isn't one: say which, as "
                 + "`mycelium sprout --in <folder> ...`"),
             "it needs a repository to work in, and /home/j isn't one; start it In a repository");
+        Expect.same("and as a node that names its places says it",
+            refusal("it needs a repository to work in, and /home/j isn't one: say which, as "
+                + "`mycelium sprout --in <folder or place> ...`; `mycelium places` lists the "
+                + "places"),
+            "it needs a repository to work in, and /home/j isn't one; start it In a repository");
         Expect.same("one begun at home names the act, not the folder to name",
             refusal("a session begun in a home folder has none of its repository's skills: "
                 + "name the repository's folder"),
@@ -297,7 +306,9 @@ QtObject {
             { started: false, why: "nowhere: tern is out of reach" },
             { started: false, why: "this asks as a fence, so it runs only there: it needs a "
                 + "repository to work in" },
-            { started: false, why: "" }]) {
+            { started: false, why: "" },
+            { started: false, why: "no folder", refusal: "no_such_place" },
+            { started: false, unanswered: true, why: "no folder", refusal: "needs_folder" }]) {
             Expect.same(`any other end asks nowhere: ${JSON.stringify(how).slice(0, 48)}`,
                 Sprouting.asksWhere(how), false);
         }
@@ -309,6 +320,11 @@ QtObject {
             Sprouting.toldWhere({ started: false, why: unskilled }, said),
             "a session begun in a home folder has none of its repository's skills; "
                 + "pick where it starts below; your words go with it");
+        // The node codes it needs_folder, whatever its words (mycelium's Refused).
+        const coded = { started: false, why: "say where it starts", refusal: "needs_folder" };
+        Expect.same("one the node codes as needing a folder asks where in any words",
+            [Sprouting.asksWhere(coded), Sprouting.toldWhere(coded, said)],
+            [true, "say where it starts; pick where it starts below; your words go with it"]);
         const stillIn = { open: true, asking: { key: "link" }, lettersAt: 7 };
         Expect.same("he's stepped back while still in the act's emptied field",
             Sprouting.stepsBack(stillIn, "link", 7, 2), true);
