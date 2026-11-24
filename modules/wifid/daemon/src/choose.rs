@@ -765,6 +765,17 @@ impl Chooser {
         lasts
     }
 
+    /// Keeps off an access point a trial from `from` went back from, for as
+    /// long as `spurn_for` says, yielding to a failing link or not.
+    fn spurn(&mut self, point: &str, from: &str, yields: bool, now: Instant) {
+        let kept = Kept {
+            until: now + self.spurn_for(point, now),
+            yields,
+            from: Some(from.to_owned()),
+        };
+        self.spurned.insert(point.to_owned(), kept);
+    }
+
     /// How long from now the card keeps off this access point, if it does.
     pub fn kept_for(&self, point: &str, now: Instant) -> Option<Duration> {
         self.spurned
@@ -974,13 +985,7 @@ impl Chooser {
         let usual = matches!(why, Against::Usually(_));
         let again = usual && self.usually.insert(moved, now).is_some();
         if again || !usual {
-            let lasts = self.spurn_for(point, now);
-            let kept = Kept {
-                until: now + lasts,
-                yields: again,
-                from: Some(trial.from.clone()),
-            };
-            self.spurned.insert(point.to_owned(), kept);
+            self.spurn(point, &trial.from, again, now);
         }
         self.moved = Some(now);
         self.went_back = Some(why);
