@@ -150,6 +150,13 @@ pub struct Holding {
     /// before this one with one: what each was held with, as a pi held
     /// past [`crate::focus::MOST`] gets none.
     hard: HashSet<PathBuf>,
+    /// The scopes in `hard` only as their memory.min couldn't be read:
+    /// each counts against the others, but keeps no floor of its own
+    /// until it's held again.
+    unread: HashSet<PathBuf>,
+    /// The hard floors hosts keep only as their give-back failed
+    /// ([`crate::hosts::Hosts::hard_left`]), which count against the pis'.
+    pub elsewhere: usize,
     /// Whether a failure to hold a window has been said.
     pub failed: bool,
 }
@@ -170,7 +177,9 @@ impl Holding {
     /// keep theirs. So only a scope this sorter would hold hard counts, a
     /// window's own never, whatever memory.min it reads; and one whose
     /// memory.min can't be read counts, as a failed give-back does, so
-    /// no floor past the three is given while it might still be set.
+    /// no floor past the three is given while it might still be set. It
+    /// counts for the others only: it's given a floor of its own only
+    /// while fewer than three others keep theirs, or a fourth would be.
     pub fn left(
         scopes: impl IntoIterator<Item = PathBuf>,
         floor: impl Fn(&Path) -> Option<u64>,
@@ -178,12 +187,19 @@ impl Holding {
         pis: &[String],
     ) -> Self {
         let mut holding = Self::taken_up(scopes, |scope| floor(scope) == Some(FLOOR));
-        holding.hard = holding
-            .held
-            .iter()
-            .filter(|scope| hard_for(scope, pis) > 0 && min(scope).is_none_or(|min| min > 0))
-            .cloned()
-            .collect();
+        // Each memory.min is read once, so a scope can't be both kept hard and read keeping none.
+        for scope in holding.held.iter().filter(|scope| hard_for(scope, pis) > 0) {
+            match min(scope) {
+                Some(0) => {}
+                Some(_) => {
+                    holding.hard.insert(scope.clone());
+                }
+                None => {
+                    holding.hard.insert(scope.clone());
+                    holding.unread.insert(scope.clone());
+                }
+            }
+        }
         holding
     }
 
@@ -202,6 +218,8 @@ impl Holding {
         Self {
             again: held.clone(),
             hard: HashSet::new(),
+            unread: HashSet::new(),
+            elsewhere: 0,
             held,
             failed: false,
         }
@@ -212,7 +230,7 @@ impl Holding {
     /// free for a hold after it. A pi held without the hard floor it
     /// would have is held again once one is free.
     pub fn changes(&self, wanted: &[PathBuf], pis: &[String]) -> Vec<(PathBuf, bool)> {
-        let free = self.hard.len() < crate::focus::MOST;
+        let free = self.hard.len() + self.elsewhere < crate::focus::MOST;
         let hold = wanted
             .iter()
             .filter(|scope| {
@@ -233,6 +251,7 @@ impl Holding {
     /// given back.
     pub fn done(&mut self, scope: &Path, held: Option<u64>) {
         self.again.remove(scope);
+        self.unread.remove(scope);
         if held.is_some() {
             self.held.insert(scope.to_path_buf());
         } else {
@@ -267,9 +286,12 @@ impl Holding {
     /// while one fails, more than `MOST` may hold one, past what the
     /// assertion over agents.slice's floor allows, and the kernel shares
     /// that floor among them until the give-back lands: meant, and brief.
+    /// One whose memory.min couldn't be read keeps none it isn't known to
+    /// have, so it's given one only as any other pi is.
     pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
-        let others = self.hard.iter().filter(|held| *held != scope).count();
-        if self.hard.contains(scope) || others < crate::focus::MOST {
+        let others = self.hard.iter().filter(|held| *held != scope).count() + self.elsewhere;
+        let keeps = self.hard.contains(scope) && !self.unread.contains(scope);
+        if keeps || others < crate::focus::MOST {
             hard_for(scope, pis)
         } else {
             0
@@ -281,6 +303,7 @@ impl Holding {
         self.held.retain(|scope| there(scope));
         self.again.retain(|scope| there(scope));
         self.hard.retain(|scope| there(scope));
+        self.unread.retain(|scope| there(scope));
     }
 }
 
@@ -563,6 +586,91 @@ mod tests {
              the three is given"
         );
         assert_eq!(holding.hard_floor(&pi(4), &pis), 0, "a fourth pi gets none");
+    }
+
+    #[test]
+    fn a_taken_up_pi_whose_memory_min_cant_be_read_gets_no_floor_past_three() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        let unread = pi(4);
+        let min = |scope: &Path| (scope != unread).then_some(HARD);
+        let mut holding = Holding::left([pi(1), pi(2), pi(3), pi(4)], |_| Some(FLOOR), min, &pis);
+        assert_eq!(
+            holding.hard_floor(&pi(4), &pis),
+            0,
+            "the pi whose floor can't be read gets none of its own while three others keep \
+             theirs"
+        );
+        assert_eq!(
+            holding.hard_floor(&pi(1), &pis),
+            HARD,
+            "a pi read keeping its floor keeps it beside one that can't be read"
+        );
+        let fewer = Holding::left([pi(1), pi(4)], |_| Some(FLOOR), min, &pis);
+        assert_eq!(
+            fewer.hard_floor(&pi(4), &pis),
+            HARD,
+            "with fewer than three others it gets its floor"
+        );
+        holding.done(&pi(4), Some(HARD));
+        assert_eq!(
+            holding.hard_floor(&pi(4), &pis),
+            HARD,
+            "and once held with one, it keeps it beside three others"
+        );
+    }
+
+    #[test]
+    fn a_pis_memory_min_is_read_once_so_it_cant_count_both_ways() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        // pi(4)'s memory.min can't be read the first time, and reads none after.
+        let reads = std::cell::Cell::new(0);
+        let min = |scope: &Path| {
+            if scope != pi(4) {
+                return Some(HARD);
+            }
+            reads.set(reads.get() + 1);
+            (reads.get() > 1).then_some(0)
+        };
+        let holding = Holding::left([pi(1), pi(2), pi(3), pi(4)], |_| Some(FLOOR), min, &pis);
+        assert_eq!(
+            (reads.get(), holding.hard_floor(&pi(4), &pis)),
+            (1, 0),
+            "read once, as unread, it counts against the others and keeps none of its own"
+        );
+    }
+
+    #[test]
+    fn a_hard_floor_a_hosts_failed_give_back_keeps_counts_against_the_pis() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        let mut holding = Holding::default();
+        holding.done(&pi(1), Some(HARD));
+        holding.done(&pi(2), Some(HARD));
+        holding.done(&pi(3), Some(0));
+        holding.elsewhere = 1;
+        assert_eq!(
+            holding.hard_floor(&pi(3), &pis),
+            0,
+            "a third pi gets none while a host still keeps a share it couldn't give back"
+        );
+        assert_eq!(
+            holding.changes(&[pi(1), pi(2), pi(3)], &pis),
+            [],
+            "and the pi held without one isn't held again for one"
+        );
+        holding.elsewhere = 0;
+        assert_eq!(
+            holding.hard_floor(&pi(3), &pis),
+            HARD,
+            "once the host's share is given back, the third pi gets one"
+        );
+        assert_eq!(
+            holding.changes(&[pi(1), pi(2), pi(3)], &pis),
+            [(pi(3), true)],
+            "and is held again for it"
+        );
     }
 
     #[test]
