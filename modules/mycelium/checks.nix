@@ -1707,7 +1707,7 @@ in
           # lend.nix's budget kind option, as the module takes it.
           kindOption =
             let
-              budgets = ((import ./lend.nix { inherit lib; }).getSubOptions [ ]).budgets;
+              inherit ((import ./lend.nix { inherit lib; }).getSubOptions [ ]) budgets;
             in
             (budgets.type.nestedTypes.elemType.getSubOptions [ ]).kind;
           # A lend leaving also and kind to their defaults, with a forge
