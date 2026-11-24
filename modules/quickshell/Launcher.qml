@@ -10144,6 +10144,11 @@ Scope {
             // Whether it's drawn from what it kept, not yet filled in.
             opening: root.opening,
             keys: root.open && prompt.Window.active,
+            // How many keys the line has taken, so a test sees one read before
+            // it presses the next: keys read in one turn are read together,
+            // and a move read with the Return after it times no ask's line
+            // (secret-asks/Shown.js's keyed).
+            taken: prompt.keysTaken,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).

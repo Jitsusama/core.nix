@@ -123,12 +123,25 @@ def put_up(desktop: Desktop, ask: str, why: str) -> None:
     )
 
 
-def answered(desktop: Desktop, ask: str) -> dict[str, object]:
-    """Give an ask's answer, once the daemon has written it."""
+def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
+    """Give an ask's answer, once the daemon has written it, or say what the shell said of it.
+
+    `since` is a mark of the shell's journal from before the key that answers it, as say_yes
+    gives, so an answer that never comes names the shell's refusal after that key, as unread or
+    changed, rather than only the time it waited.
+    """
     path = f"{ASKS}/{ask}.answer.json"
-    desktop.machine.wait_until_succeeds(
-        desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
-    )
+    try:
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
+        )
+    except AssertionError as unanswered:
+        said = desktop.as_account(
+            "journalctl --user -u quickshell --no-pager -o cat"
+            f" --after-cursor={shlex.quote(since)} | grep -a -F 'ask:{ask}' || true"
+        )
+        message = f"the ask was never answered; the shell said of it: {said.strip() or 'nothing'}"
+        raise AssertionError(message) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
     return answer
 
@@ -222,11 +235,15 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # find, where the launcher opens, an arrow could be a terminal's.
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
-    # Nothing the launcher reports shows j taken, but a j not read leaves the line untimed and
-    # the yes refused, so the release below is what proves it.
+    # A j not read leaves the line untimed and the yes refused, so the release below is what
+    # proves it was. It's seen taken before Return goes, since keys read in one turn are read
+    # together, and a move read with the Return after it times nothing (secret-asks/Shown.js's
+    # keyed): sent ten milliseconds apart, a busy shell read them so in 3 of 54 runs.
+    taken = desktop.showing()["taken"]
     desktop.machine.send_chars("j")
-    say_yes(desktop)
-    answer = answered(desktop, ask)
+    desktop.launcher_until(lambda shown: shown["taken"] > taken)
+    since = say_yes(desktop)
+    answer = answered(desktop, ask, since)
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
     given = desktop.as_account(f"cat {TREE}/released").split()[0]
     assert given == hashlib.sha256(STAND_IN.encode()).hexdigest(), "the command wasn't given it"
@@ -257,8 +274,9 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     why = "To glaze the pots."
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
+    pressed = desktop.mark()
     refuse_on(desktop, why)
-    answer = answered(desktop, ask)
+    answer = answered(desktop, ask, pressed)
     assert (answer["state"], answer["why"]) == ("refused", "refused by Joel"), answer
     desktop.as_account(f"! test -e {TREE}/released")
     # Return on the line once answered only closes, as on any row that only says something,
