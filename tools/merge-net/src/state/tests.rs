@@ -241,6 +241,62 @@ fn an_excused_failure_is_kept_apart_from_a_pass() {
     );
 }
 
+// The journal is read a line at a time, so a line that isn't UTF-8 ends
+// the read there unless it's read lossily; read whole, it hid every run.
+#[test]
+fn a_line_that_is_not_utf8_hides_no_run_after_it() {
+    let state = state("not-utf8");
+    let log = state.log("aaaa", "vm-a", 1);
+    state
+        .record("aaaa", "vm-a", Ran::Failed, Some(1), &log, 30)
+        .unwrap();
+    fs::OpenOptions::new()
+        .append(true)
+        .open(state.root.join("results.jsonl"))
+        .unwrap()
+        .write_all(b"{\"commit\":\"aaaa\",\"check\":\"\xff\"}\n")
+        .unwrap();
+    state
+        .record("aaaa", "vm-a", Ran::Passed, Some(0), &log, 600)
+        .unwrap();
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![Ran::Failed, Ran::Passed],
+        "the pass after the line that isn't UTF-8 was lost"
+    );
+    assert_eq!(
+        state.lasted().get("vm-a"),
+        Some(&600),
+        "how long vm-a takes was lost past the line that isn't UTF-8"
+    );
+}
+
+// A line is passed over unparsed unless it names the commit, but naming it
+// is no run of it: only the line whose own commit it is counts.
+#[test]
+fn a_line_naming_the_commit_elsewhere_is_no_run_of_it() {
+    let state = state("named-elsewhere");
+    let elsewhere = state.log("aaaa", "vm-a", 1);
+    state
+        .record("bbbb", "vm-a", Ran::Passed, Some(0), &elsewhere, 600)
+        .unwrap();
+    assert!(
+        elsewhere.to_string_lossy().contains("aaaa"),
+        "the case needs bbbb's line to name aaaa in its log: {}",
+        elsewhere.display()
+    );
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![],
+        "bbbb's run counted as aaaa's, since its log names aaaa"
+    );
+    assert_eq!(
+        state.runs("bbbb", "vm-a"),
+        vec![Ran::Passed],
+        "bbbb's own run was lost"
+    );
+}
+
 #[test]
 fn a_run_is_kept_by_its_commit_and_check() {
     let state = state("runs");
