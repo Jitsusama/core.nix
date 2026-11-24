@@ -9,7 +9,8 @@ does, so each one says why.
 
 The page is built into cadence, and every hour holds the card to it. A measure on the card
 that no section names, or whose target differs from the one written here, is counted in
-`measures-undefined`, and its keeper is asked to write its line. Every target is a most: lower is better for each.
+`measures-undefined`, and its keeper is asked to write its line. Every target is a most: lower
+is better for each.
 
 Each section names its measures' keys, a key ending in `*` naming every key that opens the
 same way. A target that opens with a number is the one the hour must hold the measure to; one
