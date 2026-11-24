@@ -44,15 +44,17 @@ const ANSWER: Duration = Duration::from_secs(10);
 const FRAMES: &str = "5";
 /// How many frames are passed over first: a relay hands its splash to the
 /// loopback until it hears a reader, then stops it before the camera's
-/// setup, so only the first frames may be the splash. Three seconds of
-/// them at 30 a second gives a loaded relay time to hear the reader,
-/// while a camera whose first frame takes 40 s needs only a little over
-/// a frame a second after it to give the rest inside the wait.
-const SPLASH: &str = "90";
-/// How long systemd is given to say which run the relay is on, each time
-/// it's asked: six asks at most keep the whole check inside its unit's
-/// four minutes.
-const SHOWN: Duration = Duration::from_secs(5);
+/// setup, so only the first frames may be the splash. Five seconds of
+/// them at 30 a second gives a relay whose main loop is slowed by load
+/// time to hear the reader, while a camera whose first frame takes 40 s
+/// needs only about two frames a second after it to give the rest inside
+/// the wait.
+const SPLASH: &str = "150";
+/// How long systemd is given to say which run the relay is on: a quick
+/// ask, then one given twice as long, since an answer slowed by load can
+/// take longer than the first allows and a fresh ask starts it over. The
+/// 15 s a side keep the whole check inside its unit's four minutes.
+const SHOWN: [Duration; 2] = [Duration::from_secs(5), Duration::from_secs(10)];
 /// How long a meeting's check is remembered, so each is checked once.
 const KEPT_MS: u64 = 24 * 60 * MIN_MS;
 
@@ -128,10 +130,12 @@ const RELAY: &str = "camera.service";
 
 /// The relay's run, by systemd's id for it, empty on a machine with no
 /// such unit or none running, or nothing when systemd couldn't be asked,
-/// as under the load that stalls a camera, after asking three times.
+/// as under the load that stalls a camera, after asking twice.
 pub fn relay_run() -> Option<String> {
     let args = ["show", "--value", "--property=InvocationID", RELAY].map(String::from);
-    (0..3).find_map(|_| said("systemctl", &args, SHOWN))
+    SHOWN
+        .iter()
+        .find_map(|&deadline| said("systemctl", &args, deadline))
 }
 
 /// What `program` printed, trimmed, once it exits 0 inside `deadline`, or
@@ -623,7 +627,7 @@ mod tests {
         let read = asked(Path::new("/dev/video32"), true);
         assert_eq!(
             read.join(" "),
-            "--device /dev/video32 --stream-mmap --stream-skip 90 --stream-count 5 \
+            "--device /dev/video32 --stream-mmap --stream-skip 150 --stream-count 5 \
              --stream-to /dev/null",
             "a loopback's frames weren't all sent to /dev/null"
         );
