@@ -642,10 +642,16 @@ QtObject {
             false);
         expect("nor what can't be read", Looks.settledAlike(shown, "{"), false);
         // The cell a look naming none is led by (Looks.js's cellNamed) is
-        // never written as its own, as the daemon writes none.
+        // never written as its own, as the daemon writes none, even once
+        // the look History holds has been led by it, so leading one never
+        // keeps the cell it worked out on the look.
         const unnamed = Object.assign({}, read.waiting[1], { cell: undefined,
             session: "01a1dd5c-1372-7422-ab6f-f984e1921aab" });
-        expect("a look naming no cell is written naming none",
+        const goesBy = { address: "E1921AAB", presence: { session: unnamed.session,
+            quest: unnamed.quest } };
+        Looks.cellFor(unnamed, { "agent-cell:agents:E1921AAB": { cell: "E1921AAB",
+            goes: "E1921AAB" } }, [goesBy], []);
+        expect("a look naming no cell, once led, is written naming none",
             "cell" in JSON.parse(Looks.rewritten(unnamed, "cleared", "cleared", now)), false);
         expect("a cell the look names is written as its own",
             JSON.parse(Looks.rewritten(Object.assign({}, unnamed, { cell: "BBBBBB" }),
