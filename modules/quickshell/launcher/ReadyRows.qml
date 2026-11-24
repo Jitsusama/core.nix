@@ -441,6 +441,11 @@ Scope {
     // shuts, and only while its words are what's searched, so a backspace to words whose
     // answer is held lets it go.
     property var lost: null
+    // The words last asked again at a hello, till they're answered or other words are
+    // searched. Lost again, they wait for the next key, so a search that is what takes the
+    // daemon down isn't asked at every restart till systemd gives the unit up.
+    property string reasked: ""
+
     // Whether the daemon said it can't search, so a place that can matches
     // its rows itself, as it did before, said once in the journal. It's
     // asked again a minute on, as a daemon an old shell asked while a
@@ -459,6 +464,8 @@ Scope {
     function search(words, most) {
         if (lost !== null && lost.words !== words)
             lost = null;
+        if (reasked !== words)
+            reasked = "";
         if (found.words === words)
             return found;
         const asks = !searchless || Date.now() - searchlessAt > searchlessFor;
@@ -483,16 +490,18 @@ Scope {
                 return;
             const was = ready.lost;
             ready.lost = null;
+            ready.reasked = was.words;
             ready.search(was.words, was.most);
         }
     }
 
     // How the search stands, for a check that fails waiting on it to say why: what's asked,
-    // the words of the answer held, what waits for the daemon to come back, and the link's
-    // finds unanswered.
+    // the words of the answer held, what waits for the daemon to come back or was asked again
+    // as it did, and the link's finds unanswered.
     function searchState() {
         return {
             asking,
+            reasked,
             found: found.words,
             lost: lost?.words ?? null,
             ended: searchesEnded,
@@ -514,6 +523,7 @@ Scope {
         letFoundGo();
         asking = "";
         lost = null;
+        reasked = "";
         searchesEnded += 1;
         typedAgain();
     }
@@ -529,7 +539,7 @@ Scope {
     // An answer taken, even one to words typed over since, unless it was
     // asked before the search last ended. One that didn't come, the daemon
     // gone, is asked again once it's back (`lost`), if it's still what's
-    // asked and the rows are drawn.
+    // asked and the rows are drawn, and only once (`reasked`).
     function answered(words, answer, ending, most) {
         if (ending !== searchesEnded)
             return;
@@ -537,10 +547,15 @@ Scope {
         if (awaited)
             asking = "";
         if (answer === null) {
-            if (awaited && drawn)
+            if (awaited && drawn && reasked !== words)
                 lost = { words, most };
+            else if (awaited && drawn)
+                console.warn(`launcher: ${place}'s search went unanswered again once asked `
+                    + "again, left for the next key");
             return;
         }
+        if (reasked === words)
+            reasked = "";
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `
@@ -1368,6 +1383,7 @@ Scope {
         saying = {};
         filling = null;
         lost = null;
+        reasked = "";
     }
 
     // The rows whose words the clock has moved on since they were made,
