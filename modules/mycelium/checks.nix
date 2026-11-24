@@ -64,6 +64,7 @@ let
       {
         prefix = "agents-";
         budget = "models";
+        also = [ ];
         requests_a_day = 500;
       }
     ];
@@ -74,12 +75,14 @@ let
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
         key = [ "${modelsKey}" ];
+        kind = "models";
       };
       keyless = {
         upstream = "other-relay/agents.sock";
         host = "other.example";
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
+        kind = "models";
       };
     };
   };
@@ -1551,6 +1554,7 @@ in
             Vm = {
               prefix = "String";
               budget = "String";
+              also = "Vec<String>";
               requests_a_day = "u64";
             };
             Budget = {
@@ -1559,6 +1563,7 @@ in
               paths = "Vec<String>";
               auth_header = "String";
               key = "Option<Vec<String>>";
+              kind = "Kind";
             };
           };
           # Refused by the assertion whose message starts so, and by it.
@@ -1624,6 +1629,10 @@ in
         && refuses (
           lending // { vms = [ (vm // { budget = "none"; }) ]; }
         ) "jitsusama.mycelium.lend.vms names a budget"
+        && refuses (
+          lending // { vms = [ (vm // { also = [ "none" ]; }) ]; }
+        ) "jitsusama.mycelium.lend.vms names a budget"
+        && takes (lending // { vms = [ (vm // { also = [ "keyless" ]; }) ]; })
         && refuses (
           lending
           // {
