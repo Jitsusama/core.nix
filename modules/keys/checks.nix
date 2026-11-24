@@ -508,8 +508,9 @@ in
   keys-speak-the-language =
     let
       # A workstation with a desktop has every layer, Neovim's among them,
-      # and inlyne's put back, which only the Mac reads with, so its keys
-      # are held here too.
+      # and inlyne's put back, which only the Mac reads with, so its
+      # arrows, its Escape and the keys it gives an act are held here too;
+      # the rest, q doing nothing among them, its own build test holds.
       machine = bareNixos [
         self.nixosModules.workstation
         self.nixosModules.graphical

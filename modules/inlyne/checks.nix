@@ -170,8 +170,8 @@ onLinux {
         printf '# A Sheet\n\nTo read.\n' > sheet.md
         printf '999999\t/gone.md\n' > state/inlyne/showing/999999
         : > state/inlyne/showing/.999999
-        # ZZ is typed as Shift held over z twice, as swayimg's is: inlyne reads a key by its
-        # code, and wtype puts an upper-case Z on a code of its own, with no Shift.
+        # ZZ is typed as Shift held over z twice, as swayimg's is: inlyne names a key by what
+        # it types, and wtype's upper-case Z types Z with no Shift held, which Shift+z needs.
         timeout 300 cage -- $BASH ${../../tests/lib/says-what-it-has-open.sh} \
           --closed-by '-M shift zz -m shift' sheet.md inlyne view -- ${opened} > ran 2>&1 || true
         if [ ! -e passed ]; then cat ran; exit 1; fi

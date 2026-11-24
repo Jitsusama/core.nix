@@ -18,8 +18,8 @@
 # Up a screen, gg and G or Home and End the top and the bottom, Ctrl+O and
 # Ctrl+I back and forward through the pages followed, Ctrl and + or - larger
 # and smaller and Ctrl+0 as it was, Ctrl+C copies what's selected, :q and
-# Return, ZZ or Space w close it, as Vim's close a window, and F1 opens a
-# page saying all of them, which Ctrl+O leaves. q alone does
+# Return, ZZ or Space w close it, as Vim's close a window, and Space ? or F1
+# opens a page saying all of them, which Ctrl+O leaves. q alone does
 # nothing, since nothing records, and Escape nothing, which closes nothing
 # of ours (docs/design.md, Vi's Keys); inlyne has no command line, so :q is
 # a sequence its keys wait out. Six patches give it what it lacked: a
@@ -248,10 +248,24 @@ let
         action = "Copy";
         does = "Copy what's selected";
       }
-      # ? alone searches up the page, as Vim's, which inlyne can't, and
-      # Space ? can't be bound: its window library names no key for ?, so
-      # inlyne hears Shift+/ on Wayland only by its scan code, which its
-      # settings can't name. F1 is the language's other key for the page.
+      # ? alone searches up the page, as Vim's, which inlyne can't. Space ?
+      # is heard as Shift+/ on the Mac, the only machine that reads with
+      # inlyne; on Wayland, where only its checks run, its window library
+      # names no key for ?, so there F1, the language's other key, opens it.
+      {
+        sequence = [
+          [ "Space" ]
+          [
+            "Shift"
+            "/"
+          ]
+        ];
+        says = "Space ?";
+        spelled = "Space ?";
+        act = "show-keys";
+        action = "Keys";
+        does = "The reader's keys";
+      }
       {
         chord = [ "F1" ];
         act = "show-keys";
