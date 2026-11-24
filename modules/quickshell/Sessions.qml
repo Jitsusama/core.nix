@@ -643,11 +643,15 @@ Singleton {
     }
     // Whether a viewer `named` is held back, as one asked for moments ago
     // that niri hasn't listed yet (viewerComing), said opening. Asked
-    // only once a listed viewer would have been raised.
+    // only once a listed viewer would have been raised. Each caller is a
+    // press of Joel's, so the viewer takes the focus once it comes, as Go
+    // To's own would (focusOpened), though it was first asked for into a
+    // kept place without it.
     function heldBack(id, named, said) {
         if (!viewerComing(named))
             return false;
         console.info(`sessions: ${id} not viewed again, since its viewer is asked for already`);
+        goingTo = { app: named, at: Date.now(), from: Niri.focused };
         unhosted(said, "opening");
         return true;
     }
