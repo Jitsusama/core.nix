@@ -920,6 +920,9 @@ impl Pinner {
         {
             eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
         }
+        if uplink.is_none() {
+            self.pinning.no_primary();
+        }
         let unnamed = uplink.is_some_and(|(_, network)| pin::unnamed(network));
         self.unnamed_since = unnamed.then(|| self.unnamed_since.unwrap_or(now));
         if let Some(since) = self.unnamed_since

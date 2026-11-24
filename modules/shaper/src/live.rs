@@ -696,6 +696,34 @@ mod tests {
         );
     }
 
+    // A download gone quiet under its cut, the cut still held, isn't said
+    // full once the cut is a few seconds old: the seam the room reads, so
+    // going back to "the controller holds" fails here (shaper holds round
+    // 3's F8).
+    #[test]
+    fn a_cut_held_over_a_download_gone_quiet_doesn_t_say_the_line_is_full() {
+        let mut lines = queued();
+        let filled = 2_500_000 * 60;
+        for i in 60..140_u64 {
+            lines.push(stamp(NOV3 + 100 * (i + 1), 10.0, filled + 2_500 * (i - 59)));
+        }
+        let follow = followed(&lines);
+        let now = follow
+            .last_at
+            .expect("a second stepped on")
+            .saturating_mul(1_000);
+        let carried = follow.carried(now).expect("a fresh second carried nothing");
+        assert!(
+            follow.controller.down.limit().is_some(),
+            "the cut wasn't held eight quiet seconds on"
+        );
+        assert!(
+            !carried.cut,
+            "a download gone quiet under a cut eight seconds old was judged full: {} kbit/s",
+            carried.kbit
+        );
+    }
+
     #[test]
     fn a_queue_standing_on_the_recorders_link_is_cut_live() {
         let follow = followed(&queued());

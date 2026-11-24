@@ -329,7 +329,18 @@ class Rig:
                 if unanswered(results[name])
                 and (sent[name] > heard[name] or replied[name] > came[name])
             ]
-            failed = [name for name in held if "error" in results[name] and name not in lost]
+            # A connect the server heard and left unanswered may be iperf3 racing its own next
+            # listener, so that call is made again too, though nothing was lost on the way.
+            unheeded = [
+                name
+                for name in held
+                if unanswered(results[name]) and name not in lost and heard[name] > replied[name]
+            ]
+            failed = [
+                name
+                for name in held
+                if "error" in results[name] and name not in lost and name not in unheeded
+            ]
             said = {
                 name: handshake(sent[name], heard[name], replied[name], came[name]) for name in held
             }
@@ -340,11 +351,12 @@ class Rig:
             down = [name for name in lost if replied[name] > came[name]]
             # A call that ran in a try made again would go unjudged, so one past the bar keeps it.
             over = over_the_bar(results, [name for name in held if name not in lost])
-            if not lost or failed or over or (down and dropped) or made == HANDSHAKES:
+            again = lost + unheeded
+            if not again or failed or over or (down and dropped) or made == HANDSHAKES:
                 break
             print(
-                f"the {', '.join(lost)} call's handshake went unanswered,"
-                f" {'; '.join(said[name] for name in lost)}, with the IFB dropping {dropped}"
+                f"the {', '.join(again)} call's handshake went unanswered,"
+                f" {'; '.join(said[name] for name in again)}, with the IFB dropping {dropped}"
                 " in the calls' tins, so the calls are made again"
             )
         for name in lost:
@@ -355,7 +367,7 @@ class Rig:
         # A call unanswered with nothing lost on the way fails as iperf3's own error, the
         # counts beside it saying whether the server left a connect unanswered or the client
         # never took a reply that came.
-        for name in failed:
+        for name in failed + unheeded:
             if unanswered(results[name]):
                 results[name]["error"] += f" ({said[name]}, so no datagram was lost between them)"
         return results

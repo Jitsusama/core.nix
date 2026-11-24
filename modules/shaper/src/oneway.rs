@@ -137,8 +137,12 @@ const DRIFT: f64 = 0.01;
 /// What share of its rate counts as full, and what as low.
 const FULL: f64 = 0.75;
 /// How lately a direction was cut for its hold still to say the line is
-/// full (`Way::judged_full`), in seconds: a call's download hold reads
-/// the cut a few seconds late (src/room.rs).
+/// full (`Way::judged_full`), in seconds: the seconds after a fed cut,
+/// when the download may back off under `FULL` of its new rate as its
+/// queue drains, before it fills the rate again, so a call starting then
+/// still holds the download that was cut (src/room.rs). It's counted
+/// from the second the recorder stepped on, not from when the room
+/// reads it (shaper holds round 3's F3).
 const CUT_LATELY_S: f64 = 5.0;
 /// How many of the connection's rates the base is the median of.
 const LEARNED: usize = 10;
@@ -2961,12 +2965,18 @@ mod tests {
             way.judged_full(after + 0.1, full),
             "a download filling its hold past the cut's few seconds wasn't full"
         );
-        // The few seconds are pinned in seconds, not in the constant, so a
-        // longer window that would hold a call's download for a cut over
-        // one gone quiet fails here (shaper holds round 2's F3 and F8).
+        // The few seconds are pinned in seconds, not in the constant, from
+        // both sides: a window of 6 s or more would hold a call's download
+        // for a cut over one gone quiet, and one under 4 s would miss the
+        // seconds a cut download carries under its new rate (shaper holds
+        // round 2's F3 and F8, round 3's F2, F9 and F13).
         assert!(
             !way.judged_full(16.0, 0.0),
             "a cut 6 s ago over a download gone quiet was still full"
+        );
+        assert!(
+            way.judged_full(14.0, 0.0),
+            "a cut 4 s ago no longer said the line was full"
         );
         let mut sliver = Way::new(Some(100_000.0));
         sliver.cut(10.0, 40.0, 1_000.0, true);
