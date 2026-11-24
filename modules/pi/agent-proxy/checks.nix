@@ -76,6 +76,72 @@
         && !(plain.systemd.user.sockets ? pi-agent-proxy)
         && !(mac.systemd.user.services ? pi-agent-proxy)
       );
+
+  # Where the proxy runs, it makes a key for the OS Login hosts gcloud
+  # knows, starting with the session so the key is there for an agent's
+  # first ssh; the account's gcloud registers each key it writes, renews it
+  # every four hours and takes it out as the proxy stops; and the machine's
+  # ssh offers it to every compute.<id> host. Null known hosts turns it off.
+  # The registering script is run against a stand-in gcloud
+  # (os-login-test.sh).
+  pi-agent-proxy-reaches-os-login-hosts =
+    let
+      key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+      proxying = osLoginHosts: {
+        home-manager.sharedModules = [
+          {
+            jitsusama.pi.agentProxy = {
+              machines = [ key ];
+              upstreams = [ "%t/agents.sock" ];
+              inherit osLoginHosts;
+            };
+          }
+        ];
+      };
+      machine = bareNixos [
+        self.nixosModules.workstation
+        (proxying "%h/.ssh/google_compute_known_hosts")
+      ];
+      home = account machine;
+      off = account (bareNixos [
+        self.nixosModules.workstation
+        (proxying null)
+      ]);
+      proxy = home.systemd.user.services.pi-agent-proxy;
+      start = lib.head (lib.toList proxy.Service.ExecStart);
+      stop = lib.head (lib.toList proxy.Service.ExecStopPost);
+      register = lib.head (
+        lib.toList home.systemd.user.services.pi-agent-proxy-os-login.Service.ExecStart
+      );
+      offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
+      wired =
+        holds "pi-agent-proxy-reaches-os-login-hosts-wired"
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts, or one with them null, isn't started with the session, its key isn't registered when written, renewed every four hours or removed as it stops, or the machine's ssh doesn't offer it to compute.* hosts."
+          (
+            lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
+            && lib.toList proxy.Install.WantedBy == [ "default.target" ]
+            && lib.hasPrefix "-" stop
+            && lib.hasSuffix "/bin/pi-agent-proxy-os-login remove %t/pi-agent/os-login.pub" stop
+            && lib.hasSuffix "/bin/pi-agent-proxy-os-login register %t/pi-agent/os-login.pub" register
+            &&
+              lib.toList home.systemd.user.paths.pi-agent-proxy-os-login.Path.PathChanged == [
+                "%t/pi-agent/os-login.pub"
+              ]
+            && home.systemd.user.timers.pi-agent-proxy-os-login.Timer.OnUnitActiveSec == "4h"
+            && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub" machine.config.programs.ssh.extraConfig
+            && !(lib.hasInfix "--os-login" offStart)
+            && !(off.systemd.user.services ? pi-agent-proxy-os-login)
+            && !(off.systemd.user.paths ? pi-agent-proxy-os-login)
+            && !(off.systemd.user.timers ? pi-agent-proxy-os-login)
+          );
+    in
+    pkgs.runCommandLocal "pi-agent-proxy-reaches-os-login-hosts"
+      { nativeBuildInputs = [ pkgs.openssh ]; }
+      ''
+        cat ${wired}
+        $BASH ${./os-login-test.sh} ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
+        touch $out
+      '';
 }
 # The proxy knows its caller by SO_PEERCRED, which only Linux has.
 // onLinux {
@@ -88,7 +154,9 @@
   # builders' key listed first and signing a login as nix-offload to a
   # builder lent now, and no other: not as another account, not to a host
   # that isn't lent, not to a standing builder, not once a builder leaves
-  # root's file, and no agent's key for a lent builder; an agent
+  # root's file, and no agent's key for a lent builder; a key made in
+  # memory listed last and signing only for an OS Login host gcloud's
+  # known hosts name, and no other key for one; an agent
   # behind that never answers given up on; and each login signed and each
   # refusal said in one line of a fixed shape, with its host, its reason
   # as a word from a fixed set, and the session the client claims.

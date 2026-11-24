@@ -160,6 +160,20 @@ let
   # which sockets are declared, these among them.
   agentProxy = pkgs.callPackage ./agent-proxy/package.nix { };
 
+  # What puts the proxy's OS Login key in the person's profile and takes
+  # it out (agent-proxy/os-login.sh), where the proxy makes one.
+  osLoginHosts = config.jitsusama.pi.agentProxy.osLoginHosts;
+  osLogin = proxied && osLoginHosts != null;
+  osLoginKey = "%t/pi-agent/os-login.pub";
+  osLoginRegister = pkgs.writeShellApplication {
+    name = "pi-agent-proxy-os-login";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.openssh
+    ];
+    text = builtins.readFile ./agent-proxy/os-login.sh;
+  };
+
   # The door the fence's gh and git reach GitHub through, on every Linux
   # machine, since the fence runs on each.
   githubDoor = pkgs.callPackage ./github-door/package.nix { };
@@ -258,6 +272,21 @@ in
         <key-type> <base64-key>`: a nix-offload lender's ed25519 host key
         is lent to builderKey's logins. Never a file the account can write,
         or a command could lend itself a host of its own.
+      '';
+    };
+    osLoginHosts = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = "%h/.ssh/google_compute_known_hosts";
+      example = null;
+      description = ''
+        The known-hosts file gcloud keeps of the instances it reaches,
+        `%h` for the home folder, whose `compute.<id>` hosts an agent's
+        `gcloud compute ssh` may log in to as the person through OS Login.
+        The proxy makes a key for them as it starts, held only in its
+        memory, and the account's gcloud puts it in the person's login
+        profile for twelve hours at a time, renewed while the proxy runs
+        and taken out as it stops (agent-proxy/src/os_login.rs). Null for
+        no such key, where the person's own key serves agents too.
       '';
     };
     upstreams = lib.mkOption {
@@ -497,7 +526,43 @@ in
             file
           ]) config.jitsusama.pi.agentProxy.lentFiles
         )
+        ++ lib.optionals osLogin [
+          "--os-login"
+          "%t/pi-agent"
+          "--os-login-hosts"
+          osLoginHosts
+        ]
       );
+      # Taken out of the person's profile as the proxy stops, since the
+      # key's private half goes with it.
+      Service.ExecStopPost = lib.mkIf osLogin "-${lib.getExe osLoginRegister} remove ${osLoginKey}";
+      # Started with the session rather than by the first ssh, where it
+      # makes an OS Login key, so the key's public half is there for an
+      # agent's first ssh to offer.
+      Install.WantedBy = lib.mkIf osLogin [ "default.target" ];
+    };
+
+    # The proxy's OS Login key goes into the person's profile each time it
+    # makes one, and its twelve hours are renewed every four while it runs.
+    systemd.user.services.pi-agent-proxy-os-login = lib.mkIf osLogin {
+      Unit.Description = "Put pi's agent proxy's OS Login key in the person's login profile";
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${lib.getExe osLoginRegister} register ${osLoginKey}";
+      };
+    };
+    systemd.user.paths.pi-agent-proxy-os-login = lib.mkIf osLogin {
+      Unit.Description = "Register each OS Login key pi's agent proxy makes";
+      Path.PathChanged = osLoginKey;
+      Install.WantedBy = [ "paths.target" ];
+    };
+    systemd.user.timers.pi-agent-proxy-os-login = lib.mkIf osLogin {
+      Unit.Description = "Renew pi's agent proxy's OS Login key before it lapses";
+      Timer = {
+        OnActiveSec = "4h";
+        OnUnitActiveSec = "4h";
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
 
     # The door a fenced gh or git reaches GitHub through, since the token

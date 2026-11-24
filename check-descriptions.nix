@@ -4841,13 +4841,20 @@
     started by the first ssh that asks on a socket in a folder only the account reaches, told of
     those hosts and the agents behind it, or of the builders' key and root's file of builders lent
   '';
+  pi-agent-proxy-reaches-os-login-hosts = ''
+    where pi's SSH agent proxy runs, it makes a key for the OS Login hosts gcloud knows, started
+    with the session; the account's gcloud registers each key it writes for twelve hours, renews
+    it every four and removes it as the proxy stops; the machine's ssh offers it to compute.*
+    hosts; and with no known-hosts file named, there's no such key
+  '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
     names, one it's told of, signed the session; with no session, another host, a forged binding,
     a commit, another session or key, or a forwarded agent, nothing reaches the agent behind; it
     never adds, removes or locks keys, and answers at most 64 clients at once; it signs with the
-    builders' key only nix-offload's login to a builder lent now, and no agent's key for one; and it
-    says each login signed and each refusal in one line of a fixed shape, its host and why as a word
+    builders' key only nix-offload's login to a builder lent now, and no agent's key for one; it
+    signs with a key made in memory only a login to an OS Login host gcloud's known hosts name, and
+    no other key for one; and it says each login signed and each refusal in one line of a fixed shape, its host and why as a word
   '';
   pi-clipboard-door-keeps-secrets = ''
     pi-clipboard-door answers a client only when the kernel puts it below a bubblewrap of this

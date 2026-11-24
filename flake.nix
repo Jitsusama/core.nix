@@ -435,6 +435,7 @@
         openssh = ./modules/openssh/nixos.nix;
         panel = ./modules/panel/nixos.nix;
         perf = ./modules/perf/nixos.nix;
+        pi = ./modules/pi/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
         plymouth = moduleFrom ./modules/plymouth/nixos.nix { inherit wallpapers; };
         podman = ./modules/podman/nixos.nix;
