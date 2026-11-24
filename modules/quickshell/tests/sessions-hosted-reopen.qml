@@ -42,6 +42,9 @@ ShellRoot {
     id: root
 
     property string stage: "listed"
+    // When the case began, so its end says how long it ran, which the
+    // check's timeout is set by.
+    readonly property real begunAt: Date.now()
 
     function find(address) {
         return Sessions.running.find(session => session.address === address);
@@ -908,7 +911,8 @@ ShellRoot {
             place?.workspace === cornerOn && place?.there === true
             && viewerSpawns("s-cornered").length === 0,
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
-        console.log("a hosted viewer reopens where it was");
+        console.log("a hosted viewer reopens where it was, in "
+            + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
         Qt.exit(0);
     }
     // Each steer the node was asked.

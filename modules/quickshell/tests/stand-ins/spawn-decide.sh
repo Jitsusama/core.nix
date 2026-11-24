@@ -29,6 +29,32 @@ if [ -n "$start" ]; then
 		echo "opening harbour-attended"
 		echo "hosted harbour-attended s-begun"
 		;;
+	QEST-DOTTED)
+		# An id no viewer's app id could carry.
+		echo "hosted harbour-attended s.dotted"
+		;;
+	QEST-BADHOST)
+		# A host's name mycelium couldn't be given.
+		echo "hosted harbour:attended s-badhost"
+		;;
+	QEST-DASHID)
+		# An id beginning with a dash, which mycelium's --session could
+		# take for a flag.
+		echo "hosted harbour-attended -s-x"
+		;;
+	QEST-DASHHOST)
+		# A host beginning with a dash, which mycelium could take for a flag.
+		echo "hosted -harbour s-y"
+		;;
+	QEST-LATE | QEST-LATER)
+		# Two starts the host answers with one session, whose viewer niri
+		# is slow to list.
+		echo "hosted harbour-attended s-late"
+		;;
+	QEST-AGAIN)
+		# QEST-HOSTED's session, started again once its viewer is listed.
+		echo "hosted harbour-attended s-begun"
+		;;
 	QEST-AWAY)
 		echo "quest-workflow.startHost is attended, but the host isn't listening"
 		exit 3
