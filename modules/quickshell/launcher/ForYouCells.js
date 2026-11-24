@@ -34,23 +34,30 @@ function byCell(items, cellOf, leads) {
 
 // The groups' rows, `rowsOf(items)` each, under each one's heading,
 // `headingOf(cell, held)`, `held` the rows it holds, so a list held still
-// knows each row's heading wherever the row stands, and that what follows
-// them stands under none (Steady.js's headingsUnder), a group whose rows
+// knows each row's heading wherever the row stands (Steady.js's
+// headingsUnder), a group whose rows
 // all went as they were made left
 // out. Each is headed while a cell's rows are among those left; Joel's own
 // alone need no heading to say whose they are. Decided once the rows are
 // made, since decided before, his own heading stood alone once a cell's
 // rows had all gone.
 //
-// `asked`, `{ rows, weight }`, is Agents Asking's row (or none) and its
-// heaviest's weight. While a heading shows it stands first, above them
-// all, since a heading claims what's under it and one between the groups
-// would read as the cell's above it; with none, among the loose rows
-// before the first that weighs less, as ForYou.js's agentAt places it
-// (Y2YBTS, 2026-11-18 15:49). A lone ask is never gathered, so it stays
-// under its own cell's heading as itself.
-function laidOut(groups, rowsOf, headingOf, asked) {
-    const gathered = asked?.rows ?? [];
+// `besides`, `{ rows, weight, after }`, holds Agents Asking's row (or
+// none) and its heaviest's weight, and the rows that follow what needs
+// Joel now, To Look At to History. While a heading shows Agents Asking
+// stands first, above them all, since a heading claims what's under it
+// and one between the groups would read as the cell's above it; with
+// none, among the loose rows before the first that weighs less, as
+// ForYou.js's agentAt places it (Y2YBTS, 2026-11-18 15:49). A lone ask is
+// never gathered, so it stays under its own cell's heading as itself.
+// While a heading shows, what follows stands under Joel's own, so none
+// reads as the last cell's and none waits to be placed: his own group's,
+// where it comes last, else one said after the cells', `again` set, as
+// `headingOf(null, after, true)` (Y2YBTS, 2026-11-24). With none, it
+// follows as it is.
+function laidOut(groups, rowsOf, headingOf, besides) {
+    const gathered = besides?.rows ?? [];
+    const after = besides?.after ?? [];
     const made = groups.map(group => ({ cell: group.cell,
         items: group.items.map(item => ({ item, rows: rowsOf([item]) })) }))
         .map(group => Object.assign(group, { items: group.items.filter(one =>
@@ -58,15 +65,22 @@ function laidOut(groups, rowsOf, headingOf, asked) {
         .filter(group => group.items.length > 0);
     const rowsIn = items => items.reduce((rows, one) => rows.concat(one.rows), []);
     if (made.some(group => group.cell !== null)) {
-        return made.reduce((rows, group) => {
+        const last = made[made.length - 1];
+        const own = last.cell === null ? rowsIn(last.items) : null;
+        const headed = (own === null ? made : made.slice(0, -1)).reduce((rows, group) => {
             const held = rowsIn(group.items);
             return rows.concat([headingOf(group.cell, held)], held);
         }, gathered);
+        if (own !== null) {
+            return headed.concat([headingOf(null, own.concat(after))], own, after);
+        }
+        return after.length === 0 ? headed
+            : headed.concat([headingOf(null, after, true)], after);
     }
     const loose = made.reduce((items, group) => items.concat(group.items), []);
-    const lighter = loose.findIndex(one => (one.item.weight ?? 0) < (asked?.weight ?? 0));
+    const lighter = loose.findIndex(one => (one.item.weight ?? 0) < (besides?.weight ?? 0));
     const at = lighter < 0 ? loose.length : lighter;
-    return rowsIn(loose.slice(0, at)).concat(gathered, rowsIn(loose.slice(at)));
+    return rowsIn(loose.slice(0, at)).concat(gathered, rowsIn(loose.slice(at)), after);
 }
 
 // A cell's heading as Agents' own row says the cell: its name and how it

@@ -2441,15 +2441,17 @@ Provider {
     // no session is behind under one heading of his own (ForYouCells.js's
     // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
     // cell"). No heading while all of it is his own, and a group whose rows
-    // all went as they were made says nothing. `asked`, Agents Asking's row
-    // or none, stands first while headings show, else by `weight`, its
-    // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
-    // cell asks is its want's row, or a to-do of its own it blocks on, as a
-    // session whose want is an action asks it (ForYou.js's blocked).
-    function cellRows(band, now, asked, weight) {
+    // all went as they were made says nothing. `besides` holds Agents
+    // Asking's row or none, which stands first while headings show, else
+    // by its heaviest's weight among the loose rows, and what follows, To
+    // Look At to History, under Joel's own heading while any shows
+    // (ForYouCells.js's laidOut). What a cell asks is its want's row, or a
+    // to-do of its own it blocks on, as a session whose want is an action
+    // asks it (ForYou.js's blocked).
+    function cellRows(band, now, besides) {
         const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
         return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
-            items => bandRows(items, now), cellHeading, { rows: asked, weight });
+            items => bandRows(items, now), cellHeading, besides);
     }
 
     // A cell's heading, its name and how it stands as the agents daemon
@@ -2459,10 +2461,12 @@ Provider {
     // while it says the same and holds the same rows in any order, since
     // a to-do coming due moves up among its own rows and only its row is
     // new. Its key sits outside on:waiting's, where a to-do's quest could
-    // be "cell".
-    function cellHeading(cell, held) {
+    // be "cell". Joel's own said `again`, after the cells' over what
+    // follows them, has a key of its own, so a list held still never takes
+    // it for the one over his own rows.
+    function cellHeading(cell, held, again) {
         const name = cellSaid(cell);
-        const key = `on:heading:cell:${cell === null ? "yours"
+        const key = `on:heading:cell:${cell === null ? `yours${again ? ":after" : ""}`
             : String(cell.address).toUpperCase()}`;
         const holding = held.map(row => row.key);
         return keptAlike(cellsKept, key, [name, JSON.stringify(holding.slice().sort())],
@@ -2557,11 +2561,11 @@ Provider {
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
         const asked = kindRow("agent", bandRows(bands.agent, now));
-        const rows = latelyRows(now).filter(latelyComingIn).concat(
-            cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0),
-            kindRow("look", bandRows(bands.look, now)),
+        const after = kindRow("look", bandRows(bands.look, now)).concat(
             kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
+        const rows = latelyRows(now).filter(latelyComingIn).concat(cellRows(bands.now, now,
+            { rows: asked, weight: bands.agent[0]?.weight ?? 0, after }));
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
             if (!(file in lookTexts))

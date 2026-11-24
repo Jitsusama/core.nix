@@ -74,8 +74,8 @@ QtObject {
         expect("a lone cell is still named", laid(Cells.byCell([{ name: "one" }], () => cellA)),
             ["# AAAAAA", "one"]);
         // Each heading is given the rows it holds, its group's left after
-        // those that went, so each is its wherever it stands, and what
-        // follows them stands under none (Steady.js's headingsUnder).
+        // those that went, so each is its wherever it stands (Steady.js's
+        // headingsUnder).
         expect("each heading is given the rows it holds",
             Cells.laidOut(Cells.byCell([{ name: "one" }, { name: "gone" }, { name: "two" }],
                 item => item.name === "two" ? null : cellA), rowsOf,
@@ -242,6 +242,32 @@ QtObject {
                 { rows: ["ASKED"], weight: tied.agent[0].weight }),
                 tiedNames.slice(0, tied.agentAt).concat(["ASKED"], tiedNames.slice(tied.agentAt))],
             [["tie", "ASKED", "light"], ["tie", "ASKED", "light"]]);
+
+        // What follows what needs Joel now, To Look At to History, stands
+        // under his own heading while any heading shows, so none reads as the
+        // last cell's: his own group's where it comes last, each heading
+        // given what it holds, else his own said again after the cells'; with
+        // no heading it follows as it is (Y2YBTS, 2026-11-24).
+        const holds = (cell, held, again) => `${cell?.address ?? "yours"}${again ? " again" : ""}`
+            + ` holds ${held.join(",")}`;
+        const following = { rows: [], weight: 0, after: ["LOOK", "HISTORY"] };
+        expect("a cell last, Joel's own said again over what follows",
+            Cells.laidOut(grouped, rowsOf, holds, following), ["AAAAAA holds one,four", "one",
+                "four", "yours holds two,five", "two", "five", "BBBBBB holds three", "three",
+                "yours again holds LOOK,HISTORY", "LOOK", "HISTORY"]);
+        const ownLast = Cells.byCell([{ name: "one" }, { name: "two" }],
+            item => item.name === "one" ? cellA : null);
+        expect("Joel's own last, what follows under his own heading",
+            Cells.laidOut(ownLast, rowsOf, holds, following), ["AAAAAA holds one", "one",
+                "yours holds two,LOOK,HISTORY", "two", "LOOK", "HISTORY"]);
+        expect("no heading, what follows as it is, after Agents Asking",
+            Cells.laidOut(ownOnly, rowsOf, holds, { rows: ["ASKED"], weight: 1,
+                after: ["LOOK"] }), ["two", "five", "ASKED", "LOOK"]);
+        expect("a cell with nothing following, no heading said again",
+            Cells.laidOut(grouped, rowsOf, headingOf, { rows: [], weight: 0, after: [] }),
+            ["# AAAAAA", "one", "four", "# yours", "two", "five", "# BBBBBB", "three"]);
+        expect("nothing needing Joel now, what follows alone",
+            Cells.laidOut([], rowsOf, holds, following), ["LOOK", "HISTORY"]);
 
         if (failures.length > 0) {
             for (const failure of failures)
