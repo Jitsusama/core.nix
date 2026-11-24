@@ -1058,7 +1058,12 @@ in
             # most. Through a call, which pw-dump hears as a program
             # recording a microphone, three eighths stay, and nothing held
             # or ranked comes into the call; build.slice and jobs.slice
-            # are held to a quarter of the processors till it ends.
+            # are held to a quarter of the processors till it ends. For ten
+            # minutes after a call or ten quiet minutes, starts come in two
+            # a minute, and none while memory stalls past 5%, so what a hold
+            # kept back doesn't start together; none waits its turn more
+            # than five minutes from its start, or the call's end if later,
+            # and a switch never does.
             "--door"
             "jobs.slice"
             "--calls"

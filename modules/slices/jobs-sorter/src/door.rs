@@ -52,7 +52,10 @@
 //! until what it holds has come in, so its backlog isn't let in together
 //! as it ends. A switch never waits its turn, and the turn is no more
 //! than a wait for room: one that has waited [`LONGEST`] still comes in,
-//! [`SPACED`] apart, and counts against the pace.
+//! [`SPACED`] apart, and takes none of the pace's turns, so a stream
+//! faster than the pace never makes waits grow. One held through a call
+//! counts that wait from the call's end, so a long call's backlog comes
+//! in at the pace rather than all at once as the call ends.
 //!
 //! A start whose environment carries [`FIRST`] lands a switch, which
 //! every merged fix waits on: it waits behind other switches alone, and
@@ -207,6 +210,9 @@ pub struct Door {
     waited_in: Option<Instant>,
     /// Whether a call was on at the last look.
     calling: bool,
+    /// When the last call ended, from which a start it held counts its
+    /// wait: a call holds what starts through it however long it lasts.
+    call_ended: Option<Instant>,
     /// When the last new heavy start was seen.
     last_start: Option<Instant>,
     /// When starts began to come in paced.
@@ -380,13 +386,17 @@ impl Door {
             if !weighed || known {
                 continue;
             }
-            self.follow_start(now);
             // A scope whose run began well before this start is that run's
             // later step, and freezing the scope would freeze the whole run,
             // its own clocks counting on.
             let midway = oldest
                 .get(it.scope.as_path())
                 .is_some_and(|began| began.saturating_add(YOUNG) < it.start);
+            // A later step comes with its run, so neither ends a quiet
+            // stretch nor begins a pace.
+            if !midway {
+                self.follow_start(now);
+            }
             let switches_ahead = self.held.iter().filter(|held| held.first).count();
             let ahead = if it.first {
                 switches_ahead > 0
@@ -446,13 +456,19 @@ impl Door {
         let spaced = self
             .waited_in
             .is_none_or(|at| now.saturating_duration_since(at) >= SPACED);
-        let waited = self
-            .held
-            .first()
-            .is_some_and(|held| now.saturating_duration_since(held.since) >= LONGEST);
-        let switch = self.held.first().is_some_and(|held| held.first);
+        // Counted from the call's end for one held through it, or the
+        // whole backlog of a long call would have waited LONGEST as it
+        // ended, and come in past the pace and the stall alike.
+        let waited = self.held.first().is_some_and(|held| {
+            let from = self
+                .call_ended
+                .map_or(held.since, |ended| ended.max(held.since));
+            now.saturating_duration_since(from) >= LONGEST
+        });
         // Its turn isn't asked: a start waits LONGEST at most, paced or
-        // not, and one each SPACED keeps the pace these come in at.
+        // not, and one each SPACED keeps the pace these come in at. It
+        // takes no turn of the pace's either, or a stream faster than the
+        // pace would leave the turns to these alone, and waits would grow.
         if machine.calling || !spaced || !waited {
             return None;
         }
@@ -460,7 +476,6 @@ impl Door {
         // growth, so what it takes past that it reclaims from itself.
         let came = self.come_in(Some(machine.grows()), now, act)?;
         self.waited_in = Some(now);
-        self.took_turn(now, !switch);
         Some(came)
     }
 
@@ -480,6 +495,7 @@ impl Door {
     fn follow_call(&mut self, machine: Machine, now: Instant) {
         if self.calling && !machine.calling {
             self.paced_from = Some(now);
+            self.call_ended = Some(now);
         }
         self.calling = machine.calling;
     }
@@ -1393,16 +1409,147 @@ mod tests {
         assert_eq!(
             let_in(&door.look(work, ended, at + MINUTE + PACED, 1004, |_, _| true)),
             PER_MINUTE + 1,
-            "past PACED the rest still come in at the pace, with the one waited LONGEST"
+            "the two the pace allows, and one that has waited LONGEST since the call ended"
+        );
+        let last = at + MINUTE + PACED + SPACED;
+        assert_eq!(
+            let_in(&door.look(work, ended, last, 1005, |_, _| true)),
+            1,
+            "and the last SPACED later, taking no turn of the pace's"
+        );
+        assert!(!door.pacing(last), "with nothing held the pace is over");
+    }
+
+    /// Looks every ten seconds for `minutes` from `from`, at what `work`
+    /// holds, adding one new start to it each `every` looks, and says how
+    /// many came in each minute and the longest any waited, those still
+    /// held counted to the last look.
+    fn looked_on(
+        door: &mut Door,
+        work: &mut Vec<Coming<'static>>,
+        from: Instant,
+        minutes: u32,
+        every: Option<u32>,
+    ) -> (Vec<usize>, Duration) {
+        let mut held_at: HashMap<u32, Instant> = HashMap::new();
+        let (mut each, mut longest) = (vec![0; minutes as usize], Duration::ZERO);
+        let mut now = from;
+        for look in 0..minutes * 6 {
+            now = from + Duration::from_secs(10 * u64::from(look));
+            let uptime = 2000 + 1000 * u64::from(look);
+            if every.is_some_and(|every| look % every == 0) {
+                let pid = 5000 + look;
+                let scope: &'static str = Box::leak(format!("/c/work-{pid}-1.scope").into());
+                work.push(coming(pid, uptime, "nix build .#x", scope));
+            }
+            for done in door.look(work, free(1 << 40), now, uptime, |_, _| true) {
+                match done {
+                    Done::Held(pid) | Done::Paced(pid) => {
+                        held_at.insert(pid, now);
+                    }
+                    Done::LetIn(pid) | Done::Ranked(pid, _) => {
+                        each[(look / 6) as usize] += 1;
+                        let since = held_at.remove(&pid);
+                        longest = longest.max(since.map_or(Duration::ZERO, |at| now - at));
+                    }
+                }
+            }
+        }
+        let still = held_at.values().map(|at| now - *at).max();
+        (each, longest.max(still.unwrap_or_default()))
+    }
+
+    // Joel, 9 November: "we need to not pause anything". Starts coming
+    // faster than the pace for good would otherwise wait longer and longer.
+    #[test]
+    fn a_steady_stream_faster_than_the_pace_still_waits_longest_at_most() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(door.look(&[], calling, at, 1000, |_, _| true), []);
+        // Three a minute for half an hour, from the call's end.
+        let (_, longest) = looked_on(&mut door, &mut Vec::new(), at + SPACED, 30, Some(2));
+        assert!(
+            longest <= LONGEST,
+            "a start waited {longest:?}, past LONGEST, behind a stream the pace can't keep up with"
+        );
+    }
+
+    // A call holds what starts through it however long it lasts, so its
+    // backlog has all waited LONGEST as it ends: counted from the start,
+    // it would all come in together, as at 10:40 on 24 November.
+    #[test]
+    fn a_long_calls_backlog_comes_in_at_the_pace_then_once_it_has_waited_longest() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let mut work = thirteen()[..12].to_vec();
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(&work, calling, at, 1000, |_, _| true)), 12);
+        let end = at + LONGEST * 4;
+        let before = at + (LONGEST * 4).saturating_sub(SPACED);
+        assert_eq!(door.look(&work, calling, before, 1001, |_, _| true), []);
+        let (each, longest) = looked_on(&mut door, &mut work, end, 7, None);
+        assert_eq!(
+            each,
+            [2, 2, 2, 2, 2, 2, 0],
+            "two a minute from the call's end, and the two left once they've waited LONGEST \
+             since it"
+        );
+        assert!(longest <= LONGEST, "one waited {longest:?} past the call");
+    }
+
+    // Without settling, the pace would come back for any start held short
+    // of room, so room coming back would let those in two a minute.
+    #[test]
+    fn once_the_pace_is_over_a_hold_for_room_alone_is_not_paced() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(door.look(&[], calling, at, 1000, |_, _| true), []);
+        let roomy = free(1 << 40);
+        assert_eq!(door.look(&[], roomy, at + MINUTE, 1001, |_, _| true), []);
+        let after = at + MINUTE + PACED;
+        assert_eq!(door.look(&[], roomy, after, 1002, |_, _| true), []);
+        let work = &thirteen()[..4];
+        assert_eq!(
+            held(&door.look(work, free(1 << 30), after, 1003, |_, _| true)),
+            4
         );
         assert_eq!(
-            let_in(&door.look(work, ended, at + MINUTE * 2 + PACED, 1005, |_, _| true)),
-            1,
-            "and the last a minute later"
+            let_in(&door.look(work, roomy, after + SPACED, 1004, |_, _| true)),
+            4,
+            "with the pace over, room coming back lets all four in"
+        );
+    }
+
+    #[test]
+    fn a_runs_later_step_never_begins_a_pace() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let one = [coming(90, 1000, "nix eval .#x", "/c/work-90-1.scope")];
+        assert_eq!(door.look(&one, free(1 << 40), at, 1000, |_, _| true), []);
+        let later = at + QUIET;
+        let uptime = 1000 + 100 * QUIET.as_secs();
+        let run = [
+            coming(60, 900, "bash ./build.sh", "/c/work-60-1.scope"),
+            coming(61, uptime, "nix build .#x", "/c/work-60-1.scope"),
+        ];
+        assert_eq!(
+            door.look(&run, free(1 << 40), later, uptime, |_, _| true),
+            []
         );
         assert!(
-            !door.pacing(at + MINUTE * 2 + PACED),
-            "with nothing held the pace is over"
+            !door.pacing(later),
+            "a run's later step, let in with its run, began a pace after a quiet stretch"
         );
     }
 
@@ -1445,8 +1592,8 @@ mod tests {
         );
     }
 
-    // The backlog a call or a quiet stretch leaves isn't let in together
-    // once PACED has passed: it comes in at the pace until it's gone.
+    // A backlog held through a stall isn't let in together once PACED has
+    // passed: the pace lasts while the stall keeps it held.
     #[test]
     fn the_pace_lasts_until_what_it_held_has_come_in() {
         let mut door = Door::default();
@@ -1457,17 +1604,16 @@ mod tests {
             ..free(ROOM + GROWS)
         };
         assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 13);
-        let ended = Machine {
+        let stalled = Machine {
             stalled: STALLED * 4.0,
             ..free(1 << 40)
         };
         let end = at + MINUTE;
-        assert_eq!(let_in(&door.look(work, ended, end, 1001, |_, _| true)), 0);
-        let roomy = free(1 << 40);
-        let came = let_in(&door.look(work, roomy, end + PACED, 1002, |_, _| true));
-        assert!(
-            (1..=PER_MINUTE + 1).contains(&came),
-            "past PACED, what's still held comes in at the pace, not all {came} at once"
+        assert_eq!(let_in(&door.look(work, stalled, end, 1001, |_, _| true)), 0);
+        let came = let_in(&door.look(work, stalled, end + PACED, 1002, |_, _| true));
+        assert_eq!(
+            came, 1,
+            "past PACED in a stall, one that waited LONGEST comes in, not all at once"
         );
         assert!(
             door.pacing(end + PACED),
