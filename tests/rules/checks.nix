@@ -226,7 +226,6 @@
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
-        writeback-goal = script "writeback-goal" ../../modules/slices/writeback-goal.sh { };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
@@ -303,6 +302,7 @@
           script "watchdog-wakes-again" ../../hardware/microsoft-surface-laptop-4-1958/watchdog-wakes-again.sh
             { };
         wifi-power-save = script "wifi-power-save" ../../modules/wpa_supplicant/power-save.sh { };
+        writeback-goal = script "writeback-goal" ../../modules/slices/writeback-goal.sh { };
         xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         yubikey-once-in = script "yubikey-once-in" ../../modules/yubikey/once-in.sh { };
