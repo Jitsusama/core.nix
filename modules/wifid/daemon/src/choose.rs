@@ -54,6 +54,12 @@ pub const SETTLE: Duration = Duration::from_secs(600);
 /// trial's video waited 0.8 s at p95 in its first minute alone.
 pub const TRIAL: Duration = Duration::from_secs(300);
 
+/// How long after a move a choice's span is past the minute the card
+/// arrived in: a span and that minute, less half a minute, as choices fall
+/// on the minute a moment early or late, and one at `SPAN` itself still
+/// holds the arrival.
+const ARRIVED: Duration = Duration::from_secs(150);
+
 /// How long an access point found worse from here is left untried.
 pub const SPURNED: Duration = Duration::from_secs(3600);
 
@@ -738,7 +744,7 @@ impl Chooser {
     fn carrying(&self, now: Instant, failing: bool, bad: bool) -> Carrying {
         let arrived = self
             .moved
-            .is_none_or(|moved| now.duration_since(moved) > SPAN);
+            .is_none_or(|moved| now.duration_since(moved) >= ARRIVED);
         match (failing, bad && arrived) {
             (true, _) => Carrying::Failing,
             (false, true) => Carrying::Badly,
@@ -4021,8 +4027,9 @@ pub(crate) mod tests {
             moving: Some(15),
             ..carried(754, 1.9)
         };
-        let minutes = [60, 120].map(|seconds| {
-            let now = start + Duration::from_secs(seconds);
+        // The second falls a moment late, as the daemon's choices may.
+        let minutes = [60_000, 120_010].map(|millis| {
+            let now = start + Duration::from_millis(millis);
             chooser.choose(now, (HALL, &held, -53, CH52), &[], false)
         });
         let third = start + Duration::from_secs(180);
@@ -4048,20 +4055,49 @@ pub(crate) mod tests {
         assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
 
         // Its first minute's video echoes held, as one trial's did on 23 Nov
-        // 2026, so the second's span, holding the first, reads as badly.
+        // 2026, so the second's span, holding the first, reads as badly,
+        // and the second falls a moment late, as the daemon's choices may.
         let arriving = carried(823, 0.5);
         let minutes = [
-            (60, arriving.clone()),
-            (120, arriving),
-            (180, carried(45, 0.0)),
+            (60_000, arriving.clone()),
+            (120_010, arriving),
+            (180_000, carried(30, 0.0)),
         ]
-        .map(|(seconds, measured)| {
-            let now = start + Duration::from_secs(seconds);
+        .map(|(millis, measured)| {
+            let now = start + Duration::from_millis(millis);
             chooser.choose(now, (HALL, &measured, -53, CH52), &[], false)
         });
+        let worse = carried(200, 1.0);
+        let judged = chooser.choose(start + TRIAL, (HALL, &worse, -53, CH52), &[], false);
 
         let stays = vec![Choice::Stay; 3];
         assert_eq!(minutes.to_vec(), stays, "one bad arrival is no trial");
+        assert_eq!(judged, Choice::Back(DESK.into()), "and it's still on trial");
+    }
+
+    #[test]
+    fn a_move_on_trial_carrying_badly_one_minute_past_its_arrival_stays_on_trial() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let quick = carried(30, 0.0);
+        let minutes = [(60, quick.clone()), (120, quick), (180, carried(754, 1.9))].map(
+            |(seconds, measured)| {
+                let now = start + Duration::from_secs(seconds);
+                chooser.choose(now, (HALL, &measured, -53, CH52), &[], false)
+            },
+        );
+
+        let stays = vec![Choice::Stay; 3];
+        assert_eq!(
+            minutes.to_vec(),
+            stays,
+            "one bad minute running is no trial"
+        );
     }
 
     #[test]
