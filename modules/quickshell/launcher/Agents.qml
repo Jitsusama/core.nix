@@ -1178,7 +1178,7 @@ Provider {
     property var answeredTo: ({})
 
     // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
-    // want's answers while it asks, parked or not, as Now's rows read it (Now.qml's asking).
+    // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
     function answersOf(session) {
         const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
         return { want: wantOf(session.address), asking };
@@ -1200,13 +1200,17 @@ Provider {
         const working = stateOf(session) === "working";
         const now = answersOf(session);
         const asked = TalkAnswers.question(now, session.title, words, dayOf);
-        return (asked === null ? [] : [asked]).concat((answeredTo[to] ?? [])
+        const want = TalkAnswers.asked(now.want, now.asking)?.want ?? "";
+        return (asked === null ? [] : [asked]).concat(TalkAnswers
+            .standing(answeredTo[to] ?? [], want, Date.now())
             .map(one => TalkAnswers.shown(one, working, words, dayOf)));
     }
 
     // Joel's `text` to `session`, which asks `answers`, answering it: shown sent at once, then
-    // answered once the node has put it in the session's inbox, or why not (answerWant). Words
-    // it takes no answer from go nowhere, the foot saying what it takes.
+    // answered once the node has put it in the session's inbox, or why not (answerWant), naming
+    // the want he was shown so a newer ask is never answered by it. His words stay kept under
+    // its address, as a talk's do until delivered (Drafts.qml), so the field gives them back
+    // where they took no answer or never went, the foot saying what it takes or why.
     function answerIn(session, text, answers) {
         const to = String(session.address).toUpperCase();
         const said = Words.of("verb:agent:talk").said ?? {};
@@ -1217,17 +1221,20 @@ Provider {
                     .join(" \u00b7 ") });
             return;
         }
-        const one = TalkAnswers.said(answer.label, Date.now());
+        const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
         const keep = changed => {
-            answeredTo = Object.assign({}, answeredTo, { [to]: [changed]
-                .concat((answeredTo[to] ?? []).filter(kept => kept !== one).slice(0, 2)) });
+            answeredTo = Object.assign({}, answeredTo,
+                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
         };
         keep(one);
-        told = (Words.of("orchestrators").said ?? {}).sent?.replace("{name}", session.title) ?? "";
-        const fields = answer.value !== undefined ? { value: answer.value }
-            : { other: answer.other };
+        told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
+            { name: session.title });
+        const fields = Object.assign({ want: answers.want }, answer.value !== undefined
+            ? { value: answer.value } : { other: answer.other });
         answerWant(session.address, fields, (put, why) => {
             keep(TalkAnswers.put(one, put, why));
+            if (put)
+                launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
         });
     }
 
@@ -1560,10 +1567,6 @@ Provider {
                         return;
                     const answers = asks();
                     if (answers !== null) {
-                        // No talk's delivery settles an answer's words, so they go once given,
-                        // as they show under the field.
-                        provider.launcher?.drafts?.settle({ [draft]: [{ words: text,
-                            stage: "answered" }] });
                         provider.answerIn(current(), text, answers);
                         return;
                     }

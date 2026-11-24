@@ -9,6 +9,11 @@
 
 .import "../TalkLine.js" as Said
 
+// How long an answer still shows once its session asks nothing, a quarter hour, so a Talk
+// opened later doesn't lead with an answer long done; and how many are kept for a session.
+const SHOWN_AFTER_MS = 900000;
+const KEPT = 3;
+
 // What a session asks that Joel's words to it answer: its want's answers as the agents
 // daemon serves them (modules/agents/src/wants.rs), while it runs `asking` him. Null for a
 // want he can't answer here, one with no choices or no id, or a session not asking, parked
@@ -21,17 +26,18 @@ function asked(want, asking) {
     return asking === true && answerable ? answers : null;
 }
 
-// How `text` answers `answers`: the choice it names by its label or its value, in any case,
-// as `{ value, label }`; else his own words as `{ other, label }` where it takes them; null
-// where it takes neither, or nothing was said.
+// How `text` answers `answers`: the choice it names by its label, else by its value, in any
+// case, as `{ value, label }`; else his own words as `{ other, label }` where it takes them;
+// null where it takes neither, or nothing was said.
 function answerOf(text, answers) {
     const spoken = String(text ?? "").trim();
     if (spoken === "") {
         return null;
     }
     const folded = spoken.toLowerCase();
-    const named = answers.choices.find(one => String(one.label ?? "").toLowerCase() === folded
-        || String(one.value ?? "").toLowerCase() === folded);
+    const by = field => answers.choices
+        .find(one => String(one[field] ?? "").toLowerCase() === folded);
+    const named = by("label") ?? by("value");
     if (named) {
         return { value: String(named.value), label: String(named.label ?? named.value) };
     }
@@ -81,12 +87,31 @@ function question(now, name, words, dayOf) {
         waiting: "", stands: "", by: "", side: sideOf(want?.since, dayOf) };
 }
 
-// An answer said in this shell, until the session asks no more: his words, when, and how it
-// stands: "sent" until the node says whether it put it in the session's inbox, then
-// "answered", or "failed" with why.
-function said(text, at) {
-    return { at: new Date(at).toISOString(), words: String(text ?? "").trim(), stage: "sent",
-        why: "" };
+// An answer said in this shell to the want `want`: his words, when, and how it stands:
+// "sent" until the node says whether it put it in the session's inbox, then "answered", or
+// "failed" with why.
+function said(text, at, want) {
+    return { at: new Date(at).toISOString(), want: String(want ?? ""),
+        words: String(text ?? "").trim(), stage: "sent", why: "" };
+}
+
+// A session's answers, newest first, once `one` is said or has moved on: in its place where
+// it's there already, else first; the newest KEPT, so one dropped never comes back.
+function kept(list, one) {
+    const same = other => other.at === one.at && other.want === one.want;
+    const all = list ?? [];
+    if (all.some(same)) {
+        return all.map(other => (same(other) ? one : other));
+    }
+    return one.stage === "sent" ? [one].concat(all).slice(0, KEPT) : all;
+}
+
+// Which of a session's answers its Talk shows at `nowMs`: those to the want it asks, `want`,
+// while it asks one; else, once it asks nothing, those said in the last SHOWN_AFTER_MS, so
+// one long done, or to an ask since replaced, never leads a later Talk.
+function standing(list, want, nowMs) {
+    return (list ?? []).filter(one => (want === "" ? nowMs - Date.parse(one.at) < SHOWN_AFTER_MS
+        : one.want === want));
 }
 
 // What the node's put made of the answer `one`: answered where it went, failed with `why`

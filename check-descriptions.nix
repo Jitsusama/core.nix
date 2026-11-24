@@ -286,8 +286,9 @@
   '';
   a-talk-answers-what-its-session-asks = ''
     Talk to It on a session asking shows what it asks whole with what it takes; words answer it
-    by a choice's label or value, or as its own words where it takes them, and read sent, then
-    answered or working, or not delivered and why; a session parked or asking nothing gets none
+    by a choice's label, else its value, or as its own words where it takes them, and read sent,
+    then answered or working, or not delivered and why, kept newest first, only those to what it
+    asks while it asks and a quarter hour after; a session asking nothing gets no answers
   '';
   a-talks-words-outlive-the-shell = ''
     what's typed to talk to a session is kept by its address with its caret for a week and read

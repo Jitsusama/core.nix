@@ -293,8 +293,10 @@ fn answers(wants: &Value) -> Value {
 /// The node's ask that answers a session's want, as `acts::done` takes
 /// it, from `{ "ask": "answer", "address", "value" }` or `"other"` for
 /// Joel's own words: the want found among `wants` by its address, so a
-/// want gone or answered since is refused rather than answered. None for
-/// any other ask.
+/// want gone or answered since is refused rather than answered, as is one
+/// other than the `want` the answer names where it names one, so words
+/// given to what he was shown never answer a newer ask. None for any
+/// other ask.
 pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<Value, String>> {
     if said["ask"] != "answer" {
         return None;
@@ -309,6 +311,11 @@ pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<V
             "{address} asks Joel nothing he can answer here"
         )));
     };
+    if let Some(named) = said["want"].as_str().filter(|named| !named.is_empty())
+        && named != want
+    {
+        return Some(Err(format!("{address} asks something else now")));
+    }
     let mut steer = json!({
         "act": "answer",
         "want": want,
@@ -663,6 +670,28 @@ mod tests {
                 Some(Err(_))
             ),
             "an answer with no words is refused"
+        );
+        assert_eq!(
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF", "value": "high",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
+                &wants,
+                0
+            )
+            .and_then(Result::ok)
+            .map(|ask| ask["steer"]["want"].clone()),
+            Some(json!("question@2026-11-13T05:00:00.000Z")),
+            "one naming the want it asks is steered to it"
+        );
+        assert_eq!(
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF", "value": "high",
+                    "want": "question@2026-11-13T04:00:00.000Z"}),
+                &wants,
+                0
+            ),
+            Some(Err("SKIFF asks something else now".to_owned())),
+            "one naming a want it no longer asks is refused"
         );
         assert_eq!(
             answer_of(&json!({"ask": "talk"}), &wants, 0),

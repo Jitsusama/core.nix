@@ -63,7 +63,7 @@ QtObject {
 
             Expect.same("its answers while it asks", Answers.asked(want, true), want.answers);
             for (const [why, shown, asking] of [
-                ["parked or not asking, its words go as a talk", want, false],
+                ["one not asking, parked among them, whose words go as a talk", want, false],
                 ["no answers", Object.assign({}, want, { answers: null }), true],
                 ["no choices", Object.assign({}, want, { answers: { want: "q@1", choices: [] } }),
                     true],
@@ -74,8 +74,14 @@ QtObject {
             }
 
             const answers = want.answers;
-            Expect.same("a choice by its label, in any case",
-                Answers.answerOf("  partly ", answers), { value: "partly", label: "Partly" });
+            Expect.same("a choice by its label alone, in any case",
+                Answers.answerOf("  some of THEM ", { want: "q@1", own: false, choices: [
+                    { value: "partly", label: "Some of them" }] }),
+                { value: "partly", label: "Some of them" });
+            Expect.same("a label before another choice's value",
+                Answers.answerOf("no", { want: "q@1", own: false, choices: [
+                    { value: "no", label: "Not now" }, { value: "never", label: "No" }] }),
+                { value: "never", label: "No" });
             Expect.same("a choice by its value",
                 Answers.answerOf("NO", { want: "q@1", own: false, choices: [
                     { value: "no", label: "Not now" }] }), { value: "no", label: "Not now" });
@@ -87,7 +93,7 @@ QtObject {
             Expect.same("nothing for blanks", Answers.answerOf("   ", answers), null);
 
             const at = new Date(2026, 10, 24, 13, 20).getTime();
-            const one = Answers.said(" Partly ", at);
+            const one = Answers.said(" Partly ", at, answers.want);
             Expect.same("an answer reads sent until the node puts it",
                 Answers.shown(one, false, words, dayOf),
                 { line: "Partly", answers: [], waiting: "", stands: "sent", by: "",
@@ -104,6 +110,24 @@ QtObject {
             Expect.same("not delivered alone where no why came",
                 Answers.shown(Answers.put(one, false, ""), false, words, dayOf).stands,
                 "not delivered");
+
+            // A session's answers kept and shown (Agents.qml's answerIn and answerTalks).
+            const later = Answers.said("No", at + 1000, answers.want);
+            Expect.same("a new answer goes first", Answers.kept([one], later), [later, one]);
+            Expect.same("one put stays in its place, a newer one said since kept first",
+                Answers.kept([later, one], put), [later, put]);
+            const four = [3, 2, 1].map(n => Answers.said(`${n}`, at + n * 1000, "q@2"));
+            Expect.same("only the newest three are kept",
+                Answers.kept(four, later).map(kept => kept.words), ["No", "3", "2"]);
+            Expect.same("one dropped never comes back once put",
+                Answers.kept(four, Answers.put(Answers.said("0", at, "q@2"), true, "")),
+                four);
+            const shownAt = at + 20 * 60 * 1000;
+            Expect.same("while it asks, only answers to what it asks show",
+                Answers.standing([four[0], put], answers.want, shownAt), [put]);
+            Expect.same("once it asks nothing, those said in the last quarter hour show",
+                Answers.standing([four[0], put], "", at + 10 * 60 * 1000), [four[0], put]);
+            Expect.same("and none said longer ago", Answers.standing([put], "", shownAt), []);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);
