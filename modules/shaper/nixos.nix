@@ -99,7 +99,10 @@ let
   # machine that named one before names it the same way still. None is
   # allowed only beside a key, which alone then says who sent a report.
   addresses = lib.types.coercedTo address lib.toList (lib.types.listOf address);
-  # Houses heard by their key alone, from any address on the line.
+  # Houses heard by their key alone, from any private IPv4 address.
+  # Each holding the key a report was signed under hears it, so one
+  # machine may be the house on several networks (house any round 2's
+  # F12 and F15).
   unaddressed = lib.filter (house: house.from == [ ]) houses;
 in
 {
