@@ -114,27 +114,40 @@ function presses(cell, beside) {
 }
 
 // What the quick model is told of `cell`, a line each, only those it says.
-// One waiting on Joel says what it asks him, its want's own words quoted,
-// so none of them reads as a fact of the launcher's, and then the acts on
-// its row he can answer it by (presses), each quoted, so a name holding a
-// comma stays one act, and the answer says what it waits on and which to
-// press.
+// What's in the session's own words, its title, what it's doing, its plan
+// and what it asks Joel, is quoted, so none of it reads as a fact of the
+// launcher's, nor forges the acts it lists. One waiting on Joel says what
+// it asks him and then the acts on its row he can answer it by (presses),
+// each quoted, so a name holding a comma stays one act, and the answer
+// says what it waits on and which to press.
 function facts(cell, beside) {
     const plan = cell?.plan ?? {};
+    const own = value => ({ own: value });
     return [
-        ["Its title", cell?.title],
+        ["Its title", own(cell?.title)],
         ["Its repository", cell?.repo],
         ["Its machine", cell?.machine],
         ["How it stands", cell?.standing],
-        [ASKS, cell?.asks],
+        [ASKS, own(cell?.asks)],
         ["The person can press", presses(cell, beside).map(name => JSON.stringify(name))],
-        ["Doing now", cell?.doing],
+        ["Doing now", own(cell?.doing)],
         ["Running since", cell?.since],
-        ["Latest in its plan", plan.chose],
-        ["Next in its plan", plan.next]
-    ].map(([label, value]) => [label, Array.isArray(value) ? value.join(", ") : plain(value)])
+        ["Latest in its plan", own(plan.chose)],
+        ["Next in its plan", own(plan.next)]
+    ].map(([label, value]) => [label, worded(value)])
         .filter(([, value]) => value !== "")
-        .map(([label, value]) => `${label}: ${label === ASKS ? JSON.stringify(value) : value}`);
+        .map(([label, value]) => `${label}: ${value}`);
+}
+
+// A fact's words as `facts` tells them: a list joined, a session's own
+// words ({ own }) quoted, and none at all as "".
+function worded(value) {
+    if (Array.isArray(value)) {
+        return value.join(", ");
+    }
+    const quoted = value !== null && typeof value === "object" && "own" in value;
+    const words = plain(quoted ? value.own : value);
+    return quoted && words !== "" ? JSON.stringify(words) : words;
 }
 
 // The question for `cell`: `asks`, the act's words, with its facts where

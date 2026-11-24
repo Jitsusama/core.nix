@@ -102,7 +102,7 @@ ShellRoot {
 
     function answering() {
         expect("its pi is told the session's title",
-            ask.posed.includes("Its title: Tidy the Rows"), ask.posed);
+            ask.posed.includes("Its title: \"Tidy the Rows\""), ask.posed);
         expect("and never its quest", !ask.posed.includes("QEST-"), ask.posed);
         expect("and never its folder", !ask.posed.includes("/home/"), ask.posed);
         same("while its pi thinks, the act says so", [explainer.shown("a")?.name,
