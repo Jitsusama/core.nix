@@ -3279,6 +3279,10 @@ Singleton {
         const read = sessionsKittyFile.text().trim();
         return /^\d+$/.test(read) ? read : "";
     }
+    function readKittyPid() {
+        sessionsKittyFile.reload();
+        return "";
+    }
     // The pid of the kitty listening on a socket, as niri lists the windows
     // it draws by, or undefined where the socket says none.
     function kittyPid(socket) {

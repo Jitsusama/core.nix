@@ -512,35 +512,6 @@ ShellRoot {
         expect("one pressed for while it comes takes the focus as it's listed",
             heldPress && JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":96}}',
             `${heldPress} ${JSON.stringify(Niri.acted)}`);
-        // Any program can give its window a viewer's app id, so once the
-        // sessions' kitty's pid is known, a window it didn't draw is never
-        // taken for a viewer: not raised, and not let go of as one come.
-        Sessions.sessionsKittyPid = "4242";
-        const forged = { id: 88, pid: 880, opened: "pi-hosted.s-forged" };
-        const unforged = Niri.windows;
-        Niri.windows = Object.assign({}, unforged, { "88": forged });
-        Niri.acted = null;
-        const forgedFrom = Niri.spawns.length;
-        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
-        const forgedRaised = JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":88}}';
-        Niri.acted = null;
-        Niri.windowOpenedOrChanged(forged);
-        const stillComing = Sessions.viewerComing("pi-hosted.s-forged")
-            && JSON.stringify(Niri.acted) !== '{"FocusWindow":{"id":88}}';
-        const drawn = { id: 89, pid: 4242, opened: "pi-hosted.s-forged" };
-        Niri.windows = Object.assign({}, unforged, { "88": forged, "89": drawn });
-        Niri.acted = null;
-        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
-        const drawnRaised = JSON.stringify(Niri.acted);
-        Niri.windows = unforged;
-        Sessions.sessionsKittyPid = "";
-        expect("a window another program named as a viewer is never raised as one",
-            !forgedRaised && Niri.spawns.length === forgedFrom + 1, `${forgedRaised} `
-                + Niri.spawns.slice(forgedFrom).join("\n"));
-        expect("nor is it taken for the viewer come, nor focused as Go To's", stillComing,
-            `${stillComing} ${JSON.stringify(Niri.acted)}`);
-        expect("while the one the sessions' kitty drew is",
-            drawnRaised === '{"FocusWindow":{"id":89}}', drawnRaised);
         // A row's Reopen, being Joel's press, opens its viewer where Go To
         // would, home on its orchestrator's workspace, and focused once
         // it comes.
@@ -1089,10 +1060,102 @@ ShellRoot {
     function lost() {
         expect("a node lost leaves what it said", addresses() === "FARAWY NOWIN6 OUTRCH",
             addresses());
-        if (Sessions.node?.state !== "not answering")
+        if (Sessions.node?.state !== "not answering" || drawnAsked)
             return;
+        drawnAsked = true;
+        drawn();
         console.log("a session is known by its own record");
         Qt.callLater(() => Qt.exit(0));
+    }
+
+    // What the sessions' kitty's unit writes beside its socket, as a case
+    // writes it here: its pid, which says which windows it drew.
+    FileView {
+        id: kittyPidFile
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.pid`
+        blockWrites: true
+    }
+    property bool drawnAsked: false
+    // Any program can give its window a viewer's app id, so once the
+    // sessions' kitty's pid is known, as its unit writes it, a window it
+    // didn't draw is never taken for a viewer: not raised or focused, not
+    // let go of as one come, nor a running session's window. Last of the
+    // walk, as the pid read is kept through a restart, so would outlast
+    // every case after.
+    function drawn() {
+        const view = ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
+            "--session", "s-forged"];
+        const named = "pi-hosted.s-forged";
+        const unforged = Niri.windows;
+        const focused = id => JSON.stringify(Niri.acted) === `{"FocusWindow":{"id":${id}}}`;
+        // Each said, though one fails, as each holds apart from the others.
+        const failed = [];
+        const expect = (what, holds, said) => {
+            if (!holds)
+                failed.push(`${what}: ${said}`);
+        };
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        const forged = { id: 88, pid: 880, opened: named };
+        Niri.windows = Object.assign({}, unforged, { "88": forged });
+        Niri.acted = null;
+        const forgedFrom = Niri.spawns.length;
+        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
+        expect("a window another program named as a viewer is never raised as one",
+            !focused(88) && Niri.spawns.length === forgedFrom + 1,
+            `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(forgedFrom).join("\n")}`);
+        // As Go To asks for its viewer, so the one coming is focused.
+        Sessions.goingTo = { app: named, at: Date.now(), from: Niri.focused };
+        Niri.acted = null;
+        Niri.windowOpenedOrChanged(forged);
+        expect("nor is it taken for the viewer come, nor focused as Go To's",
+            Sessions.viewerComing(named) && Niri.acted === null
+            && Sessions.goingTo?.app === named,
+            `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Niri.acted)}`);
+        const drawnHere = { id: 89, pid: 4242, opened: named };
+        Niri.windows = Object.assign({}, unforged, { "88": forged, "89": drawnHere });
+        Niri.windowOpenedOrChanged(drawnHere);
+        expect("while the one the sessions' kitty drew is taken as come, and focused",
+            !Sessions.viewerComing(named) && Sessions.goingTo === null && focused(89),
+            `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Niri.acted)}`);
+        Niri.acted = null;
+        Sessions.reopen({ id: "s-forged", cwd: "/tmp", hosted: true, view });
+        expect("and raised as its viewer", focused(89), JSON.stringify(Niri.acted));
+        // A running one's window, named by its viewer's app id, is only
+        // one the sessions' kitty drew, so Go To raises none another did.
+        const hosting = { hosted: true, session: "s-forged" };
+        const window = Sessions.windowOf({ presence: hosting }, {}, { [named]: [forged] });
+        Niri.windows = Object.assign({}, unforged, { "88": forged });
+        Niri.acted = null;
+        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
+            here: true });
+        expect("nor is it a running session's window, nor raised by Go To",
+            window === null && !focused(88), `${JSON.stringify(window)} `
+                + JSON.stringify(Niri.acted));
+        // Its kitty started again under a new pid, which the file's watch
+        // can miss, its folder made anew: the file is read again before a
+        // window with the viewer's app id is refused.
+        kittyPidFile.setText("5151\n");
+        Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
+        const anew = { id: 90, pid: 5151, opened: named };
+        Niri.windows = Object.assign({}, unforged, { "90": anew });
+        Niri.windowOpenedOrChanged(anew);
+        expect("one drawn by the kitty started again is taken as come",
+            !Sessions.viewerComing(named), JSON.stringify(Sessions.attaching));
+        // While its unit starts again, the file is gone: the pid read last
+        // still says which windows are its, rather than any.
+        kittyPidFile.setText("");
+        Sessions.readKittyPid();
+        Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
+        const between = { id: 91, pid: 880, opened: named };
+        Niri.windows = Object.assign({}, unforged, { "91": between });
+        Niri.windowOpenedOrChanged(between);
+        Niri.windows = unforged;
+        expect("while it says none, another program's is still no viewer",
+            Sessions.viewerComing(named) && Sessions.sessionsKittyPid === "5151",
+            `${Sessions.sessionsKittyPid} ${JSON.stringify(Sessions.attaching)}`);
+        if (failed.length > 0)
+            throw new Error(failed.join("; "));
     }
 
     property string unjoined: ""
