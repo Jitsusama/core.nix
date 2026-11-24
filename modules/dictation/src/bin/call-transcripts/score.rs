@@ -11,6 +11,10 @@
 //! for the model alone, since a clip also hears whoever talks over its
 //! speaker; the gap between the two readings says what context and the
 //! cutting are worth, a side at a time.
+//!
+//! The far end's words are timed as they're heard, and the times held to
+//! their takes and to the reference's speech (times.rs), since cutting
+//! their echo from Joel's words goes by them.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -25,6 +29,7 @@ use dictation::wer::{Errors, said, words};
 
 use crate::hear::{self, Hears};
 use crate::said;
+use crate::times::{self, Timed};
 use crate::{Settings, takes};
 
 /// How much of the side's sound around a reference line is heard with
@@ -149,6 +154,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     let meetings = meetings(set, &sides)?;
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut all = Scored::default();
+    let mut all_times = Timed::default();
     for Meeting {
         name,
         mine,
@@ -161,19 +167,32 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
         let mut timed = HashMap::new();
         for side in [Side::Mine, Side::Theirs] {
             let sound = &sounds[index(side)];
-            for take in takes(sound) {
-                if let Some((line, its_words)) = hear_take(&mut speech, side, &take)? {
-                    timed.insert(lines.len(), its_words);
-                    lines.push(line);
-                }
-            }
+            let file = format!("{name}.{}.wav", label(side));
+            hear_side(
+                &mut speech,
+                side,
+                &file,
+                &takes(sound),
+                &mut lines,
+                &mut timed,
+            )?;
             for line in reference.iter().filter(|line| whose(line, mine) == side) {
                 let (from, to) = (samples(line.start - AROUND), samples(line.end + AROUND));
                 let clip = &sound[from.min(sound.len())..to.min(sound.len())];
-                let (text, _) = speech.transcribe(clip)?;
+                let (text, _) = speech
+                    .transcribe(clip)
+                    .map_err(|why| format!("hearing {file} at {} s alone: {why}", line.start))?;
                 scored.alone[index(side)] += Errors::count(&said(&line.text), &words(&text));
             }
         }
+        let theirs: Vec<(f64, f64)> = reference
+            .iter()
+            .filter(|line| whose(line, mine) == Side::Theirs)
+            .map(|line| (line.start - AROUND, line.end + AROUND))
+            .collect();
+        let times = times::judge(&lines, &timed, &theirs);
+        println!("{}", times.describe(name));
+        all_times += times;
         let spoken = |side: Side| -> Vec<String> {
             reference
                 .iter()
@@ -222,11 +241,13 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
         all.unfiltered += scored.unfiltered;
     }
     println!("{}", report("all", &all));
+    println!("{}", all_times.describe("all"));
     let mut total = all.written[0];
     total += all.written[1];
     if total.words == 0 {
         return Err(format!("{} has no words to hear", set.display()));
     }
+    println!("{}", all_times.verdict(times::INSIDE)?);
     match ceiling {
         Some(most) => verdict(total.tenths(), most).map(|passed| println!("{passed}")),
         None => Ok(()),
