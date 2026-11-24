@@ -395,8 +395,9 @@
   '';
   a-disks-writeback-throttle-is-the-machines = ''
     each disk a machine names in jitsusama.slices.writebackThrottle has a unit, started at boot,
-    by a switch and as the disk appears, that sets its writeback throttle's goal, each its own,
-    and gives the kernel's back as it stops; a machine naming none has no such unit, and a name
+    by a switch and as the disk appears, with no condition to skip a name that reaches nothing
+    and stopped as the disk leaves, that sets its writeback throttle's goal, each its own, and
+    gives back what the disk had as it stops; a machine naming none has no such unit, and a name
     that isn't a disk's plain one, or a disk io.cost shares, is refused while another disk beside
     io.cost's is not. Whether the goal reaches the disk is the switch's to show, where a unit
     whose name reaches no throttle fails
@@ -1034,6 +1035,13 @@
   '';
   disk-guard-stays-in-the-background = ''
     the disk guard yields to the account, and a command overrunning its memory never stops it
+  '';
+  disk-throttles-come-back-as-they-were = ''
+    on a stand-in sysfs, writeback-goal refuses a wrong call with 64 before it looks for the
+    disk, fails on a name that reaches no throttle, gives back a disk that's gone quietly, and
+    gives back what the throttle had before its first goal, or the kernel's default where none
+    was recorded; disk-order stands the throttle down beside io.cost and gives the kernel's
+    default back as it hands the disk back
   '';
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
