@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import shlex
 import time
 from typing import TYPE_CHECKING, Any
@@ -1263,6 +1264,63 @@ def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
         desktop.launcher_left_closed()
 
 
+def test_a_start_asked_while_one_starts_is_told_and_kept_with_its_end(
+    desktop: Desktop,
+) -> None:
+    """A start asked while the last is still starting is told so, and kept unread past its end.
+
+    The shell starts one at a time, so a second Return while the node holds the first is
+    told busy, as a notice once he's shut the launcher. The notices daemon folds a newer notice
+    of one program and summary into the older, marked read, so the first's end, coming later,
+    would put the busy one away unseen; it leads with it instead (#5596's council, F43).
+    """
+    unanswered = starts_noticed(desktop, UNANSWERED)
+    busy = starts_noticed(desktop, BUSY)
+    desktop.as_account("systemctl --user kill --signal=STOP mycelium")
+    try:
+        asked_from_a_link(desktop, "https://github.com/harbour/nowhere/issues/11")
+        asked_from_a_link(desktop, "https://github.com/harbour/nowhere/issues/12")
+        noticed(desktop, BUSY, busy, dt.timedelta(seconds=30))
+        noticed(desktop, UNANSWERED, unanswered, dt.timedelta(seconds=90))
+        unread = f"[{STARTS_NOTICED} | select(.read | not) | .body]"
+        bodies = json.loads(
+            desktop.as_account(f"jq -c {shlex.quote(unread)} {desktop.NOTICES_KEPT}")
+        )
+        assert [one for one in bodies if one.split("\n")[-2:] == [BUSY, UNANSWERED]], (
+            f"the busy start went unseen with the last's end: {bodies}"
+        )
+    finally:
+        desktop.as_account("systemctl --user kill --signal=CONT mycelium")
+        desktop.launcher_left_closed()
+
+
+def test_a_start_with_no_node_to_take_it_says_what_gets_past_it(desktop: Desktop) -> None:
+    """A start the node isn't running to take is told, ending with what gets past it.
+
+    The agents daemon finds no node at its socket and says so in Rust's words, and the shell
+    ends them with the one act that answers (Sprouting.js's ACTS), as a notice once the
+    launcher's shut: the node running again, then saying it again.
+    """
+    machine = desktop.machine
+    before = starts_noticed(desktop)
+    desktop.as_account("systemctl --user stop mycelium")
+    try:
+        asked_from_a_link(desktop, "https://github.com/harbour/nowhere/issues/13")
+        noticed(desktop, None, before, dt.timedelta(seconds=30))
+        newest = f"[{STARTS_NOTICED}] | max_by(.id) | .body"
+        said = desktop.as_account(f"jq -r {shlex.quote(newest)} {desktop.NOTICES_KEPT}")
+        end = said.strip().split("\n")[-1]
+        assert UNREACHED.match(end), f"a start with no node wasn't told the node's words: {end!r}"
+        assert end.endswith(f"; {NODE_ACT}"), f"nor what gets past it: {end!r}"
+    finally:
+        desktop.as_account("systemctl --user start mycelium")
+        machine.wait_until_succeeds(
+            desktop.in_session("mycelium --realm harbour sessions > /dev/null"),
+            timeout=dt.timedelta(seconds=60),
+        )
+        desktop.launcher_left_closed()
+
+
 def asked_from_a_link(desktop: Desktop, link: str) -> None:
     """Start New Work on `link` from the launcher with Joel's own Return, then shut it."""
     machine = desktop.machine
@@ -1319,6 +1377,14 @@ STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start N
 UNANSWERED = (
     "the node didn't answer in time; it may still start it, so look in Agents before asking again"
 )
+# What a start asked while the last is still starting is told (agents.json's busy).
+BUSY = "still starting the last one; once that's done, say it again, or follow a page's link again"
+# What the agents daemon says of a node not at its socket (sprout.rs, in Rust's words for
+# the two), and the act the shell ends it with (agents.json's actNode).
+UNREACHED = re.compile(
+    r"the node couldn't be reached: (No such file or directory|Connection refused) "
+)
+NODE_ACT = "once the node is running again, say it again"
 # What the agents daemon ends a start a restart cut off with (starts.rs's CUT_OFF).
 CUT_OFF = (
     "a restart cut it off before the node answered; it may still start it, so look in Agents"
