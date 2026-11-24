@@ -313,20 +313,26 @@ in
       );
 
   # The Mac's ssh to the VM gives up on a guest that stops answering, within
-  # about a minute once in and after 90 seconds to greet it, so a build sent
-  # there fails and frees its locks rather than waiting without end; each
-  # setting is said once, as ssh takes only a setting's first.
+  # about a minute once in and after five minutes to greet it, so a build
+  # sent there fails and frees its locks rather than waiting without end;
+  # each setting is said once in the entry, in any case, indent or with =,
+  # as ssh takes only a setting's first.
   linux-builder-gives-up-on-a-guest-that-stops-answering =
     let
       lines =
         lib.splitString "\n"
           (macOf { }).environment.etc."ssh/ssh_config.d/100-linux-builder.conf".text;
-      said = setting: lib.filter (lib.hasPrefix "  ${setting} ") lines;
+      said =
+        setting:
+        let
+          named = "[[:space:]]*${lib.toLower setting}[[:space:]=].*";
+        in
+        lib.filter (line: builtins.match named (lib.toLower line) != null) lines;
     in
     holds "linux-builder-gives-up-on-a-guest-that-stops-answering"
-      "The Mac's ssh to the Linux builder doesn't give up on a silent guest within about a minute, with ConnectTimeout 90, ServerAliveInterval 15 and ServerAliveCountMax 4 each said once."
+      "The Mac's ssh to the Linux builder doesn't give up on a silent guest within about a minute, with ConnectTimeout 300, ServerAliveInterval 15 and ServerAliveCountMax 4 each said once."
       (
-        said "ConnectTimeout" == [ "  ConnectTimeout 90" ]
+        said "ConnectTimeout" == [ "  ConnectTimeout 300" ]
         && said "ServerAliveInterval" == [ "  ServerAliveInterval 15" ]
         && said "ServerAliveCountMax" == [ "  ServerAliveCountMax 4" ]
       );
