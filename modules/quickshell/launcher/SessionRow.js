@@ -33,9 +33,10 @@ function rankOf(row) {
 // paused, resumed and stopped; one with no window offers no Go To, and
 // only one under way can be stopped. One parked has no process to pause
 // or stop and no window known to go to: it can be woken, or talked to,
-// which wakes it too. Only one here can be closed, last, since the
-// harness ends a session on a close Joel steers it from this machine and
-// drops one a node relays (harness #1023).
+// which wakes it too. One not paused can be parked, which the harness
+// refuses under another hold (agentic-harness.pi #2159). Only one here
+// can be closed, last, since the harness ends a session on a close Joel
+// steers it from this machine and drops one a node relays (harness #1023).
 function acts(standing, windowed, here) {
     if (standing === "parked") {
         return ["wake", "talk"];
@@ -43,6 +44,9 @@ function acts(standing, windowed, here) {
     const ids = windowed ? ["switch"] : [];
     ids.push("talk");
     ids.push(standing === "paused" ? "resume" : "pause");
+    if (standing !== "paused") {
+        ids.push("park");
+    }
     if (standing === "working" || standing === "inLine") {
         ids.push("stop");
     }

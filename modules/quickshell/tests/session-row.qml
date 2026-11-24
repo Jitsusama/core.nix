@@ -37,15 +37,15 @@ QtObject {
         // cases there.
 
         // A session's acts follow how it stands: one at work or in line can
-        // be stopped, one paused resumed, one parked only woken or talked
-        // to, with no window known to go to. One here closes, last; one
+        // be stopped, one paused resumed, one not paused parked, one parked
+        // only woken or talked to, with no window known to go to. One here closes, last; one
         // elsewhere can't, since its node's relay of a close is dropped.
         const acts = [
-            ["working", true, true, "switch talk pause stop close"],
-            ["working", true, false, "switch talk pause stop"],
-            ["inLine", false, true, "talk pause stop close"],
-            ["listening", true, true, "switch talk pause close"],
-            ["needs", true, false, "switch talk pause"],
+            ["working", true, true, "switch talk pause park stop close"],
+            ["working", true, false, "switch talk pause park stop"],
+            ["inLine", false, true, "talk pause park stop close"],
+            ["listening", true, true, "switch talk pause park close"],
+            ["needs", true, false, "switch talk pause park"],
             ["paused", true, true, "switch talk resume close"],
             ["parked", false, true, "wake talk"]
         ];

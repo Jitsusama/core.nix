@@ -667,6 +667,14 @@
       "glyph": "resume"
     },
     {
+      "id": "verb:agent:park",
+      "command": "park",
+      "in": "agents",
+      "name": "Park",
+      "verb": "park",
+      "glyph": "suspend"
+    },
+    {
       "id": "verb:agent:stop",
       "command": "interrupt",
       "in": "agents",

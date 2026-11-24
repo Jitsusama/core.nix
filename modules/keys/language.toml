@@ -1016,6 +1016,17 @@ changes = true
 undoable = true
 range = true
 
+# A session parked, freeing what it holds until it's woken, at once when
+# idle and once its turn settles when at work. Nothing is lost by it,
+# since Wake or a message has it go on where it parked, so it asks
+# nothing. Park.
+[acts.park]
+command = "park"
+short = "par"
+kinds = ["list"]
+changes = true
+range = true
+
 # A parked session started again in its window, as a message would wake
 # it. Nothing is lost by it, since it goes on where it parked and parks
 # again once idle, so it asks nothing. Wake.

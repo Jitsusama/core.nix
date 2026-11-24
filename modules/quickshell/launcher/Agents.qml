@@ -1626,6 +1626,10 @@ Provider {
             wake: () => act("wake", { stays: true, run: () => provider.wakeNow(current()) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
+            // Park frees what it holds until it's woken: the harness parks
+            // one idle at once and one at work once its turn settles, and
+            // says a refusal on the foot as Pause's is.
+            park: () => act("park", { run: steered("park") }),
             // Stop ends the turn under way, which nothing puts back, so it's
             // an ending: Return writes :interrupt and a second runs it, as d
             // does. It doesn't ask, as :interrupt is guarded, since the turn

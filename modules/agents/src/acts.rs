@@ -12,9 +12,18 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::clock;
+
 /// The acts that steer a session by their own name, as the node takes
 /// them; Wake only wakes one parked, putting nothing in its inbox.
 const STEERED: [&str; 5] = ["pause", "resume", "stop", "close", "wake"];
+
+/// The act that parks a session, freeing what it holds until it's woken
+/// (Joel, 24 November: a cell he can't act on from where he is "is shit").
+/// It says when he asked, as the harness drops a Park dated before the
+/// session started, so one asked of a session since restarted parks
+/// nothing (agentic-harness.pi #2159).
+const PARK: &str = "park";
 
 /// How long the node may take to answer a steer before the act is said
 /// to have failed, since the shell waits on its answer to say what
@@ -29,6 +38,9 @@ pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
     let ask = said["ask"].as_str()?;
     let steer = if STEERED.contains(&ask) {
         json!({"act": ask, "from": "joel"})
+    } else if ask == PARK {
+        let at = clock::text_of(i64::try_from(now_ms).unwrap_or(i64::MAX));
+        json!({"act": PARK, "at": at, "from": "joel"})
     } else if ask == "talk" {
         match said["text"].as_str() {
             Some(text) if !text.trim().is_empty() => {
@@ -129,6 +141,23 @@ mod tests {
             Some(Ok(json!({"ask": "steer", "address": "P9R1KI",
                 "steer": {"text": "what now?", "id": "talk-7", "from": "joel"}}))),
             "a talk says its words under an id of its own"
+        );
+    }
+
+    #[test]
+    fn a_park_says_when_joel_asked_it() {
+        assert_eq!(
+            steer_of(
+                &json!({"ask": "park", "address": "p9r1ki"}),
+                1_764_000_000_007
+            ),
+            Some(Ok(json!({"ask": "steer", "address": "P9R1KI",
+                "steer": {"act": "park", "at": "2025-11-24T16:00:00.007Z", "from": "joel"}}))),
+            "a park steers the session as Joel, at the moment he asked"
+        );
+        assert!(
+            matches!(steer_of(&json!({"ask": "park"}), 7), Some(Err(_))),
+            "a park for no session isn't sent"
         );
     }
 

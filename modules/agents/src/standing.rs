@@ -96,14 +96,18 @@ fn truthy(value: Option<&Value>) -> bool {
 /// to, paused, resumed and stopped; one with no window offers no Go To,
 /// and only one under way can be stopped. One parked has no process to
 /// pause or stop and no window known to go to: it can be woken, or talked
-/// to, which wakes it too. Only one here can be closed, last, since the
-/// harness ends a session on a close Joel steers it from this machine and
-/// drops one a node relays (harness #1023).
+/// to, which wakes it too. One not paused can be parked, freeing what it
+/// holds until it's woken: the harness parks one idle at once and one at
+/// work once its turn settles, and refuses one under another hold, so a
+/// paused one isn't offered it (agentic-harness.pi #2159). Only one here
+/// can be closed, last, since the harness ends a session on a close Joel
+/// steers it from this machine and drops one a node relays (harness
+/// #1023).
 pub fn acts(stands: Stands, windowed: bool, here: bool) -> Vec<&'static str> {
     if stands == Stands::Parked {
         return vec!["wake", "talk"];
     }
-    let mut ids = Vec::with_capacity(5);
+    let mut ids = Vec::with_capacity(6);
     if windowed {
         ids.push("switch");
     }
@@ -113,6 +117,9 @@ pub fn acts(stands: Stands, windowed: bool, here: bool) -> Vec<&'static str> {
     } else {
         "pause"
     });
+    if stands != Stands::Paused {
+        ids.push("park");
+    }
     if matches!(stands, Stands::Working | Stands::InLine) {
         ids.push("stop");
     }
@@ -338,11 +345,21 @@ mod tests {
     #[test]
     fn a_sessions_acts_follow_how_it_stands() {
         let cases = [
-            (Stands::Working, true, true, "switch talk pause stop close"),
-            (Stands::Working, true, false, "switch talk pause stop"),
-            (Stands::InLine, false, true, "talk pause stop close"),
-            (Stands::Listening, true, true, "switch talk pause close"),
-            (Stands::Needs, true, false, "switch talk pause"),
+            (
+                Stands::Working,
+                true,
+                true,
+                "switch talk pause park stop close",
+            ),
+            (Stands::Working, true, false, "switch talk pause park stop"),
+            (Stands::InLine, false, true, "talk pause park stop close"),
+            (
+                Stands::Listening,
+                true,
+                true,
+                "switch talk pause park close",
+            ),
+            (Stands::Needs, true, false, "switch talk pause park"),
             (Stands::Paused, true, true, "switch talk resume close"),
             (Stands::Parked, false, true, "wake talk"),
         ];
