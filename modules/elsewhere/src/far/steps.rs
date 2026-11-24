@@ -122,19 +122,10 @@ done"#
 /// are another run's, of this job or of another job of the quest. What
 /// lies in the handover is cleared only once no link the job left stands
 /// at it or above it, as `unlinked` makes sure. Every copy, and what lies
-/// beside it, is taken away by `cleared`, which opens its folders first,
-/// since a job may close one so that nothing under it can be taken.
+/// beside it, is taken away by `CLEARING`'s `cleared`.
 pub(super) fn stopping() -> String {
     format!(
-        r#"# Takes each path away whole, its folders made the far line's own to
-# enter and write first: a job may close one, so that what lies under it
-# can't be taken. find takes a link it meets as itself alone, as -P says,
-# so nothing past one is opened. Its answer is the removal's.
-cleared() {{
-  find -P "$@" -type d ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
-  rm -rf "$@"
-}}
-# True once neither the job's handover folder nor either folder above
+        r#"# True once neither the job's handover folder nor either folder above
 # it in the quest's scratch is a link, any one there cleared first: a job
 # may leave one, and whatever the far line writes or clears below goes
 # through it. Each is opened, top down from the scratch, once it's known
@@ -232,14 +223,33 @@ fi"#
 /// and process space the run was in and its number there.
 pub(super) const RUN: &str = ".run";
 
+/// The far line's step defining `cleared`, which takes each path it is
+/// given away whole, its folders made the far line's own to enter and
+/// write first, since a job may close one so that nothing under it can be
+/// taken. It comes first, before any step that clears, so each finds it
+/// whichever runs first. It opens what its walk meets only below each
+/// path, and a link met there as itself alone; a folder above a path is
+/// passed through as `rm` passes it.
+pub(super) const CLEARING: &str = r#"# Takes each path away whole,
+# its folders made the far line's own to enter and write first: a job
+# may close one, so that what lies under it can't be taken. find takes a
+# link it meets as itself alone, as -P says, so nothing below one is
+# opened. Its answer is the removal's.
+cleared() {
+  find -P "$@" -type d ! -perm -700 -exec chmod u+rwx {} \; 2>/dev/null
+  rm -rf "$@"
+}"#;
+
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
 /// for this machine's, which another may not. Each name the list holds
 /// must be one of the archives the near side writes, `0.tar` and on, all
 /// checked before any is unpacked. The list is read once, so the names
-/// unpacked are the very names checked, whatever is at its name after.
-/// A job with no file that travels sends none, and its tree is made
-/// empty.
+/// unpacked are the very names checked, whatever is at its name after,
+/// and each pass is fed it through a pipe, not a here-document, which
+/// bash 3.2, the Mac's sh, writes to a file where a fence may let none
+/// be made. A job with no file that travels sends none, and its tree is
+/// made empty.
 ///
 /// The near side writes only plain ustar archives, so one whose first
 /// header says otherwise is refused before tar reads it: tar unpacks a
@@ -265,46 +275,44 @@ pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
   left=$(cat "$job/{LEFT}") || return 2
-  while IFS="$tab" read -r size part; do
+  # Each pass runs in the pipe's own shell, so it ends by exit, and its
+  # answer is the pipe's.
+  printf '%s\n' "$left" | while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
     case $number in
-      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; return 1 ;;
+      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; exit 1 ;;
     esac
-  done <<EOF
-$left
-EOF
-  while IFS="$tab" read -r size part; do
+  done || return
+  printf '%s\n' "$left" | while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     magic=$(dd if="$job/{TREE}/$part" bs=1 skip=257 count=8 2>/dev/null |
       LC_ALL=C tr -d '\000')
     [ "$magic" = ustar00 ] || {{
-      [ -r "$job/{TREE}/$part" ] || return 2
+      [ -r "$job/{TREE}/$part" ] || exit 2
       printf "elsewhere: the job's archive %s isn't a plain one, as the near side writes\n" "$part" >&2
-      return 1
+      exit 1
     }}
     rm -f "$work.names" && (set -C && tar -tf "$job/{TREE}/$part" > "$work.names") ||
-      return 2
+      exit 2
     while IFS= read -r member; do
       case /$member/ in
         //*|*/../*)
           printf "elsewhere: the job's archive %s names %s, outside its tree\n" "$part" "$member" >&2
-          return 1 ;;
+          exit 1 ;;
       esac
     done < "$work.names"
     tar -xf "$job/{TREE}/$part" -C "$work"; unpacked=$?
-    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || return 2
-    [ "$unpacked" -eq 0 ] || return 2
+    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || exit 2
+    [ "$unpacked" -eq 0 ] || exit 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
-      -o ! -type d -links +1) || return 2
+      -o ! -type d -links +1) || exit 2
     [ -z "$odd" ] || {{
       printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
 *}}" >&2
-      return 1
+      exit 1
     }}
-  done <<EOF
-$left
-EOF
+  done
 }}"#
     )
 }

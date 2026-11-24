@@ -301,6 +301,7 @@ pub fn script(
 work={work}
 mine=
 tab=$(printf '\t')
+{CLEARING}
 {crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
@@ -781,7 +782,7 @@ mod steps;
 #[cfg(test)]
 use names::within_tree;
 use names::{Folders, tracked};
-use steps::{RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
+use steps::{CLEARING, RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

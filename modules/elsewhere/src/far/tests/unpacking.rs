@@ -358,7 +358,11 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
 fn a_copy_whose_job_closed_a_folder_in_it_is_taken_away_whole() {
     // Closed to its owner, with a file under it, so nothing there can be
     // taken away unopened: once the job ends, and once it is stopped.
-    for (end, how) in [("true", "ended"), ("kill -TERM $PPID", "stopped")] {
+    let rows = [
+        ("true", "ended", (Some(0), "")),
+        ("kill -TERM $PPID", "stopped", (None, "15")),
+    ];
+    for (end, how, ending) in rows {
         let (code, err, home) = far_run(
             Left::Whole,
             &[("a", "1")],
@@ -375,6 +379,12 @@ fn a_copy_whose_job_closed_a_folder_in_it_is_taken_away_whole() {
         assert!(
             work(&home).join("ran").exists(),
             "the job never closed its folder ({how}, {code:?}): {err}"
+        );
+        let died_by = std::fs::read_to_string(home.join("signal")).unwrap_or_default();
+        assert_eq!(
+            (code, died_by.as_str()),
+            ending,
+            "the far line wasn't {how}: {err}"
         );
         assert!(
             !left,
