@@ -78,8 +78,8 @@ reads "$throttle" 0
 # With nothing recorded, as after a boot, the kernel's default comes back.
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" -1
-# A record left empty or cut short, as by a kill mid-write, gives the
-# kernel's default back rather than nothing, and goes with it.
+# A record that isn't a number, empty or written by something else, gives
+# the kernel's default back rather than nothing, and goes with it.
 for kept in "" 20x; do
   echo 0 > "$throttle"
   printf %s "$kept" > "$WRITEBACK_GOAL_RUN/nvme0n1"
@@ -90,13 +90,17 @@ for kept in "" 20x; do
     exit 1
   fi
 done
-# A throttle that reads as no number isn't recorded, so its giving back
-# is the kernel's default too.
+# A throttle that reads as no number is recorded as the kernel's default,
+# so a second goal doesn't record the first and give that back.
 echo busy > "$throttle"
 exits 0 "$goal" nvme0n1 0
-reads "$throttle" 0
+exits 0 "$goal" nvme0n1 75000
+reads "$throttle" 75000
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" -1
+# A name that isn't one disk's is a wrong call, so nothing outside the
+# records is removed.
+exits 64 "$goal" ../nvme0n1 kernel
 # A disk gone by its giving back drops its record, so a disk taking its
 # name later records its own goal rather than giving back the old one's.
 disk sdy 4000

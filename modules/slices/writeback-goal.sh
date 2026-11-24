@@ -32,7 +32,8 @@ held=${WRITEBACK_GOAL_SYSFS:-}/sys/block/$disk/queue/wbt_lat_usec
 record=${WRITEBACK_GOAL_RUN:-/run/writeback-goal}/$disk
 # What it's asked is checked first, so a wrong call says so whether or not
 # the disk is there.
-if [ -z "$disk" ] || { [ "$goal" != kernel ] && [[ -z $goal || $goal == *[!0-9]* ]]; }; then
+if [[ -z $disk || $disk == */* || $disk == .* ]] \
+  || { [ "$goal" != kernel ] && [[ -z $goal || $goal == *[!0-9]* ]]; }; then
   printf '%s\n' "writeback-goal sets a disk's goal in microseconds, or kernel" \
     "  try  writeback-goal --help" >&2
   exit 64
@@ -58,7 +59,11 @@ if [ "$goal" = kernel ]; then
   before=-1
   if [ -e "$record" ]; then
     kept=$(< "$record")
-    [[ -n $kept && $kept != *[!0-9]* ]] && before=$kept
+    if [[ $kept == -1 || (-n $kept && $kept != *[!0-9]*) ]]; then
+      before=$kept
+    else
+      echo "writeback-goal: $disk's record reads '$kept', so it gets the kernel's goal" >&2
+    fi
   fi
   echo "$before" > "$held"
   rm -f "$record"
@@ -66,13 +71,16 @@ if [ "$goal" = kernel ]; then
 fi
 # Only the first goal's record is kept, so a goal set twice gives back
 # the disk's own, not the first goal. It's written whole, through a file
-# renamed into place, and only when the throttle reads as a number.
+# renamed into place; a throttle that reads as no number is recorded as
+# the kernel's goal, so a second goal can't be taken for the disk's own.
 if [ ! -e "$record" ]; then
   now=$(< "$held")
-  if [[ -n $now && $now != *[!0-9]* ]]; then
-    mkdir -p "${record%/*}"
-    echo "$now" > "$record.new"
-    mv "$record.new" "$record"
+  if [[ -z $now || $now == *[!0-9]* ]]; then
+    echo "writeback-goal: $disk's throttle reads '$now', so the kernel's goal is kept" >&2
+    now=-1
   fi
+  mkdir -p "${record%/*}"
+  echo "$now" > "$record.new"
+  mv "$record.new" "$record"
 fi
 echo "$goal" > "$held"
