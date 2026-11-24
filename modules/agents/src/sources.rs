@@ -347,8 +347,10 @@ impl Inputs {
             // hand, as the shell read its own file of them. While a write
             // has failed, memory is ahead of the file and is written over
             // it at the next try, so the file isn't read back over it: a
-            // hand edit made meanwhile is ignored, then written over.
+            // hand edit made meanwhile is ignored, then written over, as
+            // the journal says.
             if self.unwritten.is_some() {
+                behind_ignored(path);
                 return;
             }
             if let Some(kept) = Arrangement::read(path) {
@@ -357,8 +359,11 @@ impl Inputs {
         } else if path == paths.kept_places {
             // As with the arrangement: while their write has failed,
             // memory holds what the shell said last and the file doesn't,
-            // until a try soon after writes it (keep_kept_places).
+            // until a try soon after writes it over the file
+            // (keep_kept_places), so a hand edit made meanwhile is ignored,
+            // as the journal says, then written over.
             if self.kept_places_unwritten.is_some() {
+                behind_ignored(path);
                 return;
             }
             if let Some(kept) = KeptPlaces::read(path) {
@@ -374,6 +379,16 @@ impl Inputs {
             });
         }
     }
+}
+
+/// Journals a change to a places file at `path` left unread, as memory is
+/// ahead of it while its write fails and is written over it at the next
+/// try, so a hand edit lost that way is seen.
+fn behind_ignored(path: &Path) {
+    eprintln!(
+        "agents: ignored a change to {}, as its write is behind and memory goes over it",
+        path.display()
+    );
 }
 
 #[cfg(test)]
