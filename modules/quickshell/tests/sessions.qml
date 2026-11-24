@@ -1180,10 +1180,15 @@ ShellRoot {
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         root.unhosted = "";
         root.unhostedWhy = "";
+        // Heard directly first, so a throw in it fails the check rather
+        // than passing as a warning of the signal's.
+        Sessions.heardWindow(cameRefused);
         Niri.windowOpenedOrChanged(cameRefused);
         expect("the press waiting on it is told its own came refused",
             root.unhosted === "FORGED" && root.unhostedWhy === "disowned",
             `${root.unhosted} ${root.unhostedWhy}`);
+        expect("and is told only once", !(named in Sessions.pressedFor),
+            JSON.stringify(Object.keys(Sessions.pressedFor)));
         root.unhostedWhy = "";
         Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
             here: true });
@@ -1235,11 +1240,11 @@ ShellRoot {
             `${root.unhosted} ${root.unhostedWhy}`);
         const byItself = { address: "BYITSELF", presence: { hosted: true, session: "s-own" },
             attach: view.slice(0, -1).concat(["s-own"]), here: true };
-        Sessions.view(byItself, null);
+        const askedByItself = Sessions.view(byItself, null);
         root.unhosted = "";
         Sessions.untaken("pi-hosted.s-own", String(Date.now()));
         expect("while one the shell asked for by itself is told to no one",
-            root.unhosted === "", root.unhosted);
+            askedByItself && root.unhosted === "", `${askedByItself} ${root.unhosted}`);
         // A stray niri listed before its viewer was asked for, first heard
         // as it changes while that ask stands, is no ask's own refused.
         const before = "pi-hosted.s-before";
@@ -1279,6 +1284,7 @@ ShellRoot {
             null, "walk");
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused,
             "97": refusedWalk });
+        Sessions.heardWindow(refusedWalk);
         Niri.windowOpenedOrChanged(refusedWalk);
         const goneOnRefused = Sessions.reopening?.waiting === null
             && Sessions.reopening?.late.includes(waitedRefused) && waitedRefused.opened === null;
@@ -1289,18 +1295,23 @@ ShellRoot {
         if (Sessions.reopening) {
             Sessions.reopening.waiting = waitedUntaken;
             Sessions.reopening.queue = [walkNext];
+            Sessions.reopening.begun = ["s-untaken-walk"];
         }
         Sessions.viewWith(view.slice(0, -1).concat(["s-untaken-walk"]), untakenWalk, null,
             "walk");
         Sessions.untaken(untakenWalk, String(Date.now()));
+        // None can come once no kitty took it, so it's kept neither late
+        // nor begun, and a Reopen Them All pressed again asks for it.
         const goneOnUntaken = Sessions.reopening?.waiting === null
-            && Sessions.reopening?.late.includes(waitedUntaken);
+            && Sessions.reopening?.late.includes(waitedUntaken) === false
+            && Sessions.reopening?.begun.includes("s-untaken-walk") === false;
         const wentOn = Sessions.reopening?.queue.length === 0;
         Sessions.reopening = null;
         Sessions.forgetAsk(refusedWalk.opened);
         expect("the walk waits no more on one whose window came refused", goneOnRefused,
             JSON.stringify(waitedRefused));
-        expect("nor on one no kitty took", goneOnUntaken, JSON.stringify(waitedUntaken));
+        expect("nor on one no kitty took, which a press asks for again", goneOnUntaken,
+            JSON.stringify(waitedUntaken));
         expect("the next waits out the walk's pace", paced, "begun at once");
         expect("and once it has passed, is begun", wentOn, "left queued");
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
