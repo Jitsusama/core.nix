@@ -251,10 +251,11 @@ fn gather(
         now,
         orchestrator,
     );
-    let (misses, found) =
+    let (missed, found) =
         measures::checked_beside(misses, folder, checkouts, &switches, findings.as_ref(), now)?;
     let mut all = vec![
-        misses,
+        missed,
+        measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),

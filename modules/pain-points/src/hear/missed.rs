@@ -19,6 +19,8 @@
 //! that replaces it, so a write from outside the lock is never lost but
 //! left for the next run.
 
+pub mod tested;
+
 use super::heard::Heard;
 use super::stalled;
 use serde_json::{Value, json};
@@ -57,18 +59,7 @@ pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Resu
     if owed.is_empty() {
         return Ok(());
     }
-    let name = ledger.file_name().map_or_else(
-        || "misses.jsonl".to_owned(),
-        |n| n.to_string_lossy().into_owned(),
-    );
-    let lock_at = ledger.with_file_name(format!("{name}.lock"));
-    let lock = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_at)
-        .map_err(|e| format!("{}: {e}", lock_at.display()))?;
-    locked(&lock, &name)?;
+    let (_lock, name) = held(ledger)?;
     let text = match fs::read_to_string(ledger) {
         Ok(text) => text,
         Err(e) if e.kind() == ErrorKind::NotFound => String::new(),
@@ -98,6 +89,24 @@ pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Resu
         .open(ledger)
         .and_then(|mut file| file.write_all(format!("{gap}{new}").as_bytes()))
         .map_err(|e| format!("{}: {e}", ledger.display()))
+}
+
+/// The ledger at `ledger`'s lock, held, and the ledger's name: the lock
+/// is let go as it drops.
+fn held(ledger: &Path) -> Result<(File, String), String> {
+    let name = ledger.file_name().map_or_else(
+        || "misses.jsonl".to_owned(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    let lock_at = ledger.with_file_name(format!("{name}.lock"));
+    let lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_at)
+        .map_err(|e| format!("{}: {e}", lock_at.display()))?;
+    locked(&lock, &name)?;
+    Ok((lock, name))
 }
 
 /// Holds `lock` within `LOCK_AT_MOST`, or says why not.
