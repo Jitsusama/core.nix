@@ -55,7 +55,7 @@ pub fn help() -> Help {
     )
     .exit(
         Exit::Failed,
-        "it had nowhere to listen, or couldn't make its OS Login key",
+        "it had nowhere to listen, or couldn't make the OS Login key it was asked for alone",
     )
     .exit(Exit::Config, "its hosts file couldn't be read")
 }

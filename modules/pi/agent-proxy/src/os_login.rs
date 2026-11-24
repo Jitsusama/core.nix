@@ -23,8 +23,9 @@
 //! too: the person named it, so the agents' keys and the builders' still
 //! sign for it as before, and this key doesn't.
 
-use std::fs::{self, File};
-use std::io::{self, Read};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Read, Write as _};
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -80,9 +81,15 @@ impl OsLogin {
         let public = key.public_key().to_openssh().map_err(io::Error::other)?;
         let blob = key.public_key().to_bytes().map_err(io::Error::other)?;
         // Written whole beside it and moved into place, so ssh and the
-        // service never read half a key.
+        // service never read half a key; never through a link left there.
         let written = folder.join(format!("{PUBLIC_FILE}.new"));
-        fs::write(&written, format!("{public}\n"))?;
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&written)?
+            .write_all(format!("{public}\n").as_bytes())?;
         fs::rename(&written, folder.join(PUBLIC_FILE))?;
         Ok(OsLogin { key, blob, known })
     }
@@ -94,15 +101,24 @@ impl OsLogin {
 
     /// Whether `host` is an OS Login host: the key of an instance the
     /// known-hosts file names. A file that can't be read, as on a machine
-    /// whose gcloud has reached none, names none; past [`MOST_KNOWN`],
-    /// only what comes before it is read.
+    /// whose gcloud has reached none, names none, and so does anything
+    /// but a plain file, which could hold the binding open; past
+    /// [`MOST_KNOWN`], only what comes before it is read.
     pub fn knows(&self, host: &KeyData) -> bool {
         let Ok(wanted) = PublicKey::from(host.clone()).to_openssh() else {
             return false;
         };
         let mut text = Vec::new();
-        let read =
-            File::open(&self.known).and_then(|file| file.take(MOST_KNOWN).read_to_end(&mut text));
+        let read = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&self.known)
+            .and_then(|file| {
+                if !file.metadata()?.is_file() {
+                    return Err(io::Error::other("not a plain file"));
+                }
+                file.take(MOST_KNOWN).read_to_end(&mut text)
+            });
         read.is_ok()
             && String::from_utf8_lossy(&text)
                 .lines()
@@ -121,6 +137,9 @@ impl OsLogin {
 /// line (`@revoked`, `@cert-authority`), a hashed one and a comment name
 /// none.
 fn names_instance(line: &str, wanted: &str) -> bool {
+    if line.trim_start().starts_with(['@', '#']) {
+        return false;
+    }
     let mut fields = line.split_whitespace();
     let (Some(names), Some(kind), Some(key)) = (fields.next(), fields.next(), fields.next()) else {
         return false;
@@ -141,14 +160,12 @@ mod tests {
 
     #[test]
     fn a_line_naming_an_instance_names_it() {
-        assert!(names_instance(
-            &format!("compute.8034457558281374540 {KEY}"),
-            KEY
-        ));
-        assert!(names_instance(
-            &format!("10.0.0.4,compute.1 {KEY} a comment"),
-            KEY
-        ));
+        for line in [
+            format!("compute.8034457558281374540 {KEY}"),
+            format!("10.0.0.4,compute.1 {KEY} a comment"),
+        ] {
+            assert!(names_instance(&line, KEY), "{line:?} names an instance");
+        }
     }
 
     #[test]
@@ -171,6 +188,9 @@ mod tests {
     fn a_line_with_another_key_names_none() {
         let other =
             "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-        assert!(!names_instance(&format!("compute.1 {other}"), KEY));
+        assert!(
+            !names_instance(&format!("compute.1 {other}"), KEY),
+            "an instance with another host key is named"
+        );
     }
 }

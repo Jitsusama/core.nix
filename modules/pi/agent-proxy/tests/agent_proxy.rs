@@ -231,11 +231,14 @@ impl Proxy {
             ))
             .spawn()
             .expect("the proxy starts");
+        // The OS Login key is written once the socket is bound, so a
+        // proxy asked for one is ready once both are there.
+        let ready = || socket.exists() && (known.is_none() || dir.join("os-login.pub").exists());
         let started = Instant::now();
-        while !socket.exists() {
+        while !ready() {
             assert!(
                 started.elapsed() < Duration::from_secs(10),
-                "the proxy never bound its socket"
+                "the proxy never bound its socket, or never wrote its OS Login key"
             );
             // A short poll for the socket the proxy binds as it starts.
             thread::sleep(Duration::from_millis(5));
@@ -1321,6 +1324,85 @@ fn refuses_the_os_login_key_to_a_lent_builder() {
 }
 
 #[test]
+fn keeps_a_lent_builder_lent_though_gcloud_knows_it() {
+    let (builders, key) = builders();
+    let (builder, blob) = host(3);
+    let proxy = Proxy::launch(
+        "lent-first",
+        "",
+        Some((&builders, &machine("nix-offload", &builder))),
+        Some(&known("compute.1", &builder)),
+        Behind::Signing,
+    );
+    let (_, key_blob) = proxy.os_login_key();
+    let session = b"a known builder's session";
+    let (mut client, taken) = bound(&proxy, &builder, &blob, session);
+    assert!(taken, "the builder's binding is taken");
+
+    send(
+        &mut client,
+        &sign(&key_blob, &login_as(session, &key_blob, OS_LOGIN_USER)),
+    );
+    assert_eq!(
+        receive(&mut client),
+        Some(vec![FAILURE]),
+        "the OS Login key is refused to a lent builder gcloud knows"
+    );
+    send(
+        &mut client,
+        &sign(&key, &login_as(session, &key, b"nix-offload")),
+    );
+    let answer = receive(&mut client).expect("an answer");
+    assert_eq!(
+        answer.first(),
+        Some(&SIGN_RESPONSE),
+        "the builders' key signs for it, as before gcloud knew it"
+    );
+}
+
+#[test]
+fn reads_no_os_login_host_past_the_first_eight_mebibytes() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("most-known", "", "");
+    let mut padded = "# a comment of gcloud's, padding the file out\n".repeat(200_000);
+    assert!(padded.len() > 8 * 1024 * 1024, "the padding passes the cap");
+    padded.push_str(&known("compute.1", &instance));
+    proxy.know(&padded);
+
+    let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
+
+    assert!(
+        !taken,
+        "an instance named past the first 8 MiB isn't read as one"
+    );
+}
+
+#[test]
+fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
+    let (instance, blob) = host(5);
+    let proxy = Proxy::os_login("fifo-known", "", &known("compute.1", &instance));
+    let known_hosts = proxy.dir.join("known_hosts");
+    fs::remove_file(&known_hosts).expect("the known hosts go");
+    let path = std::ffi::CString::new(known_hosts.as_os_str().as_encoded_bytes())
+        .expect("a path with no nul");
+    // SAFETY: mkfifo reads a nul-terminated path and changes nothing else.
+    assert_eq!(
+        unsafe { libc::mkfifo(path.as_ptr(), 0o600) },
+        0,
+        "a fifo is made"
+    );
+
+    let started = Instant::now();
+    let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
+
+    assert!(!taken, "a fifo names no OS Login host");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "and the binding isn't held open waiting on a writer"
+    );
+}
+
+#[test]
 fn knows_no_os_login_host_while_gcloud_has_reached_none() {
     let (instance, blob) = host(5);
     let proxy = Proxy::os_login("no-known-hosts", "", &known("compute.1", &instance));
@@ -1363,7 +1445,9 @@ fn goes_on_without_an_os_login_key_it_cant_write() {
         .arg(dir.join("absent"))
         .arg("--os-login-hosts")
         .arg(dir.join("known_hosts"))
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(
+            fs::File::create(dir.join("said")).expect("a file for what it says"),
+        ))
         .spawn()
         .expect("the proxy starts");
     let started = Instant::now();
@@ -1382,9 +1466,22 @@ fn goes_on_without_an_os_login_key_it_cant_write() {
         &bind(&blob, session, &signed(&allowed, session), false),
     );
     let taken = receive(&mut client) == Some(vec![SUCCESS]);
+    send(&mut client, &sign(LOGIN_KEY, &login(session, LOGIN_KEY)));
+    let signed_by_agent = receive(&mut client).and_then(|answer| answer.first().copied());
+    let said = fs::read_to_string(dir.join("said")).unwrap_or_default();
     let _ = child.kill();
     let _ = child.wait();
     let _ = fs::remove_dir_all(&dir);
 
     assert!(taken, "a told host's session is still taken");
+    assert_eq!(
+        signed_by_agent,
+        Some(SIGN_RESPONSE),
+        "and the agent behind still signs its login"
+    );
+    assert!(
+        said.contains("couldn't make its OS Login key in")
+            && said.contains("so it signs no OS Login logins"),
+        "it says it goes on without the key: {said:?}"
+    );
 }

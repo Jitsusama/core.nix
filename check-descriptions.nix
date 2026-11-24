@@ -4838,15 +4838,18 @@
   '';
   pi-agent-proxy-runs-only-with-machines = ''
     pi's SSH agent proxy runs only where it's given machines or the builders' key, never on a Mac,
-    started by the first ssh that asks on a socket in a folder only the account reaches, told of
+    started with the session where it makes an OS Login key and otherwise by the first ssh that
+    asks, on a socket in a folder only the account reaches, told of
     those hosts and the agents behind it, or of the builders' key and root's file of builders lent
   '';
-  pi-agent-proxy-reaches-os-login-hosts = ''
-    where pi's SSH agent proxy runs, it makes a key for the OS Login hosts gcloud knows, started
-    with the session and never in a core dump; the account's gcloud registers each key it writes
-    for twelve hours, renews it each quarter hour by the wall clock, bounded, and removes it as the
-    proxy stops, keeping the file; the machine's ssh offers it to compute.* hosts alone; and with
-    no known-hosts file named, there's no such key
+  pi-agent-proxy-reaches-os-login-machines = ''
+    where pi's SSH agent proxy runs, by default, it makes a key for the OS Login hosts gcloud
+    knows, started with the session and never in a core dump; the account's gcloud registers each
+    key it writes for twelve hours, renews it each quarter hour by the wall clock, every call
+    bounded, tries a failed registration again half a minute on, and removes it as the proxy
+    stops, keeping the file; only while the proxy runs is it registered or renewed; no gcloud, or
+    no gcloud login, is warned of and passed over; the machine's ssh offers it to compute.* hosts
+    alone; and with no known-hosts file named, there's no such key
   '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
@@ -4855,7 +4858,9 @@
     never adds, removes or locks keys, and answers at most 64 clients at once; it signs with the
     builders' key only nix-offload's login to a builder lent now, and no agent's key for one; it
     signs with a key made in memory only a login to an OS Login host gcloud's known hosts name and
-    neither told nor lent, and no other key for one, going on without it when it can't be made;
+    neither told nor lent, and no other key for one, reading those hosts only from a plain file
+    and its first 8 MiB, making the key only once it's listening, and going on without it, saying
+    so, when it can't be made;
     and it says each login signed and each refusal in one line of a fixed shape, its host and why
     as a word
   '';

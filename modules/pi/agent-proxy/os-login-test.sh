@@ -1,8 +1,10 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2310 # run and asked are steps, read in a condition to say which failed.
 # Proves os-login.sh against a stand-in gcloud that writes down what it's
 # asked: a new key added for twelve hours once renewing it fails, one
 # already there renewed for twelve, a key removed with its file kept,
-# failures said, and no gcloud or no key passing quietly over.
+# failures said, every call bounded, and no gcloud, no gcloud login or
+# no key passing over with a word.
 #
 #   os-login-test.sh PATH-TO-pi-agent-proxy-os-login
 
@@ -10,11 +12,20 @@ set -euo pipefail
 register=$1
 work=$(mktemp -d)
 mkdir "$work/bin"
-# The stand-in fails an update while no key is there, and everything
-# while told to fail.
+# The stand-in writes down what it's asked and what started it, names
+# its login unless told it has none, fails an update while no key is
+# there, as gcloud's own update.py does, and fails everything while told
+# to fail. The script's own PATH comes first, so what started it is read
+# from /proc rather than by standing in for timeout.
 cat >"$work/bin/gcloud" <<EOF
 #!$BASH
 echo "\$*" >>"$work/asked"
+mapfile -d '' parent </proc/\$PPID/cmdline
+echo "\${parent[0]##*/} \${parent[*]:1}" >>"$work/started-by"
+if [[ \$1 == config ]]; then
+  [[ -e "$work/no-login" ]] || echo someone@example.com
+  exit 0
+fi
 [[ ! -e "$work/failing" ]] || exit 1
 [[ \$4 != update || -e "$work/there" ]]
 EOF
@@ -29,8 +40,9 @@ fail() {
 # Only the stand-in and the tools the script needs are on its PATH, so a
 # real gcloud here never answers in the stand-in's place.
 mkdir "$work/tools"
-for tool in ssh-keygen cut timeout; do
-  ln -s "$(command -v "$tool")" "$work/tools/$tool"
+for tool in ssh-keygen timeout sleep; do
+  found=$(command -v "$tool")
+  ln -s "$found" "$work/tools/$tool"
 done
 run() {
   PATH=$work/bin:$work/tools "$register" "$@" >"$work/said" 2>&1
@@ -68,8 +80,18 @@ run frobnicate "$key" && fail "took a mode that's neither register nor remove"
 run register "$work/absent.pub" || fail "failed with no key"
 [[ -s $work/asked ]] && fail "asked gcloud with no key"
 
+touch "$work/no-login"
+: >"$work/asked"
+run register "$key" || fail "failed with no gcloud login, which trying again can't mend"
+grep -q "^<4>.*gcloud auth login" "$work/said" || fail "didn't warn there's no gcloud login"
+grep -q "ssh-keys" "$work/asked" && fail "asked for a key with no gcloud login"
+rm "$work/no-login"
+
+# Every call to the stand-in was started by timeout, bounded at a minute.
+grep -qv "^timeout 60 gcloud " "$work/started-by" && fail "called gcloud unbounded"
+
 rm "$work/bin/gcloud"
 run register "$key" || fail "failed with no gcloud"
-grep -q "no gcloud" "$work/said" || fail "didn't say there's no gcloud"
+grep -q "^<4>.*no gcloud" "$work/said" || fail "didn't warn there's no gcloud"
 
 exit "$fails"

@@ -151,22 +151,75 @@ impl Drop for Place {
     }
 }
 
-/// What the command line says.
+/// What the command line says: the OS Login key's folder and gcloud's
+/// known hosts are kept apart, as the key is made only once everything
+/// else holds, and whether it was asked for nothing else.
 struct Config {
     shared: Shared,
     socket: Option<PathBuf>,
+    os_login: Option<(PathBuf, PathBuf)>,
+    os_login_alone: bool,
 }
 
 fn main() -> ExitCode {
     terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
-        let config = config(context.args.iter().cloned())?;
+        undumpable();
+        let mut config = config(context.args.iter().cloned())?;
         let listener = listener(config.socket.as_deref()).map_err(|error| {
             Failure::new(Exit::Failed, "pi-agent-proxy has nothing to listen on")
                 .because(error.to_string())
         })?;
+        // Made last, once nothing else can refuse the start, so a key is
+        // never put in the person's profile by a proxy about to exit.
+        if let Some((folder, known)) = config.os_login.take() {
+            config.shared.os_login = os_login(&folder, known, config.os_login_alone)?;
+        }
         answer(&Arc::new(config.shared), &listener);
         Ok(())
     })
+}
+
+/// Keep this process's memory, which holds the builders' key and the OS
+/// Login key, from other processes of the account: one that can't be
+/// dumped can't be traced or read through /proc by them, as the
+/// spawner's and the password door's can't.
+fn undumpable() {
+    // SAFETY: prctl with PR_SET_DUMPABLE takes plain integers and only
+    // changes a flag of this process.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);
+    }
+}
+
+/// The OS Login key, made in `folder` for the instances `known` names.
+/// A key it can't make costs only the OS Login logins: the agents' hosts
+/// and the builders' logins it signs too go on.
+///
+/// # Errors
+///
+/// Failed, 1, when the key can't be made and, `alone`, nothing else was
+/// asked for.
+fn os_login(folder: &Path, known: PathBuf, alone: bool) -> Result<Option<OsLogin>, Failure> {
+    match OsLogin::start(folder, known) {
+        Ok(os_login) => Ok(Some(os_login)),
+        Err(error) if alone => Err(Failure::new(
+            Exit::Failed,
+            format!(
+                "pi-agent-proxy couldn't make its OS Login key in {}",
+                folder.display()
+            ),
+        )
+        .because(error.to_string())),
+        Err(error) => {
+            eprintln!(
+                "pi-agent-proxy: couldn't make its OS Login key in {}, so it signs no OS Login \
+                 logins: {error}",
+                folder.display()
+            );
+            Ok(None)
+        }
+    }
 }
 
 /// Answer each client `listener` takes, on a thread of its own, while
@@ -194,8 +247,7 @@ fn answer(shared: &Arc<Shared>, listener: &UnixListener) {
 /// # Errors
 ///
 /// Asked wrongly, 64, for a flag it doesn't know or one short of what it
-/// needs; its configuration wrong, 78, for a hosts file it can't read;
-/// failed, 1, when its OS Login key can't be made.
+/// needs; its configuration wrong, 78, for a hosts file it can't read.
 fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
     let mut hosts = None;
     let mut upstreams = Vec::new();
@@ -238,30 +290,7 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
     }
     let hosts = hosts.ok_or_else(|| cli::wrongly("--hosts is needed"))?;
     let os_login = match (os_login_folder, os_login_hosts) {
-        // A key it can't make costs only the OS Login logins: the agents'
-        // hosts and the builders' logins it signs too go on, unless it was
-        // asked for nothing else.
-        (Some(folder), Some(known)) => match OsLogin::start(&folder, known) {
-            Ok(os_login) => Some(os_login),
-            Err(error) if upstreams.is_empty() && key.is_none() => {
-                return Err(Failure::new(
-                    Exit::Failed,
-                    format!(
-                        "pi-agent-proxy couldn't make its OS Login key in {}",
-                        folder.display()
-                    ),
-                )
-                .because(error.to_string()));
-            }
-            Err(error) => {
-                eprintln!(
-                    "pi-agent-proxy: couldn't make its OS Login key in {}, so it signs no OS \
-                     Login logins: {error}",
-                    folder.display()
-                );
-                None
-            }
-        },
+        (Some(folder), Some(known)) => Some((folder, known)),
         (None, None) => None,
         _ => {
             return Err(cli::wrongly("--os-login and --os-login-hosts go together"));
@@ -272,6 +301,7 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
             "at least one --upstream, a --key or --os-login is needed",
         ));
     }
+    let os_login_alone = upstreams.is_empty() && key.is_none();
     if key.is_some() && lent.is_empty() {
         return Err(cli::wrongly(
             "--key needs at least one --lent, the builders it signs for",
@@ -283,11 +313,13 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
             upstreams,
             key: Key::new(key),
             lent: Lent::new(lent),
-            os_login,
+            os_login: None,
             clients: AtomicUsize::new(0),
             signs: Mutex::new(HashMap::new()),
         },
         socket,
+        os_login,
+        os_login_alone,
     })
 }
 

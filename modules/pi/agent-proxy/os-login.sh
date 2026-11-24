@@ -10,8 +10,38 @@
 #   pi-agent-proxy-os-login register|remove PUBLIC-KEY-FILE
 #
 # It runs the gcloud on the user manager's PATH, the one the person's
-# login was made with. A machine with no gcloud registers nothing, and
-# says so in the journal.
+# login was made with. A machine with no gcloud, or a gcloud with no
+# login, registers nothing, and warns so in the journal, naming what
+# would; neither fails the unit, as neither passes by trying again.
+# A failed call does, and the unit tries again shortly.
+#
+# Its help takes the shape every command of ours does (docs/commands.md),
+# by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+pi-agent-proxy-os-login  keep agents' OS Login key
+
+  register puts the proxy's OS Login key in the person's
+  login profile for twelve hours, or renews it there;
+  remove takes it out, keeping the key's file. Each uses
+  the person's own gcloud login. No gcloud, or no login,
+  is warned of and registers nothing.
+
+EXAMPLES
+  pi-agent-proxy-os-login register \
+    /run/user/1000/pi-agent/os-login.pub
+
+EXIT
+  0   done, or nothing it can do
+  1   gcloud couldn't register the key
+  64  neither register nor remove
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 mode=${1:?register or remove}
 key=${2:?the public file of the key}
@@ -27,14 +57,35 @@ if [[ $mode != register && $mode != remove ]]; then
   exit 64
 fi
 if ! command -v gcloud >/dev/null; then
-  echo "pi-agent-proxy-os-login: no gcloud on PATH, so it does nothing"
+  echo "<4>pi-agent-proxy-os-login: no gcloud on the user manager's PATH, so agents' OS Login" \
+    "logins fail; set jitsusama.pi.agentProxy.osLoginKnownHosts to null where none is wanted"
   exit 0
+fi
+# The timer can fire as the proxy starts, a moment before it writes its
+# key, and the path's event for that key then joins this run rather than
+# starting another; so a register waits a few seconds for a key.
+if [[ $mode == register ]]; then
+  for _ in {1..25}; do
+    [[ -s $key ]] && break
+    sleep 0.2 # The proxy writes its key in this while.
+  done
 fi
 if [[ ! -s $key ]]; then
   echo "pi-agent-proxy-os-login: no key at $key, so it does nothing"
   exit 0
 fi
-fingerprint=$(ssh-keygen -lf "$key" | cut -d' ' -f2)
+# A gcloud that can't say fails as one with no login would: either way
+# there's nothing to register with.
+login=$(timeout 60 gcloud config get-value account --quiet 2>/dev/null) || login=
+if [[ -z $login ]]; then
+  echo "<4>pi-agent-proxy-os-login: gcloud has no login, so agents' OS Login logins fail;" \
+    "gcloud auth login gives it one"
+  exit 0
+fi
+# ssh-keygen says the bits, the fingerprint, then the comment.
+fingerprint=$(ssh-keygen -lf "$key")
+fingerprint=${fingerprint#* }
+fingerprint=${fingerprint%% *}
 
 if [[ $mode == register ]]; then
   # update moves the end of a key already there; add puts in one that
@@ -44,7 +95,8 @@ if [[ $mode == register ]]; then
   elif cloud add --key-file="$key" --ttl=12h >/dev/null; then
     echo "pi-agent-proxy-os-login: $fingerprint registered for 12 hours"
   else
-    echo "pi-agent-proxy-os-login: $fingerprint couldn't be registered; trying again soon" >&2
+    echo "pi-agent-proxy-os-login: $fingerprint couldn't be registered; trying again soon," \
+      "and gcloud auth login renews a lapsed login" >&2
     exit 1
   fi
 else

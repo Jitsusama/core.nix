@@ -259,6 +259,9 @@
             { };
         niri-off-cpu-begun = script "niri-off-cpu-begun" ../../modules/niri-off-cpu/off-cpu-begun.sh { };
         option-rom-check = script "option-rom-check" ../../modules/lanzaboote/option-rom-check.sh { };
+        pi-agent-proxy-os-login =
+          script "pi-agent-proxy-os-login" ../../modules/pi/agent-proxy/os-login.sh
+            { };
         pi-ask = script "pi-ask" ../../modules/pi/ask.sh { };
         pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
         pi-host-down = script "pi-host-down" ../../modules/pi/host-down.sh { };

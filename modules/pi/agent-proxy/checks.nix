@@ -87,28 +87,34 @@
   # host. Null known hosts turns it off.
   # The registering script is run against a stand-in gcloud
   # (os-login-test.sh).
-  pi-agent-proxy-reaches-os-login-hosts =
+  pi-agent-proxy-reaches-os-login-machines =
     let
       key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-      proxying = osLoginHosts: {
+      proxying = hosts: {
         home-manager.sharedModules = [
           {
             jitsusama.pi.agentProxy = {
               machines = [ key ];
               upstreams = [ "%t/agents.sock" ];
-              inherit osLoginHosts;
-            };
+            }
+            // hosts;
           }
         ];
       };
+      # Left unset, as a machine repository leaves it, the route is on.
       machine = bareNixos [
         self.nixosModules.workstation
-        (proxying "%h/.ssh/google_compute_known_hosts")
+        (proxying { })
       ];
       home = account machine;
+      services = home.systemd.user.services;
+      renewing = services.pi-agent-proxy-os-login;
+      watching = home.systemd.user.paths.pi-agent-proxy-os-login;
+      renewer = home.systemd.user.timers.pi-agent-proxy-os-login;
+      onProxy = [ "pi-agent-proxy.service" ];
       off = account (bareNixos [
         self.nixosModules.workstation
-        (proxying null)
+        (proxying { osLoginKnownHosts = null; })
       ]);
       proxy = home.systemd.user.services.pi-agent-proxy;
       start = lib.head (lib.toList proxy.Service.ExecStart);
@@ -118,21 +124,29 @@
       );
       offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
       wired =
-        holds "pi-agent-proxy-reaches-os-login-hosts-wired"
-          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts, or one with them null, isn't started with the session, its key isn't registered when written, renewed each quarter hour by the wall clock within a bound, or removed as it stops, may dump its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
+        holds "pi-agent-proxy-reaches-os-login-machines-wired"
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written, renewed each quarter hour by the wall clock within a bound, retried on failure, or removed as it stops, is registered or renewed while the proxy isn't running, may dump its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
           (
             lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
             && lib.toList proxy.Install.WantedBy == [ "default.target" ]
             && lib.hasPrefix "-" stop
             && lib.hasSuffix "/bin/pi-agent-proxy-os-login remove %t/pi-agent/os-login.pub" stop
             && lib.hasSuffix "/bin/pi-agent-proxy-os-login register %t/pi-agent/os-login.pub" register
-            &&
-              lib.toList home.systemd.user.paths.pi-agent-proxy-os-login.Path.PathChanged == [
-                "%t/pi-agent/os-login.pub"
-              ]
-            && home.systemd.user.timers.pi-agent-proxy-os-login.Timer.OnCalendar == "*:0/15"
-            && home.systemd.user.timers.pi-agent-proxy-os-login.Timer.Persistent
-            && home.systemd.user.services.pi-agent-proxy-os-login.Service.TimeoutStartSec == "3min"
+            && lib.toList watching.Path.PathChanged == [ "%t/pi-agent/os-login.pub" ]
+            && watching.Unit.BindsTo == onProxy
+            && watching.Unit.Before == onProxy
+            && watching.Install.WantedBy == onProxy
+            && renewer.Timer.OnCalendar == "*:0/15"
+            && renewer.Timer.Persistent
+            && renewer.Unit.BindsTo == onProxy
+            && renewer.Unit.After == onProxy
+            && renewer.Install.WantedBy == onProxy
+            && renewing.Unit.Requisite == onProxy
+            && renewing.Unit.After == onProxy
+            && renewing.Unit.PartOf == onProxy
+            && renewing.Service.TimeoutStartSec == "3min"
+            && renewing.Service.Restart == "on-failure"
+            && renewing.Service.RestartSec == "30s"
             && proxy.Service.LimitCORE == 0
             && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub\nHost *\n" machine.config.programs.ssh.extraConfig
             && !(lib.hasInfix "--os-login" offStart)
@@ -141,10 +155,23 @@
             && !(off.systemd.user.timers ? pi-agent-proxy-os-login)
           );
     in
-    pkgs.runCommandLocal "pi-agent-proxy-reaches-os-login-hosts"
-      { nativeBuildInputs = [ pkgs.openssh ]; }
+    pkgs.runCommandLocal "pi-agent-proxy-reaches-os-login-machines"
+      {
+        nativeBuildInputs = [ pkgs.openssh ];
+        sshConfig = machine.config.programs.ssh.extraConfig;
+        passAsFile = [ "sshConfig" ];
+      }
       ''
         cat ${wired}
+        # As ssh itself reads the block: the key for compute.* hosts, and
+        # not for another.
+        offered=$(ssh -G -F "$sshConfigPath" compute.1)
+        grep -qx 'identityfile /run/user/%i/pi-agent/os-login.pub' <<<"$offered"
+        elsewhere=$(ssh -G -F "$sshConfigPath" example.org)
+        if grep -q os-login <<<"$elsewhere"; then
+          echo "the machine's ssh offers the OS Login key past compute.* hosts" >&2
+          exit 1
+        fi
         $BASH ${./os-login-test.sh} ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
         touch $out
       '';

@@ -1,5 +1,5 @@
-# pi's part of a NixOS machine's own config: ssh offers the key pi's
-# agent proxy makes for OS Login hosts (agent-proxy/src/os_login.rs) to
+# pi's part of a NixOS machine's own config, all of it its agent proxy's:
+# ssh offers the key the proxy makes for OS Login hosts (src/os_login.rs) to
 # each instance gcloud reaches through its IAP tunnel, which it names
 # compute.<id>. gcloud's ssh offers only the person's own key, sealed in
 # the TPM, whose agent refuses agents, so on 24 November an agent's

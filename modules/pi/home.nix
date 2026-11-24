@@ -162,8 +162,8 @@ let
 
   # What puts the proxy's OS Login key in the person's profile and takes
   # it out (agent-proxy/os-login.sh), where the proxy makes one.
-  osLoginHosts = config.jitsusama.pi.agentProxy.osLoginHosts;
-  osLogin = proxied && osLoginHosts != null;
+  osLoginKnownHosts = config.jitsusama.pi.agentProxy.osLoginKnownHosts;
+  osLogin = proxied && osLoginKnownHosts != null;
   osLoginKey = "%t/pi-agent/os-login.pub";
   osLoginRegister = pkgs.writeShellApplication {
     name = "pi-agent-proxy-os-login";
@@ -274,7 +274,7 @@ in
         or a command could lend itself a host of its own.
       '';
     };
-    osLoginHosts = lib.mkOption {
+    osLoginKnownHosts = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = "%h/.ssh/google_compute_known_hosts";
       example = null;
@@ -530,14 +530,14 @@ in
           "--os-login"
           "%t/pi-agent"
           "--os-login-hosts"
-          osLoginHosts
+          osLoginKnownHosts
         ]
       );
       # Taken out of the person's profile as the proxy stops, since the
       # key's private half goes with it.
       Service.ExecStopPost = lib.mkIf osLogin "-${lib.getExe osLoginRegister} remove ${osLoginKey}";
       # The OS Login key is held only in its memory, so no crash writes
-      # that memory out.
+      # that memory out; the proxy also makes itself undumpable.
       Service.LimitCORE = lib.mkIf osLogin 0;
       # Started with the session rather than by the first ssh, where it
       # makes an OS Login key, so the key's public half is there for an
@@ -549,29 +549,48 @@ in
     # makes one, and its twelve hours are renewed each quarter hour while
     # it runs. The renewal is by the wall clock, whose timers fire on
     # waking, since the profile's twelve hours run while a laptop sleeps;
-    # and a registration that failed, as before the network is up, is
-    # tried again at the next.
+    # a registration that failed, as on waking before the network is back,
+    # is tried again half a minute on. The path and the timer are bound to the proxy, so
+    # neither puts back the key its stop took out; the path is watching
+    # before the proxy writes its first key.
     systemd.user.services.pi-agent-proxy-os-login = lib.mkIf osLogin {
-      Unit.Description = "Put pi's agent proxy's OS Login key in the person's login profile";
+      Unit = {
+        Description = "Put pi's agent proxy's OS Login key in the person's login profile";
+        Requisite = [ "pi-agent-proxy.service" ];
+        After = [ "pi-agent-proxy.service" ];
+        PartOf = [ "pi-agent-proxy.service" ];
+        StartLimitIntervalSec = "10min";
+        StartLimitBurst = 6;
+      };
       Service = {
         Type = "oneshot";
         ExecStart = "${lib.getExe osLoginRegister} register ${osLoginKey}";
         # Each gcloud call is bounded at a minute; this bounds the whole.
         TimeoutStartSec = "3min";
+        Restart = "on-failure";
+        RestartSec = "30s";
       };
     };
     systemd.user.paths.pi-agent-proxy-os-login = lib.mkIf osLogin {
-      Unit.Description = "Register each OS Login key pi's agent proxy makes";
+      Unit = {
+        Description = "Register each OS Login key pi's agent proxy makes";
+        BindsTo = [ "pi-agent-proxy.service" ];
+        Before = [ "pi-agent-proxy.service" ];
+      };
       Path.PathChanged = osLoginKey;
-      Install.WantedBy = [ "paths.target" ];
+      Install.WantedBy = [ "pi-agent-proxy.service" ];
     };
     systemd.user.timers.pi-agent-proxy-os-login = lib.mkIf osLogin {
-      Unit.Description = "Renew pi's agent proxy's OS Login key before it lapses";
+      Unit = {
+        Description = "Renew pi's agent proxy's OS Login key before it lapses";
+        BindsTo = [ "pi-agent-proxy.service" ];
+        After = [ "pi-agent-proxy.service" ];
+      };
       Timer = {
         OnCalendar = "*:0/15";
         Persistent = true;
       };
-      Install.WantedBy = [ "timers.target" ];
+      Install.WantedBy = [ "pi-agent-proxy.service" ];
     };
 
     # The door a fenced gh or git reaches GitHub through, since the token
