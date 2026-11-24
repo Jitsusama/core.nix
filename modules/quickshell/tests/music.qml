@@ -223,6 +223,9 @@ QtObject {
             [["Spotify", "shuffle", {}], "Spotify not shuffled \u00b7 it can't shuffle"],
             [["mpv", "place", { at: "soon" }],
                 "mpv not moved to soon \u00b7 that isn't a time in a track"],
+            // A name or a fill holding $' or $& is said as given, not as a pattern.
+            [["Pay $'Day", "place", { at: "$&5" }],
+                "Pay $'Day not moved to $&5 \u00b7 that isn't a time in a track"],
             [["", "shuffle", {}], "nothing is playing"]
         ];
         for (const [[name, act, fill], expected] of told) {

@@ -11,7 +11,7 @@
 function filled(words, fill) {
     let said = String(words ?? "");
     for (const name of Object.keys(fill)) {
-        said = said.replace(`{${name}}`, String(fill[name]));
+        said = said.replace(`{${name}}`, () => String(fill[name]));
     }
     return said;
 }

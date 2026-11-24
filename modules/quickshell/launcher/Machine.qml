@@ -120,7 +120,7 @@ Provider {
     function says(id, phrase, fill) {
         let said = (Words.of(`machine:${id}`).said ?? {})[phrase] ?? "";
         for (const key of Object.keys(fill ?? {}))
-            said = said.replace(`{${key}}`, fill[key]);
+            said = said.replace(`{${key}}`, () => fill[key]);
         return said;
     }
 

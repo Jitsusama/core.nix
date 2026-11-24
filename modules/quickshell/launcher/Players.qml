@@ -64,7 +64,7 @@ Provider {
     function said(key, fill) {
         let text = Words.of("media").said?.[key] ?? key;
         for (const name of Object.keys(fill ?? {}))
-            text = text.replace(`{${name}}`, fill[name]);
+            text = text.replace(`{${name}}`, () => fill[name]);
         return text;
     }
 
