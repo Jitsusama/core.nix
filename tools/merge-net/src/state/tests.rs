@@ -265,6 +265,11 @@ fn a_line_that_is_not_utf8_hides_no_run_after_it() {
         "the pass after the line that isn't UTF-8 was lost"
     );
     assert_eq!(
+        state.runs("aaaa", "\u{fffd}"),
+        vec![Ran::Failed],
+        "the line that isn't UTF-8 was dropped rather than read as near as it can be"
+    );
+    assert_eq!(
         state.lasted().get("vm-a"),
         Some(&600),
         "how long vm-a takes was lost past the line that isn't UTF-8"
@@ -272,13 +277,14 @@ fn a_line_that_is_not_utf8_hides_no_run_after_it() {
 }
 
 // A line is passed over unparsed unless it names the commit, but naming it
-// is no run of it: only the line whose own commit it is counts.
+// is no run of it: only the line whose own commit it is counts, for its
+// runs and for its excused failures alike.
 #[test]
 fn a_line_naming_the_commit_elsewhere_is_no_run_of_it() {
     let state = state("named-elsewhere");
     let elsewhere = state.log("aaaa", "vm-a", 1);
     state
-        .record("bbbb", "vm-a", Ran::Passed, Some(0), &elsewhere, 600)
+        .record("bbbb", "vm-a", Ran::Passed, Some(1), &elsewhere, 600)
         .unwrap();
     assert!(
         elsewhere.to_string_lossy().contains("aaaa"),
@@ -294,6 +300,16 @@ fn a_line_naming_the_commit_elsewhere_is_no_run_of_it() {
         state.runs("bbbb", "vm-a"),
         vec![Ran::Passed],
         "bbbb's own run was lost"
+    );
+    assert_eq!(
+        state.excused_logs("aaaa", "vm-a"),
+        Vec::<PathBuf>::new(),
+        "bbbb's excused failure counted as aaaa's, since its log names aaaa"
+    );
+    assert_eq!(
+        state.excused_logs("bbbb", "vm-a"),
+        vec![elsewhere],
+        "bbbb's own excused failure was lost"
     );
 }
 

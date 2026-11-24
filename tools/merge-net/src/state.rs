@@ -322,27 +322,44 @@ impl State {
     }
 
     /// The results journal's lines, read one at a time rather than whole.
-    /// It held 119,000 lines in 30 MB by 24 November, and a search asks
+    /// It held 119,000 lines in 31 MB by 24 November, and a search asks
     /// for each commit's runs in turn. Read whole on each of the watch's
-    /// threads, a copy of it apiece, the watch held 2 GiB that day across
-    /// some 35 of glibc's arenas, and had reached 4.2 GiB. A line that
-    /// isn't UTF-8 is read as near as it can be, hiding no line after it.
+    /// threads, a copy of it apiece, the watch held 2.2 GB that day across
+    /// some 35 of glibc's arenas, and its unit had peaked at 4.8 GB. A line
+    /// that isn't UTF-8 is read as near as it can be, hiding no line after
+    /// it.
     fn results(&self) -> impl Iterator<Item = String> + use<> {
-        fs::File::open(self.root.join("results.jsonl"))
-            .into_iter()
-            .flat_map(|file| {
-                BufReader::new(file)
-                    .split(b'\n')
-                    .map_while(Result::ok)
-                    .map(|line| String::from_utf8_lossy(&line).into_owned())
+        self.result_lines()
+            .map(|line| String::from_utf8_lossy(&line).into_owned())
+    }
+
+    /// The journal's lines as bytes. A read that fails part way ends them
+    /// there, and says so, since the runs before it are then all a caller
+    /// sees: a run missed that way is one the next read finds again.
+    fn result_lines(&self) -> impl Iterator<Item = Vec<u8>> + use<> {
+        let path = self.root.join("results.jsonl");
+        fs::File::open(&path).into_iter().flat_map(move |file| {
+            let path = path.clone();
+            BufReader::new(file).split(b'\n').map_while(move |line| {
+                line.inspect_err(|error| {
+                    eprintln!(
+                        "merge-net: reading {} stopped part way: {error}",
+                        path.display()
+                    );
+                })
+                .ok()
             })
+        })
     }
 
     /// The journal's lines that could be of `commit`'s runs: any naming it
-    /// anywhere, so only those are parsed, the rest passed over unread.
+    /// anywhere, so only those are decoded and parsed, the rest passed over
+    /// as the bytes they were read as.
     fn results_naming(&self, commit: &str) -> impl Iterator<Item = String> + use<> {
-        let commit = commit.to_owned();
-        self.results().filter(move |line| line.contains(&commit))
+        let commit = commit.as_bytes().to_owned();
+        self.result_lines()
+            .filter(move |line| names(line, &commit))
+            .map(|line| String::from_utf8_lossy(&line).into_owned())
     }
 
     /// The logs of `check`'s runs at `commit` that failed but counted as
@@ -555,6 +572,12 @@ impl State {
             &format!("{} {}", now(), one_line(what)),
         );
     }
+}
+
+/// Whether `line` holds `commit`'s bytes anywhere. Every line holds an
+/// empty commit, which no run is of, so the parse after passes it over.
+fn names(line: &[u8], commit: &[u8]) -> bool {
+    commit.is_empty() || line.windows(commit.len()).any(|part| part == commit)
 }
 
 /// What's said as one line of net.log, whose every line opens with its
