@@ -60,8 +60,22 @@ pub const TRIAL: Duration = Duration::from_secs(300);
 /// holds the arrival.
 const ARRIVED: Duration = Duration::from_secs(150);
 
-/// How long an access point found worse from here is left untried.
+/// How long an access point found worse from here is left untried the
+/// first time, and the start of each longer keep-off after (`SPURNED_MOST`).
 pub const SPURNED: Duration = Duration::from_secs(3600);
+
+/// The longest an access point found worse again and again is left
+/// untried. Each keep-off of a point found worse within this of its last
+/// keep-off ending is twice that one, from `SPURNED`, until a trial of it
+/// stands: on the night of 23 Nov 2026 a card on its desk's 2.4 GHz radio
+/// tried the same access point's ch52 radio at 20:25, 22:06, 23:34, 01:32
+/// and 02:48, each read as untried at that hour as learning is by the
+/// hour, and each carried 0.8 to 2.8 s at p95. Those 13 minutes took the
+/// night's p95 from 32.7 ms to 54.2. Kept off for an hour, then two, then
+/// four, it could have been tried at most three times before 04:00. Twelve
+/// hours still tries such a point at another time of day, where it may
+/// carry well.
+pub const SPURNED_MOST: Duration = Duration::from_hours(12);
 
 /// Past either, an access point carries badly enough to try another: a
 /// p95 near three times the better radio's on 14 Nov, or a loss a call
@@ -247,6 +261,10 @@ pub struct Chooser {
     trial: Option<Trial>,
     /// Each access point kept off and until when.
     spurned: HashMap<String, Kept>,
+    /// Each access point found worse lately, how many times running and
+    /// until when it was last kept off for it, so it's kept off longer
+    /// each time (`SPURNED_MOST`).
+    struck: HashMap<String, Struck>,
     /// Each move, from one access point to another, that went back for
     /// carrying worse only than the usual, and when, so a second within
     /// `SPURNED` keeps the point tried off.
@@ -316,6 +334,13 @@ enum Carrying {
     Badly,
     /// Neither.
     Enough,
+}
+
+/// How many times running an access point's trials went back, and until
+/// when the last kept it off.
+struct Struck {
+    times: u32,
+    until: Instant,
 }
 
 /// Why a trial went back.
@@ -714,9 +739,38 @@ impl Chooser {
         self.freed.take()
     }
 
-    /// Forgets each access point kept off whose hour is over.
+    /// Forgets each access point kept off whose keep-off is over, and
+    /// each found worse whose last keep-off ended `SPURNED_MOST` ago.
     fn forget_kept_off(&mut self, now: Instant) {
         self.spurned.retain(|_, kept| now < kept.until);
+        self.struck
+            .retain(|_, struck| now < struck.until + SPURNED_MOST);
+    }
+
+    /// How long an access point a trial went back from is kept off from
+    /// now: `SPURNED` the first time, and twice the last keep-off each time
+    /// it's found worse again within `SPURNED_MOST` of that one ending, up
+    /// to `SPURNED_MOST`. A trial of it that stands forgets it (`judge`).
+    fn spurn_for(&mut self, point: &str, now: Instant) -> Duration {
+        let times = self
+            .struck
+            .get(point)
+            .filter(|struck| now < struck.until + SPURNED_MOST)
+            .map_or(1, |struck| struck.times.saturating_add(1));
+        let doubled = SPURNED.saturating_mul(2_u32.saturating_pow(times - 1));
+        let lasts = doubled.min(SPURNED_MOST);
+        let until = now + lasts;
+        self.struck
+            .insert(point.to_owned(), Struck { times, until });
+        lasts
+    }
+
+    /// How long from now the card keeps off this access point, if it does.
+    pub fn kept_for(&self, point: &str, now: Instant) -> Option<Duration> {
+        self.spurned
+            .get(point)
+            .filter(|kept| now < kept.until)
+            .map(|kept| kept.until.duration_since(now))
     }
 
     /// Whether the card may try this access point, kept off or not, its
@@ -727,9 +781,11 @@ impl Chooser {
             .is_none_or(|kept| failing && kept.yields)
     }
 
-    /// Whether the card keeps off this access point now.
+    /// Whether the card keeps off this access point now, which the tests
+    /// ask where the journal asks for how long.
+    #[cfg(test)]
     pub fn keeps_off(&self, point: &str, now: Instant) -> bool {
-        self.spurned.get(point).is_some_and(|kept| now < kept.until)
+        self.kept_for(point, now).is_some()
     }
 
     /// The narrower access point the last choice began keeping a wider band
@@ -890,6 +946,8 @@ impl Chooser {
             // One run out is no longer kept, so isn't said freed.
             let earned_here =
                 |kept: &Kept| kept.from.as_deref() == Some(trial.from.as_str()) && now < kept.until;
+            // Standing, it's no longer found worse again and again.
+            self.struck.remove(point);
             if as_usual {
                 self.usually.remove(&moved);
                 if self.spurned.get(point).is_some_and(earned_here) {
@@ -916,8 +974,9 @@ impl Chooser {
         let usual = matches!(why, Against::Usually(_));
         let again = usual && self.usually.insert(moved, now).is_some();
         if again || !usual {
+            let lasts = self.spurn_for(point, now);
             let kept = Kept {
-                until: now + SPURNED,
+                until: now + lasts,
                 yields: again,
                 from: Some(trial.from.clone()),
             };
@@ -5084,5 +5143,121 @@ pub(crate) mod tests {
             Choice::Back(NEAR.into()),
             "30 ms heard at -68 is worse than 15"
         );
+    }
+
+    /// Has a card on the desk's 2.4 GHz radio, carrying badly a second
+    /// minute as it did on the night of 23 Nov 2026, try the ch52 radio
+    /// untried at `at`, and judges the trial at its end on what ch52
+    /// carried at 20:30 that night: when it went back.
+    fn tried_ch52_and_back(chooser: &mut Chooser, at: Instant) -> Instant {
+        chooser.badly_on = Some(NEAR.into());
+        let near = carried(201, 0.0);
+        let ch52 = [desk_at(-48, None)];
+        let tried = chooser.choose(at, (NEAR, &near, -50, CH6), &ch52, false);
+        assert_eq!(
+            tried,
+            Choice::Try(DESK.into()),
+            "ch52, untried, wasn't tried off 201 ms"
+        );
+        let back = at + TRIAL;
+        let worse = carried(775, 3.3);
+        let judged = chooser.choose(back, (DESK, &worse, -48, CH52), &[], false);
+        assert_eq!(
+            judged,
+            Choice::Back(NEAR.into()),
+            "775 ms with 3.3% lost didn't go back to the 201 left"
+        );
+        back
+    }
+
+    const HOUR: Duration = Duration::from_hours(1);
+
+    #[test]
+    fn a_point_found_worse_again_and_again_is_kept_off_twice_as_long_each_time_up_to_12_hours() {
+        let mut chooser = Chooser::default();
+        let mut at = Instant::now();
+
+        let kept: Vec<_> = (0..6)
+            .map(|_| {
+                let back = tried_ch52_and_back(&mut chooser, at);
+                let lasts = chooser.kept_for(DESK, back);
+                // Tried again the moment its keep-off ends.
+                at = back + lasts.unwrap_or_default();
+                lasts
+            })
+            .collect();
+
+        let hours = [1, 2, 4, 8, 12, 12].map(|hours| Some(HOUR * hours));
+        assert_eq!(kept, hours, "each keep-off wasn't twice the last, to 12 h");
+    }
+
+    #[test]
+    fn a_point_found_worse_again_is_kept_off_until_its_longer_keep_off_ends() {
+        let mut chooser = Chooser::default();
+        let first = tried_ch52_and_back(&mut chooser, Instant::now());
+        let second = tried_ch52_and_back(&mut chooser, first + HOUR);
+
+        let nearly = (HOUR * 2).saturating_sub(Duration::from_secs(1));
+        let short = chooser.keeps_off(DESK, second + nearly);
+        let over = chooser.keeps_off(DESK, second + HOUR * 2);
+
+        assert!(
+            short,
+            "ch52 found worse twice wasn't kept off its two hours"
+        );
+        assert!(!over, "ch52 was kept off past its two hours");
+    }
+
+    #[test]
+    fn a_trial_that_stands_forgets_how_often_its_point_was_found_worse() {
+        let mut chooser = Chooser::default();
+        let first = tried_ch52_and_back(&mut chooser, Instant::now());
+        let second = tried_ch52_and_back(&mut chooser, first + HOUR);
+        let third = second + HOUR * 2;
+        chooser.badly_on = Some(NEAR.into());
+        let ch52 = [desk_at(-48, None)];
+        let tried = chooser.choose(third, (NEAR, &carried(201, 0.0), -50, CH6), &ch52, false);
+        assert_eq!(
+            tried,
+            Choice::Try(DESK.into()),
+            "ch52 wasn't tried a third time"
+        );
+        let quick = carried(15, 0.0);
+        let stood = chooser.choose(third + TRIAL, (DESK, &quick, -48, CH52), &[], false);
+        assert!(
+            !matches!(stood, Choice::Back(_)),
+            "ch52 carrying 15 ms went back: {stood:?}"
+        );
+
+        let later = tried_ch52_and_back(&mut chooser, third + TRIAL + SETTLE);
+
+        assert_eq!(
+            chooser.kept_for(DESK, later),
+            Some(HOUR),
+            "ch52 found worse after a trial stood wasn't kept off an hour, as at first"
+        );
+    }
+
+    #[test]
+    fn a_point_untried_for_12_hours_after_its_keep_off_is_found_worse_afresh() {
+        // The gap runs from the first keep-off ending to the second going
+        // back, which comes a trial after the second try.
+        let kept_after = |untried: Duration| {
+            let mut chooser = Chooser::default();
+            let first = tried_ch52_and_back(&mut chooser, Instant::now());
+            let tried = first + HOUR + untried.saturating_sub(TRIAL);
+            let again = tried_ch52_and_back(&mut chooser, tried);
+            chooser.kept_for(DESK, again)
+        };
+
+        let within = kept_after(SPURNED_MOST.saturating_sub(Duration::from_secs(1)));
+        let past = kept_after(SPURNED_MOST);
+
+        assert_eq!(
+            within,
+            Some(HOUR * 2),
+            "found worse again within 12 h, not doubled"
+        );
+        assert_eq!(past, Some(HOUR), "found worse 12 h after, not afresh");
     }
 }

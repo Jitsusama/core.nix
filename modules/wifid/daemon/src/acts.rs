@@ -109,6 +109,28 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
     Ok(Asking::Once(ask, answer))
 }
 
+/// What an `act` ask wants, as the journal says it beside who asked, and
+/// never its password.
+pub fn wanted(said: &Value) -> String {
+    let named = |name: &str| {
+        said.get(name)
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_owned()
+    };
+    let on = |name: &str| said.get(name).and_then(Value::as_bool);
+    match said.get("act").and_then(Value::as_str).unwrap_or("") {
+        "roam" => format!("to roam to {}", named("bssid")),
+        act @ ("join" | "leave" | "forget") => format!("to {act} {}", named("network")),
+        "trust" if on("trusted") == Some(false) => format!("to distrust {}", named("network")),
+        "trust" => format!("to trust {}", named("network")),
+        "radio" if on("on") == Some(false) => "to turn the radio off".to_owned(),
+        "radio" => "to turn the radio on".to_owned(),
+        "scan" => "a look".to_owned(),
+        other => format!("an act {other:?}"),
+    }
+}
+
 /// The access point a `roam` ask names, by its address, in lower case as
 /// wpa_supplicant writes it.
 fn address(said: &Value) -> Result<String, (&'static str, String)> {
@@ -362,6 +384,32 @@ mod tests {
             heard.push(serde_json::from_str(&line).expect("JSON"));
         }
         heard
+    }
+
+    #[test]
+    fn what_an_act_wants_is_said_by_its_act_and_never_its_password() {
+        let said = [
+            json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"}),
+            json!({"act": "join", "network": "Lantern", "password": "secret"}),
+            json!({"act": "trust", "network": "Lantern", "trusted": false}),
+            json!({"act": "radio", "on": false}),
+            json!({"act": "scan"}),
+            json!({"act": "dance"}),
+        ]
+        .map(|said| wanted(&said));
+
+        assert_eq!(
+            said,
+            [
+                "to roam to 6c:ae:f6:c1:84:26",
+                "to join Lantern",
+                "to distrust Lantern",
+                "to turn the radio off",
+                "a look",
+                "an act \"dance\"",
+            ],
+            "an act's want is misread"
+        );
     }
 
     #[tokio::test]
