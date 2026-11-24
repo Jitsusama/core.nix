@@ -284,9 +284,7 @@ impl Inputs {
         }
         let at = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
         if self.windows.records().next().is_none() {
-            if self.unwritten.is_none() {
-                return None;
-            }
+            self.unwritten.as_ref()?;
             self.write_places(self.arrangement.clone(), path);
             return self.kept_again_at(at);
         }
