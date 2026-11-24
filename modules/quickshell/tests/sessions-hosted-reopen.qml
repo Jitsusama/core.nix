@@ -913,6 +913,11 @@ ShellRoot {
         const window = { id: 94, pid: 940, workspace_id: reef, session: true,
             opened: "pi-hosted.s-reef", layout: { pos_in_scrolling_layout: [1, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "94": window });
+        // It took a window, so niri keeps an empty workspace after it.
+        const took = Object.assign({}, Niri.workspaces[reef], { active_window_id: 94 });
+        Niri.workspaces = Object.assign({}, Niri.workspaces, { [reef]: took,
+            "47": { id: 47, idx: 7, output: "DP-4", is_focused: false, active_window_id: null }
+        });
         Niri.revision += 1;
         windowsTell({ changed: [windowRecord(94, "pi-hosted.s-reef", reef)] });
         Niri.windowOpenedOrChanged(window);
@@ -961,19 +966,25 @@ ShellRoot {
         stage = "quiet";
     }
     // Looked at once the walk's settle pass is done, nothing's being
-    // placed, and an arranging tick has had its time to take workspaces
-    // home: every move of s-kelp's window names it by id, or focuses it
-    // first to move its column, and its workspace stays on the screen
-    // it's named on.
-    property real quietAt: 0
+    // placed, and an arranging pass, asked here as the shell's tick asks
+    // it, has taken workspaces home: every move of s-kelp's window names
+    // it by id, or focuses it first to move its column, and its workspace
+    // stays on the screen it's named on.
+    property bool arrangeAsked: false
+    property bool arrangedNow: false
     function quiet() {
-        if (Sessions.placingNow()) {
-            quietAt = 0;
+        if (Sessions.placingNow())
+            return;
+        if (!arrangeAsked) {
+            arrangeAsked = true;
+            Sessions.lookAtScreens(() => {
+                Sessions.comeHome();
+                Sessions.putBackOpen();
+                root.arrangedNow = true;
+            });
             return;
         }
-        if (quietAt === 0)
-            quietAt = Date.now();
-        if (Date.now() - quietAt < 3000)
+        if (!arrangedNow)
             return;
         Expect.expect("one sent by name to a workspace on another screen than kept "
             + "stays there, the walk settled and workspaces arranged",
@@ -983,7 +994,7 @@ ShellRoot {
                 || act.ConsumeOrExpelWindowLeft?.id === 93
                 || act.MoveWorkspaceToIndex?.reference?.Id === 44
                 || act.MoveWorkspaceToMonitor?.reference?.Id === 44),
-            JSON.stringify(Niri.acts));
+            `${JSON.stringify(Sessions.awayFrom)} ${JSON.stringify(Niri.acts)}`);
         console.log("a hosted viewer reopens where it was, in "
             + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
         Qt.exit(0);
