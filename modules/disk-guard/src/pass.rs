@@ -291,6 +291,34 @@ fn while_band(band: Band) -> &'static str {
     }
 }
 
+/// What a pass with `goal` still has to free, given the space `before`
+/// its next batch, the worst `band` it has seen and how long it has `ran`,
+/// or how it ends there: a reach that reached its target, or a pass past
+/// the longest it may run. Checked once a batch is measured, so what it
+/// freed is counted.
+fn still_to_free(
+    goal: Goal,
+    thresholds: &Thresholds,
+    before: &Space,
+    band: Band,
+    ran: f64,
+) -> Result<Option<u64>, End> {
+    let remaining = match goal {
+        Goal::Upkeep | Goal::Produce | Goal::Clear => None,
+        Goal::Reach if before.free >= thresholds.target => return Err(End::Reached),
+        Goal::Reach => Some(thresholds.target - before.free),
+    };
+    let longest = match goal {
+        Goal::Upkeep => Some(ROUTINE_LONGEST),
+        Goal::Reach if band <= Band::Filling => Some(REACH_LONGEST),
+        Goal::Reach | Goal::Produce | Goal::Clear => None,
+    };
+    if longest.is_some_and(|longest| ran >= longest) {
+        return Err(End::Unfinished);
+    }
+    Ok(remaining)
+}
+
 /// Takes what the plan says until free space reaches the target, nothing
 /// is left to take, or deletes stop freeing anything. Each batch is
 /// settled and measured before the next is planned, so a writer filling
@@ -329,24 +357,14 @@ pub fn pass(
         };
         band = thresholds.band(&before, band);
         report.band = report.band.max(band);
-        let remaining = match goal {
-            Goal::Upkeep | Goal::Produce | Goal::Clear => None,
-            Goal::Reach if before.free >= thresholds.target => {
-                report.end = End::Reached;
-                return report;
-            }
-            Goal::Reach => Some(thresholds.target - before.free),
-        };
-        // Checked once a batch is measured, so what it freed is counted.
-        let longest = match goal {
-            Goal::Upkeep => Some(ROUTINE_LONGEST),
-            Goal::Reach if report.band <= Band::Filling => Some(REACH_LONGEST),
-            Goal::Reach | Goal::Produce | Goal::Clear => None,
-        };
-        if longest.is_some_and(|longest| disk.now() - began >= longest) {
-            report.end = End::Unfinished;
-            return report;
-        }
+        let remaining =
+            match still_to_free(goal, thresholds, &before, report.band, disk.now() - began) {
+                Ok(remaining) => remaining,
+                Err(end) => {
+                    report.end = end;
+                    return report;
+                }
+            };
         let windows = match goal {
             Goal::Upkeep | Goal::Produce => Band::Healthy,
             Goal::Clear => Band::CriticallyFull,

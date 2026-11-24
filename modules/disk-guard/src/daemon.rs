@@ -2694,6 +2694,34 @@ impl Guard {
                     .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))))
     }
 
+    /// Learns what a pass that `started` teaches: how long a pass takes,
+    /// from a reach that reclaimed, or when upkeep was last done, from an
+    /// upkeep pass that got through what was due.
+    fn learn_from_pass(
+        &mut self,
+        tick: &Tick,
+        (goal, why): (Goal, Why),
+        report: &Report,
+        scan: &Scan,
+        started: Instant,
+    ) {
+        if teaches_pass_length(goal, why, report) {
+            let seconds = started.elapsed().as_secs_f64();
+            self.memory.pass_seconds = Some(match self.memory.pass_seconds {
+                Some(before) => before + PASS_WEIGHT * (seconds - before),
+                None => seconds,
+            });
+        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
+            // Only a pass that got through what was due counts as upkeep:
+            // one cut short by its length or a stop leaves the rest due.
+            self.memory.upkept = Some(if self.kept_unvouched(scan, report) {
+                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
+            } else {
+                tick.wall
+            });
+        }
+    }
+
     /// Runs a pass over what lies on the watched filesystem `device` and
     /// journals it.
     fn pass_on(
@@ -2777,21 +2805,7 @@ impl Guard {
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        if teaches_pass_length(goal, &why, &report) {
-            let seconds = started.elapsed().as_secs_f64();
-            self.memory.pass_seconds = Some(match self.memory.pass_seconds {
-                Some(before) => before + PASS_WEIGHT * (seconds - before),
-                None => seconds,
-            });
-        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
-            // Only a pass that got through what was due counts as upkeep:
-            // one cut short by its length or a stop leaves the rest due.
-            self.memory.upkept = Some(if self.kept_unvouched(scan, &report) {
-                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
-            } else {
-                tick.wall
-            });
-        }
+        self.learn_from_pass(tick, (goal, why), &report, scan, started);
         self.note_actions(here, &report.actions, tick.wall);
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
@@ -3604,7 +3618,7 @@ fn stale(outcome: &Outcome) -> bool {
 /// batch and then waits is left out too, on purpose: it took real time,
 /// but not the time its work needs. An asked collection reaches only for
 /// generations and garbage, so it says nothing of a whole reach.
-fn teaches_pass_length(goal: Goal, why: &Why, report: &Report) -> bool {
+fn teaches_pass_length(goal: Goal, why: Why, report: &Report) -> bool {
     goal == Goal::Reach
         && !matches!(why, Why::Collect)
         && report

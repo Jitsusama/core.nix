@@ -916,7 +916,7 @@ fn a_nearly_full_store_is_listed_at_full_priority_however_overloaded_the_machine
 }
 
 /// A machine whose memory stalled every task at once for a tenth of the
-/// last minute, as optimus's did beside long listings on 23 November.
+/// last minute, as a workstation's did beside long listings on 23 November.
 const MEMORY_STRAINED: Senses = Senses {
     pressure: Pressure {
         memory: disk_guard::moments::Stall {
