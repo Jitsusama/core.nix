@@ -358,9 +358,9 @@ mod tests {
             read.trouble.len() == 6
                 && said(0, "from dangling", "can't be read")
                 && said(1, "from high", "too high")
-                && said(2, "runless/nine.json", "it keeps no list of runs")
-                && said(3, "from rekinded", "of the shape")
-                && said(4, "from renamed", "of the shape")
+                && said(2, "from rekinded", "of the shape")
+                && said(3, "from renamed", "of the shape")
+                && said(4, "runless/nine.json", "it keeps no list of runs")
                 && said(5, "torn/seven.json", "can't be read"),
             "a node unread, mirrored too high or of another shape, or a record unread, went \
              unsaid: {:?}",
