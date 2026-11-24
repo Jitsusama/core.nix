@@ -136,7 +136,15 @@ fn read_in(
         .collect();
     read.sort();
     if same(read).is_empty() {
-        Err(seen::unread(short(commit)))
+        // A range round that read the head itself, from a base that's no
+        // commit on main, is told apart from no round at all: asking the
+        // same range again reads from the same base.
+        let ranged = rounds.iter().any(|read| read.commit == commit);
+        Err(if ranged {
+            seen::read_from_no_base(short(commit))
+        } else {
+            seen::unread(short(commit))
+        })
     } else {
         Ok(())
     }
@@ -562,6 +570,19 @@ mod tests {
             refused.contains("no review round of ours read"),
             "{refused}"
         );
+    }
+
+    // A head that only range rounds read, from a base off main or none at
+    // all, is refused saying so, since asking that range again reads from
+    // the same base; one no round read is refused as unread.
+    #[test]
+    fn a_head_read_only_from_no_base_is_told_apart_from_one_unread() {
+        let rounds = HashSet::from([round("ddd", Some("off")), round("ddd", Some(""))]);
+        let on_main = |base: &str| base == "main";
+        let refused = read_in("ddd", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
+        assert_eq!(refused, seen::read_from_no_base("ddd"));
+        let unread = read_in("ccc", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
+        assert_eq!(unread, seen::unread("ccc"));
     }
 
     // Each base is a git, and on 21 November the rounds held about 2,300,
