@@ -47,6 +47,9 @@ pub enum Fault {
     Silent,
     /// The program ended without one, saying how.
     Ended(String),
+    /// The relay feeding the loopback started again while it was read, so
+    /// what came may be its placeholder rather than the camera.
+    Restarted,
 }
 
 impl std::fmt::Display for Fault {
@@ -54,7 +57,39 @@ impl std::fmt::Display for Fault {
         match self {
             Fault::Silent => f.write_str("nothing came"),
             Fault::Ended(how) => f.write_str(how),
+            Fault::Restarted => f.write_str("its relay started again while it was read"),
         }
+    }
+}
+
+/// The system unit that feeds a machine's camera to its loopback, as the
+/// XPS 14's does (hardware/dell-xps-14-da14260/camera/camera.nix). It
+/// restarts itself when the camera gives nothing for 90 s, so a restart
+/// while the loopback is read means the camera gave nothing.
+const RELAY: &str = "camera.service";
+
+/// The relay's run, by systemd's id for it, or nothing on a machine with
+/// no such unit or none running.
+pub fn relay_run() -> Option<String> {
+    let shown = Command::new("systemctl")
+        .args(["show", "--value", "--property=InvocationID", RELAY])
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let run = String::from_utf8_lossy(&shown.stdout).trim().to_owned();
+    (!run.is_empty()).then_some(run)
+}
+
+/// What a read came to, given the relay's run before and after it: frames
+/// from a relay that started again in between aren't the camera's.
+pub fn judged(
+    gave: Result<(), Fault>,
+    before: Option<&str>,
+    after: Option<&str>,
+) -> Result<(), Fault> {
+    match gave {
+        Ok(()) if before != after => Err(Fault::Restarted),
+        gave => gave,
     }
 }
 
@@ -140,11 +175,14 @@ pub fn which(root: &Path, device: Option<&str>) -> Option<PathBuf> {
     }
     let device = device?;
     // Only a plain file is read: reading a camera's own node would read
-    // its frames.
+    // its frames. Nothing there yet, as while the relay restarts and its
+    // runtime folder is gone, is no camera to check this minute.
     let named = root.join(device.trim_start_matches('/'));
-    if fs::metadata(&named).is_ok_and(|meta| meta.is_file()) {
+    let meta = fs::metadata(&named).ok()?;
+    if meta.is_file() {
         let text = fs::read_to_string(&named).ok()?;
-        return Some(PathBuf::from(text.trim()));
+        let text = text.trim();
+        return (!text.is_empty()).then(|| PathBuf::from(text));
     }
     Some(PathBuf::from(device))
 }
@@ -192,9 +230,19 @@ pub fn asked(camera: &Path, read: bool) -> Vec<String> {
         .collect()
 }
 
+/// The longest a meeting's title is told, so a long one never pushes out
+/// what Joel should do.
+const TITLE: usize = 60;
+
 /// Text with the characters a notice's body reads as markup written out,
-/// so a meeting's title, which anyone inviting him sets, is only words.
+/// so a meeting's title, which anyone inviting him sets, is only words,
+/// and cut to `TITLE` characters.
 fn plain(text: &str) -> String {
+    let text: String = if text.chars().count() > TITLE {
+        text.chars().take(TITLE - 3).chain("...".chars()).collect()
+    } else {
+        text.to_owned()
+    };
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -208,6 +256,7 @@ pub fn told(meeting: &Meeting, now: u64, read: bool, fault: &Fault) -> (String, 
     let camera = match (read, fault) {
         (true, Fault::Silent) => "The camera gave no picture in 2 minutes",
         (true, Fault::Ended(_)) => "The camera couldn't be opened",
+        (true, Fault::Restarted) => "The camera gave no picture and had to start again",
         (false, _) => "The camera didn't answer",
     };
     (
@@ -220,20 +269,35 @@ pub fn told(meeting: &Meeting, now: u64, read: bool, fault: &Fault) -> (String, 
     )
 }
 
+/// The last line `program` said on its errors, for the journal, at most
+/// 200 characters.
+fn last_said(child: &mut std::process::Child) -> String {
+    use std::io::Read as _;
+    let mut said = String::new();
+    if let Some(mut errors) = child.stderr.take() {
+        let _ = errors.read_to_string(&mut said);
+    }
+    let line = said.lines().rev().find(|line| !line.trim().is_empty());
+    line.unwrap_or_default().trim().chars().take(200).collect()
+}
+
 /// Runs `program` with `args`, done when it exits 0 within `deadline`.
 pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), Fault> {
     let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| Fault::Ended(format!("{program} couldn't run: {error}")))?;
     let until = Instant::now() + deadline;
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(status)) => return Err(Fault::Ended(format!("{program} ended {status}"))),
+            Ok(Some(status)) => {
+                let said = last_said(&mut child);
+                return Err(Fault::Ended(format!("{program} ended {status}: {said}")));
+            }
             Ok(None) if Instant::now() < until => thread::sleep(Duration::from_millis(100)),
             Ok(None) => {
                 let _ = child.kill();
@@ -246,10 +310,15 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
 }
 
 /// Whether `camera` gives a picture: read when it's a loopback, and
-/// otherwise only asked.
+/// otherwise only asked whether it answers, which a camera another
+/// program holds still does.
 pub fn gives(camera: &Path, read: bool) -> Result<(), Fault> {
-    let deadline = if read { WAIT } else { ANSWER };
-    within("v4l2-ctl", &asked(camera, read), deadline)
+    if !read {
+        return within("v4l2-ctl", &asked(camera, false), ANSWER);
+    }
+    let before = relay_run();
+    let gave = within("v4l2-ctl", &asked(camera, true), WAIT);
+    judged(gave, before.as_deref(), relay_run().as_deref())
 }
 
 #[cfg(test)]
@@ -314,6 +383,11 @@ mod tests {
             None,
             "a meeting under three minutes out was checked"
         );
+        assert_eq!(
+            start(due(&at(&[now + 6 * MIN_MS + 1]), now, &[])),
+            None,
+            "a meeting over six minutes out was checked"
+        );
     }
 
     #[test]
@@ -359,8 +433,13 @@ mod tests {
         symlink(sys.join("interface"), class.join("device")).unwrap();
         let by_id = root.join("dev/v4l/by-id");
         fs::create_dir_all(&by_id).unwrap();
-        if opens {
-            fs::write(root.join(format!("dev/video{n}")), "").unwrap();
+        // One he can't open is there but refused, as a camera another
+        // program shares out is.
+        let node = root.join(format!("dev/video{n}"));
+        fs::write(&node, "").unwrap();
+        if !opens {
+            use std::os::unix::fs::PermissionsExt as _;
+            fs::set_permissions(&node, fs::Permissions::from_mode(0o000)).unwrap();
         }
         symlink(
             format!("../../video{n}"),
@@ -382,6 +461,12 @@ mod tests {
         usb(&root, 3, "removable\n", true);
         let plugged = which(&root, Some("/run/camera/device"));
         let none = which(&root.join("nowhere"), None);
+        let gone = which(&root.join("nowhere"), Some("/run/camera/device"));
+        fs::write(root.join("run/camera/device"), "\n").unwrap();
+        let empty = which(&root.join("nowhere"), Some("/run/camera/device"));
+        // A folder stands in for a camera's node: there, and not a file, so
+        // never read as one.
+        fs::create_dir_all(root.join("nowhere/dev/video0")).unwrap();
         let named = which(&root.join("nowhere"), Some("/dev/video0"));
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(
@@ -400,6 +485,14 @@ mod tests {
             "a camera plugged in wasn't taken over the machine's"
         );
         assert_eq!(none, None, "a machine with no camera named one");
+        assert_eq!(
+            gone, None,
+            "a file naming the camera that isn't there yet was taken for it"
+        );
+        assert_eq!(
+            empty, None,
+            "an empty file naming the camera was taken for one"
+        );
         assert_eq!(
             named,
             Some(PathBuf::from("/dev/video0")),
@@ -435,10 +528,10 @@ mod tests {
             "--device /dev/video32 --stream-mmap --stream-count 5 --stream-to /dev/null",
             "a loopback's frames weren't all sent to /dev/null"
         );
-        let only = asked(Path::new("/dev/video0"), false);
-        assert!(
-            !only.iter().any(|word| word.starts_with("--stream")),
-            "a camera other than a loopback was read: {only:?}"
+        assert_eq!(
+            asked(Path::new("/dev/video0"), false),
+            ["--device", "/dev/video0", "--get-fmt-video"],
+            "a camera other than a loopback wasn't only asked what it sends"
         );
     }
 
@@ -470,22 +563,62 @@ mod tests {
             asked.starts_with("The camera didn't answer,"),
             "a camera only asked was said to have been read: {asked}"
         );
+        let again = told(&meeting, 6 * MIN_MS, true, &Fault::Restarted).1;
+        assert!(
+            again.starts_with("The camera gave no picture and had to start again,"),
+            "a relay that started again wasn't told: {again}"
+        );
+        let long = Meeting {
+            title: "x".repeat(200),
+            ..meeting
+        };
+        let cut = told(&long, 6 * MIN_MS, true, &Fault::Silent).1;
+        assert!(
+            cut.contains(&format!("{}... starts", "x".repeat(57))),
+            "a long title wasn't cut short: {cut}"
+        );
+    }
+
+    #[test]
+    fn frames_from_a_relay_that_started_again_are_no_picture() {
+        assert_eq!(
+            judged(Ok(()), Some("a"), Some("a")),
+            Ok(()),
+            "frames from the same relay weren't taken"
+        );
+        assert_eq!(
+            judged(Ok(()), Some("a"), Some("b")),
+            Err(Fault::Restarted),
+            "frames from a relay that started again were taken for the camera's"
+        );
+        assert_eq!(
+            judged(Ok(()), None, None),
+            Ok(()),
+            "a machine with no relay unit had its frames refused"
+        );
+        assert_eq!(
+            judged(Err(Fault::Silent), Some("a"), Some("b")),
+            Err(Fault::Silent),
+            "a camera that gave nothing was told as something else"
+        );
     }
 
     #[test]
     fn a_program_is_given_its_time_and_no_more() {
         let none: [String; 0] = [];
         assert_eq!(
-            within("true", &none, Duration::from_secs(5)),
+            within("true", &none, Duration::from_secs(10)),
             Ok(()),
             "a program that exited 0 wasn't taken as done"
         );
+        let failed = within(
+            "ls",
+            &["/a-camera-that-isn-t-there".to_string()],
+            Duration::from_secs(10),
+        );
         assert!(
-            matches!(
-                within("false", &none, Duration::from_secs(5)),
-                Err(Fault::Ended(_))
-            ),
-            "a program that failed wasn't said to have ended"
+            matches!(&failed, Err(Fault::Ended(how)) if how.contains("a-camera-that-isn-t-there")),
+            "a program that failed wasn't said to have ended, with what it said: {failed:?}"
         );
         let started = Instant::now();
         assert_eq!(

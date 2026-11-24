@@ -221,15 +221,20 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     let read = camera::loopback(Path::new("/"), &node);
     let gave = camera::gives(&node, read);
     // He's told before the check is kept, so a state file that can't be
-    // written never keeps the notice from him.
+    // written never keeps the notice from him, and a notice that couldn't
+    // be sent keeps the meeting due, to be checked and told next minute.
     let noticed = match &gave {
         Ok(()) => Ok(()),
         Err(fault) => notice(&camera::told(meeting, seconds_now() * 1000, read, fault)),
     };
-    let kept = camera::remember(&file, starts, meeting.start).map_err(|error| {
-        Failure::new(Exit::Failed, "the check couldn't be kept")
-            .because(format!("{}: {error}", file.display()))
-    });
+    let kept = if noticed.is_ok() {
+        camera::remember(&file, starts, meeting.start).map_err(|error| {
+            Failure::new(Exit::Failed, "the check couldn't be kept")
+                .because(format!("{}: {error}", file.display()))
+        })
+    } else {
+        Ok(())
+    };
     said(match &gave {
         Ok(()) => format!(
             "{} gives a picture before {}",
