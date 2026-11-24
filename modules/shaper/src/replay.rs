@@ -542,6 +542,11 @@ pub struct Report {
     /// The upload against each network's anchor, when one was given.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bars: Option<bars::Judged>,
+    /// How many seconds the rebuilt controller was given a wait of ours
+    /// an older shaper traced, which counted agents' lane too
+    /// (`trace::counting_agents`), when any were.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agents_counted_s: Option<u64>,
 }
 
 /// Replays a stay through a controller, held against `base`, or against
@@ -718,6 +723,7 @@ pub fn replay<C: Controller>(
         up,
         down,
         bars: None,
+        agents_counted_s: None,
     }
 }
 
@@ -810,6 +816,15 @@ pub fn summary(report: &Report) -> String {
          starved: under {STARVED} of the base, carrying more than the rate with the \
          direction's own delay not over {CAUSE_MS} ms"
     );
+    if let Some(seconds) = report.agents_counted_s {
+        let _ = writeln!(
+            out,
+            "\n{} of the trace came from an older shaper, whose wait of ours counted \
+             agents' lane too, so there the VPN's hidden wait reads short and the upload \
+             is cut less than it would be",
+            span(seconds)
+        );
+    }
     for s in &report.stays {
         let _ = writeln!(
             out,
@@ -1049,9 +1064,15 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
     let failed = |e: String| Failure::new(Exit::Failed, e);
     let mut stays = read(&asked.files).map_err(failed)?;
     let mut held = Vec::new();
+    let mut agents_counted_s = 0;
     if let Some(folder) = &asked.heard {
         let lines = trace::read(folder).map_err(failed)?;
         (stays, held) = trace::heard_into(stays, &lines, asked.controller == Choice::Held);
+        // The live shaper's own rates are played back as it held them;
+        // only the rebuilt controller reads the wait afresh.
+        if asked.controller == Choice::OneWay {
+            agents_counted_s = trace::counting_agents(&stays, &lines);
+        }
     }
     let windows = match &asked.windows {
         Some(path) => fs::read_to_string(path)
@@ -1077,6 +1098,7 @@ pub fn command(args: &[String], json: bool) -> Result<(), Failure> {
             .collect();
         report.bars = Some(judged(&pairs, &asked.anchors, &asked.ceilings, &windows));
     }
+    report.agents_counted_s = (agents_counted_s > 0).then_some(agents_counted_s);
     let text = if json {
         serde_json::to_string(&report).expect("a report serialises") + "\n"
     } else {
@@ -1719,6 +1741,19 @@ mod tests {
         ] {
             assert!(text.contains(words), "{words} in:\n{text}");
         }
+        assert!(
+            !text.contains("older shaper"),
+            "a replay of no trace named an older shaper's:\n{text}"
+        );
+        let older = Report {
+            agents_counted_s: Some(90),
+            ..report
+        };
+        let text = summary(&older);
+        assert!(
+            text.contains("1 min 30 s of the trace came from an older shaper"),
+            "the seconds an older shaper's wait fed weren't said:\n{text}"
+        );
     }
 
     #[test]

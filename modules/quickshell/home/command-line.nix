@@ -8,8 +8,10 @@
   "CommandBinding.js"
   "ListedKeys.js"
   "DrawerFigure.js"
+  "DrawerLines.js"
   "DrawerPage.js"
   "DrawerProse.js"
+  "DrawerRun.js"
   "DrawerValue.js"
   "Identifier.js"
 ]

@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, DrawerValue.js, Search.js,
-// Reading.js, Changes.js,
+// ListedKeys.js, DrawerPage.js, DrawerLines.js, DrawerRun.js, DrawerFigure.js, DrawerProse.js,
+// DrawerValue.js, Search.js, Reading.js, Changes.js,
 // LineEditing.js, Operators.js, Finding.js, Confirm.js and launcher/Headings.js beside this
 // file and runs
 // `qml -platform offscreen query-keys.qml`.
@@ -18,8 +18,10 @@ import "Operators.js" as Operators
 import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
+import "DrawerLines.js" as Lines
 import "DrawerFigure.js" as Figure
 import "DrawerProse.js" as Prose
+import "DrawerRun.js" as Run
 import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 import "Changes.js" as Changes
@@ -1095,6 +1097,8 @@ QtObject {
         holds("nor anything before it", Search.found("\ude00x", "a\ude00x"), [[1, 3]]);
         holds("even at the line's start", Search.found("\ude00", "\ude00x"), [[0, 1]]);
         holds("or its end", Search.found("\ud83d", "x\ud83d"), [[1, 2]]);
+        holds("and one sharing a pair the last place took in is no place of its own",
+            Search.found("\ude00\ud83d", "\ud83d\ude00\ud83d\ude00\ud83d\ude00"), [[0, 4]]);
         // A text read a letter at a time, for one that lowers longer, passes
         // over a joiner as the fast way does. The pattern is lower case, as one
         // with a capital is found by its case and never lowered.
@@ -1106,6 +1110,7 @@ QtObject {
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
             Search.found("\u2060\u200b", "a-\u2060b"), []);
+        // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
     function drawerSearch(holds) {
@@ -1223,6 +1228,62 @@ QtObject {
             { at: 1, of: 3 });
         holds("the cursor off a match says none", Page.found(lines, "deploy", 1, 0), null);
         holds("nor where nothing's sought", Page.found(lines, "", 0, 0), null);
+        // A text Qt wrapped runs on into its next line, as Vim's search runs
+        // on across its wrap, with what its piece broke at between them: a
+        // space, or nothing at a zero-width space or inside a word. Its end,
+        // null, stops it, as Vim's does, as the wash reads each text whole.
+        const part = (words, text, on) => ({ words, text, length: text.length, on });
+        const laid = (...parts) => {
+            const text = parts.map(each => each.text).join("");
+            return { text, length: text.length, parts };
+        };
+        const [server, sparkling, plain, pairs] = [{}, {}, {}, {}];
+        const wrapped = [
+            laid(part(server, "Server time.\u200b", "")),
+            laid(part(server, "harbour.\u200btest", null)),
+            laid(part(sparkling, "Sparkling", " ")), laid(part(sparkling, "heart", null)),
+            laid(part(plain, "plain", null)), laid(part(plain, "end", null)),
+            laid(part(pairs, "aa x", " ")), laid(part(pairs, "bb", " ")),
+            laid(part(pairs, "x cc", "  ")), laid(part(pairs, "dd", null))
+        ];
+        const runningOn = [
+            ["across every line of a wrap", "aa x bb x cc  dd", [[6, 0]]],
+            ["from a wrap's middle line into the next", "bb x c", [[7, 0]]],
+            ["to each match, however many lines on", "c", [[8, 2], [8, 3]]],
+            ["landing once from the spaces a line wrapped at", " ",
+                [[0, 6], [3, 0], [6, 2], [7, 0], [8, 0], [8, 1], [9, 0]]],
+            ["across a wrap at a zero-width space", "time.harbour", [[0, 7]]],
+            ["across a wrap at a space", "g h", [[2, 8]]],
+            ["landing on the next line from the space it wrapped at", " heart", [[3, 0]]],
+            ["never across a line's end", "plainend", []],
+            ["and a wrapped line's own where they stand", "test", [[1, 9]]]
+        ];
+        for (const [what, pattern, want] of runningOn)
+            holds(`the drawer's search runs on ${what}`,
+                Page.matchesIn(wrapped, pattern).map(match => [match.line, match.letter]), want);
+        // A fact's name and its value wrap side by side, each a text of its
+        // own along its own pieces, as the wash reads them: a search runs on
+        // along each, never from one into the other, and a piece's `on` with
+        // no next of its own words lands nowhere, the end of its text.
+        const [name, value, last] = [{}, {}, {}];
+        const beside = [
+            laid(part(name, "Where it", " "), part(value, "Toronto is", " ")),
+            laid(part(name, "lives", null), part(value, "Ottawa", null)),
+            laid(part(last, "ends now", " "))
+        ];
+        const besideOn = [
+            ["a value across its own wrap, beside its name's", "is Ottawa", [[0, 16]]],
+            ["a name across its own, beside its value's", "it lives", [[0, 6]]],
+            ["never from a name into its value", "itToronto", []],
+            ["nor from one on the next line", "livesOttawa", []],
+            ["each text's matches back in order down the page", "i", [[0, 6], [0, 16], [1, 1]]],
+            ["nor past a text's end, whatever its last piece wrapped at", "now ", []],
+            ["so a space finds only the spaces a text holds", " ",
+                [[0, 5], [0, 15], [1, 0], [1, 5], [2, 4]]]
+        ];
+        for (const [what, pattern, want] of besideOn)
+            holds(`the drawer's search runs on ${what}`,
+                Page.matchesIn(beside, pattern).map(match => [match.line, match.letter]), want);
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
@@ -1849,14 +1910,41 @@ QtObject {
         holds("the drawer's visual: normal isn't", Keys.paged("normal"), false);
 
         // What the drawer's foot counts of the words it hides
-        // (DrawerPage.paragraphs): a paragraph each, a line Qt wrapped
+        // (DrawerLines.paragraphs): a paragraph each, a line Qt wrapped
         // part of its own, however Qt keeps the breaks between them.
         holds("the words hidden: a log's lines are a paragraph each",
-            Page.paragraphs("line 14\u2028line 15\u2028line 16"), 3);
+            Lines.paragraphs("line 14\u2028line 15\u2028line 16"), 3);
         holds("the words hidden: so are a plain text's and a styled one's",
-            Page.paragraphs("one\ntwo\u2029three"), 3);
+            Lines.paragraphs("one\ntwo\u2029three"), 3);
         holds("the words hidden: a wrapped paragraph is one, a blank line none",
-            Page.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
+            Lines.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
+        // What a laid line runs on into the next with (DrawerLines.runsOn),
+        // from all it holds to the next line past the letters it keeps:
+        // what Qt wrapped at, or null for a break however Qt keeps it.
+        const runsOn = [
+            ["a space wrapped at", "Sparkling ", 9, " "],
+            ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
+            ["nothing inside a word", "supercalifragil", 15, ""],
+            ["none at a log's line", "line 14\u2028", 7, null],
+            ["none at a plain text's", "one \n", 3, null],
+            ["none at a styled one's", "end\u2029", 3, null]
+        ];
+        for (const [what, raw, kept, want] of runsOn)
+            holds(`a laid line runs on with ${what}`, Lines.runsOn(raw, kept), want);
+        // How pieces become laid lines (DrawerLines.linesOf): those sharing
+        // a baseline one line, its parts left to right, each keeping what
+        // it wrapped at, which a search runs on with (DrawerPage.textsOf).
+        const story = {};
+        const label = {};
+        const piece = (words, base, x, on) => ({ words, base, x, on, top: base - 8,
+            height: 12, caps: 7, length: 4 });
+        const partsOf = pieces => Lines.linesOf(pieces)
+            .map(line => line.parts.map(each => [each.words === story ? "story" : "label",
+                each.on]));
+        holds("laid lines keep each piece's wrap, left to right along a baseline",
+            partsOf([piece(story, 8, 40, " "), piece(label, 8, 0, null),
+                piece(story, 32, 0, null)]),
+            [[["label", null], ["story", " "]], [["story", null]]]);
 
         // What visual takes (DrawerPage.chosen), from where it began to the
         // cursor, either way round, on lines ten letters long but the 3rd,
@@ -2038,31 +2126,118 @@ QtObject {
         // on the acts under the run while its rest is still to come.
         const edge = { off: 5, height: 300, top: 900 };
         holds("a move past a run's laid end lays its rest whole",
-            Page.runReach({ line: 41, top: 0 }, 40, edge), "whole");
+            Run.reach({ line: 41, top: 0 }, 40, edge), "whole");
         holds("one landing on that line lays more, not the rest",
-            Page.runReach({ line: 40, top: 0 }, 40, edge), "more");
+            Run.reach({ line: 40, top: 0 }, 40, edge), "more");
         holds("one within scrolloff of it lays more",
-            Page.runReach({ line: 35, top: 0 }, 40, edge), "more");
+            Run.reach({ line: 35, top: 0 }, 40, edge), "more");
         holds("as does one whose view reaches past it",
-            Page.runReach({ line: 10, top: 601 }, 40, edge), "more");
+            Run.reach({ line: 10, top: 601 }, 40, edge), "more");
         holds("and one clear of it lays nothing",
-            Page.runReach({ line: 34, top: 600 }, 40, edge), "");
+            Run.reach({ line: 34, top: 600 }, 40, edge), "");
         // What go() does with it: G lands on the laid end each time, so
         // once a part hasn't cleared it the rest is laid whole, read once;
         // a page move that needs a second part lays only that.
         const shown = { parts: 1, quiet: false };
         holds("a move needing more lays a part first",
-            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: false }), "part");
+            Run.step({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: false }), "part");
         holds("and one on the laid end again after it lays the rest whole",
-            Page.runStep({ line: 40, top: 0 }, 40, edge, shown), "whole");
+            Run.step({ line: 40, top: 0 }, 40, edge, shown), "whole");
         holds("but one a line short of that end lays another part",
-            Page.runStep({ line: 39, top: 0 }, 40, edge, shown), "part");
+            Run.step({ line: 39, top: 0 }, 40, edge, shown), "part");
         holds("parts laid quietly are shown before any more is laid",
-            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: true }), "show");
+            Run.step({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: true }), "show");
         holds("a move past the laid end lays the rest whole at once",
-            Page.runStep({ line: 41, top: 0 }, 40, edge, { parts: 0, quiet: true }), "whole");
+            Run.step({ line: 41, top: 0 }, 40, edge, { parts: 0, quiet: true }), "whole");
         holds("and one clear of it stops",
-            Page.runStep({ line: 34, top: 600 }, 40, edge, { parts: 2, quiet: false }), "");
+            Run.step({ line: 34, top: 600 }, 40, edge, { parts: 2, quiet: false }), "");
+        // The walk go() takes over a run of `left` parts of ten lines laid on
+        // from line 40, each line 20 pixels down, `unshown` while laid
+        // quietly, for a move landing where `landing` says from the laid end:
+        // the steps it took, and the line it lands on. Its cost shows nowhere
+        // else but as time.
+        function walked(left, unshown, landing, last = 40) {
+            const run = { last, left, unshown, steps: [] };
+            const landed = Run.walk(() => landing(run.last), {
+                laying: () => run.unshown || run.left > 0,
+                end: () => run.last,
+                // The drawer reads a laid line's top here, so it's asked
+                // of none but a line laid.
+                edge: end => {
+                    if (end < 0)
+                        run.steps.push("edge of none");
+                    return { off: 5, height: 300, top: end * 20 };
+                },
+                quiet: () => run.unshown,
+                whole: () => {
+                    run.steps.push("whole");
+                    run.last += 10 * run.left;
+                    run.left = 0;
+                    run.unshown = false;
+                },
+                show: () => {
+                    run.steps.push("show");
+                    run.unshown = false;
+                },
+                part: () => {
+                    run.steps.push("part");
+                    run.last += 10;
+                    run.left -= 1;
+                }
+            });
+            return [run.steps, landed.line];
+        }
+        const onEnd = last => ({ line: last, top: 0 });
+        holds("G on a run with nothing under it lays a part, then the rest whole",
+            walked(45, false, onEnd), [["part", "whole"], 490]);
+        holds("a move whose view reaches past the laid end lays only the parts it needs",
+            walked(45, false, () => ({ line: 38, top: 760 })), [["part", "part"], 38]);
+        holds("parts laid quietly are shown before one is laid and the rest",
+            walked(3, true, onEnd), [["show", "part", "whole"], 70]);
+        holds("a move clear of the run lays none of it",
+            walked(45, false, () => ({ line: 10, top: 0 })), [[], 10]);
+        holds("nor does one before any of it's laid", walked(45, false, onEnd, -1), [[], -1]);
+        holds("nor one once it's laid whole", walked(0, false, onEnd), [[], 40]);
+        // A page shown anew while the drawer holds the keys: said at once, as
+        // its key is held, and laid a turn later, however many are shown in
+        // that turn, and never once its keys have gone.
+        function shownAnew() {
+            const seen = [];
+            const turns = [];
+            const waiting = { lay: false };
+            const keys = { held: true };
+            const hooks = {
+                coming: () => seen.push("coming"),
+                later: laid => turns.push(laid),
+                held: () => keys.held,
+                lay: () => seen.push("lay")
+            };
+            return {
+                seen,
+                keys,
+                shown: () => Run.anew(waiting, hooks),
+                turn: () => turns.splice(0).forEach(laid => laid())
+            };
+        }
+        const once = shownAnew();
+        once.shown();
+        holds("a page shown anew is said while its key is held", once.seen, ["coming"]);
+        once.shown();
+        once.turn();
+        holds("and two in one turn are said and laid once", once.seen, ["coming", "lay"]);
+        once.shown();
+        once.turn();
+        holds("and one shown after that lay is laid again", once.seen,
+            ["coming", "lay", "coming", "lay"]);
+        const gone = shownAnew();
+        gone.shown();
+        gone.keys.held = false;
+        gone.turn();
+        holds("one whose keys have gone before its turn is never laid", gone.seen, ["coming"]);
+        gone.keys.held = true;
+        gone.shown();
+        gone.turn();
+        holds("but the next page shown is", gone.seen, ["coming", "coming", "lay"]);
         // The parts read before the going-in frame keep their pieces, moved
         // by what moved above them, rather than read every line again.
         holds("a part's pieces move right and down by what moved above them",

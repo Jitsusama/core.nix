@@ -1044,8 +1044,57 @@ ShellRoot {
             waiting = "";
             Timekeeping.keptFor = 60000;
             Timekeeping.trying = true;
-            Qt.exit(0);
+            answerLapses();
         }
+    }
+
+    // An answer with no word come, its 5 s let come on its own: the timer
+    // hands Now its answers anew, with nothing the case does, which is what
+    // redraws an idle For You's rows (lookAnswers), and the look then reads
+    // unheard (answersLapse).
+    readonly property var lapsing: ({ id: "lapsing", kind: "page", title: "Read L",
+        state: "waiting" })
+    function answerLapses() {
+        now.lookAnswers = { lapsing: { label: "Keep It", at: Date.now() - 4700, sent: -1 } };
+        lapseStage.given = answersHanded;
+        lapseStage.at = Date.now();
+        waiting = "answer lapses";
+    }
+    // How many times Now's answers were handed it anew.
+    property int answersHanded: 0
+    Connections {
+        target: now
+
+        function onLookAnswersChanged() {
+            root.answersHanded += 1;
+        }
+    }
+    Timer {
+        id: lapseStage
+
+        property int given: 0
+        property real at: 0
+
+        running: root.waiting === "answer lapses"
+        interval: 20
+        repeat: true
+        onTriggered: root.answerLapsed()
+    }
+    function answerLapsed() {
+        // Until it's handed them and nothing's left to redraw, since a timer
+        // a millisecond early is armed again for what's left.
+        const since = Date.now() - lapseStage.at;
+        if ((answersHanded === lapseStage.given || now.answersDue !== -1) && since < 3000)
+            return;
+        const side = now.lookSide(lapsing, Date.now(), now.forYouSaid(Date.now()));
+        if (!tried(() => expect("its 5 s come, the timer hands Now its answers anew, unheard",
+            answersHanded > lapseStage.given && now.answersDue === -1
+                && side === "Keep It not answered yet \u00b7 no answer",
+            JSON.stringify([answersHanded - lapseStage.given, now.answersDue, side]))))
+            return;
+        waiting = "";
+        now.lookAnswers = {};
+        Qt.exit(0);
     }
 
     // What Moved: no row while nothing moved; a workstream that moved is
@@ -1555,15 +1604,15 @@ ShellRoot {
         }
         const wholeList = drawn.reduce((keys, row) => keys.concat(standsFor(row)), []);
         const seeded = ["on:waiting:desktop", "on:waiting:want:WANTF", "on:waiting:want:WANTG",
-            "on:waiting:Sign in to the bank", "on:waiting:Pay the bill", "on:look:p"];
+            "on:waiting:item:Sign in to the bank", "on:waiting:item:Pay the bill", "on:look:p"];
         // Each its own, so a failure says which held: the state the order
         // is judged in, what :filter holds, then the order itself.
         const placeOf = key => wholeList.indexOf(key);
         expect("the list it's judged by draws no heading, the asks gathered between the to-dos",
             !drawn.some(row => row.heading) && drawn.some(row => row.key
-                === "on:waitingOnYou:kind:agent") && placeOf("on:waiting:Pay the bill")
+                === "on:waitingOnYou:kind:agent") && placeOf("on:waiting:item:Pay the bill")
                 < placeOf("on:waiting:want:WANTF") && placeOf("on:waiting:want:WANTG")
-                < placeOf("on:waiting:Sign in to the bank"),
+                < placeOf("on:waiting:item:Sign in to the bank"),
             JSON.stringify(drawn.map(row => [row.key, row.heading === true])));
         expect(":filter holds each row the state makes",
             JSON.stringify([...narrowed].sort()) === JSON.stringify([...seeded].sort()),
@@ -1884,6 +1933,193 @@ ShellRoot {
             now.lookAsker(namedOne) === "Named", JSON.stringify(now.lookAsker(namedOne)));
         Sessions.running = heldBefore[0];
         Sessions.parked = heldBefore[1];
+        // A look in its second form (85PKB2's harness #2008) says at its side
+        // that it asks him, then why it waits, and one asking nothing back
+        // only why; its drawer leads with what happened and why it matters,
+        // a fact a choice saying what follows it; its act is named in its
+        // own words, keeping the launcher's verb; and each choice's drawer
+        // says what follows it (QGB4ON's layout of 2026-11-22).
+        const secondText = (id, fields) => JSON.stringify(Object.assign({ v: 1, id: id,
+            kind: "pr", at: root.lookedAt, target: "https://example.com/pull/2",
+            title: "The bar at narrow widths", state: "waiting", address: "lefts",
+            why: "The bar keeps the branch at narrow widths. You couldn't see a cost.",
+            ask: "Review It: Keep It, or Roll It Back.",
+            happened: "The bar keeps the branch at narrow widths",
+            matters: "At 76 columns you couldn't see what a session cost.", act: "Review It",
+            choices: [{ value: "Keep It", label: "Keep It", follows: "It stays as it is." },
+                { value: "Roll It Back", label: "Roll It Back",
+                    follows: "The old bar comes back tonight." }],
+            wants: { choices: [{ label: "Keep It", follows: "It stays as it is." },
+                { label: "Roll It Back", follows: "The old bar comes back tonight." }] }
+        }, fields));
+        const textsFirst = now.lookTexts;
+        now.lookTexts = Object.assign({}, textsFirst, { "s.json": secondText("s", {}),
+            "i.json": secondText("i", { choices: [], wants: undefined,
+                ask: "Review It." }),
+            // One choice saying what follows and one not, its want naming only
+            // the first; a first form whose choices say what follows; and
+            // one whose act would pass itself off as Clear It.
+            "m.json": secondText("m", { choices: [{ value: "Keep It", label: "Keep It",
+                follows: "It stays as it is." }, { value: "Roll It Back", label: "Roll It Back" }],
+                wants: { choices: [{ label: "Keep It", follows: "It stays as it is." }] } }),
+            "f.json": secondText("f", { happened: "" }),
+            "c.json": secondText("c", { act: "Clear It" }) });
+        const secondRow = () => looked().find(row => row.key === "on:look:s");
+        const seconds = secondRow();
+        const informing = looked().find(row => row.key === "on:look:i");
+        expect("a second form's side says it asks you, then why, never its ask; one asking"
+            + " nothing back says only why",
+            String(seconds?.side).startsWith("asks you \u00b7 ")
+                && seconds?.side === `asks you \u00b7 ${informing?.side}`
+                && informing?.side !== "" && !String(informing?.side).includes("Review It"),
+            JSON.stringify([seconds?.side, informing?.side]));
+        const secondDrawer = seconds?.drawer() ?? {};
+        const secondFacts = (secondDrawer.facts ?? []).map(each => [each.label, each.value]);
+        expect("its drawer, what happened then why it matters, a fact a choice and what follows",
+            secondDrawer.body === "The bar keeps the branch at narrow widths. At 76 columns"
+                + " you couldn't see what a session cost."
+                && JSON.stringify(secondFacts.slice(0, 2)) === JSON.stringify([
+                    ["Keep It", "It stays as it is."],
+                    ["Roll It Back", "The old bar comes back tonight."]])
+                && !secondFacts.some(each => each[0] === "Choices"),
+            JSON.stringify([secondDrawer.body, secondFacts]));
+        const mixedFacts = (looked().find(row => row.key === "on:look:m")?.drawer().facts ?? [])
+            .map(each => [each.label, each.value]);
+        expect("a choice that doesn't say what follows is a fact still, saying so",
+            JSON.stringify(mixedFacts.slice(0, 2)) === JSON.stringify([
+                ["Keep It", "It stays as it is."],
+                ["Roll It Back", "it doesn't say what follows"]]),
+            JSON.stringify(mixedFacts));
+        const secondActs = seconds?.verbs() ?? [];
+        const plain = looked().find(row => row.key === "on:look:a");
+        const firstOpen = (plain?.verbs() ?? []).find(act => act.key === "verb:on:look:open:a");
+        expect("its row's Return the launcher's own, as a first form's is",
+            seconds?.verb === plain?.verb && seconds?.later === plain?.later
+                && seconds?.stays === plain?.stays,
+            JSON.stringify([[seconds?.verb, seconds?.later, seconds?.stays],
+                [plain?.verb, plain?.later, plain?.stays]]));
+        const firstActs = looked().find(row => row.key === "on:look:f")?.verbs() ?? [];
+        expect("a first form's choices have no drawer, though they say what follows",
+            firstActs[0]?.key === "verb:on:look:answer:f:Keep It"
+                && firstActs[0]?.drawer === undefined,
+            JSON.stringify([firstActs[0]?.key, typeof firstActs[0]?.drawer]));
+        const posing = (looked().find(row => row.key === "on:look:c")?.verbs() ?? [])
+            .find(act => act.key === "verb:on:look:open:c");
+        expect("an act named as another act is, named as the launcher names it",
+            posing !== undefined && posing.name === firstOpen?.name,
+            JSON.stringify([posing?.name, firstOpen?.name]));
+        const secondOpen = secondActs.find(act => act.key === "verb:on:look:open:s");
+        expect("its act named in its own words, its verb the launcher's",
+            secondOpen?.name === "Review It" && secondOpen?.verb === firstOpen?.verb
+                && firstOpen?.name !== "Review It",
+            JSON.stringify([secondOpen?.name, secondOpen?.verb, firstOpen?.name]));
+        const keepDrawer = secondActs[0]?.drawer?.() ?? {};
+        expect("a choice's drawer says what follows it",
+            secondActs[0]?.key === "verb:on:look:answer:s:Keep It"
+                && keepDrawer.title === "Keep It" && keepDrawer.body === "It stays as it is.",
+            JSON.stringify([secondActs[0]?.key, keepDrawer.title, keepDrawer.body]));
+        // An answer the node couldn't give, refused or its machine out of
+        // reach, or with nobody to tell, says so at its side, its choices
+        // back, rather than silently nothing (Joel, 2026-11-22: "to in any
+        // way follow through").
+        Sessions.puts = false;
+        secondActs[0]?.run();
+        Sessions.puts = true;
+        const untaken = secondRow();
+        expect("an answer the node couldn't give says so, its choices back",
+            untaken?.side === "Keep It not answered \u00b7 the node couldn't give it"
+                && (untaken?.verbs() ?? [])[0]?.key === "verb:on:look:answer:s:Keep It",
+            JSON.stringify([untaken?.side, (untaken?.verbs() ?? []).map(act => act.key)]));
+        const nobody = { id: "n", kind: "page", title: "Read N", state: "waiting" };
+        const steersNobody = Sessions.steered.length;
+        now.answerLook(nobody, { value: "Keep It", label: "Keep It" });
+        expect("an answer with nobody to tell steers nothing and says so",
+            Sessions.steered.length === steersNobody
+                && now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))
+                    === "Keep It not answered \u00b7 no session to tell",
+            JSON.stringify(now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))));
+        // An answer the node is slow to say it took: shown as given, its
+        // choices away while no word comes, however long, so no second
+        // follows it, even from acts drawn before it was given, though the
+        // drawer still says each, and the side redrawn at its 5 s; then said
+        // not heard; the node going brings them back, saying it may yet
+        // come; and a late word for an answer since replaced leaves the
+        // newer alone.
+        const answers = () => (secondRow()?.verbs() ?? [])
+            .filter(act => act.key.startsWith("verb:on:look:answer:s:"));
+        const aged = by => {
+            now.lookAnswers = Object.assign({}, now.lookAnswers,
+                { s: Object.assign({}, now.lookAnswers.s, { at: now.lookAnswers.s.at - by }) });
+        };
+        // Each held word given by a plain call: an optional call of one
+        // read from the stand-in's list crashed the shell here (2026-11-23).
+        const heard = (at, put, answer) => {
+            const then = Sessions.held[at];
+            if (typeof then === "function")
+                then(put, answer, true);
+        };
+        // An answer never sent, with no node connected, says so, its choices
+        // back, and never that it went.
+        now.lookAnswers = {};
+        const unsentFrom = answers();
+        Sessions.reaches = false;
+        (unsentFrom[0] ?? { run: () => {} }).run();
+        Sessions.reaches = true;
+        expect("an answer never sent says so, its choices back",
+            unsentFrom.length === 2
+                && secondRow()?.side === "Keep It not answered \u00b7 the node isn't connected"
+                && answers().length === 2,
+            JSON.stringify([unsentFrom.length, secondRow()?.side, answers().length]));
+        now.lookAnswers = {};
+        Sessions.holds = true;
+        Sessions.held = [];
+        const drawnBefore = answers();
+        if (drawnBefore.length > 0)
+            drawnBefore[0].run();
+        expect("an answer on its way, shown as given, its choices away, redrawn at its 5 s",
+            drawnBefore.length === 2 && secondRow()?.side === "answered Keep It"
+                && answers().length === 0 && now.answersDue > 0 && now.answersDue <= 5000,
+            JSON.stringify([drawnBefore.length, secondRow()?.side, answers().length,
+                now.answersDue]));
+        const heldFacts = (secondRow()?.drawer?.()?.facts ?? []).map(each => each.label);
+        expect("and its drawer still says each choice and what follows it",
+            heldFacts.includes("Keep It") && heldFacts.includes("Roll It Back"),
+            JSON.stringify(heldFacts));
+        const steersHeld = Sessions.steered.length;
+        if (drawnBefore.length > 1)
+            drawnBefore[1].run();
+        expect("a choice drawn before it, run while it's on its way, sends nothing",
+            Sessions.steered.length === steersHeld && Sessions.held.length === 1
+                && now.lookAnswers.s?.label === "Keep It",
+            JSON.stringify([Sessions.steered.length - steersHeld, now.lookAnswers.s]));
+        aged(60 * 60 * 1000);
+        expect("unheard an hour on, said so, its choices away still, nothing left to redraw",
+            secondRow()?.side === "Keep It not answered yet \u00b7 no answer"
+                && answers().length === 0 && now.answersDue === -1,
+            JSON.stringify([secondRow()?.side, answers().length, now.answersDue]));
+        heard(0, false, null);
+        expect("the node gone before saying, said so as it may yet come, its choices back",
+            secondRow()?.side
+                === "Keep It not answered yet \u00b7 the node went before saying it took it"
+                && answers().length === 2,
+            JSON.stringify([secondRow()?.side, answers().length]));
+        // An answer since replaced, as by a shell answered again, hears its
+        // late word change nothing.
+        Sessions.held = [];
+        now.lookAnswers = {};
+        const drawnAgain = answers();
+        if (drawnAgain.length > 0)
+            drawnAgain[0].run();
+        const newer = { label: "Roll It Back", at: Date.now(), sent: -1 };
+        now.lookAnswers = { s: newer };
+        heard(0, true, { steered: { machine: "here" } });
+        expect("a late word for an answer since replaced leaves the newer one alone",
+            JSON.stringify(now.lookAnswers.s) === JSON.stringify(newer),
+            JSON.stringify(now.lookAnswers.s));
+        Sessions.holds = false;
+        Sessions.held = [];
+        now.lookAnswers = {};
+        now.lookTexts = textsFirst;
         // Later cases count the steers the shell itself sends from none.
         Sessions.steered = Sessions.steered.slice(0, steeredBefore);
         now.lookAnswers = {};
@@ -1945,7 +2181,7 @@ ShellRoot {
         const heldFirst = forYou();
         expect("For You holds the session, the to-dos and To Look At", keys(heldFirst)
             === JSON.stringify(["on:heading:cell:WANTB", "on:heading:cell:yours",
-                "on:waiting:Say Yes", "on:waiting:Sign In", "on:waiting:want:WANTB",
+                "on:waiting:item:Say Yes", "on:waiting:item:Sign In", "on:waiting:want:WANTB",
                 "on:waitingOnYou:kind:look"]), keys(heldFirst));
         // What needs Joel now stands by the cell behind it (What Needs Me,
         // 2026-11-18): the session's heading, then what it wants, which
@@ -1954,7 +2190,7 @@ ShellRoot {
         const placed = key => heldFirst.findIndex(row => row.key === key);
         const heldOrder = ["on:heading:cell:WANTB", "on:waiting:want:WANTB",
             "on:heading:cell:yours"].map(placed);
-        const toDosAt = ["on:waiting:Say Yes", "on:waiting:Sign In"].map(placed);
+        const toDosAt = ["on:waiting:item:Say Yes", "on:waiting:item:Sign In"].map(placed);
         expect("each cell's heading over its rows, the heaviest cell first",
             heldOrder.every((at, index) => at >= 0 && (index === 0 || at > heldOrder[index - 1]))
                 && toDosAt.every(at => at > heldOrder[2])
@@ -1976,7 +2212,7 @@ ShellRoot {
         WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes", Date.now() + 3600000)];
         forYouBefore = now.tally.rows;
         const due = forYou();
-        const dueRow = due.find(row => row.key === "on:waiting:Say Yes");
+        const dueRow = due.find(row => row.key === "on:waiting:item:Say Yes");
         expect("one to-do now due makes only its row again",
             now.tally.rows - forYouBefore === 1 && dueRow !== undefined
                 && heldFirst.indexOf(dueRow) === -1
@@ -2050,6 +2286,15 @@ ShellRoot {
                 && led[0].hue === (gathered[0].hue ?? "") && led[0].hue !== "muted"
                 && led[0].side === "2",
             JSON.stringify(led.map(row => `${row.key} ${row.hue} ${row.side}`)));
+        // A to-do whose identity reads as a want's (a quest named want, an
+        // id that's a session's address) keeps a row of its own beside it.
+        WaitingOnYou.now = [toDo("want:WANTC")];
+        const clashing = forYou().map(row => row.key)
+            .filter(key => key.endsWith("want:WANTC"));
+        expect("a to-do named as a want is, beside it, a row of its own",
+            JSON.stringify(clashing.sort())
+                === JSON.stringify(["on:waiting:item:want:WANTC", "on:waiting:want:WANTC"]),
+            JSON.stringify(clashing));
         WaitingOnYou.now = [];
         Sessions.wanting = [];
         now.lookTexts = {};
@@ -2091,12 +2336,13 @@ ShellRoot {
         expect("a session's own to-do it asks leads its cell, under its heading",
             JSON.stringify(read) === JSON.stringify([
                 ["on:heading:cell:ACTED", "Session E \u00b7 listening"],
-                ["on:waiting:Sign The Form", ""], ["on:look:e", ""]]),
+                ["on:waiting:item:Sign The Form", ""], ["on:look:e", ""]]),
             JSON.stringify(read));
         // Inside, Talk to its session follows dealing with it there, so
         // what's working on it is reached from it (42P0R4, 2026-11-19); one
         // done in a window of its own leads with going there.
-        const actsOf = () => forYou().find(row => row.key === "on:waiting:Sign The Form").verbs()
+        const formKey = "on:waiting:item:Sign The Form";
+        const actsOf = () => forYou().find(row => row.key === formKey).verbs()
             .slice(0, 3).map(act => [act.name, act.to ?? ""]);
         const formActs = actsOf();
         expect("a session's to-do offers Talk to it after Deal With It, then Go To",
@@ -2115,14 +2361,14 @@ ShellRoot {
         // were meant to shape.
         const talksOf = key => forYou().find(row => row.key === key)?.verbs()
             .filter(act => act.name === "talk").length;
-        const talksActing = [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e")];
+        const talksActing = [talksOf("on:waiting:item:Sign The Form"), talksOf("on:look:e")];
         const asked = Object.assign({}, acted, { presence: Object.assign({}, acted.presence,
             { wants: { kind: "question", said: "Which?" } }) });
         Sessions.running = [asked];
         Sessions.wanting = [asked];
         WaitingOnYou.sessionOf = { "Sign The Form": asked };
         // Its want, asked of Agents Asking, stands as a row of its own.
-        const talksAll = () => [talksOf("on:waiting:Sign The Form"), talksOf("on:look:e"),
+        const talksAll = () => [talksOf("on:waiting:item:Sign The Form"), talksOf("on:look:e"),
             talksOf("on:waiting:want:ACTED")];
         const talksAsking = talksAll();
         const approved = Object.assign({}, acted, { presence: Object.assign({},
@@ -2154,7 +2400,8 @@ ShellRoot {
         theLauncher.sources = sources.filter(one => one !== agents);
         const namesOf = key => forYou().find(row => row.key === key)?.verbs()
             .map(act => act.name) ?? null;
-        const without = [namesOf("on:waiting:Sign The Form"), namesOf("on:waiting:want:ACTED")];
+        const without = [namesOf("on:waiting:item:Sign The Form"),
+            namesOf("on:waiting:want:ACTED")];
         theLauncher.sources = sources;
         expect("with Agents gone, its to-do offers no Talk, keeping its own acts, and no want row",
             JSON.stringify([withAgents, without]) === JSON.stringify([[1, 1, 1],
@@ -2342,7 +2589,7 @@ ShellRoot {
             JSON.stringify(read) === JSON.stringify([
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"],
                 ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
-                ["on:heading:cell:yours", "yours alone"], ["on:waiting:Sign In", ""]]),
+                ["on:heading:cell:yours", "yours alone"], ["on:waiting:item:Sign In", ""]]),
             JSON.stringify(read));
         // Two asking stand together in Agents Asking, first, above every
         // heading, since a heading claims what's under it (Y2YBTS,
@@ -2358,7 +2605,7 @@ ShellRoot {
                 ["on:waitingOnYou:kind:agent", ""],
                 ["on:waiting:want:LEFTC", ""], ["on:waiting:want:WANTD", ""],
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"], ["on:look:c", ""],
-                ["on:heading:cell:yours", "yours alone"], ["on:waiting:Sign In", ""]]),
+                ["on:heading:cell:yours", "yours alone"], ["on:waiting:item:Sign In", ""]]),
             JSON.stringify(gathered));
         // A cell's standing moving alone, what it asks and left as they
         // were: For You hears it, so a heading held never goes on saying
@@ -2679,7 +2926,7 @@ ShellRoot {
         }).filter(([, off, way]) => off !== "" || way !== "");
         expect("every row Now gives For You as Joel's to do has a way to do it and to put it off",
             JSON.stringify(doing.map(row => row.key).sort()) === JSON.stringify([
-                "on:waiting:Sign In", "on:waiting:want:WANTG", "on:waiting:want:WANTH",
+                "on:waiting:item:Sign In", "on:waiting:want:WANTG", "on:waiting:want:WANTH",
                 "on:waiting:want:WANTI"]) && lacks.length === 0,
             JSON.stringify([doing.map(row => row.key), lacks]));
         // Each session asks anew before Joel presses; he put off what he read.

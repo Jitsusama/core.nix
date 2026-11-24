@@ -91,6 +91,117 @@ let
   sleepingNode =
     toString
       (linux (links // { easesSleep = true; })).systemd.user.services.mycelium.Service.ExecStart;
+  # What a machine that makes the carries it chooses and parks the sessions
+  # it would put to sleep sets, as a busy machine would, its account on
+  # Linux, its home realm's node there, and a Mac's.
+  easing = links // {
+    easesSleep = true;
+    easesCarry = true;
+  };
+  easingLinux = linux easing;
+  carryingNode = toString easingLinux.systemd.user.services.mycelium.Service.ExecStart;
+  macEasing = (mac easing).launchd.agents.mycelium.config.ProgramArguments;
+  # Whether a node built from `mycelium` may make carries, by
+  # carry-guards.nix's own rule, what the switch warns of an account
+  # setting it anyway, and whether its node is told to carry.
+  inherit (import ./carry-guards.nix { inherit lib; }) guards keepsTheLed missing;
+  warnedOf = account: lib.filter (lib.hasInfix "easesCarry") account.warnings;
+  carriesIn =
+    account:
+    lib.hasInfix "--eases-carry" (toString account.systemd.user.services.mycelium.Service.ExecStart);
+  # A mycelium source as a machine overriding core's input might have it,
+  # from tests/stale-mycelium, whose README says what each holds, under a
+  # revision naming it. Its package is never built, since the node's
+  # command line is only read as text.
+  standIn =
+    name:
+    self.inputs.mycelium
+    // {
+      outPath = ./tests/stale-mycelium + "/${name}";
+      rev = "stand-in-${name}";
+    };
+  # The stand-ins lacking a guard, by what the switch must say of each
+  # file a guard is looked for in: that it has no line matching the
+  # guard's pattern, named so the person can tell what form it takes, that
+  # it is missing, or nothing (`kept`) where it keeps its guard. All but
+  # `without` and `older` lack one in one file alone, so loosening either
+  # pattern lets its own case through.
+  refusedSays =
+    let
+      lacks = file: "${file} has no line of code matching ${guards.${file}}";
+      gone = file: "${file} is missing";
+      kept = null;
+      each = says: lib.mapAttrs (file: say: if say == kept then kept else say file) says;
+      easeFile = "src/carry/ease.rs";
+      easingFile = "src/carry/easing.rs";
+    in
+    lib.mapAttrs (_: each) {
+      without = {
+        ${easeFile} = lacks;
+        ${easingFile} = lacks;
+      };
+      older = {
+        ${easeFile} = gone;
+        ${easingFile} = gone;
+      };
+      half = {
+        ${easeFile} = kept;
+        ${easingFile} = lacks;
+      };
+      other-half = {
+        ${easeFile} = lacks;
+        ${easingFile} = kept;
+      };
+      commented = {
+        ${easeFile} = lacks;
+        ${easingFile} = kept;
+      };
+      commented-leads = {
+        ${easeFile} = kept;
+        ${easingFile} = lacks;
+      };
+    };
+  refused = lib.attrNames refusedSays;
+  # A workstation of either system whose account's node is built from
+  # `input` in place of core's own.
+  machineFrom =
+    bare: role: input: settings:
+    bare [
+      role
+      {
+        home-manager.users.someone = {
+          disabledModules = [ (toString ./home.nix) ];
+          imports = [ (lib.modules.importApply ./home.nix { mycelium = input; }) ];
+          jitsusama.mycelium = settings;
+        };
+      }
+    ];
+  # A Linux workstation with an easing account built from each stand-in,
+  # evaluated once each, since every clause below reads the same few.
+  staleMachines = lib.genAttrs (refused ++ [ "reshaped" ]) (
+    name: machineFrom bareNixos self.nixosModules.workstation (standIn name) easing
+  );
+  staleAccounts = lib.mapAttrs (_: account) staleMachines;
+  stale = staleAccounts.without;
+  # A Mac whose account's node is built from `without`, and its account.
+  staleMac = machineFrom bareDarwin self.darwinModules.workstation (standIn "without") easing;
+  staleMacAccount = account staleMac;
+  staleMacArguments = staleMacAccount.launchd.agents.mycelium.config.ProgramArguments;
+  # How many of a system's own warnings name the stand-in `without`.
+  warnsOfWithout =
+    machine: lib.length (lib.filter (lib.hasInfix "(stand-in-without)") machine.config.warnings);
+  # The Linux account from `without` with `settings` in place of easing's.
+  withoutAs =
+    settings:
+    account (machineFrom bareNixos self.nixosModules.workstation (standIn "without") settings);
+  # What the switch warns of an account whose node is built from the
+  # stand-in `name`.
+  staleWarning = name: lib.concatStrings (warnedOf staleAccounts.${name});
+  # The home realm's node of a machine that makes its carries but leaves
+  # parking to the harness's own rule.
+  carryingAloneNode =
+    toString
+      (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -231,6 +342,25 @@ let
         };
       }
     );
+  # A machine fenced every way whose pi fences each command itself.
+  selfFenced =
+    bare:
+    bare {
+      declares = declaring // {
+        piFencesItself = true;
+        fence = lib.genAttrs everyKind (_: {
+          builders = [ ];
+          forges = [ ];
+          secrets = [ ];
+        });
+      };
+    };
+  saidBy = home: read home.xdg.configFile."mycelium/declared.json".text;
+  refusesSelfFencing =
+    home:
+    lib.any (
+      check: !check.assertion && lib.hasPrefix "jitsusama.mycelium.declares.piFencesItself" check.message
+    ) home.assertions;
   # A machine fenced every way, and one whose agents' runs are turned off.
   launching = bare: kinds: launchingWith bare kinds { };
   launchingWith =
@@ -353,16 +483,31 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
         && !(lib.hasInfix "--eases" otherNode)
         && !(lib.hasInfix "--eases" (
           toString
-            (linux (both // { easesSleep = true; })).systemd.user.services.mycelium-other.Service.ExecStart
+            (linux (
+              both
+              // {
+                easesSleep = true;
+                easesCarry = true;
+              }
+            )).systemd.user.services.mycelium-other.Service.ExecStart
         ))
         && !(lib.hasInfix "--eases-sleep" linuxNode)
+        && !(lib.hasInfix "--eases-carry" linuxNode)
+        && !(lib.hasInfix "--eases-carry" sleepingNode)
+        && lib.hasInfix "--eases --eases-carry --eases-sleep" carryingNode
+        && lib.hasInfix "--eases --eases-carry" carryingAloneNode
+        && !(lib.hasInfix "--eases-sleep" carryingAloneNode)
+        && lib.elem "--eases-carry" macEasing
+        && lib.hasInfix "--eases-sleep /Users/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease" (
+          toString macEasing
+        )
         && lib.hasInfix "--eases --eases-sleep /home/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease" sleepingNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --waiting" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
@@ -444,6 +589,66 @@ in
         && answering.home.sessionVariables.MYCELIUM_REALM == "personal"
         && !(apart.home.sessionVariables ? MYCELIUM_REALM)
         && lib.any (package: (package.pname or "") == "mycelium") apart.home.packages
+      );
+
+  # Core's own lock keeps carry-guards.nix's guards, so a lock moving to
+  # a mycelium that wrote either line in a form the patterns don't accept
+  # fails here, naming what it lacks, rather than every machine on core's
+  # lock quietly ceasing to carry.
+  mycelium-carry-guards-match-its-lock =
+    holds "mycelium-carry-guards-match-its-lock"
+      "Core's locked mycelium doesn't keep carry-guards.nix's guards, so every machine on core's lock would stop carrying: change the patterns there to the lines it has, or lock a mycelium with them. What the switch would say: ${missing self.inputs.mycelium}"
+      (keepsTheLed self.inputs.mycelium);
+
+  # A machine's node carries only from a mycelium that keeps the person's
+  # and the leading sessions in place. Each stand-in lacking a guard says
+  # which of its files lack one, and all but two lack one in one file
+  # alone, so neither pattern can be loosened unseen; the one keeping both
+  # in other forms carries, so neither can be made too strict. The switch
+  # warns, in the system's own warnings on Linux and a Mac alike, naming
+  # that mycelium and only the files lacking a guard, and never where the
+  # machine doesn't carry or runs no node.
+  mycelium-carries-only-with-its-guards =
+    holds "mycelium-carries-only-with-its-guards"
+      "A machine's node is told to carry from a mycelium whose code lacks either guard that keeps the person's and the leading sessions, names one only in a line comment, or has no file to hold it, or the switch doesn't warn of it once in the system's warnings on Linux or a Mac, naming that mycelium and only the files lacking one and how, or a node built from a mycelium keeping both in forms the patterns accept doesn't carry, or a machine that doesn't carry, or runs no node, is warned, or the stand-ins' table doesn't name exactly the files carry-guards.nix's guards read."
+      (
+        keepsTheLed (standIn "reshaped")
+        && carriesIn staleAccounts.reshaped
+        && warnedOf staleAccounts.reshaped == [ ]
+        && !(keepsTheLed { })
+        && warnedOf easingLinux == [ ]
+        && lib.hasInfix "--eases --eases-sleep " (
+          toString stale.systemd.user.services.mycelium.Service.ExecStart
+        )
+        && lib.all (
+          name:
+          let
+            warning = staleWarning name;
+            saysOf =
+              file: said: if said == null then !(lib.hasInfix file warning) else lib.hasInfix said warning;
+          in
+          !(keepsTheLed (standIn name))
+          && !(carriesIn staleAccounts.${name})
+          && lib.length (warnedOf staleAccounts.${name}) == 1
+          && lib.hasInfix "(stand-in-${name})" warning
+          # The table must name the guards' files before its rows are read, so
+          # a guard it lacks fails with this check's message, not a missing key.
+          && lib.attrNames refusedSays.${name} == lib.attrNames guards
+          && lib.all (file: saysOf file refusedSays.${name}.${file}) (lib.attrNames guards)
+        ) refused
+        && warnsOfWithout staleMachines.without == 1
+        && warnsOfWithout staleMac == 1
+        && lib.length (warnedOf staleMacAccount) == 1
+        && lib.all (lib.flip lib.elem staleMacArguments) [
+          "--eases"
+          "--eases-sleep"
+        ]
+        && !(lib.elem "--eases-carry" staleMacArguments)
+        && warnedOf (withoutAs (easing // { easesCarry = false; })) == [ ]
+        &&
+          warnedOf (withoutAs {
+            easesCarry = true;
+          }) == [ ]
       );
 
   # A machine in a realm reads each minute how evenly the home realm's
@@ -590,20 +795,47 @@ in
   # busy Mac or its Linux builder, which would fail this check for nothing
   # it proves. The flags are words alone, so the nodes' lines give them
   # without their store paths, which would bring the Linux node's whole build
-  # into a Mac's check.
+  # into a Mac's check. Each line also says which of its flags take a value,
+  # those a word other than a flag follows, and the help must say the same,
+  # since a switch the node reads as taking one would swallow the next flag
+  # and stop the node starting. It proves names and values, not that the
+  # node honours them, nor that two flags may go together.
   mycelium-node-takes-its-flags =
     let
-      words = lib.splitString " " (
-        builtins.unsafeDiscardStringContext (
-          lib.concatStringsSep " " [
-            linuxNode
-            stimulatingNode
-            lendingNode
-            sleepingNode
-          ]
-        )
+      lines = map (line: lib.filter (word: word != "") (lib.splitString " " line)) (
+        map builtins.unsafeDiscardStringContext [
+          linuxNode
+          otherNode
+          stimulatingNode
+          lendingNode
+          sleepingNode
+          carryingNode
+          carryingAloneNode
+          (viaNode "/bin/cell:cell-1")
+          (providerNode "/bin/cell")
+          (toString bothFlowing.mycelium.Service.ExecStart)
+          (toString bothFlowing.mycelium-other.Service.ExecStart)
+          (toString
+            (linux (links // { declares = declaring; })).systemd.user.services.mycelium.Service.ExecStart
+          )
+        ]
       );
-      flags = lib.unique (lib.filter (lib.hasPrefix "--") words);
+      # Each flag of a line, with whether a value follows it there.
+      said =
+        words:
+        lib.concatLists (
+          lib.imap0 (
+            at: word:
+            lib.optional (lib.hasPrefix "--" word) {
+              flag = word;
+              valued = at + 1 < lib.length words && !(lib.hasPrefix "--" (lib.elemAt words (at + 1)));
+            }
+          ) words
+        );
+      flagged = lib.unique (lib.concatMap said lines);
+      flags = lib.unique (map (one: one.flag) flagged);
+      valued = map (one: one.flag) (lib.filter (one: one.valued) flagged);
+      bare = map (one: one.flag) (lib.filter (one: !one.valued) flagged);
       locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
       untested = locked.overrideAttrs { doCheck = false; };
       mycelium = lib.getExe untested;
@@ -617,6 +849,16 @@ in
         # beside --ssh-option, isn't taken as there.
         grep -q -E -e "(^|[[:space:]])$flag([[:space:]=,]|\$)" help \
           || { echo "mycelium node doesn't take $flag"; exit 1; }
+      done
+      # clap's help names a flag's value after it, as --flag <VALUE>, and one
+      # it takes only after an =, as --flag=<VALUE>, which a line can't give.
+      for flag in ${lib.escapeShellArgs valued}; do
+        grep -q -E -e "(^|[[:space:]])$flag \[?<" help \
+          || { echo "mycelium node takes no value after $flag, which is given one"; exit 1; }
+      done
+      for flag in ${lib.escapeShellArgs bare}; do
+        ! grep -q -E -e "(^|[[:space:]])$flag[ =]<" help \
+          || { echo "mycelium node wants a value after $flag, which is given none"; exit 1; }
       done
       touch $out
     '';
@@ -903,7 +1145,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -932,6 +1174,13 @@ in
         && !((declared linux) ? within)
         && !((declared linux) ? hosts)
         && !((declared linux) ? fence)
+        && !((declared linux) ? pi_fences_itself)
+        && !((launching mac everyKind) ? pi_fences_itself)
+        && (saidBy (selfFenced mac)).pi_fences_itself or false
+        && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
+        && evaluates (selfFenced mac)
+        && refusesSelfFencing (selfFenced linux)
+        && !refusesSelfFencing (fencedIn linux everyKind { })
         && (
           strictly.fence or null == {
             strict = {

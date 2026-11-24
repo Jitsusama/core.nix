@@ -189,7 +189,18 @@ QtObject {
         return JSON.stringify(value);
     }
 
+    // A case that throws would leave qml waiting on nothing, and the check
+    // with it, so a throw fails it as a wrong answer does.
     Component.onCompleted: {
+        try {
+            judged();
+        } catch (error) {
+            console.warn(`the test threw: ${error}`);
+            Qt.exit(1);
+        }
+    }
+
+    function judged() {
         const things = names.map(Fuzzy.prepare);
         const failures = [];
         for (const query in firsts) {

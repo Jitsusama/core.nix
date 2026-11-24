@@ -733,10 +733,16 @@ fn built_nearby(
     let mut status = 0;
     for (machine, part) in near {
         let began = now();
-        let ran = (!held_nearby(machine, scratch) && there::fetches(machine, part, scratch, "ssh"))
+        let held = held_nearby(machine, scratch);
+        let ran = (!held && there::fetches(machine, part, scratch, "ssh"))
             .then(|| there::nearby_run(machine, part, scratch, ["ssh", "tar", "nix"]))
             .flatten();
         let Some(ran) = ran else {
+            // ssh failing there may be the machine going, which what it
+            // said within the last minute can't know, so it's asked afresh.
+            if !held {
+                machines::forget_reached(&machine.host);
+            }
             let (goes, stays) = there::lent_builds(part, dir);
             if !stays.is_empty() {
                 eprintln!(
@@ -898,7 +904,9 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
-    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (near, left) = there::shared(&asked, &nearby, |machine| {
+        machines::nearby_answers(&machine.address, &machine.host)
+    });
     let (left, owed) = there::owed(left, &nearby, &this_system());
     if !owed.is_empty() {
         eprintln!(
@@ -1093,16 +1101,17 @@ fn own_vm_extra_dirs() -> Vec<PathBuf> {
 /// 51 minutes on the first builder, with 2 of its 4 claimed, while the
 /// second sat idle. A builder past the first that stands while root
 /// doesn't vouch for it takes none, since a run split there would wait
-/// on root while the first had room.
+/// on root while the first had room. One kept for the runs that name it
+/// takes none past the first, as it's the first only for those runs.
 fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there::Asked>> {
     let mut parts: Vec<Option<there::Asked>> = vm_dirs.iter().map(|_| None).collect();
     let Some(part) = vm else {
         return parts;
     };
+    let spills_onto =
+        |index: &usize| there::lends(&vm_dirs[*index]) && !there::named_only(&vm_dirs[*index]);
     let lending: Vec<usize> = (0..vm_dirs.len())
-        .filter(|index| {
-            *index == 0 || (there::lends(&vm_dirs[*index]) && !there::unvouched(&vm_dirs[*index]))
-        })
+        .filter(|index| *index == 0 || (spills_onto(index) && !there::unvouched(&vm_dirs[*index])))
         .collect();
     if lending.len() == 1 {
         parts[0] = Some(part);
@@ -1114,7 +1123,7 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
     // Those left out as root vets them still come, so none more is asked
     // for in their place.
     let vetting = (1..vm_dirs.len())
-        .filter(|index| there::lends(&vm_dirs[*index]) && there::unvouched(&vm_dirs[*index]))
+        .filter(|index| spills_onto(index) && there::unvouched(&vm_dirs[*index]))
         .count();
     let lending = warm_of(&part, lending, vm_dirs, builds, vetting, busy_in);
     let busy: Vec<usize> = lending.iter().map(busy_in).collect();
@@ -1213,10 +1222,13 @@ fn at_once<'a>(
                 let scratch = scratch.join(index.to_string());
                 let vm = vm_dirs.contains(&dir);
                 // The other VM builders, while a lender runs to make each,
-                // which a VM part waiting for room goes to once one has some.
+                // which a VM part waiting for room goes to once one has some,
+                // all but those kept for the runs that name them.
                 let others: Vec<&Path> = vm_dirs
                     .iter()
-                    .filter(|other| **other != dir && there::lends(other))
+                    .filter(|other| {
+                        **other != dir && there::lends(other) && !there::named_only(other)
+                    })
                     .map(|other| other.as_path())
                     .collect();
                 scope.spawn(move || {
@@ -1888,7 +1900,7 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
     let mac = nearby_listed()
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
-        .find(|machine| machines::answers(&machine.address))?;
+        .find(|machine| machines::nearby_answers(&machine.address, &machine.host))?;
     // A run that goes says the load it went at, so a busy Mac that was
     // sent one can be told from the gate that let it through.
     match mac::room_alone(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
@@ -2005,7 +2017,8 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     if there::lent_only() {
         return skipped("--lent-only keeps the change off a Mac nearby".to_owned());
     }
-    let answering = |machine: &&there::Nearby| machines::answers(&machine.address);
+    let answering =
+        |machine: &&there::Nearby| machines::nearby_answers(&machine.address, &machine.host);
     let Some(mac) = macs.iter().find(answering) else {
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));
@@ -2023,7 +2036,14 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         "nix-offload: {read} is read by a Mac's checks, so they're compared there too: {room}"
     );
     let longest = mac::longest();
-    match compared_within(&mac::for_a_mac(arguments), waiting, longest) {
+    let compared = compared_within(&mac::for_a_mac(arguments), waiting, longest);
+    // A comparison that didn't pass, or never ended, may be the Mac going,
+    // which what ssh said of it within the last minute can't know, so it's
+    // asked afresh.
+    if compared != Some(0) {
+        machines::forget_reached(&mac.host);
+    }
+    match compared {
         Some(0) => OnAMac::Passed,
         None => skipped(format!(
             "{}'s comparison ran past {}",
@@ -2286,13 +2306,15 @@ impl Sent<'_> {
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
         // A turn at sending it there, held until the run ends
         // (`changed/turns.rs`); a run that may move is sent on from a full
-        // builder to the next.
-        let turns = env::var_os("XDG_RUNTIME_DIR")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("nix-offload-there");
-        let _turn = match changed::turns::sending(&turns, &lent.host, self.moves, !on_vm) {
-            changed::turns::Turn::Full => return Some(Finished::of(there::BUSY, None)),
-            changed::turns::Turn::Had(held) => held,
+        // builder to the next. They're kept in the account's own folder,
+        // as the uplink's are, so no other account's can hold them; with
+        // none, which is said, the run goes on without one.
+        let turn = there::turns_folder()
+            .map(|turns| changed::turns::sending(&turns, &lent.host, self.moves, !on_vm));
+        let _turn = match turn {
+            Some(changed::turns::Turn::Full) => return Some(Finished::of(there::BUSY, None)),
+            Some(changed::turns::Turn::Had(held)) => held,
+            None => Vec::new(),
         };
         // Sent as `--run`'s `--copy` paths are, as held outputs go, since
         // the builder trusts no account.
@@ -2413,8 +2435,9 @@ impl Sent<'_> {
             .kept_first(arguments, lent)
             .into_iter()
             .chain(
+                // A lane kept for the runs naming it takes no whole run.
                 vm.iter()
-                    .filter(|builder| there::warm(builder))
+                    .filter(|builder| there::warm(builder) && !there::named_only(builder))
                     .map(|builder| standing(builder)),
             )
             .collect();
@@ -2600,10 +2623,9 @@ impl Sent<'_> {
         let github = match source {
             there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
         };
-        for evaluator in evaluators
-            .iter()
-            .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
-        {
+        for evaluator in evaluators.iter().filter(|evaluator| {
+            evaluator.takes(github) && machines::nearby_answers(&evaluator.address, &evaluator.host)
+        }) {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
                 changed::evaluated(

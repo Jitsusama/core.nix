@@ -17,7 +17,11 @@ use conversations::conversations;
 use hosts::hosts;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::{OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -145,10 +149,12 @@ pub fn unrun(
         };
         let path = path.to_string_lossy();
         let key = format!("{} #{}", change.repo, change.number);
+        let rev = revs.get(&change.repo).map(String::as_str);
+        let merge = merge_judged(&change.repo, rev, &path, change.number);
         let why = judge(
             &change.repo,
-            revs.get(&change.repo).map(String::as_str),
-            merge_of(&path, change.number).as_deref(),
+            rev,
+            merge.as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
             |sha| {
@@ -556,28 +562,94 @@ fn installed() -> Option<String> {
     is_rev(&name).then_some(name)
 }
 
+/// `merge_of`, only where `judge` reads it, since a merge that isn't found
+/// costs a walk to main's root.
+fn merge_judged(repo: &str, rev: Option<&str>, path: &str, number: u64) -> Option<String> {
+    (rev.is_some() && RUN_HERE.contains(&repo))
+        .then(|| merge_of(path, number))
+        .flatten()
+}
+
 /// The commit on `path`'s main that merged pull request `number`, by its
 /// subject as `merged_numbers` reads it, since git's grep matches a line of
-/// any commit's body too.
+/// any commit's body too. The log is read as it comes and left at the first
+/// merge found, since git would otherwise read every commit's message to
+/// main's root: at 05:10 on 23 November, World's #2511610 had an hour's
+/// run reading 920 MB/s at 3.7 GB for over ten minutes, every hour, on a
+/// machine already short of memory.
 fn merge_of(path: &str, number: u64) -> Option<String> {
-    let merged = format!("--grep=^Merge pull request #{number} from ");
-    let squashed = format!("--grep=\\(#{number}\\)\\s*$");
-    let found = command(
-        "git",
-        &[
-            "-C",
-            path,
-            "log",
-            "--first-parent",
-            "--format=%H %s",
-            "-E",
-            &merged,
-            &squashed,
-            main_of(path),
-        ],
-    )
-    .ok()?;
-    subject_merging(&found, number)
+    let first = *WALKS_FROM.get_or_init(Instant::now);
+    let left = WALKS_FOR.saturating_sub(first.elapsed());
+    merge_within(path, number, WALK_FOR.min(left))
+}
+
+/// When this run's first walk for a merge began, so every walk after it
+/// shares `WALKS_FOR`.
+static WALKS_FROM: OnceLock<Instant> = OnceLock::new();
+
+/// How long all of a run's walks for merges may read together: one hour
+/// may hold several merges not yet on main, and walks run one after
+/// another under the hour's half-hour limit.
+const WALKS_FOR: Duration = Duration::from_secs(300);
+
+/// How long a walk for a merge reads before it's left: a merge not yet on
+/// main is walked for to its root, which took 41 s on an idle machine and
+/// many minutes on a loaded one, every hour. A merge not found in time
+/// reads as one cadence can't find, which keeps its miss open, never
+/// closed.
+const WALK_FOR: Duration = Duration::from_secs(60);
+
+/// `merge_of`, left once `within` has passed. The log is read on a thread
+/// of its own, so a walk with nothing to say for a while can still be
+/// left at its time.
+fn merge_within(path: &str, number: u64, within: Duration) -> Option<String> {
+    let mut log = walk(path, number).spawn().ok()?;
+    let (sent, found) = mpsc::channel();
+    if let Some(out) = log.stdout.take() {
+        std::thread::spawn(move || {
+            // Read as bytes, since a subject that isn't UTF-8 above the
+            // merge would otherwise end the read before it.
+            let merge = BufReader::new(out)
+                .split(b'\n')
+                .map_while(Result::ok)
+                .find_map(|line| subject_merging(&String::from_utf8_lossy(&line), number));
+            sent.send(merge).ok();
+        });
+    }
+    // Said, since a merge read unfound keeps its miss open on the card.
+    let merge = found.recv_timeout(within).unwrap_or_else(|_| {
+        eprintln!("cadence: #{number}'s merge walk in {path} left at {within:?}, read as unfound");
+        None
+    });
+    // A walk that already ended has nothing to stop, and one stopped here is
+    // only reaped, so neither result says anything the merge found doesn't;
+    // its end closes the pipe, which ends the reading thread too.
+    log.kill().ok();
+    log.wait().ok();
+    merge
+}
+
+/// The walk down `path`'s main for the merge of `number`. Each record is
+/// flushed as it's found, since an inherited `GIT_FLUSH=0` would hold the
+/// merge in git's buffer until the walk reached main's root.
+fn walk(path: &str, number: u64) -> Command {
+    let mut git = Command::new("git");
+    git.args([
+        "-C",
+        path,
+        "log",
+        "--first-parent",
+        "--format=%H %s",
+        "-E",
+        &format!("--grep=^Merge pull request #{number} from "),
+        &format!("--grep=\\(#{number}\\)\\s*$"),
+        main_of(path),
+    ])
+    .env("GIT_FLUSH", "1")
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null());
+    git
 }
 
 /// The newest of `found`, each `SHA SUBJECT`, whose subject says it merged

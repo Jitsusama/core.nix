@@ -87,7 +87,9 @@ in
     scratch = lib.mkOption {
       # One hidden name, as elsewhere checks it, so a bad one fails the build
       # rather than every elsewhere command after it.
-      type = lib.types.strMatching "[.]([^./][^/]*|[.][^/]+)";
+      type = lib.types.strMatching "[.]([^./][^/]*|[.][^/]+)" // {
+        description = "one hidden folder's name, such as .elsewhere-runs";
+      };
       default = ".elsewhere-runs";
       description = "The one folder within the quest's scratch on a far machine that a job's copy runs in, taken away once it ends; a strict fence there writes nowhere else. Hidden, so no share carries a copy home, and so never the handover.";
     };

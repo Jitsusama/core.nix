@@ -1,7 +1,7 @@
 //! google-rows WORDS: the ready rows and drawers a state's meetings make,
 //! as google's daemon serves them (src/ready.rs), so a stand-in for the
 //! daemon serves Calendar's rows from this code rather than a copy of it
-//! that drifts (tests/desktop/stand-in-google.py). It reads one object on
+//! that drifts (tests/desktop/stand-ins/stand-in-google.py). It reads one object on
 //! its input, `{"meetings": [...], "held": [...], "now": <ms>}`, each
 //! meeting as the daemon tells one, and writes every record it makes, as
 //! the daemon would hold it, as one JSON array, in the launcher's words at

@@ -594,6 +594,7 @@ gather {
     ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
+    ./modules/house-report/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
@@ -625,6 +626,7 @@ gather {
     ./modules/model-relay/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mx-brio/checks.nix
+    ./modules/mx-brio-seat/checks.nix
     ./modules/mycelium/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
@@ -635,6 +637,7 @@ gather {
     ./modules/niri/checks.nix
     ./modules/nix-daemon/checks.nix
     ./modules/nix-offload/checks.nix
+    ./modules/nixpkgs/checks.nix
     ./modules/noise-cancelled/checks.nix
     ./modules/notices/checks.nix
     ./modules/onepassword/checks.nix

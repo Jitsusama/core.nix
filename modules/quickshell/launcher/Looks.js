@@ -6,6 +6,7 @@
 // History's row ready to draw (modules/to-do/src/history.rs), which these rules must agree with.
 .pragma library
 .import "ForYou.js" as ForYou
+.import "LookForm.js" as LookForm
 .import "Order.js" as Order
 
 // What a look is about, and how it stands, as the harness writes them, and
@@ -19,10 +20,11 @@ const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
 // How many of a look's choices are offered, as the harness writes at most
 // four (85PKB2, 2026-11-12).
 const OFFERED = 4;
-// How long an answer shows as given while the look's file still waits:
-// its session writes the look resolved as it reads the steer, so one
-// still waiting a minute on didn't take, and its choices come back.
-const ANSWER_TAKES = 60 * 1000;
+// How long an answer shows as given while the node hasn't said it took
+// it, before saying it may not have gone: "no answer in 5 s" (docs/
+// design.md). Its side says so from then until a word comes, the node
+// going included, since nothing else times out a steer it was asked.
+const ANSWER_HEARD = 5 * 1000;
 // How long a look waits before it goes quiet: it leaves what waits, and so
 // every count of it, for History, where it's still opened as it was. By then
 // why it came is lost (Joel, 2026-11-11: "by the time i find them the context
@@ -62,11 +64,10 @@ function look(text) {
     }
     return Object.assign(kept, {
         why: typeof read.why === "string" ? read.why : "",
-        // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
-        words: [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n"),
+        words: LookForm.wordsOf(read),
         since: ForYou.when(read.at),
         resolved: ForYou.when(read.resolvedAt),
-        offers: offers(read.choices)
+        offers: offers(read.choices, read.wants)
     });
 }
 
@@ -97,15 +98,22 @@ function written(value) {
     return typeof value === "string" ? value : "";
 }
 
-// A look's choices as it's offered them, each { value, label }: one
-// naming no value left out, one naming no label labelled by its value,
-// and at most OFFERED.
-function offers(choices) {
+// A look's choices as it's offered them, each { value, label, follows }:
+// one naming no value left out, one naming no label labelled by its value,
+// and at most OFFERED. What follows a choice is its own, else what the look
+// wants back says of its label (`wants`), else "".
+function offers(choices, wants) {
     const named = value => typeof value === "string" && value !== "";
+    const wanted = Array.isArray(wants?.choices) ? wants.choices : [];
+    const follows = (one, label) => named(one.follows) ? one.follows
+        : written(wanted.find(each => each?.label === label)?.follows);
     return (Array.isArray(choices) ? choices : [])
         .filter(one => one !== null && typeof one === "object" && named(one.value))
         .slice(0, OFFERED)
-        .map(one => ({ value: one.value, label: named(one.label) ? one.label : one.value }));
+        .map(one => {
+            const label = named(one.label) ? one.label : one.value;
+            return { value: one.value, label, follows: follows(one, label) };
+        });
 }
 
 // Joel's answer to a look, as the steer that tells it to the session that
@@ -318,10 +326,51 @@ function doneWith(one) {
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
-// { [look id]: { label, at } }, while it may yet take, or "".
+// { [look id]: { label, at, sent, taken, failed } }, for ANSWER_HEARD
+// while the node may yet say it took it, or "".
 function answering(one, answered, now) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && given && now - given.at < ANSWER_TAKES ? given.label : "";
+    return one.state === "waiting" && given && !given.failed && now - given.at < ANSWER_HEARD
+        ? given.label : "";
+}
+
+// Why Joel's answer to a look still waiting may not have gone, "nobody"
+// to tell, "unsent" with no node connected, "untaken" where the node
+// couldn't give it, refused or its machine out of reach, "dropped" where
+// it went before saying, or "unheard" past ANSWER_HEARD with no word, else
+// "", said until he answers again or the look is settled, however much
+// later he comes back to it: his choices coming back unsaid left him no
+// way "to in any way follow through" (Joel, 2026-11-22).
+function unanswered(one, answered, now) {
+    const given = answered?.[one.id];
+    if (one.state !== "waiting" || !given || given.taken) {
+        return "";
+    }
+    if (typeof given.failed === "string") {
+        return given.failed;
+    }
+    return now - given.at >= ANSWER_HEARD ? "unheard" : "";
+}
+
+// Whether Joel's answer to a look still waiting is out: given, with no
+// word come of it, which only the node answering or going ends. Its
+// choices stay away meanwhile, so a second answer can't follow one still
+// on its way and the session hear both. Once the node went they come
+// back, though it may have written the first, since a look left with no
+// way to answer until the shell restarts is worse; the side's "yet" says
+// it may still come.
+function awaiting(one, answered) {
+    const given = answered?.[one.id];
+    return one.state === "waiting" && !!given && !given.taken && !given.failed;
+}
+
+// How long until an answer's side next changes as time passes, or null:
+// its 5 s, while no word has come.
+function answersChange(answered, now) {
+    const ahead = Object.values(answered ?? {})
+        .filter(given => given && !given.taken && !given.failed)
+        .map(given => given.at + ANSWER_HEARD).filter(at => at > now);
+    return ahead.length === 0 ? null : Math.min(...ahead) - now;
 }
 
 // The looks as `looks` splits them, with each waiting one whose answer the

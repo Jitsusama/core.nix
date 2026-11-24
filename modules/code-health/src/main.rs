@@ -39,6 +39,15 @@
 //! a misspelt one is refused rather than left unjudged; an owner of a
 //! FOLDER, said from the repository's top as its files are, owns what the
 //! hour names in it (options.rs).
+//!
+//!     code-health stale TREE WAITING
+//!
+//! holds one measure at a change rather than counting it each hour: it
+//! fails naming each comment in the folder TREE that names a path gone
+//! (stale.rs), but those the file WAITING lists as `file path`, one a
+//! line and once for each mention, and each line listed more often than
+//! it's found, so the list only shrinks (tree.rs). The same rule then
+//! counts each hour and holds each change.
 
 mod git;
 mod hour;
@@ -53,6 +62,7 @@ mod terraform;
 mod terraform_docs;
 mod terraform_tests;
 mod terraform_validate;
+mod tree;
 
 use std::collections::BTreeMap;
 use std::env;
@@ -91,6 +101,10 @@ fn help() -> Help {
         "code-health --repo zone=~/world --ref zone=main --under zone=home/me",
         "reads one folder of a larger repository",
     )
+    .example(
+        "code-health stale ~/src/core.nix waiting.txt",
+        "fails on a comment naming a path that's gone, but those waiting",
+    )
     .option(
         "--repo NAME=CHECKOUT",
         "a repository to read, by the name cadence says",
@@ -114,6 +128,51 @@ fn help() -> Help {
     )
     .exit(Exit::Failed, "the day's files couldn't be written")
     .exit(Exit::NotFound, "no repository could be read")
+    .exit(
+        Exit::Refused,
+        "stale: a comment names what's gone, or the list what's back",
+    )
+}
+
+/// `code-health stale TREE WAITING`: each comment in `tree` naming a path
+/// that's gone, but those `waiting` lists, said and failed on, as is each
+/// line of `waiting` listed more often than it's found.
+fn stale_held(context: &Context, tree: &str, waiting: &str) -> Result<(), Failure> {
+    let (paths, files) = tree::files(Path::new(tree))
+        .map_err(|what| Failure::new(Exit::NotFound, "the tree couldn't be read").because(what))?;
+    let listed = fs::read_to_string(waiting).map_err(|why| {
+        Failure::new(Exit::NotFound, "the waiting list couldn't be read")
+            .because(format!("{waiting}: {why}"))
+    })?;
+    let listed: Vec<String> = listed
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect();
+    let (new, gone) = tree::held(&stale::stale(&paths, &files), &listed);
+    let mut said = Vec::new();
+    if !new.is_empty() {
+        said.push("These comments name what isn't there; name where it is now:".to_owned());
+        said.extend(new.iter().map(|named| format!("  {named}")));
+    }
+    if !gone.is_empty() {
+        said.push("These wait on less now; list each as often as it's found:".to_owned());
+        said.extend(gone.iter().map(|line| format!("  {line}")));
+    }
+    if said.is_empty() {
+        return Ok(());
+    }
+    // Said as lines, each ended, so the refusal after them starts its own.
+    let mut said = said.join("\n");
+    said.push('\n');
+    context.say(&said).map_err(|error| {
+        Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
+    })?;
+    Err(
+        Failure::new(Exit::Refused, "a comment or the waiting list is stale")
+            .because("each is named above"),
+    )
 }
 
 fn main() -> ExitCode {
@@ -153,6 +212,11 @@ fn stray_owners(
 }
 
 fn run(context: &Context) -> Result<(), Failure> {
+    if let [mode, tree, waiting] = context.args.as_slice()
+        && mode == "stale"
+    {
+        return stale_held(context, tree, waiting);
+    }
     let (repos, into) = options::parse(&context.args)
         .map_err(|what| Failure::new(Exit::Usage, what).try_this("code-health --help"))?;
     let into = into.unwrap_or_else(state);

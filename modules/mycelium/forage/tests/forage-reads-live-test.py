@@ -13,7 +13,9 @@ claimed split dashed and said as claimed at both ends, say what waits on its per
 plan furthest from done in its lede, draw each cell's plans, quest, needs and
 split in its panel and the need as a dotted arc, step its cursor by keys,
 follow a purpose written, drawn as words though it holds markup, a wait
-answered and a cell going, say broken when the node stops with its cells kept
+answered, a cell going and, once every cell has, the crest drawn again until
+a cell is heard again, say
+broken when the node stops with its cells kept
 and live again, its cells read again, when it's back, say stale when the
 server goes and keep what it drew, keep to its budget, and pass the
 web-design skill's page checks at a phone's width and a desk's in both looks.
@@ -392,7 +394,7 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(
         opened.close()
 
 
-def test_a_purpose_written_and_a_cell_gone_are_followed(
+def test_a_purpose_written_and_cells_gone_are_followed(
     forage_page: Page, mycelium_node: StandIn
 ) -> None:
     says_it_stands(forage_page, "live")
@@ -416,6 +418,23 @@ def test_a_purpose_written_and_a_cell_gone_are_followed(
     expect(headline, "the count didn't follow the cell going").to_have_text(
         "3 cells, each with its purpose."
     )
+    # Once every cell has gone, the floor holds the crest again rather than cells gone.
+    mycelium_node.tell("forage", gone=["forage:KESTRL", "forage:SKIFFS", "forage:OSPREY"])
+    expect(forage_page.locator("#cells [role=option]"), "a gone cell was listed").to_have_count(
+        0, timeout=PACE_MS
+    )
+    expect(forage_page.locator("#floor svg.crest"), "the crest didn't come back").to_have_count(1)
+    expect(forage_page.locator("#floor rect[data-cell]"), "gone cells were drawn").to_have_count(0)
+    expect(forage_page.locator("#panel-body"), "a gone cell's panel stayed").to_be_empty()
+    # A cell heard again, as after a node's restart, takes the floor back from the crest.
+    mycelium_node.tell("forage", changed=[long_record("PLOVER")])
+    expect(cell(forage_page, "PLOVER"), "the cell heard again wasn't listed").to_have_count(
+        1, timeout=PACE_MS
+    )
+    expect(forage_page.locator("#floor svg.crest"), "the crest stayed over a cell").to_have_count(0)
+    floored = forage_page.locator('#floor rect[data-cell="PLOVER"]')
+    expect(floored, "the cell heard again wasn't drawn").to_have_count(1)
+    selected(forage_page, "PLOVER", "the cell heard again didn't take the cursor")
 
 
 def test_a_cell_leaving_the_view_without_purpose_takes_the_cursor(

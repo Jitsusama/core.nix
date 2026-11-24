@@ -9,6 +9,7 @@ nix-darwin.lib.darwinSystem {
     core.darwinModules.graphical
     core.darwinModules.linux-builder
     # Modules no role brings, so they meet the others here first.
+    core.darwinModules.house-report
     core.darwinModules.netconsole
     core.darwinModules.update-to-main
     (
@@ -23,6 +24,9 @@ nix-darwin.lib.darwinSystem {
 
         # It keeps the kernel logs a laptop on its network sends.
         jitsusama.netconsole.from = "192.168.1.0/24";
+
+        # It tells the shaped machine on its line what it sends up.
+        jitsusama.house-report.to = "192.168.1.3";
 
         jitsusama.update-to-main = {
           repository = "https://github.com/example/machines";

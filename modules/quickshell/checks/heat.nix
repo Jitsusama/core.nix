@@ -25,6 +25,7 @@
       cp ${../../../tests/lib/Watch.js} Watch.js
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Heat.qml"
         "launcher/Provider.qml"
@@ -55,6 +56,7 @@
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Heat.qml"
         "launcher/Provider.qml"

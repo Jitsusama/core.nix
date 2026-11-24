@@ -8,4 +8,4 @@ keeps a copy of it that drifts:
   google's daemon socket as it comes and goes.
 - `google-rows.rs` makes the rows and drawers a state's meetings make, as
   the daemon serves them, for the desktop tests' stand-in for the daemon
-  (../../../../tests/desktop/stand-in-google.py).
+  (../../../../tests/desktop/stand-ins/stand-in-google.py).

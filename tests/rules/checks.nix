@@ -73,6 +73,16 @@
     waiting = import ./every-suppression-says-why-waiting.nix;
   };
 
+  # A comment saying where something lives is a guide, and one left behind
+  # when that thing moved sends its reader looking for nothing, as a doc
+  # does; docs-name-what-exists holds the markdown. One that must wait on
+  # its owner is listed in tests/rules/comments-name-what-exists-waiting.nix,
+  # empty now, and the check fails once it's fixed, so the list only shrinks.
+  comments-name-what-exists = pkgs.callPackage ./comments-name-what-exists.nix { } {
+    src = ../..;
+    waiting = import ./comments-name-what-exists-waiting.nix;
+  };
+
   # shellcheck's optional checks for a hidden failure, a set -e turned off,
   # an uppercase variable nothing sets and a case with no default find
   # faults, but too many scripts break them for treefmt to run them yet.
@@ -208,6 +218,7 @@
         chrony-network-servers =
           script "chrony-network-servers" ../../modules/chrony/network-servers.sh
             { };
+        chunks-given-back = script "chunks-given-back" ../../modules/disko/chunks-given-back.sh { };
         collect = script "collect" ../../modules/linux-builder/collect.sh { };
         console-setup = script "console-setup" ../../modules/console/setup.sh { };
         declared-last = script "declared-last" ../../modules/git/declared-last.sh { };
@@ -215,6 +226,7 @@
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
+        writeback-goal = script "writeback-goal" ../../modules/slices/writeback-goal.sh { };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
@@ -338,6 +350,7 @@
         guide = pkgs.callPackage ../../modules/guide/package.nix { };
         health = pkgs.callPackage ../../modules/health/package.nix { };
         hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
+        house-report = pkgs.callPackage ../../modules/house-report/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         jobs-broker = pkgs.callPackage ../../modules/jobs-broker/package.nix { };
         jobs-sorter = pkgs.callPackage ../../modules/slices/jobs-sorter/package.nix { };

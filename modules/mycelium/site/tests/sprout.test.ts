@@ -3,6 +3,7 @@
 // address, and no link at all without words.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { handedWords, isAddress, LONGEST_WORDS, sproutLink, sproutWords } from "../sprout.ts";
 
@@ -84,18 +85,74 @@ it("says the cell it comes from only when that is an address", () => {
     "mycelium:sprout?words=tidy%20the%20rows&from=TERN02",
     "an open cell's address should go with the words",
   );
-  assert.equal(isAddress("TERN02"), true, "an address should be one");
   assert.equal(isAddress(null), false, "no cell should be no address");
-  for (const from of ["T", "9", "ABCDEFGHIJKL"]) {
-    assert.equal(isAddress(from), true, `${from} should be an address, 1 to 12 long`);
-  }
   for (const from of ["tern02", "TERN-02", "", "ABCDEFGHIJKLM", "X&words=Y", "calls@kestrel"]) {
-    assert.equal(isAddress(from), false, `${JSON.stringify(from)} should be no address`);
     assert.equal(
       sproutLink("tidy the rows", from),
       "mycelium:sprout?words=tidy%20the%20rows",
       `${JSON.stringify(from)} isn't an address, so it should be left out`,
     );
+  }
+});
+
+/** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */
+const ESCAPE = /\\u\{([0-9A-F]{1,6})\}/gu;
+
+/** A case's text with each escape made the character it names, failing on any other. */
+function caseText(written: string): string {
+  const line = JSON.stringify(written);
+  assert.ok(!written.replace(ESCAPE, "").includes("\\"), `${line} should escape only as \\u{HEX}`);
+  return written.replace(ESCAPE, (_, hex: string) => {
+    const code = Number.parseInt(hex, 16);
+    assert.ok(
+      code <= 0x10_ff_ff && (code < 0xd8_00 || code > 0xdf_ff),
+      `${line} should name a character`,
+    );
+    return String.fromCodePoint(code);
+  });
+}
+
+it("refuses a case escaped any other way", () => {
+  for (const written of [
+    "T\\",
+    "T\\n",
+    "T\\u{a}",
+    "T\\u{+A}",
+    "T\\u{0000041}",
+    "T\\u{}",
+    "T\\u{41",
+    "T\\u{D800}",
+    "T\\u{DFFF}",
+    "T\\u{110000}",
+    "T\\\\",
+  ]) {
+    assert.throws(() => caseText(written), `${JSON.stringify(written)} should be refused`);
+  }
+  assert.equal(caseText("T\\u{5C}\\u{9}"), "T\\\t", "each escape should be read the one way");
+  assert.equal(
+    caseText("\\u{000041}\\u{10FFFF}\\u{E000}\\u{D7FF}"),
+    "A\u{10FFFF}\u{E000}\u{D7FF}",
+    "six digits, the top and each side of the surrogates should be read",
+  );
+  assert.equal(
+    caseText("T\\u{5C}u{41}"),
+    "T\\u{41}",
+    "what an escape gives should never be read again",
+  );
+});
+
+it("judges each shared address case", () => {
+  const cases = readFileSync(new URL("addresses.txt", import.meta.url), "utf8")
+    .split("\n")
+    .filter((line) => line !== "" && !line.startsWith("#"));
+  assert.ok(cases.length > 20, "the shared cases should be read");
+  for (const line of cases) {
+    assert.ok(!line.includes("\r"), `${JSON.stringify(line)} should hold no carriage return`);
+    const [kind, ...rest] = line.split(" ");
+    const text = caseText(rest.join(" "));
+    assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
+    const is = kind === "is";
+    assert.equal(isAddress(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
   }
 });
 

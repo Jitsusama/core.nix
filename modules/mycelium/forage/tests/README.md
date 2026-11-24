@@ -11,6 +11,12 @@ run by Node's own test runner when the local sites build the page.
   one started; a start counted as the node's own only when its start
   book holds it; and a split cell grown under the cell it split from
   when nothing here started it.
+- `cursor.test.ts` tries which cells the list shows in its view, every
+  cell or those without purpose (the cells the headline and lede count,
+  a purpose of only spaces among them), and where the cursor rests on them:
+  kept while shown, else on the first row, and through a find matching
+  nothing while its cell lasts and the view takes it in, there too; a
+  cell that ends, or that the view no longer takes in, takes it along.
 - `joins.test.ts` tries the needs each cell serves and relies on, joined
   once a pair however both ends keep them.
 - `records.ts` builds the forage records both of those read, as the node
@@ -31,7 +37,10 @@ run by Node's own test runner when the local sites build the page.
   drawn around, the cells that grew straight from that one and those nearest it,
   each with every cell it grew from, once round a ring, so a booked start
   far down the list still draws solid, and a line deeper than the floor
-  cut at its top, but stopped at a cell already drawn; the cells the
+  cut at its top, but stopped at a cell already drawn, and leaving the
+  cells that grew from its cell up to half the floor; a ring longer than
+  the room filling it cut at its top; an ellipsis wherever the floor
+  skips cells of its list, and none on a list that fits; the cells the
   node's book holds started before those only claimed; that a step draws
   the floor again only for a cell it leaves off or one that grew a cell it
   leaves off, no cursor at all not among them; that a live
@@ -54,6 +63,8 @@ headless browser through the sites' server beside a stand-in node holding
 `node.json`, four cells' forage on one machine with a wait, a plan, a
 need served, a start the node's book holds and a split. It steps the
 cursor by keys, follows the records as they change, stop and come back,
+draws the crest again once every cell has gone and the floor again once
+one is heard again,
 lets a cell a purpose takes out of the view of cells without purpose
 take the cursor with it, find or not, and keeps the page within its
 budget and passing the web-design skill's page checks. Beside a second

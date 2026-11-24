@@ -16,7 +16,8 @@ a node.
 - `murmurs-reads-live-test.py` proves the built page reads live through
   the sites' server in Chromium, beside a stand-in node holding three
   murmurs said minutes before it runs: arriving, settling, going and
-  unreadable murmurs, the node and the server going, words kept as
+  unreadable murmurs, a quiet node said in a line with no empty list
+  or bare sky, the node and the server going, words kept as
   words, the keys and a tap on those the head shows, a tab whose
   renderer dies before its first reading opened once more (and only
   once, and only for a crash), and the web-design skill's page checks

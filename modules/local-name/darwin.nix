@@ -9,6 +9,12 @@
 # lands elsewhere, but at most once in five minutes, so a conflict that
 # lasts can't have it and macOS trading the name (keep.sh says why). A Mac
 # that declares no local name is left as it is.
+#
+# Nothing here advertises a service to make name.local answer. macOS puts
+# its address records on every interface, loopback aliases too, only while
+# some service names the host as its target. A job that did so from 23
+# November left a Mac with about 370 loopback aliases probing them, and when
+# its cable came out, its name service spun a core on their conflicts.
 {
   config,
   lib,

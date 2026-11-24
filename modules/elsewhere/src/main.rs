@@ -452,7 +452,7 @@ struct Job {
     quest: String,
     id: String,
     root: PathBuf,
-    files: Vec<(String, u64)>,
+    files: Vec<String>,
     within: PathBuf,
     folder: PathBuf,
     handover: PathBuf,
@@ -468,7 +468,7 @@ fn send(
     job: &Job,
 ) -> Result<Sent, Failure> {
     let (quest, id) = (job.quest.as_str(), job.id.as_str());
-    let paths = job.files.iter().map(|(path, _)| path.as_str());
+    let paths = job.files.iter().map(String::as_str);
     // Held until the job ends here, so no other run takes it for spent.
     let (_held, bytes) = far::spent::owned(&job.handover, &here())
         .and_then(|held| far::left(&job.root, paths, &job.handover).map(|bytes| (held, bytes)))

@@ -19,7 +19,7 @@ let
       { jitsusama.shaper.controller = "one-way"; }
     ]).config.systemd.services;
   # A machine whose two networks each name a house, one reporting over
-  # IPv4 and one over IPv6.
+  # IPv4 and one over IPv6 from either of two addresses.
   housed =
     (bareNixos [
       self.nixosModules.shaper
@@ -35,7 +35,10 @@ let
             })
             {
               "00:00:5e:00:53:01" = "192.0.2.7";
-              "00:00:5e:00:53:02" = "2001:db8::7";
+              "00:00:5e:00:53:02" = [
+                "2001:db8::7"
+                "2001:db8::8"
+              ];
             };
       }
     ]).config.networking.firewall;
@@ -50,13 +53,15 @@ let
     lib.head
     (lib.replaceStrings [ "_" ] [ "" ])
   ];
-  # The machine's input rules, which must be the houses' two alone, and
-  # no port, range or interface left open to all that takes the port in.
+  # The machine's input rules, which must be the houses' three addresses
+  # alone, and no port, range or interface left open to all that takes the
+  # port in.
   rules = lib.filter (line: line != "") (lib.splitString "\n" housed.extraInputRules);
   houseRules =
     rules == [
       "ip saddr 192.0.2.7 udp dport ${port} accept"
       "ip6 saddr 2001:db8::7 udp dport ${port} accept"
+      "ip6 saddr 2001:db8::8 udp dport ${port} accept"
     ];
   takesThePort =
     open:
@@ -105,7 +110,33 @@ let
     "0:0:0:0:0:0:c000:207"
     "::"
   ];
-  misread = lib.filter (text: !address.check text) taken ++ lib.filter address.check refused;
+  # Whether the option takes `value`, as a module setting it would: a
+  # list's addresses are each checked only as the list is merged.
+  takes =
+    value:
+    (builtins.tryEval (
+      builtins.deepSeq
+        (lib.evalModules {
+          modules = [
+            {
+              options.from = lib.mkOption { type = address; };
+              config.from = value;
+            }
+          ];
+        }).config.from
+        true
+    )).success;
+  # A list is held to the same check in each of its addresses, and to one
+  # at least.
+  misread =
+    lib.filter (text: !address.check text) taken
+    ++ lib.filter address.check refused
+    ++ lib.optional (!takes taken) "the list of every address taken"
+    ++ lib.optional (takes [
+      "192.0.2.7"
+      "the mac"
+    ]) "a list holding a name"
+    ++ lib.optional (takes [ ]) "a list of none";
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -137,15 +168,16 @@ onLinux {
       );
 
   # A network's house opens the port the shaper hears its reports on to
-  # the house's address alone, over IPv4 or IPv6 as it is written: the
-  # machine's input rules are the houses' two alone, and no port, range or
-  # trusted interface opens it to all. A house's address is held to what
+  # the house's addresses alone, over IPv4 or IPv6 as each is written: the
+  # machine's input rules are the houses' three alone, and no port, range or
+  # trusted interface opens it to all. A house's address, alone or in a
+  # list, is held to what
   # the shaper's own parse takes, and an IPv4 address written as IPv6,
   # mapped or compatible, which would open the port to no report, is
   # refused.
   shaper-hears-only-the-house = holds "shaper-hears-only-the-house" (
     if !houseRules then
-      "The input rules aren't the houses' two alone: ${lib.concatStringsSep "; " rules}"
+      "The input rules aren't the houses' three alone: ${lib.concatStringsSep "; " rules}"
     else if !opened then
       "UDP port ${port} is open to all, by a port, a range or a trusted interface"
     else

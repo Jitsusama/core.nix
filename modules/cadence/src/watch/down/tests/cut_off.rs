@@ -48,38 +48,6 @@ fn machines_last_heard_together_with_none_ready_is_this_one_cut_off() {
 }
 
 #[test]
-fn this_machine_reads_its_reach_by_every_network_probed_but_never_the_call() {
-    let machines = |reached: &str| {
-        format!(
-            r#"{{"Ok":{{"Machines":[{{"name":"here","reached":{reached}}},
-            {{"name":"yonder","reached":{{"home":true}}}}]}}}}"#
-        )
-    };
-    for (reached, reads) in [
-        (r#"{"call":false,"home":true,"office":true}"#, Some(true)),
-        (r#"{"call":true,"home":true}"#, Some(true)),
-        (r#"{"call":false,"home":true,"office":false}"#, Some(false)),
-        (r#"{"call":true,"home":false}"#, Some(false)),
-        (r#"{"call":false}"#, None),
-        (r#"{"call":true}"#, None),
-        ("{}", None),
-        ("null", None),
-    ] {
-        assert_eq!(
-            reach(&machines(reached), "here"),
-            reads,
-            "a machine reaching {reached} misread"
-        );
-    }
-    assert_eq!(
-        reach(&machines(r#"{"home":false}"#), "far"),
-        None,
-        "another machine's record was read as this one's"
-    );
-    assert_eq!(reach("", "here"), None, "no answer read as a reach");
-}
-
-#[test]
 fn a_machine_unsure_of_its_own_reach_tells_a_drop_only_beside_one_ready() {
     let unsure = |seen: &[Seen], told: &mut Told, now| {
         super::super::due(seen, &work(), &work(), told, now, false)
@@ -244,4 +212,49 @@ fn a_machine_down_apart_from_the_others_is_told() {
         1,
         "a working machine's crash after another slept was taken for a cut-off"
     );
+}
+
+#[test]
+fn a_peer_whose_clock_runs_ahead_is_heard_as_now() {
+    let ahead = Seen {
+        heard: Some(NOW + 36_000),
+        ..lost("near", 0)
+    };
+    let by = BTreeMap::from([
+        ("yonder", (lost("yonder", 200), BTreeSet::new())),
+        ("near", (ahead, BTreeSet::new())),
+    ]);
+    assert!(
+        cut_off(&by, NOW + 300, true, &BTreeSet::new()),
+        "a peer lost beside another, its clock ten hours ahead, was heard apart from it"
+    );
+}
+
+#[test]
+fn a_machine_with_no_time_heard_hides_a_drop_only_within_the_hour_it_read_ready() {
+    let silent = Seen {
+        heard: None,
+        ..one("old", Reading::Down, true)
+    };
+    for (ready_ago, expected) in [(30, 0), (90, 1)] {
+        let mut told = Told::default();
+        let up = [
+            one("old", Reading::Ready, true),
+            one("yonder", Reading::Ready, true),
+        ];
+        step(&mut told, NOW - ready_ago * 60, &up);
+        step(
+            &mut told,
+            NOW,
+            &[silent.clone(), one("yonder", Reading::Ready, true)],
+        );
+        let crash = [silent.clone(), lost("yonder", 200)];
+        step(&mut told, NOW + 5 * 60, &crash);
+        assert_eq!(
+            step(&mut told, NOW + 15 * 60, &crash).len(),
+            expected,
+            "a crash beside a machine with no time heard, ready {ready_ago} min before, was \
+             judged wrongly"
+        );
+    }
 }

@@ -67,7 +67,8 @@ def handing(desktop: Desktop, sessions: list[dict[str, Any]]) -> None:
 def presents(desktop: Desktop, session: str, address: str, said: dict[str, Any]) -> None:
     """Say a reopened stand-in's record, as pi says its own once it starts.
 
-    The stand-in wrote its process and kitty window by its session (tests/pi-stand-in.sh).
+    The stand-in wrote its process and kitty window by its session
+    (tests/stand-ins/pi-stand-in.sh).
     """
     # Its kitty's socket and window when kitty says them, else none: a session is known to
     # run here by its process alone.

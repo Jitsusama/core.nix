@@ -562,11 +562,20 @@ QtObject {
         // has no words.
         const refused = "1.3\u00d7 not set \u00b7 HP offers 1\u00d7 to 3\u00d7";
         holds("a late refusal is said while the keys are still the line's",
-            SetWords.later("scale", refused, 7, 7), { say: refused });
-        holds("a late refusal after Joel typed on goes to the journal alone",
-            SetWords.later("scale", refused, 7, 9),
-            { journal: `launcher: scale refused after Joel typed on: ${refused}` });
-        holds("a late answer with no words does nothing", SetWords.later("scale", "", 7, 9),
+            SetWords.later("scale", refused, true), { say: refused });
+        holds("a late refusal after Joel typed on goes to the journal alone, its code whole",
+            SetWords.later("scale", refused, false, { code: "unread", whole: false }),
+            { journal: "launcher: scale refused after Joel typed on: unread, 33 letters" });
+        holds("its code kept and its words quoted only while reports are on",
+            SetWords.later("scale", refused, false, { code: "unread", whole: true }),
+            { journal: `launcher: scale refused after Joel typed on: unread, "${refused}"` });
+        holds("and by how many letters its words held where it's given no code",
+            SetWords.later("scale", refused, false),
+            { journal: "launcher: scale refused after Joel typed on: 33 letters" });
+        holds("a late refusal of one letter says so",
+            SetWords.later("scale", "\u00d7", false),
+            { journal: "launcher: scale refused after Joel typed on: 1 letter" });
+        holds("a late answer with no words does nothing", SetWords.later("scale", "", false),
             null);
 
         // Each option as Vim's :set volume? says it.

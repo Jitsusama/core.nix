@@ -304,6 +304,74 @@ fn a_partial_landing_keeps_the_landed_drops_the_refused_and_seats_the_rest() {
         why.contains("is a draft") && why.contains("the rider before it landed as m1"),
         "the refused rider wasn't told why, and that the one before it stays: {why}"
     );
+    let kept: Vec<Value> = fs::read_to_string(folder(&root).join("landed.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let said: Vec<(&Value, &Value, &Value)> = kept
+        .iter()
+        .map(|line| (&line["heads"], &line["fell"], &line["boarded"]))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (&json!(["a1"]), &Value::Null, &json!([10])),
+            (&Value::Null, &json!(["b2"]), &json!([20])),
+        ],
+        "the landed rider's boarding wasn't kept beside its head, or the refused one's wait \
+         was lost"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_rider_that_steps_off_keeps_its_wait_once_and_one_not_aboard_none() {
+    let root = root("off");
+    board(&root, &rider("a1", 10)).unwrap();
+    leave(&root, "a1", Left::Off);
+    leave(&root, "a1", Left::Off);
+    leave(&root, "never", Left::Fell);
+    let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap();
+    let lines: Vec<Value> = kept
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        lines
+            .iter()
+            .map(|line| (&line["off"], &line["fell"], &line["boarded"]))
+            .collect::<Vec<_>>(),
+        [(&json!(["a1"]), &Value::Null, &json!([10]))],
+        "a rider that stepped off wasn't kept once with its boarding, or one not aboard was"
+    );
+    assert!(riders(&root).is_empty(), "the rider stayed aboard");
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
+    let root = root("boarded");
+    for (head, at) in [("a1", 10), ("b2", 20)] {
+        board(&root, &rider(head, at)).unwrap();
+    }
+    // A rider whose file went keeps its slot, as none.
+    let merged: Vec<String> = ["b2", "gone", "a1"].map(str::to_owned).into();
+    after_landing(
+        &root,
+        Landing::Landed("m1".to_owned()),
+        &merged,
+        0,
+        &mut Splitting::default(),
+    );
+    let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap();
+    let line: Value = serde_json::from_str(kept.trim()).unwrap();
+    assert_eq!(
+        line["boarded"],
+        json!([20, null, 10]),
+        "the boarding times weren't kept in the heads' order: {line}"
+    );
+    assert!(riders(&root).is_empty(), "the landed riders stayed aboard");
     fs::remove_dir_all(&root).unwrap();
 }
 

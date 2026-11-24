@@ -120,12 +120,12 @@ const UNSEEN_FLOOR: f64 = 0.5;
 const STARTING_S: f64 = 30.0;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
-const CLIMB: f64 = 1.05;
+pub(crate) const CLIMB: f64 = 1.05;
 /// How fast a rate climbs, per second, far from any queue it has met:
 /// under this share of what got through when one last stood, or with none
 /// met yet. A remembered rate far under the connection is back in under
 /// ten seconds.
-const FAST_CLIMB: f64 = 1.25;
+pub(crate) const FAST_CLIMB: f64 = 1.25;
 const FAR: f64 = 0.5;
 /// How long where a queue last stood slows the climb: past it, as CUBIC
 /// does, the connection has likely moved since.
@@ -1511,6 +1511,9 @@ pub struct Controller {
     /// Why the upload holds where it does, and since when.
     why: Why,
     why_since: Option<f64>,
+    /// Whether the upload has been held on this network, so one let go
+    /// since isn't said never to have met a queue.
+    has_held: bool,
     last_cut: LastCut,
     /// The hold on the VPN's own queue, for a wait inside its tunnel.
     tunnel: crate::tunnel::Hold,
@@ -1546,6 +1549,7 @@ impl Controller {
             guarded: 0,
             why: Why::Unmeasured,
             why_since: None,
+            has_held: false,
             last_cut: LastCut::default(),
             tunnel: crate::tunnel::Hold::default(),
             agents: crate::tunnel::Hold::default(),
@@ -1868,6 +1872,7 @@ impl Controller {
         let waiting = seen.up_ours.is_some_and(|ours| ours.agents_straight);
         let why = self.reason(at, guarded, met, (heeded, waiting));
         self.judge(at, why);
+        self.has_held |= self.up.rate.is_finite();
         Limits {
             up: self.up.limit(),
             down: self.down.limit(),
@@ -2001,7 +2006,11 @@ impl Controller {
             return Why::Ceiling;
         }
         if !up.rate.is_finite() {
-            return Why::Unmeasured;
+            return if self.has_held {
+                Why::LetGo
+            } else {
+                Why::Unmeasured
+            };
         }
         // The VPN's own hold is named first: agents don't yield while it
         // works, so theirs is then only climbing back. A share climbing
@@ -2457,6 +2466,28 @@ mod tests {
             "held under what arrived for {under_s:.1} s of 120, under a queue no cut drained"
         );
         assert_eq!(c.returns, 0, "the guard sent it back: {:?}", c.down.limit());
+    }
+
+    // On 23 November the upload was held under the router's queue at 02:56
+    // and 02:58, let go when that ended, and then read as never having met
+    // a queue on the network at all.
+    #[test]
+    fn an_upload_let_go_after_a_hold_says_it_was_held() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.0, quiet(300.0, 300.0));
+        assert!(c.why().contains("yet"), "before any queue: {}", c.why());
+        let held = run(&mut c, 1.0, 3.2, queued_up(40.0, 12_000.0));
+        assert!(held.up.is_some(), "no cut under a standing queue: {held:?}");
+        let limits = run(&mut c, 3.2, 3.2 + CEILING_S + 5.0, quiet(300.0, 300.0));
+        assert_eq!(
+            limits.up, None,
+            "an idle spell kept a hold with no line learned"
+        );
+        assert!(
+            c.why().contains("since its last hold let go"),
+            "let go after a hold: {}",
+            c.why()
+        );
     }
 
     #[test]

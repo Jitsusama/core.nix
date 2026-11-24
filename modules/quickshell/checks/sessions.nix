@@ -140,6 +140,9 @@ in
             workspace_id: 3, layout: { pos_in_scrolling_layout: [2, 1] } }
         })
         property int revision: 0
+        // Whether niri's own stream stands in for a windows daemon that
+        // isn't answering, as Niri.qml says it; a case sets it.
+        property bool standIn: false
         property var current: null
         // Workspace 5, where a sleeper's window was, and 8, named for the
         // orchestrator of a session elsewhere, Joel on another.
@@ -150,6 +153,8 @@ in
         property var acted: null
         property var spawned: []
         property var spawns: []
+        // Said by a case as a viewer's window comes, as niri says it.
+        signal windowOpenedOrChanged(var window)
         function act(request) { acted = request; }
         // Asked anything, as Sessions asks for the outputs, it never
         // answers, as niri doesn't a request it refused.
@@ -318,8 +323,9 @@ in
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       # Its walks wait out the walk's 30 s patience for a carried session
-      # that opens no window, so the case runs for over a minute.
-      timeout 120 ${qs} -p shell.qml
+      # that opens no window, and its named stages follow its led ones, so
+      # the case runs for over a minute.
+      timeout 180 ${qs} -p shell.qml
       touch $out
     '';
 

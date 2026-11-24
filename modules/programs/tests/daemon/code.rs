@@ -2,13 +2,17 @@
 //! once, in a first watch's own answer; a repository cloned since told to
 //! a later watch, read behind it; the rows searched by owner; the open
 //! changes a refresh kept, how far a counting kept its checkout behind,
-//! and how many files it hasn't committed, said beside their repository; a checkout's files served
-//! inside Open a File by Name while it's ahead, gone once it isn't, and
-//! found there by name or folder as they're typed; New Terminal Here
-//! and Edit Here started by a stand-in for niri as they're asked; and
-//! Pull bringing a checkout forward by fast-forward alone, saying why
-//! where it won't. Forget Gone Trees and Gather Its Store, which tend a
-//! checkout as git's upkeep does, are tested beside it (tend.rs).
+//! and how many files it hasn't committed, said beside their repository;
+//! a checkout's files served inside Open a File by Name while it's ahead,
+//! gone once it isn't, and found there by name or folder as they're
+//! typed; New Terminal Here and Edit Here started by a stand-in for niri
+//! as they're asked, zoxide told of the folder after; and Pull bringing a
+//! checkout forward by fast-forward alone, saying why where it won't.
+//! Forget Gone Trees and Gather Its Store, which tend a checkout as git's
+//! upkeep does, are tested beside it (tend.rs), and the order Joel's own
+//! visits give the rows below it (code/visits.rs).
+
+mod visits;
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -501,11 +505,34 @@ fn whats_typed_in_open_a_file_by_name_finds_its_files_by_name_or_folder() {
     );
 }
 
+/// A checkout of each of `folders` under the case's src, found by a watch
+/// of Code's rows, so an act on one is on a folder Code offered; each
+/// one's path as the daemon names it.
+fn offered(running: &Running, client: &mut daemon_client::Client, folders: &[&str]) -> Vec<String> {
+    for folder in folders {
+        cloned(
+            running,
+            folder,
+            &format!("git@github.com:someone/{folder}.git"),
+        );
+    }
+    client.ask(&json!({"id": 0, "ask": "watch", "kind": "row", "place": "code"}));
+    folders
+        .iter()
+        .map(|folder| {
+            real(&running.path(&format!("src/{folder}")))
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
 #[test]
 fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     let running = Running::new("code-terminal");
     let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:terminal", "path": "/src/alpha"}));
+    let alpha = offered(&running, &mut client, &["alpha"]).remove(0);
+    let said = client.ask(&json!({"id": 1, "ask": "code:terminal", "path": alpha}));
     assert!(
         said.get("error").is_none(),
         "New Terminal Here was refused: {said}"
@@ -516,8 +543,61 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     });
     assert_eq!(
         asked().unwrap(),
-        "msg action spawn -- kitty --directory /src/alpha\n",
+        format!("msg action spawn -- kitty --directory {alpha}\n"),
         "niri wasn't asked to start kitty in the checkout, so it outlives the daemon"
+    );
+    let told = || std::fs::read_to_string(running.path("zoxide.asked"));
+    until("zoxide wasn't told of the terminal's folder", || {
+        told().is_ok_and(|line| line.ends_with('\n'))
+    });
+    assert_eq!(
+        told().unwrap(),
+        format!("add -- {alpha}\n"),
+        "zoxide wasn't told Joel went into the checkout"
+    );
+}
+
+#[test]
+fn a_terminal_niri_refused_or_in_a_folder_code_never_offered_tells_zoxide_nothing() {
+    let running = Running::new("code-terminal-refused");
+    // A niri refusing only its first spawn, so the asks after it show what
+    // zoxide hears, and nothing waits on a refused spawn's silence.
+    let niri = running.path("niri");
+    let refuses = format!(
+        concat!(
+            "#!{}\n",
+            "echo \"$@\" >> \"$0.asked\"\n",
+            "[ -e \"$0.refused\" ] && exit 0\n",
+            ": > \"$0.refused\"\n",
+            "exit 1\n",
+        ),
+        super::shell().display()
+    );
+    std::fs::write(&niri, refuses).unwrap();
+    let mut client = running.client();
+    let offered = offered(&running, &mut client, &["alpha", "beta"]);
+    let elsewhere = running.path("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let asks = [
+        offered[0].clone(),
+        elsewhere.to_string_lossy().into_owned(),
+        offered[1].clone(),
+    ];
+    for (at, folder) in asks.iter().enumerate() {
+        client.ask(&json!({"id": at + 1, "ask": "code:terminal", "path": folder}));
+        until("niri wasn't asked to start a terminal", || {
+            std::fs::read_to_string(running.path("niri.asked"))
+                .is_ok_and(|asked| asked.lines().count() == at + 1)
+        });
+    }
+    let told = || std::fs::read_to_string(running.path("zoxide.asked"));
+    until("zoxide wasn't told of the terminal niri started", || {
+        told().is_ok_and(|asked| asked.contains(&offered[1]))
+    });
+    assert_eq!(
+        told().unwrap(),
+        format!("add -- {}\n", offered[1]),
+        "zoxide was told of a terminal niri refused, or of a folder Code never offered"
     );
 }
 
@@ -525,10 +605,20 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
 fn edit_here_has_niri_start_neovim_in_the_checkout() {
     let running = Running::new("code-edit");
     let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:edit", "path": "/src/alpha"}));
+    let alpha = offered(&running, &mut client, &["alpha"]).remove(0);
+    let said = client.ask(&json!({"id": 1, "ask": "code:edit", "path": alpha}));
     assert_eq!(
         said["asked"], "editor",
         "Edit Here wasn't answered as an editor: {said}"
+    );
+    let told = || std::fs::read_to_string(running.path("zoxide.asked"));
+    until("zoxide wasn't told of the editor's folder", || {
+        told().is_ok_and(|line| line.ends_with('\n'))
+    });
+    assert_eq!(
+        told().unwrap(),
+        format!("add -- {alpha}\n"),
+        "zoxide wasn't told Joel went into the checkout to edit it"
     );
     let asked = || std::fs::read_to_string(running.path("niri.argv"));
     until("niri wasn't asked to start an editor", || {
@@ -545,7 +635,7 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
             "--",
             "kitty",
             "--directory",
-            "/src/alpha",
+            alpha.as_str(),
             "bash",
             "-c"
         ],
@@ -562,7 +652,7 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
     );
     assert_eq!(
         words[10..],
-        ["/src/alpha", ""],
+        [alpha.as_str(), ""],
         "the shell wasn't told the checkout"
     );
 }

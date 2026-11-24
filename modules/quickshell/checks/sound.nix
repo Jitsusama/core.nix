@@ -46,6 +46,7 @@
       ${copied [
         "Daemon.qml"
         "NoiseCancelling.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"

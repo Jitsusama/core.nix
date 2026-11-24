@@ -22,6 +22,23 @@ const HEARD: &str = "call sound heard and counted";
 /// reads it as the p99 of every wakeup.
 const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// Joel's own calls' figure, in ms of waiting per second.
+const REAL: &str = "real call sending wait p99 ms per s";
+/// How many of them the watch couldn't read.
+const REAL_BLIND: &str = "real calls with no sending thread found";
+/// How long since the watch last could tell whether a call was on.
+const REAL_WATCH: &str = "real call watch minutes since it could tell";
+/// Past this many minutes, the watch has stopped or can't tell.
+const WATCH_LATE: f64 = 10.0;
+/// The most the watch's minutes read: a day, so one that never could tell
+/// reads as that rather than minutes since 1970.
+const DAY_MINUTES: u64 = 24 * 60;
+/// How far, in tenths, a figure may sit past a whole tenth and still be
+/// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
+/// times carry error near 1e-8 ms, far inside it, and the page's clock
+/// steps by at least 5 microseconds. A wait from lag-watch can sit 10 ns
+/// past a tenth and read as on it, which no reader could tell apart.
+const NOISE: f64 = 1e-4;
 
 /// What stands in for Joel's voice, said beside the sound's figures. The
 /// far end plays on this machine too, under the same load, so what it
@@ -57,9 +74,9 @@ fn measure(
     let tenth = |x: f64| {
         let tenths = x * 10.0;
         let whole = if lower_is_better {
-            (tenths - 1e-9).ceil()
+            (tenths - NOISE).ceil()
         } else {
-            (tenths + 1e-9).floor()
+            (tenths + NOISE).floor()
         };
         (whole + 0.0) / 10.0
     };
@@ -252,16 +269,240 @@ pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::R
         .map(|m| (m.measure.to_string(), json!(m.now)))
         .collect();
     let line = json!({"at": at, "run": run, "measures": figures});
-    let mut history = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder.join("history.jsonl"))?;
-    writeln!(history, "{line}")
+    append(&folder.join("history.jsonl"), &line)
+}
+
+/// Adds one line to the history, as a single write, so the hour's run
+/// and the call watch can't interleave their lines.
+pub fn append(history: &Path, line: &Value) -> io::Result<()> {
+    if let Some(folder) = history.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(history)?;
+    file.write_all(format!("{line}\n").as_bytes())
+}
+
+/// Joel's own calls' figures, as of `at`: the worst of their sending
+/// threads' p99 wait for a CPU, from the calls `heard` names, with the
+/// load and the thread behind it said, unread when no call was ever
+/// watched; how many calls since `since`, the last hour written, the watch
+/// couldn't read in a call app it found; and how long since the watch,
+/// which said `clear`, last could tell whether a call was on.
+pub fn real(calls: &[crate::watch::Real], since: u64, clear: Option<u64>, at: u64) -> Vec<Measure> {
+    let p99 = |call: &&crate::watch::Real| call.sending_p99.unwrap_or(0.0);
+    let worst = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .max_by(|a, b| p99(a).total_cmp(&p99(b)));
+    let read = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .count();
+    let heard = calls.iter().filter(|call| !appless(call)).count();
+    let mut behind = vec![format!(
+        "Joel's own calls, {read} of {heard} read: the p99 of each 5 s tick's slowest sending \
+         thread's wait for a CPU per second, in his call apps, which in a call under 8 \
+         minutes is its worst tick",
+    )];
+    if let Some(call) = worst {
+        behind.push(format!(
+            "the worst ended {} min ago, {} of its {} ticks read, {} of them past {} ms/s or \
+             load {}, its 15-minute load up to {:.0}, its slowest thread {}",
+            at.saturating_sub(call.ended) / 60,
+            call.read,
+            call.ticks,
+            call.flagged,
+            crate::watch::LATE_MS,
+            crate::watch::HEAVY,
+            call.load15_max,
+            call.worst_who.as_deref().unwrap_or("unread"),
+        ));
+        if call.unsure {
+            behind.push("it was closed when a-call-is-on couldn't tell for 3 min".to_string());
+        }
+        if call.cut {
+            behind.push("it was cut short when the watch stopped".to_string());
+        }
+    }
+    vec![
+        measure(
+            REAL,
+            worst.and_then(|call| call.sending_p99),
+            crate::watch::LATE_MS,
+            true,
+            behind,
+        ),
+        blind(calls, since, at),
+        watched(clear, at),
+    ]
+}
+
+/// Whether the watch found none of his call apps open during a call it
+/// couldn't read: the microphone in use outside a call, or a call in a
+/// browser his terminal started, which isn't watched.
+fn appless(call: &crate::watch::Real) -> bool {
+    call.apps.is_empty() && call.sending_p99.is_none()
+}
+
+/// How many calls that ended after `since` the watch couldn't read in a
+/// call app it found, each said with when it ended and in which apps, so
+/// one such call files a fault for its own hour and not for the day its
+/// figure stands. One with no call app open is said, and not counted.
+fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
+    let fresh: Vec<&crate::watch::Real> = calls
+        .iter()
+        .filter(|call| call.ended > since && call.sending_p99.is_none())
+        .collect();
+    let (none_open, unread): (Vec<_>, Vec<_>) = fresh.into_iter().partition(|c| appless(c));
+    let mut behind = vec![
+        "Joel's calls since the last hour with a call app open but no sending thread read, \
+         so their waits are unread; a call in Tuple or Zoom, whose threads aren't named as \
+         Chromium's, reads so, as does the microphone in use outside a call while one is open"
+            .to_string(),
+    ];
+    behind.extend(unread.iter().map(|call| {
+        format!(
+            "one ended {} min ago, in {}",
+            at.saturating_sub(call.ended) / 60,
+            call.apps.join(" and ")
+        )
+    }));
+    if !none_open.is_empty() {
+        behind.push(format!(
+            "{} with no call app of his open, left out: the microphone in use outside a call, \
+             or a call in a browser his terminal started",
+            none_open.len()
+        ));
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a count of calls is far below f64's exact range"
+    )]
+    let count = unread.len() as f64;
+    measure(REAL_BLIND, Some(count), 0.0, true, behind)
+}
+
+/// How many minutes since the watch last could tell whether a call was on,
+/// at most a day, so a watch that stopped, never started or hung files a
+/// fault rather than reading as a day with no calls. One that never said
+/// reads as a day. The hour itself runs only when a-call-is-on can tell,
+/// so this shows a watch that can't only once the hour can.
+fn watched(clear: Option<u64>, at: u64) -> Measure {
+    let cap = DAY_MINUTES;
+    let minutes = clear.map_or(cap, |clear| (at.saturating_sub(clear) / 60).min(cap));
+    let behind = if clear.is_none() {
+        "the watch has never said when it could tell: it hasn't run".to_string()
+    } else {
+        format!(
+            "the watch asks every 30 s; past {WATCH_LATE:.0} min it has stopped, hung or can't \
+             tell, and a day or more reads as {cap}"
+        )
+    };
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a day's minutes are far below f64's exact range"
+    )]
+    let minutes = minutes as f64;
+    measure(REAL_WATCH, Some(minutes), WATCH_LATE, true, vec![behind])
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joel_s_calls_give_their_worst_sending_wait_and_say_whose() {
+        let call = |ended, p99: Option<f64>, who: &str, apps: &[&str]| crate::watch::Real {
+            began: ended - 600,
+            ended,
+            ticks: 120,
+            read: 110,
+            flagged: 3,
+            sending_p99: p99,
+            worst_ms: p99,
+            worst_who: Some(who.to_string()),
+            load15_max: 121.4,
+            unsure: false,
+            cut: ended == 2_000,
+            apps: apps.iter().map(ToString::to_string).collect(),
+        };
+        let calls = [
+            call(1_000, Some(40.0), "chrome:renderer:Compositor", &["chrome"]),
+            call(
+                2_000,
+                Some(412.5),
+                "chrome:renderer:CodecWorker",
+                &["chrome"],
+            ),
+            call(2_500, None, "none", &["chrome", "slack"]),
+            call(2_550, None, "none", &[]),
+        ];
+        let figures = real(&calls, 1_500, Some(2_300), 2_600);
+        let figure = &figures[0];
+        assert_eq!(figure.now, Some(412.5));
+        assert!(
+            figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9,
+            "a wait is lower-better against the 300 ms/s bar"
+        );
+        assert_eq!(figure.owner, OWNER);
+        assert!(
+            figure.behind[0].starts_with("Joel's own calls, 2 of 3 read:"),
+            "unread calls were counted as read: {}",
+            figure.behind[0]
+        );
+        assert_eq!(
+            figure.behind[1..],
+            [
+                "the worst ended 10 min ago, 110 of its 120 ticks read, 3 of them past 300 ms/s \
+                 or load 80, its 15-minute load up to 121, its slowest thread \
+                 chrome:renderer:CodecWorker",
+                "it was cut short when the watch stopped",
+            ],
+            "the figure doesn't say which call and thread it is, or that it was cut"
+        );
+        let blind = &figures[1];
+        assert_eq!(
+            (blind.now, blind.target, blind.lower_is_better),
+            (Some(1.0), 0.0, true),
+            "a call the watch couldn't read in a call app filed no fault, or a microphone did"
+        );
+        assert_eq!(
+            blind.behind[1..],
+            [
+                "one ended 1 min ago, in chrome and slack",
+                "1 with no call app of his open, left out: the microphone in use outside a \
+                 call, or a call in a browser his terminal started",
+            ],
+            "an unread call wasn't said with when and where"
+        );
+        assert_eq!(
+            real(&calls, 2_550, Some(2_300), 2_600)[1].now,
+            Some(0.0),
+            "an unread call from before the last hour filed its fault again"
+        );
+        let watch = &figures[2];
+        assert_eq!(
+            (watch.now, watch.target, watch.lower_is_better),
+            (Some(5.0), 10.0, true),
+            "the watch's last clear answer wasn't said in minutes against 10"
+        );
+        let none = real(&[], 0, None, 0);
+        assert_eq!(
+            (none[0].now, none[1].now),
+            (None, Some(0.0)),
+            "no call watched read as a wait, or as one unread"
+        );
+        assert_eq!(
+            none[2].now,
+            Some(1440.0),
+            "a watch that never said read as on time, or dropped off the card"
+        );
+        assert_eq!(
+            real(&[], 0, Some(0), 1_800_000_000)[2].now,
+            Some(1440.0),
+            "a watch that never could tell read as minutes since 1970"
+        );
+    }
 
     #[test]
     fn a_figure_is_rounded_toward_its_worse_side() {
@@ -284,6 +525,21 @@ mod tests {
         // 0.1; the nudge keeps each on its tenth.
         assert_eq!(now(0.1 * 3.0, true), Some(0.3), "float error moved up");
         assert_eq!(now(1.0 - 0.9, false), Some(0.1), "float error moved down");
+        // The page's click times come with error near 1e-8 ms: 50.3 ms
+        // arrived as this at 05:37 on 23 November and showed as 50.4.
+        assert_eq!(
+            now(50.300_000_011_920_93, true),
+            Some(50.3),
+            "a click time's error moved it up"
+        );
+        assert_eq!(now(50.301, true), Some(50.4), "a real thousandth was lost");
+        // The same error under a figure where higher is better.
+        assert_eq!(
+            now(29.999_999_988_079_07, false),
+            Some(30.0),
+            "a rate's error moved it down"
+        );
+        assert_eq!(now(29.999, false), Some(29.9), "a real thousandth was lost");
         assert_eq!(now(f64::NAN, true), None, "NaN read as a figure");
         let none = now(0.0, true).unwrap_or(f64::NAN);
         assert!(

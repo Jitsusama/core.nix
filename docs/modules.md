@@ -49,6 +49,12 @@ file here names a machine, a machine repository or an employer.
 Keep the tool's configuration in its own format beside the module, such as
 `modules/kitty/kitty.conf`, and read it in rather than translating it to Nix.
 
+An unfree package is allowed only by name. A system module that installs one
+names it beside the package, in `nixpkgs.config.allowUnfreePackages`; a home
+module can't, since home-manager uses the system's nixpkgs, so its name goes
+in the list in `modules/nixpkgs/system.nix`, with a comment saying which
+module installs it.
+
 ## A Module That Needs an Input
 
 Take the input by name as an outer function, and give it in `flake.nix`

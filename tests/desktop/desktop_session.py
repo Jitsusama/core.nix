@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import diagnosed, ended, said_by, until_heard
+from heard import diagnosed, ended, said_by, shown, until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -166,7 +166,7 @@ NOTICES = "qs ipc call notices shows | grep -q ."
 # writes, and which the daemon rewrites as it starts.
 TUPLE_LOG = "~/.local/share/tuple/0/log.txt"
 # Tuple's stream as tuple-call follows it in the VM, through the stand-in
-# for Tuple's command (desktop/tuple-stand-in.sh), and what it was asked.
+# for Tuple's command (stand-ins/tuple-stand-in.sh), and what it was asked.
 TUPLE_STREAM = "$XDG_RUNTIME_DIR/tuple-stream"
 TUPLE_ASKED = "$XDG_RUNTIME_DIR/tuple-asked"
 
@@ -703,9 +703,23 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Give what the launcher shows, from its showing call.
 
         That's whether it holds the keys, what's typed and held, and the row Return takes.
-        Under load the launcher lags the keys sent to it, so each step waits on this.
+        Under load the launcher lags the keys sent to it, so each step waits on this. An answer
+        that isn't the state, or says what threw making it, fails saying so and the shell's
+        last journal lines (heard.shown). Those leave out its reports, each a whole state the
+        waits already say, which would bury the line saying what threw, and cut short, drop it.
         """
-        return cast("Json", json.loads(self.as_account("qs ipc call launcher showing")))
+        journal = (
+            "journalctl --user --unit=quickshell --no-pager --output=cat --lines=2000"
+            " | grep -avF 'report[' | tail -n 60"
+        )
+        return cast(
+            "Json",
+            shown(
+                self.as_account("qs ipc call launcher showing"),
+                lambda: textwrap.indent(self.diagnosis(journal), "  "),
+                "the launcher's showing call answered",
+            ),
+        )
 
     def launcher_until(
         self,

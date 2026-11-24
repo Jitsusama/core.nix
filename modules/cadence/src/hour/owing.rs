@@ -1,10 +1,11 @@
 //! What the hour owes: its drag filed in the loop's ledger with each of
-//! its owners, due a day on, and each drag filed before closed once it is
-//! back in.
+//! its owners, due a day on, or a week for a queue's change, and each drag
+//! filed before closed once it is back in.
 //!
 //! Long because each kind of drag, Joel's misses, a merge's rounds, the
-//! work system's findings and each measure's lines by owner, is filed and
-//! closed by rules of its own, and its tests sit beside them.
+//! work system's findings, the worst queue and each measure's lines by
+//! owner, is filed and closed by rules of its own, and its tests sit
+//! beside them.
 
 use std::collections::BTreeMap;
 
@@ -13,9 +14,15 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
+use super::measures::queues::{self, QUEUE};
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_for_good, held_unseen, rounds,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, apps, drag, held_for_good, held_unseen,
+    rounds,
 };
+
+/// How long a queue's ask has before it goes late: long enough for the
+/// dated change it asks for to land.
+const QUEUE_DUE: i64 = 7 * DAY;
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -171,6 +178,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key == FINDINGS {
         return findings_filed(m);
     }
+    if m.key.starts_with(QUEUE) {
+        return vec![queue_asked(m, says)];
+    }
     let owners = by_owner(m);
     if !owners.is_empty() {
         return owners
@@ -208,6 +218,25 @@ fn filed(m: &Measure) -> Vec<Filed> {
     }]
 }
 
+/// The worst queue's ask, in Joel's terms for a queue (20 November): what
+/// it protects, whether the work could go without it, and a change weighed
+/// against others, with its date.
+fn queue_asked(m: &Measure, says: String) -> Filed {
+    Filed {
+        key: format!("hour:{}", m.key),
+        owner: m.owner.clone(),
+        text: format!(
+            "cadence hour: the worst queue today is yours, {says}. Please reply within a day \
+             with what it protects, whether the work could go without it, and the change that \
+             keeps the protection without the wait, weighed against at least two designs \
+             beside the obvious one, with its date. It closes by itself once its p90 is back \
+             in, and goes late to the orchestrator only after a week, as its change takes its \
+             time."
+        ),
+        says,
+    }
+}
+
 /// A clean measure's files, or a cell measure's cells, by the owner each
 /// is said with; empty otherwise, and for every other class.
 pub fn by_owner(m: &Measure) -> BTreeMap<String, Vec<String>> {
@@ -237,11 +266,20 @@ fn routed(class: Class) -> bool {
 /// turns, so a clean one waits for its zone. A measure that couldn't be
 /// read says nothing, so it closes none. A merge whose rounds past five
 /// caught nothing is back in once its line is gone, the merge a day old,
-/// unless the rounds measure couldn't read the review record.
+/// unless the rounds measure couldn't read the review record. A figure of
+/// his apps gone from an hour that read their file whole was renamed or
+/// dropped by its owner, so it's back in, as nothing would bring it back.
 fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if key.starts_with(rounds::FRUITLESS) {
         return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
+    }
+    // An unread file leaves only its one line, never a figure, so a drag
+    // isn't closed while its figure can't be seen; a figure written with no
+    // reading is still its figure, unjudged. His apps aren't routed, so a
+    // figure's drag is filed under its key alone.
+    if key.starts_with(apps::FIGURE) && !measures.iter().any(|m| m.key == key) {
+        return measures.iter().any(|m| m.key.starts_with(apps::FIGURE));
     }
     // The ask for a check closes once the check merged and only a measure
     // holds the miss; that hold is its own finding, closing once judged.
@@ -312,9 +350,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// miss does, and the drag the rest of the hour would have is filed too:
 /// his misses still reach their owners whatever his apps read. So does a
 /// merge whose rounds past five caught nothing, which WCJQSG asked be filed
-/// to whoever landed it, whatever else leads, and each owner's findings in
+/// to whoever landed it, whatever else leads, each owner's findings in
 /// the work system's group open past a day, which WCJQSG ruled count
-/// against them as Joel's misses do.
+/// against them as Joel's misses do, and the worst queue, once a day.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -323,7 +361,11 @@ pub fn file(
 ) -> Vec<(String, String)> {
     let closing: Vec<String> = ledger
         .iter()
-        .filter(|e| e.open && e.kind.as_deref() == Some("drag") && back_in(&e.key, measures))
+        .filter(|e| e.open && e.kind.as_deref() == Some("drag"))
+        .filter(|e| match e.key.strip_prefix("hour:") {
+            Some(key) if key.starts_with(QUEUE) => queues::answered(key, measures),
+            _ => back_in(&e.key, measures),
+        })
         .map(|e| e.key.clone())
         .collect();
     for key in closing {
@@ -348,6 +390,12 @@ pub fn file(
     dragging.extend(measures.iter().filter(|m| {
         (m.key.starts_with(rounds::FRUITLESS) || m.key == FINDINGS) && m.past().is_some()
     }));
+    // Nor do the queues; the worst is asked for its next change once a
+    // day, as Joel asked of them, whatever else leads.
+    let asked_today = ledger
+        .iter()
+        .any(|e| e.key.starts_with(&format!("hour:{QUEUE}")) && e.first == date);
+    dragging.extend(queues::worst(measures).filter(|_| !asked_today));
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -362,7 +410,14 @@ pub fn file(
                 key: one.key,
                 axis: m.class.name().to_owned(),
                 owner: one.owner.clone(),
-                due: now + DAY,
+                // A queue's ask is answered by a change weighed against
+                // others, which takes longer than a day to land.
+                due: now
+                    + if m.class == Class::Queues {
+                        QUEUE_DUE
+                    } else {
+                        DAY
+                    },
                 says: one.says,
                 kind: "drag".to_owned(),
             },
@@ -409,6 +464,104 @@ mod tests {
                 && !filed[0].text.contains("Which check"),
             "its owner was asked for a check again, or not when it will run: {}",
             filed[0].text
+        );
+    }
+
+    #[test]
+    fn the_worst_queue_is_asked_once_a_day_beside_the_drag() {
+        let queue = |key: &str, now: f64, owner: &str| {
+            let mut m = measure(&format!("{QUEUE}{key}"), Class::Queues, now, Some(60.0));
+            m.owner = owner.to_owned();
+            m
+        };
+        let slips = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let hour = [
+            slips.clone(),
+            queue("world-walks", 180.0, "WALKS"),
+            queue("sends", 90.0, "SENDS"),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &hour, "2026-11-21", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["OWNER", "WALKS"],
+            "the drag still leads, and the worst queue is asked"
+        );
+        assert!(
+            told[1]
+                .1
+                .contains("what it protects, whether the work could go without it")
+                && told[1]
+                    .1
+                    .contains("two designs beside the obvious one, with its date"),
+            "asked in Joel's terms: {}",
+            told[1].1
+        );
+        // Later that day another queue is the worst; one ask a day is all.
+        let later = [
+            slips,
+            queue("world-walks", 30.0, "WALKS"),
+            queue("sends", 90.0, "SENDS"),
+        ];
+        assert!(
+            file(&mut ledger, &later, "2026-11-21", 4600).is_empty(),
+            "a second queue asked the same day"
+        );
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.key == format!("hour:{QUEUE}world-walks") && e.open),
+            "a queue back in closes its ask"
+        );
+        let told = file(&mut ledger, &later, "2026-11-22", 90_000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(owners, ["SENDS"], "the next day's worst is asked");
+    }
+
+    #[test]
+    fn a_queue_never_leads_the_drag_and_keeps_its_ask_while_quiet_or_unread() {
+        let queue = measure(
+            &format!("{QUEUE}world-walks"),
+            Class::Queues,
+            180.0,
+            Some(60.0),
+        );
+        assert!(
+            drag(std::slice::from_ref(&queue)).is_none(),
+            "a queue led the drag"
+        );
+        let pains = measure("pains", Class::Pains, 2.0, Some(0.0));
+        assert_eq!(
+            drag(&[queue.clone(), pains]).map(|m| m.key.as_str()),
+            Some("pains"),
+            "a queue led ahead of Joel's pains"
+        );
+        let mut ledger = Vec::new();
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&queue),
+            "2026-11-21",
+            1000,
+        );
+        assert_eq!(told.len(), 1, "only the queue's ask: {told:?}");
+        assert_eq!(ledger[0].due, 1000 + QUEUE_DUE, "due a week on");
+        let unread = Measure {
+            says: format!("x{}", queues::UNREAD),
+            target: None,
+            ..queue.clone()
+        };
+        file(&mut ledger, &[unread], "2026-11-22", 90_000);
+        assert!(ledger[0].open, "a record unread closed the ask");
+        let quiet = Measure {
+            says: format!("x{}", queues::QUIET),
+            target: None,
+            ..queue
+        };
+        file(&mut ledger, &[quiet], "2026-11-22", 93_600);
+        assert!(
+            ledger[0].open,
+            "a quiet queue closed the ask, though a wedged one reads the same"
         );
     }
 
@@ -672,6 +825,34 @@ mod tests {
     }
 
     #[test]
+    fn a_drag_on_a_figure_of_his_apps_renamed_closes_once_their_file_is_read() {
+        let old = measure("apps:wait per wakeup", Class::Apps, 9.0, Some(2.0));
+        let renamed = measure("apps:wait per 10 s", Class::Apps, 1.0, Some(2.0));
+        let unread = measure("apps-under-load", Class::Apps, 1.0, Some(6.0));
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[old], "2026-11-22", 1000);
+        assert!(ledger[0].open, "the figure past its target wasn't filed");
+        file(&mut ledger, &[unread], "2026-11-22", 4600);
+        assert!(
+            ledger[0].open,
+            "a drag closed while its apps' file went unread"
+        );
+        let written_unread = measure("apps:wait per wakeup", Class::Apps, 0.0, None);
+        let unread_figure = [written_unread, renamed.clone()];
+        file(&mut ledger, &unread_figure, "2026-11-22", 5800);
+        assert!(
+            ledger[0].open,
+            "a drag closed while its figure was written with no reading"
+        );
+        let longer = measure("apps:wait per wakeup p99", Class::Apps, 1.0, Some(2.0));
+        file(&mut ledger, &[longer, renamed], "2026-11-22", 8200);
+        assert!(
+            !ledger[0].open,
+            "a drag on a figure gone from a file read whole stayed open for good"
+        );
+    }
+
+    #[test]
     fn while_his_apps_lead_the_drag_his_misses_still_reach_their_owners() {
         let mut apps = measure("apps:call fps p10", Class::Apps, 6.0, Some(0.0));
         apps.owner = "APPS".to_owned();
@@ -729,7 +910,9 @@ mod tests {
         file(&mut alone, &both, "2026-11-19", 4600);
         assert!(alone[0].open, "closed while the merge was still counted");
         let mut unread = median.clone();
-        unread.says = "median council rounds, of 0, no review record read".to_owned();
+        unread.says = "median council rounds, of 0 with a review record, 0 with none, this \
+                       machine's review records unread"
+            .to_owned();
         file(&mut alone, &[unread], "2026-11-20", 90_000);
         assert!(alone[0].open, "closed though the review record went unread");
         file(&mut alone, &[median], "2026-11-20", 90_000);
