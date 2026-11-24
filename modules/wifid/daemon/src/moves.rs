@@ -491,6 +491,7 @@ mod tests {
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
+    const NEAR: &str = "6c:ae:f6:c1:84:27";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
@@ -1029,16 +1030,13 @@ mod tests {
 
     #[test]
     fn a_card_going_back_from_a_point_found_worse_again_says_its_longer_keep_off() {
-        let on = joined(HALL);
-        let before = carried(201);
-        let why = Against::Worse(before);
-        let four = Some(Duration::from_hours(4));
+        let (mut chooser, again) = choose::tests::found_worse_twice(Instant::now());
 
-        let line = went_back(&on, &carried(775), DESK, (Some(&why), four));
+        let line = said_back(&mut chooser, again, (&joined(DESK), &idle(775)), NEAR);
 
         assert!(
-            line.ends_with(&format!("; it keeps off {HALL} for 4 hours")),
-            "a third keep-off running isn't said in hours: {line}"
+            line.ends_with(&format!("; it keeps off {DESK} for 2 hours")),
+            "a second keep-off running isn't said as the chooser keeps it: {line}"
         );
     }
 

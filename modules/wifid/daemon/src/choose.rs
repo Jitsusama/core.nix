@@ -72,7 +72,8 @@ pub const SPURNED: Duration = Duration::from_secs(3600);
 /// and 02:48, each read as untried at that hour as learning is by the
 /// hour, and each carried 0.8 to 2.8 s at p95. Those 13 minutes took the
 /// night's p95 from 32.7 ms to 54.2. Kept off for an hour, then two, then
-/// four, it could have been tried at most three times before 04:00. Twelve
+/// four, at that night's tries it would have been tried three times
+/// before 04:00, and tried again as each keep-off ended, four. Twelve
 /// hours still tries such a point at another time of day, where it may
 /// carry well.
 pub const SPURNED_MOST: Duration = Duration::from_hours(12);
@@ -263,7 +264,10 @@ pub struct Chooser {
     spurned: HashMap<String, Kept>,
     /// Each access point found worse lately, how many times running and
     /// until when it was last kept off for it, so it's kept off longer
-    /// each time (`SPURNED_MOST`).
+    /// each time (`SPURNED_MOST`). Like `spurned`, it lives only as long as
+    /// the card's chooser: a restart of wifid, or a minute's tick finding
+    /// the card unjoined, as on a resume, starts every point afresh. Its
+    /// times are awake time, as `Instant` doesn't count a suspend.
     struck: HashMap<String, Struck>,
     /// Each move, from one access point to another, that went back for
     /// carrying worse only than the usual, and when, so a second within
@@ -312,12 +316,18 @@ pub struct Chooser {
     joined: Option<(String, Instant)>,
 }
 
-/// An access point kept off, until when, and whether a failing link may
-/// still leave for it: one kept off for carrying worse only than the
-/// usual carried no worse than the point left did, so it may.
+/// An access point kept off, until when, and until when a failing link
+/// may not leave for it either.
 struct Kept {
     until: Instant,
-    yields: bool,
+    /// One kept off for carrying worse only than the usual carried no
+    /// worse than the point left did, so a failing link may leave for it
+    /// at once. One that carried worse than the point left holds against a
+    /// failing link for `SPURNED` at most, as it always did: past that,
+    /// what it carried is old, and kept off longer (`SPURNED_MOST`) it
+    /// could otherwise hold a card on a failing link, the one other point
+    /// in reach, for half a day.
+    firm: Instant,
     /// The access point the move kept off left, where a trial judged
     /// against what that point carried earned it, so only another trial
     /// from there frees it.
@@ -487,12 +497,13 @@ impl Chooser {
         // A point kept off only for carrying worse than the usual twice
         // carried no worse than the point left did, so a failing link may
         // still leave for it, once a whole span says it's failing, as after
-        // a back: one may come from a join or a resume as well.
+        // a back: one may come from a join or a resume as well. So may it
+        // for one kept off past its first hour (`Kept::firm`).
         let resting = resting(measured);
         let may_narrow = queued && !used(measured);
         let untried = others.iter().filter(|other| {
             other.point != point
-                && self.may_try(&other.point, failing && !young)
+                && self.may_try(&other.point, failing && !young, now)
                 && (wide(other.frequency) || !holds_wide)
                 && ((bad && !queued)
                     || resting
@@ -750,7 +761,8 @@ impl Chooser {
     /// How long an access point a trial went back from is kept off from
     /// now: `SPURNED` the first time, and twice the last keep-off each time
     /// it's found worse again within `SPURNED_MOST` of that one ending, up
-    /// to `SPURNED_MOST`. A trial of it that stands forgets it (`judge`).
+    /// to `SPURNED_MOST`. A trial of it standing carrying well forgets it
+    /// (`stood`).
     fn spurn_for(&mut self, point: &str, now: Instant) -> Duration {
         let times = self
             .struck
@@ -767,10 +779,17 @@ impl Chooser {
 
     /// Keeps off an access point a trial from `from` went back from, for as
     /// long as `spurn_for` says, yielding to a failing link or not.
+    /// A keep-off yielding holds against a failing link not at all, and
+    /// one not for its first `SPURNED` alone (`Kept::firm`).
     fn spurn(&mut self, point: &str, from: &str, yields: bool, now: Instant) {
+        let lasts = self.spurn_for(point, now);
         let kept = Kept {
-            until: now + self.spurn_for(point, now),
-            yields,
+            until: now + lasts,
+            firm: if yields {
+                now
+            } else {
+                now + lasts.min(SPURNED)
+            },
             from: Some(from.to_owned()),
         };
         self.spurned.insert(point.to_owned(), kept);
@@ -786,10 +805,21 @@ impl Chooser {
 
     /// Whether the card may try this access point, kept off or not, its
     /// own link failing or not.
-    fn may_try(&self, point: &str, failing: bool) -> bool {
+    fn may_try(&self, point: &str, failing: bool, now: Instant) -> bool {
         self.spurned
             .get(point)
-            .is_none_or(|kept| failing && kept.yields)
+            .is_none_or(|kept| failing && now >= kept.firm)
+    }
+
+    /// Forgets how often an access point was found worse once a trial of
+    /// it stands carrying well: as the point left usually does, or no
+    /// worse than that point did while its link wasn't failing. One that
+    /// stands only for carrying better than a failing link, or on a
+    /// band's looser bar while carrying worse, says nothing of it.
+    fn stood(&mut self, point: &str, before: &Measured, measured: &Measured, as_usual: bool) {
+        if as_usual || (before.lost <= FAILING && !worse(measured, before)) {
+            self.struck.remove(point);
+        }
     }
 
     /// Whether the card keeps off this access point now, which the tests
@@ -873,7 +903,7 @@ impl Chooser {
             }
             let kept = Kept {
                 until: now + SPURNED,
-                yields: false,
+                firm: now + SPURNED,
                 from: None,
             };
             self.spurned.insert(trial.to.clone(), kept);
@@ -957,8 +987,7 @@ impl Chooser {
             // One run out is no longer kept, so isn't said freed.
             let earned_here =
                 |kept: &Kept| kept.from.as_deref() == Some(trial.from.as_str()) && now < kept.until;
-            // Standing, it's no longer found worse again and again.
-            self.struck.remove(point);
+            self.stood(point, &trial.before, measured, as_usual);
             if as_usual {
                 self.usually.remove(&moved);
                 if self.spurned.get(point).is_some_and(earned_here) {
@@ -5177,6 +5206,16 @@ pub(crate) mod tests {
 
     const HOUR: Duration = Duration::from_hours(1);
 
+    /// A chooser whose card tried ch52 off the desk's 2.4 GHz radio and
+    /// went back twice, the second try as the first keep-off ended, and
+    /// when it went back the second time.
+    pub(crate) fn found_worse_twice(start: Instant) -> (Chooser, Instant) {
+        let mut chooser = Chooser::default();
+        let first = tried_ch52_and_back(&mut chooser, start);
+        let second = tried_ch52_and_back(&mut chooser, first + HOUR);
+        (chooser, second)
+    }
+
     #[test]
     fn a_point_found_worse_again_and_again_is_kept_off_twice_as_long_each_time_up_to_12_hours() {
         let mut chooser = Chooser::default();
@@ -5197,27 +5236,87 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_point_found_worse_again_is_kept_off_until_its_longer_keep_off_ends() {
-        let mut chooser = Chooser::default();
-        let first = tried_ch52_and_back(&mut chooser, Instant::now());
-        let second = tried_ch52_and_back(&mut chooser, first + HOUR);
+    fn a_point_found_worse_again_is_left_untried_until_its_longer_keep_off_ends() {
+        let near = carried(201, 0.0);
+        let ch52 = [desk_at(-48, None)];
+        let chosen_after = |after: Duration| {
+            let (mut chooser, second) = found_worse_twice(Instant::now());
+            chooser.badly_on = Some(NEAR.into());
+            chooser.choose(second + after, (NEAR, &near, -50, CH6), &ch52, false)
+        };
 
-        let nearly = (HOUR * 2).saturating_sub(Duration::from_secs(1));
-        let short = chooser.keeps_off(DESK, second + nearly);
-        let over = chooser.keeps_off(DESK, second + HOUR * 2);
+        let short = chosen_after((HOUR * 2).saturating_sub(Duration::from_secs(1)));
+        let over = chosen_after(HOUR * 2);
 
-        assert!(
+        assert_ne!(
             short,
-            "ch52 found worse twice wasn't kept off its two hours"
+            Choice::Try(DESK.into()),
+            "ch52 found worse twice was tried inside its two hours"
         );
-        assert!(!over, "ch52 was kept off past its two hours");
+        assert_eq!(
+            over,
+            Choice::Try(DESK.into()),
+            "ch52 wasn't tried once its two hours were over"
+        );
     }
 
     #[test]
-    fn a_trial_that_stands_forgets_how_often_its_point_was_found_worse() {
-        let mut chooser = Chooser::default();
-        let first = tried_ch52_and_back(&mut chooser, Instant::now());
-        let second = tried_ch52_and_back(&mut chooser, first + HOUR);
+    fn a_failing_link_may_leave_for_a_point_kept_off_longer_after_its_first_hour() {
+        let failing = carried(400, 15.0);
+        let ch52 = [desk_at(-48, None)];
+        let chosen_after = |after: Duration| {
+            let (mut chooser, second) = found_worse_twice(Instant::now());
+            chooser.badly_on = Some(NEAR.into());
+            chooser.choose(second + after, (NEAR, &failing, -50, CH6), &ch52, false)
+        };
+
+        let firm = chosen_after(HOUR.saturating_sub(Duration::from_secs(1)));
+        let yields = chosen_after(HOUR);
+
+        assert_ne!(
+            firm,
+            Choice::Try(DESK.into()),
+            "a failing link left for ch52 inside the hour its keep-off holds against one"
+        );
+        assert_eq!(
+            yields,
+            Choice::Try(DESK.into()),
+            "a failing link was held off ch52, the one other point, past its first hour"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_only_for_beating_a_failing_link_forgets_nothing() {
+        let (mut chooser, second) = found_worse_twice(Instant::now());
+        let third = second + HOUR * 2;
+        chooser.badly_on = Some(NEAR.into());
+        let failing = carried(400, 15.0);
+        let ch52 = [desk_at(-48, None)];
+        let tried = chooser.choose(third, (NEAR, &failing, -50, CH6), &ch52, false);
+        assert_eq!(
+            tried,
+            Choice::Try(DESK.into()),
+            "ch52 wasn't tried off a failing link"
+        );
+        let slow = carried(300, 2.0);
+        let stood = chooser.choose(third + TRIAL, (DESK, &slow, -48, CH52), &[], false);
+        assert!(
+            !matches!(stood, Choice::Back(_)),
+            "ch52 carrying better than the failing link went back: {stood:?}"
+        );
+
+        let later = tried_ch52_and_back(&mut chooser, third + TRIAL + SETTLE);
+
+        assert_eq!(
+            chooser.kept_for(DESK, later),
+            Some(HOUR * 4),
+            "ch52, standing only for beating a failing link, was forgiven its two backs"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_off_a_working_link_forgets_how_often_its_point_was_found_worse() {
+        let (mut chooser, second) = found_worse_twice(Instant::now());
         let third = second + HOUR * 2;
         chooser.badly_on = Some(NEAR.into());
         let ch52 = [desk_at(-48, None)];

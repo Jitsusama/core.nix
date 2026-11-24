@@ -110,22 +110,29 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
 }
 
 /// What an `act` ask wants, as the journal says it beside who asked, and
-/// never its password.
+/// never its password. It's said before the ask is checked, so each name is
+/// quoted as an unknown act is: a name holding a new line would otherwise
+/// write a journal line of its own, at a priority it chose, that reads as
+/// wifid's. An ask saying neither way is said so, as it's refused.
 pub fn wanted(said: &Value) -> String {
-    let named = |name: &str| {
-        said.get(name)
-            .and_then(Value::as_str)
-            .unwrap_or("?")
-            .to_owned()
+    let named = |name: &str| match said.get(name).and_then(Value::as_str) {
+        Some(named) => format!("{named:?}"),
+        None => format!("no {name}"),
     };
     let on = |name: &str| said.get(name).and_then(Value::as_bool);
     match said.get("act").and_then(Value::as_str).unwrap_or("") {
         "roam" => format!("to roam to {}", named("bssid")),
         act @ ("join" | "leave" | "forget") => format!("to {act} {}", named("network")),
-        "trust" if on("trusted") == Some(false) => format!("to distrust {}", named("network")),
-        "trust" => format!("to trust {}", named("network")),
-        "radio" if on("on") == Some(false) => "to turn the radio off".to_owned(),
-        "radio" => "to turn the radio on".to_owned(),
+        "trust" => match on("trusted") {
+            Some(true) => format!("to trust {}", named("network")),
+            Some(false) => format!("to distrust {}", named("network")),
+            None => format!("to trust {} saying neither way", named("network")),
+        },
+        "radio" => match on("on") {
+            Some(true) => "to turn the radio on".to_owned(),
+            Some(false) => "to turn the radio off".to_owned(),
+            None => "to turn the radio saying neither way".to_owned(),
+        },
         "scan" => "a look".to_owned(),
         other => format!("an act {other:?}"),
     }
@@ -391,8 +398,14 @@ mod tests {
         let said = [
             json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"}),
             json!({"act": "join", "network": "Lantern", "password": "secret"}),
+            json!({"act": "leave", "network": "Lantern"}),
+            json!({"act": "forget"}),
+            json!({"act": "trust", "network": "Lantern", "trusted": true}),
             json!({"act": "trust", "network": "Lantern", "trusted": false}),
+            json!({"act": "trust", "network": "Lantern"}),
+            json!({"act": "radio", "on": true}),
             json!({"act": "radio", "on": false}),
+            json!({"act": "radio"}),
             json!({"act": "scan"}),
             json!({"act": "dance"}),
         ]
@@ -401,14 +414,32 @@ mod tests {
         assert_eq!(
             said,
             [
-                "to roam to 6c:ae:f6:c1:84:26",
-                "to join Lantern",
-                "to distrust Lantern",
+                "to roam to \"6c:ae:f6:c1:84:26\"",
+                "to join \"Lantern\"",
+                "to leave \"Lantern\"",
+                "to forget no network",
+                "to trust \"Lantern\"",
+                "to distrust \"Lantern\"",
+                "to trust \"Lantern\" saying neither way",
+                "to turn the radio on",
                 "to turn the radio off",
+                "to turn the radio saying neither way",
                 "a look",
                 "an act \"dance\"",
             ],
             "an act's want is misread"
+        );
+    }
+
+    #[test]
+    fn what_an_act_wants_is_said_on_one_line_whatever_it_names() {
+        let forged = "x\n<6>pid 2211 (quickshell.service) asks to roam to 6c:ae:f6:c1:84:26";
+
+        let said = wanted(&json!({"act": "roam", "bssid": forged}));
+
+        assert!(
+            !said.contains('\n'),
+            "a name holding a new line wrote a journal line of its own: {said}"
         );
     }
 
