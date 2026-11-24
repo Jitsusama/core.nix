@@ -320,9 +320,20 @@ let
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ eases.args
     ++ lendArgs
+    ++ workerArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
+  # The socket a worker's sessions reach the home realm's node through,
+  # answering only the worker's account. It is outside the node's runtime
+  # folder, which a worker's account can't enter, in the folder the
+  # machine's NixOS module makes for the node's account (nixos.nix).
+  workerArgs = lib.optionals (cfg.workerUid != null) [
+    "--worker-socket"
+    "/run/mycelium/${cfg.realm}-worker.sock"
+    "--worker-uid"
+    (toString cfg.workerUid)
+  ];
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"
@@ -593,6 +604,21 @@ in
         socket nobody answers reads as health unknown.
       '';
     };
+    workerUid = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.unsigned;
+      default = null;
+      example = 1001;
+      description = ''
+        The account whose sessions the home realm's node answers through a
+        worker socket of its own, at `/run/mycelium/<realm>-worker.sock`,
+        or null for none. A worker machine, such as a cloud VM, runs its
+        agents' sessions as an account apart from the node's, which can't
+        reach the node's own socket; the node refuses a process of any
+        other account there. Linux only, on a machine whose NixOS module
+        names this account in `jitsusama.mycelium.account`, which makes the
+        folder.
+      '';
+    };
     agents = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
@@ -697,6 +723,10 @@ in
               lib.all (one: lib.all (apart one) places) places
             );
           message = "jitsusama.mycelium.lend.vms has two prefixes where one starts the other, so every machine both match is refused.";
+        }
+        {
+          assertion = cfg.workerUid != null -> (isLinux && cfg.realm != null);
+          message = "jitsusama.mycelium.workerUid needs Linux, whose NixOS module makes /run/mycelium, and jitsusama.mycelium.realm, the realm whose node answers the worker.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

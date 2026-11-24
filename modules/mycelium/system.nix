@@ -35,7 +35,11 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       example = "someone";
-      description = "The account whose node the machines in `linkedFrom` link to.";
+      description = ''
+        The account whose node the machines in `linkedFrom` link to, and on
+        NixOS the account /run/mycelium is made for, the folder its node's
+        worker socket goes in.
+      '';
     };
 
     linkedFrom = lib.mkOption {
