@@ -13,7 +13,8 @@ run by Node's own test runner when the local sites build the page.
   when nothing here started it.
 - `cursor.test.ts` tries which cells the list shows in its view, every
   cell or those without purpose (the cells the headline and lede count,
-  a purpose of only spaces among them), and where the cursor rests on them:
+  and the row, panel and floor show so, a purpose of only spaces or
+  characters that draw nothing among them), and where the cursor rests on them:
   kept while shown, else on the first row, and through a find matching
   nothing while its cell lasts and the view takes it in, there too; a
   cell that ends, or that the view no longer takes in, takes it along.

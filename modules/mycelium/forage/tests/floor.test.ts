@@ -111,7 +111,7 @@ it("marks each gap where the floor skips cells of its list, before, between and 
   // C00 to C09 come before C10, and C11 and C12 between it and C13.
   const around = floorAt(LONG, "C55");
   assert.deepEqual(along(around), [cut, "C10", cut, ...span(13, 59)]);
-  // The line breaks a gap's 24 either side of each mark, at 36 and 90, and
+  // The line breaks for a gap of 24 centred on each mark, at 36 and 90, and
   // runs on to the middle of each margin, a dash before the first saying
   // the list goes on before it.
   assert.equal(around.match(MAIN)?.[1], "M12 78H24M48 78H78M102 78H1524");
@@ -119,7 +119,8 @@ it("marks each gap where the floor skips cells of its list, before, between and 
   // The list's first 48 leave its last 12 after them.
   const first = floorAt(LONG, null);
   assert.deepEqual(along(first), [...span(0, 47), cut]);
-  assert.equal(runs(first), 2);
+  // Its 48 rooms end at 1464, the gap's mark at 1476, and a dash after it.
+  assert.equal(first.match(MAIN)?.[1], "M12 78H1464M1488 78H1500");
   // Its 48 rooms and a gap's 24 between the margins.
   assert.ok(first.startsWith('<svg viewBox="0 0 1512 '), first);
 });
@@ -144,6 +145,10 @@ it("draws the cells a cursor started, however far down the list", () => {
   const floor = floorAt(LONG, "C10");
   assert.deepEqual(compartments(floor), [...span(0, 46), "C55"]);
   assert.ok(floor.includes('<path class="hypha" data-cell="C55"'), floor);
+  // One it only claims to have started comes after the booked one, ahead
+  // of the nearest cells.
+  const claimed = floorAt(startedOn(LONG, "C58", "C10"), "C10");
+  assert.deepEqual(compartments(claimed), [...span(0, 45), "C55", "C58"]);
 });
 
 it("draws a cell near the cursor only with every cell it grew from", () => {
@@ -249,8 +254,16 @@ it("cuts a line shallower than the floor to leave its cell's booked brood up to 
 
 it("keeps a line whole beside a brood that only claims its cell", () => {
   const claimed = BROOD.map((each, at) => (at >= 40 ? { ...each, booked: false } : each));
-  // C39's line of 40 is booked, so it's drawn whole, and 8 claimed cells after it.
+  // None of C39's children is booked, so its line of 40 keeps the whole
+  // floor, and 8 claimed cells fill the rest.
   assert.deepEqual(compartments(floorAt(claimed, "C39")), span(0, 47));
+});
+
+it("cuts a line only for the booked part of a mixed brood", () => {
+  const mixed = BROOD.map((each, at) => (at >= 50 ? { ...each, booked: false } : each));
+  // C40 to C49 are booked, so C39's line of 40 is cut to 38 beside them,
+  // and the 30 claimed cells after them get no room.
+  assert.deepEqual(compartments(floorAt(mixed, "C39")), span(2, 49));
 });
 
 /** A top cell, C00, then a ring of 59 claimed starts: C01 started by C59, each other by the one before. */
