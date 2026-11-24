@@ -14,6 +14,26 @@ set -euo pipefail
 find=$1
 ignore=$2
 shift 2
+
+# macOS's find takes no --help, so answering it here hides nothing of find's.
+if [ "${1-}" = --help ]; then
+  cat <<'EOF'
+find  macOS's find, leaving guarded folders alone
+
+  Runs macOS's find, but a search starting above a
+  folder the home folder's .ignore guards leaves it
+  out. A search naming one, or starting in one,
+  searches it; a depth-first one runs as given.
+
+EXAMPLES
+  find ~ -name '*.nix'
+  find ~/Documents -name report.pdf
+
+EXIT
+  find's own
+EOF
+  exit 0
+fi
 args=("$@")
 
 # find's options come first, then the paths, then the expression. Only the
@@ -39,6 +59,7 @@ while [ "${at}" -lt "${#args[@]}" ]; do
   arg=${args[at]}
   case ${arg} in
     -?* | '(' | ')' | '!') break ;;
+    *) ;;
   esac
   paths+=("${arg}")
   at=$((at + 1))
@@ -51,6 +72,7 @@ for arg in ${expression[@]+"${expression[@]}"}; do
     -depth | -delete) depth=true ;;
     -print | -print0 | -printf | -fprint | -fprint0 | -fprintf | -ls | -fls | -exec | -execdir \
       | -ok | -okdir | -quit) acts=true ;;
+    *) ;;
   esac
 done
 
@@ -73,6 +95,7 @@ guarded=()
 while IFS= read -r line; do
   case ${line} in
     '' | '#'*) continue ;;
+    *) ;;
   esac
   line=${line#/}
   guarded+=("${line%/}")

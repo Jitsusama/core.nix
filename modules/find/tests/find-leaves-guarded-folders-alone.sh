@@ -56,6 +56,7 @@ search() {
   case ${how} in
     elsewhere) at=${work} paths=("${from}") ;;
     slashed) at=${work} paths=("${from}/") ;;
+    *) ;;
   esac
   local expression=(-name needle)
   if [ $# -gt 0 ]; then
@@ -73,15 +74,11 @@ search() {
   printf '%s\n' "${out//.\//}"
 }
 
-# What a search from a start finds when it finds everything it should.
-expected() {
-  if [ "$1" = "${home}" ]; then
-    printf '%s\n' Library/Logs/needle src/needle src/Desktop/needle src/Documents/needle \
-      src/Downloads/needle
-  else
-    printf '%s\n' Logs/needle
-  fi
-}
+# What a search from each start finds when it finds everything it should.
+declare -A expected=(
+  ["${home}"]=$'Library/Logs/needle\nsrc/needle\nsrc/Desktop/needle\nsrc/Documents/needle\nsrc/Downloads/needle'
+  ["${home}/Library"]=Logs/needle
+)
 
 # The name a failure gives a search, so it says which went wrong.
 named() {
@@ -111,7 +108,7 @@ for how in "${hows[@]}"; do
       echo "${who} opened other programs' data or a folder macOS guards: ${words}" >&2
       exit 1
     fi
-    wanted=$(expected "${from}")
+    wanted=${expected[${from}]}
     while read -r path; do
       if ! grep -qxF "${path}" <<<"${found}"; then
         echo "${who} no longer finds ${path}: ${found}" >&2

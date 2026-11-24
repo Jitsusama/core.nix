@@ -228,6 +228,9 @@
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
+        find = script "find" ../../modules/find/find.sh {
+          words = "/usr/bin/find ${../../modules/ripgrep/ignore}";
+        };
         firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
         gnome-keyring-unlock = script "gnome-keyring-unlock" ../../modules/gnome-keyring/unlock.sh { };
         google-opens = script "google-opens" ../../modules/google/opens.sh {
