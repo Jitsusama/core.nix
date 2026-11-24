@@ -571,6 +571,21 @@
       "name": "Last Landing"
     },
     {
+      "id": "agents:next",
+      "in": "agents",
+      "name": "Next Step"
+    },
+    {
+      "id": "agents:plan",
+      "in": "agents",
+      "name": "Plan"
+    },
+    {
+      "id": "agents:chose",
+      "in": "agents",
+      "name": "Last Choice"
+    },
+    {
       "id": "agents:asked",
       "in": "agents",
       "name": "You Asked"
