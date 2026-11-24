@@ -5840,6 +5840,9 @@ mod tests {
             at += 0.1;
         }
         assert!(looked, "no probe said it looked for room: {}", c.why());
+        // A probe still running when the minutes run out is named as such,
+        // not as a second probe (pin words round 1's F1, F3, F5 and F7).
+        assert!(ended.is_some(), "the probe never ended: {}", c.why());
         assert!(
             c.up.probing_until.is_none(),
             "another probe began within a second"
