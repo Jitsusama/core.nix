@@ -36,6 +36,9 @@ let
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} switch.css $out/kit/switch.css
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} head.css $out/kit/head.css
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} ask.css $out/kit/ask.css
+    # The script a page runs before it's drawn, written by hand as a plain
+    # script, sent without its comments as the modules are.
+    ${esbuild} early.js --legal-comments=none --log-level=warning --outfile=$out/kit/early.js
     ${lib.getExe pkgs.bash} ${keptComments} $(find $out/kit -name '*.js')
   '';
 in

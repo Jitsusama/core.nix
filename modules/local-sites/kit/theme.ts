@@ -1,6 +1,7 @@
 // The theme switch every site carries in its head (switch.css draws it):
-// light, the system's, or dark, kept across visits. The page's head sets the
-// kept choice before the first paint; this checks its radio and keeps what
+// light, the system's, or dark, kept across visits. The kit's early.js, in
+// the page's head, sets the kept choice before the first paint; this checks
+// its radio and keeps what
 // Joel turns it to. The radios are real ones, so their keys are the
 // browser's own.
 

@@ -174,9 +174,13 @@ A live site built by `localSite` copies nothing: the sites' server holds
 one copy for every live site at `/local-sites/web/`, so the browser
 fetches the fonts once for them all. Its page, served one folder deep,
 loads the same lines from there, preloads included, and the build refuses
-a page still loading its own `kit/`:
+a page still loading its own `kit/`. It runs no script written into the
+page, which the server refuses the sites' own pages, so the lines that set
+the kept look and `class="js"` before the first paint are the kit's
+`early.js`, loaded first:
 
 ```html
+<script src="../local-sites/kit/early.js"></script>
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
@@ -190,8 +194,17 @@ a page still loading its own `kit/`:
 The server holds two folders there that sound alike. `/local-sites/web/`
 is the theme's web kit: `theme.css`, `base.css` and the fonts.
 `/local-sites/kit/` is the sites' own scripts and switch: `feed.js`,
-`keys.js`, `document.js`, the rest built from the kit's TypeScript, and
-`switch.css` and `head.css`. Neither holds the other's files.
+`keys.js`, `document.js`, the rest built from the kit's TypeScript,
+`early.js`, and `switch.css` and `head.css`. Neither holds the other's
+files.
+
+A document runs sandboxed, in an origin of no one's, so what a session
+wrote can never act as one of the sites' own, which read Joel's feeds and
+answer what he's asked. Three things follow. It keeps no look between
+visits, since the lines setting the kept look find nothing kept (the switch
+still turns it for the visit). It reads no feed. And what it fetches
+beside it is read as another origin's, which the server lets it do as a
+page it served; the kit's scripts and fonts are shared with it too.
 
 **The head every live page opens with** is the kit's, so the pages read
 as one family; before it each drew its own, five eyebrows in five faces.

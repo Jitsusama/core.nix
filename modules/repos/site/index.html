@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en-CA" data-kind="interface">
+<html lang="en-CA" data-kind="interface" data-room="code-room" data-rooms="lede grove list open">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,32 +11,9 @@
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
-<script>"use strict";
-  document.documentElement.classList.add("js");
-  try {
-    const t = localStorage.getItem("theme");
-    if (t === "light" || t === "dark") {
-      document.documentElement.dataset.theme = t;
-    }
-  } catch (_error) {
-    // A browser that keeps nothing shows the system's theme, as it should.
-  }
-  // The room each part the feeds draw took when the page was last left at this width, held
-  // until they draw again (page.ts), so the page doesn't shift as they arrive.
-  try {
-    const room = JSON.parse(localStorage.getItem("code-room") ?? "null");
-    if (room?.width === innerWidth) {
-      for (const id of ["lede", "grove", "list", "open"]) {
-        const px = Number(room.heights?.[id]);
-        if (px > 0) {
-          document.documentElement.style.setProperty(`--room-${id}`, `${px}px`);
-        }
-      }
-    }
-  } catch (_error) {
-    // Nothing kept, or kept unreadably, holds no room: the page draws as the feeds arrive.
-  }
-</script>
+<!-- It holds the room its parts took when it was last left at this width, named on <html> as
+     page.ts keeps it, until they draw again, so the page doesn't shift as the feeds arrive. -->
+<script src="../local-sites/kit/early.js"></script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="../local-sites/web/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="../local-sites/web/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>

@@ -242,7 +242,8 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
   return ask;
 }
 
-// The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.
+// The parts whose height the feeds decide, each held at --room-<id> until they draw, as
+// index.html's data-rooms names them for the kit's early.js, which puts them back.
 const ROOMS = ["lede", "grove", "list", "open"] as const;
 type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
@@ -251,7 +252,7 @@ const ROOM_HELD_MS = 3000;
 
 /**
  * Keeps the room each part the feeds draw took when the page was left, at this width, so the
- * next load holds it from its first paint (index.html puts it back) and nothing shifts as the
+ * next load holds it from its first paint (the kit's early.js puts it back) and nothing shifts as the
  * feeds arrive. A part `forgets` names, drawn from what a reload doesn't bring back (a name
  * found, a season unfolded), keeps no room, nor does any once the width changes. Returns what's
  * told of each draw, which lets the room go once every feed has drawn, so the parts fit what

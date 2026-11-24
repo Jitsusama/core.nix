@@ -11,13 +11,7 @@
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="@dark-ground@">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
-<script>
-  try {
-    const t = localStorage.getItem("theme");
-    if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-  } catch {}
-  document.documentElement.classList.add("js");
-</script>
+<script src="/local-sites/kit/early.js"></script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="/local-sites/web/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/local-sites/web/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
