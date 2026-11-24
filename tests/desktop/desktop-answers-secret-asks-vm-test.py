@@ -27,7 +27,6 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
-import vm_helpers
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -134,23 +133,27 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
     changed, rather than only the time it waited.
     """
     path = f"{ASKS}/{ask}.answer.json"
-    # Paced as every other wait here is, so a release slow on a busy builder isn't read as a
-    # yes that was lost.
-    allowed = RELEASING * vm_helpers.pace(vm_helpers.busyness())
+    # The driver's wait is paced to the host already (vm_helpers.pace_the_driver), so a release
+    # slow on a busy builder isn't read as a yes that was lost.
     try:
-        desktop.machine.wait_until_succeeds(desktop.in_session(f"test -e {path}"), timeout=allowed)
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(f"test -e {path}"), timeout=RELEASING
+        )
     except AssertionError as unanswered:
         # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
         # rather than a timeout of its own. The launcher's showings, each a whole state naming
         # the ask, would bury the refusal, so they're left out; its other reports stay, since
-        # the refusal is one (Launcher.qml's becameNot says "not become ask:...").
+        # the refusal is one (Launcher.qml's becameNot says "not become ask:..."), and so does
+        # any error or warning, a throw in Asks among them. A journal that can't be read says
+        # so rather than reading as a shell that said nothing.
         said = desktop.diagnosis(
-            "journalctl --user -u quickshell --no-pager -o cat"
-            f" --after-cursor={shlex.quote(since)} | grep -avF 'report[showing '"
-            f" | grep -a -F 'ask:{ask}' || true"
+            "said=$(journalctl --user -u quickshell --no-pager -o cat"
+            f" --after-cursor={shlex.quote(since)}) || echo 'the journal could not be read'; "
+            "printf '%s\\n' \"$said\" | grep -avF 'report[showing '"
+            f" | grep -aE {shlex.quote(f'ask:{ask}|Error|WARN|warn')} || true"
         )
         message = (
-            f"the ask wasn't answered within {allowed.total_seconds():.0f} s;"
+            f"the ask wasn't answered within {RELEASING.total_seconds():.0f} s, paced to the host;"
             f" the shell said of it: {said.strip() or 'nothing'}"
         )
         raise AssertionError(message) from unanswered
@@ -248,10 +251,17 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # Asks reads keys only over passwords; elsewhere asksUnread is null, and the waits below
     # would order nothing, so that's said here rather than left to a timeout.
     assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
+    escaped = desktop.showing()["taken"]
     desktop.machine.send_key("esc")
-    # The Escape is seen read by Asks alone too, since read with the j it resets the line.
+    # The Escape is seen read by Asks alone too, since read with the j it resets the line: taken,
+    # then read, as none is left unread only once it's been taken.
     desktop.launcher_until(
-        lambda shown: shown["mode"] == "normal" and selects(shown, why) and shown["asksUnread"] == 0
+        lambda shown: (
+            shown["mode"] == "normal"
+            and selects(shown, why)
+            and shown["taken"] > escaped
+            and shown["asksUnread"] == 0
+        )
     )
     # A j not read leaves the line untimed and the yes refused, so the release below is what
     # proves it was. It's seen read by Asks before Return goes, since keys read in one turn are
@@ -398,7 +408,8 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     desktop.machine.send_chars("j")
     desktop.launcher_until(lambda shown: not selects(shown, why))
     desktop.machine.send_chars("k")
-    desktop.launcher_until(lambda shown: selects(shown, why))
+    # Read by Asks too, so the refusal below is for the agent's opening, not a k still unread.
+    desktop.launcher_until(lambda shown: selects(shown, why) and shown["asksUnread"] == 0)
     # Past the reading, so a move wrongly taken as his would have timed the line long enough.
     time.sleep(PAST_THE_READING)
     refused_unread(desktop, ask, say_yes(desktop))
