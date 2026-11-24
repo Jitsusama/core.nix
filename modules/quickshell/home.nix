@@ -1235,7 +1235,11 @@ in
         shown, the other words and old names that find it and the glyph it
         wears, the commands that take something after them, and the words
         meant to find more than one thing. A machine changes a name here,
-        and the check that no word is ambiguous reads the file.
+        and the check that no word is ambiguous reads the file. The six
+        acts on a look (Open, Answer, Clear It, Go To, Explain It and Talk)
+        keep core's names wherever local-sites is imported, since the
+        sites' ask row knows them by those alone: renaming one fails the
+        build.
       '';
     };
     kinds = lib.mkOption {

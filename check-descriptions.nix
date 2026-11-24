@@ -2019,7 +2019,7 @@
     local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
     in place or by a later entry keyed by a list of one set or a set words.json writes as the id
     by its outPath or __toString, or by a whole entry so written, reading the words as words.json
-    writes them; it names only each act's old and new word though another word is renamed beside
+    writes them, or in a words.json a machine writes itself; it names only each act's old and new word though another word is renamed beside
     them, even to no name, and takes core's own words and ids Words.qml keys as no act: objects,
     lists of several or none, whichever end holds the act, and a path in the store
   '';
@@ -4156,7 +4156,8 @@
     Now.qml's lookOffers and followsOf give them, what the second form leads with (its parts
     ended by each stop, closing mark and mark that is neither, none or two, a stop inside, empty,
     padded or missing) and its act as
-    LookForm.js gives them, and what it links as Now.qml's drawer names its kinds, each kind at a
+    LookForm.js gives them, the first form's question and what follows doing nothing as Looks.js
+    gives them, and what it links as Now.qml's drawer names its kinds, each kind at a
     web address; the launcher's
     act names as Now.qml and core's joined words give them, the last of an id's winning; and the
     ids local-sites' home module guards as Now.qml lists them

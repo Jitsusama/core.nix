@@ -172,9 +172,18 @@ let
   # refuses, says nothing of a word, so it goes.
   asRead = words: builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON words));
   coreWords = asRead (import ../quickshell/launcher/words.nix).value;
-  machineWords = asRead (
-    config.jitsusama.quickshell.launcher.words or (import ../quickshell/launcher/words.nix).value
-  );
+  # The machine's words as the file Words.qml reads holds them, from its
+  # text even where a machine writes that itself, else as the launcher's
+  # option writes it. A file given as a source in the store isn't read,
+  # since reading it would build it while the machine is evaluated.
+  written = (config.xdg.configFile."quickshell/launcher/words.json" or { }).text or null;
+  machineWords =
+    if written != null then
+      builtins.fromJSON (builtins.unsafeDiscardStringContext written)
+    else
+      asRead (
+        config.jitsusama.quickshell.launcher.words or (import ../quickshell/launcher/words.nix).value
+      );
   # A thing's id as Words.qml keys it, made a string: a list of one id is
   # that id; no act's id holds a comma or is empty, or reads as an object,
   # so no other id can be one.

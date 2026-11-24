@@ -311,9 +311,16 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   // The first form is laid out apart on purpose, its question on its own.
   const second = form.secondForm(read as never) === true;
   const leads = !second || ask.said.join(" ") === read.words;
+  // What For You's row asks and its drawer says follows doing nothing,
+  // while the row, stricter, asks; words only of spaces show as none.
+  const question = second ? "" : String(looks.askOf(read as never)).trim();
+  const ifNothing = String(looks.ifNothingOf(held as never)).trim();
   return [
     leads ? "" : `leads with ${ask.said.join(" ")}, not ${read.words}`,
-    second && ask.question !== "" ? "asks a question For You doesn't show" : "",
+    !ask.asks || ask.question === question ? "" : `asks ${ask.question}, not ${question}`,
+    !ask.asks || ask.ifNothing === ifNothing
+      ? ""
+      : `says ${ask.ifNothing} if nothing, not ${ifNothing}`,
     ask.asks === waits ? "" : "waits otherwise",
     ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
     ask.opens === opens ? "" : `opens ${ask.opens}, not ${opens}`,
