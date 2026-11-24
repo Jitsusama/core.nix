@@ -83,8 +83,39 @@ impl Timed {
 /// `lines`, sit against their takes and `speech`, the spans in seconds in
 /// which the reference says one of theirs speaks.
 pub fn judge(lines: &[Line], timed: &HashMap<usize, Vec<Word>>, speech: &[(f64, f64)]) -> Timed {
-    let _ = (lines, timed, speech, RATE, Side::Theirs);
-    Timed::default()
+    let mut judged = Timed::default();
+    let theirs = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.side == Side::Theirs);
+    for (i, line) in theirs {
+        let mut last = None;
+        for word in timed.get(&i).into_iter().flatten() {
+            judged.words += 1;
+            if !(line.start..line.end).contains(&word.at) {
+                judged.outside += 1;
+            }
+            if last.is_some_and(|before| word.at < before) {
+                judged.backward += 1;
+            }
+            last = last.max(Some(word.at));
+            let at = seconds(word.at);
+            if speech.iter().any(|&(from, to)| from <= at && at <= to) {
+                judged.inside += 1;
+            }
+        }
+    }
+    judged
+}
+
+/// Samples into a side as seconds.
+fn seconds(samples: usize) -> f64 {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a meeting is minutes long, far under a float's 2^52 samples"
+    )]
+    let seconds = samples as f64 / RATE as f64;
+    seconds
 }
 
 #[cfg(test)]
