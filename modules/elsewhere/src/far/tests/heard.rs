@@ -464,8 +464,10 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
             "a tree it couldn't make for {step} read as {heard:?}, ending {code:?}: {err}"
         );
         assert!(
-            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
-            "a tree it couldn't make for {step} was run, or left behind"
+            !work(&home).join("ran").exists()
+                && !work(&home).join("1").exists()
+                && !work(&home).join("1.run").exists(),
+            "a tree it couldn't make for {step} was run, or left behind with its run's file"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
@@ -492,8 +494,8 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
         "why it was refused went unsaid: {err}"
     );
     assert!(
-        !work(&home).join("1").exists(),
-        "a refused job's copy of its tree was left behind"
+        !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
+        "a refused job's copy of its tree, or its run's file, was left behind"
     );
     let _ = std::fs::remove_dir_all(&home);
     // Nor when nothing at all travels, and no tree crosses.

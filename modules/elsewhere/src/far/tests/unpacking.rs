@@ -67,8 +67,9 @@ fn refused_as_no_archive(code: Option<i32>, err: &str, home: &Path, named: &str)
     assert!(
         !work(home).join("out").exists()
             && !work(home).join("1").exists()
+            && !work(home).join("1.run").exists()
             && !handover(home).join(TREE).exists(),
-        "a refused job left a file outside its folder, or its copies, for {named:?}"
+        "a refused job left a file outside its folder, its copies or its run's file, for {named:?}"
     );
     let _ = std::fs::remove_dir_all(home);
 }
