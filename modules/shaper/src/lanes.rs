@@ -2054,10 +2054,12 @@ mod tests {
                 "the VPN gave agents straight their quarter at once: free {f:?}, held {h:?}"
             );
             // Only while the VPN still falls may agents straight sit under
-            // the quarter: one standing still has given what Joel's hold
-            // takes from them too (follow-ups round 1's F9).
+            // the quarter by more than the VPN's dead band: one standing
+            // still, since what it's asked moved under STILL of it, has
+            // given what Joel's hold takes from them too (follow-ups round
+            // 1's F9; on its first build, 8 short within 265).
             assert!(
-                (h.vpn - was).abs() >= 1.0 || h.agents >= floor - 1.0,
+                (h.vpn - was).abs() >= 1.0 || h.agents >= floor - h.vpn * STILL - 1.0,
                 "second {second}: the VPN stood still with agents straight {} short: {h:?}",
                 floor - h.agents
             );
