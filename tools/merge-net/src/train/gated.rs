@@ -10,15 +10,17 @@ use std::process::Command;
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
 /// The log opens with a mark fresh to this run, which nix-offload signs
 /// the lines the train trusts with, so the same words in a rider's output
-/// stand for nothing (`words_of`).
+/// stand for nothing (`words_of`). With no mark to be had it runs nothing
+/// and reads as a red not run whole, since an unmarked log's first line
+/// could be a rider's own mark line (round 7's F4).
 pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
     let Ok(mut words) = fs::File::create(log) else {
         return Gated::Red { whole: false };
     };
-    let mark = fresh_mark();
-    if let Some(mark) = &mark
-        && writeln!(words, "{MARKED}{mark}").is_err()
-    {
+    let Some(mark) = fresh_mark() else {
+        return Gated::Red { whole: false };
+    };
+    if writeln!(words, "{MARKED}{mark}").is_err() {
         return Gated::Red { whole: false };
     }
     let Ok(errors) = words.try_clone() else {
@@ -30,10 +32,8 @@ pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
         .current_dir(checkout)
         .env_remove("SSH_AUTH_SOCK")
         .stdout(words)
-        .stderr(errors);
-    if let Some(mark) = &mark {
-        command.env(MARK, mark);
-    }
+        .stderr(errors)
+        .env(MARK, &mark);
     let ran = command.status();
     ran.map_or(Gated::Red { whole: false }, |status| {
         gated(status.code(), &words_of(log))
@@ -44,15 +44,14 @@ pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
 const MARKED: &str = "merge-net: this gate's mark is ";
 
 /// The variable nix-offload reads a run's mark in
-/// (`modules/nix-offload/offload/src/marked.rs`).
+/// (`modules/nix-offload/offload/src/ended.rs`, `marked::MARK`).
 const MARK: &str = "NIX_OFFLOAD_MARK";
 
 /// The digits a mark is written in.
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
 /// A mark no rider can guess: 16 bytes of the kernel's randomness, as
-/// hex. None when it can't be read, so the gate runs unmarked and
-/// nothing it says is trusted.
+/// hex. None when it can't be read, so the gate doesn't run.
 fn fresh_mark() -> Option<String> {
     let mut bytes = [0_u8; 16];
     fs::File::open("/dev/urandom")
