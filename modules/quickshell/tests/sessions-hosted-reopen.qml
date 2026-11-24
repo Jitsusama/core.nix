@@ -274,9 +274,12 @@ ShellRoot {
     }
 
     // Its viewer asked for, the walk waits for its window; taken as open,
-    // it ends with none asked.
+    // it ends with none asked. The walk begins only once the screens are
+    // looked at, which niri answers late (lookAtScreens), so it's waited
+    // on while they're asked of too.
     function unlisted() {
-        if (Sessions.reopening !== null && viewerSpawns("s-viewed").length < 2)
+        if (viewerSpawns("s-viewed").length < 2
+            && (Sessions.reopening !== null || Sessions.screensWaiting.length > 0))
             return;
         Expect.expect("a viewer niri no longer lists, the index still naming it, opens again",
             viewerSpawns("s-viewed").length === 2, Niri.spawns.join("\n"));
