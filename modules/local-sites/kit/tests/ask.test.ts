@@ -86,13 +86,7 @@ it("a look For You doesn't read whole isn't shown", () => {
     { ...second, state: " waiting" },
     { ...second, state: "waitng" },
     { ...second, state: undefined },
-    {
-      v: 2,
-      id: "look-2",
-      state: "waiting",
-      happened: "The map's cells are marked.",
-      ...second.about,
-    },
+    { v: 1, id: "look-2", state: "waiting", happened: "The map's cells.", about: second.about },
     "look-1",
     null,
   ];
@@ -136,6 +130,33 @@ it("a second-form choice the first form didn't offer is never sent, whatever its
   ]);
 });
 
+it("a choice's own follows outranks the second form's of its label", () => {
+  const own = { ...second, choices: [{ value: "keep", label: "Keep It", follows: "Its own." }] };
+  assert.equal(asked(own, NOW)?.choices[0]?.follows, "Its own.");
+});
+
+it("what follows a choice is said only where the look says what happened", () => {
+  const unsaid = { ...first, wants: second.wants };
+  assert.deepEqual(
+    asked(unsaid, NOW)?.choices.map((one) => one.follows),
+    ["", ""],
+    "a look of the first form said what follows its choices",
+  );
+  const own = { ...first, choices: [{ value: "keep", label: "Keep It", follows: "Its own." }] };
+  assert.equal(asked(own, NOW)?.choices[0]?.follows, "", "a first-form choice's follows showed");
+});
+
+it("the second form's act is taken only in four words at most, never as a choice's name", () => {
+  assert.equal(asked({ ...second, act: "Open It Up and Read" }, NOW)?.act, ACTS.pr);
+  assert.equal(asked({ ...second, act: "keep it." }, NOW)?.act, ACTS.pr);
+  assert.equal(asked({ ...second, act: "Read  It  Now" }, NOW)?.act, "Read  It  Now");
+});
+
+it("it offers For You's four and goes quiet after three days, the launcher's numbers", () => {
+  assert.equal(OFFERED, 4, "the row offers other than For You's four");
+  assert.equal(QUIET_AFTER, 3 * 24 * 60 * 60 * 1000, "the row quiets other than in three days");
+});
+
 it("a look of the first form reads from its why, with its question and an act for its kind", () => {
   const ask = asked(first, NOW);
   assert.deepEqual(ask?.said, [first.why]);
@@ -159,7 +180,22 @@ it("only a web address is a link: a file, a session or a script is shown, never 
   assert.equal(asked(file, NOW)?.target, "/home/joel/notes.md");
   const session = { ...first, kind: "terminal", target: "01a1fc95" };
   assert.equal(asked(session, NOW)?.act, null);
-  assert.equal(asked({ ...first, kind: "page", target: "javascript:alert(1)" }, NOW)?.opens, null);
+  for (const target of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,<b>x</b>"]) {
+    assert.equal(asked({ ...first, kind: "page", target }, NOW)?.opens, null, `${target} linked`);
+  }
+});
+
+it("a look about a session or a file links nowhere, even at a web address", () => {
+  for (const kind of ["terminal", "file"]) {
+    const ask = asked({ ...first, kind }, NOW);
+    assert.equal(ask?.opens, null, `a ${kind} look was linked, where For You goes to its cell`);
+    assert.equal(ask?.act, null);
+  }
+});
+
+it("a link opens the address as the browser parsed it", () => {
+  const spaced = { ...first, target: "HTTPS://Example.com/a b" };
+  assert.equal(asked(spaced, NOW)?.opens, "https://example.com/a%20b");
 });
 
 it("the first four choices sending a value show, each value as written, as For You offers", () => {
@@ -210,6 +246,22 @@ it("a look waits only as For You's Waiting holds it", () => {
   assert.equal(asked({ ...second, asks: false }, NOW)?.asks, false, "a look to read asked");
 });
 
+it("a look no longer waiting asks nothing, offers nothing and says nothing of doing nothing", () => {
+  const ended = asked({ ...second, state: "resolved" }, NOW);
+  assert.equal(ended?.question, "", "a resolved look still asked its question");
+  assert.equal(ended?.ifNothing, "");
+  assert.deepEqual(ended?.choices, []);
+  assert.equal(ended?.lapses, null);
+  assert.deepEqual(ended?.said, [`${second.happened}. ${second.matters}`], "its words went too");
+});
+
+it("a waiting look says when it lapses: its expiresAt, else three days after it came", () => {
+  const came = Date.parse(first.at);
+  assert.equal(asked(second, NOW)?.lapses, came + QUIET_AFTER);
+  assert.equal(asked({ ...second, expiresAt: NOW + 5 }, NOW)?.lapses, NOW + 5);
+  assert.equal(asked({ ...second, at: undefined }, NOW)?.lapses, null);
+});
+
 it("a time written in milliseconds lapses and quiets a look as an ISO time does", () => {
   const lapsed = { ...second, expiresAt: NOW - 1 };
   assert.equal(asked(lapsed, NOW)?.asks, false, "a look past a numeric expiresAt still asked");
@@ -237,6 +289,13 @@ it("an answer is sent only as the look offered it, while it still asks at the pr
     null,
     "a look For You can't see took one",
   );
+  const five = { ...first, choices: ["a", "b", "c", "d", "e"].map((value) => ({ value })) };
+  assert.equal(answering(five, "d", NOW)?.value, "d");
+  assert.equal(answering(five, "e", NOW), null, "a fifth value For You doesn't offer was sent");
+  const came = Date.parse(first.at);
+  assert.equal(answering(second, "keep", came + QUIET_AFTER + 1), null, "a quiet look took one");
+  assert.equal(answering({ ...second, asks: false }, "keep", NOW), null, "a look to read took one");
+  assert.equal(answering({ ...second, state: "opened" }, "keep", NOW), null);
   const expiring = { ...second, expiresAt: NOW + 60_000 };
   assert.ok(asked(expiring, NOW)?.asks, "a look before its expiry didn't ask");
   assert.equal(

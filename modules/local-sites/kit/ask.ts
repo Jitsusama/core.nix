@@ -7,37 +7,44 @@
 // opening what the look is about. The page draws the row; this says what's
 // in it.
 //
-// It reads a look as the launcher's Looks.js and LookForm.js do, so a page
-// shows only the looks For You shows and asks only on those For You holds
-// as waiting. A look is read only whole, as Looks.js `whole` reads one:
-// version 1, with its id, title, target, kind and state at the top. It
-// waits only while its state is "waiting", its expiresAt hasn't passed and
-// it came less than three days ago, and one saying `asks: false` is only to
-// be read. Its choices are the first form's, each sending the value the
-// session offered exactly as written, with what follows from it taken from
-// the second form's choice of the same label.
+// It reads a look as the launcher's Looks.js, LookForm.js and Now.qml do,
+// so a page shows only the looks For You shows and asks only on those For
+// You holds as waiting. A look is read only whole, as Looks.js `whole`
+// reads one: version 1, with its id, title, target, kind and state at the
+// top. It waits only while its state is "waiting", its expiresAt hasn't
+// passed and it came less than three days ago, and one saying `asks: false`
+// is only to be read. Only while it waits does it show its question, what
+// happens if he does nothing and its choices, as For You's drawer does.
+// Its choices are the first form's, each sending the value the session
+// offered exactly as written.
 //
 // The harness writes version 1 with the second form's fields beside the
 // first's (85PKB2, 22 November 2026), so what happened, why it matters,
-// the act and the choices' outcomes are read from the second form wherever
-// it says what happened, as LookForm.js reads them, and from the first form
-// otherwise. What a look is about is read from the first form's fields
-// alone, which are what For You opens.
+// the act and what follows each choice are read from the second form
+// wherever it says what happened, as LookForm.js reads them, and from the
+// first form otherwise, which says nothing of what follows. What a look is
+// about is read from the first form's fields alone, which are what For You
+// opens.
 //
-// One gap stays: an answer the launcher has sent moves a look to For You's
+// Two gaps stay. An answer the launcher has sent moves a look to For You's
 // History at once, but its file says "waiting" until its session reads the
 // answer and writes it resolved, and only the shell knows it was answered.
-// In that window a page asks again, so whatever carries a page's answer
-// must refuse a second answer to the same look.
+// In that window a page asks again, so a page drops its row's choices once
+// one is pressed, as For You does, and whatever carries a page's answer must
+// refuse a second answer to the same look. And the sites share their origin
+// with documents sessions write, so an answer saying it's from Joel says
+// nothing: whatever carries it must know he pressed it.
 //
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
+import { type Fields, isObject } from "./records.ts";
+
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
 const OFFERED = 4;
 
-/** How long after it came a waiting look goes quiet, as Looks.js's QUIET_AFTER. */
-const QUIET_AFTER = 3 * 24 * 60 * 60 * 1000;
+/** How long after it came a waiting look goes quiet, three days, as Looks.js's QUIET_AFTER. */
+const QUIET_AFTER = 259_200_000;
 
 /** The record's version, as Looks.js's VERSION. */
 const VERSION = 1;
@@ -96,8 +103,18 @@ interface Ask {
   readonly said: readonly string[];
   /** What it asks of him, in a sentence, or "" where it doesn't say. */
   readonly question: string;
-  /** What happens if he does nothing, in a sentence, or "" where it doesn't say. */
+  /**
+   * What happens if he does nothing, in a sentence, or "" where it doesn't
+   * say, which a page fills from `lapses` as For You does.
+   */
   readonly ifNothing: string;
+  /**
+   * When it stops waiting if he does nothing, in milliseconds since the
+   * epoch: its expiresAt, else three days after it came; null while it
+   * doesn't wait or neither is known. A page sets its row asking no more
+   * then, since nothing else tells it.
+   */
+  readonly lapses: number | null;
   /**
    * The act's words, on the link that opens what it's about, or null where
    * `opens` is: the page can't do what the act would name, so it shows the
@@ -127,13 +144,6 @@ interface Answer {
   readonly look: string;
   readonly value: string;
   readonly from: "joel";
-}
-
-/** A record read from a look's file: anything, until it's read. */
-type Fields = Readonly<Record<string, unknown>>;
-
-function isRecord(value: unknown): value is Fields {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Whether `value` is a string with anything in it, as Looks.js's `named`. */
@@ -171,14 +181,45 @@ function whole(look: Fields): boolean {
   );
 }
 
-/** Whether `target` is a web address a link may open. */
-function onTheWeb(target: string): boolean {
+/** What a link opens for a look about a web page, as Now.qml opens these kinds. */
+const LINKED: readonly Kind[] = ["pr", "page", "diff"];
+
+/**
+ * The address a link opens for `target`, as the browser parsed it, where it
+ * is a web address; else null.
+ */
+function onTheWeb(target: string): string | null {
   try {
     const address = new URL(target);
-    return address.protocol === "https:" || address.protocol === "http:";
+    return address.protocol === "https:" || address.protocol === "http:" ? address.href : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** The most words an act runs to, as LookForm.js's ACT_WORDS. */
+const ACT_WORDS = 4;
+
+/** Spaces, and the stops a name may end in, as LookForm.js's SPACES and STOPS. */
+const SPACES = /\s+/gu;
+const STOPS = /[\s.!?,;:\u2026]+$/u;
+
+/** A name as it reads, to tell two apart: its spaces one, its closing stops gone, small. */
+function readAs(name: string): string {
+  return name.replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
+}
+
+/**
+ * The second form's act in its own words, as LookForm.js's actOf takes it:
+ * never past four words or read as one of its choices; else "".
+ */
+function actOf(act: string, choices: readonly Choice[]): string {
+  const read = readAs(act);
+  return read === "" ||
+    read.split(" ").length > ACT_WORDS ||
+    choices.some((one) => readAs(one.label) === read)
+    ? ""
+    : act;
 }
 
 /** `text` ending as a sentence ends, as LookForm.js ends each part. */
@@ -189,22 +230,31 @@ function ended(text: string): string {
 /**
  * The look's choices, as Looks.js offers them: the first form's first four
  * sending a value, each value exactly as written, labelled by its value
- * where it has no label, with what follows its own else the second form's
- * choice of that label. A page never sends a value the session didn't offer.
+ * where it has no label, with what follows its own else the first of the
+ * second form's choices of that label, two of one label sharing it, as
+ * Looks.js finds it. What follows is said only in the second form (`said`),
+ * as For You's drawer says it. A page never sends a value the session
+ * didn't offer.
  */
-function choicesOf(look: Fields, wants: Fields): readonly Choice[] {
-  const wanted = (Array.isArray(wants["choices"]) ? wants["choices"] : []).filter(isRecord);
+function choicesOf(look: Fields, wants: Fields, said: boolean): readonly Choice[] {
+  const wanted = (Array.isArray(wants["choices"]) ? wants["choices"] : []).filter(isObject);
   const follows = (one: Fields, label: string): string =>
     written(one["follows"]) || written(wanted.find((each) => each["label"] === label)?.["follows"]);
   return (Array.isArray(look["choices"]) ? look["choices"] : [])
-    .filter(isRecord)
+    .filter(isObject)
     .filter((one) => named(one["value"]))
     .slice(0, OFFERED)
     .map((one) => {
       const value = one["value"] as string;
       const label = named(one["label"]) ? one["label"] : value;
-      return { value, label, follows: follows(one, label) };
+      return { value, label, follows: said ? follows(one, label) : "" };
     });
+}
+
+/** When `look` stops waiting if he does nothing: its expiresAt, else three days after it came. */
+function lapsing(look: Fields): number | null {
+  const came = when(look["at"]);
+  return when(look["expiresAt"]) ?? (came === null ? null : came + QUIET_AFTER);
 }
 
 /**
@@ -223,15 +273,20 @@ function waits(look: Fields, now: number): boolean {
   );
 }
 
+/** The act for a look `opens` links to: the second form's own words, else its kind's. */
+function actFor(look: Fields, kind: Kind, choices: readonly Choice[], said: boolean): string {
+  return (said ? actOf(written(look["act"]), choices) : "") || ACTS[kind];
+}
+
 /**
  * What the ask row shows for `look`, a look's file as parsed, at `now`, in
  * milliseconds since the epoch; or null for one For You doesn't read.
  */
 function asked(look: unknown, now: number): Ask | null {
-  if (!(isRecord(look) && whole(look))) {
+  if (!(isObject(look) && whole(look))) {
     return null;
   }
-  const wants = isRecord(look["wants"]) ? look["wants"] : {};
+  const wants = isObject(look["wants"]) ? look["wants"] : {};
   const kind = look["kind"] as Kind;
   const target = look["target"] as string;
   // The second form leads where it says what happened, as LookForm.js's secondForm.
@@ -245,7 +300,9 @@ function asked(look: unknown, now: number): Ask | null {
             .filter((one) => one !== "")
             .join(" "),
         ];
-  const opens = onTheWeb(target) ? target : null;
+  const opens = LINKED.includes(kind) ? onTheWeb(target) : null;
+  const asks = waits(look, now);
+  const offered = choicesOf(look, wants, happened !== "");
   return {
     id: look["id"] as string,
     kind,
@@ -253,12 +310,13 @@ function asked(look: unknown, now: number): Ask | null {
     opens,
     target,
     said,
-    question: written(look["ask"]),
-    ifNothing: written(look["ifNothing"]),
-    act: opens === null ? null : (happened === "" ? "" : written(look["act"])) || ACTS[kind],
-    choices: choicesOf(look, wants),
+    question: asks ? written(look["ask"]) : "",
+    ifNothing: asks ? written(look["ifNothing"]) : "",
+    lapses: asks ? lapsing(look) : null,
+    act: opens === null ? null : actFor(look, kind, offered, happened !== ""),
+    choices: asks ? offered : [],
     words: wants["words"] === true,
-    asks: waits(look, now),
+    asks,
   };
 }
 
