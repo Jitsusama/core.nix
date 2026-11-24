@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# Proves a seat machine's udev rules hold no rule marking a camera relayed
-# or taking the MX Brio's seat tag off, in either order on its line. So no
+# Proves a seat machine's udev rules hold no rule marking a camera relayed,
+# however it's assigned, or taking the MX Brio's seat tag off as the
+# sharing's rule does, in either order on its line. A rule replacing the
+# Brio's tags whole, or naming it on another line, isn't searched for. So no
 # search can pass for want of a match, each is first shown to find what it's
 # for: the relayed mark and the tag taken off in the rule of a machine that
-# shares the Brio, and the reversed order, which that rule doesn't use, in a
-# line written here. It reads through the rules' links into the store, and a
-# folder it can't read fails rather than passing.
+# shares the Brio, and the reversed order and a spaced, added mark, which
+# that rule doesn't use, in lines written here. It reads through the rules'
+# links into the store, and a folder it can't read fails rather than passing.
 #
 # Usage: no-rule-hides-the-brio.sh SHARED_RULES_FOLDER SEAT_RULES_FOLDER
 set -euo pipefail
 export LC_ALL=C
 
-# Spaced or not, and an assignment final or not; a test of the mark, == or
-# !=, as the seat's camera watch makes, isn't one.
-relayed='CAMERA_RELAYED\}[[:space:]]*:?=[[:space:]]*"1"'
+# Spaced or not, and an assignment final, added or plain; a test of the
+# mark, == or !=, as the seat's camera watch makes, isn't one.
+relayed='CAMERA_RELAYED\}[[:space:]]*[:+]?=[[:space:]]*"1"'
 taken='TAG[[:space:]]*-=[[:space:]]*"uaccess"'
 untagged="091d.*${taken}"
 reversed="${taken}.*091d"
@@ -45,11 +47,14 @@ done
 written=$(mktemp -d)
 trap 'rm -rf "${written}"' EXIT
 echo 'KERNEL=="video*", TAG -= "uaccess", ENV{ID_MODEL_ID}=="091d"' >"${written}/reversed.rules"
-shown=$(hiding "${written}" "${reversed}")
-if [[ -z "${shown}" ]]; then
-  echo "the search for ${reversed} finds nothing even in a line written for it"
-  exit 1
-fi
+echo 'KERNEL=="video*", ENV{CAMERA_RELAYED} += "1"' >"${written}/added.rules"
+for pattern in "${reversed}" "${relayed}"; do
+  shown=$(hiding "${written}" "${pattern}")
+  if [[ -z "${shown}" ]]; then
+    echo "the search for ${pattern} finds nothing even in a line written for it"
+    exit 1
+  fi
+done
 
 seats=$(hiding "$2" "${relayed}" "${untagged}" "${reversed}")
 if [[ -n "${seats}" ]]; then

@@ -6,8 +6,9 @@
 # has to unplug it. It never fails the switch, which would send a machine
 # that updates itself back to the sharing. A machine importing ../mx-brio
 # drops this, choosing the relay.
-{ config, ... }:
 {
+  # udevadm comes on NixOS's default path for every unit, the running
+  # systemd's, which speaks to its own udevd.
   systemd.services.mx-brio-seat = {
     description = "Give the seat back an MX Brio a relay held";
     wantedBy = [ "multi-user.target" ];
@@ -15,8 +16,6 @@
       "systemd-udevd.service"
       "systemd-udev-trigger.service"
     ];
-    # The running systemd's udevadm, which speaks to its own udevd.
-    path = [ config.systemd.package ];
     script = builtins.readFile ./give-back.sh;
     serviceConfig = {
       Type = "oneshot";

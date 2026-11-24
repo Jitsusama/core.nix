@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Runs give-back.sh against a stand-in udevadm (./udevadm.sh) over a made-up
 # /dev and /sys, under set -e as its unit runs it, so its promises show
-# without a machine: it replays only the MX Brio, never another camera a
-# relay holds, even one of the Brio's maker or model; it bounds each wait on
-# udev inside the unit's limit, and ends well whether or not udev answers;
-# and it says the Brio was given back only when udev's record shows it was.
+# without a machine: it replays only the MX Brio's nodes, never another
+# camera a relay holds, even one of the Brio's maker or model; it bounds its
+# waits on udev inside the unit's limit, and ends well whether or not udev
+# answers; the add follows the removal even when the unit's timeout ends the
+# run; and it says the Brio was given back only when udev's record of every
+# node shows it was, warning with the way out otherwise.
 #
 # Usage: give-back-never-fails.sh GIVE_BACK_SCRIPT UNIT_TIMEOUT_SECONDS
 set -euo pipefail
@@ -48,31 +50,36 @@ ID_VENDOR_ID=1bcf
 ID_MODEL_ID=091d
 CAMERA_RELAYED=1
 CURRENT_TAGS=:seat:systemd:'
+# Both of the Brio's nodes replayed, each removed before either is added.
+both=$'remove video0\nremove video1\nadd video0\nadd video1'
 
-# A fresh machine: video0 the Brio with the first record, video2 and video4
-# the other cameras, and the second record what udev keeps of the Brio once
-# it's added again.
+# A fresh machine: video0 and video1 the Brio's capture and metadata nodes
+# with the first record, video2 and video4 the other cameras, and the second
+# record what udev keeps of the Brio's nodes once they're added again.
 machine() {
   rm -rf "$work/root"
   mkdir -p "$work/root"/{dev,sys/devices,facts,after}
   local node
-  for node in video0 video2 video4; do
+  for node in video0 video1 video2 video4; do
     touch "$work/root/dev/$node" "$work/root/sys/devices/$node"
   done
-  echo "$1" >"$work/root/facts/video0"
+  for node in video0 video1; do
+    echo "$1" >"$work/root/facts/$node"
+    echo "$2" >"$work/root/after/$node"
+  done
   echo "$kin" >"$work/root/facts/video2"
   echo "$namesake" >"$work/root/facts/video4"
-  echo "$2" >"$work/root/after/video0"
-  touch "$work/root/triggers"
+  touch "$work/root/triggers" "$work/root/settles"
 }
 
 # Runs the give-back as its unit does, under set -e, failing the test on
-# anything but a clean end or on anything the stand-in refused.
+# anything the stand-in refused, and on anything but a clean end unless
+# the run is to be ended from outside.
 give_back() {
   local ended=0
   MX_BRIO_ROOT="$work/root" PATH="$work/bin:$PATH" \
     bash -e "$script" "$work/root" >"$work/said" 2>"$work/warned" || ended=$?
-  if [ "$ended" != 0 ]; then
+  if [ "$ended" != 0 ] && [ "${2:-}" != ended ]; then
     echo "the give-back ended $ended in: $1; it warned: $(<"$work/warned")" >&2
     exit 1
   fi
@@ -110,7 +117,7 @@ replayed() {
 machine "$held" "$given"
 give_back "a Brio held for a relay"
 expect said "Gave the seat back the MX Brio."
-replayed $'remove video0\nadd video0'
+replayed "$both"
 
 machine "$held" "$given"
 touch "$work/root/fails"
@@ -119,7 +126,7 @@ expect warned "udev didn't settle the MX Brio's removal"
 expect warned "udev didn't settle the MX Brio's arrival"
 expect warned "still kept from the seat"
 refuse said "Gave the seat back"
-replayed $'remove video0\nadd video0'
+replayed "$both"
 
 machine "$held" "$held"
 touch "$work/root/hangs"
@@ -128,12 +135,26 @@ expect warned "udev didn't settle the MX Brio's removal"
 expect warned "udev didn't settle the MX Brio's arrival"
 expect warned "still kept from the seat"
 refuse said "Gave the seat back"
-replayed $'remove video0\nadd video0'
+replayed "$both"
+
+machine "$held" "$given"
+touch "$work/root/killed"
+give_back "a give-back its unit's timeout ends" ended
+refuse said "Gave the seat back"
+replayed "$both"
 
 machine "$held" "$held"
 give_back "a replay read under the old rules"
 expect warned "The MX Brio at $work/root/dev/video0 is still kept from the seat."
+expect warned "The MX Brio at $work/root/dev/video1 is still kept from the seat."
 expect warned "systemctl restart mx-brio-seat"
+refuse said "Gave the seat back"
+
+machine "$held" "$given"
+echo "$held" >"$work/root/after/video1"
+give_back "a Brio given back but for one node"
+expect warned "The MX Brio at $work/root/dev/video1 is still kept from the seat."
+refuse warned "The MX Brio at $work/root/dev/video0"
 refuse said "Gave the seat back"
 
 machine "$held" "$untagged"
@@ -142,10 +163,27 @@ expect warned "still kept from the seat"
 refuse said "Gave the seat back"
 
 machine "$held" "$given"
-touch "$work/root/after/video0.gone"
-give_back "a Brio whose record is lost in its arrival"
-expect warned "udev couldn't say how the MX Brio at $work/root/dev/video0 stands"
+touch "$work/root/adds-fail"
+give_back "a Brio removed and never added"
+expect warned "udev lost its record of the MX Brio at $work/root/dev/video0"
+expect warned "only replugging it gives it to the seat"
+refuse warned "systemctl restart mx-brio-seat"
 refuse said "Gave the seat back"
+
+machine "$held" "$given"
+touch "$work/root/after/video0.unplugged" "$work/root/after/video1.unplugged"
+give_back "a Brio unplugged as it's given back"
+expect said "The MX Brio was unplugged as it was given back"
+refuse warned "still kept from the seat"
+refuse said "Gave the seat back"
+replayed $'remove video0\nremove video1'
+
+machine "$held" "$given"
+rm "$work/root/facts/video0" "$work/root/facts/video1"
+give_back "a Brio udev can't say of"
+expect warned "udev couldn't say how the cameras at $work/root/dev/video0 $work/root/dev/video1"
+refuse said "No MX Brio is held"
+replayed ""
 
 machine "$given" "$given"
 give_back "a Brio the seat has"

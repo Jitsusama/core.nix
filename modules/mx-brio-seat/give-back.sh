@@ -35,9 +35,16 @@ the_brio() {
 
 nodes=()
 paths=()
+unread=()
 for node in "$root"/dev/video*; do
-  # A node can go as it's read, the Brio unplugged mid-loop; it's skipped.
-  facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
+  # A node can go as it's read, the Brio unplugged mid-loop, and is skipped;
+  # one still there that udev can't say of may be the Brio, held.
+  if ! facts=$(udevadm info --query=property "$node" 2>/dev/null); then
+    if [ -e "$node" ]; then
+      unread+=("$node")
+    fi
+    continue
+  fi
   the_brio "$facts" || continue
   grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || continue
   path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
@@ -45,8 +52,15 @@ for node in "$root"/dev/video*; do
   paths+=("$root/sys$path")
 done
 
+# <4> has the journal keep it as a warning.
+if [ "${#unread[@]}" -gt 0 ]; then
+  echo "<4>udev couldn't say how the cameras at ${unread[*]} stand, so an MX Brio" \
+    "among them may still be kept from the seat; journalctl -u systemd-udevd says why." >&2
+fi
 if [ "${#paths[@]}" = 0 ]; then
-  echo "No MX Brio is held for a relay, so the seat has it already."
+  if [ "${#unread[@]}" = 0 ]; then
+    echo "No MX Brio is held for a relay, so the seat has it already."
+  fi
   exit 0
 fi
 
@@ -72,7 +86,6 @@ settled() {
 
 echo "Giving the seat back the MX Brio's ${#paths[@]} nodes held for a relay."
 trap 'replay add || true' EXIT
-# <4> has the journal keep it as a warning.
 if ! replay remove || ! settled; then
   echo "<4>udev didn't settle the MX Brio's removal; adding it again." >&2
 fi
@@ -92,6 +105,15 @@ for node in "${nodes[@]}"; do
     else
       echo "The MX Brio was unplugged as it was given back; plugged in, it's the seat's."
     fi
+    continue
+  fi
+  # udev deletes a node's record as it's removed, keeping only the kernel's
+  # keys until an add, so a node no longer known as the Brio was removed and
+  # never added. A rerun can't find it again, and only a replug brings it back.
+  if ! the_brio "$facts"; then
+    given=no
+    echo "<4>udev lost its record of the MX Brio at $node in its removal, so only" \
+      "replugging it gives it to the seat; journalctl -u systemd-udevd says why." >&2
     continue
   fi
   if grep -qx 'CAMERA_RELAYED=1' <<<"$facts" ||
