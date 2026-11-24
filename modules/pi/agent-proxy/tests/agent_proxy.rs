@@ -251,8 +251,14 @@ impl Proxy {
         }
     }
 
+    /// A client whose answer, never coming, fails the test rather than
+    /// holding it.
     fn client(&self) -> UnixStream {
-        UnixStream::connect(&self.socket).expect("a client reaches the proxy")
+        let client = UnixStream::connect(&self.socket).expect("a client reaches the proxy");
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .expect("a read timeout is set");
+        client
     }
 
     fn signatures(&self) -> usize {
@@ -1420,6 +1426,180 @@ fn knows_no_os_login_host_while_gcloud_has_reached_none() {
         receive(&mut client).and_then(|answer| answer.first().copied()),
         Some(IDENTITIES_ANSWER),
         "and the proxy still answers"
+    );
+}
+
+/// The proxy run with `args` in a folder of its own, to its end within
+/// ten seconds: whether it succeeded, what it said, and whether it left
+/// an OS Login key's public half in the folder.
+fn ended(name: &str, args: &[&str]) -> (bool, String, bool) {
+    let dir = std::env::temp_dir().join(format!("pi-agent-proxy-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("a folder for the test");
+    fs::write(dir.join("hosts"), "").expect("the hosts file is written");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        .current_dir(&dir)
+        .args(args)
+        .stderr(Stdio::from(
+            fs::File::create(dir.join("said")).expect("a file for what it says"),
+        ))
+        .spawn()
+        .expect("the proxy starts");
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("the proxy is waited on") {
+            break status;
+        }
+        if started.elapsed() > Duration::from_secs(10) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = fs::remove_dir_all(&dir);
+            panic!("the proxy ran on where it should have ended");
+        }
+        // A short poll for a proxy that should end as it starts.
+        thread::sleep(Duration::from_millis(5));
+    };
+    let said = fs::read_to_string(dir.join("said")).unwrap_or_default();
+    let key = dir.join("os-login.pub").exists();
+    let _ = fs::remove_dir_all(&dir);
+    (status.success(), said, key)
+}
+
+#[test]
+fn refuses_one_os_login_flag_without_the_other() {
+    let (ok, said, _) = ended(
+        "os-login-folder-alone",
+        &[
+            "--hosts",
+            "hosts",
+            "--upstream",
+            "up.sock",
+            "--os-login",
+            ".",
+        ],
+    );
+    assert!(!ok, "--os-login alone is refused");
+    assert!(said.contains("go together"), "and says why: {said:?}");
+    let (ok, said, _) = ended(
+        "os-login-hosts-alone",
+        &[
+            "--hosts",
+            "hosts",
+            "--upstream",
+            "up.sock",
+            "--os-login-hosts",
+            "known",
+        ],
+    );
+    assert!(!ok, "--os-login-hosts alone is refused");
+    assert!(said.contains("go together"), "and says why: {said:?}");
+}
+
+#[test]
+fn fails_when_asked_for_an_os_login_key_alone_and_it_cant_make_one() {
+    let (ok, said, _) = ended(
+        "os-login-alone",
+        &[
+            "--hosts",
+            "hosts",
+            "--socket",
+            "proxy.sock",
+            "--os-login",
+            "absent",
+            "--os-login-hosts",
+            "known",
+        ],
+    );
+    assert!(!ok, "a proxy with nothing else to do fails without its key");
+    assert!(
+        said.contains("couldn't make its OS Login key"),
+        "and says why: {said:?}"
+    );
+}
+
+#[test]
+fn makes_no_os_login_key_when_it_cant_listen() {
+    let (ok, _, key) = ended(
+        "os-login-no-socket",
+        &[
+            "--hosts",
+            "hosts",
+            "--upstream",
+            "up.sock",
+            "--socket",
+            "absent/proxy.sock",
+            "--os-login",
+            ".",
+            "--os-login-hosts",
+            "known",
+        ],
+    );
+    assert!(!ok, "a proxy with no socket ends");
+    assert!(!key, "having made no key a profile could be given");
+}
+
+#[test]
+fn cant_be_read_by_another_process_of_the_account() {
+    let proxy = Proxy::os_login("undumpable", "", "");
+    let mem = format!("/proc/{}/mem", proxy.child.id());
+
+    assert!(
+        fs::File::open(&mem).is_err(),
+        "its memory, holding the OS Login key, can't be opened by the account"
+    );
+}
+
+#[test]
+fn takes_away_a_previous_key_when_it_cant_make_its_own() {
+    let (allowed, _) = host(1);
+    let dir = std::env::temp_dir().join(format!("pi-agent-proxy-stale-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).expect("a folder for the test");
+    let upstream = dir.join("upstream.sock");
+    fake_agent(&upstream, Arc::new(AtomicUsize::new(0)));
+    fs::write(dir.join("hosts"), hosts_file(&[&allowed])).expect("the hosts file is written");
+    // A previous proxy's public half, and a folder where the new one's
+    // can't be written beside it, as a full runtime folder refuses it.
+    fs::write(dir.join("os-login.pub"), "ssh-ed25519 AAAA an old key\n")
+        .expect("the old key is written");
+    fs::create_dir(dir.join("os-login.pub.new")).expect("the new key's place is taken");
+    let socket = dir.join("proxy.sock");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pi-agent-proxy"))
+        .arg("--hosts")
+        .arg(dir.join("hosts"))
+        .arg("--upstream")
+        .arg(&upstream)
+        .arg("--socket")
+        .arg(&socket)
+        .arg("--os-login")
+        .arg(&dir)
+        .arg("--os-login-hosts")
+        .arg(dir.join("known_hosts"))
+        .stderr(Stdio::from(
+            fs::File::create(dir.join("said")).expect("a file for what it says"),
+        ))
+        .spawn()
+        .expect("the proxy starts");
+    let started = Instant::now();
+    while !fs::read_to_string(dir.join("said"))
+        .unwrap_or_default()
+        .contains("so it signs no OS Login logins")
+    {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the proxy never said it goes on without its key"
+        );
+        // A short poll for the line the proxy says as it starts.
+        thread::sleep(Duration::from_millis(5));
+    }
+    let left = dir.join("os-login.pub").exists();
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::remove_dir_all(&dir);
+
+    assert!(
+        !left,
+        "the previous proxy's key is taken away, so ssh offers no key nobody holds"
     );
 }
 

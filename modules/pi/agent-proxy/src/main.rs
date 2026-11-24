@@ -194,14 +194,19 @@ fn undumpable() {
 
 /// The OS Login key, made in `folder` for the instances `known` names.
 /// A key it can't make costs only the OS Login logins: the agents' hosts
-/// and the builders' logins it signs too go on.
+/// and the builders' logins it signs too go on, and a previous proxy's
+/// public half is taken away, so ssh offers no key nobody holds.
 ///
 /// # Errors
 ///
 /// Failed, 1, when the key can't be made and, `alone`, nothing else was
 /// asked for.
 fn os_login(folder: &Path, known: PathBuf, alone: bool) -> Result<Option<OsLogin>, Failure> {
-    match OsLogin::start(folder, known) {
+    let made = OsLogin::start(folder, known);
+    if made.is_err() {
+        let _ = std::fs::remove_file(folder.join(os_login::PUBLIC_FILE));
+    }
+    match made {
         Ok(os_login) => Ok(Some(os_login)),
         Err(error) if alone => Err(Failure::new(
             Exit::Failed,

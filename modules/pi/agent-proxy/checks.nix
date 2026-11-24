@@ -125,7 +125,7 @@
       offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
       wired =
         holds "pi-agent-proxy-reaches-os-login-machines-wired"
-          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written, renewed each quarter hour by the wall clock within a bound, retried on failure, or removed as it stops, is registered or renewed while the proxy isn't running, may dump its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written and as the desktop starts, renewed each quarter hour by the wall clock within a bound, retried on failure without ever giving up, or removed as it stops, its renewal is ordered after the proxy, which makes a cycle at login, is registered or renewed while the proxy isn't running, may dump its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
           (
             lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
             && lib.toList proxy.Install.WantedBy == [ "default.target" ]
@@ -139,14 +139,17 @@
             && renewer.Timer.OnCalendar == "*:0/15"
             && renewer.Timer.Persistent
             && renewer.Unit.BindsTo == onProxy
-            && renewer.Unit.After == onProxy
+            && !(renewer.Unit ? After)
             && renewer.Install.WantedBy == onProxy
             && renewing.Unit.Requisite == onProxy
             && renewing.Unit.After == onProxy
             && renewing.Unit.PartOf == onProxy
-            && renewing.Service.TimeoutStartSec == "3min"
+            && renewing.Service.TimeoutStartSec == "4min"
             && renewing.Service.Restart == "on-failure"
             && renewing.Service.RestartSec == "30s"
+            && renewing.Service.RestartMaxDelaySec == "15min"
+            && renewing.Unit.StartLimitIntervalSec == 0
+            && renewing.Install.WantedBy == [ "graphical-session.target" ]
             && proxy.Service.LimitCORE == 0
             && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub\nHost *\n" machine.config.programs.ssh.extraConfig
             && !(lib.hasInfix "--os-login" offStart)
@@ -163,15 +166,7 @@
       }
       ''
         cat ${wired}
-        # As ssh itself reads the block: the key for compute.* hosts, and
-        # not for another.
-        offered=$(ssh -G -F "$sshConfigPath" compute.1)
-        grep -qx 'identityfile /run/user/%i/pi-agent/os-login.pub' <<<"$offered"
-        elsewhere=$(ssh -G -F "$sshConfigPath" example.org)
-        if grep -q os-login <<<"$elsewhere"; then
-          echo "the machine's ssh offers the OS Login key past compute.* hosts" >&2
-          exit 1
-        fi
+        $BASH ${./ssh-offer-test.sh} "$sshConfigPath"
         $BASH ${./os-login-test.sh} ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
         touch $out
       '';

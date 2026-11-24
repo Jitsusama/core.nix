@@ -4845,11 +4845,13 @@
   pi-agent-proxy-reaches-os-login-machines = ''
     where pi's SSH agent proxy runs, by default, it makes a key for the OS Login hosts gcloud
     knows, started with the session and never in a core dump; the account's gcloud registers each
-    key it writes for twelve hours, renews it each quarter hour by the wall clock, every call
-    bounded, tries a failed registration again half a minute on, and removes it as the proxy
-    stops, keeping the file; only while the proxy runs is it registered or renewed; no gcloud, or
-    no gcloud login, is warned of and passed over; the machine's ssh offers it to compute.* hosts
-    alone; and with no known-hosts file named, there's no such key
+    key it writes, once the proxy lists it, for twelve hours, and again as the desktop starts,
+    renews it each quarter hour by the wall clock, every call bounded and a removal's tighter,
+    tries a failed registration again from half a minute on, never giving up, and removes it as
+    the proxy stops, keeping the file; only while the proxy runs is it registered or renewed, and
+    never a key in the file the proxy doesn't hold; no gcloud, no gcloud login or a gcloud that
+    can't say is warned of and passed over; the machine's ssh offers it to compute.* hosts alone;
+    and with no known-hosts file named, there's no such key
   '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
@@ -4857,10 +4859,12 @@
     a commit, another session or key, or a forwarded agent, nothing reaches the agent behind; it
     never adds, removes or locks keys, and answers at most 64 clients at once; it signs with the
     builders' key only nix-offload's login to a builder lent now, and no agent's key for one; it
-    signs with a key made in memory only a login to an OS Login host gcloud's known hosts name and
-    neither told nor lent, and no other key for one, reading those hosts only from a plain file
-    and its first 8 MiB, making the key only once it's listening, and going on without it, saying
-    so, when it can't be made;
+    signs with a key made in memory only a login to a session an OS Login host signed, one
+    gcloud's known hosts name and neither told nor lent, and no other key for one, looking at
+    those hosts only in a plain file, a line at a time, and its first 8 MiB, making the key only
+    once it's listening, keeping its memory from the account's other processes, and going on
+    without it, saying so and taking a previous key's file away, when it can't be made, but
+    failing when nothing else was asked of it, and refusing one OS Login flag without the other;
     and it says each login signed and each refusal in one line of a fixed shape, its host and why
     as a word
   '';

@@ -10,8 +10,9 @@
 //! from the kernel's randomness, and writes out only its public half
 //! (`--os-login`, the folder its socket is in), where the account's own
 //! service puts it in the person's profile for a few hours at a time
-//! (agent-proxy/os-login.sh) and ssh finds it to offer (modules/pi
-//! nixos.nix). The private half never leaves the proxy, and goes with it.
+//! (agent-proxy/os-login.sh) and ssh finds it to offer
+//! (agent-proxy/nixos.nix). The private half never leaves the proxy, and
+//! goes with it.
 //!
 //! It signs with that key only a login to a session with a host the
 //! known-hosts file gcloud keeps names as an instance, `compute.<id>`
@@ -24,7 +25,7 @@
 //! sign for it as before, and this key doesn't.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write as _};
+use std::io::{self, BufRead as _, BufReader, Read, Write as _};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -72,7 +73,13 @@ impl OsLogin {
         let mut seed = [0; 32];
         File::open("/dev/urandom")?.read_exact(&mut seed)?;
         let keypair = Ed25519Keypair::from_seed(&seed);
-        seed.fill(0);
+        // Written through volatile stores, which the compiler can't drop
+        // as it may a plain fill of an array never read again.
+        for byte in &mut seed {
+            // SAFETY: each pointer is to a byte of this array, live and
+            // aligned for the write.
+            unsafe { std::ptr::write_volatile(byte, 0) };
+        }
         let made = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |since| since.as_secs());
@@ -103,26 +110,35 @@ impl OsLogin {
     /// known-hosts file names. A file that can't be read, as on a machine
     /// whose gcloud has reached none, names none, and so does anything
     /// but a plain file, which could hold the binding open; past
-    /// [`MOST_KNOWN`], only what comes before it is read.
+    /// [`MOST_KNOWN`], only what comes before it is read. It is read a
+    /// line at a time, so a large file costs no more memory than a line.
+    ///
+    /// It chooses which key signs, not who may be reached: gcloud adds
+    /// every instance it reaches, and what keeps a login to its host is
+    /// the session that host signed (src/bind.rs).
     pub fn knows(&self, host: &KeyData) -> bool {
         let Ok(wanted) = PublicKey::from(host.clone()).to_openssh() else {
             return false;
         };
-        let mut text = Vec::new();
-        let read = OpenOptions::new()
+        // Looked at before it's opened, so no device or fifo is opened
+        // at all; the open itself still never waits on a writer.
+        if !fs::metadata(&self.known).is_ok_and(|known| known.is_file()) {
+            return false;
+        }
+        let Ok(file) = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NONBLOCK)
             .open(&self.known)
-            .and_then(|file| {
-                if !file.metadata()?.is_file() {
-                    return Err(io::Error::other("not a plain file"));
-                }
-                file.take(MOST_KNOWN).read_to_end(&mut text)
-            });
-        read.is_ok()
-            && String::from_utf8_lossy(&text)
-                .lines()
-                .any(|line| names_instance(line, &wanted))
+        else {
+            return false;
+        };
+        if !file.metadata().is_ok_and(|known| known.is_file()) {
+            return false;
+        }
+        BufReader::new(file.take(MOST_KNOWN))
+            .split(b'\n')
+            .map_while(Result::ok)
+            .any(|line| names_instance(&String::from_utf8_lossy(&line), &wanted))
     }
 
     /// The key's signature over `data`, in the agent protocol's shape.
