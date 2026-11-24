@@ -21,9 +21,10 @@
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      # A switch waits on it, and udevadm's settling has no bound of its
-      # own; a replay takes seconds, so a minute is a wedged udev.
-      TimeoutStartSec = "1min";
+      # A switch waits on it. give-back.sh bounds each of its two waits on
+      # udev at 25 s, so it ends well inside this, and a timeout, which
+      # would fail the switch, means the script itself hung.
+      TimeoutStartSec = "2min";
     };
   };
 }

@@ -12,14 +12,15 @@ let
   # A graphical machine that shares the Brio, whose rules the search below
   # must find, so it's shown to catch the rule it's there for.
   shared = graphical.extendModules { modules = [ self.nixosModules.mx-brio ]; };
+  run = pkgs.runCommandLocal;
 in
 onLinux {
   # Until the relay gives a picture, a graphical machine hands the MX Brio to
   # the seat as any camera: no relay holds it, no rule among its udev rules
   # marks it relayed or takes the seat's tag off it, as the sharing's rule
-  # does (tests/no-rule-hides-the-brio.sh), and every boot and switch starts
-  # the give-back with udev's tool to hand, which gives back a Brio a relay
-  # held.
+  # does (tests/no-rule-hides-the-brio.sh), and every boot, and a switch
+  # bringing it in, starts the give-back with udev's tool to hand, which
+  # gives back a Brio a relay held.
   the-mx-brio-is-the-seats =
     let
       inherit (graphical.config) environment systemd;
@@ -36,8 +37,17 @@ onLinux {
       search = ./tests/no-rule-hides-the-brio.sh;
     in
     assert lib.assertMsg (wrong == [ ]) (lib.concatStringsSep "; " wrong);
-    pkgs.runCommandLocal "the-mx-brio-is-the-seats" { } ''
+    run "the-mx-brio-is-the-seats" { } ''
       bash ${search} ${rules shared} ${environment.etc."udev/rules.d".source}
       touch $out
     '';
+
+  # The give-back replays the Brio alone, never another camera a relay
+  # holds, ends well whether udev answers, refuses or never settles, and
+  # says it gave the Brio back only when udev's record shows it did, run
+  # against a stand-in udevadm (tests/give-back-never-fails.sh).
+  the-mx-brio-give-back-never-fails = run "the-mx-brio-give-back-never-fails" { } ''
+    bash ${./tests}/give-back-never-fails.sh ${./give-back.sh}
+    touch $out
+  '';
 }

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# A stand-in udevadm for give-back-never-fails.sh, over the made-up machine
+# at MX_BRIO_ROOT. It reads each node's record from facts/, writes each
+# replay to triggers, takes a node's record from after/ once it's added, and
+# fails every trigger, or every settle, when a file named fails, or hangs,
+# says to.
+set -euo pipefail
+root=${MX_BRIO_ROOT:?}
+case "$1" in
+info)
+  node=${3##*/}
+  case "$2" in
+  --query=property) cat "${root}/facts/${node}" ;;
+  --query=path) echo "/devices/${node}" ;;
+  *) exit 2 ;;
+  esac
+  ;;
+trigger)
+  [[ ! -e "${root}/fails" ]] || exit 1
+  action=${2#--action=}
+  shift 2
+  for path in "$@"; do
+    node=${path##*/}
+    echo "${action} ${node}" >>"${root}/triggers"
+    if [[ "${action}" = add && -e "${root}/after/${node}" ]]; then
+      cp "${root}/after/${node}" "${root}/facts/${node}"
+    fi
+  done
+  ;;
+settle) [[ ! -e "${root}/hangs" ]] || exit 1 ;;
+*) exit 2 ;;
+esac

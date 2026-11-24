@@ -5156,9 +5156,15 @@
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
-    or taking the Brio's seat tag off, as a search shown to find the sharing's rule says, and
-    starts at every boot and switch, with udevadm to hand, the give-back of a Brio a relay held,
-    so the seat opens the Brio itself while its relay gives no picture
+    or taking the Brio's seat tag off, as a search with each pattern shown to find its line says,
+    and starts at every boot, and at a switch bringing it in, with udevadm to hand, the give-back
+    of a Brio a relay held, so the seat opens the Brio itself while its relay gives no picture
+  '';
+  the-mx-brio-give-back-never-fails = ''
+    the MX Brio's give-back, run against a stand-in udevadm, replays the Brio and never another
+    camera a relay holds, ends well when udev refuses a replay or never settles, and says it gave
+    the Brio back only when udev's record shows it tagged for the seat and unmarked, warning with
+    the way out otherwise
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
@@ -6444,9 +6450,8 @@
   vm-a-switch-takes-a-plugged-in-brio = ''
     a switch that brings in the MX Brio's sharing over a Brio already plugged in and handed to the
     seat names it for its relay, starts the relay, and takes it back from the seat, with nobody
-    plugging it in again; the sharing drops the seat's give-back, and a switch back to the seat's
-    machine gives the seat the Brio again, tagged for it, unmarked and watched as its own, with
-    another camera left alone
+    plugging it in again; and a switch back to the seat's machine gives the seat the Brio again,
+    tagged for it, unmarked and watched as its own, with nobody replugging it
   '';
   vm-lid-shuts-with-the-hinge = ''
     logind hears lid-hinge's switch and not the lid's own: a lid shut with the hinge coming down

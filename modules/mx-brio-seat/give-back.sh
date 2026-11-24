@@ -14,7 +14,15 @@
 # leaves a camera nobody can open. The run never fails, even when a replay
 # does: a machine that updates itself goes back a generation when a unit
 # fails, and going back hides the Brio again. It warns instead, naming the
-# way out.
+# way out, and bounds each wait on udev well inside the unit's own limit,
+# since the unit timing out fails it as surely as an error.
+#
+# MX_BRIO_ROOT, empty on a machine, roots /dev and /sys for its tests.
+
+root=${MX_BRIO_ROOT:-}
+# How long udev may take to settle each replay, twice over within the
+# unit's TimeoutStartSec.
+settling=25
 
 # Whether a node's facts are the Brio's: the same match as ../mx-brio's rule
 # and its take-hold.sh; change all three together.
@@ -26,14 +34,14 @@ the_brio() {
 
 nodes=()
 paths=()
-for node in /dev/video*; do
+for node in "$root"/dev/video*; do
   # A node can go as it's read, the Brio unplugged mid-loop; it's skipped.
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
   the_brio "$facts" || continue
   grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || continue
   path=$(udevadm info --query=path "$node" 2>/dev/null) || continue
   nodes+=("$node")
-  paths+=("/sys$path")
+  paths+=("$root/sys$path")
 done
 
 if [ "${#paths[@]}" = 0 ]; then
@@ -52,17 +60,24 @@ replay() {
     fi
   done
   if [ "${#there[@]}" -gt 0 ]; then
-    udevadm trigger "$@" --action="$action" "${there[@]}"
+    udevadm trigger --action="$action" "${there[@]}"
   fi
+}
+
+# Waits for udev to finish what a replay queued, for at most $settling s.
+settled() {
+  udevadm settle --timeout="$settling"
 }
 
 echo "Giving the seat back the MX Brio's ${#paths[@]} nodes held for a relay."
 trap 'replay add || true' EXIT
 # <4> has the journal keep it as a warning.
-replay remove --settle ||
+if ! replay remove || ! settled; then
   echo "<4>udev didn't settle the MX Brio's removal; adding it again." >&2
-replay add --settle ||
+fi
+if ! replay add || ! settled; then
   echo "<4>udev didn't settle the MX Brio's arrival." >&2
+fi
 trap - EXIT
 
 # udev's record of each node as the add left it, so a replay read under the
@@ -74,7 +89,8 @@ for node in "${nodes[@]}"; do
     ! grep -q '^CURRENT_TAGS=.*:uaccess:' <<<"$facts"; then
     given=no
     echo "<4>The MX Brio at $node is still kept from the seat." \
-      "Replugging it replays its arrival; journalctl -u systemd-udevd says why it wasn't." >&2
+      "systemctl restart mx-brio-seat, or replugging it, replays its arrival;" \
+      "journalctl -u systemd-udevd says why it wasn't." >&2
   fi
 done
 if [ "$given" = yes ]; then
