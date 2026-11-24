@@ -1985,16 +1985,23 @@ Provider {
     }
     // Where Start New Work can begin, as the realm's node last listed them
     // (the agents daemon's places.rs), asked again each time the launcher
-    // opens, so a zone or checkout made since is there by the next; none
-    // until it answers, or where it can't, which leaves the quests' folders,
-    // why journalled once as each new why comes rather than at every opening.
+    // opens, so a zone or checkout made since is there by the next, and read
+    // once as each list comes (Wheres.listable). None until it first
+    // answers, which leaves the quests' folders; where it can't, the last
+    // list stays, why journalled once as each new why comes rather than at
+    // every opening. An answer to an earlier ask, come after a later one's,
+    // is passed over.
     property var startPlaces: []
     property string startPlacesUnlisted: ""
+    property int startPlacesAsked: 0
     function askPlaces() {
+        const asked = ++provider.startPlacesAsked;
         rowsKind?.ask({ ask: "places" }, answer => {
+            if (asked !== provider.startPlacesAsked)
+                return;
             const why = String(answer?.error?.message ?? "");
             if (Array.isArray(answer?.places)) {
-                provider.startPlaces = answer.places;
+                provider.startPlaces = Wheres.listable(answer.places);
                 provider.startPlacesUnlisted = "";
             } else if (why !== "" && why !== provider.startPlacesUnlisted) {
                 provider.startPlacesUnlisted = why;

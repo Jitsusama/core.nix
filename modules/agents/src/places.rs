@@ -1,5 +1,5 @@
 //! Where Start New Work can begin, as the launcher asks for it
-//! (launcher/Places.js): the places the realm's node says work can begin
+//! (launcher/Wheres.js): the places the realm's node says work can begin
 //! in, a big repository's zones by name among them, asked as the node's `Places`
 //! (mycelium's PROTOCOL.md) on the line `mycelium places` sends, so the
 //! launcher's In rows find a zone such as //system/pond by name (Joel,
@@ -25,7 +25,7 @@ const PATIENCE: Duration = Duration::from_secs(5);
 /// The places the node at `node` lists, `{"places": [...]}` in its own
 /// fields, or an error saying why there are none: `asker` says whether
 /// the shell asked, and `node` is the realm's, none where this machine
-/// runs no node. Each place is read again where it's drawn (Places.js).
+/// runs no node. Each place is read again where it's drawn (Wheres.js).
 pub fn answer(asker: Result<(), String>, node: Option<&Path>) -> Value {
     let Some(node) = node else {
         return unlisted("this machine runs no node to list places on");

@@ -37,6 +37,17 @@ QtObject {
         Expect.same("two places at one folder are listed once, the first",
             Wheres.wheres([], [harness, Object.assign({}, harness, { name: "harness" })])
                 .map(one => one.name), ["~/src/harness"]);
+        Expect.same("a quest's folder that is a zone is started by the zone's name",
+            Wheres.wheres([{ folder: unchecked.folder, name: "~/big/reef" }], [unchecked]),
+            [{ folder: unchecked.folder, name: "~/big/reef", start: "//system/reef" }]);
+        Expect.same("what the node calls it decides, not how its name opens",
+            Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
+                Object.assign({}, harness, { name: "harness", kind: "zone" })])
+                .map(one => one.start), [pond.folder, "harness"]);
+        const otherPond = Object.assign({}, pond, { folder: "/home/j/big2/src/areas/system/pond" });
+        Expect.same("a zone two checkouts share is started by each one's folder",
+            Wheres.wheres([], [pond, otherPond]).map(one => one.start),
+            [pond.folder, otherPond.folder]);
 
         // The node's words are drawn, so only plain ones are.
         for (const [why, place] of [
@@ -49,12 +60,13 @@ QtObject {
             ["a name that isn't words", { folder: "/home/j/a", name: 7 }],
             ["none at all", null]
         ]) {
-            Expect.same(`${why} is left out`, Wheres.wheres([], [place]), []);
+            Expect.same(`${why} is left out`, Wheres.listable([place]), []);
         }
         for (const [why, places] of [["no list", null], ["not a list", { folder: "/a" }],
             ["nothing said", undefined]]) {
             Expect.same(`${why} from the node lists the quests' folders alone`,
-                Wheres.wheres(quests, places).map(one => one.name), ["~/src/core"]);
+                Wheres.wheres(quests, Wheres.listable(places)).map(one => one.name),
+                ["~/src/core"]);
         }
         Expect.same("no quests' folders list the node's alone",
             Wheres.wheres(null, [harness]).map(one => one.name), ["~/src/harness"]);
@@ -62,7 +74,7 @@ QtObject {
         // A node naming thousands can't slow each letter typed.
         const many = Array.from({ length: 2005 },
             (_, at) => ({ folder: `/home/j/src/r${at}`, name: `~/src/r${at}` }));
-        const listed = Wheres.wheres(quests, many);
+        const listed = Wheres.wheres(quests, Wheres.listable(many));
         Expect.same("at most 2000 of the node's are listed, beside the quests'",
             [listed.length, listed[listed.length - 1].name], [2001, "~/src/r1999"]);
     }
