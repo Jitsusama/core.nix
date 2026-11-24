@@ -485,6 +485,26 @@ ShellRoot {
             Niri.spawns.length === untakenFrom + 2
             && Niri.spawns.slice(untakenFrom).every(one => one.includes("pi-hosted.s-untaken")),
             `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(untakenFrom).join("\n")}`);
+        // One asked for by itself into a kept place, unfocused, as
+        // viewKept asks, then pressed for while it comes: the press is
+        // said opening, and the viewer takes the focus once it's listed,
+        // since Joel asked for it.
+        const pressed = Object.assign({}, hosted, { address: "PRESSED",
+            attach: hosted.attach.slice(0, -1).concat(["s-pressed"]),
+            presence: Object.assign({}, hosted.presence, { session: "s-pressed" }) });
+        Sessions.viewWith(pressed.attach, "pi-hosted.s-pressed", { workspace: 5, column: 1 },
+            "Pressed");
+        Sessions.goTo(pressed);
+        const heldPress = root.unhosted === "PRESSED" && root.unhostedWhy === "opening";
+        const came = { id: 96, pid: 960, opened: "pi-hosted.s-pressed" };
+        const uncome = Niri.windows;
+        Niri.windows = Object.assign({}, uncome, { "96": came });
+        Niri.acted = null;
+        Niri.windowOpenedOrChanged(came);
+        Niri.windows = uncome;
+        expect("one pressed for while it comes takes the focus as it's listed",
+            heldPress && JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":96}}',
+            `${heldPress} ${JSON.stringify(Niri.acted)}`);
         holdsAlone();
     }
 
