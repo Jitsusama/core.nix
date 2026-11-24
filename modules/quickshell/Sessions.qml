@@ -2573,7 +2573,8 @@ Singleton {
     // A window Go To opens goes where the session would reopen (goesTo),
     // never on whichever workspace Joel is on.
     function goTo(session) {
-        if (session.presence?.hosted && !root.listedNow(session.window)) {
+        if (session.presence?.hosted
+            && !(root.listedNow(session.window) && root.drawnHere(session.window))) {
             // Its viewer niri lists is raised, never a second
             // (listedNamed); one whose window niri no longer lists is
             // viewed afresh. Each refused is said before any place is
@@ -2869,8 +2870,23 @@ Singleton {
     // Before then, and for a kitty from before its unit wrote one, the app
     // id alone says.
     function drawnHere(window) {
-        return sessionsKittyPid === "" || String(window?.pid) === sessionsKittyPid;
+        const pid = String(window?.pid);
+        // The file is read again before one is refused, as a kitty started
+        // again under a new pid makes a folder its watch can miss.
+        if (sessionsKittyPid === "" || pid === sessionsKittyPid || readKittyPid() === pid)
+            return true;
+        const id = String(window?.id);
+        if (!(id in refusedViewers)) {
+            refusedViewers[id] = true;
+            console.info(`sessions: window ${id} isn't taken as a viewer: pid ${pid} drew it, `
+                + `not the sessions kitty's ${sessionsKittyPid}`);
+        }
+        return false;
     }
+    // Each window drawnHere refused, by niri's id, journalled once, so a
+    // forged viewer or a pid read wrong is seen rather than a viewer that
+    // never came.
+    property var refusedViewers: ({})
     // Whether niri's list says which windows are open: while it lists
     // any, being the windows daemon's own, or while niri's own stream
     // stands in for a daemon that isn't answering, which leaves the index
@@ -3272,16 +3288,24 @@ Singleton {
         blockLoading: true
         printErrors: false
         watchChanges: true
-        onFileChanged: reload()
+        onFileChanged: root.readKittyPid()
+        Component.onCompleted: root.readKittyPid()
     }
-    // Cases set it, as no kitty writes its pid where they run.
-    property string sessionsKittyPid: {
-        const read = sessionsKittyFile.text().trim();
-        return /^\d+$/.test(read) ? read : "";
-    }
+    // The pid last read, kept while the file says none, as while its unit
+    // starts again and makes its folder anew, so another program's window
+    // isn't taken for a viewer meanwhile: only a kitty that never wrote
+    // one is judged by its windows' app ids alone (drawnHere).
+    property string kittyPidRead: ""
+    readonly property string sessionsKittyPid: kittyPidRead
+    // Reads the pid file again, giving the pid it says now, or "" for
+    // none, digits alone being a pid.
     function readKittyPid() {
         sessionsKittyFile.reload();
-        return "";
+        const read = sessionsKittyFile.text().trim();
+        const pid = /^\d+$/.test(read) ? read : "";
+        if (pid !== "")
+            kittyPidRead = pid;
+        return pid;
     }
     // The pid of the kitty listening on a socket, as niri lists the windows
     // it draws by, or undefined where the socket says none.
@@ -3401,7 +3425,7 @@ Singleton {
         // kitty's windows changing, the sessions' kitty started again among
         // them.
         if (came) {
-            sessionsKittyFile.reload();
+            readKittyPid();
             relive();
             ask();
         }
@@ -3430,11 +3454,15 @@ Singleton {
         const named = record.opened || viewerOf(record.presence);
         const kitty = record.kitty;
         const pid = kitty ? kittyPid(kitty.socket) : undefined;
+        // A viewer's window is one the sessions' kitty drew, never another
+        // program's of the same app id (drawnHere).
+        const ours = window => !String(named).startsWith("pi-hosted.") || drawnHere(window);
         if (named !== "" && opened)
-            return SessionWindows.named(opened[String(named)] ?? [], pid);
+            return SessionWindows.named((opened[String(named)] ?? []).filter(ours), pid);
         if (named !== "")
             return SessionWindows.named(Object.values(windowsKept)
-                .filter(window => window.opened === named).sort((a, b) => a.id - b.id), pid);
+                .filter(window => window.opened === named && ours(window))
+                .sort((a, b) => a.id - b.id), pid);
         const windows = pid ? kitties[pid] ?? [] : [];
         if (windows.length === 1)
             return windows[0];
