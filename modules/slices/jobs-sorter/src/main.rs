@@ -4718,6 +4718,7 @@ mod tests {
             asked: floor,
             signs,
             own,
+            own_hard: 0,
             writeback: true,
         }
     }
@@ -4799,7 +4800,7 @@ mod tests {
         let last = own + 2752 * MIB;
         let mut set = ranked_in(&slice, unit, own, last, viewed).rank;
         set.floor = last;
-        hosts.done(unit, set);
+        hosts.done(unit, set, 0);
         let mut ranked = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
         fit_floors(
             &mut ranked,
