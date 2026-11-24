@@ -18,6 +18,7 @@ use serde::Deserialize;
 use crate::mesh::{Mesh, Presence};
 use crate::revive::{self, Gate, Held, Holder, Hosting, Memory, Seen, Verdict};
 use crate::watch::down;
+use crate::write_whole;
 
 /// What reviving is told: whom to watch and tell, and how a session is
 /// started, as the words a login shell runs, before `--session <id>`.
@@ -108,7 +109,7 @@ pub fn revive(
         let line = match revive::gate(&memory, &s.session, now) {
             Gate::Go => {
                 revive::started(&mut memory, &s.session, now);
-                fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
+                write_whole(&path, &serde_json::to_string_pretty(&memory)?)?;
                 let closed = close_dead(&s.session, &hold, node.as_deref().unwrap_or_default());
                 let mut line = start(
                     reviving,
@@ -139,7 +140,7 @@ pub fn revive(
         };
         said.push(line);
     }
-    fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
+    write_whole(&path, &serde_json::to_string_pretty(&memory)?)?;
     // What was done this look is said in the journal whether or not its
     // peers could be told.
     let watcher = reviving.watcher.as_deref();
