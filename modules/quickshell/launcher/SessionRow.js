@@ -30,7 +30,8 @@ function rankOf(row) {
 // order every kind keeps (docs/design.md, the order of actions): what
 // leaves it as it is before what changes it, and what ends it last. Every
 // session on the mesh reads its steer inbox, so each can be talked to,
-// paused, resumed and stopped; one with no window offers no Go To, and
+// paused, resumed and stopped; one with no window to go to, nor a holder
+// here to attach one to (Agents.qml's windowedOf), offers no Go To, and
 // only one under way can be stopped. One parked has no process to pause
 // or stop and no window known to go to: it can be woken, or talked to,
 // which wakes it too. Only one here can be closed, last, since the
