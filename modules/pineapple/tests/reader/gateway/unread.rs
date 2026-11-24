@@ -6,7 +6,7 @@
 //! that keeps cutting is asked again only so often, and its row is what
 //! lets a gap be read on.
 
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::{Value, json};
 
@@ -98,8 +98,7 @@ fn a_gap_whose_row_cant_be_written_is_judged_but_never_read_on() {
         |own| std::fs::create_dir_all(own.join("waiting.json")).expect("in its way"),
     );
     assert!(
-        came.journal
-            .contains("couldn't tell Joel in For You whether Slack is heard")
+        came.journal.contains("waiting.json whether Slack is heard")
             && !came.journal.contains("reads on"),
         "a row that can't be written tells Joel nothing, so the gap is never read on: {}",
         came.journal
@@ -114,7 +113,7 @@ fn a_gap_whose_row_cant_be_written_is_judged_but_never_read_on() {
 }
 
 #[test]
-fn a_row_of_what_was_never_read_that_cant_be_written_is_written_again() {
+fn a_gap_whose_row_of_what_was_never_read_cant_be_written_is_never_read_on() {
     static TAGS: AtomicUsize = AtomicUsize::new(0);
     let came = hearing_in(
         |tool, asked, now| {
@@ -126,9 +125,9 @@ fn a_row_of_what_was_never_read_that_cant_be_written_is_written_again() {
                 a_gap(&TAGS, asked, now)
             }
         },
-        // The read on comes by the 32nd search, as in the case that reads
-        // on; a round is at most seven, so two more rounds end by the 50th
-        // and the row is tried in each.
+        // The read on would come by the 32nd search, as in the case that
+        // reads on; a round is at most seven, so two more rounds end by the
+        // 50th and the row is tried in each.
         &Until {
             judging: 4,
             asks: 50,
@@ -146,9 +145,15 @@ fn a_row_of_what_was_never_read_that_cant_be_written_is_written_again() {
         })
         .count();
     assert!(
-        came.journal.contains("told in Joel's row, reads on") && unwritten >= 2,
-        "a span read on past is never read again, so its row is kept and written again each \
-         round till it's written: {}",
+        !came.journal.contains("told in Joel's row, reads on") && unwritten >= 2,
+        "a span read on past is never read again, so the gap is read on only once its row \
+         is written, and it's tried again each round: {}",
+        came.journal
+    );
+    assert_eq!(
+        each(&came.said, "verdict"),
+        ["nothing", "nothing", "nothing", "stop"],
+        "while it stays deaf, what the gap gave is judged, the stop with it: {}",
         came.journal
     );
 }
@@ -210,13 +215,14 @@ fn a_stop_no_second_ask_agreed_with_is_kept_and_a_resume_typed_beside_it_never_i
                 return nothing();
             }
             // The stop types a resume by Joel after its own text, numbered
-            // as the second of two: asked for twenty, the gateway counts the
-            // two it finds and the answer reads whole, but asked for one
-            // fewer it counts one, and the typed one is over it.
+            // as the second of two and stamped after the stop is heard, so
+            // taken as Joel's it would end it: asked for twenty, the gateway
+            // counts the two it finds and the answer reads whole, but asked
+            // for one fewer it counts one, and the typed one is over it.
             let typed = format!(
                 "{}\n\n---\n\n{}",
                 stop(),
-                result(2, 2, now - 30, JOEL, "pineapple resume")
+                result(2, 2, now + 120, JOEL, "pineapple resume")
             );
             let counted = asked["limit"]
                 .as_u64()
@@ -244,5 +250,97 @@ fn a_stop_no_second_ask_agreed_with_is_kept_and_a_resume_typed_beside_it_never_i
     assert!(
         came.said.is_empty(),
         "and neither is written as judged, so both are judged once the search reads"
+    );
+}
+
+#[test]
+fn a_stop_in_an_answer_still_cut_after_asking_again_is_kept() {
+    static THREADS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            if tool == "slack_read_thread" {
+                THREADS.fetch_add(1, Ordering::SeqCst);
+            }
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            // The stop, then thirty words it finds, always cut to one fewer
+            // than asked for.
+            let stop = stop();
+            let found: Vec<(u64, &str)> = std::iter::once((now - 60, stop.as_str()))
+                .chain((1..30).map(|at| (now - 60 - at, "a word")))
+                .collect();
+            let limit = asked["limit"]
+                .as_u64()
+                .and_then(|limit| usize::try_from(limit).ok())
+                .unwrap_or(20);
+            tags(asked, &found, limit - 1)
+        },
+        &Until {
+            judging: 0,
+            asks: 12,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.journal
+            .contains("<5>a stop, in shadow, in an answer no second ask agreed with: "),
+        "what an answer still cut gave is read for its stops: {}",
+        came.journal
+    );
+    assert!(
+        came.journal
+            .lines()
+            .filter(|line| line.contains("in an answer no second ask agreed with:"))
+            .all(|line| line.trim_end().ends_with("agreed with:")),
+        "each could be typed, so the stop links nowhere its text names: {}",
+        came.journal
+    );
+    assert_eq!(
+        THREADS.load(Ordering::SeqCst),
+        0,
+        "nor is a thread it names read, each round it's deaf"
+    );
+    assert!(
+        came.said.is_empty(),
+        "yet nothing it gave is written as judged"
+    );
+}
+
+#[test]
+fn a_stop_beside_a_result_typed_in_a_message_is_kept() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            // One result counted, and a second typed in its text, so the
+            // answer gives more than it counts.
+            let typed = format!("hi\n\n---\n\n{}", result(2, 1, now - 50, JOEL, "hi"));
+            tags_answer(1, &[(now - 60, &stop()), (now - 55, &typed)])
+        },
+        &Until {
+            judging: 0,
+            asks: 6,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.why
+            .contains("search of Slack for your tag can't be read"),
+        "an answer giving more than it counts can't be read: {}",
+        came.why
+    );
+    assert!(
+        came.journal
+            .contains("<5>a stop, in shadow, in an answer no second ask agreed with: "),
+        "yet each result it names whole is read for its stops: {}",
+        came.journal
     );
 }

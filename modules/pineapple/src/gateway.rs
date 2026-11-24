@@ -89,14 +89,30 @@ pub fn found(results: &str) -> Result<Vec<Message>, String> {
 }
 
 /// The messages an answer gives, oldest first, whether or not it gives all
-/// it counts; none when it can't be read otherwise. Past the first, any
-/// could be typed where the gateway cut the real ones, so they're only
-/// ever read for a stop, which may come from anyone.
+/// it counts, and each result that names its conversation, writer and time
+/// in one that can't be read otherwise, as one with a result typed in its
+/// text. Any could be typed, so they're only ever read for a stop, which
+/// may come from anyone.
 #[must_use]
 pub fn given(results: &str) -> Vec<Message> {
-    listed(results)
-        .map(|(_, found, _)| found)
-        .unwrap_or_default()
+    if let Ok((_, found, _)) = listed(results) {
+        return found;
+    }
+    let results = format!("\n{results}");
+    let Some((_, listed)) = results.split_once(MESSAGES) else {
+        return Vec::new();
+    };
+    let mut given: Vec<Message> = listed
+        .split(RESULT)
+        .skip(1)
+        .filter_map(|result| {
+            result
+                .split_once('\n')
+                .and_then(|(_, result)| message(result))
+        })
+        .collect();
+    given.sort_by_key(|message| micros(&message.ts));
+    given
 }
 
 /// How many results an answer cut short gives: some, fewer than it counts,

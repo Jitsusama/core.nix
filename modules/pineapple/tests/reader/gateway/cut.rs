@@ -439,7 +439,7 @@ fn an_answer_cut_to_the_last_read_is_a_gap_as_one_found_late_may_lie_before() {
 }
 
 #[test]
-fn a_result_typed_after_the_last_an_answer_cut_short_gives_is_never_judged() {
+fn a_result_typed_after_the_last_an_answer_cut_short_gives_is_never_written_as_judged() {
     let came = hearing(
         |tool, asked, now| {
             if tool != "slack_search_public_and_private" {
@@ -476,12 +476,13 @@ fn a_result_typed_after_the_last_an_answer_cut_short_gives_is_never_judged() {
     );
     assert!(
         came.said.is_empty(),
-        "and the resume typed in a message is never judged as Joel's"
+        "and the resume typed in a message is never written as judged; that it never \
+         ends a stop is the case in unread.rs, beside this"
     );
 }
 
 #[test]
-fn results_typed_to_make_up_what_a_gateway_cut_are_never_judged() {
+fn results_typed_to_make_up_what_a_gateway_cut_are_never_written_as_judged() {
     let came = hearing(
         |tool, asked, now| {
             if tool != "slack_search_public_and_private" {
@@ -519,6 +520,6 @@ fn results_typed_to_make_up_what_a_gateway_cut_are_never_judged() {
     );
     assert!(
         came.said.is_empty(),
-        "and no resume typed in a message is judged as Joel's"
+        "and no resume typed in a message is written as judged"
     );
 }

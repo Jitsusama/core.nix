@@ -172,7 +172,14 @@ fn alert(joel: &Joel, message: &Message) -> bool {
 
 /// One message judged where it was said, and written down; not `agreed`
 /// with by a second ask, it could be typed, so only a stop it says is
-/// kept, with nothing written, answered or resumed.
+/// kept, with nothing written, answered or resumed. Its writer is taken as
+/// it says, so Joel's own stop isn't waved for want of his tag, as a stop
+/// may come from anyone, yet its record never says Joel said it; it links
+/// nowhere, as its link could point anywhere, and was said no later than
+/// it was heard, so Joel's resume ends it whatever time it types. Nor is
+/// the thread it names read, as that could be any, each round it's deaf:
+/// with no thread, a stop reaches what its words name, else its channel's
+/// lanes, else everything.
 fn judge(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -185,9 +192,20 @@ fn judge(
     let context = message
         .thread
         .as_deref()
+        .filter(|_| agreed)
         .and_then(|thread| ears.root(&message.channel, thread))
         .map(|root| Context::of_thread(&root))
         .unwrap_or_default();
+    let now = millis();
+    let read_at = now / MILLIS;
+    let heard_at = format!("{read_at}.000000");
+    let (link, said_at) = if agreed {
+        (message.link.as_str(), message.ts.as_str())
+    } else if micros(&message.ts).is_some_and(|said| Some(said) < micros(&heard_at)) {
+        ("", message.ts.as_str())
+    } else {
+        ("", heard_at.as_str())
+    };
     let decision = decide(
         &Heard {
             platform: Platform::Slack,
@@ -206,15 +224,12 @@ fn judge(
     let source = Source {
         key: &key,
         thread: &thread,
-        link: &message.link,
+        link,
         author: &message.author,
         text: &message.text,
-        said_at: &message.ts,
+        said_at,
     };
-    let now = millis();
-    let read_at = now / MILLIS;
-    let said_at =
-        micros(&message.ts).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
+    let said_at = micros(said_at).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
     let went_out = state.join("replies.jsonl");
     // A stop Joel resumed no longer holds its thread's reply back.
     let sent = record::ledger(&resume::cleared(
@@ -251,7 +266,10 @@ fn judge(
         }
     }
     if decision.stops() {
-        let stop = record::stop(&source, &decision, now, reader.shadow);
+        let mut stop = record::stop(&source, &decision, now, reader.shadow);
+        if !agreed {
+            stop["by_joel"] = false.into();
+        }
         let shadow = if reader.shadow { ", in shadow" } else { "" };
         let unagreed = if agreed {
             ""

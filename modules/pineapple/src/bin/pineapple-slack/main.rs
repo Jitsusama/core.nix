@@ -411,7 +411,10 @@ fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
     let change = deaf.heard(heard, millis());
     match deaf::make(&waiting.file, &change) {
         Err(error) => {
-            eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
+            eprintln!(
+                "<3>couldn't write Joel's row in {} whether Slack is heard: {error}",
+                waiting.file.display()
+            );
             deaf.failed(&change);
         }
         // Said, so what was read on after it can be seen to follow it, with
@@ -545,12 +548,19 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         file: state.join("waiting.json"),
         refused: None,
     };
-    // Beside it, what a search read on past, which nothing takes away,
-    // and each span whose row couldn't be written yet, as no round finds
-    // it again.
+    // Beside it, what a search read on past, which nothing takes away:
+    // a gap is read on only once its row is written there. In shadow it's
+    // the reader's own record, which For You never reads.
     let missed = state.join("missed.json");
-    let mut unwritten: Vec<(Search, Skipped)> = Vec::new();
-    let mut through = Through::new(Gateway::new(url, program));
+    let record = move |query: &str, skipped: Skipped| {
+        let search = if query == round::PHRASE {
+            Search::Phrase
+        } else {
+            Search::Tag
+        };
+        tell_missed(&missed, search, skipped)
+    };
+    let mut through = Through::new(Gateway::new(url, program), Box::new(record));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::new();
     loop {
@@ -567,16 +577,7 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         if let Some(user) = &me {
             through.told(round::PHRASE, deaf.tells(Search::Phrase));
             through.told(&round::tag(user), deaf.tells(Search::Tag));
-            for (query, search) in [
-                (round::PHRASE.to_owned(), Search::Phrase),
-                (round::tag(user), Search::Tag),
-            ] {
-                if let Some(skipped) = through.skipped(&query) {
-                    unwritten.push((search, skipped));
-                }
-            }
         }
-        unwritten.retain(|(search, skipped)| !tell_missed(&missed, *search, *skipped));
         std::thread::sleep(how.every);
     }
 }

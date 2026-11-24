@@ -490,7 +490,15 @@ fn what_was_never_read_is_said_as_minutes_before_the_row() {
          then wasn't heard",
         "a span begun part way into a minute is said from the whole one"
     );
-    assert_eq!(tag["id"], format!("pineapple-slack-missed-tag-{AT}"));
+    assert_eq!(
+        tag["id"],
+        format!(
+            "pineapple-slack-missed-tag-{}-{}",
+            AT - 41 * MINUTE + 1,
+            AT - 13 * MINUTE
+        ),
+        "named for its span, so written again it's the same row"
+    );
     assert_eq!(
         tag["doneWhen"],
         serde_json::json!({"by": "person"}),
@@ -504,7 +512,11 @@ fn what_was_never_read_is_said_as_minutes_before_the_row() {
          then wasn't heard",
         "one ending this minute is said up to the row"
     );
-    assert_eq!(phrase["id"], format!("pineapple-slack-missed-phrase-{AT}"));
+    assert_eq!(
+        phrase["id"],
+        format!("pineapple-slack-missed-phrase-{}-{}", AT - MINUTE, AT - 10),
+        "each search's rows named apart"
+    );
     assert!(
         missed(Search::Tag, None, Some(AT - MINUTE), AT)["why"]
             .as_str()
@@ -526,11 +538,20 @@ fn each_span_never_read_is_kept_a_week_beside_the_others() {
     std::fs::create_dir_all(&folder).expect("the folder is made");
     std::fs::write(&file, "not JSON").expect("a file it can't read");
     let week = 7 * 24 * 60 * MINUTE;
-    let row = |search, at| missed(search, Some(at - MINUTE), Some(at - 10), at);
+    let row = |search, at| missed(search, Some(at - MINUTE), Some(at), at);
+    assert!(
+        keep_missed(&file, row(Search::Tag, AT), AT).is_err()
+            && std::fs::read_to_string(&file).is_ok_and(|kept| kept == "not JSON"),
+        "a file it can't read may hold rows, so it isn't written over"
+    );
+    std::fs::remove_file(&file).expect("taken away");
     let first = AT - week - 1;
-    keep_missed(&file, row(Search::Tag, first), first).expect("written over what it can't read");
+    keep_missed(&file, row(Search::Tag, first), first).expect("written where none was");
     keep_missed(&file, row(Search::Phrase, AT - week), AT - week).expect("written");
-    keep_missed(&file, row(Search::Tag, AT), AT).expect("written");
+    let ending_sooner = missed(Search::Tag, Some(AT - MINUTE), Some(AT - 5), AT - 5);
+    keep_missed(&file, ending_sooner, AT - 5).expect("written");
+    keep_missed(&file, row(Search::Tag, AT), AT).expect("written in its place");
+    keep_missed(&file, row(Search::Tag, AT), AT).expect("written again");
     let read: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&file).expect("read")).expect("JSON");
     let ids: Vec<_> = read["items"]
@@ -542,10 +563,15 @@ fn each_span_never_read_is_kept_a_week_beside_the_others() {
     assert_eq!(
         ids,
         [
-            format!("pineapple-slack-missed-phrase-{}", AT - week),
-            format!("pineapple-slack-missed-tag-{AT}"),
+            format!(
+                "pineapple-slack-missed-phrase-{}-{}",
+                AT - week - MINUTE,
+                AT - week
+            ),
+            format!("pineapple-slack-missed-tag-{}-{AT}", AT - MINUTE),
         ],
-        "one raised a week ago stays, one older goes, and the newest joins them"
+        "one whose span ended a week ago stays, one older goes, and the newest joins them \
+         once, however often it's written, in place of one begun as it was"
     );
     assert_eq!(read["quest"], "pineapple", "in the shape For You reads");
     let _ = std::fs::remove_dir_all(&folder);

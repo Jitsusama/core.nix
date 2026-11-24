@@ -136,10 +136,10 @@ impl Ears for Api<'_> {
 /// before its oldest message, which must hold that message, so none
 /// between the two goes unread, up to [`PAGES`] pages. Short of it, or
 /// with a page that can't be read or goes unanswered, it's deaf until
-/// Joel's row says that search can't be read, and is then read on past
-/// what it left unread. What an answer it can't read gave is kept for the
-/// round ([`Unread`]), so a stop in it isn't lost while the search is
-/// deaf.
+/// Joel's row says that search can't be read and a row of its own names
+/// what it leaves unread, and is then read on past it. What an answer it
+/// can't read gave is kept for the round ([`Unread`]), so a stop in it
+/// isn't lost while the search is deaf.
 pub struct Through {
     gateway: Gateway,
     /// How many rounds each search's answer, by its query, has left
@@ -150,9 +150,11 @@ pub struct Through {
     /// What each search's last answer, by its query, gave that it
     /// couldn't read.
     unread: HashMap<String, Unread>,
-    /// What each search, by its query, read on past and never read, till
-    /// the reader takes it to tell Joel.
-    skipped: HashMap<String, Skipped>,
+    /// Writes the row of its own saying what a search, by its query, is
+    /// about to read on past, and says whether it was written: a gap is
+    /// read on only once it is, so the last read never moves past a span
+    /// untold, through a restart too.
+    record: Box<dyn FnMut(&str, Skipped) -> bool>,
 }
 
 /// What a search read on past, so never read: from a minute before the
@@ -167,22 +169,17 @@ pub struct Skipped {
 }
 
 impl Through {
-    /// Reading Slack through `gateway`.
+    /// Reading Slack through `gateway`, with `record` writing the row that
+    /// says what a search reads on past, and saying whether it was.
     #[must_use]
-    pub fn new(gateway: Gateway) -> Through {
+    pub fn new(gateway: Gateway, record: Box<dyn FnMut(&str, Skipped) -> bool>) -> Through {
         Through {
             gateway,
             gaps: HashMap::new(),
             told: HashSet::new(),
             unread: HashMap::new(),
-            skipped: HashMap::new(),
+            record,
         }
-    }
-
-    /// What the search for `query` last read on past, taken so it's told
-    /// once.
-    pub fn skipped(&mut self, query: &str) -> Option<Skipped> {
-        self.skipped.remove(query)
     }
 
     /// Whether the row Joel has, as written, says the search for `query`
@@ -493,10 +490,18 @@ impl Ears for Through {
             let paged = self.unread.remove(query).unwrap_or_default();
             found.extend(paged.agreed);
             found.sort_by_key(|message| slack::micros(&message.ts));
+            let unheard = cut_to(unheard);
             let gaps = self.gaps.entry(query.to_owned()).or_default();
             *gaps = gaps.saturating_add(1);
-            if *gaps <= deaf::ROUNDS || !self.told.contains(query) {
-                let unheard = cut_to(unheard);
+            let told = *gaps > deaf::ROUNDS && self.told.contains(query);
+            // Read on only once Joel's row says it can't be read and a row
+            // of its own names what it leaves unread, as the first goes once
+            // Slack is heard, and this span never is.
+            let skipped = Skipped {
+                from: slack::micros(back_to).map(|at| at.saturating_sub(FOUND_LATE)),
+                to: oldest.as_deref().and_then(slack::micros),
+            };
+            if !told || !(self.record)(query, skipped) {
                 let found = Unread {
                     agreed: found,
                     unagreed: paged.unagreed,
@@ -505,17 +510,9 @@ impl Ears for Through {
                 return Err(unread(unheard));
             }
             eprintln!(
-                "<4>the gateway's search for {query:?}, {}, told in Joel's row, reads on: \
-                 what was said then is never read",
-                cut_to(unheard)
+                "<4>the gateway's search for {query:?}, {unheard}, told in Joel's row, reads \
+                 on: what was said then is never read"
             );
-            // Kept for a row of its own, as the row saying it can't be read
-            // goes once Slack is heard, and this span never is.
-            let skipped = Skipped {
-                from: slack::micros(back_to).map(|at| at.saturating_sub(FOUND_LATE)),
-                to: oldest.as_deref().and_then(slack::micros),
-            };
-            self.skipped.insert(query.to_owned(), skipped);
         } else if found.len() > asked {
             eprintln!(
                 "<5>the gateway's search for {query:?} read {} messages in pages, back to the \
