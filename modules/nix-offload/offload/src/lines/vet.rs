@@ -409,7 +409,7 @@ mod tests {
                              made after the change";
         // 2026-11-10T05:14:00-08:00, when the new script was first named.
         let changed = 1_794_316_440;
-        let pinned = Pinned {
+        let once = Pinned {
             earlier: vec![Earlier {
                 script: BEFORE.to_owned(),
                 made_before: changed,
@@ -422,16 +422,16 @@ mod tests {
             described
         };
         assert!(
-            vetted(&made("2026-11-10T05:13:59.100-08:00"), &pinned).is_ok(),
+            vetted(&made("2026-11-10T05:13:59.100-08:00"), &once).is_ok(),
             "a builder made before the change was refused its earlier script"
         );
         assert_eq!(
-            vetted(&made("2026-11-10T05:14:00.000-08:00"), &pinned),
+            vetted(&made("2026-11-10T05:14:00.000-08:00"), &once),
             Err(AFTER.to_owned()),
             "a builder made after the change passed on the earlier script"
         );
         assert!(
-            vetted(&described(&[("startup-script", json!(BEFORE))]), &pinned).is_err(),
+            vetted(&described(&[("startup-script", json!(BEFORE))]), &once).is_err(),
             "a builder saying nothing of when it was made passed on the earlier script"
         );
         // Named, changed, named again and changed again: a builder made in
@@ -466,7 +466,7 @@ mod tests {
         let mine = described(&[("startup-script", json!("#!/bin/sh\nmine\n"))]);
         other["metadata"]["items"] = mine["metadata"]["items"].clone();
         assert_eq!(
-            vetted(&other, &pinned),
+            vetted(&other, &once),
             Err("runs another startup script than this machine's".to_owned()),
             "a script the machine never named passed"
         );
