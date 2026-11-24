@@ -235,7 +235,7 @@ Its parts come in this order, each said once:
 nothing until a page moves its head into one; check that move with
 `shots-changed`. The `heads-are-the-kits` check reads each page's markup
 against this head once the page leaves its waiting list in
-`modules/local-sites/checks.nix`, and says what to change.
+`modules/local-sites/heads.nix`, and says what to change.
 
 An interface (`data-kind="interface"` on the root) starts the same parts on
 its gutter's edge rather than the centre.
