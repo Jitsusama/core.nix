@@ -10,13 +10,21 @@
 //
 // A sound service is one named here, in session.slice or app.slice of the
 // manager of the account whose slice it is: PipeWire, its PulseAudio
-// server, WirePlumber, and each service that runs a PipeWire of its own,
-// as a tuning chain does, as pipewire/nixos.nix lists them. Anything
-// else there, an app's scope, another service, or a unit an agent starts
-// with systemd-run, keeps rtkit's own answer, and so does a process below
-// one, which a sound service's own never are. rtkit still holds each
-// thread to priority 20 and 200 ms at a time. polkit's own engine reads
-// this, in the JavaScript it knows.
+// server, WirePlumber, each service that runs a PipeWire of its own, as a
+// tuning chain does, and each PipeWire wants in session.slice, as
+// noise-cancelled is, as pipewire/nixos.nix lists them. Anything else
+// there, an app's scope, another service, or a unit an agent starts with
+// systemd-run, keeps rtkit's own answer, and so does a process below one,
+// which a sound service's own never are. rtkit still holds each thread to
+// priority 20 and 200 ms at a time. polkit's own engine reads this, in the
+// JavaScript it knows.
+//
+// A grant's line is written through record, which the slices module's
+// agents-ask-first.rules defines; without it a grant is given unlogged.
+// The rule needs no place among the others: it answers yes or leaves the
+// ask alone, never asking anybody, so the slices' wrapping of later rules
+// changes nothing for it, and record and commandOf are looked up when an
+// ask comes, once every file is read.
 
 // Where the process asking runs: the cgroup the kernel has it in, or null
 // for one that's gone or can't be read.
@@ -29,10 +37,17 @@ function soundPlaceOf(subject) {
   }
 }
 
-var soundService = new RegExp(
+// The sound services' unit names, as nixos.nix writes them in JSON.
+var soundServices = @services@;
+var servicePlace = new RegExp(
   "^/user\\.slice/user-([0-9]+)\\.slice/user@\\1\\.service/" +
-    "(session|app)\\.slice/(@services@)\\.service$"
+    "(?:session|app)\\.slice/([^/]+)\\.service$"
 );
+
+function isSoundService(place) {
+  var found = place === null ? null : servicePlace.exec(place);
+  return found !== null && soundServices.indexOf(found[2]) !== -1;
+}
 
 polkit.addRule(function (action, subject) {
   if (
@@ -42,11 +57,15 @@ polkit.addRule(function (action, subject) {
     return polkit.Result.NOT_HANDLED;
   }
   var place = soundPlaceOf(subject);
-  if (place !== null && soundService.test(place)) {
+  if (isSoundService(place)) {
     // A grant leaves a line, as the slices' refusals do, so whether sound
-    // took real time this boot is read from the journal, not its threads.
+    // took real time this boot, and which program took it, is read from
+    // the journal, not its threads.
     if (typeof record === "function") {
-      record("granted " + action.id + " to pid " + subject.pid + " in " + place);
+      var command = typeof commandOf === "function" ? commandOf(subject) : null;
+      record(
+        "granted " + action.id + " to pid " + subject.pid + " (" + command + ") in " + place
+      );
     }
     return polkit.Result.YES;
   }

@@ -1,8 +1,9 @@
 // The cases of realtime.rules, run by duktape, polkit's own engine, after
 // modules/slices/agents-ask-polkit.rules, which stands in for polkitd,
-// polkit's init.js and the 10-nixos.rules of a workstation with the
-// Pebble X Plus's tuning chain as polkitd reads it (modules/pipewire/
-// checks.nix). Each sound case is asked both by the account with no
+// polkit's init.js and the 10-nixos.rules of the graphical role, with its
+// Pebble X Plus and Shure MV7 tuning chains and noise-cancelled, as
+// polkitd reads it, and a chain named tuning.v2 put among its names
+// (modules/pipewire/checks.nix). Each sound case is asked both by the account with no
 // session at the seat yet, as PipeWire is when the account's manager
 // starts it, and with one, so the grant is shown to go by place alone.
 var account = "/user.slice/user-1000.slice/user@1000.service/";
@@ -12,6 +13,10 @@ var where = {
   wireplumber: account + "session.slice/wireplumber.service",
   chain: account + "session.slice/pebble-x-plus-tuning.service",
   chainInApps: account + "app.slice/pebble-x-plus-tuning.service",
+  voice: account + "session.slice/shure-mv7-voice.service",
+  wanted: account + "session.slice/noise-cancelled.service",
+  dotted: account + "session.slice/tuning.v2.service",
+  undotted: account + "session.slice/tuningXv2.service",
   another: "/user.slice/user-1001.slice/user@1001.service/session.slice/pipewire.service",
   below: account + "session.slice/pipewire-pulse.service/sub",
   stray: account + "app.slice/run-u21.service",
@@ -28,10 +33,13 @@ var where = {
   work: account + "jobs.slice/jobs-work.slice/run-u7.service",
 };
 var pids = {};
+var named = {};
 var next = 10;
 for (var place in where) {
   pids[place] = next;
+  named[next] = place;
   processes[next] = where[place];
+  commands[next] = "/run/current-system/sw/bin/" + place + " --serve";
   next += 1;
 }
 
@@ -67,10 +75,21 @@ function expect(what, action, place, said) {
 
 var realTime = asking("org.freedesktop.RealtimeKit1.acquire-real-time");
 var highPriority = asking("org.freedesktop.RealtimeKit1.acquire-high-priority");
-// PipeWire's three, a tuning chain in either slice, and another account's
-// own PipeWire take real time and a high priority, before the seat has a
-// session and after.
-var sound = ["pipewire", "pulse", "wireplumber", "chain", "chainInApps", "another"];
+// PipeWire's three, a tuning chain in either slice, each chain the role
+// has, a chain whose name holds a dot, a service PipeWire wants in
+// session.slice, and another account's own PipeWire take real time and a
+// high priority, before the seat has a session and after.
+var sound = [
+  "pipewire",
+  "pulse",
+  "wireplumber",
+  "chain",
+  "chainInApps",
+  "voice",
+  "wanted",
+  "dotted",
+  "another",
+];
 for (var i = 0; i < sound.length; i += 1) {
   expect("real time", realTime, sound[i], "yes");
   expect("a high priority", highPriority, sound[i], "yes");
@@ -78,10 +97,12 @@ for (var i = 0; i < sound.length; i += 1) {
 }
 // Anything else of the account's keeps rtkit's own answer: a process below
 // a sound service, a unit systemd-run starts in app.slice, another
-// service, a near name, a manager not the slice's own account's, an app's
-// scope, and the system's units.
+// service, a near name, one a dot read as any character would let in, a
+// manager not the slice's own account's, an app's scope, and the system's
+// units.
 var others = [
   "below",
+  "undotted",
   "stray",
   "service",
   "suffixed",
@@ -105,15 +126,27 @@ for (var k = 0; k < agents.length; k += 1) {
 // Another action from a sound service is no business of the rule's.
 expect("another action", asking("org.example.another"), "pipewire", null);
 
-// Each grant leaves its line, naming the process and where it runs.
-var granted = "granted org.freedesktop.RealtimeKit1.acquire-real-time to pid " + pids.pipewire;
+// Each grant leaves its line, naming the process, what it runs and where
+// it runs, and nothing refused or left to rtkit leaves one.
+var granted =
+  "granted org.freedesktop.RealtimeKit1.acquire-real-time to pid " +
+  pids.pipewire +
+  " (" +
+  commands[pids.pipewire] +
+  ") in " +
+  where.pipewire;
 var said = false;
 for (var n = 0; n < logged.length; n += 1) {
-  said = said || logged[n] === granted + " in " + where.pipewire;
+  said = said || logged[n] === granted;
+  var grantee = /^granted \S+ to pid ([0-9]+) /.exec(logged[n]);
+  if (grantee !== null && sound.indexOf(named[grantee[1]]) === -1) {
+    failed += 1;
+    print("FAIL a grant was logged for what wasn't granted: " + logged[n]);
+  }
 }
 if (!said) {
   failed += 1;
-  print("FAIL PipeWire's grant left no line saying so");
+  print("FAIL PipeWire's grant left no line saying what it runs: " + granted);
 }
 
 if (failed > 0) {
