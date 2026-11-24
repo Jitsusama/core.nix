@@ -62,21 +62,22 @@ fn item(said: &str, keep: u8, hue: &str) -> Value {
     }
 }
 
-/// What the group's row says at its right: how many stand each way, the
-/// refused first, those ordered and on their way as one.
+/// What the group's row says at its right: how many stand each way, in
+/// `STATES`' order, so the refused come before the stuck whichever is
+/// newer, and those ordered and on their way as one.
 fn group_side(carries: &[&Value], words: &Words) -> Vec<Value> {
     let said = &words.carried;
     let mut counted: Vec<(&str, u8, &str, usize)> = Vec::new();
-    for one in carries {
-        let Some((_, _, count, keep, hue)) = state_of(one) else {
+    for (word, _, count, keep, hue) in &STATES {
+        let many = carries.iter().filter(|one| one["state"] == *word).count();
+        if many == 0 {
             continue;
-        };
+        }
         match counted.iter_mut().find(|(each, ..)| each == count) {
-            Some(found) => found.3 += 1,
-            None => counted.push((count, *keep, hue, 1)),
+            Some(found) => found.3 += many,
+            None => counted.push((count, *keep, hue, many)),
         }
     }
-    counted.sort_by_key(|(_, keep, ..)| Reverse(*keep));
     counted
         .iter()
         .map(|(count, keep, hue, many)| {
@@ -396,7 +397,7 @@ mod tests {
         );
         assert_eq!(
             made[1]["held"]["by"], "person",
-            "which For You reads to leave his own carry out"
+            "kept on the row, so the shell knows his own carry from one made in his stead"
         );
     }
 
@@ -425,7 +426,7 @@ mod tests {
         assert_eq!(made[1]["held"]["quest"], "QEST-20261115-HARBOR");
         assert_eq!(
             made[1]["held"]["at"], "2026-11-16T01:00:00Z",
-            "when it was made, which For You weighs a carry under way by"
+            "when it was made, as the node said it"
         );
         for state in ["ordered", "carrying", "refused", "back", "paused"] {
             let other = record("HARBOR", "2026-11-16T01:00:00Z", state);
@@ -506,16 +507,50 @@ mod tests {
                 {"at": 1_795_472_635_929_i64, "as": "came", "keep": 1}]),
             "its state, then the time it was ordered, for the shell to word"
         );
-        let mut timeless = tonights();
-        timeless["at"] = json!("");
+        for at in ["", "yesterday"] {
+            let mut timeless = tonights();
+            timeless["at"] = json!(at);
+            assert_eq!(
+                listed(&[&timeless])[1]["side"],
+                json!([{"said": "on its way", "keep": 4}]),
+                "and no time where the node gave none it can read: {at:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_quest_whose_title_is_empty_goes_by_words_and_a_settled_one_by_its_title() {
+        let titles = HashMap::from([("QEST-20261120-48UZ44", "")]);
+        let made = rows(&[&tonights()], &[], &titles, &words());
         assert_eq!(
-            said(&listed(&[&timeless])[1]),
-            ["on its way"],
-            "and no time where the node gave none"
+            made[1]["name"], "A Session on Its Way",
+            "an empty title names nothing"
         );
+        let mut arrived = tonights();
+        arrived["state"] = json!("arrived");
+        let titles = HashMap::from([("QEST-20261120-48UZ44", "Spikes 6 and 7")]);
+        let made = rows(&[&arrived], &[], &titles, &words());
         assert_eq!(
-            listed(&[&timeless])[1]["side"].as_array().map(Vec::len),
-            Some(1)
+            made[1]["name"], "Spikes 6 and 7",
+            "an arrived carry runs elsewhere under another id too"
+        );
+    }
+
+    #[test]
+    fn a_stuck_carry_with_no_reason_says_where_it_went_and_the_refused_count_first() {
+        let mut stuck = tonights();
+        stuck["state"] = json!("stuck");
+        let made = listed(&[&stuck]);
+        assert_eq!(
+            made[1]["note"], "carried to equilibrius by an orchestrator",
+            "the orchestrator's why is not the node's reason"
+        );
+        let refused = record("HARBOR", "2026-11-16T01:00:00Z", "refused");
+        let made = listed(&[&stuck, &refused]);
+        assert_eq!(
+            said(&made[0]),
+            ["1 refused", "1 stuck"],
+            "refused first, though the stuck one is newer"
         );
     }
 

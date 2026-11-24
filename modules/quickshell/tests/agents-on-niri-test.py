@@ -4309,9 +4309,24 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.reported(f"not become {arrived['is']}: ", bool, since)
 
 
-# How long For You is watched for a carry that would stand in it: For You is made again as
-# Agents' rows are, which had drawn one within a poll of Carried serving it.
-FOR_YOU_WATCHED = 3
+# How long For You's rows must stand unchanged before they count as made, and how long they
+# may take to: For You is made again as Agents' rows are, which had drawn a carry within a
+# poll of Carried serving it, but a loaded builder can be slower than any one watch.
+FOR_YOU_STILL = 3
+FOR_YOU_MADE = 30
+
+
+def for_you_made(shell: Shell) -> list[str]:
+    """Wait until For You's rows have stood unchanged a while, and give them."""
+    deadline = time.monotonic() + FOR_YOU_MADE
+    rows, still_since = cast("list[str]", shell.showing()["rows"]), time.monotonic()
+    while time.monotonic() - still_since < FOR_YOU_STILL:
+        assert time.monotonic() < deadline, f"For You never stopped changing: {rows}"
+        time.sleep(0.2)
+        now = cast("list[str]", shell.showing()["rows"])
+        if now != rows:
+            rows, still_since = now, time.monotonic()
+    return rows
 
 
 def quest_listed(quest: Json) -> str:
@@ -4339,11 +4354,11 @@ def test_a_carry_asks_nothing_so_it_stays_out_of_for_you_and_goes_by_its_quest(
         {"id": "QEST-20261107-AFLOAT", "address": "AFLOAT", "title": "Afloat Quest",
          "status": "active"}
     )  # fmt: skip
-    kept(
-        ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
-        ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
-    )
     try:
+        kept(
+            ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
+            ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
+        )
         # Served first, so a For You holding them is For You's own miss: these two, not the
         # case before's, which the node may not yet have read gone.
         in_agents(shell)
@@ -4355,12 +4370,14 @@ def test_a_carry_asks_nothing_so_it_stays_out_of_for_you_and_goes_by_its_quest(
         shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Afloat Quest"])
         shell.close_launcher()
         in_for_you(shell)
-        deadline = time.monotonic() + FOR_YOU_WATCHED
-        while time.monotonic() < deadline:
-            rows = shell.showing()["rows"]
-            assert "To Read" not in rows, f"a carry stood in For You: {rows}"
-            assert not {"Afloat Quest", "A Session on Its Way"} & set(rows), rows
-            time.sleep(0.2)
+        rows = for_you_made(shell)
+        # To Read holds the looks that ask nothing too, so only a carry's name in it fails.
+        if "To Read" in rows:
+            shell.down_to("To Read")
+            shell.step_in()
+            rows = for_you_made(shell)
+        carries = {"Afloat Quest", "A Session on Its Way"} & set(rows)
+        assert not carries, f"a carry stood in For You: {rows}"
     finally:
         CARRIES.unlink(missing_ok=True)
         laid = (WORKFLOW / "quests.json").with_suffix(".tmp")

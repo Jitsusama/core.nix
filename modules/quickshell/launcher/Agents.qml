@@ -2703,6 +2703,14 @@ Provider {
         landingShown = landingDrawn;
     }
 
+    // No carry stands in For You, though an orchestrator made it in Joel's
+    // stead: it asks nothing of him, and five there read "A Session on Its
+    // Way" hours after they went, naming nothing he could act on (Joel,
+    // 2026-11-23 21:52: "how does it provide me with anything useful?").
+    // Agents › Carried lists every carry of the day, each by its quest,
+    // where it went and when, so he still sees each one (ISXEG8's fourth
+    // condition). A refused or stuck one says so there in alert, and rings
+    // nowhere else yet.
     // What Landed gives For You (ForYou.js's given): each landing that says
     // what to try and Joel hasn't read, waiting in To Try with its mark,
     // weighed as the rest are, and each read since, in its History with
@@ -2780,14 +2788,6 @@ Provider {
         provider.keptOnly(forYouKeeping);
         return given;
     }
-    // No carry stands in For You, though an orchestrator made it in Joel's
-    // stead: it asks nothing of him, and five there read "A Session on Its
-    // Way" hours after they went, naming nothing he could act on (Joel,
-    // 2026-11-23 21:52: "how does it provide me with anything useful?").
-    // Agents › Carried lists every carry of the day, each by its quest,
-    // where it went and when, so he still sees each one (ISXEG8's fourth
-    // condition); a refused or stuck one says so there in alert.
-
 
     // Agents' Recent: the sessions that closed this boot, newest first, as
     // the agents daemon serves them ready (modules/agents/src/recent.rs),
