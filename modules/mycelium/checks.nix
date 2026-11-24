@@ -896,7 +896,10 @@ in
         ) acts
         ++ map (offered: offered.file) (read.offered or [ ])
         # The strays' own file, named here so they don't rest on the table.
-        ++ [ "modules/mycelium/site/acts.ts" ]
+        ++ [
+          "modules/mycelium/site/view.js"
+          "modules/quickshell/launcher/words/agents.json"
+        ]
       );
       # Only the files the table names, so an edit elsewhere rebuilds nothing.
       # One renamed away is left out rather than stopping evaluation, so the
@@ -986,16 +989,19 @@ in
             [act.launcher]
             waived = "none"
             [[offered]]
-            surface = "map"
-            file = "modules/mycelium/site/acts.ts"
-            pattern = '^  ([a-z]+): "'
+            surface = "launcher"
+            file = "modules/quickshell/launcher/words/agents.json"
+            pattern = '"id": "verb:agent:([a-z-]+)"'
             [offered.acts]
-            go = "go"
-            sprout = "go"
-            forage = "go"
-            gone = "go"
+            switch = "go"
+            take-back = "go"
+            pause = "go"
+            resume = "go"
+            wake = "go"
+            stop = "go"
+            close = "go"
           '';
-          says = "what the map lists: talk is no act of the table, nor set apart with a reason";
+          says = "what the launcher lists: talk is no act of the table, nor set apart";
         }
         {
           table = act "unlisted" ''
@@ -1004,17 +1010,21 @@ in
             [act.launcher]
             waived = "none"
             [[offered]]
-            surface = "map"
-            file = "modules/mycelium/site/acts.ts"
-            pattern = '^  ([a-z]+): "'
+            surface = "launcher"
+            file = "modules/quickshell/launcher/words/agents.json"
+            pattern = '"id": "verb:agent:([a-z-]+)"'
             [offered.acts]
-            go = "go"
+            switch = "go"
             talk = "go"
-            sprout = "go"
-            forage = "go"
+            take-back = "go"
+            pause = "go"
+            resume = "go"
+            wake = "go"
+            stop = "go"
+            close = "go"
             gone = "go"
           '';
-          says = "what the map lists: modules/mycelium/site/acts.ts no longer lists gone";
+          says = "launcher/words/agents.json no longer lists gone";
         }
         {
           table = act "left-out" ''
@@ -1028,10 +1038,10 @@ in
             [act.cli]
             waived = "no window to raise"
             [act.launcher.has]
-            file = "modules/mycelium/site/acts.ts"
+            file = "modules/mycelium/site/view.js"
             holds = "Never Said Anywhere"
           '';
-          says = ''go on the launcher: modules/mycelium/site/acts.ts doesn't hold "Never'';
+          says = ''go on the launcher: modules/mycelium/site/view.js doesn't hold "Never'';
         }
         {
           table = act "not-helped" ''

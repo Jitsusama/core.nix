@@ -63,9 +63,10 @@ by = "85PKB2"
 due = "2026-11-24 20:00"
 why = "show_person only points at a terminal"
 
-[act.map.has]
-file = "modules/mycelium/site/acts.ts"
-holds = 'go: "Go to It"'
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-24 18:30"
+why = "Go to It on a cell's drawer lands with core.nix#6389"
 
 [act.launcher.has]
 file = "modules/quickshell/launcher/words/agents.json"
@@ -110,9 +111,10 @@ by = "85PKB2"
 due = "2026-11-25 12:00"
 why = "mesh_read gives a peer's question, not a want's whole text and choices"
 
-[act.map.has]
-file = "modules/mycelium/site/view.js"
-holds = "It Asks You"
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-24 18:30"
+why = "a cell's drawer says its question whole, with core.nix#6389"
 
 [act.launcher.owed]
 by = "42P0R4"
@@ -181,8 +183,8 @@ holds = "what each cell is for"
 tool = "quest"
 
 [act.map.has]
-file = "modules/mycelium/site/acts.ts"
-holds = 'forage: "See What It Is For, and Its Plans"'
+file = "modules/mycelium/site/view.js"
+holds = "See What It Is For, and Its Plans"
 
 [act.launcher.owed]
 by = "42P0R4"
@@ -326,14 +328,3 @@ close = "close"
 
 [offered.apart]
 take-back = "it undoes what the talk line's void did, an act on his own words, not on a cell"
-
-[[offered]]
-surface = "map"
-file = "modules/mycelium/site/acts.ts"
-pattern = '^  ([a-z]+): "'
-
-[offered.acts]
-go = "go"
-talk = "talk"
-sprout = "sprout"
-forage = "forage"
