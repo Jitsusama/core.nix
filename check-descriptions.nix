@@ -3389,7 +3389,8 @@
   '';
   polkits-prompt-says-what-runs = ''
     polkit's prompt names the command asking, its store paths without their hashes and a long one
-    cut at its middle, shown as written, and the account run0 or pkexec would run it as
+    cut at its middle, shown as written, and the account run0 or pkexec would run it as, and the
+    journal says each ask as it begins and how it ended, after how long and with what keys
   '';
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
