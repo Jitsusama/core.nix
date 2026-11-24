@@ -5467,7 +5467,7 @@ Scope {
         seenFound[stepsTaken] = here;
         return rows;
     }
-    function foundHere() {
+    function seenSearched() {
         return Object.keys(seenFound[stepsTaken] ?? {});
     }
 
@@ -7196,7 +7196,7 @@ Scope {
             // unseen, counted, as a held step's rows do, but for one what
             // was typed found, which has been seen (Steady.seenAmong).
             const standing = words.length === 0 && (!steadying || ordering)
-                ? Steady.seen(Steady.seenAmong(offered, foundHere(), steadyId))
+                ? Steady.seen(Steady.seenAmong(offered, seenSearched(), steadyId))
                 : { rows: offered.slice(), waiting: 0 };
             root.found = words.length === 0 ? standing.rows
                 : seenHere(Steady.searched(inCategory(letters)));
@@ -7250,7 +7250,8 @@ Scope {
             // typed found has been seen, so it stays as what's typed is
             // taken away, the selection on it, and after (Steady.seenAmong).
             else if (words.length === 0 && !holdsWords) {
-                const standing = Steady.seen(Steady.seenAmong(offered, foundHere(), steadyId));
+                const standing = Steady.seen(Steady.seenAmong(offered, seenSearched(),
+                    steadyId));
                 found = steadying && !ordering ? offered.slice() : standing.rows;
                 unseen = standing.waiting;
             } else if (held[held.length - 1].row.finds)
