@@ -236,8 +236,13 @@ def test_a_switch_back_gives_the_seat_the_brio(machine: BaseMachine, switched: s
     switched in again however the test ends, so a failure here stays this test's own.
     """
     base = machine.succeed("readlink -f /run/booted-system").strip()
-    machine.succeed(f"{base}/bin/switch-to-configuration test")
+    shared = machine.succeed(f"readlink -f {base}/specialisation/shared").strip()
     try:
+        # A give-back that fails fails the switch, which is said with its journal.
+        status, out = machine.execute(f"{base}/bin/switch-to-configuration test")
+        if status != 0:
+            said = machine.execute(GIVEN)[1]
+            pytest.fail(f"the switch back ended {status}: {out} | the give-back said: {said}")
         try:
             machine.wait_until_succeeds(
                 f"getfacl -p {switched} | grep -q user:someone:", timeout=SEATING
@@ -258,8 +263,7 @@ def test_a_switch_back_gives_the_seat_the_brio(machine: BaseMachine, switched: s
         except RequestedAssertionFailed:
             pytest.fail(f"the give-back said: {machine.execute(GIVEN)[1]}")
     finally:
-        shared = machine.succeed("readlink -f /run/current-system/specialisation/shared")
-        machine.succeed(f"{shared.strip()}/bin/switch-to-configuration test")
+        machine.succeed(f"{shared}/bin/switch-to-configuration test")
         machine.wait_for_unit("mx-brio.service", timeout=STARTING)
 
 

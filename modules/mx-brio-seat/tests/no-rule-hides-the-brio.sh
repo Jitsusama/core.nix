@@ -11,9 +11,12 @@
 set -euo pipefail
 export LC_ALL=C
 
-relayed='CAMERA_RELAYED\}="1"'
-untagged='091d.*TAG-="uaccess"'
-reversed='TAG-="uaccess".*091d'
+# Spaced or not, and an assignment final or not; a test of the mark, == or
+# !=, as the seat's camera watch makes, isn't one.
+relayed='CAMERA_RELAYED\}[[:space:]]*:?=[[:space:]]*"1"'
+taken='TAG[[:space:]]*-=[[:space:]]*"uaccess"'
+untagged="091d.*${taken}"
+reversed="${taken}.*091d"
 
 # The rule files in a folder holding a line one of the patterns after it
 # matches; grep's 1, no match, is an answer, and anything past it an error.
@@ -41,7 +44,7 @@ for pattern in "${relayed}" "${untagged}"; do
 done
 written=$(mktemp -d)
 trap 'rm -rf "${written}"' EXIT
-echo 'KERNEL=="video*", TAG-="uaccess", ENV{ID_MODEL_ID}=="091d"' >"${written}/reversed.rules"
+echo 'KERNEL=="video*", TAG -= "uaccess", ENV{ID_MODEL_ID}=="091d"' >"${written}/reversed.rules"
 shown=$(hiding "${written}" "${reversed}")
 if [[ -z "${shown}" ]]; then
   echo "the search for ${reversed} finds nothing even in a line written for it"

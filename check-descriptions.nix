@@ -5161,10 +5161,11 @@
     of a Brio a relay held, so the seat opens the Brio itself while its relay gives no picture
   '';
   the-mx-brio-give-back-never-fails = ''
-    the MX Brio's give-back, run against a stand-in udevadm, replays the Brio and never another
-    camera a relay holds, ends well when udev refuses a replay or never settles, and says it gave
-    the Brio back only when udev's record shows it tagged for the seat and unmarked, warning with
-    the way out otherwise
+    the MX Brio's give-back, run under set -e against a stand-in udevadm, replays the Brio and
+    never another camera a relay holds, even of its maker or model number, bounds each wait on udev
+    to fit twice within its unit's limit, ends well when udev refuses a replay or never settles, and
+    says it gave the Brio back only when udev's record shows it tagged for the seat and unmarked,
+    warning with the way out otherwise
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the

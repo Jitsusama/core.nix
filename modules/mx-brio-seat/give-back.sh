@@ -17,9 +17,10 @@
 # way out, and bounds each wait on udev well inside the unit's own limit,
 # since the unit timing out fails it as surely as an error.
 #
-# MX_BRIO_ROOT, empty on a machine, roots /dev and /sys for its tests.
+# Its one argument, which the unit never gives, roots /dev and /sys for its
+# tests, so nothing in a unit's environment can steer what root replays.
 
-root=${MX_BRIO_ROOT:-}
+root=${1:-}
 # How long udev may take to settle each replay, twice over within the
 # unit's TimeoutStartSec.
 settling=25
@@ -84,7 +85,15 @@ trap - EXIT
 # old rules says so rather than passing for one that worked.
 given=yes
 for node in "${nodes[@]}"; do
-  facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
+  if ! facts=$(udevadm info --query=property "$node" 2>/dev/null); then
+    given=no
+    if [ -e "$node" ]; then
+      echo "<4>udev couldn't say how the MX Brio at $node stands after its arrival." >&2
+    else
+      echo "The MX Brio was unplugged as it was given back; plugged in, it's the seat's."
+    fi
+    continue
+  fi
   if grep -qx 'CAMERA_RELAYED=1' <<<"$facts" ||
     ! grep -q '^CURRENT_TAGS=.*:uaccess:' <<<"$facts"; then
     given=no

@@ -43,11 +43,19 @@ onLinux {
     '';
 
   # The give-back replays the Brio alone, never another camera a relay
-  # holds, ends well whether udev answers, refuses or never settles, and
-  # says it gave the Brio back only when udev's record shows it did, run
-  # against a stand-in udevadm (tests/give-back-never-fails.sh).
-  the-mx-brio-give-back-never-fails = run "the-mx-brio-give-back-never-fails" { } ''
-    bash ${./tests}/give-back-never-fails.sh ${./give-back.sh}
-    touch $out
-  '';
+  # holds, bounds each wait on udev within the unit's own limit, ends well
+  # whether udev answers, refuses or never settles, and says it gave the
+  # Brio back only when udev's record shows it did, run under set -e as
+  # its unit runs it, against a stand-in udevadm
+  # (tests/give-back-never-fails.sh).
+  the-mx-brio-give-back-never-fails =
+    let
+      limit = graphical.config.systemd.services.mx-brio-seat.serviceConfig.TimeoutStartSec;
+      # The unit's limit in seconds, which the stand-in holds each wait to.
+      seconds = lib.toInt (lib.removeSuffix "min" limit) * 60;
+    in
+    run "the-mx-brio-give-back-never-fails" { } ''
+      bash ${./tests}/give-back-never-fails.sh ${./give-back.sh} ${toString seconds}
+      touch $out
+    '';
 }
