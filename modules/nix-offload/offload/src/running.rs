@@ -470,8 +470,18 @@ mod tests {
         let state = tempfile::tempdir().unwrap();
         let first = at("abc", "/t", ASKED);
         let held = alone(state.path(), 1, &first, || 10, true);
+        // The first ends once the second has said twice that it still
+        // waits, not after a fixed time: on a loaded machine each pause
+        // overruns, and on 24 November a Mac's build counted fewer than
+        // two in the 1.1 s the first used to hold. The bound only keeps a
+        // wait that never says so from hanging the test.
+        let (still, heard) = std::sync::mpsc::channel();
         let ender = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(1100));
+            for _ in 0..2 {
+                if heard.recv_timeout(Duration::from_secs(30)).is_err() {
+                    break;
+                }
+            }
             drop(held);
         });
         let mut said = Vec::new();
@@ -481,8 +491,13 @@ mod tests {
             &first,
             || 10,
             true,
-            Duration::from_millis(300),
-            &mut |line| said.push(line),
+            Duration::from_millis(50),
+            &mut |line| {
+                if line.contains("still waits") {
+                    let _ = still.send(());
+                }
+                said.push(line);
+            },
         );
         ender.join().unwrap();
         assert!(
