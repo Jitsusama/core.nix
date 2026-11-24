@@ -1446,11 +1446,13 @@
     asked, never asking GTK's portal
   '';
   find-leaves-guarded-folders-alone = ''
-    a Mac's account runs its own find ahead of macOS's, and a search from the home folder or from
-    Library, run there or given its path, never opens the folders ripgrep's ignore file guards,
-    while still finding the rest, a project's folder named like a guarded one included, keeping an
-    expression's own action, and searching a guarded folder named or started in; a depth-first
-    search runs as given; Linux's account gets no such find
+    a Mac's account has its own find, running macOS's with the ignore file, and a search from the
+    home folder, from Library or from above it and the data volume's name for it never opens the
+    folders ripgrep's ignore file guards, yet lists them, says it left them out and finds the rest,
+    a project's folder named like a guarded one included, keeping an expression's own action and
+    searching a guarded folder named, started in or named beside its parent; a search find can't
+    prune runs as given; every line of the ignore file names a folder find can guard; Linux's
+    account gets no such find
   '';
   firmware-errors-passes-clippy = ''
     clippy finds nothing in firmware-errors or its tests

@@ -1,14 +1,16 @@
 # shellcheck shell=bash
-# Checks that the Mac's find, searching a home folder from the home folder or
-# from Library, run there or given either's path from elsewhere, never opens
-# the folders the ignore file guards, and still finds everything else, folders
-# in a project named like a guarded one included. Each guarded folder is made
-# unreadable, so opening it is an error find reports. The find it runs, run
-# alone, reports them, so the check can fail. A search naming a guarded
-# folder, or starting inside one, still searches it; an expression with an
-# action of its own keeps it; and a search going depth first runs as given.
-# The home folder's name holds find's wildcards, which must match only
-# themselves.
+# Checks that the Mac's find, searching a home folder from the home folder,
+# from Library or from above both it and the data volume's second name for it,
+# run there or given the path from elsewhere, never opens the folders the
+# ignore file guards, still lists them, says it left them out, and finds
+# everything else, folders in a project named like a guarded one included.
+# Each guarded folder is made unreadable, so opening it is an error find
+# reports. The find it runs, run alone, reports them, so the check can fail. A
+# search naming a guarded folder, or starting inside one, still searches it,
+# beside its parent too; an expression with an action of its own keeps it; and
+# a search find can't prune runs as given. A stand-in find that prints what
+# it's given shows the spellings only macOS's find takes. The home folder's
+# name holds find's wildcards, which must match only themselves.
 # usage: find-leaves-guarded-folders-alone.sh <find.sh> <ignore file> <find>
 set -euo pipefail
 
@@ -16,74 +18,106 @@ wrapper=$1
 ignore=$2
 real=$3
 # What the searches say is kept beside the home folder, never in it, so no
-# search reads it.
+# search from the home folder reads it. Its real path, as the wrapper reads the
+# home folder's.
 work=$(mktemp -d)
+work=$(cd "${work}" && pwd -P)
 home="${work}/a [home]*"
+data=${work}/data
 said=${work}/said
-trap 'chmod -R u+rwx "${work}"; rm -rf "${work}"' EXIT
-guarded=(
-  "Library/Containers/com.example.app"
-  "Library/Group Containers/group.example"
-  "Library/Mobile Documents/com~apple~CloudDocs"
-  "Library/CloudStorage/a-cloud"
-  "Desktop"
-  "Documents/repo"
-  "Downloads"
-)
-for folder in "${guarded[@]}" Library/Logs src src/Desktop src/Documents src/Downloads; do
-  mkdir -p "${home}/${folder}"
-  printf 'needle\n' >"${home}/${folder}/needle"
+stand=$(mktemp -d)
+trap 'chmod -R u+rwx "${work}"; rm -rf "${work}" "${stand}"' EXIT
+note='find: left out the folders macOS asks about; name one to search it'
+
+# The folders the ignore file guards, each with a needle in it, in the home
+# folder and under the data volume's name for it.
+guarded=()
+while IFS= read -r line; do
+  case ${line} in
+    /*/)
+      line=${line#/}
+      guarded+=("${line%/}")
+      ;;
+    *) ;;
+  esac
+done <"${ignore}"
+locked=()
+for folder in "${guarded[@]}"; do
+  locked+=("${home}/${folder}" "${data}${home}/${folder}")
 done
-locked=(
-  "${home}/Library/Containers" "${home}/Library/Group Containers"
-  "${home}/Library/Mobile Documents" "${home}/Library/CloudStorage"
-  "${home}/Desktop" "${home}/Documents" "${home}/Downloads"
-)
-starts=("${home}" "${home}/Library")
+for folder in "${locked[@]}" "${home}/Documents/repo" "${home}/Library/Logs" "${home}/src" \
+  "${home}/src/Desktop" "${home}/src/Documents" "${home}/src/Downloads" "${data}${home}/src"; do
+  mkdir -p "${folder}"
+  printf 'needle\n' >"${folder}/needle"
+done
+starts=("${home}" "${home}/Library" "${work}")
 # How a search reaches its start: run inside it as ., given its path from
 # elsewhere, or given it with a slash at its end.
 hows=(inside elsewhere slashed)
 how=inside
 program=${wrapper}
 
-# A search for the needle from a folder, of the paths given or of all of it,
-# reached as $how says, with the expression given or -name needle: what it
-# finds on stdout, relative to that folder, and what it says in $said.
+# The wrapper, run in a folder with the home folder and data volume given;
+# what it ends on is find's, which the checks read from what it says.
+wrapped() {
+  local at=$1
+  shift
+  (cd "${at}" && HOME=${home} bash "${wrapper}" "${real}" "${ignore}" "${data}" "$@") || true
+}
+
+# A search for the needle from a folder, reached as $how says, with the
+# expression given, none (--bare) or -name needle: what it finds on stdout,
+# each by its whole path, and what it says in $said.
 search() {
   local from=$1
   shift
   local at=${from} paths=(.)
   case ${how} in
-    elsewhere) at=${work} paths=("${from}") ;;
-    slashed) at=${work} paths=("${from}/") ;;
+    elsewhere) at=${stand} paths=("${from}") ;;
+    slashed) at=${stand} paths=("${from}/") ;;
     *) ;;
   esac
   local expression=(-name needle)
-  if [ $# -gt 0 ]; then
+  if [ "${1-}" = --bare ]; then
+    expression=()
+  elif [ $# -gt 0 ]; then
     expression=("$@")
   fi
-  local out
+  local out line
   if [ "${program}" = "${wrapper}" ]; then
-    out=$( (cd "${at}" && HOME=${home} bash "${wrapper}" "${real}" "${ignore}" \
-      "${paths[@]}" "${expression[@]}") 2>"${said}") || true
+    out=$(wrapped "${at}" "${paths[@]}" ${expression[@]+"${expression[@]}"} 2>"${said}")
   else
-    out=$( (cd "${at}" && "${real}" "${paths[@]}" "${expression[@]}") 2>"${said}") || true
+    out=$( (cd "${at}" && "${real}" "${paths[@]}" ${expression[@]+"${expression[@]}"}) \
+      2>"${said}") || true
   fi
-  out=${out//"${from}//"/}
-  out=${out//"${from}/"/}
-  printf '%s\n' "${out//.\//}"
+  while IFS= read -r line; do
+    case ${line} in
+      .) line=${from} ;;
+      ./*) line=${from}/${line#./} ;;
+      "${from}//"*) line=${from}/${line#"${from}//"} ;;
+      *) ;;
+    esac
+    printf '%s\n' "${line}"
+  done <<<"${out}"
 }
 
 # What a search from each start finds when it finds everything it should.
 declare -A expected=(
-  ["${home}"]=$'Library/Logs/needle\nsrc/needle\nsrc/Desktop/needle\nsrc/Documents/needle\nsrc/Downloads/needle'
-  ["${home}/Library"]=Logs/needle
+  ["${home}"]="${home}/Library/Logs/needle
+${home}/src/needle
+${home}/src/Desktop/needle
+${home}/src/Documents/needle
+${home}/src/Downloads/needle"
+  ["${home}/Library"]="${home}/Library/Logs/needle"
+  ["${work}"]="${home}/src/needle
+${data}${home}/src/needle"
 )
 
 # The name a failure gives a search, so it says which went wrong.
 named() {
   who="${program##*/} from ${1#"${work}"/} (${how})"
 }
+
 
 chmod 000 "${locked[@]}"
 program=${real}
@@ -103,18 +137,25 @@ for how in "${hows[@]}"; do
   for from in "${starts[@]}"; do
     named "${from}"
     found=$(search "${from}")
-    if [ -s "${said}" ]; then
-      words=$(<"${said}")
-      echo "${who} opened other programs' data or a folder macOS guards: ${words}" >&2
+    if [[ $(<"${said}") != "${note}" ]]; then
+      echo "${who} opened a guarded folder or didn't say it left one out: $(<"${said}")" >&2
       exit 1
     fi
-    wanted=${expected[${from}]}
     while read -r path; do
       if ! grep -qxF "${path}" <<<"${found}"; then
         echo "${who} no longer finds ${path}: ${found}" >&2
         exit 1
       fi
-    done <<<"${wanted}"
+    done <<<"${expected[${from}]}"
+    # Each guarded folder under the start is still listed, as find lists it
+    # from its parent.
+    found=$(search "${from}" -type d)
+    for folder in "${locked[@]}"; do
+      if [[ ${folder} == "${from}/"* ]] && ! grep -qxF "${folder}" <<<"${found}"; then
+        echo "${who} no longer lists ${folder}: ${found}" >&2
+        exit 1
+      fi
+    done
   done
 done
 
@@ -123,53 +164,128 @@ done
 how=inside
 named "${home}"
 found=$(search "${home}" -name needle -exec printf 'seen %s\n' '{}' ';')
-if [ -s "${said}" ] || ! grep -qxF 'seen Library/Logs/needle' <<<"${found}" \
-  || grep -qxF Library/Logs/needle <<<"${found}"; then
+if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF 'seen ./Library/Logs/needle' <<<"${found}" \
+  || grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
   echo "${who} with -exec lost its action or printed more: ${found} $(<"${said}")" >&2
   exit 1
 fi
 found=$(search "${home}" -type f -o -name nothing)
-if [ -s "${said}" ] || ! grep -qxF Library/Logs/needle <<<"${found}"; then
+if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
   echo "${who} with an expression joined by -o lost a match: ${found} $(<"${said}")" >&2
   exit 1
 fi
+found=$(search "${home}" --bare)
+if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF "${home}/Library/Logs/needle" <<<"${found}" \
+  || ! grep -qxF "${home}/Desktop" <<<"${found}"; then
+  echo "${who} with no expression lost a match: ${found} $(<"${said}")" >&2
+  exit 1
+fi
 
-# Readable again, the guarded folders are still never listed, since the
+# A search find can't prune, going depth first or testing nothing above its
+# -mindepth, runs as given, so it opens the guarded folders; one whose
+# -mindepth lies above them is still pruned.
+for given in -depth '-mindepth 3'; do
+  # shellcheck disable=SC2086 # Each is split into its words, as typed.
+  search "${home}" ${given} -name needle >/dev/null
+  if ! grep -q 'ermission denied' "${said}"; then
+    echo "${who} with ${given} didn't run as given: $(<"${said}")" >&2
+    exit 1
+  fi
+done
+search "${home}" -mindepth 1 -name needle >/dev/null
+if grep -q 'ermission denied' "${said}"; then
+  echo "${who} with -mindepth 1 opened a guarded folder: $(<"${said}")" >&2
+  exit 1
+fi
+
+# Readable again, nothing in the guarded folders is ever listed, since the
 # search leaves them out rather than the locks.
 chmod 755 "${locked[@]}"
 for how in "${hows[@]}"; do
   for from in "${starts[@]}"; do
     named "${from}"
     found=$(search "${from}")
-    if grep -qE -e '^(Library/)?(Containers|Group Containers|Mobile Documents|CloudStorage)/' \
-      -e '^(Desktop|Documents|Downloads)/' <<<"${found}"; then
-      echo "${who} listed other programs' data or a folder macOS guards: ${found}" >&2
-      exit 1
-    fi
+    for folder in "${locked[@]}"; do
+      if grep -qF "${folder}/" <<<"${found}"; then
+        echo "${who} listed what's in ${folder}: ${found}" >&2
+        exit 1
+      fi
+    done
   done
 done
 
 # A search naming a guarded folder, or starting inside one, as in a
-# repository kept in Documents, still searches it.
+# repository kept in Documents, still searches it, beside its parent too.
 how=inside
 named "${home}"
-found=$( (cd "${home}" && HOME=${home} bash "${wrapper}" "${real}" "${ignore}" Documents \
-  -name needle) 2>"${said}") || true
+found=$(wrapped "${home}" Documents -name needle 2>"${said}")
 if ! grep -qxF Documents/repo/needle <<<"${found}"; then
   echo "${who} naming Documents no longer searched it: ${found}" >&2
   exit 1
 fi
+found=$(wrapped "${stand}" "${home}" "${home}/Documents" -name needle 2>"${said}")
+if ! grep -qxF "${home}/Documents/repo/needle" <<<"${found}" \
+  || grep -qxF "${home}/Desktop/needle" <<<"${found}"; then
+  echo "${who} naming Documents beside the home folder lost it: ${found}" >&2
+  exit 1
+fi
 named "${home}/Documents/repo"
 found=$(search "${home}/Documents/repo")
-if ! grep -qxF needle <<<"${found}"; then
+if ! grep -qxF "${home}/Documents/repo/needle" <<<"${found}"; then
   echo "${who} no longer searched it: ${found}" >&2
   exit 1
 fi
 
-# A search going depth first runs as given, since find can't prune it.
-named "${home}"
-found=$(search "${home}" -depth -name needle)
-if ! grep -qxF Documents/repo/needle <<<"${found}"; then
-  echo "${who} with -depth didn't run as given: ${found}" >&2
+# What only macOS's find takes, given to a stand-in that prints its words:
+# a slashed start named as macOS doubles the slash, and as Linux doesn't;
+# / pruned by both the home folder's names; a depth test, -f, -- and
+# -mindepth 1 pruned; and depth first, as an option or a primary, or a
+# -mindepth past a guarded folder, given as typed.
+printf '#!%s\nprintf "%%s\\n" "$@"\n' "${BASH}" >"${stand}/find"
+chmod +x "${stand}/find"
+real=${stand}/find
+given() {
+  said=$(wrapped "${stand}" "$@" 2>/dev/null)
+}
+given "${home}/" -name x
+if ! grep -qE '[^/]//Desktop$' <<<"${said}" || ! grep -qE '[^/]/Desktop$' <<<"${said}"; then
+  echo "a slashed start isn't pruned by both spellings: ${said}" >&2
+  exit 1
+fi
+given / -name x
+if ! grep -qxF "/${home#/}/Desktop" <<<"${said//\\/}" \
+  || ! grep -qxF "/${data#/}${home}/Desktop" <<<"${said//\\/}"; then
+  echo "/ isn't pruned by both the home folder's names: ${said}" >&2
+  exit 1
+fi
+for args in depth-test f-path dashes shallow; do
+  case ${args} in
+    depth-test) given "${home}" -depth 2 -name x ;;
+    f-path) given -f "${home}" -name x ;;
+    dashes) given -- "${home}" -name x ;;
+    shallow) given "${home}" -mindepth 1 -name x ;;
+    *) ;;
+  esac
+  if ! grep -qxF -- -prune <<<"${said}"; then
+    echo "a search with ${args} wasn't pruned: ${said}" >&2
+    exit 1
+  fi
+done
+for args in depth-primary depth-option deep; do
+  case ${args} in
+    depth-primary) given "${home}" -name x -d ;;
+    depth-option) given -d "${home}" -name x ;;
+    deep) given "${home}" -mindepth 2 -name x ;;
+    *) ;;
+  esac
+  if grep -qxF -- -prune <<<"${said}"; then
+    echo "a search with ${args} wasn't given as typed: ${said}" >&2
+    exit 1
+  fi
+done
+given "${home}" "${home}/Documents" -name x
+# A prune names the home folder with its wildcards escaped; a start doesn't.
+if grep -qF '\[home]\*/Documents' <<<"${said}"; then
+  echo "a start naming Documents beside the home folder is pruned: ${said}" >&2
   exit 1
 fi

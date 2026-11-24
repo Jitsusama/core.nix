@@ -229,7 +229,7 @@
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         find = script "find" ../../modules/find/find.sh {
-          words = "/usr/bin/find ${../../modules/ripgrep/ignore}";
+          words = "/usr/bin/find ${../../modules/ripgrep/ignore} /System/Volumes/Data";
         };
         firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
         gnome-keyring-unlock = script "gnome-keyring-unlock" ../../modules/gnome-keyring/unlock.sh { };

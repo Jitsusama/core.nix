@@ -4,8 +4,10 @@
 # asks.
 { lib, pkgs, ... }:
 let
+  # The data volume is where macOS mounts the volume the home folder is on.
   find = pkgs.writeShellScriptBin "find" ''
-    exec ${lib.getExe pkgs.bash} ${./find.sh} /usr/bin/find ${../ripgrep/ignore} "$@"
+    exec ${lib.getExe pkgs.bash} ${./find.sh} /usr/bin/find ${../ripgrep/ignore} \
+      /System/Volumes/Data "$@"
   '';
 in
 {
