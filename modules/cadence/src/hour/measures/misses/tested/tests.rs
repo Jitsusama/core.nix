@@ -42,10 +42,10 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
     let ledger = [
         miss("XY9H5C", "cat waits 2 s", None),
         miss("RCTRF8", "History paused", Some("a test somewhere")),
-        miss("QCXZEB", "Super+S attached only Reader", Some("core src/a.rs runs")),
-        miss("ZINAWZ", "Reader windows titled", Some("core src/a.rs gone")),
-        miss("88LQC0", "backup notice stayed", Some("world src/a.rs anything")),
-        miss("16V6F4", "switch lost Colemak", Some("core src/a.rs unseen")),
+        miss("QCXZEB", "Super+S", Some("core src/a.rs runs")),
+        miss("ZINAWZ", "Reader titles", Some("core src/a.rs gone")),
+        miss("88LQC0", "backup notice", Some("world src/a.rs anything")),
+        miss("16V6F4", "lost Colemak", Some("core src/a.rs unseen")),
         r#"{"at": "x", "owner": "WCJQSG", "what": "carried", "carried": true}"#.to_owned(),
     ]
     .join("\n");
@@ -64,11 +64,11 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
                  · RCTRF8"
             ),
             format!(
-                "Reader windows titled ({AT}), its test gone isn't in core's src/a.rs as it \
-                 runs here · ZINAWZ"
+                "Reader titles ({AT}), its test gone isn't in core's src/a.rs as it runs \
+                 here · ZINAWZ"
             ),
             format!(
-                "backup notice stayed ({AT}), its test is in world, which cadence has no \
+                "backup notice ({AT}), its test is in world, which cadence has no \
                  checkout of · 88LQC0"
             ),
         ],
@@ -143,7 +143,7 @@ fn a_test_is_found_in_its_path_at_the_revision_that_runs() {
         ("main", test("src", "the_cat_never_waits"), Look::Runs),
         ("main", test("src/a.rs", "elsewhere"), Look::Missing),
         ("main", test("src/a.rs", "the_cat_never"), Look::Runs),
-        ("0000000", test("src/a.rs", "the_cat_never_waits"), Look::Blind),
+        ("0000000", test("src/a.rs", "the_cat"), Look::Blind),
     ];
     for (rev, test, look) in cases {
         assert_eq!(

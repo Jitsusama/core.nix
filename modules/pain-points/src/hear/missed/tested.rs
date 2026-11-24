@@ -101,11 +101,15 @@ fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
         return Err(Failure::new(Exit::NotFound, what).try_this("its time as its line has it"));
     }
     if already {
-        return Ok(format!("pain-points: the miss at {at} already names {test}"));
+        return Ok(format!(
+            "pain-points: the miss at {at} already names {test}"
+        ));
     }
     lines.push(String::new());
     crate::write_whole(ledger, &lines.join("\n")).map_err(failed)?;
-    Ok(format!("pain-points: the miss at {at} now names its test, {test}"))
+    Ok(format!(
+        "pain-points: the miss at {at} now names its test, {test}"
+    ))
 }
 
 #[cfg(test)]

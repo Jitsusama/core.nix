@@ -708,11 +708,7 @@ mod tests {
             .filter(|e| e.open && e.key.starts_with("hour:misses-untested"))
             .filter_map(|e| e.owner.as_deref())
             .collect();
-        assert_eq!(
-            open,
-            ["H2VYOB"],
-            "an owner whose test runs was still asked"
-        );
+        assert_eq!(open, ["H2VYOB"], "an owner whose test runs was still asked");
     }
 
     #[test]
