@@ -1,12 +1,14 @@
-"""A focused session window's memory in swap is read back, and nobody else's.
+"""A focused window's memory in swap is read back, and nobody else's.
 
 swap-in.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 The sorter starts memory-swap-in@PID.service as the focus comes to a window, and the unit reads
 back what swap holds of PID's scope only if PID belongs to the session window niri says has the
-focus, at most once a window every 30 s. A stand-in niri, run as someone's own niri.service,
+focus, or of PID's app if PID is the process niri names for the focused app window, at most
+once a window every 30 s. A stand-in niri, run as someone's own niri.service,
 answers for someone, an administrator, from a file the tests write, and stand-in heaps play pi's,
 each pushed out to swap on disk first. A stand-in kitty plays one drawing many windows whose pis
-have no app id, which only it can tell apart.
+have no app id, which only it can tell apart. A stand-in app plays Chrome, its renderer a heap in
+a scope beside its window's.
 """
 
 from __future__ import annotations
@@ -240,12 +242,39 @@ def test_a_kitty_socket_planted_by_another_process_is_never_asked(up: BaseMachin
     assert not sent, "the planted socket was sent a command"
 
 
-def test_a_window_that_is_no_session_is_left_alone(up: BaseMachine) -> None:
+def test_a_process_an_app_window_doesnt_name_is_left_alone(up: BaseMachine) -> None:
     pid = heap(up, "browser", "firefox")
-    focus(up, 5, "firefox")
+    focus(up, 5, "firefox", pid=1)
     status, said = swap_in(up, "someone", pid)
     assert status == 0, said
     assert "isn't in the focused window" in said, said
+
+
+def test_an_app_windows_renderer_beside_it_is_read_back(up: BaseMachine) -> None:
+    runtime = runtime_of(up)
+    up.succeed(
+        f"runuser -u someone -- env XDG_RUNTIME_DIR={runtime} "
+        f"sh /etc/swap-in/app.sh {SIZE} {runtime} > /dev/null 2>&1 &"
+    )
+    up.wait_for_file(f"{runtime}/app-renderer.pid")
+    up.wait_for_file(f"{runtime}/app-window.pid")
+    window, renderer = pid_in(up, "app-window"), pid_in(up, "app-renderer")
+    cgroup = held_by(up, renderer)
+    assert cgroup.endswith(f"/app-renderer-{window}.scope"), cgroup
+    up.execute(f"echo {SIZE}M > {cgroup}/memory.reclaim")
+    swapped = int(up.succeed(f"cat {cgroup}/memory.swap.current"))
+    assert swapped >= (SIZE // 2) << 20, f"the renderer has only {swapped} bytes in swap"
+    before = int(up.succeed(f"cat {cgroup}/memory.current"))
+    focus(up, 22, "google-chrome", pid=window)
+    status, said = swap_in(up, "someone", renderer)
+    assert status == 0, said
+    assert "isn't in the focused window 22" in said, "a renderer asked for itself: " + said
+    status, said = swap_in(up, "someone", window)
+    assert status == 0, said
+    assert "Read back" in said, said
+    up.wait_until_succeeds(
+        f"test $(cat {cgroup}/memory.current) -ge {before + ((SIZE // 2) << 20)}", timeout=30
+    )
 
 
 def test_roots_processes_are_never_read_back(up: BaseMachine) -> None:

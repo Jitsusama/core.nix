@@ -1199,14 +1199,23 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
 
 /// Asks, once each time the focus comes to a session window whose scope is
 /// found, for the swapped memory of the window and its pis to be read back,
-/// through the root unit that may (`src/swap_in.rs`), which checks it all
-/// again itself.
+/// or to an app's window, such as Slack's or Chrome's, for its own
+/// process's and those it started, through the root unit that may
+/// (`src/swap_in.rs`), which checks it all again itself.
 fn read_back(at: Option<focus::Window>, ranks: &mut Ranks) {
     let Some(window) = at else {
         ranks.reading = None;
         return;
     };
     if ranks.reading == Some(window.id) {
+        return;
+    }
+    // niri names an app window's own process, where a session's runs in a
+    // kitty niri doesn't know it by. On 24 November Slack had 857 MiB in
+    // swap against 797 resident, and Chrome 703 against 743.
+    if !window.session() {
+        ranks.reading = Some(window.id);
+        start_reading_back(&window.pid.to_string());
         return;
     }
     let Some(Ok(scope)) = ranks.found.get(&window.id) else {

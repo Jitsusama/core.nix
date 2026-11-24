@@ -1,4 +1,4 @@
-//! Reads a session window's swapped-out memory back as Joel comes to it,
+//! Reads a window's swapped-out memory back as Joel comes to it,
 //! rather than one fault at a time as he types.
 //!
 //! A pi window he comes back to after a while finds much of its heap in
@@ -17,9 +17,12 @@
 //! asks the account's own niri ([`is_niri`]) which window has the focus,
 //! and reads nothing back unless the pid belongs to it ([`belongs`]), or
 //! the kitty drawing that window, asked the same way, says the pid's scope
-//! is its focused window's ([`named_by_kitty`], `src/kitty.rs`); a window
-//! is read back at most every [`EVERY`]. It only hints: nothing is
-//! changed but what memory is resident.
+//! is its focused window's ([`named_by_kitty`], `src/kitty.rs`). A window
+//! holding no session, an app's such as Slack's or Chrome's, is read back
+//! only when the pid is the one niri names for it, and with it what that
+//! process started in scopes named for it ([`of_the_app`]). A window is
+//! read back at most every [`EVERY`]. It only hints: nothing is changed
+//! but what memory is resident.
 
 use std::ffi::{c_long, c_void};
 use std::fs::{self, File};
@@ -264,6 +267,19 @@ pub fn belongs(process: &Process, window: &Window, kittys: usize) -> bool {
         && process.ancestors.contains(&window.pid)
 }
 
+/// Whether `process`, numbered `pid`, is of the focused `window`'s app, for
+/// a window holding no session: the window's own process, as niri names
+/// it, or one it started, in a scope named for it. Chrome and Slack run
+/// their renderers in a scope of their own beside the window's, each ending
+/// in the window's pid, and on 24 November most of what they had in swap
+/// sat there: Slack's 857 MiB against 79 in the window's own. A kitty's
+/// shells run in scopes named `kitty-PID-N`, so they aren't its.
+pub fn of_the_app(pid: u32, process: &Process, window: &Window) -> bool {
+    !window.session()
+        && process.scope.ends_with(&format!("-{}.scope", window.pid))
+        && (pid == window.pid || process.ancestors.contains(&window.pid))
+}
+
 /// Whether `process` runs in `window`, a session window, by what the kitty
 /// drawing it says: `named`, the scope of the program in its focused OS
 /// window, is the process's, under that kitty. On 11 November 48 of 58 pi
@@ -453,7 +469,8 @@ fn kittys(pid: u32, kitty: u32) -> usize {
 
 /// As the account `pid` runs as: waits [`SETTLE`], then reads back the
 /// swapped memory of every process in `pid`'s scope, if `pid` belongs to
-/// the session window niri says has the focus.
+/// the session window niri says has the focus, or of its app's, if it's
+/// the focused app window's own process.
 fn read_back(pid: u32) -> Result<String, String> {
     let me = fs::read_to_string("/proc/self/status")
         .ok()
@@ -465,6 +482,16 @@ fn read_back(pid: u32) -> Result<String, String> {
         return Ok("No window has the focus, so nothing is read back.".to_owned());
     };
     let found = process(pid)?;
+    if !window.session() {
+        return if pid == window.pid && of_the_app(pid, &found, &window) {
+            read_in(&apps_own(pid, &window), me, &window)
+        } else {
+            Ok(format!(
+                "Process {pid} isn't in the focused window {} ({}), so nothing is read back.",
+                window.id, window.app_id
+            ))
+        };
+    }
     if !belongs(&found, &window, kittys(pid, window.pid))
         && !named_by_kitty(
             &found,
@@ -483,12 +510,41 @@ fn read_back(pid: u32) -> Result<String, String> {
             window.id, window.app_id
         ));
     }
-    let scope = scope_of(pid)?;
-    let procs =
-        fs::read_to_string(scope.join("cgroup.procs")).map_err(|error| error.to_string())?;
+    let procs = fs::read_to_string(scope_of(pid)?.join("cgroup.procs"))
+        .map_err(|error| error.to_string())?;
+    let pids: Vec<u32> = procs.lines().filter_map(|line| line.parse().ok()).collect();
+    read_in(&pids, me, &window)
+}
+
+/// The processes of `pid`'s app, the focused `window`'s own process: those
+/// [`of_the_app`] in every scope beside its own, its own included.
+fn apps_own(pid: u32, window: &Window) -> Vec<u32> {
+    let Ok(scope) = scope_of(pid) else {
+        return Vec::new();
+    };
+    scope
+        .parent()
+        .and_then(|slice| fs::read_dir(slice).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read_to_string(entry.path().join("cgroup.procs")).ok())
+        .flat_map(|procs| {
+            procs
+                .lines()
+                .filter_map(|line| line.parse::<u32>().ok())
+                .collect::<Vec<_>>()
+        })
+        .filter(|each| process(*each).is_ok_and(|found| of_the_app(*each, &found, window)))
+        .collect()
+}
+
+/// Reads back the swapped memory of each of `pids` that `me` owns, for
+/// `window`, and says how much.
+fn read_in(pids: &[u32], me: u32, window: &Window) -> Result<String, String> {
     let started = Instant::now();
     let (mut processes, mut swapped) = (0, 0);
-    for each in procs.lines().filter_map(|line| line.parse::<u32>().ok()) {
+    for &each in pids {
         let Ok(status) = fs::read_to_string(format!("/proc/{each}/status")) else {
             continue;
         };
@@ -598,6 +654,51 @@ mod tests {
                 Some("kitty-2684-128.scope")
             ),
             "a window holding no session"
+        );
+    }
+
+    #[test]
+    fn an_apps_window_has_its_own_process_and_those_it_started_in_scopes_named_for_it() {
+        let chrome = window("google-chrome", 2_349_662);
+        let process = |scope: &str, ancestors: &[u32]| Process {
+            app_id: None,
+            scope: scope.to_owned(),
+            ancestors: ancestors.to_vec(),
+        };
+        let browser = process("app-com.google.Chrome-2349662.scope", &[2_349_600, 1]);
+        assert!(
+            of_the_app(2_349_662, &browser, &chrome),
+            "the window's own process"
+        );
+        let renderer = process(
+            "app-gio-google-chrome-2349662.scope",
+            &[2_349_700, 2_349_662],
+        );
+        assert!(
+            of_the_app(2_349_729, &renderer, &chrome),
+            "a renderer it started, in the scope beside its own"
+        );
+        let stranger = process("app-gio-google-chrome-2349662.scope", &[4_000, 1]);
+        assert!(
+            !of_the_app(4_001, &stranger, &chrome),
+            "a process the window didn't start, in a scope named for it"
+        );
+        let elsewhere = process("app-gio-google-chrome-1.scope", &[2_349_662]);
+        assert!(
+            !of_the_app(4_002, &elsewhere, &chrome),
+            "one it started in a scope named for another"
+        );
+        let kitty = window("kitty", 2684);
+        let shell = process("kitty-2684-26.scope", &[2684, 1]);
+        assert!(
+            !of_the_app(2700, &shell, &kitty),
+            "a kitty's shell, whose scope isn't the kitty's own"
+        );
+        let pi = window("pi-session.7", 2684);
+        let own = process("app-niri-kitty-2684.scope", &[1]);
+        assert!(
+            !of_the_app(2684, &own, &pi),
+            "a session window, read back by its session's scope"
         );
     }
 
