@@ -190,9 +190,12 @@ ShellRoot {
     // with no run of its own holds, close where it has nothing to do, open
     // its collection where it has no run, or run. It isn't run: it leaves
     // out a gone row, one held still, a step into a target or a copy's
-    // contents, a confirm while collecting, how a row that stays, opens or
-    // acts now runs, and Return's landing in find (Launcher.lands). So it
-    // tells this check's rows apart, and stands for run on no other.
+    // contents, that a confirm inside a held step runs unless collecting,
+    // that a row marked below and run from below another isn't closed, and
+    // how a row that stays, opens or acts now runs. Nor is it what Return
+    // weighs before run (Arming.js's returnAct): an ask, arming, a step into
+    // a thing, an end and a landing in find. So it tells this check's rows
+    // apart, and stands for run on no other.
     function offers(row) {
         const holds = (row?.verbs?.() ?? []).length > 0 || !!row?.targets;
         if (row?.start !== undefined)
@@ -223,7 +226,7 @@ ShellRoot {
             `${install?.name} ${sure?.name}`);
         Expect.expect("the sure step's Return does its act", offers(sure) === "runs",
             offers(sure));
-        Expect.expect("and its row says it's sure, the field Launcher.lands reads",
+        Expect.expect("and its row says it's sure, a field Launcher.lands reads",
             sure.sure === true, sure.sure);
         theLauncher.answer = theFirmware.answer("firmware");
         sure.run();
