@@ -23,7 +23,9 @@ onLinux {
   find-leaves-guarded-folders-alone =
     let
       finds = machine: lib.filter (package: package.name == "find") (account machine).home.packages;
-      runs = "${./find.sh} /usr/bin/find ${../ripgrep/ignore}";
+      # Compared as text alone, as a match may not name the store.
+      runs = builtins.unsafeDiscardStringContext "${./find.sh} /usr/bin/find ${../ripgrep/ignore}";
+      text = find: builtins.unsafeDiscardStringContext (find.text or "");
       lines = lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
         lib.splitString "\n" (builtins.readFile ../ripgrep/ignore)
       );
@@ -32,7 +34,7 @@ onLinux {
     assert lib.assertMsg (
       finds macWorkstation != [ ]
     ) "A Mac's account runs macOS's find, which opens the folders macOS asks about.";
-    assert lib.assertMsg (lib.all (find: lib.hasInfix runs (find.text or "")) (
+    assert lib.assertMsg (lib.all (find: lib.hasInfix runs (text find)) (
       finds macWorkstation
     )) "A Mac's find doesn't run find.sh with macOS's find and the ignore file.";
     assert lib.assertMsg (finds workstation == [ ]) "A Linux account runs the Mac's find.";
