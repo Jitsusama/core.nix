@@ -2849,8 +2849,12 @@ Singleton {
     // of the ask. One refused is kept late, as a pid read right yet makes
     // its window the one come; one no kitty took can't come, so it's kept
     // neither late nor begun (`comes` false), and Reopen Them All pressed
-    // again asks for it rather than taking it as asked already.
+    // again asks for it rather than taking it as asked already. The
+    // script waits a minute for the kitty's answer, past the walk's 30 s
+    // patience, so one no kitty took may be late already (lateUntaken).
     function waitedOnNoMore(named, why, comes) {
+        if (comes === false)
+            lateUntaken(named);
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened !== null || waiting.classed !== named)
             return;
@@ -2862,6 +2866,24 @@ Singleton {
         reopening.waiting = null;
         reopenPatience.stop();
         reopenSoon();
+    }
+    // A viewer no kitty took that the walk's patience already gave up on
+    // is kept neither late nor begun: no window can come to end it, so it
+    // would keep the walk from ending and a press from asking again. With
+    // it gone the walk ends if nothing else is left, as one come late does.
+    function lateUntaken(named) {
+        const going = reopening;
+        const gone = going?.late.filter(one => one.classed === named && one.opened === null)
+            ?? [];
+        if (gone.length === 0)
+            return;
+        console.info(`sessions: ${named}, given up on, is late no more, as no sessions kitty `
+            + "took it");
+        going.late = going.late.filter(one => !gone.includes(one));
+        going.begun = going.begun.filter(id => !gone.some(one => one.id === id));
+        if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
+            && !going.looking && !going.settling)
+            root.reopenDone();
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
