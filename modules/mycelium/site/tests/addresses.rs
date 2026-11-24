@@ -17,16 +17,19 @@ fn judged_by_every_case(judged: impl Fn(&str) -> bool) {
 }
 
 /// The cases `written` holds, each whether it is an address and its text,
-/// failing on a line written any way but one, a carriage return in it
-/// included (README.md, The Address Cases).
+/// failing on a line written any way but one, or on a carriage return
+/// anywhere, a note's included (README.md, The Address Cases).
 fn cases_in(written: &str) -> Vec<(bool, String)> {
+    assert!(
+        !written.contains('\r'),
+        "{written:?} holds no carriage return"
+    );
     // Split on line feeds alone, since `lines` would drop a carriage
     // return the other readers see.
     written
         .split('\n')
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|line| {
-            assert!(!line.contains('\r'), "{line:?} holds no carriage return");
             let (kind, text) = line.split_once(' ').unwrap_or((line, ""));
             assert!(matches!(kind, "is" | "not"), "{line:?} says is or not");
             (kind == "is", case_text(text))
@@ -36,7 +39,14 @@ fn cases_in(written: &str) -> Vec<(bool, String)> {
 
 #[test]
 fn a_line_written_any_other_way_is_refused() {
-    for written in ["is T\r", "not T\r\n", "is T\n\r", "IS T", "maybe T"] {
+    for written in [
+        "is T\r",
+        "not T\r\n",
+        "is T\rU",
+        "# a note\r\nis T",
+        "IS T",
+        "maybe T",
+    ] {
         let read = std::panic::catch_unwind(|| cases_in(written));
         assert!(read.is_err(), "{written:?} is refused");
     }
