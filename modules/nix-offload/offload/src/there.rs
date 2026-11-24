@@ -1968,7 +1968,7 @@ fn turn_folder_at(folder: &Path, uid: u32) -> Result<PathBuf, String> {
 /// system build waited on its one while another copy's had ended. Waiters
 /// take freed turns first come, first served, each holding a [`Ticket`]
 /// and trying the turns only while no live waiter came before it: on 23
-/// November, with no order kept, Aquifer's copies waited over 80 minutes
+/// November, with no order kept, one project's copies waited over 80 minutes
 /// three times while copies come later took each freed turn. One that
 /// can't take its place in line says so and tries the turns as they free,
 /// as before. A turn whose file can't be opened or locked is said
