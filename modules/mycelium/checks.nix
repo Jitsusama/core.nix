@@ -1367,12 +1367,14 @@ in
   # declaration does: an agent runs as the account, so a file in its config
   # folder could raise a machine's cap or send its requests elsewhere. Its
   # names are the locked mycelium's own, read from its source, since the
-  # node refuses a file with a name it doesn't know. A budget with no key
+  # node refuses a file with a name it doesn't know, and its budget kinds
+  # are the lender's words, so a kind core writes is one it takes. A lend
+  # leaving its defaults unsaid is written with them. A budget with no key
   # says none, a further realm's node lends nothing, and what mycelium
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
       (
         let
           # The machine whole, for its own pkgs, and its account.
@@ -1594,6 +1596,89 @@ in
             !typeRefuses lend
             && lib.all (check: check.assertion) (linux (both // { inherit lend; })).assertions;
           vm = lib.head lending.vms;
+          # The words serde takes for the lender's enum Kind and the one it
+          # takes where none is written, read from its source: each
+          # variant lowercased, under the one rename it may carry, and the
+          # variant marked default. Any other layout throws rather than
+          # passing what the scan didn't read.
+          kinds =
+            let
+              from = lib.lists.findFirstIndex (line: line == "enum Kind {") null lines;
+              rest = lib.drop (from + 1) lines;
+              to = lib.lists.findFirstIndex (line: line == "}") null rest;
+              body = lib.filter (line: !lib.hasPrefix "    ///" line) (lib.take to rest);
+              before = lib.reverseList (lib.take from lines);
+              above = lib.take (lib.lists.findFirstIndex (
+                line: !lib.hasPrefix "#[" line
+              ) (lib.length before) before) before;
+              renaming = "#[serde(rename_all = \"lowercase\")]";
+              variant = builtins.match "    ([A-Z][A-Za-z]*),";
+              marked = "    #[default]";
+              at = lib.lists.findFirstIndex (line: line == marked) null body;
+              fail = why: throw "mycelium's enum Kind ${why}, which this check can't read";
+            in
+            if from == null || to == null then
+              throw "mycelium's lender has no lines 'enum Kind {' to '}'"
+            else if lib.filter (line: lib.hasPrefix "#[serde" line) above != [ renaming ] then
+              fail "has other than one lowercase rename over it"
+            else if !lib.all (line: line == marked || variant line != null) body then
+              fail "has a line in its body other than a doc line, a variant or #[default]"
+            else if at == null || variant (lib.elemAt body (at + 1)) == null then
+              fail "has no variant marked default"
+            else
+              {
+                words = map (line: lib.toLower (lib.head (variant line))) (
+                  lib.filter (line: variant line != null) body
+                );
+                unwritten = lib.toLower (lib.head (variant (lib.elemAt body (at + 1))));
+              };
+          # lend.nix's budget kind option, as the module takes it.
+          kindOption =
+            let
+              budgets = ((import ./lend.nix { inherit lib; }).getSubOptions [ ]).budgets;
+            in
+            (budgets.type.nestedTypes.elemType.getSubOptions [ ]).kind;
+          # A lend leaving also and kind to their defaults, with a forge
+          # budget one machine names beside its models, and the lend the
+          # module must write of it, those defaults filled in as the
+          # lender would take them.
+          forge = {
+            upstream = "forge-relay/agents.sock";
+            host = "forge.example";
+            paths = [ "/git/*" ];
+            auth_header = "authorization";
+          };
+          forging = vm // {
+            prefix = "forgers-";
+            also = [ "forge" ];
+          };
+          unsaid = lending // {
+            vms = [
+              (removeAttrs vm [ "also" ])
+              forging
+            ];
+            budgets = lib.mapAttrs (_: budget: removeAttrs budget [ "kind" ]) lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          filled = lending // {
+            vms = [
+              vm
+              forging
+            ];
+            budgets = lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          writes =
+            lend: written:
+            given (linux (both // { inherit lend; })).systemd.user.services.mycelium
+            == "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON written)}";
+          sorted = lib.sort lib.lessThan;
         in
         evaluates home
         && given home.systemd.user.services.mycelium == holding
@@ -1609,6 +1694,12 @@ in
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
         && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
+        && sorted kindOption.type.functor.payload.values == sorted kinds.words
+        && kindOption.default == kinds.unwritten
+        && writes unsaid filled
+        && typeRefuses (withModels {
+          kind = "relay";
+        })
         && takes (
           lending
           // {
