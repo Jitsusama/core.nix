@@ -117,7 +117,8 @@ in
           }
         ];
       };
-      # Ids words.json writes as objects, which Words.qml keys as no act.
+      # Ids Words.qml keys as no act: written as objects, as a list of
+      # several or none, or as a path in the store.
       odd = coreWords // {
         things = coreWords.things ++ [
           {
@@ -138,11 +139,42 @@ in
             };
             name = "Oddest";
           }
+          {
+            id = [
+              clear
+              "x"
+            ];
+            name = "Two";
+          }
+          {
+            id = [ ];
+            name = "None";
+          }
+          {
+            id = {
+              outPath = ./look-acts.nix;
+            };
+            name = "Stored";
+          }
+        ];
+      };
+      # A rename to a name that isn't words, still refused in words.
+      unnamed = coreWords // {
+        things = coreWords.things ++ [
+          {
+            id = clear;
+            name = null;
+          }
         ];
       };
       refusals = lib.mapAttrs (_: refused) {
         core = coreWords;
-        inherit inPlace appended odd;
+        inherit
+          inPlace
+          appended
+          odd
+          unnamed
+          ;
       };
       says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
       lookActs = import ./look-acts.nix;
@@ -154,5 +186,6 @@ in
         && refusals.odd == null
         && says "inPlace" "acts on a look (${clear} from Clear It to Drop It),"
         && says "appended" "acts on a look (${clear} from Clear It to Dismiss, ${talk} from Talk to Chat),"
+        && says "unnamed" "acts on a look (${clear} from Clear It to null),"
       );
 }

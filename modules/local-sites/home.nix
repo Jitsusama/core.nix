@@ -182,9 +182,10 @@ let
       keyOf (builtins.head id)
     else if builtins.isAttrs id then
       # A set toJSON writes as an object comes back a set, which Words.qml
-      # keys as "[object Object]", no act's id.
+      # keys as "[object Object]", no act's id. A store path's context,
+      # which fromJSON refuses, says nothing of the key, so it goes.
       let
-        json = builtins.fromJSON (builtins.toJSON id);
+        json = builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON id));
       in
       if builtins.isAttrs json then null else keyOf json
     else
@@ -193,6 +194,14 @@ let
     words: id:
     (lib.findFirst (thing: keyOf (thing.id or null) == id) { } (lib.reverseList (words.things or [ ])))
     .name or id;
+  # A name as the refusal writes it: one that isn't words, which the
+  # option lets a machine give, written as Nix would, not refused unread.
+  shownIn =
+    words: id:
+    let
+      name = nameIn words id;
+    in
+    if builtins.isString name then name else lib.generators.toPretty { } name;
   renamedActs = lib.filter (id: nameIn machineWords id != nameIn coreWords id) lookActs;
   # Rows whose path isn't plain steps, which the home's builder refuses
   # (home/home.py's ours), named here so the switch never gets that far.
@@ -569,7 +578,7 @@ in
       message = lib.concatStrings [
         "jitsusama.quickshell.launcher.words renames the launcher's acts on a look ("
         (lib.concatMapStringsSep ", " (
-          id: "${id} from ${nameIn coreWords id} to ${nameIn machineWords id}"
+          id: "${id} from ${shownIn coreWords id} to ${shownIn machineWords id}"
         ) renamedActs)
         "), which the sites' ask row knows only by core's names, "
         "so a page would offer a choice For You refuses: keep core's names for them"

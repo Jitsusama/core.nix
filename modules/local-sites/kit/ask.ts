@@ -309,6 +309,17 @@ function ended(text: string): string {
 }
 
 /**
+ * What a look of the second form leads with, as LookForm.js's wordsOf:
+ * what happened, then why it matters, each ended as a sentence.
+ */
+function saying(happened: unknown, matters: unknown): string {
+  return [written(happened), written(matters)]
+    .map(ended)
+    .filter((one) => one !== "")
+    .join(" ");
+}
+
+/**
  * The look's choices, as Looks.js offers them: the first form's first four
  * sending a value, each value exactly as written, labelled by its value
  * where it has no label, with what follows its own else the first of the
@@ -392,12 +403,7 @@ function asked(look: unknown, now: number): Ask | null {
   const said =
     happened === ""
       ? [written(look["why"])].filter((one) => one !== "")
-      : [
-          [happened, written(look["matters"])]
-            .map(ended)
-            .filter((one) => one !== "")
-            .join(" "),
-        ];
+      : [saying(happened, look["matters"])];
   const opens = LINKED.includes(kind) ? onTheWeb(target) : null;
   const asks = waits(look, now);
   const offered = choicesOf(look, wants, happened !== "");
@@ -453,6 +459,7 @@ export {
   OPEN,
   poses,
   readAs,
+  saying,
   type Answer,
   type Ask,
   answering,

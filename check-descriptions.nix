@@ -2003,7 +2003,8 @@
     local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
     in place or by a later entry keyed by a list of one set or a set words.json writes as the id
     by its outPath or __toString, naming only each act's old and new word though another word is
-    renamed beside them, and takes core's own words and ids words.json writes as objects
+    renamed beside them, even to a name that isn't words, and takes core's own words and ids
+    Words.qml keys as no act: objects, lists of several or none, and a path in the store
   '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,
@@ -4143,7 +4144,8 @@
   the-ask-row-reads-each-character-as-for-you = ''
     the live sites' ask row reads every character, and judges it as posing as one of the
     launcher's acts, as LookForm.js does: within, leading and ending a name, once and twice,
-    beside a space and after a stop, and in a run after the first
+    beside a space and after a stop, and in a run after the first; and ends what a look says
+    as LookForm.js does whatever character follows its words, a stop or a closing mark
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one
