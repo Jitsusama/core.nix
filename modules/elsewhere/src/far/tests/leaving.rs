@@ -7,17 +7,27 @@ use crate::far::{LARGEST_FILE, LEFT, TREE, archive, leave, left, tracked};
 
 #[test]
 fn a_tracked_name_outside_the_tree_is_refused_though_it_reads_as_hidden() {
-    for path in ["../x", "a/../b", "./a", "a/.", "/etc/passwd", "a\tb"] {
-        assert!(
-            tracked(path, &[]).is_err(),
-            "{path:?} was passed over, not refused"
-        );
+    // Even where its kind keeps the name home, so it would otherwise be
+    // passed over as an excluded file is.
+    for path in ["../x", "a/../b", "./a", "a/.", "/etc/passwd"] {
+        let last = [path.rsplit('/').next().unwrap_or(path).to_owned()];
+        for excludes in [&[][..], &last] {
+            assert!(
+                tracked(path, excludes).is_err(),
+                "{path:?} was passed over, not refused, past {excludes:?}"
+            );
+        }
     }
     // A hidden name within the tree stays home without a word, even one
     // no list could carry.
     for path in [".env", "a/.git/config", ".a\tb"] {
         assert_eq!(tracked(path, &[]), Ok(false), "{path:?} wasn't kept home");
     }
+    assert_eq!(
+        tracked("src/lib.rs", &["lib.rs".to_owned()]),
+        Ok(false),
+        "an excluded file wasn't kept home"
+    );
     assert_eq!(
         tracked("src/lib.rs", &[]),
         Ok(true),

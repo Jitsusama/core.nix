@@ -1,3 +1,4 @@
+use super::crossing::refusing;
 use super::{Left, far_line, far_line_in, far_run, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
@@ -448,15 +449,15 @@ fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
 fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // Each step of making the tree failing, as a full disk, a fenced
     // scratch or a program missing would, ahead of the far machine's own
-    // on its path: each program's first call, and the unpacking and the
-    // search for what is neither a file nor a folder alone, after the
-    // calls before them went through.
-    let failing = |at: &str, program: &str| {
-        format!(
-            "case \" $* \" in *' {at} '*) exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec {program} \"$@\""
-        )
-    };
-    let (unpacking, searching) = (failing("-xf", "tar"), failing("-type l", "find"));
+    // on its path: each program's first call, an unpacking that fails
+    // once it has made a folder and closed it, and the search for what is
+    // neither a file nor a folder alone, after the calls before it.
+    let (_, unpacking) = refusing(
+        "tar",
+        "*\" -xf \"*",
+        "tar \"$@\" && chmod 500 \"$4/target\"; exit 1",
+    );
+    let (_, searching) = refusing("find", "*\" -type l \"*", "exit 1");
     for (step, stand_in) in [
         ("mkdir", "exit 1"),
         ("tar", "exit 1"),
