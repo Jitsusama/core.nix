@@ -1883,6 +1883,10 @@
     drawer and ssh, orders the repositories under ~/src by zoxide's last visit, and says how many
     agents' panes its row for them holds
   '';
+  lag-watch-can-read-time-blocked = ''
+    a machine with a screen asks the kernel to keep each thread's time blocked, and core's kernel
+    is built able to, so lag-watch's time blocked for Slack and Chrome is kept
+  '';
   lag-watch-passes-clippy = ''
     clippy finds nothing in lag-watch or its tests
   '';

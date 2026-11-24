@@ -254,8 +254,8 @@ xz and 0.3 s from zstd, for 16.3 MB against 11.9 MB.
 
 The kernel module also turns on `intel_iommu=on`, so every device's DMA is
 translated, where Intel's firmware opt-in translates only the Thunderbolt
-ports. Six more modules tune the running kernel. The workstation role brings
-in the first four, and the graphical role the last two:
+ports. Seven more modules tune the running kernel. The workstation role
+brings in the first four, and the graphical role the last three:
 
 - **[`btrfs`][btrfs]:** the kernel gives nearly empty chunks back once
   unallocated space runs short, so metadata always has room to grow and a
@@ -288,6 +288,10 @@ in the first four, and the graphical role the last two:
   touched within two hours of now, either way, and until it goes. Traffic
   that marks itself as background stays background, and the journal says
   what's put first whenever that changes.
+- **[`lag-watch`][lag-watch]:** the kernel keeps each thread's scheduler
+  statistics, `kernel.sched_schedstats`, so the time Slack's and Chrome's
+  drawing threads spent blocked is read. The kernel is built with them, off
+  until asked, and `lag-watch-can-read-time-blocked` holds both halves.
 
 ## How It's Checked
 
@@ -439,6 +443,7 @@ if less; record a new one after moving to a new series.
 [btrfs]: ../modules/btrfs/nixos.nix
 [memory]: ../modules/memory/nixos.nix
 [nix-daemon]: ../modules/nix-daemon/nixos.nix
+[lag-watch]: ../modules/lag-watch/nixos.nix
 [perf]: ../modules/perf/nixos.nix
 [shaper]: ../modules/shaper/nixos.nix
 [slices]: ../modules/slices/nixos.nix
