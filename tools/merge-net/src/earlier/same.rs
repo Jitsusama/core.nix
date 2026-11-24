@@ -144,10 +144,7 @@ fn read_in(
         let mut bases: Vec<String> = rounds
             .iter()
             .filter(|read| read.commit == commit)
-            .map(|read| match read.from.as_deref() {
-                Some(base) if !base.is_empty() => short(base).to_owned(),
-                _ => "none recorded".to_owned(),
-            })
+            .map(|read| seen::base_named(read.from.as_deref().unwrap_or_default()))
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
@@ -155,7 +152,7 @@ fn read_in(
         Err(if bases.is_empty() {
             seen::unread(short(commit))
         } else {
-            seen::read_from_no_base(short(commit), &bases)
+            seen::read_from_no_base(short(commit), &bases.join(", "))
         })
     } else {
         Ok(())
@@ -589,17 +586,24 @@ mod tests {
     // the same base; one no round read is refused as unread.
     #[test]
     fn a_head_read_only_from_no_base_is_told_apart_from_one_unread() {
-        let rounds = HashSet::from([round("ddd", Some("off")), round("ddd", Some(""))]);
+        let off = "0123456789abcdef0123456789abcdef01234567";
+        let rounds = HashSet::from([
+            round("ddd", Some(off)),
+            round("ddd", Some(off)),
+            round("ddd", Some("")),
+            round("ddd", Some("origin/release-2026")),
+            round("eee", Some("elsewhere")),
+        ]);
         let on_main = |base: &str| base == "main";
         let refused = read_in("ddd", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
-        assert_eq!(
-            refused,
-            seen::read_from_no_base("ddd", &["none recorded".to_owned(), "off".to_owned()])
-        );
+        // A commit id is named short and once, a ref whole, a base that
+        // was no commit id as such, and another commit's base not at all.
         assert!(
-            refused.contains("read from: none recorded, off"),
+            refused
+                .contains("read from: 0123456789ab, no commit id recorded, origin/release-2026)"),
             "the bases it read from weren't named: {refused}"
         );
+        assert!(!refused.contains("elsewhere"), "{refused}");
         let unread = read_in("ccc", &rounds, on_main, |_| Vec::new(), |read| read).unwrap_err();
         assert_eq!(unread, seen::unread("ccc"));
     }

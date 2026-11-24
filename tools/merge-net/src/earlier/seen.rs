@@ -353,18 +353,28 @@ pub fn unread(short: &str) -> String {
     )
 }
 
+/// How a range round's base is named where it's refused: a commit id
+/// short, a ref as the range spelled it, whole, since cut short it names
+/// no ref; and a base that's no commit id here, which `read_in` and
+/// `as_read_here` keep as empty whether the round recorded a ref, a short
+/// id or nothing, as that.
+pub fn base_named(base: &str) -> String {
+    if base.is_empty() {
+        "no commit id recorded".to_owned()
+    } else if is_commit_id(base) {
+        crate::short(base).to_owned()
+    } else {
+        base.to_owned()
+    }
+}
+
 /// Why `commit`, which only rounds over a range of commits read, may not
 /// merge: each read from a base that's on no main, or that it recorded as
 /// no commit (`read_in` above), so none stands for the commits under it.
-/// The bases are named, as `bases` gives them, since git failing to check
-/// one (a repo it can't read, a spawn that failed) reads the same as a base
-/// off main, and the name is how a reader tells the two apart.
-pub fn read_from_no_base(short: &str, bases: &[String]) -> String {
-    let named = if bases.is_empty() {
-        "none recorded".to_owned()
-    } else {
-        bases.join(", ")
-    };
+/// The bases are `named`, each as `base_named` gives it, since git failing
+/// to check one (a repo it can't read, a spawn that failed) reads the same
+/// as a base off main, and the name is how a reader checks which.
+pub fn read_from_no_base(short: &str, named: &str) -> String {
     format!(
         "a review round read {short} only over a range from a base that isn't a commit on \
          main, or that git couldn't check (read from: {named}), so it doesn't stand for the \
