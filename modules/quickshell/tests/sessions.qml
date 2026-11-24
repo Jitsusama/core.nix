@@ -679,6 +679,22 @@ ShellRoot {
             JSON.stringify(steers.slice(steered)));
         expect("and letting its place go", Sessions.keptPlaces["s-sleeper"] === undefined,
             JSON.stringify(Sessions.keptPlaces));
+        // A wake is Joel's press, so a give-up is said to it (untaken),
+        // and one pressed again while its viewer comes is said opening,
+        // as Go To's is, rather than met with nothing.
+        expect("a wake is told if no kitty takes its window",
+            Sessions.pressedFor["pi-hosted.s-sleeper"]?.address === "SLEEPER",
+            JSON.stringify(Sessions.pressedFor["pi-hosted.s-sleeper"] ?? null));
+        const goingBefore = Sessions.goingTo;
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        const wokeAgain = Niri.spawns.length;
+        Sessions.wake(sleeper);
+        expect("and woken again while it comes, is said opening, asking none",
+            root.unhosted === "SLEEPER" && root.unhostedWhy === "opening"
+            && Niri.spawns.length === wokeAgain,
+            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(wokeAgain).join(" | ")}`);
+        Sessions.goingTo = goingBefore;
 
         // Go To on one (Agents' and For You's Deal With It alike) leaves
         // the waking to goTo's viewer, which opens where Joel is, focused,
@@ -1189,6 +1205,10 @@ ShellRoot {
             `${root.unhosted} ${root.unhostedWhy}`);
         expect("and is told only once", !(named in Sessions.pressedFor),
             JSON.stringify(Object.keys(Sessions.pressedFor)));
+        // Nor is it still taken as coming, so a press once that window
+        // closes asks afresh, rather than saying opening of nothing.
+        expect("nor is its viewer still taken as coming", !Sessions.viewerComing(named),
+            JSON.stringify(Sessions.attaching[named] ?? null));
         root.unhostedWhy = "";
         Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
             here: true });
