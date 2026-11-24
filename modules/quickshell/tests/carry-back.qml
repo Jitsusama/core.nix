@@ -60,25 +60,5 @@ QtObject {
             { done: false, why: "its refusal couldn't be read" });
         Expect.same("no answer at all says its machine didn't answer",
             CarryBack.ended(null, said), { done: false, why: "its machine didn't answer" });
-
-        const carry = (state, at) => ({ kind: "carry", held: { state, at,
-            quest: "QEST-20261115-HARBOR", from: "skiff", to: "tern" } });
-        Expect.same("a carry ordered is under way, a thing to read since it was made",
-            CarryBack.underWay(carry("ordered", "2026-11-16T01:00:00Z")),
-            { kind: "read", since: "2026-11-16T01:00:00Z" });
-        Expect.same("and so is one carrying",
-            CarryBack.underWay(carry("carrying", "2026-11-16T01:00:00Z")),
-            { kind: "read", since: "2026-11-16T01:00:00Z" });
-        Expect.same("one with no time is under way since none",
-            CarryBack.underWay(carry("carrying", undefined)), { kind: "read", since: null });
-        for (const state of ["arrived", "refused", "back", ""])
-            Expect.same(`one ${state || "of no state"} is under way no longer`,
-                CarryBack.underWay(carry(state, "2026-11-16T01:00:00Z")), null);
-        Expect.same("nor is a row that is no carry",
-            CarryBack.underWay({ kind: "session", held: { state: "carrying" } }), null);
-        Expect.same("nor nothing", CarryBack.underWay(null), null);
-        Expect.same("nor a carry Joel made himself, since he knows it",
-            CarryBack.underWay({ kind: "carry", held: { state: "carrying", by: "person",
-                at: "2026-11-16T01:00:00Z" } }), null);
     }
 }

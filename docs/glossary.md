@@ -109,6 +109,8 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | carry | moving a quest's work and its session to another machine | | `carry` |
+| Carried | Agents' row of the day's carries, each by its quest, how it stands, where it went and when; a carry asks nothing of Joel, so none stands in For You | | `agents:carried` |
+| stuck | a carry whose session the node hasn't seen run anywhere 30 minutes after the carry was ordered, with the node's reason | | a carry's `stuck` |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |

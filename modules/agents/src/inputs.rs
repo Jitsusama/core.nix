@@ -766,7 +766,14 @@ impl Inputs {
         let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
         let after = networks::rows(&networks, &made, &self.words);
         let kept: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
-        let carried = carries::rows(&kept, &made, &self.words);
+        // A carried session runs elsewhere under another id, so its carry
+        // goes by its quest's title, as a landing's ended session does.
+        let titles: HashMap<&str, &str> = self
+            .quests
+            .records()
+            .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
+            .collect();
+        let carried = carries::rows(&kept, &made, &titles, &self.words);
         made.extend(after);
         made.extend(carried);
         made
