@@ -19,11 +19,23 @@
   ...
 }:
 let
-  inherit (import ../greetd/account.nix { inherit config lib options; }) account;
+  inherit (config.jitsusama.camera-guard) account;
   guard = pkgs.callPackage ./package.nix { };
 in
-lib.mkIf (account != null) {
-  systemd.services.camera-guard = {
+{
+  options.jitsusama.camera-guard.account = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    # The machine's own account, which is Joel's where one is named.
+    default = (import ../greetd/account.nix { inherit config lib options; }).account;
+    defaultText = lib.literalExpression "config.jitsusama.login.account";
+    example = "joel";
+    description = ''
+      The account whose agents are kept off the camera near its meetings,
+      read from its google daemon. Null starts no guard.
+    '';
+  };
+
+  config.systemd.services.camera-guard = lib.mkIf (account != null) {
     description = "Keeps agents from opening a camera near Joel's meetings";
     wantedBy = [ "multi-user.target" ];
     # A guard that stops leaves its program on, refusing agents a camera

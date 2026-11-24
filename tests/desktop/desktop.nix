@@ -630,11 +630,10 @@ import ../lib/pytest-vm-test.nix { inherit pkgs; } {
       # keeps-copies fences a command with landrun, which needs a newer
       # Landlock than the stock kernel's, as Joel's machines' kernel has. Only there, so no other area moves with it.
       boot.kernelPackages = lib.mkIf (area == "keeps-copies") pkgs.linuxPackages_latest;
-      # captures names the machine's account, as Joel's machines do, since
-      # the camera guard keeps that account's agents off the camera and
-      # starts only on a machine that names one. Only there, so no other
-      # area's console or fonts move with the account's theme.
-      jitsusama.login.account = lib.mkIf (area == "captures") account;
+      # The VM names no login account, since naming one in captures kept its
+      # niri from starting, so captures names the account whose agents the
+      # camera guard keeps off the camera.
+      jitsusama.camera-guard.account = lib.mkIf (area == "captures") account;
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ../stand-ins/stand-in-backlight { })
         (config.boot.kernelPackages.callPackage ../stand-ins/stand-in-light { })
