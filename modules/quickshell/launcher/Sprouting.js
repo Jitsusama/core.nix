@@ -220,9 +220,9 @@ function untold(kept, known, seen, now) {
     const askerHad = one => !Number.isFinite(one.at) || now - one.at >= ASKER_ANSWERS_MS;
     const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS
         && askerHad(one);
-    const unheard = kept.filter(one => !own(known, one.token));
-    const tell = unheard.filter(waitedOut);
-    const waiting = unheard.filter(one => !waitedOut(one)).map(one => one.token);
+    const notHeard = kept.filter(one => !own(known, one.token));
+    const tell = notHeard.filter(waitedOut);
+    const waiting = notHeard.filter(one => !waitedOut(one)).map(one => one.token);
     const said = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
         : waitedOut(one))).map(one => one.token);
     const answered = kept.filter(one => own(known, one.token) && known[one.token] === "asking");
@@ -510,30 +510,43 @@ function noticed(ends, summary, history, live) {
     return open === undefined ? ends : [open.body].concat(ends);
 }
 
-// How long a notice Agents sent may take to come back in Notices' history
-// before it's taken as never sent (notify-send failed), so it leads no more.
-const SENT_MS = 10_000;
-
-// What Agents sent as a notice of `ends` under `summary` at `now`, with the
-// ids its summary's notices had in the history then, so `unheard` knows the
-// one sent from those before it.
-function sentOf(ends, summary, history, now) {
+// What Agents sent as a notice of `ends` under `summary`, with the ids its
+// summary's notices had in the history then, so `unheard` knows the one
+// sent from those before it.
+function sentOf(ends, summary, history) {
     const ids = (history ?? []).filter(notice => notice.app === "Agents"
         && notice.summary === summary).map(notice => notice.id);
-    return { ends, summary, ids, at: now };
+    return { ends, summary, ids };
 }
 
 // The ends of the notice Agents last sent (`sent`, from sentOf) while the
-// history doesn't yet hold it: no notice of Agents' under its summary but
-// those it had then, and sent within SENT_MS. Until the notices daemon's
-// answer comes back, the history can't say the sent one is open, though
-// the daemon will fold it into the next all the same; null once it's heard,
-// when `noticed` says what leads.
-function unheard(sent, history, now) {
-    if (sent === null || sent === undefined || now - sent.at >= SENT_MS) {
+// history doesn't yet hold it: no notice of Agents' under its summary, new
+// since, says just its ends, as the history keeps a body plain. Until the
+// daemon's answer comes back, the history can't say the sent one is open,
+// though the daemon will fold it into the next all the same; an earlier
+// send still on its way says less, so it never stands for this one. One
+// never heard, as when notify-send failed, leads on, since its ends reached
+// no card, until one leading with them is heard; then null, when `noticed`
+// says what leads.
+function unheard(sent, history) {
+    if (sent === null || sent === undefined) {
         return null;
     }
+    const says = sent.ends.map(String).join("\n");
     const heard = (history ?? []).some(notice => notice.app === "Agents"
-        && notice.summary === sent.summary && !sent.ids.includes(notice.id));
+        && notice.summary === sent.summary && !sent.ids.includes(notice.id)
+        && notice.body === says);
     return heard ? null : sent.ends;
+}
+
+// The notice of the ends `fresh` under `summary`, given the one last sent
+// (`sent`) and the notices (`{ history, live }`, as `noticed` reads them):
+// `{ ends, sent }`, led by the sent one the history doesn't hold yet
+// (unheard), else by an unread one still open (noticed), since the daemon
+// folds either away into it, and what it sends, for the next.
+function sproutNotice(fresh, sent, summary, notices) {
+    const waiting = unheard(sent, notices.history);
+    const ends = waiting !== null ? waiting.concat(fresh)
+        : noticed(fresh, summary, notices.history, notices.live);
+    return { ends, sent: sentOf(ends, summary, notices.history) };
 }

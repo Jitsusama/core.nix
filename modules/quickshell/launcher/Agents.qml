@@ -2451,28 +2451,27 @@ Provider {
     // `told` noticed with any other end told in the same turn, as one
     // notice: a pass over kept starts tells each on its own, and two
     // notify-sends begun together reach the notices daemon in no fixed order.
+    // So the notice is sent once the turn is done, after the daemon is told
+    // they're told (sproutTold): a shell gone in that moment loses them.
     function sproutNoticed(told) {
         const first = sproutNotices.length === 0;
         sproutNotices = sproutNotices.concat(told);
         if (first)
             Qt.callLater(sproutNoticing);
     }
-    // One notice of the ends gathered, led by the one Agents sent that the
-    // history doesn't hold yet (Sprouting.unheard), else by an earlier one
-    // still unread (Sprouting.noticed): the daemon folds either away.
+    // One notice of the ends gathered, led as Sprouting.sproutNotice says: the
+    // daemon folds what leads it away.
     function sproutNoticing() {
         const told = sproutNotices;
         sproutNotices = [];
         if (told.length === 0)
             return;
         const name = Words.name("agents:start-new-work");
-        const now = Date.now();
-        const sent = Sprouting.unheard(sproutSent, Notices.history, now);
-        const ends = sent !== null ? sent.concat(told)
-            : Sprouting.noticed(told, name, Notices.history, Notices.live);
-        sproutSent = Sprouting.sentOf(ends, name, Notices.history, now);
+        const made = Sprouting.sproutNotice(told, sproutSent, name,
+            { history: Notices.history, live: Notices.live });
+        sproutSent = made.sent;
         Niri.spawn(["notify-send", "--app-name=Agents", "--", name,
-            Sprouting.noticeBody(ends)]);
+            Sprouting.noticeBody(made.ends)]);
     }
     // The launcher shut, or its opening was let go: what the foot said of
     // a start, unread by Sprouting.noticedAtShut, is noticed, and the foot

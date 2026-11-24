@@ -1289,6 +1289,13 @@ def test_a_start_asked_while_one_starts_is_told_and_kept_with_its_end(
         assert [one for one in bodies if one.split("\n")[-2:] == [BUSY, UNANSWERED]], (
             f"the busy start went unseen with the last's end: {bodies}"
         )
+        # The daemon folded the busy one into it, so one card stands for both.
+        busy_how = f'[{STARTS_NOTICED} | select(.body | split("\\n")[-1] == $busy)]'
+        how = desktop.as_account(
+            f"jq -r --arg busy {shlex.quote(BUSY)} "
+            f"{shlex.quote(busy_how + ' | max_by(.id) | .readHow')} {desktop.NOTICES_KEPT}"
+        ).strip()
+        assert how == "folded", f"the busy start's notice wasn't folded into its end's: {how}"
     finally:
         desktop.as_account("systemctl --user kill --signal=CONT mycelium")
         desktop.launcher_left_closed()
