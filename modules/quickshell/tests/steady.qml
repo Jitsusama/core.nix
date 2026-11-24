@@ -417,6 +417,17 @@ QtObject {
                 + ` then "${readHeaded(typedThen.rows)}" with ${typedThen.waiting},`
                 + ` held "${readHeaded(typedHeld.rows)}", then`
                 + ` "${readHeaded(typedHeldThen.rows)}"`);
+        // What's typed taken away, the row a search found has been seen, so
+        // the step's rows as they stand show it and count nothing new; one
+        // the search didn't find still waits.
+        const clearedSeen = Steady.seen(Steady.seenAmong(unheaded(lateStep), typedFound, id));
+        const clearedUnfound = Steady.seen(Steady.seenAmong(unheaded(lateStep),
+            [lateStep[1]], id));
+        if (readHeaded(clearedSeen.rows) !== "a1 look" || clearedSeen.waiting !== 0
+                || readHeaded(clearedUnfound.rows) !== "a1" || clearedUnfound.waiting !== 1)
+            failures.push(`a row found, then what's typed taken away: `
+                + `"${readHeaded(clearedSeen.rows)}" with ${clearedSeen.waiting} waiting, unfound `
+                + `"${readHeaded(clearedUnfound.rows)}" with ${clearedUnfound.waiting}`);
         // A row of no cell that comes while a held step's rows are made again,
         // and leaves before it's shown, stops being counted once it's gone.
         const waitedFrom = underHeadings("#A=a1 a1");
