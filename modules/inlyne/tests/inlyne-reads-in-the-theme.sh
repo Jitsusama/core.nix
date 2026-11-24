@@ -7,8 +7,8 @@
 # leaves `<photo>.read` once it has the shot.
 #
 # Keys aren't pressed here: inlyne-says-the-file-it-shows closes it by
-# ZZ through a window, and inlyne's own tests hold every key
-# (speaks-vim.patch).
+# ZZ through a window, and inlyne's own tests hold Vim's keys and the
+# Ctrl chords (speaks-vim.patch).
 #
 # usage: inlyne-reads-in-the-theme.sh <file> <photo>
 set -euo pipefail

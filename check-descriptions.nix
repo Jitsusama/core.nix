@@ -5324,8 +5324,8 @@
     only that one's row again; and Now, stepped into For You since it last said what it shows,
     says it changed only where For You's rows differ from those the launcher shows; and the
     notices moving, by their rows or their history, each heard outright with nothing held, aren't
-    said outright as they move with For You held, in that turn, a say put off to the next unread,
-    while with Desktop, Slack's notices or what's on screen held right under Now, Now's own
+    said outright as they move with For You held, in that turn, whether a say put off to the next
+    turn is none left unproven, while with Desktop, Slack's notices or what's on screen held right under Now, Now's own
     noticesMoved says them outright, though not with Mail there
   '';
   the-launcher-sums-within-a-key = ''
