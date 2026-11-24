@@ -211,7 +211,15 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = transcribe_take(parakeet, side, start, &samples);
+                let (text, words) = match transcribe_take(parakeet, side, start, &samples) {
+                    Ok(heard) => heard,
+                    // One take not heard mustn't end the call: it's left
+                    // out, and the next is heard as ever.
+                    Err(why) => {
+                        eprintln!("call-transcripts: a take wasn't heard: {why}");
+                        (None, Vec::new())
+                    }
+                };
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -285,17 +293,18 @@ impl Hears for Parakeet {
 }
 
 /// What's heard in a take of `side`'s, `start` samples into the call, as
-/// the call keeps it: its text tidied, none when it holds no words or
-/// isn't heard, which is logged. Only their words are kept, spelling
-/// their text a space between each, as `transcribe` would, and timed
-/// from the call's start, which is where its pieces are, so each word
-/// finds the piece it was said in.
+/// the call keeps it: its text tidied, none when it holds no words, or
+/// why it isn't heard, which the daemon logs and the `transcribe`
+/// subcommand stops on. Only their words are kept, spelling their text
+/// a space between each, as `transcribe` would, and timed from the
+/// call's start, which is where its pieces are, so each word finds the
+/// piece it was said in.
 pub fn transcribe_take(
     hears: &mut impl Hears,
     side: Side,
     start: usize,
     samples: &[f32],
-) -> (Option<String>, Vec<Word>) {
+) -> dictation::openvino::Result<(Option<String>, Vec<Word>)> {
     let transcribed = if side == Side::Theirs {
         hears.words(samples).map(|(words, took)| {
             let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
@@ -309,11 +318,11 @@ pub fn transcribe_take(
     match transcribed {
         Ok((text, words, took)) => {
             eprintln!("call-transcripts: {}", took.describe(hears.device()));
-            (said::spoken(text.trim()), words)
+            Ok((said::spoken(text.trim()), words))
         }
         Err(why) => {
             eprintln!("call-transcripts: a take wasn't heard: {why}");
-            (None, Vec::new())
+            Ok((None, Vec::new()))
         }
     }
 }
