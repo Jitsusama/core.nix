@@ -381,11 +381,11 @@ import ./host-checks.nix args
   # A hosted pi says on stderr each extension whose handlers for one event
   # emit or emitResourcesDiscover sends took 250 ms or more, so a slow open
   # names the extension it waited on.
-  pi-hosted-says-slow-handlers =
-    pkgs.runCommandLocal "pi-hosted-says-slow-handlers" { }
+  pi-hosted-names-handlers-that-hold =
+    pkgs.runCommandLocal "pi-hosted-names-handlers-that-hold" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-says-slow-handlers.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-names-handlers-that-hold.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
         touch $out
       '';
 

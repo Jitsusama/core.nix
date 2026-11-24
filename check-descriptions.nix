@@ -3185,7 +3185,7 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
-  pi-hosted-says-slow-handlers = ''
+  pi-hosted-names-handlers-that-hold = ''
     pi built with the host's patches, applied exactly, writes one line to stderr for each
     extension whose handlers for one event emit or emitResourcesDiscover sends took 250 ms
     or more, each timed from its own start, its path quoted on one line, for session_start,

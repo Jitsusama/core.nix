@@ -20,7 +20,7 @@ const runnerModule = [
 assert.ok(runnerModule, `no extension runner under ${root}`);
 const { ExtensionRunner } = await import(pathToFileURL(runnerModule).href);
 
-const SLOW = /^pi-host: (".*") (\S+) took (\d+) ms$/;
+const SLOW = /^pi-host: (".*") (\S+) took (\d+) ms$/u;
 const waiting = (ms) => () => new Promise((done) => setTimeout(done, ms));
 
 // A runner of these extensions, each a path and its handlers by event,
@@ -80,7 +80,7 @@ const run = async (extensions, emitting) => {
     runner.emit({ type: "session_start", reason: "startup" }),
   );
   assert.deepEqual(errors, ["broke"]);
-  assert.match(lines[0] ?? "", /^pi-host: "failing" session_start took \d+ ms$/);
+  assert.match(lines[0] ?? "", /^pi-host: "failing" session_start took \d+ ms$/u);
 }
 
 // A slow handler that cancels is said once, before emit returns its result
@@ -104,7 +104,7 @@ const run = async (extensions, emitting) => {
   assert.deepEqual(result, { cancel: true });
   assert.deepEqual(ran, [], "a handler ran after the cancel");
   assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
-  assert.match(lines[0], /^pi-host: "cancelling" session_before_switch took \d+ ms$/);
+  assert.match(lines[0], /^pi-host: "cancelling" session_before_switch took \d+ ms$/u);
 }
 
 // resources_discover, which pi emits on its own path, is said the same way,
@@ -119,7 +119,7 @@ const run = async (extensions, emitting) => {
     (runner) => runner.emitResourcesDiscover("/work", "startup"),
   );
   assert.deepEqual(result.skillPaths, [{ path: "/skills/one", extensionPath: "finding" }]);
-  assert.match(lines[0] ?? "", /^pi-host: "finding" resources_discover took \d+ ms$/);
+  assert.match(lines[0] ?? "", /^pi-host: "finding" resources_discover took \d+ ms$/u);
 }
 
 // A path holding a newline is said on one line, quoted as JSON.
@@ -128,5 +128,5 @@ const run = async (extensions, emitting) => {
     runner.emit({ type: "session_start", reason: "startup" }),
   );
   assert.equal(lines.length, 1);
-  assert.match(lines[0], /^pi-host: "odd\\nname" session_start took \d+ ms$/);
+  assert.match(lines[0], /^pi-host: "odd\\nname" session_start took \d+ ms$/u);
 }
