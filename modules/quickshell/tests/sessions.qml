@@ -1228,6 +1228,14 @@ ShellRoot {
             Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned"
             && Sessions.keptPlaces["s-forged"]?.slept === true,
             `${root.unhostedWhy} ${JSON.stringify(Sessions.keptPlaces["s-forged"] ?? null)}`);
+        // Nor by the walk's wake, which says nothing, being no press, and
+        // keeps where it slept too.
+        root.unhostedWhy = "";
+        Sessions.wakeReopened(sleptForged, { one: { id: "s-forged" }, at: null, told: "" });
+        expect("nor by the walk's wake, unsaid, keeping where it slept",
+            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === ""
+            && Sessions.keptPlaces["s-forged"]?.slept === true,
+            `${root.unhostedWhy} ${JSON.stringify(Sessions.keptPlaces["s-forged"] ?? null)}`);
         Sessions.keepPlaces(keptBeforeWake);
         // The walk's wake (wakeReopened) is no press: with its viewer
         // already coming it says nothing and takes no focus, as a handover
@@ -1236,7 +1244,10 @@ ShellRoot {
         const walkWoken = { address: "WALKWOKEN", here: true, window: null, kitty: null,
             attach: walkWords, presence: { hosted: true, session: "s-walk-woken",
                 state: "parked" } };
-        Sessions.viewWith(walkWords, "pi-hosted.s-walk-woken", null, "walk");
+        // Marked coming rather than asked for, so it spawns nothing the
+        // counts below would take for another ask.
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { "pi-hosted.s-walk-woken": Date.now() });
         const keptBeforeWalk = Sessions.keptPlaces;
         Sessions.keepPlaces(Object.assign({}, keptBeforeWalk, { "s-walk-woken": {
             workspace: 5, column: 2, at: 0, slept: true, asleep: true } }));
@@ -1393,6 +1404,27 @@ ShellRoot {
         const endedOnLate = Sessions.reopening === null;
         Sessions.reopening = null;
         Sessions.forgetAsk(lateWalk);
+        // A window come refused once the walk's patience gave up on it, as a
+        // kitty slow to draw at a cold boot brings it, ends it as one come
+        // in time does: it's late no more, and the walk ends.
+        const lateRefused = "pi-hosted.s-late-refused";
+        const refusedLate = { id: "s-late-refused", classed: lateRefused, opened: null };
+        Sessions.reopening = { waiting: null, late: [refusedLate], queue: [], placed: [],
+            behind: [], begun: ["s-late-refused"], looking: false, settling: false, back: null,
+            focused: false };
+        Sessions.viewWith(view.slice(0, -1).concat(["s-late-refused"]), lateRefused, null,
+            "walk");
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { [lateRefused]: Date.now() - Sessions.viewPatience - 1 });
+        const listedBeforeSlow = Niri.windows;
+        const slowRefused = { id: 98, pid: 880, opened: lateRefused };
+        Niri.windows = Object.assign({}, listedBeforeSlow, { "98": slowRefused });
+        Sessions.heardWindow(slowRefused);
+        const lateRefusedLeft = JSON.stringify(Sessions.reopening);
+        const endedOnLateRefused = Sessions.reopening === null;
+        Sessions.reopening = null;
+        Sessions.forgetAsk(lateRefused);
+        Niri.windows = listedBeforeSlow;
         // Beside another still late, or behind the lock, where the walk is
         // settled once the lock lets go (placeBehind), it goes on without
         // it: neither late nor begun, so a press asks for it again.
@@ -1428,6 +1460,8 @@ ShellRoot {
         expect("and once it has passed, is begun", wentOn, "left queued");
         expect("nor keeps one its patience gave up on, so the walk ends", endedOnLate,
             lateLeft);
+        expect("nor one whose window came refused once its patience gave up, so it ends",
+            endedOnLateRefused, lateRefusedLeft);
         expect("nor beside another still late, the walk going on", besideLate.on,
             besideLate.left);
         expect("nor behind the lock, the walk left for the lock's end to settle",
