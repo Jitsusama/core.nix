@@ -41,45 +41,6 @@ let
     python.pytest
   ]);
 
-  # The Python the checks that read markup alone run in, with no browser.
-  plainPython = pkgs.python3.withPackages (python: [ python.pytest ]);
-
-  # Every live page's markup, by the name Joel knows it by, which the heads
-  # gate holds to the kit's head.
-  pages = {
-    Code = ../repos/site/index.html;
-    Forage = ../mycelium/forage/index.html;
-    Home = ./home/index.html;
-    Machines = ../system/site/index.html;
-    Map = ../mycelium/site/index.html;
-    Murmurs = ../mycelium/murmurs/index.html;
-    Network = ../net/site/index.html;
-  };
-
-  # Each page a machine in a realm mounts that `pages` doesn't name, which
-  # the heads gate would never judge. Code, mounted only where repositories
-  # are rooted, and Home, which no mount serves, are named by hand.
-  unnamedPages = lib.filter (page: !(lib.elem page (lib.attrValues pages))) (
-    lib.mapAttrsToList (_: site: site.src + "/index.html") (
-      lib.filterAttrs (_: site: site ? src) inRealm.jitsusama.local-sites.mounts
-    )
-  );
-
-  # The pages still drawing a head of their own. Take each off as it moves
-  # to the kit's: the gate fails while a page on it already keeps to the
-  # head, and refuses a name that wasn't on it from the start. Putting a
-  # moved page back is the one way past the gate, which review alone holds,
-  # so do it only to unblock a merge, and say so.
-  waitingForTheHead = [
-    "Code"
-    "Forage"
-    "Home"
-    "Machines"
-    "Map"
-    "Murmurs"
-    "Network"
-  ];
-
   # What every live site shares, as a machine mounts it at /local-sites/:
   # the kit and the theme's own web kit, which each page reads.
   shared = sites.shared webKit;
@@ -152,27 +113,11 @@ in
   # then fails until it's taken off, and no page joins the list; every page
   # a machine in a realm mounts is judged; and the gate passes sites.md's own
   # head and names each way a page strays from it (tests/heads.py,
-  # tests/heads-test.py).
-  heads-are-the-kits =
-    assert lib.assertMsg (unnamedPages == [ ])
-      "heads-are-the-kits: name ${lib.concatMapStringsSep ", " toString unnamedPages} in pages";
-    pkgs.runCommandLocal "heads-are-the-kits"
-      {
-        env = {
-          WEB_SKILL = "${../theme/web/skill}";
-          PYTHONPATH = "${./tests}";
-          PYTHONDONTWRITEBYTECODE = "1";
-        };
-      }
-      ''
-        ${plainPython}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
-          --basetemp="$TMPDIR/pytest" ${./tests}/heads-test.py
-        ${plainPython}/bin/python ${./tests/heads.py} \
-          ${lib.escapeShellArg "--waiting=${lib.concatStringsSep "," waitingForTheHead}"} ${
-            lib.escapeShellArgs (lib.mapAttrsToList (name: page: "${name}=${page}") pages)
-          }
-        touch $out
-      '';
+  # tests/heads-test.py). Its pages and waiting list are in heads.nix.
+  heads-are-the-kits = import ./heads.nix {
+    inherit lib pkgs;
+    inherit (inRealm.jitsusama.local-sites) mounts;
+  };
 
   # The forage page typechecks on the kit and builds, its tests passing
   # (modules/mycelium/forage/tests), on the same plain looks.
