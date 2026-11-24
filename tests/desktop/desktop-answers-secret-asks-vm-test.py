@@ -136,9 +136,13 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
             desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
         )
     except AssertionError as unanswered:
-        said = desktop.as_account(
+        # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
+        # rather than a timeout of its own; the launcher's reports, each a whole state naming
+        # the ask, would bury the refusal line, so they're left out.
+        said = desktop.diagnosis(
             "journalctl --user -u quickshell --no-pager -o cat"
-            f" --after-cursor={shlex.quote(since)} | grep -a -F 'ask:{ask}' || true"
+            f" --after-cursor={shlex.quote(since)} | grep -avF 'report['"
+            f" | grep -a -F 'ask:{ask}' || true"
         )
         message = f"the ask was never answered; the shell said of it: {said.strip() or 'nothing'}"
         raise AssertionError(message) from unanswered
@@ -236,12 +240,14 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
     # A j not read leaves the line untimed and the yes refused, so the release below is what
-    # proves it was. It's seen taken before Return goes, since keys read in one turn are read
-    # together, and a move read with the Return after it times nothing (secret-asks/Shown.js's
-    # keyed): sent ten milliseconds apart, a busy shell read them so in 3 of 54 runs.
+    # proves it was. It's seen read by Asks before Return goes, since keys read in one turn are
+    # read together, and a move read with the Return after it times nothing
+    # (secret-asks/Shown.js's keyed): sent ten milliseconds apart, a busy shell read them so in
+    # 3 of 54 runs. Asks reads a key a turn after the launcher takes it, so the count taken
+    # alone would order the j before the Return only as Qt happens to order its events.
     taken = desktop.showing()["taken"]
     desktop.machine.send_chars("j")
-    desktop.launcher_until(lambda shown: shown["taken"] > taken)
+    desktop.launcher_until(lambda shown: shown["taken"] > taken and shown["asksUnread"] == 0)
     since = say_yes(desktop)
     answer = answered(desktop, ask, since)
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer

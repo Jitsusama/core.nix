@@ -10149,6 +10149,10 @@ Scope {
             // and a move read with the Return after it times no ask's line
             // (secret-asks/Shown.js's keyed).
             taken: prompt.keysTaken,
+            // How many of them Asks has yet to read, as it reads each a turn
+            // after it's taken (secret-asks/Asks.qml's keyed), so a test
+            // presses Return only once the move before it is read alone.
+            asksUnread: root.sourcesNamed.asks?.taken?.length ?? 0,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
