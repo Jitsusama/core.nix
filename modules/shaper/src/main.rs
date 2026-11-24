@@ -824,25 +824,9 @@ struct Pinner {
     boot: String,
     asked_at: Option<(Instant, u64)>,
     /// Since when the primary uplink's router has named no network, so a
-    /// pin kept through that lets go once it lasts `pin::APART`.
+    /// pin that has stood `pin::APART` in that time lets go
+    /// (`Pinning::unheard`).
     unnamed_since: Option<Instant>,
-}
-
-/// Since when the primary uplink has gone unnamed, `since` at the last
-/// step, and whether a span of `pin::APART` ran out at `now`, so the pin
-/// then standing lets go. Each span that runs out starts another, so a
-/// pin taken later in the spell still stands at most `APART`, and a
-/// round's pin there is never thrown away the step it's found.
-fn unnamed_span(since: Option<Instant>, unnamed: bool, now: Instant) -> (Option<Instant>, bool) {
-    if !unnamed {
-        return (None, false);
-    }
-    let since = since.unwrap_or(now);
-    if now.saturating_duration_since(since) >= pin::APART {
-        (Some(now), true)
-    } else {
-        (Some(since), false)
-    }
 }
 
 impl Pinner {
@@ -937,9 +921,10 @@ impl Pinner {
             eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
         }
         let unnamed = uplink.is_some_and(|(_, network)| pin::unnamed(network));
-        let (since, lapsed) = unnamed_span(self.unnamed_since, unnamed, now);
-        self.unnamed_since = since;
-        if lapsed && let Some(first) = self.pinning.unheard(now) {
+        self.unnamed_since = unnamed.then(|| self.unnamed_since.unwrap_or(now));
+        if let Some(since) = self.unnamed_since
+            && let Some(first) = self.pinning.unheard(since, now)
+        {
             eprintln!("{}", pin::let_go(first, pin::UNNAMED));
         }
         while let Ok((end, read)) = self.read.try_recv() {
@@ -3390,9 +3375,6 @@ mod tests {
         {"kind":"cake","handle":"2:","parent":"1:2"}]"#;
     const THE_KERNELS: &str = r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#;
 
-    // A read that failed changes nothing: install leaves the link, look
-    // doesn't put its queues back, and its VPN isn't counted taken up
-    // (round 5's F58 and F59).
     #[test]
     fn a_call_s_hold_hears_only_the_download_of_its_own_link_and_stay() {
         let down = Down {
@@ -3411,6 +3393,19 @@ mod tests {
             (Some(44_700.0), false),
             "a cut the controller doesn't apply to this link counted"
         );
+        // The controller's own word on its hold, not that one lingers, is
+        // what counts (shaper holds round 1's F7).
+        let quiet = Down {
+            link: "eth1".into(),
+            network: "home".into(),
+            kbit: 44_700.0,
+            cut: false,
+        };
+        assert_eq!(
+            room_heard(Some(&quiet), ("eth1", "home"), true),
+            (Some(44_700.0), false),
+            "a cut kept over a quiet download counted"
+        );
         assert_eq!(
             room_heard(Some(&down), ("wlan0", "home"), true),
             (None, false),
@@ -3428,41 +3423,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_unnamed_link_lets_a_pin_go_once_each_span() {
-        let start = Instant::now();
-        let at = |s: u64| start + Duration::from_secs(s);
-        let apart = pin::APART.as_secs();
-        assert_eq!(unnamed_span(None, false, at(0)), (None, false), "named");
-        assert_eq!(
-            unnamed_span(None, true, at(0)),
-            (Some(at(0)), false),
-            "a span didn't start"
-        );
-        assert_eq!(
-            unnamed_span(Some(at(0)), true, at(apart - 1)),
-            (Some(at(0)), false),
-            "a span ran out early"
-        );
-        let (since, lapsed) = unnamed_span(Some(at(0)), true, at(apart));
-        assert!(lapsed, "a span ran on past APART");
-        assert_eq!(
-            since,
-            Some(at(apart)),
-            "a span that ran out didn't start another"
-        );
-        assert_eq!(
-            unnamed_span(since, true, at(apart + 5)),
-            (since, false),
-            "the step after a span ran out let go again"
-        );
-        assert_eq!(
-            unnamed_span(since, false, at(apart + 5)),
-            (None, false),
-            "a router naming the network kept the span"
-        );
-    }
-
+    // A read that failed changes nothing: install leaves the link, look
+    // doesn't put its queues back, and its VPN isn't counted taken up
+    // (round 5's F58 and F59).
     #[test]
     fn a_read_that_failed_leaves_the_queues_as_they_are() {
         assert_eq!(
