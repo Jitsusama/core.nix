@@ -3495,6 +3495,8 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
         total,
         free,
         calling: doorway.calls.as_mut().is_some_and(|calls| calls.on(now)),
+        stalled: door::stalled(&fs::read_to_string("/proc/pressure/memory").unwrap_or_default())
+            .unwrap_or(0.0),
     };
     let read: Vec<(u32, u64, String, PathBuf)> = real_time::processes_under(&cgroup)
         .into_iter()
@@ -3537,6 +3539,10 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 door::tell(pid, machine);
                 let call = if machine.calling { ", a call on" } else { "" };
                 eprintln!("Held {pid} at the door, with {free} bytes available{call}.");
+            }
+            door::Done::Paced(pid) => {
+                door::tell_paced(pid);
+                eprintln!("Held {pid} at the door for its turn, with starts paced.");
             }
             door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
             door::Done::Ranked(pid, high) => eprintln!(
