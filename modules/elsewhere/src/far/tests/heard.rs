@@ -1,4 +1,5 @@
 use super::crossing::refusing;
+use super::sweeping::gone;
 use super::{Left, far_line, far_line_in, far_run, handover, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
@@ -533,8 +534,12 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
     // names by the time this one sweeps, so this line's noclobber write
     // loses whenever the other's came. Its file names this machine and
     // process space and a process still running, the test's own, so the
-    // sweep keeps it as a live run's rather than for naming none.
+    // sweep keeps it as a live run's rather than for naming none. A gone
+    // run's file beside it, alike but for its process, must be taken, so
+    // the sweep is known to have judged them by their processes rather
+    // than passing both by, as where it can't tell its process space.
     let theirs = std::process::id();
+    let ended = gone();
     let (step, winning) = refusing(
         "uname",
         "*",
@@ -542,7 +547,9 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
             "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
              if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
              echo {theirs} \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" \
-             > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\"; fi"
+             > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
+             mkdir \"$runs/2\" && \
+             sed 's/^{theirs} /{ended} /' \"$runs/1.run\" > \"$runs/2.run\"; fi"
         ),
     );
     let (code, err, home) = far_line(
@@ -567,6 +574,10 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
     assert!(
         runs.join("1/theirs").exists() && runs.join("1.names").exists(),
         "the winner's copy or names were cleared: {err}"
+    );
+    assert!(
+        !runs.join("2").exists() && !runs.join("2.run").exists(),
+        "the sweep passed a gone run by, so it never judged the winner by its process: {err}"
     );
     assert!(
         handover(&home).join(crate::far::TREE).exists(),
