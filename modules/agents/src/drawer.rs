@@ -710,9 +710,9 @@ mod tests {
         presence["doing"] = json!({"plan": "PLAN-20261116-6L09KV", "item": 17,
             "next": "I. Follow-ups: the drawer says the plan",
             "chose": "Put Next last in the glance", "at": "2026-11-10T20:50:00Z"});
-        let mut record = record(&presence);
-        record["here"] = json!(false);
-        let drawn = drawer(Session(&record), false, &words(), &known(None, None));
+        let mut planned = record(&presence);
+        planned["here"] = json!(false);
+        let drawn = drawer(Session(&planned), false, &words(), &known(None, None));
         let glance = facts(&drawn);
         assert!(
             glance.ends_with(
