@@ -44,7 +44,9 @@ pub fn parse(mut args: impl Iterator<Item = String>, zone: &TimeZone) -> Result<
         let key = args.next().ok_or("--done needs a key")?;
         let fix: Vec<String> = args.collect();
         if let Some(flag) = fix.iter().find(|word| word.starts_with("--")) {
-            return Err(format!("--done takes no {flag}: what follows its key is the fix"));
+            return Err(format!(
+                "--done takes no {flag}: what follows its key is the fix"
+            ));
         }
         let fix = fix.join(" ");
         let fix = (!fix.trim().is_empty()).then_some(fix);
