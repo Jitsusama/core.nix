@@ -1,7 +1,8 @@
 # Joel's local sites: the mocks, tours and records made just for him, served
 # from ~/.local/share/jitsusama/sites on this machine alone, so none goes
-# to a host other people reach. Its root holds a home page listing each
-# site, and each site is a folder under it, reached at
+# to a host other people reach. Its root serves a home page listing each
+# site, written into a folder of its own (homeFolder), and each site is a
+# folder under it, reached at
 # http://sites.localhost:8484/<site>/ (a browser sends any .localhost name
 # to the machine itself). The sites are what sessions write, so they're
 # state, never a Nix value; only the server and the home's builder are
@@ -12,7 +13,10 @@
 # feed at /feed/<name> from each daemon a module declares, with the kinds
 # and fields a page may read of it, so the server enforces what a page
 # never sees. It answers only its own names on loopback and opens a feed
-# only to its own pages.
+# only to its own pages. A document a session wrote runs sandboxed, in an
+# origin of no one's, so its script can't act as one of the sites' own.
+# That costs a document what an origin keeps: the theme it was last left
+# in, and the feeds, which only the sites' own pages read.
 #
 # The home is built from sites.json, a row per site, which sessions write:
 # home/home.py writes the list, its llms.txt and Markdown twin, and each
@@ -57,6 +61,11 @@ let
   # home read from the one copy the sites share.
   webKit = config.xdg.dataFile."jitsusama/web".source;
   documents = "${config.xdg.dataHome}/jitsusama/sites";
+  # Where the home's builder writes the home's own page and files: a folder
+  # no session writes, so the server serves them as the sites' own rather
+  # than sandboxed as a document is (src/http.rs says why), and the home can
+  # read Joel's feeds and answer what he's asked.
+  homeFolder = "${config.xdg.stateHome}/local-sites/home";
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
     builtins.toJSON {
@@ -67,6 +76,7 @@ let
         "127.0.0.1"
       ];
       inherit documents;
+      home = homeFolder;
       inherit (cfg) mounts feeds;
     }
   );
@@ -230,6 +240,7 @@ let
   build = lib.escapeShellArgs [
     (lib.getExe pkgs.python3)
     "${./home/home.py}"
+    "--into=${homeFolder}"
     "${import ./home-source.nix}"
     "${config.xdg.dataHome}/jitsusama/sites"
     "${webKit}/theme.css"

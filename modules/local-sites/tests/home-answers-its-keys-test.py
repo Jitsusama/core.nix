@@ -76,8 +76,9 @@ LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 
 @pytest.fixture
 def home(tmp_path: Path) -> Iterator[str]:
-    """Serve the home as home.py builds it among the documents, giving its address."""
-    with serving(tmp_path, {}, {}) as (address, _):
+    """Serve the home as home.py builds it into a folder of its own, giving its address."""
+    own = tmp_path / "home"
+    with serving(tmp_path, {}, {}, home=own) as (address, _):
         documents = tmp_path / "documents"
         # The documents keep a kit of their own, as a document must stand
         # alone; the home reads none of it, but the copy the sites share.
@@ -93,7 +94,8 @@ def home(tmp_path: Path) -> Iterator[str]:
         (documents / "heron" / "index.html").write_text(DOCUMENT)
         sources = Path(os.environ["HOME_SOURCES"])
         theme = Path(os.environ["WEB_KIT"]) / "theme.css"
-        subprocess.run([sys.executable, sources / "home.py", sources, documents, theme], check=True)
+        built = [sys.executable, sources / "home.py", f"--into={own}", sources, documents, theme]
+        subprocess.run(built, check=True)
         yield address
 
 
@@ -152,7 +154,7 @@ def test_a_documents_keys_answer_a_tap_under_a_hero(browser: Browser, home: str)
 def test_the_mark_is_drawn_in_each_looks_tint(home: str, tmp_path: Path) -> None:
     """The real kit names a tint for each look, and each look's mark takes its own."""
     assert home, "the home wasn't served"
-    mark = (tmp_path / "documents" / "favicon.svg").read_text()
+    mark = (tmp_path / "home" / "favicon.svg").read_text()
     dark, light = DARK_STROKE.search(mark), LIGHT_STROKE.search(mark)
     assert dark, f"the mark strokes no dark look: {mark}"
     assert light, f"the mark strokes no light look: {mark}"

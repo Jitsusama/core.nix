@@ -13,6 +13,12 @@
 //! writer of their own (Code's is the repos daemon) puts them into the
 //! documents under the site's name, and a mount without its own is
 //! answered with those.
+//!
+//! The home's own files come first of all, where the home is written into a
+//! folder of its own: its page at `/`, and each of its files at `/<name>`.
+//! What a path finds says who made it, Nix or the home's builder or a
+//! session, since a page a session wrote is served where its script can't
+//! act as one of the sites' own (http.rs).
 
 use std::path::{Path, PathBuf};
 
@@ -21,11 +27,20 @@ use crate::config::Config;
 /// The one file a mount may be answered with from the documents.
 const HOMES: &str = "homes.json";
 
+/// Who made a file a path found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Made {
+    /// Nix, in a mount, or the home's builder, in the home's own folder.
+    Built,
+    /// A session, in the documents.
+    Written,
+}
+
 /// What a path found.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Found {
-    /// A file to send.
-    File(PathBuf),
+    /// A file to send, and who made it.
+    File(PathBuf, Made),
     /// A folder named without its last slash, sent here instead.
     Folder(String),
     /// Nothing is there.
@@ -45,6 +60,9 @@ pub fn find(config: &Config, path: &str) -> Found {
         .any(|part| part.starts_with('.') || part.contains('\\') || part.contains('\0'))
     {
         return Found::Refused;
+    }
+    if let Some(own) = home_file(config, &parts) {
+        return Found::File(own, Made::Built);
     }
     let (root, rest, guarded) = match parts.split_first() {
         Some((first, rest)) if config.mounts.contains_key(*first) => {
@@ -74,7 +92,19 @@ pub fn find(config: &Config, path: &str) -> Found {
     if guarded && !within(&file, root) {
         return Found::Refused;
     }
-    Found::File(file)
+    Found::File(file, if guarded { Made::Written } else { Made::Built })
+}
+
+/// The home's own file `parts` names, its page for none: one file in its
+/// folder, never a folder, so every deeper path is a mount's or a document.
+fn home_file(config: &Config, parts: &[&str]) -> Option<PathBuf> {
+    let name = match parts {
+        [] => "index.html",
+        [name] => *name,
+        _ => return None,
+    };
+    let file = config.home.as_deref()?.join(name);
+    file.is_file().then_some(file)
 }
 
 /// What a file is, by its name, as a browser is told it.
@@ -166,10 +196,14 @@ mod tests {
         fs::write(documents.join("mycelium/.now.x1"), "half").expect("a half-made file");
         fs::write(top.join("secret"), "no").expect("a file outside");
         fs::write(kit.join("theme.css"), "roles").expect("the kit");
+        // A document a session wrote where the kit's mount has no file.
+        fs::create_dir_all(documents.join("kit")).expect("a folder");
+        fs::write(documents.join("kit/early.js"), "steals").expect("a document");
         let config = Config {
             listen: "127.0.0.1:8484".parse().expect("an address"),
             names: vec!["localhost".to_owned()],
             documents,
+            home: None,
             mounts: BTreeMap::from([("kit".to_owned(), kit), ("code".to_owned(), code)]),
             feeds: BTreeMap::new(),
         };
@@ -182,11 +216,55 @@ mod tests {
         let documents = &folders.config.documents;
         assert_eq!(
             find(&folders.config, "/mycelium/"),
-            Found::File(documents.join("mycelium/index.html"))
+            Found::File(documents.join("mycelium/index.html"), Made::Written)
         );
         assert_eq!(
             find(&folders.config, "/kit/theme.css"),
-            Found::File(folders.top.join("kit/theme.css"))
+            Found::File(folders.top.join("kit/theme.css"), Made::Built)
+        );
+    }
+
+    #[test]
+    fn no_document_is_served_at_a_mounts_path() {
+        let folders = folders("kit-path");
+        assert_eq!(
+            find(&folders.config, "/kit/early.js"),
+            Found::Missing,
+            "a document was served as the kit's own"
+        );
+    }
+
+    #[test]
+    fn the_homes_own_files_come_first_and_are_built() {
+        let mut folders = folders("home");
+        let home = folders.top.join("home");
+        fs::create_dir_all(&home).expect("its folder");
+        fs::write(home.join("index.html"), "home").expect("its page");
+        fs::write(home.join("rows.json"), "rows").expect("its rows");
+        let documents = folders.config.documents.clone();
+        fs::write(documents.join("index.html"), "a session's home").expect("a document");
+        fs::write(documents.join("rows.json"), "a session's rows").expect("a document");
+        folders.config.home = Some(home.clone());
+        assert_eq!(
+            find(&folders.config, "/"),
+            Found::File(home.join("index.html"), Made::Built),
+            "the home's page"
+        );
+        assert_eq!(
+            find(&folders.config, "/rows.json"),
+            Found::File(home.join("rows.json"), Made::Built),
+            "one of its files"
+        );
+        assert_eq!(
+            find(&folders.config, "/mycelium/"),
+            Found::File(documents.join("mycelium/index.html"), Made::Written),
+            "a deeper path is still a document"
+        );
+        fs::write(documents.join("note.html"), "a note").expect("a document");
+        assert_eq!(
+            find(&folders.config, "/note.html"),
+            Found::File(documents.join("note.html"), Made::Written),
+            "a file the home doesn't hold is still a document"
         );
     }
 
@@ -195,7 +273,10 @@ mod tests {
         let folders = folders("homes");
         assert_eq!(
             find(&folders.config, "/code/homes.json"),
-            Found::File(folders.config.documents.join("code/homes.json"))
+            Found::File(
+                folders.config.documents.join("code/homes.json"),
+                Made::Written
+            )
         );
     }
 
@@ -220,7 +301,7 @@ mod tests {
         fs::write(folders.top.join("code/homes.json"), "built").expect("its own homes");
         assert_eq!(
             find(&folders.config, "/code/homes.json"),
-            Found::File(folders.top.join("code/homes.json"))
+            Found::File(folders.top.join("code/homes.json"), Made::Built)
         );
     }
 

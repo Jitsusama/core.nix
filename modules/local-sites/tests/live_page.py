@@ -113,9 +113,17 @@ def a_free_port() -> int:
 
 @contextmanager
 def serving(
-    folder: Path, mounts: Mapping[str, str], feeds: Mapping[str, object]
+    folder: Path,
+    mounts: Mapping[str, str],
+    feeds: Mapping[str, object],
+    *,
+    home: Path | None = None,
 ) -> Iterator[Served]:
-    """Run the sites' server on `mounts` and `feeds`, giving its root and its process."""
+    """Run the sites' server on `mounts` and `feeds`, giving its root and its process.
+
+    The home's own folder is `home` where it's given, which the server serves
+    ahead of the documents as the sites' own, as a machine's serves it.
+    """
     port = a_free_port()
     documents = folder / "documents"
     documents.mkdir()
@@ -129,6 +137,7 @@ def serving(
         "documents": str(documents),
         "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
         "feeds": feeds,
+        "home": None if home is None else str(home),
     }
     (folder / "config.json").write_text(json.dumps(config))
     server = subprocess.Popen([os.environ["LOCAL_SITES"], "--config", str(folder / "config.json")])

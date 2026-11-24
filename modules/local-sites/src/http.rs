@@ -6,6 +6,21 @@
 //! goes with a tag of what it is served as, its real path, size, inode and
 //! times, so a browser asking again with the tag it holds is told it
 //! hasn't changed rather than sent the file once more.
+//!
+//! The documents share the sites' origin, and a session writes them, so
+//! what a session's page runs must never act as one of the sites' own, which
+//! read Joel's feeds and will answer what he's asked. Each document is
+//! served sandboxed, its script running in an origin of no one's (an opaque
+//! one), which no feed admits and no answer takes; the sites' own pages,
+//! which Nix or the home's builder made, run only the scripts served beside
+//! them, never one written into the page, so words a session wrote into a
+//! record they draw can't run there either. No page may install a worker,
+//! which would stand between every later page and the server, and one a
+//! document installed before is swept out once by the first page of the
+//! sites' own that a browser is served. Kit code and fonts are shared with
+//! a sandboxed document, whose reads of them are another origin's; so is a
+//! document with one beside it, but only where the page asking is one this
+//! server served.
 
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -33,6 +48,31 @@ const NOT_MODIFIED: u16 = 304;
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+/// The sandbox every document runs in: its scripts, its forms and the
+/// windows it opens, each in an origin of no one's, never this server's,
+/// and no way out of it to the page holding it or a window it opens.
+const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms";
+
+/// What the sites' own pages may run and be held in: only scripts served
+/// from here, none written into the page or evaluated from words, no
+/// plugin, no base moving its links, and no frame around it to press its
+/// buttons through.
+const OWN: &str =
+    "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+/// The cookie saying a browser's storage was swept of what a document could
+/// have left there, so it's swept once.
+const SWEPT: &str = "sites-swept=1";
+
+/// The sweep's cookie as it's set: for every path, a year, sent to no
+/// other site and read by no script.
+const SWEEPING: &str = "sites-swept=1; Path=/; Max-Age=31536000; SameSite=Strict; HttpOnly";
+
+/// What the answers a file is sent with are, by version, hashed into its
+/// tag, so a copy a browser holds from before the answers it was sent with
+/// changed is sent again whole, with them, rather than kept under the old.
+const ANSWERS: u8 = 2;
+
 /// What the server holds for every connection.
 pub struct Server {
     pub config: Config,
@@ -49,6 +89,14 @@ struct Head {
     length: usize,
     /// The tags of the copies the browser holds, as `If-None-Match` lists them.
     held: Option<String>,
+    /// The page asking, as `Origin` says it, where it says one.
+    origin: Option<String>,
+    /// The page the request came from, as `Referer` says it.
+    referer: Option<String>,
+    /// Its cookies, as `Cookie` lists them.
+    cookies: Option<String>,
+    /// Whether the browser asks for a worker's script, as `Service-Worker` says.
+    worker: bool,
 }
 
 /// Answers one connection.
@@ -95,6 +143,14 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
             "Forbidden",
             "text/plain",
             b"this server answers its own names alone\n",
+        );
+    } else if head.worker {
+        send(
+            &mut stream,
+            403,
+            "Forbidden",
+            "text/plain",
+            b"no page installs a worker here\n",
         );
     } else if head.upgrade {
         send(
@@ -146,7 +202,10 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
     }
     let path = head.path.split(['?', '#']).next().unwrap_or("/");
     match files::find(&server.config, path) {
-        Found::File(file) => send_file(stream, head, &file),
+        Found::File(file, made) => {
+            let told = told_for(&server.door, head, &file, made);
+            send_file(stream, head, &file, &told);
+        }
         Found::Folder(to) => {
             let told = Told {
                 kind: "text/plain",
@@ -171,16 +230,79 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
     }
 }
 
+/// What a file is sent with beside its tag, by who made it.
+struct Guarded {
+    /// Its answers' own headers, sent with it whole or not.
+    headers: Vec<(&'static str, String)>,
+    /// Whether it must go whole, since what it's sent with does what a
+    /// browser would skip for a copy it keeps.
+    whole: bool,
+}
+
+/// What `file`, which `made` made, is sent with to `head`.
+fn told_for(door: &Door, head: &Head, file: &Path, made: files::Made) -> Guarded {
+    let kind = files::kind_of(file);
+    let mut headers = Vec::new();
+    let mut whole = false;
+    match made {
+        files::Made::Written => {
+            headers.push(("Content-Security-Policy", SANDBOXED.to_owned()));
+            // A sandboxed document reads what sits beside it as another
+            // origin, which only a page served here is let do.
+            if head.origin.as_deref() == Some("null") && served_here(door, head) {
+                headers.push(("Access-Control-Allow-Origin", "null".to_owned()));
+                headers.push(("Vary", "Origin, Referer".to_owned()));
+            }
+        }
+        files::Made::Built => {
+            headers.push(("Content-Security-Policy", OWN.to_owned()));
+            if shared(kind) {
+                headers.push(("Access-Control-Allow-Origin", "*".to_owned()));
+            }
+            if kind.starts_with("text/html") && !swept(head) {
+                headers.push(("Clear-Site-Data", "\"storage\"".to_owned()));
+                headers.push(("Set-Cookie", SWEEPING.to_owned()));
+                whole = true;
+            }
+        }
+    }
+    Guarded { headers, whole }
+}
+
+/// Whether a file of `kind` is code or type every page may share: the
+/// kit's scripts and styles, and the fonts, which a sandboxed document
+/// reads as another origin's.
+fn shared(kind: &str) -> bool {
+    kind.starts_with("text/javascript") || kind.starts_with("text/css") || kind.starts_with("font/")
+}
+
+/// Whether the page `head` came from is one this server served, as its
+/// `Referer` says, which a browser writes and no page can.
+fn served_here(door: &Door, head: &Head) -> bool {
+    head.referer
+        .as_deref()
+        .and_then(|referer| referer.strip_prefix("http://"))
+        .is_some_and(|rest| door.hosts(rest.split(['/', '?', '#']).next().unwrap_or("")))
+}
+
+/// Whether the browser asking has been swept already, by its cookie.
+fn swept(head: &Head) -> bool {
+    head.cookies
+        .as_deref()
+        .is_some_and(|cookies| cookies.split(';').any(|cookie| cookie.trim() == SWEPT))
+}
+
 /// Sends `file`, or says it hasn't changed where the browser holds its tag.
-fn send_file(stream: &mut TcpStream, head: &Head, file: &Path) {
+fn send_file(stream: &mut TcpStream, head: &Head, file: &Path, guarded: &Guarded) {
     let kind = files::kind_of(file);
     // One open gives both the tag and the body, so a file replaced between
     // the two can't go out under the other's tag.
     let Ok((mut opened, tag)) = opened(file, kind) else {
         return unreadable(stream);
     };
-    let tagged = [("ETag", tag.as_str())];
-    if head.held.as_deref().is_some_and(|held| holds(held, &tag)) {
+    let mut tagged = vec![("ETag", tag.as_str())];
+    tagged.extend(guarded.headers.iter().map(|(name, value)| (*name, value.as_str())));
+    if !guarded.whole && head.held.as_deref().is_some_and(|held| holds(held, &tag)) {
         let told = Told {
             kind,
             body: b"",
@@ -223,7 +345,7 @@ fn opened(file: &Path, kind: &str) -> io::Result<(File, String)> {
 /// changed, so a write moves it, as does a file put in its place.
 fn tag(real: &Path, kind: &str, about: &Metadata) -> String {
     let mut hasher = DefaultHasher::new();
-    (real, kind, about.len(), about.dev(), about.ino()).hash(&mut hasher);
+    (ANSWERS, real, kind, about.len(), about.dev(), about.ino()).hash(&mut hasher);
     let times = (
         about.mtime(),
         about.mtime_nsec(),
@@ -269,6 +391,10 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     upgrade,
                     length,
                     held: header("if-none-match").map(str::to_owned),
+                    origin: header("origin").map(str::to_owned),
+                    referer: header("referer").map(str::to_owned),
+                    cookies: header("cookie").map(str::to_owned),
+                    worker: header("service-worker").is_some(),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {

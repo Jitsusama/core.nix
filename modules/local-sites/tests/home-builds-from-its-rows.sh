@@ -19,7 +19,8 @@
 # listed as it was written, in the home's order, but for a recorded row's
 # claim on a kind a declared row is home to, left out and said; a recorded
 # row whose path leads off the sites is left out and said, and a declared one
-# fails the build; and a document loading a script file of its own is named, on any of
+# fails the build; told a folder of its own, its own files go there and none
+# stays among the documents; and a document loading a script file of its own is named, on any of
 # its pages, however its tag is spelled and even past a byte that isn't UTF-8,
 # while one loading only the kit's, and an app loading its own, are not.
 # usage: home-builds-from-its-rows.sh <python> <sources>
@@ -392,6 +393,20 @@ fi
 told=$(< "$work/shape.said")
 [[ $told == *"isn't a stylesheet"* ]] ||
   fail "the declared rows as the theme failed for another reason: $told"
+
+# Told where its own files go, the home writes them there, a folder no
+# session writes, and takes away the copies an earlier build left among the
+# documents, while the documents' own pages keep their strips.
+"$python" "$sources/home.py" "--into=$work/own" "$sources" "$root" "$root/kit/theme.css" \
+  > /dev/null
+for name in index.html home.css strip.css favicon.svg llms.txt index.md rows.json; do
+  [ -f "$work/own/$name" ] || fail "the home wrote no $name into its own folder"
+  [ ! -e "$root/$name" ] || fail "a copy of the home's $name stayed among the documents"
+done
+grep -q 'sites strip: home.py' "$root/map/index.html" ||
+  fail "a page among the documents lost its strip once the home moved"
+# Built back among the documents, for the cases that follow.
+"$python" "$sources/home.py" "$sources" "$root" "$root/kit/theme.css" > /dev/null
 
 # Without the kit, the home names no ground rather than a made-up one.
 rm "$root/kit/theme.css"

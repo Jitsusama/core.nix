@@ -1,5 +1,6 @@
 //! What the server is told by its module: where it listens, the names a
 //! browser reaches it by, the folder of documents sessions write, the
+//! folder the home's builder writes the home into, the
 //! folders Nix built that it serves at their own paths, and each feed a
 //! page may read, with the kinds and fields that feed may show. One JSON
 //! file written by Nix, so nothing a page asks can widen it.
@@ -21,6 +22,12 @@ pub struct Config {
     pub names: Vec<String>,
     /// The folder of documents sessions write, served below every mount.
     pub documents: PathBuf,
+    /// The folder the home's builder writes the home's own files into,
+    /// each served at `/<name>` ahead of the documents, and its page at
+    /// `/`. Sessions write none of it, so its pages are served as a
+    /// mount's are rather than as a document (files.rs); none where the
+    /// home is written among the documents.
+    pub home: Option<PathBuf>,
     /// Folders Nix built, each served at `/<name>/` ahead of the documents.
     pub mounts: BTreeMap<String, PathBuf>,
     /// The daemons a page may read, by the name in `/feed/<name>`.
@@ -66,6 +73,12 @@ impl Config {
             return Err("names is empty, so no browser could reach it".to_owned());
         }
         let documents = PathBuf::from(text_of(&said, "documents")?);
+        let home = match said.get("home") {
+            None | Some(Value::Null) => None,
+            Some(home) => Some(PathBuf::from(
+                home.as_str().ok_or("home isn't a path")?,
+            )),
+        };
         let mounts = said
             .get("mounts")
             .and_then(Value::as_object)
@@ -97,6 +110,7 @@ impl Config {
             listen,
             names,
             documents,
+            home,
             mounts,
             feeds,
         })
@@ -179,6 +193,7 @@ mod tests {
         let config = Config::from_json(WHOLE, Some(Path::new("/run/user/1000"))).expect("it reads");
         assert_eq!(config.listen.port(), 8484);
         assert_eq!(config.mounts["kit"], PathBuf::from("/nix/store/kit"));
+        assert_eq!(config.home, None, "a home among the documents names none");
         let node = &config.feeds["node"];
         assert_eq!(
             node.socket,
@@ -193,6 +208,22 @@ mod tests {
             node.kinds["session"].fields.as_deref(),
             Some(&["title".to_owned(), "presence".to_owned()][..])
         );
+    }
+
+    #[test]
+    fn a_home_of_its_own_is_read_and_a_home_that_isnt_a_path_refused() {
+        let homed = WHOLE.replace(
+            r#""mounts""#,
+            r#""home": "/home/joel/.local/state/local-sites/home", "mounts""#,
+        );
+        let config = Config::from_json(&homed, Some(Path::new("/run"))).expect("it reads");
+        assert_eq!(
+            config.home,
+            Some(PathBuf::from("/home/joel/.local/state/local-sites/home"))
+        );
+        let unpathed = WHOLE.replace(r#""mounts""#, r#""home": 7, "mounts""#);
+        let why = Config::from_json(&unpathed, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("home isn't a path"), "{why}");
     }
 
     #[test]

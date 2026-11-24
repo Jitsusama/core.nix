@@ -2,7 +2,8 @@
 //! stand-in daemon speaking the daemon interface on a socket: files from
 //! the documents and from a mount, a file the browser holds answered by
 //! its tag alone and one written since sent again, the door shut to a
-//! stranger's name and a stranger's page, and a feed whose pages share
+//! stranger's name and a stranger's page, a document sandboxed and the
+//! sites' own pages held to their own scripts, and a feed whose pages share
 //! one watch on the daemon, hear each change, can't act, and are told
 //! when the daemon is gone.
 
@@ -136,6 +137,9 @@ fn served(name: &str) -> Served {
     std::fs::create_dir_all(&kit).expect("the kit");
     std::fs::write(documents.join("mycelium/index.html"), "<h1>map</h1>").expect("a page");
     std::fs::write(kit.join("theme.css"), ":root {}").expect("the kit's file");
+    std::fs::write(kit.join("index.html"), "<h1>kit</h1>").expect("the kit's page");
+    std::fs::create_dir_all(folder.join("home")).expect("the home");
+    std::fs::write(folder.join("home/index.html"), "<h1>home</h1>").expect("its page");
     let socket = folder.join("node.sock");
     let stand_in = StandIn::start(&socket);
     // A port given up is free for any test to be given next, so one server
@@ -176,6 +180,7 @@ fn started(folder: &Path, socket: &Path) -> (Child, u16) {
         "listen": format!("127.0.0.1:{port}"),
         "names": ["localhost"],
         "documents": documents,
+        "home": folder.join("home"),
         "mounts": {"kit": kit},
         "feeds": {
             "node": {"socket": socket, "kinds": {"session": {"fields": ["title"]}}},
@@ -401,6 +406,119 @@ fn a_strangers_page_cant_open_a_feed() {
     let served = served("origin");
     let why = page(served.port, "node", "http://evil.example").expect_err("refused");
     assert!(why.contains("403"), "{why}");
+}
+
+#[test]
+fn a_sandboxed_document_cant_open_a_feed() {
+    let served = served("sandboxed-feed");
+    let why = page(served.port, "node", "null").expect_err("refused");
+    assert!(why.contains("403"), "a page of no one's origin read a feed: {why}");
+}
+
+/// The policy every document is served under.
+const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms";
+
+/// The policy every page of the sites' own is served under.
+const OWN: &str =
+    "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+
+#[test]
+fn every_document_runs_sandboxed_whatever_it_is_and_however_its_answered() {
+    let served = served("sandbox");
+    let host = format!("localhost:{}", served.port);
+    let mark = served.folder.join("sites/mycelium/mark.svg");
+    std::fs::write(mark, "<svg><script>alert(1)</script></svg>").expect("a drawing");
+    for path in ["/mycelium/", "/mycelium/mark.svg"] {
+        let (_, headers, _) = asked(served.port, &host, &format!("GET {path}"), "");
+        let policy = header(&headers, "content-security-policy");
+        assert_eq!(policy, Some(SANDBOXED), "{path} wasn't sandboxed");
+        let sniffed = header(&headers, "x-content-type-options");
+        assert_eq!(sniffed, Some("nosniff"), "{path} may be read as another kind");
+        let tag = header(&headers, "etag").expect("its tag");
+        let held = format!("If-None-Match: {tag}\r\n");
+        let (status, kept, _) = asked(served.port, &host, &format!("GET {path}"), &held);
+        assert_eq!(status, "HTTP/1.1 304 Not Modified", "{path} was sent again");
+        let policy = header(&kept, "content-security-policy");
+        assert_eq!(policy, Some(SANDBOXED), "{path} kept unchanged lost its sandbox");
+    }
+}
+
+#[test]
+fn the_sites_own_pages_run_only_their_own_scripts_and_share_their_code() {
+    let served = served("own");
+    let host = format!("localhost:{}", served.port);
+    let swept = "Cookie: sites-swept=1\r\n";
+    for path in ["/kit/", "/kit/theme.css", "/"] {
+        let (status, headers, _) = asked(served.port, &host, &format!("GET {path}"), swept);
+        assert_eq!(status, "HTTP/1.1 200 OK", "{path}");
+        let policy = header(&headers, "content-security-policy");
+        assert_eq!(policy, Some(OWN), "{path} may run a script written into it");
+    }
+    let (_, home) = get(served.port, &host, "/");
+    assert_eq!(home, "<h1>home</h1>", "the home's own folder comes first");
+    let (_, sheet, _) = asked(served.port, &host, "GET /kit/theme.css", "");
+    let shared = header(&sheet, "access-control-allow-origin");
+    assert_eq!(shared, Some("*"), "a sandboxed document couldn't read the kit");
+    let (_, page, _) = asked(served.port, &host, "GET /kit/", swept);
+    let shared = header(&page, "access-control-allow-origin");
+    assert_eq!(shared, None, "a page of the sites' own was shared with any origin");
+}
+
+#[test]
+fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
+    let served = served("sweep");
+    let host = format!("localhost:{}", served.port);
+    let (_, first, _) = asked(served.port, &host, "GET /kit/", "");
+    assert_eq!(header(&first, "clear-site-data"), Some("\"storage\""));
+    let cookie = header(&first, "set-cookie").expect("the sweep is kept");
+    assert!(cookie.starts_with("sites-swept=1;"), "{cookie}");
+    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Strict"), "{cookie}");
+    let tag = header(&first, "etag").expect("its tag");
+    let held = format!("If-None-Match: {tag}\r\n");
+    let (status, _, _) = asked(served.port, &host, "GET /kit/", &held);
+    assert_eq!(status, "HTTP/1.1 200 OK", "a sweep went in an answer a browser may skip");
+    let after = format!("{held}Cookie: theme=dark; sites-swept=1\r\n");
+    let (status, headers, _) = asked(served.port, &host, "GET /kit/", &after);
+    assert_eq!(status, "HTTP/1.1 304 Not Modified", "a swept browser was sent it again");
+    assert_eq!(header(&headers, "clear-site-data"), None, "a browser was swept twice");
+    let (_, document, _) = asked(served.port, &host, "GET /mycelium/", "");
+    assert_eq!(header(&document, "clear-site-data"), None, "a document swept the browser");
+}
+
+#[test]
+fn no_page_installs_a_worker() {
+    let served = served("worker");
+    let host = format!("localhost:{}", served.port);
+    let worker = served.folder.join("sites/mycelium/worker.js");
+    std::fs::write(worker, "self.onfetch = () => {};").expect("a worker's script");
+    let (status, _, _) = asked(
+        served.port,
+        &host,
+        "GET /mycelium/worker.js",
+        "Service-Worker: script\r\n",
+    );
+    assert_eq!(status, "HTTP/1.1 403 Forbidden", "a page could install a worker");
+    let (status, _) = get(served.port, &host, "/mycelium/worker.js");
+    assert_eq!(status, "HTTP/1.1 200 OK", "a script asked as a script is still sent");
+}
+
+#[test]
+fn a_sandboxed_document_reads_beside_it_only_from_a_page_served_here() {
+    let served = served("beside");
+    let host = format!("localhost:{}", served.port);
+    let ours = format!("Origin: null\r\nReferer: http://localhost:{}/mycelium/\r\n", served.port);
+    let (_, headers, _) = asked(served.port, &host, "GET /mycelium/", &ours);
+    let shared = header(&headers, "access-control-allow-origin");
+    assert_eq!(shared, Some("null"), "a document couldn't read what sits beside it");
+    for (stranger, why) in [
+        ("Origin: null\r\nReferer: http://evil.example/\r\n", "a stranger's sandbox"),
+        ("Origin: null\r\n", "a page that says nothing of where it is"),
+        ("Origin: http://evil.example\r\n", "a stranger's page"),
+    ] {
+        let (_, headers, _) = asked(served.port, &host, "GET /mycelium/", stranger);
+        let shared = header(&headers, "access-control-allow-origin");
+        assert_eq!(shared, None, "a document was shared with {why}");
+    }
 }
 
 #[test]

@@ -3,9 +3,9 @@
 //! Joel's local sites, served on loopback alone, and each live page fed
 //! by the daemon that holds its data. The config (config.rs), written by
 //! the module, names where it listens and by which names, the folder of
-//! documents sessions write, the folders Nix built that it serves at their
-//! own paths, and each feed: a daemon's socket and the kinds and fields a
-//! page may read of it.
+//! documents sessions write, the folder the home is written into, the
+//! folders Nix built that it serves at their own paths, and each feed: a
+//! daemon's socket and the kinds and fields a page may read of it.
 //!
 //! A page reads a feed at `/feed/<name>`, a WebSocket over which it speaks
 //! the daemon interface every daemon here speaks (docs/daemons.md), so a
@@ -14,7 +14,10 @@
 //! reads and tells every page from it (upstream.rs), it lets a page read
 //! and never act (gate.rs), and it admits only its own pages, by the name
 //! a request reaches it by and the page a feed's handshake came from
-//! (door.rs). Files are found by files.rs; one connection is http.rs.
+//! (door.rs). A document a session wrote runs sandboxed, in an origin of
+//! no one's, so it reads no feed and can't act as one of the sites' own
+//! pages, which run only the scripts served beside them (http.rs). Files are
+//! found by files.rs; one connection is http.rs.
 
 mod config;
 mod door;

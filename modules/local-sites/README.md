@@ -13,7 +13,11 @@ speaks the daemon interface every daemon here speaks
 for each kind any page reads, and tells every page and tab from it. A
 page reads and never acts; it sees only the kinds and fields its feed
 declares in `jitsusama.local-sites.feeds`. The server answers only its own
-names on loopback, and opens a feed only to its own pages.
+names on loopback, and opens a feed only to its own pages: the live sites
+and the home, which its builder writes into a folder of its own. A document
+a session wrote runs sandboxed, in an origin of no one's, so its script can
+never act as one of those pages, which run only the scripts served beside
+them. It keeps no look between visits and reads no feed, the cost of that.
 
 A live site is TypeScript on the kit, built by Nix: [`site.nix`][site]
 typechecks it at its strictest, runs its tests and compiles it beside its

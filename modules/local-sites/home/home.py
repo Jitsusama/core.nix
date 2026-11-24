@@ -26,9 +26,13 @@ otherwise give the kind to whichever row came first, or fault both. rows.json
 says each claim taken, beside its rows, for the web-design skill's reader to
 name in sites.json.
 
-usage: home.py <sources> <root> <theme> [<declared>], where sources holds the
-home's page and its files, root is the sites' folder, theme is the web kit's
-theme.css the sites share, and declared is the rows the Nix config declares. It
+usage: home.py [--into=<home>] <sources> <root> <theme> [<declared>], where
+sources holds the home's page and its files, root is the sites' folder, theme is
+the web kit's theme.css the sites share, and declared is the rows the Nix config
+declares. The home's own files go into home where it's given, a folder sessions
+don't write, which the server serves ahead of the documents as the sites' own
+rather than as a document, so the home can read Joel's feeds; any copy of
+them left in root from before is taken away. It
 rewrites index.html, index.md, rows.json and llms.txt whole, and in each
 stripped page only what sits between the strip's two markers, so a run with
 nothing changed leaves every file as it was. Without declared rows, a root with
@@ -56,6 +60,9 @@ FILES = ("home.css", "strip.css")
 # What the home served of its own before its keys and switch were the kit's,
 # taken away so no page can go on loading a copy that won't learn.
 GONE = ("home.js", "theme.js")
+# What the home writes of its own, beside FILES, which go where it's told.
+OWN = ("favicon.svg", "index.html", "llms.txt", "index.md", "rows.json")
+INTO = "--into="
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
 GROUND = re.compile(r"--background:\s*([^;]+);")
 # What a site marks its emphasis in, unless it takes another hue: the
@@ -74,7 +81,7 @@ KIT = "/local-sites/kit/"
 # which home.nix's astray spells again for the rows Nix declares.
 STEP = re.compile(r"[A-Za-z0-9_~-][A-Za-z0-9._~-]*")
 LIGHT = "@media (prefers-color-scheme: light)"
-USAGE = "usage: home.py <sources> <root> <theme> [<declared>]"
+USAGE = "usage: home.py [--into=<home>] <sources> <root> <theme> [<declared>]"
 
 
 @dataclass(frozen=True)
@@ -487,11 +494,15 @@ def folder(path: str) -> str:
     return "/".join(part for part in path.split("/") if part not in {"", "."}) + "/"
 
 
-def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) -> str:
-    """Build the home in root from its sources, root's sites.json, the theme and declared rows.
+def build(
+    sources: Path, root: Path, theme: Path, declared: Path | None = None, *, into: Path | None = None
+) -> str:
+    """Build the home from its sources, root's sites.json, the theme and declared rows.
 
-    It says what it did.
+    Its own files go into into where it's given, and into root otherwise. It
+    says what it did.
     """
+    own = into or root
     record = root / "sites.json"
     # With no record yet, the declared rows alone make the home, making the
     # sites' folder on a machine's first switch, before any document is there.
@@ -517,22 +528,24 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     sites = [site for site in sites if ours(site.row["path"])]
     # Only then, so a claim is said taken from a row the readers would see.
     sites, taken = leaving(sites, rows_declared)
+    own.mkdir(parents=True, exist_ok=True)
     for name in FILES:
-        write(root / name, (sources / name).read_text(encoding="utf-8"))
+        write(own / name, (sources / name).read_text(encoding="utf-8"))
     mark = (sources / "favicon.svg").read_text(encoding="utf-8")
-    write(root / "favicon.svg", marked(mark, theme))
+    write(own / "favicon.svg", marked(mark, theme))
     shell = (sources / "index.html").read_text(encoding="utf-8")
-    write(root / "index.html", grounds(home(shell, sites), theme))
+    write(own / "index.html", grounds(home(shell, sites), theme))
     # Only once the page that no longer loads them is in place.
     for name in GONE:
         (root / name).unlink(missing_ok=True)
-    write(root / "llms.txt", llms(root, sites))
-    write(root / "index.md", twin(sites))
+    write(own / "llms.txt", llms(root, sites))
+    write(own / "index.md", twin(sites))
     # What the home took is said beside the rows, since they don't say which
     # are declared; the system's and Code's readers read only "sites", and
     # the web-design skill's reader names each claim in "taken".
     listed = {"sites": [site.row for site in sites], "taken": taken}
-    write(root / "rows.json", json.dumps(listed, indent=2) + "\n")
+    write(own / "rows.json", json.dumps(listed, indent=2) + "\n")
+    left_behind(root, own)
 
     pages: dict[str, tuple[Site, str]] = {}
     for site in (site for site in sites if site.strip):
@@ -551,17 +564,33 @@ def build(sources: Path, root: Path, theme: Path, declared: Path | None = None) 
     return said + (f"; homes left to the declared sites: {left}" if taken else "")
 
 
+def left_behind(root: Path, own: Path) -> None:
+    """Take away the copies of the home's own files a build before left in root.
+
+    Once the home is written into a folder of its own, the server serves
+    that one, so a copy in root would only be a stale page among the
+    documents, looking like the home.
+    """
+    if own.resolve() == root.resolve():
+        return
+    for name in (*FILES, *OWN):
+        (root / name).unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
-    # The program, its two folders and the theme, then the declared rows when given.
-    given, with_rows = 4, 5
-    if len(sys.argv) not in {given, with_rows}:
+    # Where the home's own files go, if it's said, then the program's two
+    # folders and the theme, then the declared rows when given.
+    args = sys.argv[1:]
+    into = Path(args.pop(0).removeprefix(INTO)) if args and args[0].startswith(INTO) else None
+    given, with_rows = 3, 4
+    if len(args) not in {given, with_rows}:
         sys.exit(USAGE)
-    rows = Path(sys.argv[given]) if len(sys.argv) == with_rows else None
-    theme = Path(sys.argv[3])
+    rows = Path(args[given]) if len(args) == with_rows else None
+    theme = Path(args[2])
     # A caller still on the old shape hands the declared rows where the theme
     # now goes, which would read as a theme naming nothing.
     if theme.suffix != ".css":
         sys.exit(f"home: the theme {theme} isn't a stylesheet; {USAGE}")
     if not theme.exists():
         print(f"home: the theme {theme} isn't there, so no look is named", file=sys.stderr)
-    print(build(Path(sys.argv[1]), Path(sys.argv[2]), theme, rows))
+    print(build(Path(args[0]), Path(args[1]), theme, rows, into=into))
