@@ -82,7 +82,9 @@ pub enum Job {
 /// and not for one taken up from its file after a restart. Its `guesses`
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
-/// were read back from its file, their echoes already left out.
+/// were read back from its file, their echoes already left out. Its
+/// `told` are the echo cuts from Joel's words already journaled, by line
+/// and the sample the cut starts at.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -94,6 +96,7 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
+    told: HashSet<(usize, usize)>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -101,6 +104,15 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
+    /// What's newly cut from Joel's words as the others' echo, a journal
+    /// line a cut, said once each: how many words, when and how late,
+    /// never the words, since a call's words stay out of the journal. A
+    /// word wrongly cut is gone from the file, so this is all that says
+    /// where to listen for it.
+    fn untold_cuts(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
@@ -237,6 +249,9 @@ pub fn hear(
                     voice: None,
                     name: None,
                 });
+                for cut in writing.untold_cuts() {
+                    eprintln!("{cut}");
+                }
                 write(book, &key, writing, me, true);
             }
             Job::Done { key, side } => {

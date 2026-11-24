@@ -104,6 +104,29 @@ fn their_echo_in_a_take_of_joels_is_cut_and_his_own_words_written() {
 }
 
 #[test]
+fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
+    let mut writing = ada_then_bo();
+    let late = SECOND / 20;
+    let words = vec![
+        word("Right.", 44 * SECOND),
+        word("Not", 46 * SECOND + late),
+        word("yet.", 47 * SECOND + late),
+    ];
+    writing.words.insert(writing.lines.len(), words);
+    writing.lines.push(joels(44, 48, "Right. Not yet."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: 2 of Joel's words at 0:46 cut as their echo, 50 ms after theirs"],
+        "the cut wasn't told, or was told with the call's words"
+    );
+    hear_take(&mut writing, 60, &[ADA], &[("Right.", 0)]);
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "a cut told when its line was written was told again with the next take"
+    );
+}
+
+#[test]
 fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("transcript.md");
