@@ -117,9 +117,9 @@ ShellRoot {
 
         readonly property var settings: ({ name: "time" })
         readonly property var kept: Timekeeping.reading
-        function millis(ms, signed) {
-            return `${ms} ms`;
-        }
+        // How Time says the clock's figures, as Clocks.qml builds it.
+        readonly property var clockSaid: Object.assign({ point: "." },
+            Words.of("time:clock").said ?? {})
     }
 
     // Quests, as Now's What Moved reads it: each workstream that moved, as
@@ -945,8 +945,10 @@ ShellRoot {
             root.keptReadings();
     }
 
-    // The reader's answer, as timekeeping says it.
-    readonly property string keptSaid: JSON.stringify({ synchronised: true })
+    // The reader's answer, as timekeeping says it, with the clock the plate reads its
+    // offset from, updated a while ago.
+    readonly property string keptSaid: JSON.stringify({ synchronised: true,
+        clock: { lastOffset: -0.000388, lastSync: 1793829480000 } })
     function answerTime() {
         Timekeeping.heard(`{"parameters":${keptSaid}}`);
     }
@@ -1347,6 +1349,13 @@ ShellRoot {
         const keptSays = JSON.stringify(["synchronised"]);
         expect("answered, the plate's clock says how it's kept",
             JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
+        const clockQualifiers = () => Array.from(now.placePlate().groups)
+            .reduce((all, group) => all.concat(Array.from(group)), [])
+            .filter(fact => fact.label === Words.name("on:plate:clock"))
+            .map(fact => fact.qualifier);
+        expect("answered, it says how far off the reading's clock was at its last update",
+            JSON.stringify(clockQualifiers()) === JSON.stringify(["\u2212388 \u00b5s"]),
+            JSON.stringify(clockQualifiers()));
         Timekeeping.watching -= 1;
         expect("unwatched, the reading is kept", kept(), JSON.stringify(Timekeeping.reading));
         expect("unwatched, the plate still says the kept reading",
@@ -1378,6 +1387,37 @@ ShellRoot {
         Timekeeping.watching -= 1;
         Timekeeping.trying = true;
         theLauncher.sources = sources;
+
+        // Once it answers, the plate says how far off the clock was at its last update, from
+        // the reading's clock as Time's own figures read it: the reading carries an exchange
+        // only per server, so reading one at its top said nothing. It's signed, in Time's
+        // decimal mark, as Time says it. The time source goes first, so Now finds it before
+        // any the harness holds.
+        const sourcesBeforeTime = theLauncher.sources;
+        const offsetSaid = (lastOffset, point, lastSync = 1793829480000) => {
+            theLauncher.sources = [{ settings: { name: "time" }, clockSaid: { point: point },
+                kept: { synchronised: lastSync !== null,
+                    clock: { lastOffset: lastOffset, lastSync: lastSync }, servers: [] } }]
+                .concat(sourcesBeforeTime);
+            const said = Array.from(now.placePlate().groups)
+                .reduce((all, group) => all.concat(Array.from(group)), [])
+                .filter(fact => fact.label === Words.name("on:plate:clock"))
+                .map(fact => fact.qualifier);
+            theLauncher.sources = sourcesBeforeTime;
+            return said;
+        };
+        const behindSaid = offsetSaid(-0.000388, ".");
+        expect("kept, the plate's clock says how far off it was at its last update",
+            JSON.stringify(behindSaid) === JSON.stringify(["\u2212388 \u00b5s"]),
+            JSON.stringify(behindSaid));
+        const commaSaid = offsetSaid(0.0000412, ",");
+        expect("and ahead, it says so in Time's decimal mark",
+            JSON.stringify(commaSaid) === JSON.stringify(["+41,2 \u00b5s"]),
+            JSON.stringify(commaSaid));
+        // A clock never yet updated has chrony's 0 for its offset, which isn't one.
+        const neverSaid = offsetSaid(0, ".", null);
+        expect("never updated, it says no offset",
+            JSON.stringify(neverSaid) === JSON.stringify([""]), JSON.stringify(neverSaid));
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
@@ -1486,15 +1526,26 @@ ShellRoot {
             now.openedAt === keptOpening - 60000 && now.openingAt === -1,
             JSON.stringify([now.openedAt, keptOpening, now.openingAt]));
         theLauncher.open = false;
+        // A notice read while Now sleeps in an open launcher runs that
+        // work then, so the read holds still from the launcher's opening,
+        // not from none: Desktop still counts it unread until the launcher
+        // shuts, rather than dropping it and taking it back as Now wakes.
+        const historyBeforeRead = Notices.history;
+        Notices.history = [{ id: 31, at: Date.now() - 1000, app: "Firefox",
+            summary: "Read before Now woke", read: false }];
         now.asleep = true;
         theLauncher.open = true;
         const toldOpening = now.openingAt - 60000;
         now.openingAt = toldOpening;
-        Notices.history = Notices.history.slice();
-        expect("a notice told while Now sleeps in an open launcher opens it then",
-            now.openedAt === toldOpening && now.openingAt === -1,
-            JSON.stringify([now.openedAt, toldOpening, now.openingAt]));
+        Notices.history = [Object.assign({}, Notices.history[0],
+            { read: true, readHow: "read", readAt: Date.now() })];
+        expect("a notice read while Now sleeps in an open launcher opens it, and stays unread",
+            now.openedAt === toldOpening && now.openingAt === -1
+                && now.unreadNotices.some(notice => notice.id === 31),
+            JSON.stringify([now.openedAt, toldOpening, now.openingAt,
+                now.unreadNotices.map(notice => notice.id)]));
         theLauncher.open = false;
+        Notices.history = historyBeforeRead;
         now.asleep = true;
         theLauncher.open = true;
         theLauncher.open = false;

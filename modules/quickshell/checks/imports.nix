@@ -223,6 +223,7 @@
     "launcher/ForYouCells.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
+    "launcher/Keeping.js"
     "launcher/Lately.js"
     "launcher/LookForm.js"
     "launcher/Looks.js"

@@ -5485,9 +5485,10 @@
   still-windows-draw-nothing-as-animations-start-on-niri = ''
     a window the shell shows standing still draws no frame while two other windows' squares
     start moving ten times, one by a NumberAnimation and one by an XAnimator, through Qt's
-    threaded render loop, Qt logging its timer starting over all three windows within at least
-    half of those starts; each moving window draws a frame in every start and at least two in
-    all but one, and the still one draws when its colour changes
+    threaded render loop, Qt logging its timer starting over all three windows straight after
+    its animationStarted() within at least half of those starts; each moving window draws a
+    frame in every start and at least two in all but one, and the still one draws when its
+    colour changes
   '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,

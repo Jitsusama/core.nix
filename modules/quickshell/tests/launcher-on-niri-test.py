@@ -4295,21 +4295,68 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     none_drawn_cut(shell, "opened")
     count = opened["count"]
     assert count > 2 * opened["drawnRows"], parts(opened)
-    for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
-        # The cursor's number, absolute, is drawn only beside a row the view draws.
+    # Study, an eero, has a gap above it, so the selection's ground laid on it shows one put
+    # on the gap rather than its band, which none of the other landings has. The opening's
+    # rows name the list's first twenty, drawn or not, Study among them; that it stands a gap
+    # below the row above is test_each_eero_heads_the_devices_on_it's. Its landing starts from
+    # the top itself, so it holds wherever it stands in the list. The selection has two
+    # writers: pickOn, as Qt lays the selected row, and pick's fillAt, as a key selects it.
+    # Landing on Study from afar lays it anew, so pickOn has the last word; stepping off it
+    # and back while it's drawn lays nothing, so fillAt's place is the one left standing.
+    assert "Study" in opened["rows"], (opened["rows"], *parts(opened))
+    study = opened["rows"].index("Study")
+    assert study > 0, (opened["rows"], *parts(opened))
+    landings = [
+        ("7j", 7),
+        ("5j", 12),
+        ("G", count - 1),
+        ("gg", 0),
+        (f"gg{study}j", study),
+        ("k", study - 1),
+        ("j", study),
+    ]
+    for key, at in landings:
+        # The cursor's number, absolute, is drawn only beside a row the view draws; a landing
+        # on Study's index is held to Study itself, so a list that moved under it fails.
         def landed(shown: Json, at: int = at) -> bool:
             return bool(
                 shown["current"] == at
                 and shown["gutter"]["cursor"] == str(at + 1)
+                and (at != study or selecting("Study", shown))
                 and rested(shown)
             )
 
+        sent = time.monotonic() * 1000
         shell.send_chars(key)
         shell.launcher_until(landed)
         shown = shell.showing()
         assert landed(shown), (key, *parts(shown))
         none_drawn_cut(shell, key)
+    # The last step back onto Study lays nothing, so fillAt alone places the selection; the
+    # key's first frame must have it on Study's drawn row, which a fillAt laid from the list's
+    # top rather than Study's gap misses by the gap. `sent` is the last landing's, so that
+    # landing has to be the step back, or a landing added after it would be read instead.
+    assert landings[-1] == ("j", study), f"the last landing isn't the step back: {landings}"
+    stepped = key_presented_since(shell, sent)
+    assert stepped["onRow"], f"stepping back onto Study, the selection was off its row: {stepped}"
     shell.close_launcher()
+
+
+def key_presented_since(shell: Shell, sent: float) -> Json:
+    """Wait for the launcher to present a key it heard since `sent`, monotonic ms, and give it.
+
+    A key is told by when the shell heard it rather than by the last presented, since the key
+    before's frame may still be on its way to niri's screen.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        since = [one for one in presented if one["heard"] >= sent - CLOCKS_APART_MS]
+        if since:
+            return cast("Json", since[0])
+        time.sleep(launcher_on_niri.POLL)
+    msg = f"no key heard since {sent:.0f} was presented"
+    raise AssertionError(msg)
 
 
 def none_drawn_cut(shell: Shell, where: str, *, selection_in_view: bool = True) -> None:
@@ -4391,8 +4438,8 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     The wheel moves the view by pixels, so it can stop inside a row; once it stops, the list
     rests on the top of the first row at or below where it stopped (Launcher.qml's
     onMovementEnded, Headings.rested). The selection stays on the first row, which the wheel
-    takes wholly out of view and back, so a selected row the wheel leaves across the foot
-    isn't asked here.
+    can take out of view, and where the turn back up rests depends on the rows' heights, so
+    whether the selection is in view isn't asked here.
     """
     home_network_in_normal(shell)
     card = shell.showing()["card"]

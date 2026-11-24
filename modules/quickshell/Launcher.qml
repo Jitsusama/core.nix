@@ -7376,8 +7376,14 @@ Scope {
         // Whether the selection is drawn on its row in this frame, so a
         // check sees the bar and the lit row agree on a key's first frame
         // (Joel, 2026-11-13 23:38: the selection dragged behind its row).
-        const onRow = root.current < 0
-            || Math.abs(list.pickY - list.fillAt(root.current)) < 0.5;
+        // A drawn row is measured where it's drawn, its foot as pickOn
+        // reads it, so a fillAt gone wrong isn't measured against itself;
+        // one Qt hasn't laid yet, which pickOn places as it's laid, only
+        // against fillAt.
+        const selected = root.current < 0 ? null : list.itemAtIndex(root.current);
+        const foot = selected === null ? list.fillAt(root.current)
+            : selected.y + selected.height - root.rowTall;
+        const onRow = root.current < 0 || Math.abs(list.pickY - foot) < 0.5;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
@@ -15190,9 +15196,10 @@ Scope {
                             // active"; VKCF3Z, 9d5caf24).
                             //
                             // Where the selection is drawn, set by pick as
-                            // the selection or its rows change, since where
-                            // a row stands is read from the rows drawn,
-                            // which no binding hears.
+                            // the selection or its rows change, and by
+                            // pickOn as Qt lays the selected row, since
+                            // where a row stands is read from the rows
+                            // drawn, which no binding hears.
                             property real pickY: 0
 
                             // Where the fill sits on a row, in the list's
@@ -15479,7 +15486,8 @@ Scope {
                                 width: listBox.width
                                 height: root.rowTall
                                 // Where its row is drawn (fillAt reads the
-                                // drawn rows), so rows coming or going above
+                                // drawn rows, and pickOn the selected row as
+                                // it's laid), so rows coming or going above
                                 // a scrolled list, which move its origin and
                                 // leave the rows in view where they are,
                                 // leave it on its row too (Joel, 2026-10-29:
