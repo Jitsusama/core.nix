@@ -895,6 +895,11 @@ Singleton {
     function reopenedWindow(id) {
         const going = reopening;
         const opened = Niri.windows[id]?.opened ?? "";
+        // Another program's window under a viewer's name is never the one
+        // waited on, as nothing else takes it for a viewer (drawnHere):
+        // its place would go to it, and the viewer come unplaced.
+        if (opened.startsWith("pi-hosted.") && !drawnHere(Niri.windows[id]))
+            return;
         const late = going.late.find(one => one.classed === opened);
         if (opened !== "" && late) {
             console.info(`sessions: window ${id} came late, ${late.id}'s by its app id`);
@@ -2133,6 +2138,14 @@ Singleton {
             reopenNext();
             return;
         }
+        // Its own come and refused, none is asked for (viewWith), and the
+        // journal says so rather than that one is opening.
+        if (root.refusedOwn(named)) {
+            console.info(`sessions: ${id}'s viewer not opened, since the window that came `
+                + "for it wasn't the sessions kitty's");
+            reopenNext();
+            return;
+        }
         reopening.begun.push(id);
         const asked = served ? view(session, into)
             : viewWith(waiting, named, into, title);
@@ -2722,6 +2735,8 @@ Singleton {
         }
         attaching = Object.assign({}, attaching, { [named]: Date.now() });
         pressedFor = Object.assign({}, pressedFor, { [named]: said ?? null });
+        listedAtAsk = Object.assign({}, listedAtAsk,
+            { [named]: listedAs(named).map(window => String(window.id)) });
         if (named in refusedAsks) {
             const refused = Object.assign({}, refusedAsks);
             delete refused[named];
@@ -2765,6 +2780,11 @@ Singleton {
             delete pressed[named];
             pressedFor = pressed;
         }
+        if (named in listedAtAsk) {
+            const listed = Object.assign({}, listedAtAsk);
+            delete listed[named];
+            listedAtAsk = listed;
+        }
         if (attaching[named] === undefined)
             return;
         const still = Object.assign({}, attaching);
@@ -2774,6 +2794,10 @@ Singleton {
     // The session or row each viewer asked for by a press was asked for,
     // by its app id, so a give-up is said to it (untaken).
     property var pressedFor: ({})
+    // The ids of the windows niri listed under each viewer's app id as it
+    // was asked for: none of them is the one that came for it, however it
+    // changes while the ask stands (heardWindow).
+    property var listedAtAsk: ({})
     // Whether the window that came for viewer `named` was refused, as a
     // pid read wrong refuses its own, while one of another program still
     // holds its name (heldByAnother): asked again, each ask would open
@@ -2897,8 +2921,13 @@ Singleton {
         // One waiting for its host, asked of moments ago, stays kept.
         const kept = due.kept;
         for (const one of due.open) {
+            // Its own come and refused, it stays kept unasked (viewWith), as
+            // heardWindow journalled once, rather than saying with every
+            // move of niri's that one is opening.
             if (one.session === undefined && root.openNamed(one.place.named)) {
                 console.info(`sessions: ${one.id}'s kept viewer not opened, since it is open`);
+            } else if (one.session === undefined && root.refusedOwn(one.place.named)) {
+                kept[one.id] = one.place;
             } else if (one.session === undefined) {
                 const asked = viewWith(one.place.waiting, one.place.named, one.into,
                     one.place.title);
@@ -2910,6 +2939,9 @@ Singleton {
                         : "kept, since one asked for is opening"));
             } else if (one.session.held && !one.session.presence?.hosted) {
                 attach(one.session.held, one.into);
+            } else if (root.refusedOwn(viewerOf(one.session.presence))) {
+                const id = String(one.session.presence?.session ?? "");
+                kept[id] = keptPlaces[id];
             } else if (!view(one.session, one.into)
                 && !root.openNamed(viewerOf(one.session.presence))) {
                 // Refused while one asked for is opening, it stays kept, so a
@@ -2979,9 +3011,10 @@ Singleton {
         refusedViewers[id] = true;
         // Come while its viewer was asked for, within viewPatience, it's
         // taken for that one refused, so nothing asks for more beside it;
-        // a stray come after leaves an ask that never came as it was.
+        // a stray come after, or one niri listed as the ask was made
+        // (listedAtAsk), leaves the ask as it was.
         const named = String(window.opened);
-        if (viewerComing(named))
+        if (viewerComing(named) && !(listedAtAsk[named] ?? []).includes(id))
             refusedAsks = Object.assign({}, refusedAsks, { [named]: true });
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
@@ -2993,10 +3026,14 @@ Singleton {
     // Whether a window niri lists with app id `named` is one the sessions'
     // kitty didn't draw, as Go To says ("unowned").
     function heldByAnother(named) {
-        const windows = trustsNiri()
+        return listedAs(named).some(window => !drawnHere(window));
+    }
+    // The windows niri lists with app id `named`, whoever drew them, as
+    // listedNamed reads the list.
+    function listedAs(named) {
+        return trustsNiri()
             ? Object.values(Niri.windows).filter(window => window.opened === named)
             : niriWindows.opened[named] ?? [];
-        return windows.some(window => !drawnHere(window));
     }
     // Whether niri's list says which windows are open: while it lists
     // any, being the windows daemon's own, or while niri's own stream
