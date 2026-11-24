@@ -63,7 +63,7 @@ QtObject {
 
             Expect.same("its answers while it asks", Answers.asked(want, true), want.answers);
             for (const [why, shown, asking] of [
-                ["one not asking, parked among them, whose words go as a talk", want, false],
+                ["one not asking, whose words go as a talk", want, false],
                 ["no answers", Object.assign({}, want, { answers: null }), true],
                 ["no choices", Object.assign({}, want, { answers: { want: "q@1", choices: [] } }),
                     true],
@@ -128,6 +128,8 @@ QtObject {
             Expect.same("once it asks nothing, those said in the last quarter hour show",
                 Answers.standing([four[0], put], "", at + 10 * 60 * 1000), [four[0], put]);
             Expect.same("and none said longer ago", Answers.standing([put], "", shownAt), []);
+            Expect.same("while it asks what he can't answer here, none show",
+                Answers.standing([put], null, at + 1000), []);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

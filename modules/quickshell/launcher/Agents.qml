@@ -1176,6 +1176,11 @@ Provider {
     // Joel's answers to what each session asks, given in its Talk, by its address in capitals,
     // newest first (TalkAnswers.js's said), so the Talk shows each as sent, then answered.
     property var answeredTo: ({})
+    // What each session's Talk last drew it asking that his words answer, by its address in
+    // capitals, null where it asked nothing he can answer: his Return answers what he was
+    // shown, not what's held by the time he presses it. Changed in place, so drawing it
+    // notifies nothing.
+    readonly property var answersShown: ({})
 
     // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
     // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
@@ -1200,7 +1205,11 @@ Provider {
         const working = stateOf(session) === "working";
         const now = answersOf(session);
         const asked = TalkAnswers.question(now, session.title, words, dayOf);
-        const want = TalkAnswers.asked(now.want, now.asking)?.want ?? "";
+        const answers = TalkAnswers.asked(now.want, now.asking);
+        answersShown[to] = answers;
+        // While it asks, only answers to what it asks show; asking what he can't answer here,
+        // none do.
+        const want = now.asking ? answers?.want ?? null : "";
         return (asked === null ? [] : [asked]).concat(TalkAnswers
             .standing(answeredTo[to] ?? [], want, Date.now())
             .map(one => TalkAnswers.shown(one, working, words, dayOf)));
@@ -1565,7 +1574,9 @@ Provider {
                     const text = words.trim();
                     if (text === "")
                         return;
-                    const answers = asks();
+                    // What the Talk showed it asking when he pressed Return, where it drew it.
+                    const answers = draft in provider.answersShown
+                        ? provider.answersShown[draft] : asks();
                     if (answers !== null) {
                         provider.answerIn(current(), text, answers);
                         return;
