@@ -48,7 +48,9 @@ in
 {
   options.jitsusama.house-report = {
     to = lib.mkOption {
-      type = lib.types.addCheck address ipv4;
+      type = lib.types.addCheck address ipv4 // {
+        description = "IPv4 address";
+      };
       example = "192.0.2.3";
       description = ''
         The shaped machine's IPv4 address on the network the two share,

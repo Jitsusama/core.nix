@@ -613,10 +613,18 @@ mod tests {
         );
         // The reason marks a line whose link_wait_ms leaves agents' lane
         // out (src/trace.rs), so every line this build writes carries one.
+        // It's named here, not read from the controller, so a trace that
+        // took another reason, or none, fails (traces round 3's F4). The
+        // samples hear only the download, so the upload is unmeasured.
         assert_eq!(
             second.why.as_deref(),
             Some(live.follow.controller.why_kind()),
             "the traced reason isn't the controller's"
+        );
+        assert_eq!(
+            second.why.as_deref(),
+            Some("unmeasured"),
+            "an upload nothing was heard of traced another reason"
         );
         assert_eq!(
             (second.vpn_share, second.agents_share),

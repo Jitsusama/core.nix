@@ -1,5 +1,6 @@
 # Counts the stream handshakes each call's datagrams take part in, as they
-# arrive: on the server, the connects it hears; on the client, the replies
+# arrive and as they leave: on the server, the connects it hears and the
+# replies it sends; on the client, the connects it sends and the replies
 # that reached it, through its IFB while the shaper limits the download.
 # iperf3 opens each UDP stream with one connect
 # datagram of 4 bytes, a UDP length of 12, and its reply is the same size,
@@ -16,6 +17,19 @@
 
 counter media { }
 counter page { }
+counter media_sent { }
+counter page_sent { }
+
+chain sent {
+	# What each machine sent of them, so a read failure the counts show no
+	# handshake missing for isn't taken for one lost: on the client its
+	# connects, on the server its replies.
+	type filter hook output priority raw; policy accept;
+	udp dport 5301 udp length 12 counter name "media_sent"
+	udp dport 443 udp length 12 counter name "page_sent"
+	udp sport 5301 udp length 12 counter name "media_sent"
+	udp sport 443 udp length 12 counter name "page_sent"
+}
 
 chain heard {
 	# Ahead of the input hook's filters, so a count says the datagram

@@ -66,15 +66,23 @@ pub const MOST_HOPS: u8 = 8;
 /// probes, would choose from too few to say the line no longer splits.
 pub const HEARD: usize = 16;
 
-/// How many times the VPN's flows may come back to the pin's rule, one
-/// look after another, before the pin lets go. With other flows holding
+/// How many times the VPN's flows may come back to the pin's rule, each
+/// within `REMEMBERED` of the one before, before the pin lets go. With other flows holding
 /// both pinned ports toward the server, as a third socket in a burst of
 /// reconnects might, NAT finds no port free and the kernel drops the new
 /// flow, so the VPN stays down until conntrack frees one, two minutes for
 /// a flow that was answered. NAT meets a flow it let through only at its
 /// first packet, so a flow that comes back was dropped: the VPN sends again
-/// within seconds, and letting go costs only the quick way.
+/// within seconds, and letting go costs only the quick way. A new flow's
+/// first two datagrams sent at once from two cores can both meet NAT before
+/// conntrack confirms the first, and the second then counts as come back
+/// (pin round 10's F3); a tunnel's handshake sends one and waits for its
+/// answer, so that is rare, and one such race alone never lets go.
 pub const RETRIED: u64 = 2;
+
+/// How often the shaper reads the VPN's flows and the count of those that
+/// came back to the pin's rule.
+pub const LOOK: Duration = Duration::from_secs(5);
 
 /// How long the pin's rule remembers a flow it gave a port, to know it
 /// when it comes back: under conntrack's 30 s for unanswered UDP, so a flow
@@ -261,10 +269,12 @@ pub fn settle(timeout: &str) -> Duration {
 /// whether a round is out and whether its network changed since, when the
 /// last was asked, the pin a round found and when it may take hold, the
 /// pin in force, the count last read of its flows that came back, how many
-/// came back look after look since, whether the last round kept a pin it
+/// came back since, each within `REMEMBERED` of the last, and when the
+/// last did, whether the last round kept a pin it
 /// couldn't judge, the network the pin was measured on, and the VPN's
 /// flows now, each with the first of the pair pinned when it was first
-/// seen.
+/// seen, the pin a move or let-go replaced and when, and each flow first
+/// seen just after that, with the replaced pair it may hold instead.
 #[derive(Debug, Default)]
 pub struct Pinning {
     seen: Vec<End>,
@@ -275,10 +285,13 @@ pub struct Pinning {
     pub pinned: Option<Pin>,
     retried: Option<u64>,
     failing: u64,
+    back_at: Option<Instant>,
     kept: bool,
     on: Option<(String, String)>,
     flows: Vec<(End, Option<u16>)>,
     missing: Vec<(End, Instant)>,
+    replaced: Option<(u16, Instant)>,
+    straddled: Vec<(End, u16)>,
 }
 
 /// How many of the VPN's flows came back to the pin's rule, in packets,
@@ -428,11 +441,26 @@ pub fn restored(text: &str, boot: &str) -> Option<Restart> {
 /// Why a pin measured on another network lets go.
 pub const ELSEWHERE: &str = "it was measured on another network";
 
+/// Why a pin whose link no router has named for `APART` lets go.
+pub const UNNAMED: &str = "no router has said which network its link is on for ten minutes";
+
+/// Whether `network` names no network: a link the router hasn't answered
+/// on is named by itself.
+pub fn unnamed(network: &str) -> bool {
+    network.starts_with("link ")
+}
+
 impl Pinning {
     /// The flow to probe toward now, if any: one from a socket the VPN
     /// opened since the last round, at the start too, while no call is
     /// on, no round is out and none ran within `APART`. A flow left
-    /// unprobed for a call or the spacing is asked for again later.
+    /// unprobed for a call or the spacing is asked for again later. While
+    /// the VPN has a flow to the server it's pinned toward, only a flow to
+    /// that server is: any packet of the VPN's mark joins its flows, and a
+    /// round toward another server, as a stray datagram given the mark
+    /// would ask, would take the tunnel's pin to pin a server it doesn't
+    /// ride (pin round 10's F5). Once none goes there, as when the VPN
+    /// moves to another server, a flow to any is probed toward.
     pub fn ask(&mut self, ends: &[End], calling: bool, now: Instant) -> Option<End> {
         if calling
             || self.probing
@@ -441,7 +469,14 @@ impl Pinning {
         {
             return None;
         }
-        let to = *ends.iter().find(|e| !self.seen.contains(e))?;
+        let server = |e: &End| (e.to, e.port);
+        let ridden = self
+            .pinned
+            .map(|p| (p.to, p.port))
+            .filter(|&pinned| ends.iter().any(|e| server(e) == pinned));
+        let to = *ends
+            .iter()
+            .find(|e| !self.seen.contains(e) && ridden.is_none_or(|pinned| server(e) == pinned))?;
         self.seen = ends.to_vec();
         self.probing = true;
         self.asked = Some(now);
@@ -451,7 +486,11 @@ impl Pinning {
     /// Takes the VPN's flows at `now`: each new one is remembered with the
     /// pair pinned toward its server when it was first seen, since NAT
     /// gave it one of that pair, and one missing since `FORGOTTEN` ago is
-    /// forgotten.
+    /// forgotten. One first seen within two looks of the pin moving or
+    /// letting go may have opened before, under the pair replaced, so it's
+    /// remembered with that pair too (pin round 10's F1); the two looks
+    /// allow for a look late by a step. That isn't kept across a restart,
+    /// which costs at most a round's probe misread on the pair.
     pub fn flows(&mut self, ends: &[End], now: Instant) {
         self.missing.retain(|(flow, _)| !ends.contains(flow));
         for &(flow, _) in &self.flows {
@@ -467,10 +506,19 @@ impl Pinning {
             .collect();
         self.missing.retain(|(flow, _)| !gone.contains(flow));
         self.flows.retain(|(flow, _)| !gone.contains(flow));
+        self.straddled.retain(|(flow, _)| !gone.contains(flow));
+        let replaced = self
+            .replaced
+            .filter(|&(_, at)| now.saturating_duration_since(at) <= LOOK * 2)
+            .map(|(first, _)| first);
         for &end in ends {
             if self.flows.iter().all(|&(flow, _)| flow != end) {
                 let pinned = self.pinned.filter(|p| (p.to, p.port) == (end.to, end.port));
-                self.flows.push((end, pinned.map(|p| p.first)));
+                let first = pinned.map(|p| p.first);
+                self.flows.push((end, first));
+                if let Some(old) = replaced.filter(|&old| Some(old) != first) {
+                    self.straddled.push((end, old));
+                }
             }
         }
     }
@@ -486,6 +534,7 @@ impl Pinning {
             .map(|p| p.first)
             .into_iter()
             .chain(self.flows.iter().filter_map(|&(_, first)| first))
+            .chain(self.straddled.iter().map(|&(_, first)| first))
             .flat_map(|first| [first, first.saturating_add(1)]);
         let own = self.flows.iter().map(|(flow, _)| flow.from_port);
         let mut held: Vec<u16> = pairs.chain(own).collect();
@@ -506,7 +555,6 @@ impl Pinning {
     /// since the VPN opens a new socket on a new network. Gives the first
     /// of the pair let go.
     pub fn network(&mut self, link: &str, network: &str) -> Option<u16> {
-        let unnamed = |n: &str| n.starts_with("link ");
         let now = (link.to_owned(), network.to_owned());
         let Some((was_link, was)) = self.on.clone() else {
             self.on = Some(now);
@@ -535,6 +583,21 @@ impl Pinning {
         self.asked = None;
         self.seen.clear();
         self.pinned.take().map(|p| p.first)
+    }
+
+    /// Lets the pin go at `now` where its link has gone `APART` with no
+    /// router naming its network (pin round 9's F3 and F5): a pin kept
+    /// through a moment unnamed would otherwise be kept as long as the
+    /// router stays silent, on a line nothing says is the one it split.
+    /// The spacing and the flows probed for are left as they are, since a
+    /// silent router names no new network to probe on. Gives the first of
+    /// the pair let go.
+    pub fn unheard(&mut self, now: Instant) -> Option<u16> {
+        self.coming = None;
+        self.kept = false;
+        let first = self.pinned.take()?.first;
+        self.replaced = Some((first, now));
+        Some(first)
     }
 
     /// Takes up what was kept across a restart (`Restart`), the last round
@@ -599,8 +662,13 @@ impl Pinning {
     /// (`settle`). A round that can't judge the pin in force (`judges`)
     /// keeps it, but only once: the next such round lets it go, so a pair
     /// whose way went slow or began dropping isn't kept on a delay read
-    /// long ago, and the round after, the pair no longer held out, reads
-    /// every port afresh. A round that read fewer than `HEARD` ports
+    /// long ago, and the round after reads the pair afresh once no live
+    /// flow of the VPN's holds it (pin round 10's F2). A pair let go is
+    /// counted replaced until `from`, when this round's pin would have
+    /// taken hold, since that's the instant `found` knows: flows first seen
+    /// until then are held to it too, a few more than opened under it,
+    /// which costs a later round at most those two ports. A round that
+    /// read fewer than `HEARD` ports
     /// chooses no pin, and one whose network changed while it was out
     /// counts for nothing. Gives the first of a pair let go at once, since
     /// no probe holds a port the VPN would then take.
@@ -615,7 +683,9 @@ impl Pinning {
             }
             self.kept = false;
             self.coming = None;
-            return self.pinned.take().map(|p| p.first);
+            let first = self.pinned.take().map(|p| p.first)?;
+            self.replaced = Some((first, from));
+            return Some(first);
         }
         self.kept = false;
         if delays.len() < HEARD {
@@ -643,27 +713,47 @@ impl Pinning {
         }
         self.coming = None;
         let was = std::mem::replace(&mut self.pinned, pin).map(|p| p.first);
-        (was != pin.map(|p| p.first)).then_some(Moved { was })
+        let moved = was != pin.map(|p| p.first);
+        if let Some(first) = was.filter(|_| moved) {
+            self.replaced = Some((first, now));
+        }
+        moved.then_some(Moved { was })
     }
 
-    /// Takes how many flows have come back to the pin's rule, read now,
-    /// and lets the pin go once `RETRIED` have, one look after another: a
-    /// look with none back starts the count over, as does a count that
-    /// fell, as a switch's does. Gives the pin let go and how many came
-    /// back.
-    pub fn heed(&mut self, retried: u64) -> Option<(Moved, u64)> {
+    /// Takes how many flows have come back to the pin's rule, read at
+    /// `now`, and lets the pin go once `RETRIED` have, each within
+    /// `REMEMBERED` of the one before: a VPN that sends again more slowly
+    /// than the shaper looks still counts (pin round 10's F4), while a
+    /// return longer after the last, as a VPN's few reconnects in a day
+    /// give, starts the count over, as does a count that fell, as a
+    /// switch's does. Gives the pin let go and how many came back.
+    pub fn heed(&mut self, retried: u64, now: Instant) -> Option<(Moved, u64)> {
         let was = self.retried.replace(retried);
         let first = self.pinned?.first;
-        let back = retried.saturating_sub(was?);
-        if back == 0 {
+        let was = was?;
+        if retried < was {
             self.failing = 0;
+            self.back_at = None;
             return None;
+        }
+        let back = retried - was;
+        if back == 0 {
+            return None;
+        }
+        let apart = self
+            .back_at
+            .replace(now)
+            .is_none_or(|at| now.saturating_duration_since(at) > REMEMBERED);
+        if apart {
+            self.failing = 0;
         }
         self.failing += back;
         if self.failing < RETRIED {
             return None;
         }
         self.pinned = None;
+        self.back_at = None;
+        self.replaced = Some((first, now));
         Some((
             Moved { was: Some(first) },
             std::mem::take(&mut self.failing),
@@ -737,6 +827,29 @@ mod tests {
             choose(&read),
             Some(30_002),
             "the quicker pair wasn't chosen"
+        );
+    }
+
+    #[test]
+    fn a_quick_way_spread_past_the_margin_still_pins_a_pair_of_its_own() {
+        // The quick way can read from 22 to 35 ms in one round, wider than
+        // `MARGIN_MS` (pin round 1's F17). A quick port past the margin is
+        // left out as a slow one would be, which costs the pairs it is in,
+        // and the pin is still a pair of the quick way's, never one touching
+        // the slow way's 65 ms.
+        let read = delays(&[
+            (30_000, 35.0),
+            (30_001, 22.0),
+            (30_002, 66.0),
+            (30_003, 34.0),
+            (30_004, 29.0),
+            (30_005, 31.0),
+            (30_006, 65.0),
+        ]);
+        assert_eq!(
+            choose(&read),
+            Some(30_004),
+            "the pair within the margin wasn't pinned"
         );
     }
 
@@ -930,6 +1043,123 @@ mod tests {
             pinning.ask(&[end(41_000)], false, later),
             Some(end(41_000)),
             "a new socket past the spacing wasn't probed toward"
+        );
+    }
+
+    #[test]
+    fn a_flow_first_seen_just_after_a_move_holds_the_pair_it_replaced_too() {
+        let start = Instant::now();
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(30_006)),
+            coming: Some((Some(pin_at(30_000)), start)),
+            ..Pinning::default()
+        };
+        assert_eq!(
+            pinning.take_hold(start),
+            Some(Moved { was: Some(30_006) }),
+            "the pin didn't move"
+        );
+        pinning.flows(&[end(41_000)], start + LOOK);
+        assert_eq!(
+            pinning.held(),
+            vec![30_000, 30_001, 30_006, 30_007, 41_000],
+            "a flow first seen a look after the move isn't held to the pair it replaced"
+        );
+        pinning.flows(&[end(41_000), end(42_000)], start + LOOK * 3);
+        assert_eq!(
+            pinning.held(),
+            vec![30_000, 30_001, 30_006, 30_007, 41_000, 42_000],
+            "a flow first seen three looks on was held to the pair replaced"
+        );
+        let later = start + LOOK * 4 + FORGOTTEN;
+        pinning.flows(&[end(42_000)], start + LOOK * 4);
+        pinning.flows(&[end(42_000)], later);
+        assert_eq!(
+            pinning.held(),
+            vec![30_000, 30_001, 42_000],
+            "a flow forgotten still holds the pair it straddled"
+        );
+
+        // A pin let go for flows coming back replaces its pair too.
+        let mut dropped = pinned_at(0, start);
+        assert_eq!(
+            dropped.heed(2, look(start, 1)),
+            LET_GO,
+            "two flows back didn't let the pin go"
+        );
+        dropped.flows(&[end(43_000)], look(start, 2));
+        assert_eq!(
+            dropped.held(),
+            vec![30_006, 30_007, 43_000],
+            "a flow first seen a look after a let-go isn't held to the pair let go"
+        );
+    }
+
+    #[test]
+    fn a_pin_on_a_link_no_router_names_lets_go_but_keeps_the_spacing() {
+        let start = Instant::now();
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(30_006)),
+            asked: Some(start),
+            seen: vec![end(36_284)],
+            ..Pinning::default()
+        };
+        assert!(
+            unnamed("link eth1"),
+            "a link named by itself named a network"
+        );
+        assert!(!unnamed("aa:bb"), "a router's name named no network");
+        assert_eq!(
+            pinning.unheard(start + APART),
+            Some(30_006),
+            "the pin wasn't let go"
+        );
+        assert_eq!(pinning.unheard(start + APART), None, "no pin let go twice");
+        assert_eq!(
+            pinning.ask(&[end(36_284)], false, start + APART / 2),
+            None,
+            "a silent router set off a round within the spacing"
+        );
+        assert_eq!(
+            pinning.held(),
+            Vec::<u16>::new(),
+            "the pair let go is held with no flow first seen after it"
+        );
+    }
+
+    #[test]
+    fn while_the_vpn_rides_its_pinned_server_no_other_is_probed_toward() {
+        let start = Instant::now();
+        let stray = End {
+            to: Ipv4Addr::new(198, 51, 100, 7),
+            port: 53,
+            from_port: 50_000,
+        };
+        // The tunnel's socket, probed for by the round that pinned it.
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(30_006)),
+            seen: vec![end(36_284)],
+            ..Pinning::default()
+        };
+        assert_eq!(
+            pinning.ask(&[end(36_284), stray], false, start),
+            None,
+            "a stray flow of the VPN's mark was probed toward while it rode its pin"
+        );
+        assert_eq!(
+            pinning.ask(&[end(36_284), stray, end(41_000)], false, start),
+            Some(end(41_000)),
+            "a new socket to the pinned server wasn't probed toward beside a stray"
+        );
+
+        let mut moved = Pinning {
+            pinned: Some(pin_at(30_006)),
+            ..Pinning::default()
+        };
+        assert_eq!(
+            moved.ask(&[stray], false, start),
+            Some(stray),
+            "a VPN gone from its pinned server wasn't probed toward where it went"
         );
     }
 
@@ -1301,52 +1531,95 @@ mod tests {
         );
     }
 
-    /// A pin in force at 30 006, the count of flows back already read once.
-    fn pinned_at(retried: u64) -> Pinning {
+    /// A pin in force at 30 006, the count of flows back already read once
+    /// at `at`.
+    fn pinned_at(retried: u64, at: Instant) -> Pinning {
         let mut pinning = Pinning {
             pinned: Some(pin_at(30_006)),
             ..Pinning::default()
         };
-        assert_eq!(pinning.heed(retried), None, "a first read let go");
+        assert_eq!(pinning.heed(retried, at), None, "a first read let go");
         pinning
+    }
+
+    /// The shaper's looks at the count, 5 s apart, from `start`.
+    fn look(start: Instant, n: u64) -> Instant {
+        start + Duration::from_secs(5 * n)
     }
 
     const LET_GO: Option<(Moved, u64)> = Some((Moved { was: Some(30_006) }, 2));
 
     #[test]
     fn a_pin_lets_go_once_the_vpns_flows_keep_coming_back() {
-        let mut pinning = pinned_at(0);
-        assert_eq!(pinning.heed(1), None, "one flow back let go at once");
+        let start = Instant::now();
+        let mut pinning = pinned_at(0, start);
         assert_eq!(
-            pinning.heed(2),
+            pinning.heed(1, look(start, 1)),
+            None,
+            "one flow back let go at once"
+        );
+        assert_eq!(
+            pinning.heed(2, look(start, 2)),
             LET_GO,
             "a second look with one back kept the pin"
         );
         assert_eq!(pinning.pinned, None, "the pin was said let go but kept");
-        assert_eq!(pinning.heed(9), None, "no pin let go again");
+        assert_eq!(pinning.heed(9, look(start, 3)), None, "no pin let go again");
 
-        let mut burst = pinned_at(0);
-        assert_eq!(burst.heed(2), LET_GO, "two back in a look kept the pin");
+        let mut burst = pinned_at(0, start);
+        assert_eq!(
+            burst.heed(2, look(start, 1)),
+            LET_GO,
+            "two back in a look kept the pin"
+        );
 
-        // A flow that went through never comes back, so looks between
-        // single returns, as a VPN's few reconnects give, start over.
-        let mut spaced = pinned_at(0);
-        for (look, retried) in [1, 1, 2, 2, 3, 3].into_iter().enumerate() {
+        // A VPN that sends again every 10 s, more slowly than the shaper
+        // looks, still has each return counted with the last.
+        let mut slow = pinned_at(0, start);
+        let looks = [1, 1, 2];
+        for (n, retried) in (1..).zip(looks) {
+            let said = slow.heed(retried, look(start, n));
+            let want = if n == 3 { LET_GO } else { None };
+            assert_eq!(said, want, "look {n}, a VPN sending again every 10 s");
+        }
+
+        // A flow that went through never comes back, so returns further
+        // apart than the rule remembers, as a VPN's few reconnects give,
+        // start over.
+        let mut spaced = pinned_at(0, start);
+        for (n, retried) in (1..).zip([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3]) {
             assert_eq!(
-                spaced.heed(retried),
+                spaced.heed(retried, look(start, n)),
                 None,
-                "look {look}, one back after none, let go"
+                "look {n}, one back 25 s after the last, let go"
             );
         }
 
         // A switch loads the table afresh, its count from nought.
-        let mut switched = pinned_at(40);
-        assert_eq!(switched.heed(0), None, "a count that fell let go");
-        assert_eq!(switched.heed(1), None, "one back after a switch let go");
+        let mut switched = pinned_at(40, start);
+        assert_eq!(
+            switched.heed(41, look(start, 1)),
+            None,
+            "one back let go at once"
+        );
+        assert_eq!(
+            switched.heed(0, look(start, 2)),
+            None,
+            "a count that fell let go"
+        );
+        assert_eq!(
+            switched.heed(1, look(start, 3)),
+            None,
+            "one back after a switch was counted with one before it"
+        );
 
         let mut unpinned = Pinning::default();
-        for retried in [0, 5, 10] {
-            assert_eq!(unpinned.heed(retried), None, "no pin let go");
+        for (n, retried) in (1..).zip([0, 5, 10]) {
+            assert_eq!(
+                unpinned.heed(retried, look(start, n)),
+                None,
+                "no pin let go"
+            );
         }
     }
 

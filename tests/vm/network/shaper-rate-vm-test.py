@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import statistics
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -55,6 +56,10 @@ UNSHAPED = 300
 ANSWERS = 20
 # CAKE's diffserv4 tins, in the order its counts list them.
 TINS = ["bulk", "best effort", "video", "voice"]
+# The share of the shaper's limit under which eth1's queues, with data
+# waiting, are taken to have fallen behind: the client, not the shaper, held it back,
+# as when a loaded builder starves the guest.
+BEHIND = 0.9
 # What an app's uploads send while the jobs' uploads go on, and the most of
 # that the jobs may send meanwhile: CAKE leaves bulk a sixteenth while
 # anything else wants the connection, where six flows shared evenly would leave
@@ -127,6 +132,20 @@ class Rig:
         cake = next(q for q in queues if q["kind"] == "cake" and q["handle"] == "2:")
         return dict(zip(TINS, (int(tin["sent_bytes"]) for tin in cake["tins"]), strict=True))
 
+    def queued(self) -> tuple[float, int, int]:
+        """Give the guest's clock, and the bytes eth1's queues have sent and hold waiting.
+
+        The root qdisc, which tc names without a parent, counts every lane's, the jobs'
+        uploads among them. Read in one command, so what it sent between two readings is
+        timed by the guest.
+        """
+        now, _, text = self.client.succeed("date +%s.%N; tc -s -j qdisc show dev eth1").partition(
+            "\n"
+        )
+        queues: list[Json] = json.loads(text)
+        root = next(q for q in queues if "parent" not in q)
+        return float(now), int(root["bytes"]), int(root["backlog"])
+
     def sent_by(self, link: str) -> int:
         """Give the bytes the client has sent on a link."""
         return int(self.client.succeed(f"cat /sys/class/net/{link}/statistics/tx_bytes"))
@@ -162,16 +181,19 @@ class Rig:
         reading taken after the pings was 5974 kbit/s, against 6000.
 
         Each reading's plateau and reason go into `said` too, since the journal tells only
-        where a spell of limits begins and ends. They're filed under the second they were
-        read, which is a second or so after the one the shaper last heard; the trace's own
-        rows give each recorded second's ask and plateau exactly. `said` is the caller's,
-        so a reading that fails partway still leaves what it heard.
+        where a spell of limits begins and ends, with what eth1's queues sent since the last
+        reading and what waited in them: sending under the limit with data waiting names a client
+        that fell behind, whose own sending the shaper would read as the line's. They're filed
+        under the second they were read, which is a second or so after the one the shaper
+        last heard; the trace's own rows give each recorded second's ask and plateau exactly.
+        `said` is the caller's, so a reading that fails partway still leaves what it heard.
         """
         self.client.succeed(
             f"systemd-run -M alice@ --user --collect --slice=app.slice --unit=ping-{name}"
             f" -p StandardOutput=file:/tmp/{name}.txt {BIN}/ping -n -c 40 -i 0.25 {self.far}"
         )
         rates: list[int] = []
+        last: list[tuple[float, int, int]] = []
 
         def ended(_last_try: bool) -> bool:
             """Read the rate and why, and say whether the pings are done."""
@@ -182,6 +204,14 @@ class Rig:
             plateau = "none" if plateau is None else round(plateau)
             why = heard.get("why", "none")
             said.append(f"{second:03d} read {rates[-1]} kbit/s, plateau {plateau}: {why}")
+            at, sent, waiting = self.queued()
+            if last:
+                kbit = round((sent - last[-1][1]) * 8 / 1000 / (at - last[-1][0]))
+                behind = waiting > 0 and kbit < rates[-1] * BEHIND
+                said[-1] += f"; eth1 sent {kbit} kbit/s, {waiting} B waiting" + (
+                    ", so the client fell behind" if behind else ""
+                )
+            last.append((at, sent, waiting))
             status, _ = self.client.execute(
                 f"systemctl -M alice@ --user is-active --quiet ping-{name}"
             )
@@ -330,7 +360,12 @@ def dropped(loaded: Rig) -> Rig:
 def returned(dropped: Rig) -> Rig:
     """Give the rig once its connection is back at full rate and the shaper has climbed to it."""
     dropped.connection(FULL)
+    start, started = dropped.up(), time.monotonic()
     dropped.waits_for(lambda: dropped.up() > SETTLED, CLIMBING, "climbed back")
+    print(
+        f"climbed back from {start} to {dropped.up()} kbit/s"
+        f" in {time.monotonic() - started:.0f} s of the {CLIMBING.total_seconds():.0f} allowed"
+    )
     return dropped
 
 
@@ -342,6 +377,9 @@ def test_finds_the_connection(loaded: Rig) -> None:
         rate = statistics.median(rates)
         assert SETTLED < rate < PROBED, rates
         assert shaped < SHAPED, f"{shaped} ms shaped at {rates} kbit/s"
+        # Said on a pass too, so how near the floor a passing run came is on record.
+        print(f"held at a median {rate} kbit/s of {rates}, an app's pings {shaped} ms:")
+        print(*said, sep="\n")
     except Exception:
         # The rates show where it settled, not what took it there.
         # Said first, as it needs nothing more of a guest that may have gone.
@@ -389,6 +427,19 @@ def test_second_link(returned: Rig) -> None:
     """Uploads over a second link to the same router count against the connection."""
     rig = returned
     rig.client.succeed("systemctl -M alice@ --user stop uploads.service")
+    try:
+        holds_under_a_second_link(rig)
+    finally:
+        # Put the rig back whatever happens, so a failure here can't leave the
+        # tests after it a halved connection, or no uploads, to fail on as well.
+        rig.client.execute("systemctl stop second-link-uploads.service")
+        rig.connection(FULL)
+        rig.client.execute("systemctl -M alice@ --user stop uploads.service")
+        rig.uploads()
+
+
+def holds_under_a_second_link(rig: Rig) -> None:
+    """Wait for eth2 to count with eth1, then load only eth2 and halve the connection."""
 
     def follows(_last_try: bool) -> bool:
         """Say whether eth2 takes eth1's rate, as both reach the one router."""
@@ -425,9 +476,6 @@ def test_second_link(returned: Rig) -> None:
     retry(lambda _last_try: rig.sent_by("eth2") - started >= APP_SENDS, timeout=SENDING)
     rig.connection(HALVED)
     rig.waits_for(lambda: rig.holds_under(HALVED), FOLLOWING, "held under a second link")
-    rig.client.succeed("systemctl stop second-link-uploads.service")
-    rig.connection(FULL)
-    rig.uploads()
 
 
 def test_unshaped(loaded: Rig) -> None:

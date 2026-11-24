@@ -35,6 +35,12 @@ const WAIT: Duration = Duration::from_millis(500);
 /// walk from the first port, then each port's delay there, from
 /// `pin::TRIES` probes each, but for the ports in `held`. A port that
 /// can't be bound, or whose probes all went unanswered, reads no delay.
+/// The hop is the scout's way's farthest, taken for every port's (pin
+/// round 1's F20): where the other way splits off before it, each port
+/// still meets a hop of its own way there, so their delays compare; where
+/// the other way stops answering short of it, its ports read nothing, so
+/// they can't be pinned, and a round that read fewer than `pin::HEARD`
+/// ports chooses no pin.
 pub fn round(link: &str, to: SocketAddrV4, held: &[u16]) -> BTreeMap<u16, f64> {
     let ports: Vec<u16> = (pin::FIRST_PORT..pin::FIRST_PORT + pin::PORTS)
         .filter(|port| !held.contains(port))
@@ -260,5 +266,72 @@ impl Probe {
             header = unsafe { libc::CMSG_NXTHDR(&raw const message, header) };
         }
         Ok(Some((false, carried)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::UdpSocket;
+
+    /// A loopback port nothing listens on. A probe sent there is answered
+    /// at once with ICMP's port unreachable, which quotes the probe's data
+    /// as a hop's time exceeded does, and loopback's answers are never
+    /// rate-limited, so the sandbox needs no router to answer.
+    fn closed() -> SocketAddrV4 {
+        let socket = UdpSocket::bind("127.0.0.1:0").expect("a loopback port didn't bind");
+        let port = socket
+            .local_addr()
+            .expect("a bound socket had no address")
+            .port();
+        SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)
+    }
+
+    #[test]
+    fn an_answer_hands_back_the_number_its_probe_carried() {
+        let probe = Probe::from("lo", 0, closed()).expect("a probe didn't bind on loopback");
+        // SAFETY: the message is a byte, valid for its length.
+        let wrote = unsafe { libc::send(probe.fd.as_raw_fd(), [7_u8].as_ptr().cast(), 1, 0) };
+        assert_eq!(wrote, 1, "the probe wasn't sent");
+        assert!(
+            probe.ready(WAIT).expect("poll failed"),
+            "no answer came to the probe"
+        );
+        assert_eq!(
+            probe.error().expect("the error queue didn't read"),
+            Some((false, Some(7))),
+            "the answer didn't quote the probe's number, or read as a hop's"
+        );
+        assert_eq!(
+            probe.error().expect("the error queue didn't read"),
+            None,
+            "one answer was read twice"
+        );
+    }
+
+    #[test]
+    fn a_probe_numbers_itself_past_the_last_sent_and_takes_no_refusal_for_a_hop() {
+        let probe = Probe::from("lo", 0, closed()).expect("a probe didn't bind on loopback");
+        let before = SENT.load(Ordering::Relaxed);
+        let asked = Instant::now();
+        assert_eq!(
+            probe.at(1, WAIT).expect("the probe wasn't sent"),
+            None,
+            "a port's refusal was read as a hop's answer"
+        );
+        // Its own refusal quoted its number, so it was taken as the answer
+        // and the probe waited no longer; one that skipped it as another
+        // probe's would have waited out the half second.
+        assert!(
+            asked.elapsed() < WAIT,
+            "the probe waited out an answer that came"
+        );
+        // Other tests' probes may count meanwhile too, so only a change is
+        // asked for.
+        assert_ne!(
+            SENT.load(Ordering::Relaxed),
+            before,
+            "the probe carried no new number"
+        );
     }
 }

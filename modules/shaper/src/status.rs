@@ -85,13 +85,24 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
         say(why);
     }
     // The controller's why speaks of its own rates, so a call's hold on
-    // the download, which it didn't ask, is said on its own.
+    // the download, which it didn't ask, is said on its own. A hold whose
+    // download couldn't be turned through the IFB still goes straight in,
+    // so its queue stands in the router's, and is said so (download hold
+    // round 3's F16).
     if let Some(room) = link.room {
-        say(format!(
-            "a call is on: the download is held to {}, so its queue stands here, \
-             where the call goes first",
-            mbit(room)
-        ));
+        say(if link.straight {
+            format!(
+                "a call is on: the download would be held to {}, but it couldn't be turned \
+                 through its queue here, so it still queues at the router",
+                mbit(room)
+            )
+        } else {
+            format!(
+                "a call is on: the download is held to {}, so its queue stands here, \
+                 where the call goes first",
+                mbit(room)
+            )
+        });
     }
     if let Some(leader) = &link.follows {
         say(format!("at {leader}'s rate: both reach the same router"));
@@ -489,6 +500,17 @@ mod tests {
                 == "  a call is on: the download is held to 81.0 Mb/s, so its queue stands here, \
                     where the call goes first"),
             "a call's hold wasn't said: {lines:#?}"
+        );
+        let unturned = LinkStatus {
+            straight: true,
+            ..held()
+        };
+        let lines = said(&unturned, Room::Unbounded);
+        assert!(
+            lines.iter().any(|line| line
+                == "  a call is on: the download would be held to 81.0 Mb/s, but it couldn't be \
+                    turned through its queue here, so it still queues at the router"),
+            "a hold that couldn't turn the download was said to stand here: {lines:#?}"
         );
         let free = LinkStatus {
             room: None,
