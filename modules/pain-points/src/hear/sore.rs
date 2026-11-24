@@ -329,41 +329,6 @@ mod tests {
             vec!["corrected"],
             "ease spares the swear, not the fault said with it"
         );
-        for ease in REASSURING {
-            let eased = format!("shit, {ease}");
-            assert_eq!(kinds(&eased, AT, &[]), none, "{eased}");
-        }
-        for hurt in [
-            "shit, that's fine?",
-            "shit. that's fine?",
-            "shit, that's fine\u{ff1f}",
-            "that's fine. why the fuck is it slow?",
-            "it's fine, i'll do it myself, fuck this",
-            "shit, it's fine. whatever.",
-        ] {
-            assert!(
-                kinds(hurt, AT, &[]).contains(&"swore"),
-                "ease elsewhere, asked or beside giving up spared a swear: {hurt}"
-            );
-        }
-        for up in GIVING_UP {
-            let hurt = format!("shit, it's fine, {up}");
-            assert!(
-                kinds(&hurt, AT, &[]).contains(&"swore"),
-                "ease beside giving up spared a swear: {hurt}"
-            );
-        }
-        for eased in [
-            "shit, it's fine. can you check the logs?",
-            "shit, it's fine, i blame myself",
-            "shit, that's fine, whatever works for you",
-        ] {
-            assert_eq!(
-                kinds(eased, AT, &[]),
-                none,
-                "a plain ask, self-blame or a passing whatever undid ease: {eased}"
-            );
-        }
         assert_eq!(kinds("now do the backlight", AT, &[]), none);
         assert_eq!(kinds("waiting room design looks good", AT, &[]), none);
         assert!(
@@ -417,6 +382,47 @@ mod tests {
             "it keeps closing",
         ] {
             assert_eq!(kinds(failed, AT, &[]), vec!["corrected"], "{failed}");
+        }
+    }
+
+    #[test]
+    fn ease_spares_a_swear_unless_asked_or_given_up() {
+        let none: Vec<&str> = Vec::new();
+        for ease in REASSURING {
+            let eased = format!("shit, {ease}");
+            assert_eq!(kinds(&eased, AT, &[]), none, "{eased}");
+        }
+        for hurt in [
+            "shit, that's fine?",
+            "shit. that's fine?",
+            "shit, that's fine\u{ff1f}",
+            "that's fine. why the fuck is it slow?",
+            "it's fine, i'll do it myself, fuck this",
+            "shit, it's fine. whatever.",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "ease elsewhere, asked or beside giving up spared a swear: {hurt}"
+            );
+        }
+        // Each phrase as he'd say it, so one dropped from the list is caught.
+        for up in ["do it myself", "do this myself", "forget it", "never mind"] {
+            let hurt = format!("shit, it's fine, {up}");
+            assert!(
+                kinds(&hurt, AT, &[]).contains(&"swore"),
+                "ease beside giving up spared a swear: {hurt}"
+            );
+        }
+        for eased in [
+            "shit, it's fine. can you check the logs?",
+            "shit, it's fine, i blame myself",
+            "shit, that's fine, whatever works for you",
+        ] {
+            assert_eq!(
+                kinds(eased, AT, &[]),
+                none,
+                "a plain ask, self-blame or a passing whatever undid ease: {eased}"
+            );
         }
     }
 }
