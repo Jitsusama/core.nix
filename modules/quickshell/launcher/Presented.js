@@ -472,7 +472,7 @@ function whenceShown(address, whole) {
     if (address === undefined) {
         return "from no session here";
     }
-    return whole ? `from ${quoted(address).slice(1, -1)}`
+    return whole ? `from ${quoted(String(address)).slice(1, -1)}`
         : `from a session, ${typedShown(address, false)}`;
 }
 

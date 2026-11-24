@@ -183,16 +183,16 @@ ShellRoot {
         return { install: install, sure: install?.verbs?.()?.[0] };
     }
 
-    // What a Return would do with a row at the top and nothing held, as
-    // Launcher.qml's run decides it, in run's order: fill the field with
-    // its start, do its Return's act, step into its category or group, ask
-    // its words, step into the verbs of one that can't be taken back, step
-    // into what one with no run of its own holds, close where it has
-    // nothing to do, open its collection where it has no run, or run. It
-    // leaves out what run decides only with a step held (its targets, a
-    // copy, a confirm while collecting) and a row whose thing has gone,
-    // none of which this check's rows meet, and Return's landing in find
-    // (Launcher.lands), which `sure` holds off and first() reads.
+    // What a Return would do with a row, by some of Launcher.qml's run's
+    // branches, in run's order: fill the field with its start, do its
+    // Return's act, step into its category or group, ask its words, step
+    // into the verbs of one that can't be taken back, step into what one
+    // with no run of its own holds, close where it has nothing to do, open
+    // its collection where it has no run, or run. It isn't run: it leaves
+    // out a gone row, one held still, a step into a target or a copy's
+    // contents, a confirm while collecting, how a row that stays, opens or
+    // acts now runs, and Return's landing in find (Launcher.lands). So it
+    // tells this check's rows apart, and stands for run on no other.
     function offers(row) {
         const holds = (row?.verbs?.() ?? []).length > 0 || !!row?.targets;
         if (row?.start !== undefined)
@@ -223,7 +223,7 @@ ShellRoot {
             `${install?.name} ${sure?.name}`);
         Expect.expect("the sure step's Return does its act", offers(sure) === "runs",
             offers(sure));
-        Expect.expect("and says it's sure, so a Return in find runs it rather than landing",
+        Expect.expect("and its row says it's sure, the field Launcher.lands reads",
             sure.sure === true, sure.sure);
         theLauncher.answer = theFirmware.answer("firmware");
         sure.run();

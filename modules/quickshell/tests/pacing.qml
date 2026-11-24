@@ -1291,6 +1291,8 @@ QtObject {
         // what it's given, so one with a break can't forge another.
         check(failures, "and its line breaks escaped, so a session's can't forge a line",
             Presented.whenceShown("A\nB", true), "from A\\nB");
+        check(failures, "and the breaks JSON leaves bare escaped too",
+            Presented.whenceShown("A\u2028launcher: B", true), "from A\\u2028launcher: B");
         check(failures, "and one naming no session here as that with reports off",
             Presented.whenceShown(undefined, false), "from no session here");
         check(failures, "and on", Presented.whenceShown(undefined, true), "from no session here");
