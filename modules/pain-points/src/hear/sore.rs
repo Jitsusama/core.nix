@@ -94,6 +94,19 @@ const REASSURING: [&str; 10] = [
 /// works for you" doesn't.
 const GIVING_UP: [&str; 4] = ["do it myself", "do this myself", "forget it", "never mind"];
 
+/// Words that hand the agent a choice before a closing "whatever": "use
+/// whatever" leaves it to the agent rather than giving up on it.
+const LEAVING_IT: [&str; 6] = ["use", "do", "pick", "try", "take", "choose"];
+
+/// Whether a sentence's words give up with a closing "whatever".
+fn whatever_then(words: &[&str]) -> bool {
+    match words {
+        [.., before, "whatever"] => !LEAVING_IT.contains(before),
+        ["whatever"] => true,
+        _ => false,
+    }
+}
+
 /// The marks that end a sentence, a full-width question mark among them.
 const ENDS: [char; 5] = ['.', '!', '?', '\u{ff1f}', ';'];
 
@@ -134,9 +147,7 @@ fn swears(low: &str) -> bool {
         .iter()
         .any(|(asked, words)| *asked && swore(words));
     let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || sentences
-            .iter()
-            .any(|(_, words)| words.last() == Some(&"whatever"));
+        || sentences.iter().any(|(_, words)| whatever_then(words));
     !eased || asked_swearing || gave_up
 }
 
@@ -403,7 +414,7 @@ mod tests {
             "it's fine, i'll do it myself, fuck this",
             "shit, it's fine. whatever.",
             "shit, it's fine, whatever",
-            "shit, it's fine\nwhatever",
+            "shit, it's fine whatever",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
@@ -422,11 +433,14 @@ mod tests {
             "shit, it's fine. can you check the logs?",
             "shit, it's fine, i blame myself",
             "shit, that's fine, whatever works for you",
+            "shit, it's fine, use whatever",
+            "shit, no worries, do whatever",
         ] {
             assert_eq!(
                 kinds(eased, AT, &[]),
                 none,
-                "a plain ask, self-blame or a passing whatever undid ease: {eased}"
+                "a plain ask, self-blame, or a whatever passing or leaving it to the agent \
+                 undid ease: {eased}"
             );
         }
     }

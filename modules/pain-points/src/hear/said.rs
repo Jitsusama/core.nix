@@ -84,6 +84,11 @@ pub struct Carried {
     /// again within it unless he speaks first, opening a turn of his own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub errored: bool,
+    /// Whether a peer's or the harness's message came after that error
+    /// with no word yet that pi tries again, so the answer after it, if pi
+    /// never does, is theirs.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub crossed: bool,
     /// Each answer to him not yet taken, as when his turn opened and when
     /// it was answered, kept until the session's cell is known, so every
     /// answer in one reading takes what it answered.
@@ -187,16 +192,23 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
     // A tool's result is read for its name alone, so its output, often
     // the most of a log, is never decoded.
     let head: Head = serde_json::from_str(text).ok()?;
-    // A peer's or the harness's message after an error pi didn't try again
-    // starts a turn of its own, which answers them, not him.
-    if head.kind == "custom_message" && carried.errored {
-        carried.from = None;
-        carried.errored = false;
-        return None;
+    // pi tries an errored turn again by first editing the error out of its
+    // context, so a peer's or the harness's message before that edit can
+    // still land inside his retry, and one after it does. Only one with no
+    // retry after it starts a turn of its own, answering them, not him.
+    if carried.errored {
+        match head.kind.as_str() {
+            "custom_message" => carried.crossed = true,
+            "context_edit" => (carried.errored, carried.crossed) = (false, false),
+            _ => {}
+        }
     }
     let message = head.message.filter(|_| head.kind == "message")?;
     match message.role.as_str() {
         "assistant" => {
+            if std::mem::take(&mut carried.crossed) {
+                carried.from = None;
+            }
             let full: Value = serde_json::from_str(text).ok()?;
             let content = full.pointer("/message/content")?;
             carried.tools.extend(
@@ -263,12 +275,12 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
                 } else if let Some(at) = at {
                     opened(carried, at);
                 }
-                carried.errored = false;
+                (carried.errored, carried.crossed) = (false, false);
                 return None;
             };
             let at = at?;
             opened(carried, at);
-            carried.errored = false;
+            (carried.errored, carried.crossed) = (false, false);
             let said = Said {
                 entry: head.id,
                 at,
@@ -571,18 +583,68 @@ mod tests {
                 "a turn read across two runs lost when he opened it"
             );
         }
-        // A peer's message after an error pi never tried again starts
-        // their turn, so its answer isn't his.
+    }
+
+    #[test]
+    fn a_peers_message_after_an_error_takes_the_turn_unless_pi_tries_again() {
+        let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = iso_ms("2026-11-16T18:00:09.000Z").expect("a time");
+        let asking = called(&["bash"]);
+        let failed = ended("error", "");
+        let done = ended("stop", "Fixed: the launcher opens again.");
         let peer = r#"{"type":"custom_message","content":"Mesh message"}"#.to_owned();
-        let mut carried = Carried::default();
-        for text in [&his, &asking, &failed, &peer, &asking, &done] {
-            line(text, &mut carried);
+        // pi's retry edits the errored answer out of its context first.
+        let retry = r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned();
+        let his_answer = vec![(opened, at)];
+        for (lines, answers, what) in [
+            (
+                vec![&his, &asking, &failed, &peer, &asking, &done],
+                Vec::new(),
+                "a peer's turn after an error pi never tried again",
+            ),
+            (
+                vec![&his, &asking, &failed, &peer, &retry, &asking, &done],
+                his_answer.clone(),
+                "a peer's message before pi's retry",
+            ),
+            (
+                vec![&his, &asking, &failed, &retry, &peer, &asking, &done],
+                his_answer.clone(),
+                "a peer's message during pi's retry",
+            ),
+            (
+                vec![&his, &asking, &peer, &asking, &done],
+                his_answer,
+                "a peer's message mid-turn with no error",
+            ),
+        ] {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            assert_eq!(carried.answers, answers, "{what} was read wrongly");
         }
-        assert_eq!(
-            carried.answers,
-            Vec::new(),
-            "a peer's turn after an error answered him"
-        );
+        // Read across two runs, parted after the error or the peer's message.
+        for (before, after) in [
+            (vec![&his, &asking, &failed], vec![&peer, &asking, &done]),
+            (vec![&his, &asking, &failed, &peer], vec![&asking, &done]),
+        ] {
+            let mut midway = Carried::default();
+            for text in before {
+                line(text, &mut midway);
+            }
+            let kept = serde_json::to_string(&midway).expect("carried writes");
+            let mut back: Carried = serde_json::from_str(&kept).expect("carried reads");
+            for text in after {
+                line(text, &mut back);
+            }
+            assert_eq!(
+                back.answers,
+                Vec::new(),
+                "a run lost that the turn had errored, or that a peer came after"
+            );
+        }
     }
 
     #[test]
