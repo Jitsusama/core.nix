@@ -4681,10 +4681,11 @@
     the launcher reads the open and ended quests the node serves, each with its own kind rather
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
-    each saying how it stands as Machines does, draws a quest told while it's open elsewhere as it
-    is now on the step back, making no row on it, and sees one made since, remaking only the
-    quests a change names and none a list written again leaves the same, and breaking each title into
-    the pieces A to Z reads once, again only when it changes
+    each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
+    ahead of the step back, making no row on it, though none as an opening fills in at home or
+    under a viewer's command line, and sees one made since, remaking only the quests a change
+    names and none a list written again leaves the same, and breaking each title into the pieces
+    A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last

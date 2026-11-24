@@ -18,8 +18,9 @@ pragma ComponentBehavior: Bound
 // this one, each that can't take a session dimmed with why, each other
 // saying how it stands as Machines says it, from the node's machine
 // records, and Wherever It Fits last; a row told while the launcher is
-// open in another place is drawn as it is now on the step back, which
-// makes no row; and a quest made since is heard,
+// open in another place is made ahead and drawn as it is now on the step
+// back, which makes no row, though none is made ahead as an opening fills
+// in at home or under a viewer's command line; and a quest made since is heard,
 // shut making no row, the daemon telling only the rows that moved, so a
 // list written again with only when each was heard moved tells none and
 // every other row is kept. It exits 0 once every case holds, and
@@ -64,6 +65,10 @@ ShellRoot {
         function wants(source) {
             return wanting;
         }
+        // The steps held, one in another place once a case steps there,
+        // and whether the command line is over a viewer's.
+        property var held: []
+        property bool viewing: false
         // The orchestrators the harness lists, as the launcher's sources
         // hold them, which a case fills.
         property var sources: []
@@ -491,9 +496,11 @@ ShellRoot {
             expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go to",
                 held.verbs()[0].name);
 
-            // Open in another place, Quests isn't wanted, and its session
-            // parks, as the node tells sessions parking and waking all day.
+            // Open at home as a kept opening fills in, Quests isn't wanted
+            // before its turn to wake, and its session parks, as the node
+            // tells sessions parking and waking all day.
             root.told = [];
+            root.counted = theQuests.tally.rows;
             root.waiting = "told away";
             theLauncher.open = true;
             theLauncher.wanting = false;
@@ -510,6 +517,49 @@ ShellRoot {
         id: settled
 
         interval: 200
+        onTriggered: root.filledAtHome()
+    }
+
+    // Filling in at home, or under a viewer's command line, no row is made
+    // ahead, in the frames the opening keeps short; stepped into another
+    // place, the row told is.
+    function filledAtHome() {
+        if (root.waiting !== "told away")
+            return;
+        try {
+            expect("no row made ahead as an opening fills in at home",
+                theQuests.tally.rows === root.counted,
+                `${theQuests.tally.rows - root.counted} rows: ${theQuests.tally.lately.join(", ")}`);
+            theLauncher.viewing = true;
+            theLauncher.held = [{ row: { from: theLauncher } }];
+            settledViewing.start();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    Timer {
+        id: settledViewing
+
+        interval: 200
+        onTriggered: root.viewed()
+    }
+
+    function viewed() {
+        try {
+            expect("nor under a viewer's command line", theQuests.tally.rows === root.counted,
+                `${theQuests.tally.rows - root.counted} rows`);
+            theLauncher.viewing = false;
+            settledElsewhere.start();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    Timer {
+        id: settledElsewhere
+
+        interval: 200
         onTriggered: root.steppedBack()
     }
 
@@ -522,6 +572,9 @@ ShellRoot {
             return;
         try {
             const before = theQuests.tally.rows;
+            expect("the row told made ahead in another place", before > root.counted,
+                "none made");
+            theLauncher.held = [];
             theLauncher.wanting = true;
             const prompt = theQuests.everything()[1];
             expect("the row told away drawn as it is now",

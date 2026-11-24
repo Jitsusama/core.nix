@@ -234,7 +234,13 @@ Scope {
     // The rows owed so, by key, and how many are made a turn.
     readonly property var owedAhead: ({})
     readonly property int aheadEachTurn: 8
-    readonly property bool makingAhead: madeAhead && drawn && maker?.wanted === false
+    // Elsewhere is a step held in another place, not only these rows unwanted: they're unwanted
+    // too as a kept opening fills in at home, before their turn to wake, as a chord opens into
+    // a place, before its step is held, and under a viewer's command line, and rows made then
+    // would land in the frames those keep short (Wanted.js).
+    readonly property bool elsewhere: maker?.wanted === false
+        && (maker?.launcher?.held?.length ?? 0) > 0 && maker?.launcher?.viewing !== true
+    readonly property bool makingAhead: madeAhead && drawn && elsewhere
     onMakingAheadChanged: aheadSoon()
 
     function owe(key) {
