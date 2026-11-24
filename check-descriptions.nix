@@ -2471,16 +2471,21 @@
     the worker machines it made as that file in the Nix store, rather than one in the account's
     config folder, its fields exactly those the locked mycelium's lender parses the file into, by
     name and type, from structs that derive Deserialize with only deny_unknown_fields over them
-    and no field attribute but default, which a scan shown to refuse eight other layouts reads,
-    and the lender joins a relative upstream onto its runtime folder; a budget with no key is
-    written with none, a further realm's node and a machine lending nothing are given no lend, a
-    Mac's lend is refused by a message naming it and its node given none,
-    plain prefixes and dotted paths and key packages are taken, and a lend with no realm, naming a
-    budget it lacks, with a prefix that is empty, starts another, either way round, or is named
-    twice, a key that is empty or whose program is outside the store, climbs out of it with .. or
-    is named as text no package keeps alive, a whole upstream or one with a dot part, a host with
-    a scheme, a header holding a space, or a path of / or /* alone or holding .. is refused, each
-    by its own message or the option's type
+    and no field attribute but default, which a scan shown to refuse eleven other layouts reads,
+    and the lender joins a relative upstream onto its runtime folder; the budget kinds the lend
+    takes, and the one it writes where none is said, are the lowercased variants of the lender's
+    Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
+    rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
+    leaving a machine's also and a budget's kind unsaid is written with them filled in as the
+    lender takes them, beside a forge budget a machine names; a budget with no key is written with
+    none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
+    refused by a message naming it and its node given none, plain prefixes and dotted paths and
+    key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that
+    is empty, starts another, either way round, or is named twice, a key that is empty or whose
+    program is outside the store, climbs out of it with .. or is named as text no package keeps
+    alive, a whole upstream or one with a dot part, a host with a scheme, a header holding a
+    space, a budget of a kind the lender lacks, or a path of / or /* alone or holding .. is
+    refused, each by its own message or the option's type
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
