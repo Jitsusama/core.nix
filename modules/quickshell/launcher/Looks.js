@@ -128,7 +128,7 @@ function answer(one, choice, cell, at) {
     const live = leftIt(one, cell);
     const upper = name => String(name ?? "").toUpperCase();
     const itself = live && (leftByItsId(one, cell)
-        || [one.address, one.cell].some(name => upper(name) !== ""
+        || [one.address, cellNamed(one)].some(name => upper(name) !== ""
             && upper(name) === upper(cell.address)));
     const address = upper((itself ? cell.address : live ? one.address : quest)
         || one.address);
@@ -210,11 +210,12 @@ function servedSettles(one, opened) {
 
 // Whether `cell`, the session a look's Talk reaches, left look `one`: by
 // the session or an address the look names (ForYou.leftBy), or as the very
-// cell the look names, so Joel's answer and who asks go where Talk does.
+// cell the look names (cellNamed), so Joel's answer and who asks go where
+// Talk does.
 function leftIt(one, cell) {
-    const upper = name => String(name ?? "").toUpperCase();
+    const named = cellNamed(one).toUpperCase();
     return cell !== null && cell !== undefined && (ForYou.leftBy(one, cell)
-        || (upper(one.cell) !== "" && upper(one.cell) === upper(cell.address)));
+        || (named !== "" && named === String(cell.address ?? "").toUpperCase()));
 }
 
 // Whether `session` is the one that left look `one`, by pi's own id for it,

@@ -162,6 +162,12 @@ QtObject {
         const derived = { address: "E1921AAB", presence: { session: "s-8", quest: "Q-1" } };
         expect("an old look naming no cell, the cell its session went by",
             Looks.cellFor(lookOld, {}, [heir, derived], []).address, "E1921AAB");
+        expect("and Joel's answer goes to that cell too, where Talk goes",
+            (Looks.answer(lookOld, { value: "yes" }, derived, now) ?? {}).address, "E1921AAB");
+        expect("and that cell is the one that left it", Looks.leftIt(lookOld, derived), true);
+        expect("a look's own cell, not the one its session went by",
+            Looks.cellFor(Object.assign({ cell: "AAAAAA" }, lookOld), {}, [derived, leaver], [])
+                .address, "AAAAAA");
         expect("and where the daemon says that cell goes now",
             Looks.cellFor(lookOld, { "agent-cell:agents:E1921AAB": { cell: "E1921AAB",
                 goes: "BBBBBB" } }, [resting, heir], []).address, "BBBBBB");
