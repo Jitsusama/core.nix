@@ -5198,7 +5198,7 @@
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
-    however it's assigned or taking the Brio's seat tag off as the sharing's rule does, as a
+    by any of udev's assignments or taking the Brio's seat tag off as the sharing's rule does, as a
     search with each pattern shown to find its line says, and starts at every boot, and at a
     switch bringing it in, the give-back of a Brio a relay held, so the seat opens the Brio itself
     while its relay gives no picture
@@ -5208,10 +5208,12 @@
     Brio's nodes and never another camera a relay holds, even of its maker or model number, never
     triggers with no device, bounds each wait on udev to a second or more and to fit twice, and
     every wait together once, within its unit's limit, ends well when udev refuses a replay, never
-    settles, loses the Brio's record or can't be read, adds the Brio back when its unit's timeout
-    ends the run, says a Brio unplugged midway is the seat's once plugged in, and says it gave the
-    Brio back only when udev's record of every node shows it tagged for the seat and unmarked,
-    warning with the way out otherwise
+    settles, hasn't handled the arrival yet, loses the Brio's record or can't be read, adds the
+    Brio back when its unit's timeout ends the run, says a Brio unplugged midway is the seat's once
+    plugged in, says it gave the Brio back only when udev's record of every node shows it tagged
+    for the seat and unmarked, and that the seat has it only when udev recorded every camera,
+    warning with the way out otherwise, and warns nothing on a machine with no camera or a run
+    that went right
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the

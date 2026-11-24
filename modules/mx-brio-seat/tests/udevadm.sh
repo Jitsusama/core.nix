@@ -9,8 +9,9 @@
 # kernel's own keys, as udev deletes its record, or unplugs the node when
 # after/ holds a .unplugged for it; an add takes the node's record from
 # after/. A file named fails makes every trigger fail, adds-fail only each
-# add, and hangs every settle; killed has the first settle end the
-# give-back with the TERM its unit's timeout sends.
+# add, and hangs every settle; lags has an add queued and not yet handled,
+# its settle running out; killed has the first settle end the give-back
+# with the TERM its unit's timeout sends.
 #
 # It refuses what give-back.sh must never ask: a flag it wasn't written for,
 # a trigger naming no device, which udev replays on every device the
@@ -49,6 +50,7 @@ trigger)
   done
   [[ ! -e "${root}/fails" ]] || exit 1
   [[ "${action}" != add || ! -e "${root}/adds-fail" ]] || exit 1
+  [[ "${action}" != add || ! -e "${root}/lags" ]] || exit 0
   for path in "$@"; do
     node=${path##*/}
     if [[ "${action}" == remove && -e "${root}/after/${node}.unplugged" ]]; then
@@ -61,6 +63,7 @@ trigger)
   done
   ;;
 settle)
+  (($# <= 2)) || refuse "settle ${*:2}"
   bound=${2:-}
   [[ "${bound}" == --timeout=* ]] || refuse "a settle with no bound"
   seconds=${bound#--timeout=}
@@ -77,6 +80,10 @@ settle)
     kill -TERM "${PPID}"
   fi
   [[ ! -e "${root}/hangs" ]] || exit 1
+  # The add a lagging udev hasn't handled yet is the settle that runs out.
+  if [[ -e "${root}/lags" ]] && grep -q '^add ' "${root}/triggers"; then
+    exit 1
+  fi
   ;;
 *) refuse "$1" ;;
 esac
