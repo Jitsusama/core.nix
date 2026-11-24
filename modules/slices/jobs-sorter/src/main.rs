@@ -2270,13 +2270,17 @@ fn unslotted_session(
         return None;
     }
     // The words are the process's own to choose, so neither starts a
-    // journal line of its own nor fills it.
+    // journal line of its own nor fills it: the cap counts what the journal
+    // gets, escapes and all, and stops before an escape it can't fit whole.
     let said = |word: &str| {
-        word.chars()
-            .take(SAID_MOST)
-            .collect::<String>()
-            .escape_debug()
-            .to_string()
+        let mut said = String::new();
+        for escaped in word.chars().map(|char| char.escape_debug().to_string()) {
+            if said.chars().count() + escaped.chars().count() > SAID_MOST {
+                break;
+            }
+            said.push_str(&escaped);
+        }
+        said
     };
     Some((said(&key), said(&session)))
 }
@@ -2285,32 +2289,50 @@ fn unslotted_session(
 /// characters: a session is a 36-character UUID.
 const SAID_MOST: usize = 64;
 
+/// How long every look must find a session unslotted before it's said.
+const UNSLOTTED_FOR: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// The unslotted sessions the looks before found, each a host's key and a
 /// session.
 #[derive(Default)]
 struct Unslotted {
-    /// Those the last look found.
-    last: HashSet<(String, String)>,
+    /// Those the last look found, each with when the looks first found it,
+    /// every look since finding it too.
+    last: HashMap<(String, String), std::time::Instant>,
     /// Those said, and found by every look since.
     said: HashSet<(String, String)>,
 }
 
 impl Unslotted {
-    /// From this look's `now`, the sessions to say are unslotted and those
-    /// said before that no longer are. A session is said at its second
-    /// look in a row, as [`focus::says_alone`] says a window, so a slot
-    /// read as the host rewrites it isn't said; and once, until it clears.
-    fn look(&mut self, now: Vec<(String, String)>) -> UnslottedSaid {
-        let now: HashSet<(String, String)> = now.into_iter().collect();
+    /// From this look's `now`, taken `at`, the sessions to say are
+    /// unslotted and those said before that no longer are. A session is
+    /// said once every look has found it for [`UNSLOTTED_FOR`], so a slot
+    /// read as the host rewrites it isn't said, however fast marks bring
+    /// looks; and once, until it clears.
+    fn look(&mut self, now: Vec<(String, String)>, at: std::time::Instant) -> UnslottedSaid {
+        let now: HashMap<(String, String), std::time::Instant> = now
+            .into_iter()
+            .map(|session| {
+                let since = self.last.get(&session).copied().unwrap_or(at);
+                (session, since)
+            })
+            .collect();
         let mut missing: Vec<_> = now
             .iter()
-            .filter(|session| self.last.contains(*session) && !self.said.contains(*session))
+            .filter(|(session, since)| {
+                at.duration_since(**since) >= UNSLOTTED_FOR && !self.said.contains(*session)
+            })
+            .map(|(session, _)| session.clone())
+            .collect();
+        let mut found: Vec<_> = self
+            .said
+            .iter()
+            .filter(|session| !now.contains_key(*session))
             .cloned()
             .collect();
-        let mut found: Vec<_> = self.said.difference(&now).cloned().collect();
         missing.sort();
         found.sort();
-        self.said.retain(|session| now.contains(session));
+        self.said.retain(|session| now.contains_key(session));
         self.said.extend(missing.iter().cloned());
         self.last = now;
         (missing, found)
@@ -2322,7 +2344,7 @@ type UnslottedSaid = (Vec<(String, String)>, Vec<(String, String)>);
 
 /// Says what this look found of the unslotted sessions `said` holds.
 fn say_unslotted(said: &mut Unslotted, now: Vec<(String, String)>) {
-    let (missing, found) = said.look(now);
+    let (missing, found) = said.look(now, std::time::Instant::now());
     for (key, session) in missing {
         eprintln!(
             "Ranking host {key} in place of session {session}'s conversation: no slot holds \
@@ -3673,7 +3695,8 @@ mod tests {
             Some("kitty-1-4.scope") => vec![attach("a", "s1"), attach("a", "s7")],
             // A second window on s2, and a session spelled to start a journal line.
             Some("kitty-1-5.scope") => vec![attach("a", "s2"), attach("a", "x\nRanked")],
-            Some("mycelium-pi-x.scope") => vec![attach("d", "s5")],
+            // No slot holds s5 and a runs conversations apart, so only being a pi's keeps it out.
+            Some("mycelium-pi-x.scope") => vec![attach("a", "s5")],
             _ => Vec::new(),
         };
         let units: Vec<PathBuf> = [
@@ -3731,15 +3754,63 @@ mod tests {
                 ("a".to_owned(), "x\\nRanked".to_owned())
             ],
             "only sessions no slot holds are found, s2 once for its two windows, and a session's \
-             newline can't start a journal line; s1 runs in its unit, and s7's slot holds it"
+             newline can't start a journal line; s1 runs in its unit, s7's slot holds it, and \
+             s5's viewer is a pi's own agent"
         );
     }
 
     #[test]
-    fn an_unslotted_session_is_said_at_its_second_look_once_and_again_when_it_clears() {
+    fn a_said_session_is_cut_to_its_most_once_escaped_and_never_inside_an_escape() {
+        let session = "\n".repeat(SAID_MOST);
+        let words = ["mycelium", "attach", "--host", "a", "--session", &session]
+            .map(str::to_owned)
+            .to_vec();
+        let names: HashSet<&str> = ["pi-conversation-a@s1.service"].into_iter().collect();
+        let slots = std::env::temp_dir().join(format!("no-slots-{}", std::process::id()));
+        let conversations = Some(("pi-conversation-", slots.as_path()));
+        let (_, said) = unslotted_session(&words, "pi-host-a.service", conversations, &names)
+            .expect("no slot holds the session");
+        assert_eq!(
+            said,
+            "\\n".repeat(SAID_MOST / 2),
+            "the journal gets at most {SAID_MOST} characters, in whole escapes"
+        );
+    }
+
+    #[test]
+    fn an_unslotted_session_is_said_only_once_it_has_stayed_so_for_a_while() {
+        let x = ("a".to_owned(), "x".to_owned());
+        let mut unslotted = Unslotted::default();
+        let start = std::time::Instant::now();
+        let at = |millis| start + std::time::Duration::from_millis(millis);
+        let looks: Vec<_> = [0, 1, 2, 4_999, 5_000, 6_000]
+            .into_iter()
+            .map(|millis| unslotted.look(vec![x.clone()], at(millis)))
+            .collect();
+        let none = (vec![], vec![]);
+        assert_eq!(
+            looks,
+            [
+                none.clone(),
+                none.clone(),
+                none.clone(),
+                none.clone(),
+                (vec![x.clone()], vec![]),
+                none,
+            ],
+            "looks milliseconds apart, as a burst of marks makes them, could all fall in one \
+             rewrite of a slot, so a session is said only once every look has found it for \
+             {UNSLOTTED_FOR:?}"
+        );
+    }
+
+    #[test]
+    fn an_unslotted_session_is_said_once_and_again_when_it_clears() {
         let x = ("a".to_owned(), "x".to_owned());
         let y = ("a".to_owned(), "y".to_owned());
         let mut unslotted = Unslotted::default();
+        let start = std::time::Instant::now();
+        let mut look = 0;
         let looks: Vec<_> = [
             vec![x.clone()],
             vec![x.clone(), y.clone()],
@@ -3749,7 +3820,10 @@ mod tests {
             vec![x.clone()],
         ]
         .into_iter()
-        .map(|now| unslotted.look(now))
+        .map(|now| {
+            look += 1;
+            unslotted.look(now, start + UNSLOTTED_FOR * look)
+        })
         .collect();
         let none = (vec![], vec![]);
         assert_eq!(
@@ -3762,8 +3836,8 @@ mod tests {
                 none,
                 (vec![x.clone()], vec![]),
             ],
-            "a session is said at its second look in a row and once, said cleared when it \
-             goes, and said again when it comes back; y, for one look, is never said"
+            "a session found by looks spanning {UNSLOTTED_FOR:?} is said once, said cleared \
+             when it goes, and said again when it comes back; y, for one look, is never said"
         );
     }
 
