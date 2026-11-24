@@ -5042,10 +5042,10 @@
     notices' own rows, and its History those read, stepping in again after one is read making
     only that one's row again; and Now, stepped into For You since it last said what it shows,
     says it changed only where For You's rows differ from those the launcher shows; and the
-    notices moving, by their rows or their history, with For You held, are asked with For You's
-    own rather than said outright, so a session's notice updated just after Return into For You
-    is drawn as no act of Return's, while with Desktop, Slack's notices or what's on screen held
-    right under Now, or nothing held, they are said outright
+    notices moving, by their rows or their history, each heard outright with nothing held, aren't
+    said outright as they move with For You held, so a session's notice updated just after Return
+    into For You isn't said as Return's act then, while with Desktop, Slack's notices or what's on
+    screen held right under Now they are said outright
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
