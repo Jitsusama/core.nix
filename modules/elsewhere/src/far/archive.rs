@@ -73,9 +73,10 @@ pub struct Part {
 /// share carries it, and so is one that would take the archives past
 /// `all` bytes in all, before it is written: a tree that grew after it
 /// was gathered leaves this job's archives no larger than `all` all the
-/// same. A refusal
-/// leaves the archives written so far unlisted, and the one still open
-/// under its hidden name, for the caller to clear.
+/// same. A refusal leaves the archives written so far unlisted, and the
+/// one still open under its hidden name, for the caller to clear. Each is
+/// made new, so nothing standing at its name, a link included, is written
+/// through.
 pub fn write<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
@@ -114,7 +115,7 @@ pub fn write<'a>(
         }
         let (file, size) = match &mut open {
             Some(open) => open,
-            slot @ None => slot.insert((fs::File::create(into.join(writing(parts.len())))?, 0)),
+            slot @ None => slot.insert((made_new(&into.join(writing(parts.len())))?, 0)),
         };
         file.write_all(&entry)?;
         *size += length;
@@ -178,6 +179,16 @@ fn at_most(from: impl io::Read, most: u64) -> io::Result<Option<Vec<u8>>> {
 /// The archive numbered `number`'s name.
 fn name(number: usize) -> String {
     format!("{number}.tar")
+}
+
+/// A file at `path` made new, whatever stood there taken away first and
+/// never followed, as a link the job left at the name would be.
+fn made_new(path: &Path) -> io::Result<fs::File> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    fs::OpenOptions::new().write(true).create_new(true).open(path)
 }
 
 /// The archive numbered `number`'s name while it is written: hidden, so

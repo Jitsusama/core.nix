@@ -263,7 +263,15 @@ pub(super) fn opened_plain(path: &Path) -> io::Result<fs::File> {
     if !looked.is_file() {
         return Err(io::Error::other("it isn't a plain file"));
     }
-    let file = unfollowed(path)?;
+    // A link put there since the look fails to open, which the platform
+    // words as a loop of links: said instead as what it is.
+    let file = unfollowed(path).map_err(|error| {
+        if fs::symlink_metadata(path).is_ok_and(|now| now.file_type().is_symlink()) {
+            io::Error::other("it changed as it was opened")
+        } else {
+            error
+        }
+    })?;
     let opened = file.metadata()?;
     if opened.dev() != looked.dev() || opened.ino() != looked.ino() {
         return Err(io::Error::other("it changed as it was opened"));

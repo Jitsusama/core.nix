@@ -19,6 +19,28 @@ fn unpacked(from: &Path, parts: &[Part], into: &Path) {
 }
 
 #[test]
+fn a_link_left_at_an_archive_s_name_is_never_written_through() {
+    let root = crate::far::tests::scratch("archive-linked");
+    std::fs::create_dir_all(root.join("tree")).unwrap();
+    std::fs::write(root.join("tree/a"), "a").unwrap();
+    std::fs::write(root.join("outside"), "kept").unwrap();
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    for name in [writing(0), "0.tar".to_owned()] {
+        std::os::unix::fs::symlink(root.join("outside"), parts.join(name)).unwrap();
+    }
+    let written = write(&root.join("tree"), ["a"], &parts, 1 << 20, u64::MAX).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(root.join("outside")).unwrap(),
+        "kept",
+        "an archive was written through a link at its name"
+    );
+    let archive = std::fs::symlink_metadata(parts.join(&written[0].name)).unwrap();
+    assert!(archive.is_file(), "the archive isn't a plain file of its own");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn what_goes_in_comes_out_of_the_system_s_tar_as_it_was() {
     let root = crate::far::tests::scratch("archive-whole");
     let long_folder = format!("{}/n", "p".repeat(120));
