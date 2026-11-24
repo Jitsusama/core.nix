@@ -26,7 +26,10 @@ const STARTERS = [
   "C06",
   undefined,
 ];
-const { rest } = kinOf(STARTERS.map((startedBy, at) => forage(named(at), { startedBy })), grewFrom);
+const { rest } = kinOf(
+  STARTERS.map((startedBy, at) => forage(named(at), { startedBy })),
+  grewFrom,
+);
 
 it("folds the rest of a brood, grandchildren and all, up to a cell not of it", () => {
   assert.equal(rest(0, 1, 4), true);
