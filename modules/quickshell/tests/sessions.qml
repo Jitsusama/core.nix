@@ -661,8 +661,10 @@ ShellRoot {
     property var unopened: []
     // What Reopen Them All's walk said it found, reading by reading.
     property var tallied: []
-    // Whether s-counted, its folder gone, was found so.
+    // Whether s-counted, its folder gone, was found so, and s-uncounted,
+    // whose walk counts nothing.
     property bool countedGone: false
+    property bool uncountedGone: false
     function tally(now) {
         tallied = tallied.concat([`${now.gone} gone, ${now.reopened} reopened`]);
         Qt.callLater(root.check);
@@ -716,6 +718,14 @@ ShellRoot {
         Sessions.resume("s-kept", "QEST-KEPT", "/tmp", told("s-kept"));
         Sessions.resume("s-gone", "QEST-GONE", root.state, told("s-gone"));
         Sessions.resume("s-gone", "QEST-NONE", "", told("s-none"));
+        // A walk begun with nothing to count, as the harness begins one,
+        // holds s-uncounted, its folder gone, so Reopen Them All's lists
+        // below join a walk with no tally of their own, and their count
+        // is the one they bring; s-uncounted counts in none.
+        Sessions.reopenAll([{ id: "s-uncounted", cwd: "/gone/s-uncounted" }], () => {
+            root.uncountedGone = true;
+            Qt.callLater(root.check);
+        }, id => null, undefined);
         // Asked as the launcher asks, with no places of its own, the walk
         // takes the daemon's: the boot being restored kept places, so one
         // that sat here kept nowhere had no window, and comes back held.
@@ -779,12 +789,14 @@ ShellRoot {
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
             || !("UNSAID" in root.asleep) && !Niri.spawns.some(one => one.includes("s-unsaid"))
-            || !Niri.spawns.some(one => one.includes("s-unkept")) || !countedGone)
+            || !Niri.spawns.some(one => one.includes("s-unkept")) || !countedGone
+            || !uncountedGone)
             return;
         // Chosen as each list was given, before niri said its screens,
         // the tally would count each list alone, "1 gone, 0 reopened"
-        // (core.nix#6126's round 3).
-        expect("lists given before the walk begins count as one walk",
+        // (core.nix#6126's round 3); and left with the walk they join,
+        // which counts nothing, it would tell none.
+        expect("lists given before the walk begins count as one walk, its own",
             tallied.join("; ") === "1 gone, 2 reopened", tallied.join("; "));
         expect("one the daemon's boot kept nowhere comes back held, with no window",
             Niri.spawns.filter(one => one.includes(" pi --session s-unkept ")).length === 1
