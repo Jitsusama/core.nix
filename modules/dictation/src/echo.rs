@@ -5,10 +5,11 @@
 //! too. Where each word's time is known, their words his microphone heard
 //! just after they said them, and quieter than they said them, are cut
 //! from his line, and his own words in it stay: their microphones pick
-//! up his voice too, far quieter than their own, and that's his. A line of his whose words repeat a line of theirs said at the
-//! same time is their echo, and is left out whole, which also covers a
-//! line read back from a transcript, whose words' times are lost. On a
-//! headset there's none of either.
+//! up his voice too, far quieter than their own, and that's his. A line
+//! of his whose words repeat a line of theirs said at the same time is
+//! their echo, and is left out whole, which also covers a line read back
+//! from a transcript, whose words' times are lost. On a headset there's
+//! none of either.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
