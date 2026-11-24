@@ -383,7 +383,7 @@ const SETTLED = 200;
 
 // Whether the pointer, last seen over the cat at `was` (null as it comes onto it) and now at `at`,
 // both in the screen's pixels, strokes it: moved there once the cat had rested `rested` ms (-1
-// while it goes), never a pointer at rest it came to under.
+// while it goes, and until niri has shown it sitting), never a pointer at rest it came to under.
 function strokes(was, at, rested) {
     return rested >= SETTLED && (was === null || was.x !== at.x || was.y !== at.y);
 }

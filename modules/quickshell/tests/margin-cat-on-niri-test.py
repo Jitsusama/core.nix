@@ -1722,7 +1722,8 @@ def test_the_cat_never_leans_on_a_pointer_it_came_to_under(shell: Shell) -> None
     time.sleep(PETS + PETTED)
     said, _ = shell.said_since(since)
     leant = [report for report in said if report.startswith(SITS) and leaning(report[len(SITS) :])]
-    assert not leant, f"the cat leaned on a pointer it came to under: {leant[:2]}"
+    felt = [report for report in said if report.startswith("feels cat ")]
+    assert not leant, f"the cat leaned on a pointer it came to under: {leant[:2]}, felt: {felt}"
     shell.send_key("F24")
     since = shell.mark()
     shell.as_account(f"{os.environ['WLRCTL']} pointer move 1 0")
