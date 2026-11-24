@@ -1182,8 +1182,7 @@ Provider {
     // session is gone opened nothing, so it stays as it was. Whether it
     // opened, so a caller settling it elsewhere settles only what opened.
     // A session held whose window can't be raised or opened (Sessions.qml's
-    // unopened and unhosted) still counts as opened, until Sessions.goTo
-    // says whether it opened anything, by Mon 23 Nov 2026.
+    // unopened and unhosted) opened nothing either, as Sessions.goTo says.
     function openLook(one) {
         if (one.kind === "terminal") {
             if (!goToCell(one))
@@ -1246,8 +1245,8 @@ Provider {
                 + ` ${moved ? "moved on" : "gone"}, ${told ? "told" : "not told, in use"}`);
             return false;
         }
-        Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
-        return true;
+        // Only a plain false says nothing opened, since Go To said why.
+        return Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell) !== false;
     }
 
     // What a look's row does with the cell behind it (Joel, 2026-11-16:

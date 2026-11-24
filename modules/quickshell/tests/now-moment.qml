@@ -2606,6 +2606,24 @@ ShellRoot {
         now.lookTexts = textsGone;
         theLauncher.goneTold = 0;
         theLauncher.goneMoved = [];
+        // Go on one whose session is held but whose window Go To can't
+        // raise or open (Sessions.qml's unopened and unhosted, said there)
+        // opened nothing too, so its look stays waiting.
+        const shutLook = { id: "u", file: "u.json", kind: "terminal", title: "Read U",
+            target: "", state: "waiting", quest: "QEST-2", cell: "ACTED" };
+        now.lookTexts = Object.assign({}, textsGone, { "u.json": JSON.stringify(shutLook) });
+        const textShut = now.lookTexts["u.json"];
+        Sessions.opens = false;
+        const openedShut = now.openLook(shutLook);
+        Sessions.opens = true;
+        expect("Go on a held session Go To can't open opens nothing, and settles nothing",
+            openedShut === false && Sessions.wentTo?.address === "ACTED"
+                && now.lookTexts["u.json"] === textShut
+                && now.looksSettling["u.json"] === undefined,
+            JSON.stringify([openedShut, Sessions.wentTo?.address ?? null,
+                now.looksSettling["u.json"] ?? null]));
+        now.lookTexts = textsGone;
+        Sessions.wentTo = null;
         now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
             state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
             cell: "GONEQQ" } }, "row:looks-history:q").run();

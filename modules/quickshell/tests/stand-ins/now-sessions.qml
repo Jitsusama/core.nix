@@ -1,7 +1,8 @@
 // pi's sessions, for the launcher's Now (tests/now-moment.qml): where an
 // item is done names its session, and For You lists the sessions wanting
 // Joel, those parked, and those to reopen, each as the case gives;
-// Go To says the session it went to, as it was handed it, and each steer
+// Go To says the session it went to, as it was handed it, and whether it
+// opened anything as the case sets (opens), and each steer
 // is kept as it was sent, and said put or not as the case sets (puts),
 // a node's answer given with it, a refusal where not put, and sent or
 // not as the case sets (reaches), as Sessions.qml's steer says them,
@@ -19,6 +20,7 @@ Singleton {
     property var wanting: []
     property var toReopen: []
     property var wentTo: null
+    property bool opens: true
     property var woke: null
     property var steered: []
     property bool puts: true
@@ -54,6 +56,7 @@ Singleton {
 
     function goTo(session) {
         wentTo = session;
+        return opens;
     }
 
     function parkedAs(address) {
@@ -65,6 +68,6 @@ Singleton {
     // Keeps whom it woke, as the real one wakes only one parked (resting).
     function wakeToGo(resting, session) {
         woke = resting;
-        goTo(session);
+        return goTo(session);
     }
 }
