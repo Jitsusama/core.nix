@@ -9,8 +9,10 @@
 # clocks go forward does, and timeout notes each step's deadline. It
 # balances only from 01:00 to 06:00 and while short, ends a step at
 # 06:00, stops at the first step that frees enough, goes past a step that
-# fails or is killed by day, stops at half-full chunks, and fails when it
-# ends short or can't read the usage.
+# fails or is killed by day, stops at half-full chunks, ends well when
+# left short only by full chunks or 06:00, saying which, and fails when no
+# step finished, the half-full one was killed by day, or it can't read the
+# usage.
 set -euo pipefail
 
 given=$1
@@ -177,7 +179,7 @@ expect "0 5 10 " 0 "a step that fails is passed for the next"
 
 disk 950 0 "0 1"
 give
-expect "0 5 10 20 30 40 50 " 1 "balancing stops at half-full chunks and fails short"
+expect "0 5 10 20 30 40 50 " 0 "balancing stops at half-full chunks and ends well short"
 expect_said "after chunks up to half full" "a night whose steps gave too little says files must go"
 
 disk 950 0 "0 fails" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
@@ -213,7 +215,7 @@ expect_deadlines "60 " "a step begun a minute before 06:00 is given that minute"
 
 disk 950 0 "0 1 06:00:00" "5 50"
 CLOCK=05:00:00 give
-expect "0 " 1 "a night that reaches 06:00 between steps stops and fails short"
+expect "0 " 0 "a night that reaches 06:00 between steps stops and ends well short"
 
 disk 950 0 "0 1 05:00:00" "5 50"
 give
@@ -222,13 +224,13 @@ expect_deadlines "10800 3600 " "each step is given only until 06:00, read again 
 
 disk 950 0 "0 ends" "5 50"
 CLOCK=05:30:00 give
-expect "0 " 1 "a step ended at 06:00 is the last, and the night fails short"
+expect "0 " 0 "a step ended at 06:00 is the last, and the night ends well short"
 expect_said "was ended at 06:00" "a step ended at 06:00 says so"
 expect_said "the rest waits for the next night" "a night ended at 06:00 says when the rest runs"
 
 disk 950 0 "0 killed" "5 50"
 CLOCK=05:30:00 give
-expect "0 " 1 "a step killed a minute past 06:00 is the last, and the night fails short"
+expect "0 " 0 "a step killed a minute past 06:00 is the last, and the night ends short"
 expect_said "was killed after 06:00" "a step killed past 06:00 says so"
 
 disk 950 0 "0 killed-by-day" "5 50"
@@ -238,7 +240,7 @@ expect_said "was killed, so the next step is tried" "a step killed before 06:00 
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 ends"
 CLOCK=05:30:00 give
-expect "0 5 10 20 30 40 50 " 1 "a half-full step ended at 06:00 fails short"
+expect "0 5 10 20 30 40 50 " 0 "a half-full step ended at 06:00 ends well short"
 expect_said "the rest waits for the next night" \
   "a half-full step ended at 06:00 says the rest waits"
 if grep -qF "needs files gone" "$work/out" "$work/err"; then
@@ -270,19 +272,19 @@ fi
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails"
 give
-expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step fails fails short"
+expect "0 5 10 20 30 40 50 " 0 "a night whose half-full step fails ends well short"
 expect_said "needs files gone" "a half-full step failing, as for want of room, says files must go"
 
 # Only the last step's kill is told: an earlier one's, passed for the
 # next, leaves a half-full step that fails saying files must go.
 disk 950 0 "0 killed-by-day" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails"
 give
-expect "0 5 10 20 30 40 50 " 1 "a night whose first step is killed and last fails fails short"
+expect "0 5 10 20 30 40 50 " 0 "a night whose first step is killed and last fails ends well"
 expect_said "needs files gone" "an early kill leaves a failing half-full step saying files must go"
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"
 CLOCK=05:30:00 give
-expect "0 5 10 20 30 40 50 " 1 "a half-full step killed past 06:00 fails short"
+expect "0 5 10 20 30 40 50 " 0 "a half-full step killed past 06:00 ends well short"
 expect_said "the rest waits for the next night" \
   "a half-full step killed past 06:00 says the rest waits"
 if grep -qF "needs files gone" "$work/out" "$work/err"; then

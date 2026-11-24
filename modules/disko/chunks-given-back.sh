@@ -17,7 +17,11 @@
 # so they kill it, and the kernel cancels a balance whose process is
 # dying. A step that fails, or is killed by something else before 06:00,
 # is said and the next is tried, since a fuller step can find room an
-# emptier one didn't. Its help and failures take the shape every command
+# emptier one didn't. A night left short only because the data chunks
+# are full, or because 06:00 came, says so and ends well: each is a
+# state it was built to meet, which deleting files or the next night
+# answers, and failing for it marked the unit failed every such night
+# for nothing it could mend. Its help and failures take the shape every command
 # of ours does (docs/commands.md), by hand.
 set -euo pipefail
 
@@ -34,8 +38,9 @@ EXAMPLES
   chunks-given-back /
 
 EXIT
-  0   enough room, or outside the night's hours
-  1   still short after the last step
+  0   enough room, outside the night's hours, or short
+      only for full data chunks or the night's end
+  1   no step finished, or the half-full one was killed
   65  btrfs's usage couldn't be read
   64  asked wrongly
 EOF
@@ -115,7 +120,7 @@ for full in 0 5 10 20 30 40 50; do
   if [ "$left" -eq 0 ]; then
     echo "it's past 06:00 with $((free / gib)) GiB in no chunk," \
       "so the rest waits for the next night"
-    exit 1
+    exit 0
   fi
   status=0
   ended=0
@@ -149,19 +154,22 @@ for full in 0 5 10 20 30 40 50; do
   if [ "$ended" -eq 1 ]; then
     echo "it's past 06:00 with $((free / gib)) GiB in no chunk," \
       "so the rest waits for the next night"
-    exit 1
+    exit 0
   fi
 done
 if [ "$ran" -eq 0 ]; then
   echo "no balance step finished, so $((free / gib)) GiB is still in no chunk" >&2
+  exit 1
 elif [ "$killed" -eq 1 ]; then
   # Files gone would be guessing: the half-full step that would have
   # said so was killed part way. One that failed, as for want of room,
   # did say so.
   echo "balancing chunks up to half full didn't finish, so $((free / gib)) GiB" \
     "is still in no chunk" >&2
-else
-  echo "$((free / gib)) GiB is in no chunk after chunks up to half full," \
-    "so what's left needs files gone" >&2
+  exit 1
 fi
-exit 1
+# The chunks left are at least half full, so only deletes free more: the
+# disk guard's work, which a failed unit here would only hide behind.
+echo "$((free / gib)) GiB is in no chunk after chunks up to half full," \
+  "so what's left needs files gone"
+exit 0
