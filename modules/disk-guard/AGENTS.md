@@ -38,7 +38,13 @@ or launchd, and [`home.nix`][2] the account's.
   be tidied. Only an overloaded one, its tasks stalled on the disk, memory
   or the processors 75% of the time, holds upkeep and the store's routine
   listing until it recovers; a disk past healthy is answered all the
-  same, its listing at idle priority until the disk is nearly full. It comes
+  same. Short of nearly full, the store's listing runs at idle priority,
+  and begins only while, over the last minute, all tasks stalled at once
+  no more than 5% on memory and 10% on the disk (`roomy`): on 23 November
+  a filling store's listings ran 10 to 15 minutes at 17 to 36 on the
+  disk. A filling store's waits six hours for room at most, then begins
+  at idle priority anyway, so a machine that never quiets still lists it
+  before it's nearly full. Nearly full, it can't wait for room. It comes
   at once, too, when an owner ends: the guard looks each minute, and a
   tree newly spent, a new boot, a guard with new
   rules or a path a producer watches saying something new since it last
@@ -202,6 +208,23 @@ or launchd, and [`home.nix`][2] the account's.
   thread of its own while the pass beats, since the desktop calls a guard
   silent for two minutes dead. `src/pace.rs` holds it; `pacing` in the
   config sets the batch and the rest.
+- **Length.** Each offer is judged against every process, so a pass is as
+  long as what it was handed. Upkeep ends `unfinished` after 20 minutes,
+  and a pass reaching for room in a band no worse than filling after two
+  hours, the rest due at the next step, which surveys again and doesn't
+  rest. The next reach on that disk in such a band is offered nothing
+  the cut one judged, so each takes up where the last stopped, through
+  one that waits, stalls or is stopped too. A reach that gets through
+  its offers starts afresh, as does a reach at a worse band, which sees
+  every offer and so never calls the disk exhausted over offers it
+  wasn't shown, and a disk due for anything else. One cut short teaches nothing of how
+  long a pass takes, and its notice says it ran as long as a pass may.
+  On 12 November a laptop's upkeep held a day and a half of
+  entries, and on 23 November an account's reach judged 88,000 offers for
+  15 hours, never offered what came after its survey. A pass for a nearly
+  or critically full disk goes on to its target or its last offer, since
+  a survey's walk there clears nothing while it runs. `ROUTINE_LONGEST`
+  and `REACH_LONGEST` in `src/pass.rs` hold them.
 - **Stopping.** A daemon takes its stop signal between steps, and a
   waiting stop ends a rest and starts no new command. A survey only
   reads, and its walks take minutes on a full home, so it asks as it
@@ -394,7 +417,14 @@ or launchd, and [`home.nix`][2] the account's.
   gigabytes every few minutes swing the two-minute rate passes plan by
   either way by tens of gigabytes an hour. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
-  sentence says so rather than that the guard is clearing. While a disk
+  sentence says so rather than that the guard is clearing. A pass is
+  `passing` from its start, the survey before it included, with its
+  disk, band and why, since one reaching for room runs up to two hours,
+  and on a fuller disk to its last offer; it's cleared in what the beats
+  write too, and a restarted guard's first beats drop the last one's.
+  A band's forecast counts down beat by beat through a long pass. While
+  one is at work on a disk, that
+  disk isn't `exhausted`, and the pass before it gives no notice. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the
   space: the ten biggest folders the sources name, each straight under a

@@ -38,6 +38,11 @@ if [ "\$#" -ne 4 ] || [ "\$1 \$2" != "balance start" ] || [ "\$4" != / ] \
   echo "the stand-in for btrfs was asked: \$*" >&2
   exit 99
 fi
+# Its room error is matched in English, which only the C locale promises.
+if [ "\${LC_ALL:-}" != C ]; then
+  echo "the stand-in for btrfs was asked to balance outside the C locale" >&2
+  exit 99
+fi
 step=\${3#-dusage=}
 echo "\$step" >>"$work/steps"
 # A step the file doesn't name gives nothing.
@@ -188,6 +193,11 @@ disk 950 0 "0 1"
 give
 expect "0 5 10 20 30 40 50 " 0 "balancing stops at half-full chunks and ends well short"
 expect_said "after chunks up to half full" "a night whose steps gave too little says files must go"
+
+disk 950 0 "0 fails" "5 1" "10 1" "20 1" "30 1" "40 1" "50 1"
+give
+expect "0 5 10 20 30 40 50 " 0 "an early step's failure doesn't fail a night the rest finish"
+expect_said "needs files gone" "a night whose later steps finish short says files must go"
 
 disk 950 0 "0 fails" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
 give
