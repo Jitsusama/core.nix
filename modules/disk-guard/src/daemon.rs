@@ -2732,15 +2732,7 @@ impl Guard {
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        // A pass that ends waiting or at a stop ends in moments, not when its
-        // work is done, and so does one that judged nothing, as on a disk
-        // with nothing to clear or a forecast's past its target: none says
-        // how long reaching for room takes, and learned, each drew the
-        // forecast's lead toward its floor.
-        if goal == Goal::Reach
-            && !report.actions.is_empty()
-            && !matches!(report.end, End::Waiting | End::Stopped)
-        {
+        if teaches_pass_length(goal, &report) {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
@@ -3552,6 +3544,17 @@ fn replaced_taken(here: &[Offer], actions: &[(PathBuf, Outcome)]) -> BTreeMap<Pa
 /// Whether a delete failed for garbage that came alive since the listing.
 fn stale(outcome: &Outcome) -> bool {
     matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
+}
+
+/// Whether a pass says how long reaching for room takes. One that ends
+/// waiting or at a stop ends in moments, not when its work is done, and so
+/// does one that judged nothing, as on a disk with nothing to clear or a
+/// forecast's past its target: learned, each drew the forecast's lead
+/// toward its floor.
+fn teaches_pass_length(goal: Goal, report: &Report) -> bool {
+    goal == Goal::Reach
+        && !report.actions.is_empty()
+        && !matches!(report.end, End::Waiting | End::Stopped)
 }
 
 /// How a pass ended, in the journal's words.
