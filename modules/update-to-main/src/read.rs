@@ -17,6 +17,9 @@
 //! What a read found is kept beside root's copy, so the rest of an update
 //! finds the folder, and whether main descends, for a commit the copy
 //! hasn't got.
+//!
+//! Long because the read, its checks against each id and the record it
+//! keeps change together, for one reason: what a hosted folder holds.
 
 use crate::config::{Config, Hosted};
 use crate::git::{self, Repo};
@@ -158,23 +161,39 @@ fn folder(host: &Host, hosted: &Hosted, head: &str) -> Result<String, Failure> {
 }
 
 /// Writes the tree `top` and everything in it that root's copy can't read
-/// yet, each checked against the id its tree names.
+/// yet, each checked against the id its tree names. A tree root's copy
+/// already holds is read from it and gone down too, rather than taken as
+/// whole: a pack can bring a tree without what it holds, as one carrying a
+/// commit no ref reaches did on 23 November, a speculative merge's, whose
+/// files were in a branch the checkout never had.
 fn fill(host: &Host, top: &str) -> Result<(), Failure> {
     let mut listed: BTreeMap<String, Vec<Entry>> = BTreeMap::new();
-    let mut wanted = host.absent(&[top.to_owned()])?;
+    // The trees the host listed, which root's copy is written.
+    let mut asked: BTreeSet<String> = BTreeSet::new();
+    let mut wanted = vec![top.to_owned()];
     while !wanted.is_empty() {
+        let absent: BTreeSet<String> = host.absent(&wanted)?.into_iter().collect();
+        let (from_host, held): (Vec<String>, Vec<String>) =
+            wanted.into_iter().partition(|id| absent.contains(id));
+        let mut found = from_host
+            .iter()
+            .cloned()
+            .zip(host.trees(&from_host)?)
+            .collect::<Vec<_>>();
+        found.extend(held.iter().cloned().zip(host.held_trees(&held)?));
+        asked.extend(from_host);
         let mut next = BTreeSet::new();
-        for (id, entries) in wanted.iter().zip(host.trees(&wanted)?) {
+        for (id, entries) in found {
             next.extend(
                 entries
                     .iter()
                     .filter(|e| e.kind == "tree" && !listed.contains_key(&e.id))
                     .map(|e| e.id.clone()),
             );
-            listed.insert(id.clone(), entries);
+            listed.insert(id, entries);
         }
         next.retain(|id| !listed.contains_key(id));
-        wanted = host.absent(&next.into_iter().collect::<Vec<_>>())?;
+        wanted = next.into_iter().collect();
     }
     let blobs: BTreeSet<String> = listed
         .values()
@@ -194,6 +213,7 @@ fn fill(host: &Host, top: &str) -> Result<(), Failure> {
     let mut order = Vec::new();
     let mut seen = BTreeSet::new();
     after_its_trees(top, &listed, &mut seen, &mut order);
+    order.retain(|id| asked.contains(id));
     let bytes = order
         .iter()
         .map(|id| tree_bytes(&listed[id]))
@@ -233,6 +253,23 @@ struct Entry {
     id: String,
 }
 
+impl Entry {
+    /// Whether it's one a tree may hold: a name of one part, a kind git
+    /// knows, a whole id and a mode of digits.
+    fn sound(&self) -> bool {
+        let named = !self.name.is_empty()
+            && !self.name.contains(['/', '\0'])
+            && self.name != "."
+            && self.name != "..";
+        let known = matches!(self.kind.as_str(), "blob" | "tree" | "commit");
+        named
+            && known
+            && is_id(&self.id)
+            && !self.mode.is_empty()
+            && self.mode.bytes().all(|b| b.is_ascii_digit())
+    }
+}
+
 fn entries(listing: &Value, id: &str) -> Result<Vec<Entry>, Failure> {
     let bad = || {
         Failure::new(format!(
@@ -255,14 +292,92 @@ fn entries(listing: &Value, id: &str) -> Result<Vec<Entry>, Failure> {
                 kind: text("type")?,
                 id: text("sha")?,
             };
-            let named = !entry.name.is_empty()
-                && !entry.name.contains(['/', '\0'])
-                && entry.name != "."
-                && entry.name != "..";
-            let known = matches!(entry.kind.as_str(), "blob" | "tree" | "commit");
-            (named && known && is_id(&entry.id) && entry.mode.bytes().all(|b| b.is_ascii_digit()))
-                .then_some(entry)
-                .ok_or_else(bad)
+            entry.sound().then_some(entry).ok_or_else(bad)
+        })
+        .collect()
+}
+
+/// The bytes of a raw object id as git writes it, two hex digits each.
+fn hex_of(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+}
+
+/// What an entry of mode `mode` is, read as git reads it: as an octal
+/// number whose type bits say, so a zero-padded `040000` an old tool wrote
+/// is a tree still, not a file.
+fn kind_of(mode: &str) -> Option<&'static str> {
+    const TYPE: u32 = 0o170_000;
+    let mode = u32::from_str_radix(mode, 8).ok()?;
+    Some(match mode & TYPE {
+        0o040_000 => "tree",
+        0o160_000 => "commit",
+        _ => "blob",
+    })
+}
+
+/// The entries of the tree `id`, from its object as git stores it, each
+/// `<mode> <name>\0<id's bytes>`, checked as the host's are. A tree's
+/// mode says what each entry is, as git's own listing reads it.
+fn held_entries(object: &[u8], id: &str) -> Result<Vec<Entry>, Failure> {
+    let bad = || {
+        Failure::new(format!(
+            "root's copy holds tree {} in a form it doesn't read",
+            git::short(id)
+        ))
+    };
+    let width = id.len() / 2;
+    let mut rest = object;
+    let mut entries = Vec::new();
+    while !rest.is_empty() {
+        let space = rest.iter().position(|b| *b == b' ').ok_or_else(bad)?;
+        let end = rest.iter().position(|b| *b == 0).ok_or_else(bad)?;
+        if end < space || rest.len() < end + 1 + width {
+            return Err(bad());
+        }
+        let mode = String::from_utf8_lossy(&rest[..space]).into_owned();
+        let kind = kind_of(&mode).ok_or_else(bad)?;
+        let entry = Entry {
+            name: String::from_utf8_lossy(&rest[space + 1..end]).into_owned(),
+            kind: kind.to_owned(),
+            id: hex_of(&rest[end + 1..end + 1 + width]),
+            mode,
+        };
+        if !entry.sound() {
+            return Err(bad());
+        }
+        entries.push(entry);
+        rest = &rest[end + 1 + width..];
+    }
+    Ok(entries)
+}
+
+/// The trees `ids` as `git cat-file --batch` gives them, each
+/// `<id> <type> <size>\n<object>\n`, in their order. Anything but a
+/// tree, or missing, is refused: an id a tree names as a tree is one.
+fn held_objects<'s>(said: &'s [u8], ids: &[String]) -> Result<Vec<&'s [u8]>, Failure> {
+    let mut rest = said;
+    ids.iter()
+        .map(|id| {
+            let bad = || {
+                Failure::new(format!(
+                    "root's copy didn't give tree {} as a tree",
+                    git::short(id)
+                ))
+            };
+            let line = rest.iter().position(|b| *b == b'\n').ok_or_else(bad)?;
+            let header = String::from_utf8_lossy(&rest[..line]).into_owned();
+            let size: usize = match header.split(' ').collect::<Vec<_>>()[..] {
+                [named, "tree", size] if named == id => size.parse().map_err(|_| bad())?,
+                _ => return Err(bad()),
+            };
+            let body = rest.get(line + 1..line + 1 + size).ok_or_else(bad)?;
+            rest = rest.get(line + 2 + size..).ok_or_else(bad)?;
+            Ok(body)
         })
         .collect()
 }
@@ -442,6 +557,48 @@ impl<'a> Host<'a> {
             .collect()
     }
 
+    /// The entries of each of the trees `ids` root's copy holds, in their
+    /// order, read by one git for them all, each checked against its id.
+    /// A process each cost about 9 ms on a busy workstation, so a folder of a hundred
+    /// trees took most of a second on every read.
+    fn held_trees(&self, ids: &[String]) -> Result<Vec<Vec<Entry>>, Failure> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = self.work.join("held");
+        fs::write(&list, ids.join("\n") + "\n")
+            .map_err(|e| Failure::new(format!("{}: {e}", list.display())))?;
+        let mut command = git::git(&self.repo());
+        command.stdin(File::open(&list).map_err(|e| Failure::new(e.to_string()))?);
+        let said = run::bytes(
+            command,
+            "reading main's folder in root's copy",
+            ["cat-file", "--batch"],
+        )?;
+        let objects = held_objects(&said, ids)?;
+        let owned: Vec<Vec<u8>> = objects.iter().map(|o| o.to_vec()).collect();
+        let hashed = self.ids(&owned, "tree", false)?;
+        if hashed.len() != ids.len() {
+            return Err(Failure::new("git didn't hash every tree of root's copy"));
+        }
+        if let Some(id) = ids
+            .iter()
+            .zip(&hashed)
+            .find(|(id, h)| id != h)
+            .map(|(id, _)| id)
+        {
+            return Err(Failure::new(format!(
+                "root's copy holds tree {} with contents its id doesn't name",
+                git::short(id)
+            )));
+        }
+        objects
+            .iter()
+            .zip(ids)
+            .map(|(object, id)| held_entries(object, id))
+            .collect()
+    }
+
     /// Each blob's contents, in the order of `ids`.
     fn blobs(&self, ids: &[String]) -> Result<Vec<Vec<u8>>, Failure> {
         let paths: Vec<String> = ids.iter().map(|id| format!("git/blobs/{id}")).collect();
@@ -602,6 +759,87 @@ mod tests {
         let bytes = tree_bytes(&entries).unwrap();
         assert_eq!(&bytes[..8], b"40000 a\0");
         assert_eq!(bytes.len(), 8 + 20);
+    }
+
+    #[test]
+    fn a_held_trees_entries_are_read_as_git_lists_them() {
+        let blob = "22".repeat(20);
+        let tree = "33".repeat(20);
+        let held = |entries: &[(&str, &str, &str)]| {
+            let mut object = Vec::new();
+            for (mode, name, id) in entries {
+                object.extend_from_slice(format!("{mode} {name}\0").as_bytes());
+                object.extend(hex(id).unwrap());
+            }
+            object
+        };
+        // Bytes below 0x10 too, which are written with their leading zero.
+        let module = "0a".repeat(20);
+        let padded = "00".repeat(20);
+        let object = held(&[
+            ("100644", "README.md", &blob),
+            ("40000", "src", &tree),
+            ("160000", "vendor", &module),
+            ("040000", "zz", &padded),
+        ]);
+        let entries = held_entries(&object, &"11".repeat(20)).unwrap();
+        let read: Vec<_> = entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.kind.as_str(), e.id.as_str()))
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("README.md", "blob", blob.as_str()),
+                ("src", "tree", tree.as_str()),
+                ("vendor", "commit", module.as_str()),
+                ("zz", "tree", padded.as_str()),
+            ],
+            "a held tree's entries were misread, so what it holds goes unchecked"
+        );
+        for (mode, name) in [
+            ("100644", ".."),
+            ("100644", "."),
+            ("", "file"),
+            ("1x0", "file"),
+            ("100694", "file"),
+        ] {
+            assert!(
+                held_entries(&held(&[(mode, name, &blob)]), &tree).is_err(),
+                "an entry with mode {mode:?} and name {name:?} was read"
+            );
+        }
+        let mut short = held(&[("100644", "file", &blob)]);
+        short.pop();
+        assert!(
+            held_entries(&short, &tree).is_err(),
+            "an entry whose id was cut short was read"
+        );
+    }
+
+    #[test]
+    fn git_s_batch_gives_each_tree_asked_for_in_turn() {
+        let one = "11".repeat(20);
+        let two = "22".repeat(20);
+        let ids = [one.clone(), two.clone()];
+        let said = format!("{one} tree 3\nabc\n{two} tree 0\n\n");
+        let objects = held_objects(said.as_bytes(), &ids).unwrap();
+        assert_eq!(
+            objects,
+            [b"abc".as_slice(), b"".as_slice()],
+            "git's batch was misread, so a tree's entries came from another"
+        );
+        for said in [
+            format!("{one} commit 3\nabc\n{two} tree 0\n\n"),
+            format!("{two} tree 3\nabc\n{one} tree 0\n\n"),
+            format!("{one} missing\n{two} tree 0\n\n"),
+            format!("{one} tree 9\nabc\n"),
+        ] {
+            assert!(
+                held_objects(said.as_bytes(), &ids).is_err(),
+                "git's batch {said:?} was taken as the trees asked for"
+            );
+        }
     }
 
     #[test]
