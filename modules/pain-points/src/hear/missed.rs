@@ -6,9 +6,10 @@
 //! runs here. One the keeper carries into a ledger of its own is marked
 //! carried, as that ledger tracks its fix from then, and is written even
 //! when it was carried first: it is still a miss, and cadence asks its
-//! owner for a test that runs. No other line of the ledger is changed,
-//! and a pain closes only on its fix, never on how long it has been
-//! quiet.
+//! owner for a test that runs. One a line the keeper wrote before quotes
+//! is written too: said again, it is that miss come back, which needs a
+//! test of its own. No other line of the ledger is changed, and a pain
+//! closes only on its fix, never on how long it has been quiet.
 //!
 //! Only pains sent from `FROM_MS` on are written: the 214 sent before it
 //! had no thread kept, so most would only ever read as lost, and would
@@ -16,10 +17,11 @@
 //! lost in the hour until a landing naming each closes it.
 //!
 //! pain-points is the ledger's only writer, under its lock, and nobody
-//! writes it by hand; a line changed is still written whole only once the
-//! ledger reads as it did before, read again just ahead of the rename
-//! that replaces it, so a write from outside the lock is never lost but
-//! left for the next run.
+//! has written it by hand since the keeper's last line of 21 November; a
+//! line changed is still written whole only once the ledger reads as it
+//! did before, read again just ahead of the rename that replaces it, so
+//! a write from outside the lock is lost only in the moment between that
+//! read and the rename, and is otherwise left for the next run.
 
 pub mod tested;
 
@@ -133,8 +135,8 @@ fn locked(lock: &File, name: &str) -> Result<(), String> {
 }
 
 /// What the ledger `text` becomes for `owed`: the whole of it, when a line
-/// of a pain closed or carried since says so, and the lines of pains not
-/// carried it holds none of, to add at its end.
+/// of a pain closed or carried since says so, and the lines of pains it
+/// holds none of, to add at its end.
 fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<String>) {
     let mut held = Vec::new();
     let mut changed = false;
