@@ -2349,6 +2349,12 @@ Provider {
             kind: "do",
             thing: provider.itemThing(each),
             cell: () => WaitingOnYou.session(each),
+            // It asks its own cell only while it blocks that cell, not
+            // another session on its quest (cellRows).
+            asksItsCell: () => {
+                const cell = WaitingOnYou.session(each);
+                return cell !== null && ForYou.blocked(each, [cell]) > 0;
+            },
             make: now => provider.item(each, now)
         })), looks.waiting.map(one => ({
             kind: "look",
@@ -2484,9 +2490,12 @@ Provider {
     // or none, stands first while headings show, else by `weight`, its
     // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
     // cell asks is its want's row, or a to-do of its own it blocks on, as a
-    // session whose want is an action asks it (ForYou.js's blocked).
+    // session whose want is an action asks it (ForYou.js's blocked): the
+    // cell itself, where a to-do can tell (asksItsCell), so one that
+    // blocks only another session on its quest never leads it.
     function cellRows(band, now, asked, weight) {
-        const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
+        const asks = one => one.kind === "agent" || (one.asksItsCell
+            ? one.asksItsCell() : one.kind === "do" && one.thing.blocks > 0);
         return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
             items => bandRows(items, now), cellHeading, { rows: asked, weight });
     }

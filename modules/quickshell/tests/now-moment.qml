@@ -2441,6 +2441,26 @@ ShellRoot {
                 ["on:heading:cell:ACTED", "Session E \u00b7 listening"],
                 ["on:waiting:item:Sign The Form", ""], ["on:look:e", ""]]),
             JSON.stringify(read));
+        // One in its file that another session on its quest blocks on, its
+        // own cell asking nothing, stands by weight under its cell, so the
+        // look it left long before leads.
+        const calm = { address: "ACTED", title: "Session E", presence: { session: "s-e",
+            owns: ["QEST-E"], addresses: ["ACTED"] } };
+        const other = { address: "KELP01", title: "Session K", presence: { session: "s-k",
+            owns: ["QEST-E"], addresses: ["KELP01"],
+            wants: { kind: "action", said: "Sign it" } } };
+        Sessions.running = [calm, other];
+        Sessions.wanting = [other];
+        WaitingOnYou.sessionOf = { ACTED: calm };
+        const underCalm = shown().map(row => row[0]).filter(key =>
+            key === "on:waiting:item:Sign The Form" || key === "on:look:e");
+        Sessions.running = [acted];
+        Sessions.wanting = [acted];
+        WaitingOnYou.sessionOf = { ACTED: acted };
+        expect("a to-do blocking only another session on its quest never leads its own cell",
+            JSON.stringify(underCalm) === JSON.stringify(["on:look:e",
+                "on:waiting:item:Sign The Form"]),
+            JSON.stringify(underCalm));
         // Inside, Talk to its session follows dealing with it there, so
         // what's working on it is reached from it (42P0R4, 2026-11-19); one
         // done in a window of its own leads with going there.
