@@ -19,6 +19,13 @@
 //! judged: a cause only one search meets would otherwise keep both deaf
 //! for as long as it lasts. One both searches meet still keeps both
 //! deaf.
+//!
+//! A search a gateway's answers leave a gap in is read on past it once
+//! Joel's row says so ([`crate::ears::Through`]), and that span is never
+//! read. So it's said first in a row of its own ([`missed`]), kept a week
+//! in a file the reader's stop leaves, until Joel says he has looked. A
+//! reader in shadow keeps both rows in its own folder, which For You never
+//! reads, so they're its record until it writes where For You reads.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -373,4 +380,135 @@ pub fn make(file: &Path, change: &Change) -> std::io::Result<()> {
         },
         Change::Keep => Ok(()),
     }
+}
+
+/// How long a row saying what was never read is kept after the span it
+/// names ends, in milliseconds: a week, long past when Joel would look for
+/// a stop said then.
+const MISSED_FOR: u64 = 7 * 24 * 60 * 60 * 1000;
+
+/// What names each row saying what was never read.
+const MISSED: &str = "pineapple-slack-missed-";
+
+/// The row saying what `search` read on past is never read, from `from`
+/// to `to`, each in milliseconds since 1970 or unknown, as Joel reads it
+/// when it's raised, `at`: as minutes before then, so no zone is named.
+/// No round reads that span, so only Joel's word marks it done, and it's
+/// named for its search and the span, an unknown start as 0 and end as
+/// `at`, so each span is a row of its own, the same however often it's
+/// written.
+#[must_use]
+pub fn missed(search: Search, from: Option<u64>, to: Option<u64>, at: u64) -> Value {
+    let ago = |then: u64| at.saturating_sub(then);
+    let span = match (
+        from.map(|from| ago(from).div_ceil(60_000)),
+        to.map(|to| ago(to) / 60_000),
+    ) {
+        (Some(from), Some(to)) if to > 0 && to < from => {
+            format!("from {from} to {} before this was raised", minutes(to))
+        }
+        (Some(from), _) => format!("in the {} before this was raised", minutes(from)),
+        (None, _) => "before this was raised, since when it last read can't be told".to_owned(),
+    };
+    let (name, unheard, step) = match search {
+        Search::Phrase => (
+            "phrase",
+            "said pineapple in Slack without tagging you",
+            "Search Slack for pineapple, for a stop said then",
+        ),
+        Search::Tag => (
+            "tag",
+            "tagged you in Slack without saying pineapple",
+            "Look in Slack's Activity for a stop that mentioned you then",
+        ),
+    };
+    json!({
+        "id": format!("{MISSED}{name}-{}-{}", from.unwrap_or(0), to.unwrap_or(at)),
+        "title": "The Safe Word Missed Part of Slack",
+        "why": format!(
+            "The safe word never read what {unheard} {span}, as more was said than it could \
+             read, so a stop said then wasn't heard"
+        ),
+        "raisedAt": slack_people::messages::iso(at),
+        "minutes": 2,
+        "ready": true,
+        "doneWhen": {"by": "person"},
+        "steps": [step],
+    })
+}
+
+fn minutes(count: u64) -> String {
+    if count == 1 {
+        "1 minute".to_owned()
+    } else {
+        format!("{count} minutes")
+    }
+}
+
+/// Adds `row`, raised `at` in milliseconds, to the rows in `file` saying
+/// what was never read, in place of one naming the same span, or the same
+/// known start for its search, as a gap read on again after its round was
+/// thrown away ends later, keeping those whose span ended in the
+/// [`MISSED_FOR`] before. It's a file of its own, which the reader's stop
+/// doesn't take away as it does the row saying it can't hear, since what
+/// it says stays true once the reader hears again or restarts. One not
+/// there holds no row; one that can't be read, or holds no rows, is left
+/// as it is, so no row it holds is lost.
+///
+/// # Errors
+///
+/// Why it couldn't be read or written.
+pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
+    let unread = |why: String| std::io::Error::new(std::io::ErrorKind::InvalidData, why);
+    let kept = match std::fs::read(file) {
+        Ok(read) => {
+            let kept: Value = serde_json::from_slice(&read)
+                .map_err(|error| unread(format!("it holds no rows it can read: {error}")))?;
+            if !kept["items"].is_array() {
+                return Err(unread("it holds no rows".to_owned()));
+            }
+            Some(kept)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    let recent = |row: &Value| {
+        row["id"]
+            .as_str()
+            .and_then(|id| id.strip_prefix(MISSED))
+            .and_then(|named| named.rsplit('-').next())
+            .and_then(|raised| raised.parse::<u64>().ok())
+            .is_some_and(|raised| raised.saturating_add(MISSED_FOR) >= at)
+    };
+    // What names the row up to where its span ends, when its start is
+    // known: a row naming it again is the same gap.
+    let id = row["id"].as_str().unwrap_or_default().to_owned();
+    let begun = id
+        .rsplit_once('-')
+        .map(|(begun, _)| format!("{begun}-"))
+        .filter(|begun| !begun.ends_with("-0-"));
+    let same = |kept: &Value| {
+        kept["id"].as_str().is_some_and(|kept| {
+            kept == id
+                || begun
+                    .as_deref()
+                    .is_some_and(|begun| kept.starts_with(begun))
+        })
+    };
+    let mut rows: Vec<Value> = kept
+        .as_ref()
+        .and_then(|kept| kept["items"].as_array())
+        .into_iter()
+        .flatten()
+        .filter(|kept| recent(kept) && !same(kept))
+        .cloned()
+        .collect();
+    rows.push(row);
+    let file_of = json!({
+        "v": 2,
+        "updated": slack_people::messages::iso(at),
+        "quest": "pineapple",
+        "items": rows,
+    });
+    make(file, &Change::Tell(file_of))
 }

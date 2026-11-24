@@ -14,10 +14,11 @@ Each closing's line also says what jemalloc holds, found by name in Quickshell's
 Quickshell whose jemalloc stopped answering to that name is caught here, where it really runs.
 The shell's Qt makes the heap anonymous memory, so each of its pages is held once
 (qtdeclarative-heap-held-once.patch), and the shell's own maps must show no memfd of it. And
-some closing must lend resident free pages back, and the kernel must then say it holds some of the
-shell lent, so a launcher that stopped lending, or a heap the kernel won't take lent (memory not
-anonymous refuses it), is caught here; that lending keeps the pages until the kernel needs them,
-rather than giving them back, is the heap test's lendsBack to hold.
+some closing must lend resident free pages back, which catches a launcher that stopped lending and
+a heap the kernel won't take lent (memory not anonymous refuses it, and a refusal isn't counted).
+The kernel must then say it holds some of the shell lent, a figure for the whole process, so it
+holds that the line reads it, not that the heap alone lent it. That lending keeps the pages until
+the kernel needs them, rather than giving them back, is the heap test's lendsBack to hold.
 """
 
 from __future__ import annotations
@@ -103,11 +104,11 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
         lendings = re.findall(
             r" (\d+) MB of free pages lent in \d+ ms,"
-            r" the kernel holding (-?\d+) MB of the shell lent",
+            r" the kernel holding (\d+ MB|an unknown amount) of the shell lent",
             said,
         )
         lent = [int(each) for each, _ in lendings]
-        held = [int(each) for _, each in lendings]
+        held = [int(each.split()[0]) if each[0].isdigit() else -1 for _, each in lendings]
         assert any(lent), f"no closing lent its heap's free pages back: {lent}\n{shell.tail()}"
         assert any(each > 0 for each in held), (
             f"the kernel held nothing of the shell lent after any closing: {held}\n{shell.tail()}"

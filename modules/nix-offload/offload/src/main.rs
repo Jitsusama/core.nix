@@ -854,6 +854,25 @@ fn nearby_listed() -> Vec<there::Nearby> {
         .unwrap_or_default()
 }
 
+/// Who stands in for a builder that doesn't come: a VM builder past the
+/// first leaves its tests to the first; the first and second lent builders
+/// stand in for each other, and the first stands in for a VM builder given
+/// a spill.
+fn fallbacks<'a>(
+    spill: Option<&'a PathBuf>,
+    first_dir: &'a PathBuf,
+    more_dir: &'a PathBuf,
+    vm_dirs: &'a [PathBuf],
+) -> Vec<(&'a PathBuf, &'a PathBuf)> {
+    spill
+        .map(|spill| (spill, first_dir))
+        .into_iter()
+        .chain(std::iter::once((more_dir, first_dir)))
+        .chain(there::lends(more_dir).then_some((first_dir, more_dir)))
+        .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
+        .collect()
+}
+
 fn there(arguments: &[String]) -> Result<(), Failure> {
     if let Some(failure) = marked(arguments) {
         return Err(failure);
@@ -921,20 +940,27 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     // lender runs to make one.
     let more_dir = more_dir();
     let first_dir = dir;
-    let left_dir = match &left {
-        Some(_) if there::lends(&more_dir) => more_than(&first_dir, &more_dir, &scratch),
-        _ => first_dir.clone(),
-    };
+    let general = [&first_dir, &more_dir];
+    let room = vm_room();
+    // The spill's claim holds its lane's room for as long as the run goes.
+    let (left_dir, spill, _spill_claim) = left_to(
+        left.is_some(),
+        general,
+        (&vm_dirs, &vm_parts),
+        room,
+        &scratch,
+    );
     let mut parts: Vec<(&PathBuf, Option<there::Asked>)> = vm_dirs.iter().zip(vm_parts).collect();
     parts.push((&left_dir, left));
-    // A VM builder past the first that doesn't come leaves its tests to
-    // the first; the first and second lent builders stand in for each other.
-    let fallbacks: Vec<(&PathBuf, &PathBuf)> = std::iter::once((&more_dir, &first_dir))
-        .chain(there::lends(&more_dir).then_some((&first_dir, &more_dir)))
-        .chain(vm_dirs.iter().skip(1).map(|dir| (dir, &vm_dirs[0])))
-        .collect();
+    let fallbacks = fallbacks(spill.as_ref(), &first_dir, &more_dir, &vm_dirs);
     let vm_dirs: Vec<&PathBuf> = vm_dirs.iter().collect();
-    let ran = at_once(&parts, &vm_dirs, vm_room(), &fallbacks, &scratch, waiting);
+    let sends = Sends {
+        vm_dirs: &vm_dirs,
+        spill: spill.as_deref(),
+        room,
+        fallbacks: &fallbacks,
+    };
+    let ran = at_once(&parts, &sends, &scratch, waiting);
     for (part, began, ended, waited, ran) in &ran {
         there::note(
             &journal,
@@ -1197,22 +1223,39 @@ fn warm_of(
     warm
 }
 
+/// Where a run's parts may go: the VM builders, the one given what's left
+/// while both lent builders stand full, how many VM tests each runs at
+/// once, and which builder stands in for which.
+#[derive(Clone, Copy)]
+struct Sends<'a> {
+    vm_dirs: &'a [&'a PathBuf],
+    spill: Option<&'a Path>,
+    room: usize,
+    fallbacks: &'a [(&'a PathBuf, &'a PathBuf)],
+}
+
 /// Sends each of `parts` to its builder at once, on a thread of its own
 /// with scratch of its own, since each goes to a builder of its own: one
 /// after another, the second VM builder's tests waited out the first's.
-/// Those sent to one of `vm_dirs` go once it has room for them, as many
-/// as `room`, and are claimed there while they go. Says how each ran,
-/// with when it began and ended and the seconds it waited for room and
-/// for its builder to stand, in the order given. Each waits for its
-/// builder as `waiting` says.
+/// Those sent to one of the VM builders go once it has room for them, as
+/// many as its room, and are claimed there while they go. What's left sent
+/// to the spill's VM builder isn't a VM part: it claims the builder's
+/// whole room while it goes, so VM tests go elsewhere rather than beside
+/// big builds. Says how each ran, with when it began and ended and the
+/// seconds it waited for room and for its builder to stand, in the order
+/// given. Each waits for its builder as `waiting` says.
 fn at_once<'a>(
     parts: &'a [(&PathBuf, Option<there::Asked>)],
-    vm_dirs: &[&PathBuf],
-    room: usize,
-    fallbacks: &[(&PathBuf, &PathBuf)],
+    sends: &Sends,
     scratch: &Path,
     waiting: there::Waiting,
 ) -> Vec<(&'a there::Asked, u64, u64, u64, there::Ran)> {
+    let Sends {
+        vm_dirs,
+        spill,
+        room,
+        fallbacks,
+    } = *sends;
     thread::scope(|scope| {
         let sending: Vec<_> = parts
             .iter()
@@ -1220,7 +1263,8 @@ fn at_once<'a>(
             .filter_map(|(index, (dir, part))| Some((index, *dir, part.as_ref()?)))
             .map(|(index, dir, part)| {
                 let scratch = scratch.join(index.to_string());
-                let vm = vm_dirs.contains(&dir);
+                let spilled = spill == Some(dir.as_path());
+                let vm = vm_dirs.contains(&dir) && !spilled;
                 // The other VM builders, while a lender runs to make each,
                 // which a VM part waiting for room goes to once one has some,
                 // all but those kept for the runs that name them.
@@ -1419,17 +1463,18 @@ impl Kept {
 /// decides, else `first`. A build waits for the first while none stands,
 /// as it always has, but not while one stands that root doesn't vouch
 /// for yet and the second's does: it would wait on root with the second
-/// idle.
-fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
+/// idle. Says too whether both stand full, as `there::both_full` decides,
+/// so what's left may go to an idle VM builder instead.
+fn more_than(first: &Path, more: &Path, scratch: &Path) -> (PathBuf, bool) {
     let Some(stands) = standing(first) else {
         if there::unvouched(first) && standing(more).is_some() {
             eprintln!(
                 "nix-offload: root doesn't vouch for the lent builder yet, and the second's it \
                  does, so this goes to the second"
             );
-            return more.to_owned();
+            return (more.to_owned(), false);
         }
-        return first.to_owned();
+        return (first.to_owned(), false);
     };
     let busy = |store: String| there::pressure(&store, scratch, "ssh");
     let waits = busy(stands);
@@ -1442,20 +1487,101 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
         None => there::Second::Unlent,
     };
     match waits {
-        // The second is read only once the first is full.
-        Some(waits) if waits >= there::FULL && there::to_second(Some(waits), &second()) => {
-            eprintln!(
-                "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its CPUs, \
-                 so this goes to a second"
-            );
-            more.to_owned()
+        // The second is read only once the first is full, and once.
+        Some(waits) if waits >= there::FULL => {
+            let second = second();
+            let full = there::both_full(Some(waits), &second);
+            if there::to_second(Some(waits), &second) {
+                eprintln!(
+                    "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its \
+                     CPUs, so this goes to a second"
+                );
+                return (more.to_owned(), full);
+            }
+            (first.to_owned(), full)
         }
         None if there::to_second(None, &second()) => {
             eprintln!("nix-offload: the lent builder didn't answer, so this goes to a second");
-            more.to_owned()
+            (more.to_owned(), false)
         }
-        _ => first.to_owned(),
+        _ => (first.to_owned(), false),
     }
+}
+
+/// The lender's folder what's left of a run goes to, when anything is: the
+/// second's while the first is full, as `more_than` decides, else the
+/// first's, unless both stand full and a VM builder of `vms` is idle,
+/// whose folder is said too, with the claim on its `room` that keeps VM
+/// tests off it while the run goes.
+fn left_to(
+    any: bool,
+    [first, more]: [&PathBuf; 2],
+    (vm_dirs, vm_parts): (&[PathBuf], &[Option<there::Asked>]),
+    room: usize,
+    scratch: &Path,
+) -> (PathBuf, Option<PathBuf>, Option<there::Claim>) {
+    let (dir, full) = if any && there::lends(more) {
+        more_than(first, more, scratch)
+    } else {
+        (first.clone(), false)
+    };
+    match full
+        .then(|| spilled_onto(vm_dirs, vm_parts, room, scratch))
+        .flatten()
+    {
+        Some((spill, claim)) => (spill.clone(), Some(spill), Some(claim)),
+        None => (dir, None, None),
+    }
+}
+
+/// The VM builder what's left of a run goes to while both lent builders
+/// stand full, if one is idle: lent, vouched for, open to every run,
+/// sent and waiting on nothing, given no VM tests of this run in `parts`,
+/// and quiet enough, as `there::takes_spill` reads its CPUs, with its
+/// whole `room` claimed under its lock. On 23 November both lent builders
+/// ran past load 200 while eleven VM builders stood with nothing sent.
+/// None while none is, or while another run's spill holds a lane: one at
+/// a time, never the first lane, and the last asked first, as
+/// `there::spill_order` says, so VM runs keep the lanes they reach first.
+fn spilled_onto(
+    vm_dirs: &[PathBuf],
+    parts: &[Option<there::Asked>],
+    room: usize,
+    scratch: &Path,
+) -> Option<(PathBuf, there::Claim)> {
+    if vm_dirs.iter().any(|dir| there::spilled(dir)) {
+        return None;
+    }
+    let index = there::spill_order(vm_dirs.len()).find(|&index| {
+        let dir = &vm_dirs[index];
+        let open = parts.get(index).is_none_or(Option::is_none)
+            && there::lends(dir)
+            && !there::named_only(dir)
+            && !there::unvouched(dir)
+            && there::claimed(dir) + there::waiting(dir) == 0;
+        standing(dir)
+            .filter(|_| open)
+            .is_some_and(|store| there::takes_spill(there::pressure(&store, scratch, "ssh")))
+    });
+    let Some(index) = index else {
+        eprintln!(
+            "nix-offload: both lent builders are full, but no VM builder stands idle and quiet \
+             to take this, so it waits on them"
+        );
+        return None;
+    };
+    // The lane is probed unlocked, since a probe is an ssh; the claim is
+    // made only while still no lane holds a spill, so runs that start
+    // together spill once between them.
+    let claim = there::claim_only_spill(vm_dirs, index, room)?;
+    let idle = vm_dirs[index].clone();
+    eprintln!(
+        "nix-offload: both lent builders' tasks wait past {:.0}% of the time for their CPUs, \
+         so this goes to the idle VM builder in {}",
+        there::FULL,
+        idle.display()
+    );
+    Some((idle, claim))
 }
 
 /// How many VM tests each VM builder runs at once, as XDG's config folder

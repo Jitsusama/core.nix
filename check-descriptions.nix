@@ -1688,10 +1688,12 @@
   house-report-hands-a-mac-its-key-safely = ''
     a Mac given a key runs house-report signing with activation's copy of it, readable by nobody's
     account alone in a folder of root's, ahead of the address; activation copies the key only once
-    every folder on its real path is root's and written by no other account, by its mode or an
-    access list, reading it in that real folder as a plain file, through a name of each run's own,
-    and changes no file's owner or mode nor installs any other; and the build refuses a Mac's key
-    outside /etc, /private/etc or /var/root, or spelled through dots
+    every folder on its real path is root's and written or taken by no other account, by its mode
+    or an access list, each tested whole within the walk, reading it in that real folder, set once,
+    as a plain file root's and read by no other account, through a name of each run's own, its text
+    naming no chown or chmod and no install or mv but its own, however spelled; and the build
+    refuses a Mac's key outside /etc, /private/etc or /var/root, or spelled through or ending in
+    dots
   '';
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started
@@ -1717,7 +1719,10 @@
   '';
   house-report-takes-up-a-macs-swapped-key = ''
     a Mac given a key copies it again, as root, by the same text activation runs, whenever the key
-    or its folder changes, so a key swapped while the Mac runs is taken without a switch
+    or its folder changes and each minute, so a key swapped while the Mac runs is taken without a
+    switch, and one launchd missed within a minute; a switch says a refusal each time and forgets
+    what the job said, kept beside the copy's folder, and any once kept in it, and the job says it
+    in its log once until it changes
   '';
   house-report-takes-up-a-swapped-key = ''
     a Linux machine given a key hands it to house-report as a credential read by --key, and
@@ -2033,7 +2038,9 @@
     a Mac with a local name runs a root job under bash that sets it back, by that name and not
     the host name, from its start, whenever macOS writes its network settings and once a
     minute, finding its tools only in macOS's own folders and saying what it does in its log,
-    and a Mac with none runs nothing
+    and a Mac with none runs nothing; the module adds or changes no launchd plist but that job's,
+    nor any agent of the account's, the job opens no socket, and keep.sh names no dns-sd, since
+    any of those could advertise for the host
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
@@ -2044,6 +2051,14 @@
   '';
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
+  '';
+  local-sites-refuses-renamed-look-acts = ''
+    local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
+    in place or by a later entry keyed by a list of one set or a set words.json writes as the id
+    by its outPath or __toString, or by a whole entry so written, reading the words as words.json
+    writes them; it names only each act's old and new word though another word is renamed beside
+    them, even to no name, and takes core's own words and ids Words.qml keys as no act: objects,
+    lists of several or none, whichever end holds the act, and a path in the store
   '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,
@@ -3143,8 +3158,8 @@
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
     clears, rather than on a host's thread; left running through a switch for up to two hours,
-    made to give memory back past 1.5 GiB with no hard limit, its own or its slices', to kill it
-    at, skipped where the harness isn't installed, and never on a Mac
+    made to give memory back past 1.5 GiB with no hard limit, its own, its slices' or its account
+    manager's, to kill it at, skipped where the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -3243,10 +3258,10 @@
   pi-hosted-names-handlers-that-hold = ''
     pi built with the host's patches, applied exactly, writes one line to stderr for each
     extension whose handlers for one session event, or resources_discover, took 250 ms or
-    more, each timed from its own start, its path quoted on one line, for session_start, a
-    cancelling event, once, and resources_discover alike, a throwing handler too, two slow
-    extensions on a line each, and none for an extension under the bar or for a turn's
-    streamed events
+    more on its clock, and none at 249, each timed from its own start, its path quoted on one
+    line, for session_start, a cancelling event, once, and resources_discover alike, a
+    throwing handler too, two slow extensions on a line each, and none for a turn's streamed
+    events though their handlers ran; a cancel still returns when stderr's write throws
   '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
@@ -3814,13 +3829,17 @@
     connection unshaped: a p95 delay of 100 ms or half the unshaped one, 75% of each way carried,
     and no direction under half 30 s longer
   '';
+  shaper-hears-a-keyed-house-from-any-address = ''
+    a keyed house naming no address, whose reports its key alone says are its, opens the port the
+    shaper hears them on to every private IPv4 address, in one rule naming no other, and builds,
+    while a house naming neither an address nor a key is refused as the machine builds
+  '';
   shaper-hears-only-the-house = ''
     a network's house opens the port the shaper hears its reports on, the one src/house.rs names,
     to the house's addresses alone, one written alone or a list, over IPv4 or IPv6 as each is
     written: the input rules are the houses' three alone, and no port, range or trusted interface
     opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
-    IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried, and a
-    list to one address at least
+    IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried
   '';
   shaper-refuses-a-house-key-it-can-t-read = ''
     a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
@@ -4187,6 +4206,24 @@
   the-apple-silicon-stick-evaluates = ''
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
     evaluates
+  '';
+  the-ask-row-reads-as-for-you = ''
+    the live sites' ask row reads a look as the launcher's For You does, against the launcher's own
+    scripts run in Node: over looks either side of each rule and of every kind and state, which it
+    reads, which wait, what each offers and what follows each, and when it lapses as Looks.js and
+    Now.qml's lookOffers and followsOf give them, what the second form leads with (its parts
+    ended by each stop, closing mark and mark that is neither, none or two, a stop inside, empty,
+    padded or missing) and its act as
+    LookForm.js gives them, and what it links as Now.qml's drawer names its kinds, each kind at a
+    web address; the launcher's
+    act names as Now.qml and core's joined words give them, the last of an id's winning; and the
+    ids local-sites' home module guards as Now.qml lists them
+  '';
+  the-ask-row-reads-each-character-as-for-you = ''
+    the live sites' ask row reads every character, and judges it as posing as one of the
+    launcher's acts, as LookForm.js does: within, leading and ending a name, once and twice,
+    beside a space and after a stop, and in a run after the first; and ends what a look says
+    as LookForm.js does whatever character follows its words, a stop or a closing mark
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one
@@ -6395,14 +6432,17 @@
   '';
   chunks-are-given-back-each-night = ''
     the root's empty data chunks are given back from a oneshot unit on a 03:00 timer that starts
-    with the machine and isn't caught up on, bounded to two hours and weighted behind other work in
-    the background slice
+    with the machine and isn't caught up on, bounded past its longest night, six hours from 01:00
+    as the clocks go back, and weighted behind other work in the background slice
   '';
   chunks-are-given-back-only-while-short = ''
     Btrfs's data chunks are balanced only from 01:00 to 06:00 and while too little of the disk is
-    in no chunk, each step ended at 06:00, stopping at the first step that frees enough, going past
-    a step that fails, stopping at half-full chunks, and failing when the disk stays short or its
-    usage can't be read
+    in no chunk, each step ended at 06:00 by the epoch as the clocks go forward or back, stopping
+    at the first step that frees enough, going past a step that fails, stopping at half-full
+    chunks, saying files must go only when the last finished or failed for want of room,
+    whatever an earlier step met, ending well when left short only by full chunks or 06:00, and
+    failing when no step finished, the half-full one was killed by day or failed for anything
+    but room, or its usage can't be read
   '';
   swap-file-grows-only-when-it-may = ''
     a swap file smaller than asked for grows as the machine starts, and one in use, holding a

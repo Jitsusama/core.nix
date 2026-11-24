@@ -12,6 +12,8 @@ rustPlatform.buildRustPackage rec {
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
+      # The definition of good, which the hour holds its measures to.
+      ./good.md
       ./src
       ./tests
       ../terminal-kit/Cargo.toml

@@ -434,8 +434,10 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
         for take in takes(&wav::samples(&bytes)?) {
             // Heard as the daemon hears a take, their side by its words, so
-            // the checks that run this read what it writes.
-            let (text, _) = hear::transcribe_take(&mut speech, side, take.start, &take.samples);
+            // the checks that run this read what it writes; unlike the
+            // daemon, a take not heard stops it, so no check passes on a
+            // model that fails.
+            let (text, _) = hear::transcribe_take(&mut speech, side, take.start, &take.samples)?;
             if let Some(text) = text {
                 lines.push(Line {
                     side,

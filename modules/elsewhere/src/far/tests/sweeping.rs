@@ -461,18 +461,20 @@ fn only_a_run_s_file_s_first_512_bytes_are_read() {
     let root = scratch("far-swept-bound");
     let runs = root.join("s");
     let (here, gone) = (here(), gone());
-    // Spaces that bring what follows them to a run file's byte `at`.
+    // Spaces that make `before` and them `at` bytes long, so what follows
+    // starts at byte `at` + 1. Bytes here are counted from one.
     let to = |before: &str, at: usize| " ".repeat(at - before.len());
     // Gone runs here, each read only as far as its 512th byte: one with a
-    // word from its 513th, which is never heard, and one whose machine
-    // ends at its 512th, its last letter no space, which is heard whole.
-    // So both copies go, and a bound a byte either way keeps one.
+    // word from its 513th, which is never heard, and one whose naming of
+    // this machine (and, on Linux, its process space) ends at its 512th,
+    // no space, which is heard whole. So both copies go, and a bound a
+    // byte either way keeps one.
     let named = format!("{gone} {here}");
     copy(&runs, "1", &format!("{named}{}more", to(&named, 512)));
-    let machine = here.trim_end();
+    let named_here = here.trim_end();
     let number = gone.to_string();
-    let past = to(&number, 512 - machine.len());
-    copy(&runs, "2", &format!("{number}{past}{machine}"));
+    let past = to(&number, 512 - named_here.len());
+    copy(&runs, "2", &format!("{number}{past}{named_here}"));
     let said = sweep(&runs.join("9"));
     assert!(said.is_empty(), "the sweep said something: {said}");
     assert!(

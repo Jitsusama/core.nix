@@ -57,7 +57,7 @@ Provider {
 
     // Where each of Tuple's rows goes inside it, by its key.
     readonly property var places: ["tuple:open", "tuple:ringing", "tuple:show", "tuple:mute",
-        "tuple:share", "tuple:leave", "tuple:join", "tuple:link"]
+        "tuple:share", "tuple:camera", "tuple:leave", "tuple:join", "tuple:link"]
 
     function programActs(program) {
         if (program !== "tuple")

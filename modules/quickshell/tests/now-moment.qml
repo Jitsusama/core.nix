@@ -1394,9 +1394,10 @@ ShellRoot {
         // decimal mark, as Time says it. The time source goes first, so Now finds it before
         // any the harness holds.
         const sourcesBeforeTime = theLauncher.sources;
-        const offsetSaid = (lastOffset, point, lastSync = 1793829480000) => {
+        const offsetSaid = (lastOffset, point, lastSync = 1793829480000,
+            synchronised = lastSync !== null) => {
             theLauncher.sources = [{ settings: { name: "time" }, clockSaid: { point: point },
-                kept: { synchronised: lastSync !== null,
+                kept: { synchronised: synchronised,
                     clock: { lastOffset: lastOffset, lastSync: lastSync }, servers: [] } }]
                 .concat(sourcesBeforeTime);
             const said = Array.from(now.placePlate().groups)
@@ -1418,6 +1419,11 @@ ShellRoot {
         const neverSaid = offsetSaid(0, ".", null);
         expect("never updated, it says no offset",
             JSON.stringify(neverSaid) === JSON.stringify([""]), JSON.stringify(neverSaid));
+        // Its last update decides it, not the offset nor whether it's in step: one never
+        // updated, with an offset and said in step, says none either.
+        const unsyncedSaid = offsetSaid(-0.000388, ".", null, true);
+        expect("never updated, it says no offset, whatever its offset",
+            JSON.stringify(unsyncedSaid) === JSON.stringify([""]), JSON.stringify(unsyncedSaid));
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the

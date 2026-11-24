@@ -161,6 +161,56 @@ let
   realm = config.jitsusama.mycelium.realm or null;
   # Rows naming a site nothing is mounted at.
   unmounted = lib.attrNames (removeAttrs cfg.rows (lib.attrNames cfg.mounts));
+
+  # The sites' ask row refuses a choice or act posing as one of the
+  # launcher's acts on a look by core's own names for them (kit/ask.ts), so
+  # a machine renaming one would let a page offer what For You refuses.
+  lookActs = import ./look-acts.nix;
+  # Words as the shell's Words.qml reads them: as words.json writes them,
+  # by toJSON, which writes a set with an outPath or __toString as that,
+  # whether it's a thing or its id. A store path's context, which fromJSON
+  # refuses, says nothing of a word, so it goes.
+  asRead = words: builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON words));
+  coreWords = asRead (import ../quickshell/launcher/words.nix).value;
+  machineWords = asRead (
+    config.jitsusama.quickshell.launcher.words or (import ../quickshell/launcher/words.nix).value
+  );
+  # A thing's id as Words.qml keys it, made a string: a list of one id is
+  # that id; no act's id holds a comma or is empty, or reads as an object,
+  # so no other id can be one.
+  keyOf =
+    id:
+    if builtins.isString id then
+      id
+    else if builtins.isList id && builtins.length id == 1 then
+      keyOf (builtins.head id)
+    else
+      null;
+  # A word's name as Words.qml names it: by the last thing of its id, so a
+  # rename appended after core's own still counts, null where that thing
+  # names none.
+  nameIn =
+    words: id:
+    let
+      things = words.things or [ ];
+      thing = lib.findFirst (thing: keyOf (thing.id or null) == id) null (
+        lib.reverseList (if builtins.isList things then things else [ ])
+      );
+    in
+    if thing == null then id else thing.name or null;
+  # A name as the refusal writes it, one that isn't words as JSON writes it.
+  shownIn =
+    words: id:
+    let
+      name = nameIn words id;
+    in
+    if name == null then
+      "no name"
+    else if builtins.isString name then
+      name
+    else
+      builtins.toJSON name;
+  renamedActs = lib.filter (id: nameIn machineWords id != nameIn coreWords id) lookActs;
   # Rows whose path isn't plain steps, which the home's builder refuses
   # (home/home.py's ours), named here so the switch never gets that far.
   step = "[A-Za-z0-9_~-][A-Za-z0-9._~-]*";
@@ -529,9 +579,21 @@ in
   # what it serves can be read without finding its path in the store.
   config.xdg.configFile."local-sites/local-sites.json".source = served;
 
-  # A row the home lists with nothing mounted at its path would send Joel
-  # to a page that isn't there.
   config.assertions = [
+    # A machine renaming the launcher's acts on a look (renamedActs above).
+    {
+      assertion = renamedActs == [ ];
+      message = lib.concatStrings [
+        "jitsusama.quickshell.launcher.words renames the launcher's acts on a look ("
+        (lib.concatMapStringsSep ", " (
+          id: "${id} from ${shownIn coreWords id} to ${shownIn machineWords id}"
+        ) renamedActs)
+        "), which the sites' ask row knows only by core's names, "
+        "so a page would offer a choice For You refuses: keep core's names for them"
+      ];
+    }
+    # A row the home lists with nothing mounted at its path would send Joel
+    # to a page that isn't there.
     {
       assertion = unmounted == [ ];
       message = lib.concatStrings [

@@ -102,16 +102,20 @@ impl Writing {
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
-    /// the line's `words` that start in it say more than hesitation, as a
-    /// run must to be split into a line of its own. The voices check has
-    /// one worded when the reference has any speech in it, so a piece
-    /// holding only the end of a word is worded there and not here.
+    /// the line's `words` that splitting would give it (`split::runs_of`)
+    /// say more than hesitation, as a run must to be split into a line of
+    /// its own. The voices check has one worded when the reference has any
+    /// speech in it, so a piece holding only the end of a word is worded
+    /// there and not here.
     fn heard(&mut self, line: Option<usize>, words: &[Word], embedded: Vec<Embedded>) {
-        for (embedding, start, samples) in embedded {
+        let starts: Vec<usize> = embedded.iter().map(|&(_, start, _)| start).collect();
+        let runs = split::runs_of(&starts, words);
+        for (piece, (embedding, start, samples)) in embedded.into_iter().enumerate() {
             let in_it: Vec<&str> = words
                 .iter()
-                .filter(|word| (start..start + samples).contains(&word.at))
-                .map(|word| word.text.as_str())
+                .zip(&runs)
+                .filter(|&(_, &run)| run == piece)
+                .map(|(word, _)| word.text.as_str())
                 .collect();
             self.heard.push(Heard {
                 embedding,
@@ -211,7 +215,8 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = transcribe_take(parakeet, side, start, &samples);
+                let (text, words) =
+                    heard_or_left_out(transcribe_take(parakeet, side, start, &samples));
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -285,17 +290,18 @@ impl Hears for Parakeet {
 }
 
 /// What's heard in a take of `side`'s, `start` samples into the call, as
-/// the call keeps it: its text tidied, none when it holds no words or
-/// isn't heard, which is logged. Only their words are kept, spelling
-/// their text a space between each, as `transcribe` would, and timed
-/// from the call's start, which is where its pieces are, so each word
-/// finds the piece it was said in.
+/// the call keeps it: its text tidied, none when it holds no words, or
+/// why it isn't heard, which the daemon logs and the `transcribe`
+/// subcommand stops on. Only their words are kept, spelling their text
+/// a space between each, as `transcribe` would, and timed from the
+/// call's start, which is where its pieces are, so each word finds the
+/// piece it was said in.
 pub fn transcribe_take(
     hears: &mut impl Hears,
     side: Side,
     start: usize,
     samples: &[f32],
-) -> (Option<String>, Vec<Word>) {
+) -> dictation::openvino::Result<(Option<String>, Vec<Word>)> {
     let transcribed = if side == Side::Theirs {
         hears.words(samples).map(|(words, took)| {
             let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
@@ -306,16 +312,22 @@ pub fn transcribe_take(
             .text(samples)
             .map(|(text, took)| (text, Vec::new(), took))
     };
-    match transcribed {
-        Ok((text, words, took)) => {
-            eprintln!("call-transcripts: {}", took.describe(hears.device()));
-            (said::spoken(text.trim()), words)
-        }
-        Err(why) => {
-            eprintln!("call-transcripts: a take wasn't heard: {why}");
-            (None, Vec::new())
-        }
-    }
+    let (text, words, took) = transcribed?;
+    eprintln!("call-transcripts: {}", took.describe(hears.device()));
+    Ok((said::spoken(text.trim()), words))
+}
+
+/// What the daemon goes on with from a take `heard`: what was heard, or,
+/// when it wasn't, no text and no words, logged once. One take not heard
+/// mustn't end the call: it's left out, a take of theirs still helps tell
+/// the voices apart, and the next is heard as ever.
+fn heard_or_left_out(
+    heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
+) -> (Option<String>, Vec<Word>) {
+    heard.unwrap_or_else(|why| {
+        eprintln!("call-transcripts: a take wasn't heard: {why}");
+        (None, Vec::new())
+    })
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,

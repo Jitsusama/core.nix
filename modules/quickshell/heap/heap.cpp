@@ -221,21 +221,25 @@ std::size_t freePages(const QV4::BlockAllocator &allocator) {
 // that maps it from a memfd keeps the pages there, and refuses MADV_FREE.
 // Spans with none resident are left alone, so the call costs nothing for
 // them; a page lent and not yet taken is still resident, so it's lent again.
-// The first span the kernel refuses is warned of, once a process, since a
-// refusal would otherwise read as a heap with nothing free.
+// The first span the kernel refuses is warned of, once a process for each
+// advice, so a refused lending isn't hidden behind a refused giving, since
+// a refusal would otherwise read as a heap with nothing free.
 std::size_t givenBack(const QV4::BlockAllocator &allocator, int advice) {
-    static bool warned = false;
+    static bool warnedGiving = false;
+    static bool warnedLending = false;
+    bool &warned = advice == MADV_FREE ? warnedLending : warnedGiving;
     std::size_t bytes = 0;
     eachFreeSpan(allocator,
-                 [&bytes, advice](char *at, std::size_t length, std::size_t resident) {
+                 [&bytes, &warned, advice](char *at, std::size_t length, std::size_t resident) {
                      if (resident == 0)
                          return;
                      if (madvise(at, length, advice) == 0) {
                          bytes += resident;
                      } else if (!warned) {
                          warned = true;
-                         qWarning("heap: the kernel refused free pages back (advice %d): %s",
-                                  advice, std::strerror(errno));
+                         qWarning("heap: the kernel refused the free pages %s: %s",
+                                  advice == MADV_FREE ? "lent" : "given back",
+                                  std::strerror(errno));
                      }
                  });
     return bytes;

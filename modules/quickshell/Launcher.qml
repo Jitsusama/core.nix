@@ -12604,10 +12604,13 @@ Scope {
         // frame, where giving them back made every opening fault them in
         // zeroed (heap.h's lendBack). What's lent is counted again at each
         // closing until the kernel takes it, so the line says too how much
-        // of the shell the kernel holds lent (heap.h's lent).
+        // of the shell the kernel holds lent (heap.h's lent), read after the
+        // lending's time is taken, since the kernel walks the whole shell's
+        // pages to say it.
         const lent = Math.round(Heap.lendBack());
-        const lentAll = Math.round(Heap.lent());
         const lending = Math.round(KeyTimes.now() - weighed);
+        const lentAll = Heap.lent();
+        const holding = lentAll < 0 ? "an unknown amount" : `${Math.round(lentAll)} MB`;
         const took = Math.round(collected - began);
         const weighing = Math.round(weighed - collected);
         const live = Math.round(weight.live);
@@ -12625,7 +12628,7 @@ Scope {
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
-            + ` ${lentAll} MB of the shell lent`
+            + ` ${holding} of the shell lent`
             + (allocator.used === undefined ? ""
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`

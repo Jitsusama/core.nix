@@ -146,6 +146,11 @@ fn a_gap_read_in_pages_back_to_the_last_read_is_read_untold() {
          and the journal says so: {}",
         came.journal
     );
+    assert!(
+        came.missed.is_null(),
+        "nothing was read on past, so no row says so: {:?}",
+        came.missed
+    );
     let began = BEGAN.load(Ordering::SeqCst);
     let bounds = bounds(&came.searched);
     assert!(
@@ -174,9 +179,12 @@ fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
                 in_pages(&TAGS, asked, began, &paged(began, &stop), 3, false)
             }
         },
+        // A round is three searches, then six once there's a gap: five
+        // rounds and the next's first, past the read on, as what the pages
+        // gave is judged before it.
         &Until {
-            judging: 5,
-            asks: 0,
+            judging: 6,
+            asks: 28,
             read_at: None,
         },
     );
@@ -192,10 +200,18 @@ fn a_page_that_doesnt_hold_the_oldest_of_the_one_after_it_is_a_gap() {
     );
     assert_eq!(
         each(&came.said, "verdict"),
-        ["nothing", "nothing", "nothing", "nothing", "stop"],
-        "read on, only the first page is judged, never what the page that doesn't meet it \
-         gave: {}",
+        [
+            "nothing", "nothing", "nothing", "nothing", "nothing", "stop"
+        ],
+        "what both pages gave was agreed, so each is judged while the span between them is \
+         unread, the one Slack found late among them: {}",
         came.journal
+    );
+    assert_eq!(
+        came.missed["items"].as_array().map(Vec::len),
+        Some(1),
+        "what it read on past is a row of its own: {:?}",
+        came.missed
     );
 }
 
@@ -223,9 +239,12 @@ fn a_page_that_cant_be_read_or_goes_unanswered_is_a_gap_read_on_once_told() {
                 in_pages(&TAGS, asked, began, &paged(began, &stop), 3, true)
             }
         },
+        // A round is three searches, then five once there's a gap: four
+        // rounds and the next's first, past the read on, as what the
+        // first page gave is judged before it.
         &Until {
             judging: 5,
-            asks: 0,
+            asks: 19,
             read_at: None,
         },
     );
@@ -333,9 +352,12 @@ fn five_pages_short_of_the_last_read_are_a_gap_told_then_read_on() {
                 .collect();
             in_pages(&TAGS, asked, began, &flood, 2, true)
         },
+        // A round is three searches, then sixteen once there's a gap:
+        // four rounds and the next's first, past the read on, as what the
+        // pages gave is judged before it.
         &Until {
             judging: 8,
-            asks: 0,
+            asks: 52,
             read_at: None,
         },
     );
@@ -400,5 +422,87 @@ fn a_message_slack_finds_late_well_before_the_last_read_is_judged() {
             .iter()
             .all(|(after, _)| after.is_null()),
         "no search is bounded after"
+    );
+}
+
+#[test]
+fn a_whole_answer_of_as_many_as_asked_for_is_read_in_pages() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return nothing();
+            }
+            // Twenty-five words since the last read, each answer giving
+            // twenty of twenty, never cut.
+            let found: Vec<(u64, &str)> = (0..25).map(|at| (began - 60 - at, "a word")).collect();
+            in_pages(&TAGS, asked, began, &found, 20, true)
+        },
+        &Until {
+            judging: 0,
+            asks: 8,
+            read_at: None,
+        },
+    );
+    assert!(
+        bounds(&came.searched)
+            .iter()
+            .any(|(_, before)| !before.is_null()),
+        "an answer giving all twenty it was asked for may not hold all it finds, so the \
+         page before it is asked: {:?}",
+        came.searched
+    );
+}
+
+#[test]
+fn a_stop_on_a_page_first_unreadable_in_the_round_that_reads_on_is_kept() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                nothing()
+            } else if asked.get("before").is_some() {
+                // The second page: unanswered while the gap is told, then
+                // giving more than it counts, a stop among them, in the
+                // round that reads on past it.
+                if TAGS.load(Ordering::SeqCst) <= 3 {
+                    format!("{FAILS}Slack said: ratelimited")
+                } else {
+                    let stop = stop();
+                    tags_answer(1, &[(began - 260, &stop), (began - 270, "hi")])
+                }
+            } else {
+                let stop = stop();
+                in_pages(&TAGS, asked, began, &paged(began, &stop), 3, true)
+            }
+        },
+        // Four rounds and the next's first, as in the case of a page that
+        // goes unanswered.
+        &Until {
+            judging: 0,
+            asks: 19,
+            read_at: None,
+        },
+    );
+    let (told, read_on) = told_and_read_on(&came.journal);
+    assert!(
+        told.is_some() && read_on > told,
+        "the gap is told, then read on: {}",
+        came.journal
+    );
+    assert!(
+        came.journal
+            .contains("<5>a stop, in shadow, in an answer no second ask agreed with: "),
+        "and the stop the page it reads on past gave is kept: {}",
+        came.journal
     );
 }

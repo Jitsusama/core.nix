@@ -5806,6 +5806,58 @@ mod tests {
         assert!(c.why().contains("clear for"), "{}", c.why());
     }
 
+    // On 23 November a probe's 12.5 Mb/s read as a hold above the 12.0
+    // line. The reason is chosen each step from the probe the controller
+    // stands in, so a probe says it looks for room, and the hold after
+    // it no longer does (voids round 2's F2, F7 and F14).
+    #[test]
+    fn a_controller_probing_past_its_hold_says_it_looks_for_room() {
+        let mut c = anchored(12_000.0);
+        let (mut at, mut looked, mut ended) = (0.0, false, None);
+        while at < 120.0 && ended.is_none() {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            if c.up.probing_until.is_some() {
+                looked |= c.why().contains("looking past its hold");
+            } else if looked {
+                ended = Some(at + 1.0);
+            }
+            at += 0.1;
+        }
+        assert!(looked, "no probe said it looked for room: {}", c.why());
+        let ended = ended.expect("the probe never ended");
+        while at < ended {
+            let rate = c.up.limit().map_or(12_000.0, crate::rate::float);
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: rate.min(12_000.0),
+                up_ours: Some(Ours {
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            at += 0.1;
+        }
+        assert!(
+            c.up.probing_until.is_none(),
+            "another probe began within a second"
+        );
+        assert!(
+            !c.why().contains("looking past"),
+            "the hold after a probe said it looked for room: {}",
+            c.why()
+        );
+    }
+
     /// Steps an anchored controller for `seconds` whose agents fill the
     /// VPN, its CAKE holding a queue, through a tunnel that delivers
     /// `tunnel(at)` kbit/s: what the VPN's CAKE sends past that waits in

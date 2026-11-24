@@ -3,10 +3,13 @@
 //! November: a line a pain, written once, its owner the cell it went to.
 //! Once a landing a switch carried closes the pain, its line's check says
 //! what landed, and cadence keeps the miss open until the change it names
-//! runs here. One the keeper carries into a ledger of its own after it
-//! was written is marked carried, as that ledger tracks it from then. No
-//! other line of the ledger is changed, and a pain closes only on its
-//! fix, never on how long it has been quiet.
+//! runs here. One the keeper carries into a ledger of its own is marked
+//! carried, as that ledger tracks its fix from then, and is written even
+//! when it was carried first: it is still a miss, and cadence asks its
+//! owner for a test that runs. One a line the keeper wrote before quotes
+//! is written too: said again, it is that miss come back, which needs a
+//! test of its own. No other line of the ledger is changed, and a pain
+//! closes only on its fix, never on how long it has been quiet.
 //!
 //! Only pains sent from `FROM_MS` on are written: the 214 sent before it
 //! had no thread kept, so most would only ever read as lost, and would
@@ -14,10 +17,13 @@
 //! lost in the hour until a landing naming each closes it.
 //!
 //! pain-points is the ledger's only writer, under its lock, and nobody
-//! writes it by hand; a line changed is still written whole only once the
-//! ledger reads as it did before, read again just ahead of the rename
-//! that replaces it, so a write from outside the lock is never lost but
-//! left for the next run.
+//! has written it by hand since the keeper's last line of 21 November; a
+//! line changed is still written whole only once the ledger reads as it
+//! did before, read again just ahead of the rename that replaces it, so
+//! a write from outside the lock is lost only in the moment between that
+//! read and the rename, and is otherwise left for the next run.
+
+pub mod tested;
 
 use super::heard::Heard;
 use super::stalled;
@@ -37,12 +43,13 @@ const LOCK_AT_MOST: Duration = Duration::from_secs(2);
 /// Joel's time, in ms.
 pub const FROM_MS: i64 = 1_795_496_400_000;
 
-/// Writes each of `kept` sent to a cell from `from_ms` on, and carried by
-/// no ledger, into the ledger at `ledger` once, at his time by
-/// `offset_s`, and the check of each closed since, or that it is carried.
+/// Writes each of `kept` sent to a cell from `from_ms` on into the ledger
+/// at `ledger` once, at his time by `offset_s`, and the check of each
+/// closed since, or that it is carried.
 /// Lines are added at its end; the ledger is written whole only when a
-/// line changes, under its lock either way, so the keeper's own writes
-/// aren't lost.
+/// line changes, under its lock either way, so another run's writes are
+/// kept, and only once the ledger reads as it did before, so a writer that
+/// skips the lock loses nothing but in the moment of the rename.
 ///
 /// # Errors
 ///
@@ -57,18 +64,7 @@ pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Resu
     if owed.is_empty() {
         return Ok(());
     }
-    let name = ledger.file_name().map_or_else(
-        || "misses.jsonl".to_owned(),
-        |n| n.to_string_lossy().into_owned(),
-    );
-    let lock_at = ledger.with_file_name(format!("{name}.lock"));
-    let lock = File::options()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_at)
-        .map_err(|e| format!("{}: {e}", lock_at.display()))?;
-    locked(&lock, &name)?;
+    let (_lock, name) = held(ledger)?;
     let text = match fs::read_to_string(ledger) {
         Ok(text) => text,
         Err(e) if e.kind() == ErrorKind::NotFound => String::new(),
@@ -100,6 +96,24 @@ pub fn write(ledger: &Path, kept: &[Heard], offset_s: i64, from_ms: i64) -> Resu
         .map_err(|e| format!("{}: {e}", ledger.display()))
 }
 
+/// The ledger at `ledger`'s lock, held, and the ledger's name: the lock
+/// is let go as it drops.
+fn held(ledger: &Path) -> Result<(File, String), String> {
+    let name = ledger.file_name().map_or_else(
+        || "misses.jsonl".to_owned(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    let lock_at = ledger.with_file_name(format!("{name}.lock"));
+    let lock = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_at)
+        .map_err(|e| format!("{}: {e}", lock_at.display()))?;
+    locked(&lock, &name)?;
+    Ok((lock, name))
+}
+
 /// Holds `lock` within `LOCK_AT_MOST`, or says why not.
 fn locked(lock: &File, name: &str) -> Result<(), String> {
     let started = Instant::now();
@@ -121,8 +135,8 @@ fn locked(lock: &File, name: &str) -> Result<(), String> {
 }
 
 /// What the ledger `text` becomes for `owed`: the whole of it, when a line
-/// of a pain closed or carried since says so, and the lines of pains not
-/// carried it holds none of, to add at its end.
+/// of a pain closed or carried since says so, and the lines of pains it
+/// holds none of, to add at its end.
 fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<String>) {
     let mut held = Vec::new();
     let mut changed = false;
@@ -156,7 +170,7 @@ fn written(text: &str, owed: &[&Heard], offset_s: i64) -> (Option<String>, Vec<S
         .collect();
     let added = owed
         .iter()
-        .filter(|h| !h.carried && !held.contains(&h.key))
+        .filter(|h| !held.contains(&h.key))
         .map(|h| line_of(h, offset_s))
         .collect();
     let whole = changed.then(|| lines.into_iter().map(|line| line + "\n").collect());
@@ -176,6 +190,9 @@ fn line_of(pain: &Heard, offset_s: i64) -> String {
     if let Some(fix) = pain.fixed_by() {
         line["check"] = json!(fix.said);
         line["closed_by"] = json!(fix.commit);
+    }
+    if pain.carried {
+        line["carried"] = json!(true);
     }
     line.to_string()
 }

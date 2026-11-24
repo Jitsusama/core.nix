@@ -1,6 +1,6 @@
 # The checks of local-sites, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
-{
+args@{
   account,
   bareNixos,
   holds,
@@ -64,7 +64,10 @@ let
     };
   };
 in
-{
+# The ask row's checks change with the kit's ask.ts and the launcher's look
+# code alone, so they sit beside it.
+import ./ask-checks.nix args
+// {
   # The kit typechecks and its tests pass as it builds (kit/tests).
   local-sites-kit-holds = sites.kit;
 

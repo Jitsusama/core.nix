@@ -314,6 +314,16 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
         transcript::echoes(answer, read_back),
         "Joel's answer, read back, isn't an echo of Bo's part, so keeping it shows nothing"
     );
+    // Joel's side hears Bo's part again, the restart having cut his
+    // recording there, so it's an echo of a line read back. A line read
+    // back ends where it starts, 46 s in, so it's heard within the echo's
+    // slack of that.
+    let again = joels(48, 49, "Not yet.");
+    assert!(
+        transcript::echoes(&again, &writing.lines[..writing.read]),
+        "Bo's part heard again isn't an echo of it, so leaving it out shows nothing"
+    );
+    writing.lines.push(again);
     hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
     writing.lines.push(joels(80, 81, "Right."));
     give_voices(&mut writing, None);
@@ -321,7 +331,7 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
         joels_written(&writing),
         ["Not yet."],
         "Joel's answer, written before the restart, was judged again against Bo's part alone, \
-         or his echo of Ada heard since wasn't"
+         or an echo heard since, of a line read back or of Ada's, wasn't"
     );
 }
 
@@ -409,6 +419,57 @@ fn a_piece_of_only_hesitation_in_a_take_with_a_line_isnt_worded() {
         worded,
         [true, false],
         "a piece holding only hesitation counted as speech"
+    );
+}
+
+#[test]
+fn a_piece_holding_only_the_end_of_a_note_isnt_worded() {
+    // A note Parakeet writes across the cut between two pieces stays
+    // whole with the run it opened in when the take is split, so its end
+    // is never a line of its own, and mustn't count toward Bo's being a
+    // voice either.
+    let mut writing = Writing::default();
+    let start = 40 * SECOND;
+    let said = [
+        word("Fine.", start),
+        word("(wind", start + 2 * SECOND),
+        word("blowing)", start + 3 * SECOND),
+    ];
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (BO.to_vec(), start + 3 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(0), &said, pieces);
+    let worded: Vec<bool> = writing.heard.iter().map(|heard| heard.worded).collect();
+    assert_eq!(
+        worded,
+        [true, false],
+        "a piece holding only the end of a note counted as speech"
+    );
+}
+
+#[test]
+fn words_in_a_piece_left_unembedded_word_the_piece_before() {
+    // Splitting gives the words of a piece the speaker model left out to
+    // the run before it, so they count toward that piece's voice here
+    // too, or the two would disagree about who spoke.
+    let mut writing = Writing::default();
+    let start = 40 * SECOND;
+    let said = [
+        word("Mm.", start),
+        word("Not", start + 4 * SECOND),
+        word("yet.", start + 5 * SECOND),
+    ];
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (BO.to_vec(), start + 6 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(0), &said, pieces);
+    let worded: Vec<bool> = writing.heard.iter().map(|heard| heard.worded).collect();
+    assert_eq!(
+        worded,
+        [true, false],
+        "words in a piece left unembedded didn't word the piece before"
     );
 }
 
@@ -547,14 +608,14 @@ impl Hears for Scripted {
 #[test]
 fn a_takes_words_find_the_pieces_they_were_said_in() {
     // Parakeet times a take's words from the take's start and its pieces
-    // are timed from the call's, so words left unmoved 40 s in would find
-    // no piece, and no line would be given a voice.
+    // are timed from the call's, so words left unmoved 40 s in would all
+    // fall in the take's first piece, and a later voice would get none.
     let start = 40 * SECOND;
     let mut scripted = Scripted {
         words: Some(vec![word("Not", 0), word("yet.", 4 * SECOND)]),
         text: None,
     };
-    let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]);
+    let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]).unwrap();
     assert_eq!(
         text.as_deref(),
         Some("Not yet."),
@@ -587,26 +648,46 @@ fn joels_take_is_kept_as_spelled_with_no_words() {
     };
     assert_eq!(
         transcribe_take(&mut scripted, Side::Mine, 40 * SECOND, &[]),
-        (Some("Done.".to_owned()), Vec::new()),
+        Ok((Some("Done.".to_owned()), Vec::new())),
         "Joel's text wasn't kept as Parakeet spelled it, without words"
     );
 }
 
 #[test]
-fn a_take_that_isnt_heard_is_left_out() {
+fn a_take_that_isnt_heard_says_why() {
+    // The `transcribe` subcommand stops on why, so a check can't pass on
+    // a failing model; the daemon leaves the take out (the next case).
     let mut failing = Scripted {
         words: None,
         text: None,
     };
+    let why = Err("the encoder failed".to_owned());
     assert_eq!(
         transcribe_take(&mut failing, Side::Theirs, 40 * SECOND, &[]),
-        (None, Vec::new()),
-        "a take of theirs that wasn't heard was kept"
+        why,
+        "a take of theirs that wasn't heard didn't say why"
     );
     assert_eq!(
         transcribe_take(&mut failing, Side::Mine, 40 * SECOND, &[]),
+        why,
+        "a take of Joel's that wasn't heard didn't say why"
+    );
+}
+
+#[test]
+fn the_daemon_leaves_out_a_take_that_isnt_heard() {
+    // One take not heard mustn't end the call or stop its thread: the
+    // daemon goes on with no line and no words, as for a take of silence.
+    assert_eq!(
+        heard_or_left_out(Err("the encoder failed".to_owned())),
         (None, Vec::new()),
-        "a take of Joel's that wasn't heard was kept"
+        "a take that wasn't heard wasn't left out"
+    );
+    let heard = || (Some("Not yet.".to_owned()), vec![word("Not", 40 * SECOND)]);
+    assert_eq!(
+        heard_or_left_out(Ok(heard())),
+        heard(),
+        "what was heard of a take wasn't kept"
     );
 }
 

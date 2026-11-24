@@ -492,29 +492,83 @@ bool takenAsUnderPressure(QJSEngine &engine) {
     return took;
 }
 
+// How many lent pages the kernel has taken since it started, across the
+// whole machine, from /proc/vmstat's pglazyfreed; or -1 when it doesn't say.
+double lentPagesTaken() {
+    QFile vmstat(QStringLiteral("/proc/vmstat"));
+    if (!vmstat.open(QIODevice::ReadOnly))
+        return -1;
+    static const QRegularExpression taken(QStringLiteral("^pglazyfreed (\\d+)$"),
+                                          QRegularExpression::MultilineOption);
+    const QRegularExpressionMatch match = taken.match(QString::fromLatin1(vmstat.readAll()));
+    return match.hasMatch() ? match.captured(1).toDouble() : -1;
+}
+
+// What one lending of a thinned heap's free pages read, and whether the
+// kernel took no lent page anywhere while the lending was being read, so
+// what it holds lent and what stays resident can be judged.
+struct Lending {
+    double free = 0;
+    double lent = 0;
+    double lentBefore = 0;
+    double lentAfter = 0;
+    double freeLent = 0;
+    double freeTaken = 0;
+    bool took = false;
+    bool calm = false;
+    ReadBack read{};
+};
+
+// Thins a heap, lends its free pages back and reads what the kernel then
+// holds lent and what stays resident; has the kernel take them, as under
+// pressure, and reads what's kept and what's made after. Its free pages are
+// read without a collection, which would write the free runs' headers
+// again.
+Lending lentOnce() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = thinnedToAFew(engine);
+    Lending lending;
+    lending.free = weighed(engine, heap).free;
+    const double takenBefore = lentPagesTaken();
+    lending.lentBefore = heap.lent();
+    lending.lent = heap.lendBack();
+    lending.lentAfter = heap.lent();
+    lending.freeLent = heap.weigh().value(QStringLiteral("free")).toDouble();
+    lending.calm = takenBefore >= 0 && lentPagesTaken() == takenBefore;
+    lending.took = takenAsUnderPressure(engine);
+    lending.freeTaken = heap.weigh().value(QStringLiteral("free")).toDouble();
+    lending.read = readBack(engine, few);
+    return lending;
+}
+
 // Whether lending a thinned heap's free pages back says about as much as
 // was counted, and the kernel holds that much lent while the pages stay
 // resident, which giving them back would not; and whether, once the kernel
 // takes them as it would under pressure, they're no longer resident and
 // what's kept, and what's made after, still reads as it was made, so no
-// page lent held anything Qt reads. Its free pages are read without a
-// collection, which would write the free runs' headers again.
+// page lent held a live item. A builder short of memory may take lent
+// pages while they're read, as lending allows, so a lending the kernel
+// took from is tried once more, and if it takes again, what it holds lent
+// and what stays resident are left unjudged, with a note; the rest holds
+// either way.
 bool lendsBack() {
-    QJSEngine engine;
-    Heap heap(&engine);
-    const QJSValue few = thinnedToAFew(engine);
-    const Weight thinned = weighed(engine, heap);
-    const double lentBefore = heap.lent();
-    const double lent = heap.lendBack();
-    const double lentAfter = heap.lent();
-    const double freeLent = heap.weigh().value(QStringLiteral("free")).toDouble();
-    const bool took = takenAsUnderPressure(engine);
-    const double freeTaken = heap.weigh().value(QStringLiteral("free")).toDouble();
-    const ReadBack read = readBack(engine, few);
-    const bool said = lent > thinned.free / 2 && lent <= thinned.free + GIVEN_LEFT_MB;
-    const bool held = lentBefore >= 0 && lentAfter - lentBefore > thinned.free / 2;
-    const bool kept = freeLent > thinned.free / 2;
-    const bool taken = took && freeTaken < GIVEN_LEFT_MB;
+    Lending lending = lentOnce();
+    if (!lending.calm)
+        lending = lentOnce();
+    const bool said =
+        lending.lent > lending.free / 2 && lending.lent <= lending.free + GIVEN_LEFT_MB;
+    const bool held = !lending.calm || (lending.lentBefore >= 0 &&
+                                        lending.lentAfter - lending.lentBefore > lending.free / 2);
+    const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
+    const bool taken = lending.took && lending.freeTaken < GIVEN_LEFT_MB;
+    const ReadBack &read = lending.read;
+    if (!lending.calm)
+        std::fprintf(stderr,
+                     "note: the kernel took lent pages twice while lending was read, so what "
+                     "it held lent (%.1f, then %.1f MB) and what stayed resident (%.1f MB) "
+                     "go unjudged\n",
+                     lending.lentBefore, lending.lentAfter, lending.freeLent);
     if (!said || !held || !kept || !taken || !read.asMade())
         std::fprintf(stderr,
                      "FAIL lending %.1f MB of free pages back says so, keeps them resident "
@@ -522,8 +576,9 @@ bool lendsBack() {
                      "kernel held %.1f, then %.1f MB lent; %.1f MB free once lent, and %.1f "
                      "once taken (%s); the few summed %.0f of %.0f, and what was made after "
                      "%.0f of %.0f\n",
-                     thinned.free, lent, lentBefore, lentAfter, freeLent, freeTaken,
-                     took ? "taken" : "the kernel refused", read.kept, read.keptMade,
+                     lending.free, lending.lent, lending.lentBefore, lending.lentAfter,
+                     lending.freeLent, lending.freeTaken,
+                     lending.took ? "taken" : "the kernel refused", read.kept, read.keptMade,
                      read.after, read.afterMade);
     return said && held && kept && taken && read.asMade();
 }

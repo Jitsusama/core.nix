@@ -488,7 +488,7 @@ fn is_rev(text: &str) -> bool {
 /// The revision running here of each repository cadence follows: the last
 /// switch's, while the system it built still runs, each that core pins, and
 /// the harness installed.
-fn running(switches: &str, repos: &Checkouts) -> BTreeMap<String, String> {
+pub(super) fn running(switches: &str, repos: &Checkouts) -> BTreeMap<String, String> {
     let last = switches
         .lines()
         .rev()

@@ -14,13 +14,18 @@ fn a_name_is_the_tree_s_own_only_through_folders_never_through_a_link() {
     // folder itself is looked at, never where a link leads.
     std::os::unix::fs::symlink(root.join("a"), root.join("d")).unwrap();
     std::os::unix::fs::symlink(root.join("a/b"), root.join("a/c")).unwrap();
+    // Two names are asked twice: a folder passed once still passes, and one
+    // refused is refused again, so a cache that kept every folder it looked
+    // at, own or not, fails.
     let mut folders = Folders::default();
     for (path, own) in [
         ("top", true),
         ("a/b/f", true),
         ("a/b/f", true),
         ("d/f", false),
+        ("d/f", false),
         ("a/c/f", false),
+        ("a/c/g", false),
         ("gone/f", false),
         ("file/f", false),
     ] {

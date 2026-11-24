@@ -1,0 +1,79 @@
+/* The ask row, as ask.ts reads a look into it: one look answered where it's
+   asked, laid out as the launcher's For You lays it out (the kit
+   inventory's seventh rule). A page draws it as
+
+     <article class="ask">
+       <h3>what it's about, a link where ask.opens is one</h3>
+       <p class="ask-said">each of ask.said</p>
+       <p class="ask-question">ask.question, then ask.ifNothing, where it says them</p>
+       <ul class="ask-answers">
+         <li><button>a choice's label</button> <span>what follows</span></li>
+       </ul>
+       <p class="ask-act"><a href="ask.opens">ask.act</a></p>
+     </article>
+
+   with every word drawn as text, never as markup, since a session wrote it.
+   The answers show only while ask.asks. No page takes his own words yet,
+   since For You's shape for them comes in its second part, so a look whose
+   ask.takesWords is true is answered in the launcher for now. Where ask.act is null,
+   the look is about a file or a session no browser opens, so the act line
+   shows ask.target as text instead of a link that goes nowhere.
+
+   What happened comes first, in the serif, since it's the context Joel said
+   was lost by the time he found a look. Each answer is a whole target with
+   what follows from it beside it in muted words, and the act is a link like
+   any other, so colour stays off the words and the accent stays the focus
+   ring's. Rows stand apart by a rule, as every list on the sites does. */
+.ask {
+  display: grid;
+  gap: var(--mark);
+  padding-block: var(--items);
+  border-block-start: var(--border) solid var(--rule);
+}
+
+.ask h3 {
+  margin: 0;
+}
+
+.ask-said {
+  margin: 0;
+  max-inline-size: 65ch;
+  font-family: var(--voice-face);
+}
+
+.ask-answers {
+  display: grid;
+  gap: var(--mark);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-answers li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mark) var(--apart);
+  align-items: baseline;
+}
+
+.ask-answers li > span {
+  color: var(--muted);
+  font-size: var(--step-small);
+}
+
+.ask-answers button {
+  padding: 0 var(--apart);
+  border: var(--border) solid var(--rule);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--strong);
+  transition: border-color var(--arrive) var(--ease);
+}
+
+.ask-answers button:hover {
+  border-color: var(--tint);
+}
+
+.ask-act {
+  margin: 0;
+}

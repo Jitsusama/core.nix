@@ -11,10 +11,12 @@
 //! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, `owing` files its drag with each owner, `records`
-//! reads the queues' records, and `reviews` the harness's review records.
+//! says and keeps, `good` holds each measure to the definition of good,
+//! `owing` files its drag with each owner, `records` reads the queues'
+//! records, and `reviews` the harness's review records.
 
 mod card;
+mod good;
 mod lines;
 mod measures;
 mod moved;
@@ -101,15 +103,8 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &mut kept.fetched,
         to,
     )?;
-    for m in measures
-        .iter_mut()
-        .filter(|m| !whole && m.class == Class::Miss)
-    {
-        m.target = None;
-        // A torn line has already said so.
-        if !m.says.ends_with(measures::UNREAD) {
-            m.says.push_str(measures::UNREAD);
-        }
+    if !whole {
+        unread_misses(&mut measures);
     }
     // A realm whose node doesn't answer says nothing of its machines.
     if !realms.is_empty() {
@@ -160,6 +155,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(spent_beside_landed(&state_home, now));
         measures.extend(spend_watch_measures(now));
     }
+    // Every measure read, each is held to its line on the definition of
+    // good, and one with none, or another target, is counted.
+    measures.push(good::undefined(&measures));
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
     // closed before last hour stays so.
@@ -199,6 +197,22 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
+}
+
+/// The misses measured from a ledger not read whole, left unjudged, and
+/// nor whether they name tests: an emptied ledger names none, so judging
+/// it would close every owner's ask, to be filed again after.
+fn unread_misses(measures: &mut [Measure]) {
+    for m in measures
+        .iter_mut()
+        .filter(|m| m.class == Class::Miss || m.key == measures::UNTESTED)
+    {
+        m.target = None;
+        // A torn line has already said so.
+        if !m.says.ends_with(measures::UNREAD) {
+            m.says.push_str(measures::UNREAD);
+        }
+    }
 }
 
 /// Whom the card goes to, and as what: the orchestrator for context, and
@@ -251,10 +265,11 @@ fn gather(
         now,
         orchestrator,
     );
-    let (misses, found) =
+    let (checked, found) =
         measures::checked_beside(misses, folder, checkouts, &switches, findings.as_ref(), now)?;
     let mut all = vec![
-        misses,
+        checked,
+        measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),

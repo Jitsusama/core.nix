@@ -204,7 +204,44 @@ ShellRoot {
         root.step("told everyone left", () => /You're the only one still in it/.test(root.told), root.alone);
     }
 
+    // The camera's row in a call: Tuple's picker while Joel's camera is
+    // off, and stopping it while it's on, each as Tuple's webcam command.
+    function camera() {
+        return Tuple.controls.find(one => one.key === "tuple:camera") ?? null;
+    }
+
     function alone() {
+        const row = root.camera();
+        expect("the camera's picker offered in a call",
+            row?.name === "Show My Camera in the Call", JSON.stringify(row));
+        row?.run();
+        root.step("asked for the camera's picker", () => /^webcam start$/m.test(root.asked),
+            root.picked);
+    }
+
+    function picked() {
+        root.says(root.call("connected", root.started, [false, false, true], []));
+        root.step("my camera on", () => Tuple.filming, root.filming);
+    }
+
+    function filming() {
+        const row = root.camera();
+        expect("my camera stopped from the call",
+            row?.name === "Stop My Camera in the Call", JSON.stringify(row));
+        row?.run();
+        root.step("asked to stop the camera", () => /^webcam stop$/m.test(root.asked),
+            root.stopped);
+    }
+
+    function stopped() {
+        root.says(root.call("connected", root.started, [false, false, false], []));
+        root.step("my camera off", () => !Tuple.filming, root.off);
+    }
+
+    function off() {
+        const row = root.camera();
+        expect("the camera's picker offered again once it's off",
+            row?.name === "Show My Camera in the Call", JSON.stringify(row));
         Tuple.mute(true);
         root.step("asked to mute", () => /^call mute$/m.test(root.asked), root.muting);
     }
@@ -216,6 +253,7 @@ ShellRoot {
 
     function ended() {
         expect("no mute without a call", Tuple.muted === null, Tuple.muted);
+        expect("no camera without a call", root.camera() === null, JSON.stringify(root.camera()));
         const kept = Tuple.recent[0] ?? {};
         const had = (kept.people ?? []).map(one => `${one.id} ${one.name} ${one.email}`);
         expect("kept in Recent with everyone who was in it", Tuple.recent.length === 1

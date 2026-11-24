@@ -16,8 +16,8 @@ use crate::owe::{self, Owed};
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, apps, drag, held_for_good, held_unseen,
-    rounds,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, drag, held_for_good,
+    held_unseen, rounds,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -181,6 +181,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key.starts_with(QUEUE) {
         return vec![queue_asked(m, says)];
     }
+    if m.key == UNTESTED {
+        return untested_asked(m, &says);
+    }
     let owners = by_owner(m);
     if !owners.is_empty() {
         return owners
@@ -216,6 +219,31 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// Each owner's ask for a test that runs to catch their misses again, in
+/// the orchestrator's ruling (23 November): every miss gets a check that
+/// runs. It closes once none of the measure's lines names them.
+fn untested_asked(m: &Measure, says: &str) -> Vec<Filed> {
+    by_owner(m)
+        .into_iter()
+        .map(|(owner, misses)| {
+            let misses = misses.join("; ");
+            Filed {
+                key: format!("hour:{}:{owner}", m.key),
+                says: format!("{says}, yours: {misses}"),
+                text: format!(
+                    "cadence hour: {says}, and these misses are yours: {misses}. Each needs \
+                     a test that fails if it comes back, merged where its repository's own \
+                     checks run it. Please name each within a day with `pain-points test \
+                     --miss AT --test \"REPO PATH NAME\"`, AT being the miss's time as the \
+                     ledger has it, or reply why it can't have one. It closes by itself once \
+                     cadence finds each test where it runs."
+                ),
+                owner,
+            }
+        })
+        .collect()
 }
 
 /// The worst queue's ask, in Joel's terms for a queue (20 November): what
@@ -386,9 +414,11 @@ pub fn file(
         dragging.extend(drag(&rest));
     }
     // Never the lead, which passes them over, so filed whatever leads; a
-    // measure filed twice is owed once, as the ledger holds it open.
+    // measure filed twice is owed once, as the ledger holds it open. A
+    // miss with no test that runs is asked of its owner the same way.
     dragging.extend(measures.iter().filter(|m| {
-        (m.key.starts_with(rounds::FRUITLESS) || m.key == FINDINGS) && m.past().is_some()
+        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
+        (m.key.starts_with(rounds::FRUITLESS) || beside) && m.past().is_some()
     }));
     // Nor do the queues; the worst is asked for its next change once a
     // day, as Joel asked of them, whatever else leads.
@@ -642,6 +672,43 @@ mod tests {
             ledger.iter().all(|e| !e.open),
             "back in closes every owner's"
         );
+    }
+
+    #[test]
+    fn each_untested_miss_is_asked_of_its_owner_beside_the_drag_until_its_test_runs() {
+        let lead = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let mut untested = measure(UNTESTED, Class::Cells, 2.0, Some(0.0));
+        untested.behind = vec![
+            "cat waits (2026-11-14T17:24:00-05:00), naming no test · XY9H5C".to_owned(),
+            "bar froze (2026-11-15T19:42:00-05:00), naming no test · H2VYOB".to_owned(),
+        ];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[lead, untested.clone()], "2026-11-24", 1000);
+        let asked: Vec<&(String, String)> = told
+            .iter()
+            .filter(|(_, text)| text.contains("pain-points test"))
+            .collect();
+        let owners: Vec<&str> = asked.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["H2VYOB", "XY9H5C"],
+            "each miss's owner wasn't asked beside the lead"
+        );
+        assert!(
+            asked[1].1.contains("cat waits (2026-11-14T17:24:00-05:00)")
+                && !asked[1].1.contains("bar froze"),
+            "an owner heard of another's miss, or not of their own: {}",
+            asked[1].1
+        );
+        untested.behind.remove(0);
+        untested.now = 1.0;
+        file(&mut ledger, &[untested], "2026-11-24", 4600);
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open && e.key.starts_with("hour:misses-untested"))
+            .filter_map(|e| e.owner.as_deref())
+            .collect();
+        assert_eq!(open, ["H2VYOB"], "an owner whose test runs was still asked");
     }
 
     #[test]
