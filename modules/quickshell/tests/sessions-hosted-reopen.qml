@@ -26,8 +26,10 @@ pragma ComponentBehavior: Bound
 // no boot's places known, one kept nowhere opens in a window. One kept on a
 // workspace named for its orchestrator goes back to the one named so now,
 // whatever its number, and one whose name no workspace has names the empty
-// one it opens on. It exits 0 once that holds, and otherwise 1, saying what
-// didn't. Long because its
+// one it opens on. One kept as unplaced waits for Joel to leave, and once
+// all is settled, nothing has moved the named one's window or workspace.
+// It exits 0 once that holds, and otherwise 1, saying what didn't. Long
+// because its
 // stages run in turn on one walk, one stand-in niri and node, and one
 // windows daemon, each stage's workspaces and windows the next one's
 // ground, so a split would build that world again for each half.
@@ -178,6 +180,10 @@ ShellRoot {
                 named();
             else if (stage === "cornered")
                 cornered();
+            else if (stage === "leaving")
+                leaving();
+            else if (stage === "quiet")
+                quiet();
             else if (stage === "renamed")
                 renamed();
         } catch (error) {
@@ -798,6 +804,11 @@ ShellRoot {
         // boot's places kept here, one that sat here kept nowhere can't be
         // told from one whose place went unrecorded, so it opens in a window.
         // Asked once this walk is done, as the launcher's press comes.
+        // 43 took windows, so niri keeps an empty workspace after it.
+        Niri.workspaces = Object.assign({}, Niri.workspaces, {
+            "45": { id: 45, idx: 5, output: "DP-4", is_focused: false, active_window_id: null }
+        });
+        Niri.revision += 1;
         stage = "unarranged";
     }
     // The app id a spawn opens its window with, or "".
@@ -822,33 +833,28 @@ ShellRoot {
             Expect.expect("with no boot's places known, one kept nowhere opens in a window",
                 started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
                 && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
-            // With no place kept nor kin, it would open on its screen's
-            // empty workspace, but this stand-in keeps none after 43 as
-            // niri would. So it's asked nowhere, and its kitty opens the
-            // window where Joel is, so the walk ends with it rather than
-            // waiting out its patience.
+            // With no place kept nor kin, it opens on its screen's empty
+            // workspace, 45, niri's last there, and the walk ends with it
+            // rather than waiting out its patience.
             const waiting = Sessions.reopening?.waiting;
             if (waiting?.id !== "s-unarranged" || !waiting.classed)
                 return;
-            const joels = Object.values(Niri.workspaces).find(one => one.is_focused);
-            if (!joels) {
-                Expect.fail("no workspace is focused for s-unarranged's window to open on");
-                return;
-            }
-            Expect.expect("one with no place known, its screen with no empty workspace, "
-                + "is asked to open nowhere",
-                !Niri.acts.some(act => act.OpenNextWindowOn?.app_id === waiting.classed),
+            const asked = Niri.acts.filter(act => act.OpenNextWindowOn?.app_id === waiting.classed)
+                .map(act => act.OpenNextWindowOn);
+            Expect.expect("one with no place known is asked to open on its screen's empty "
+                + "workspace", asked.length === 1 && asked[0].reference?.Id === 45,
                 JSON.stringify(Niri.acts));
-            opensOnly(91, waiting.classed, joels.id);
+            opensOnly(91, waiting.classed, 45);
             return;
         }
         // KELP's workspace, named for its orchestrator, comes back fifth
         // this boot on the laptop's screen, not the one kept, with a window
-        // of its own, and niri's empty one after.
+        // of its own; 45 took s-unarranged's, so niri keeps an empty one
+        // after it.
         Niri.workspaces = Object.assign({}, Niri.workspaces, {
             "44": { id: 44, idx: 5, name: "KELP", output: "eDP-1", is_focused: false,
                 active_window_id: 92 },
-            "45": { id: 45, idx: 6, output: "DP-4", is_focused: false, active_window_id: null }
+            "46": { id: 46, idx: 6, output: "DP-4", is_focused: false, active_window_id: null }
         });
         Niri.windows = Object.assign({}, Niri.windows, { "92": { id: 92, pid: 920,
             workspace_id: 44, opened: "pi-hosted.s-lead",
@@ -936,17 +942,47 @@ ShellRoot {
             place?.workspace === cornerOn && place?.there === true
             && viewerSpawns("s-cornered").length === 0,
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
-        // Looked at once s-cornered's place is kept, so before this walk's
-        // settle pass and the return home of workspaces after it, which a
-        // follow-up waits for. Every move of its window names it by id, or
-        // focuses it first to move its column.
+        // He leaves it for another at the machine, which opens it there.
+        Away.now = false;
+        stage = "leaving";
+        joelOn(40);
+    }
+    function leaving() {
+        if (viewerSpawns("s-cornered").length === 0)
+            return;
+        const opens = opensOn("s-cornered");
+        if (!Niri.windows[95]) {
+            Expect.expect("once he leaves, it opens where it waited",
+                opens.length === 1 && opens[0].reference?.Id === cornerOn,
+                JSON.stringify(Niri.acts));
+            opensOnly(95, "pi-hosted.s-cornered", cornerOn);
+            return;
+        }
+        stage = "quiet";
+    }
+    // Looked at once the walk's settle pass is done, nothing's being
+    // placed, and an arranging tick has had its time to take workspaces
+    // home: every move of s-kelp's window names it by id, or focuses it
+    // first to move its column, and its workspace stays on the screen
+    // it's named on.
+    property real quietAt: 0
+    function quiet() {
+        if (Sessions.placingNow()) {
+            quietAt = 0;
+            return;
+        }
+        if (quietAt === 0)
+            quietAt = Date.now();
+        if (Date.now() - quietAt < 3000)
+            return;
         Expect.expect("one sent by name to a workspace on another screen than kept "
-            + "isn't moved as it's placed",
+            + "stays there, the walk settled and workspaces arranged",
             !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93
                 || act.MoveWindowToMonitor?.id === 93
                 || act.FocusWindow?.id === 93
                 || act.ConsumeOrExpelWindowLeft?.id === 93
-                || act.MoveWorkspaceToIndex?.reference?.Id === 44),
+                || act.MoveWorkspaceToIndex?.reference?.Id === 44
+                || act.MoveWorkspaceToMonitor?.reference?.Id === 44),
             JSON.stringify(Niri.acts));
         console.log("a hosted viewer reopens where it was, in "
             + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
