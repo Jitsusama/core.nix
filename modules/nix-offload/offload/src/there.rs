@@ -6507,9 +6507,17 @@ mod tests {
             folder.path().join("uplink-2"),
         )
         .expect("a link");
+        // A run another test spawns as these turns are held forks with their
+        // files open, and holds their locks until it execs, so a turn this
+        // test let go may still read as held for a moment on a busy builder.
+        let began = std::time::Instant::now();
+        let mut named = holders(folder.path(), "uplink");
+        while named != "none of them named" && began.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+            named = holders(folder.path(), "uplink");
+        }
         assert_eq!(
-            holders(folder.path(), "uplink"),
-            "none of them named",
+            named, "none of them named",
             "a turn only looked at, or a link to one held elsewhere, was named"
         );
         drop((looking, other));
