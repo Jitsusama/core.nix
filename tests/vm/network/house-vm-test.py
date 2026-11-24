@@ -54,14 +54,19 @@ COMING_UP = dt.timedelta(seconds=60)
 HOLDING = dt.timedelta(seconds=60)
 QUIETING = dt.timedelta(seconds=15)
 CLIMBING = dt.timedelta(seconds=120)
-# Where the house's other machine forges its reports from: the first
-# address its house names, which it keeps once its route moves. Each says
-# it sent nothing, which taken would let the hold go.
+# Where the house's other machine forges its reports from while its
+# reporter is stopped: the first address its house names, which it keeps
+# once its route moves. Signed under another key, in step on their own
+# clock and saying the house sends 3 Mbit/s, taken they would hold the
+# upload as the true ones do.
 FORGED_FROM = "192.168.1.2"
 WRONG_KEY = "not the house's key, but 32 b!!!"
+# What the shaper says of a report whose mac isn't the house's key's.
+FORGED = "mac isn't the house's key's"
 # The most times the shaper may say forged reports held nothing while they
-# come for under a minute: once, and once more if a minute's turn falls in.
-REFUSALS_SAID = 2
+# come for up to QUIETING and CLIMBING: once a minute, and once more if a
+# minute's turn falls in. src/house.rs's tests hold it to once a minute.
+REFUSALS_SAID = 4
 
 
 @dataclass
@@ -94,6 +99,10 @@ class Rig:
     def journal(self) -> str:
         """Give what the shaper said."""
         return self.client.succeed("journalctl -u shaper -o cat --no-pager")
+
+    def said(self, words: str) -> int:
+        """Give how many times the shaper said `words`, so a wait meets only what's said after."""
+        return self.journal().count(words)
 
     def holds(self) -> list[int]:
         """Give the rate the upload is held to, read a second apart, READINGS times."""
@@ -186,53 +195,66 @@ def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
     assert "went quiet" not in rig.journal(), "the house went quiet as its reporter moved"
 
 
-def test_a_report_forged_without_the_key_holds_nothing(rig: Rig) -> None:
-    """Reports from the house's own address, unsigned or under another key, move no hold."""
-    held(rig)
-    # Ten a second for a while past the readings, each fresh, the house's
-    # counter put at nothing, so taken they'd read as a house sending
-    # nothing and let the hold go.
-    forger = f"""
-for i in $(seq 200); do
-  ms=$(date +%s%3N)
-  text="0 $ms $ms"
-  mac=$(printf %s "$text" | openssl dgst -sha256 -hmac "{WRONG_KEY}" -r | cut -c1-32)
-  for report in "0 $ms" "$text $mac"; do
-    printf %s "$report" | socat -u - UDP:192.168.1.1:47110,bind={FORGED_FROM}
-  done
-  sleep 0.1
-done
-"""
-    rig.house.succeed(f"cat > /root/forger <<'EOF'\n{forger}EOF")
-    rig.house.succeed(f"systemd-run --unit=forger --setenv=PATH={BIN} {BIN}/bash /root/forger")
-    rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat --no-pager"
-        f" | grep -q 'a report from {FORGED_FROM} held nothing for the house'",
-        timeout=QUIETING,
-    )
-    readings = rig.holds()
-    print(f"held at {readings} kbit/s while reports were forged")
-    journal = rig.journal()
-    assert max(readings) <= HELD, (
-        f"the upload went to {max(readings)} kbit/s while reports were forged: {readings}"
-    )
-    assert "went quiet" not in journal, "the house went quiet while its reports were forged"
-    refusals = journal.count(f"a report from {FORGED_FROM} held nothing")
-    assert refusals <= REFUSALS_SAID, f"the journal said {refusals} refusals in under a minute"
-    rig.house.succeed("systemctl stop forger || true")
-
-
-def test_a_house_gone_quiet_lets_the_upload_go(rig: Rig) -> None:
-    """Once the reports stop, the hold lets go, said, and the upload climbs past it."""
-    # Run alone, it waits for the hold the other subtest proves.
-    held(rig)
-    rig.house.succeed("systemctl stop house-report")
-    rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat --no-pager | grep -q 'went quiet'", timeout=QUIETING
-    )
+def climbs(rig: Rig) -> None:
+    """Wait until the upload climbs past what the house left, which only a hold let go reaches."""
 
     def climbed(_last_try: bool) -> bool:
         """Say whether the upload climbed past what the house left."""
         return rig.up() > CLIMBED
 
     retry(climbed, timeout=CLIMBING)
+
+
+def test_a_report_forged_without_the_key_holds_nothing(rig: Rig) -> None:
+    """In-step reports from the house's own address, under another key, hold nothing."""
+    held(rig)
+    quiet = rig.said("went quiet")
+    rig.house.succeed("systemctl stop house-report")
+    rig.client.wait_until_succeeds(
+        f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "went quiet")" -gt {quiet}',
+        timeout=QUIETING,
+    )
+    holds, refused = rig.said("the house's ceiling holds"), rig.said(FORGED)
+    # Five a second, the counter climbing 3 Mbit/s on the forger's own
+    # clock from nought, as a reporter just started sends, so the shaper
+    # would take them in step were the mac not checked.
+    forger = f"""
+start=$(date +%s%3N)
+for i in $(seq 750); do
+  now=$(date +%s%3N)
+  ms=$((now - start))
+  text="$((ms * {SENDS // 8})) $ms $now"
+  mac=$(printf %s "$text" | openssl dgst -sha256 -hmac "{WRONG_KEY}" -r | cut -c1-32)
+  printf %s "$text $mac" | socat -u - UDP:192.168.1.1:47110,bind={FORGED_FROM}
+  sleep 0.2
+done
+"""
+    rig.house.succeed(f"cat > /root/forger <<'EOF'\n{forger}EOF")
+    rig.house.succeed(f"systemd-run --unit=forger --setenv=PATH={BIN} {BIN}/bash /root/forger")
+    try:
+        rig.client.wait_until_succeeds(
+            f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "{FORGED}")" -gt {refused}',
+            timeout=QUIETING,
+        )
+        climbs(rig)
+        journal = rig.journal()
+    finally:
+        rig.house.succeed("systemctl stop forger || true", "systemctl start house-report")
+    assert journal.count("the house's ceiling holds") == holds, (
+        "the house held again while only forged reports came"
+    )
+    refusals = journal.count(FORGED) - refused
+    assert refusals <= REFUSALS_SAID, f"the journal said {refusals} refusals of the forgeries"
+
+
+def test_a_house_gone_quiet_lets_the_upload_go(rig: Rig) -> None:
+    """Once the reports stop, the hold lets go, said, and the upload climbs past it."""
+    # Run alone, it waits for the hold the other subtest proves.
+    held(rig)
+    quiet = rig.said("went quiet")
+    rig.house.succeed("systemctl stop house-report")
+    rig.client.wait_until_succeeds(
+        f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "went quiet")" -gt {quiet}',
+        timeout=QUIETING,
+    )
+    climbs(rig)

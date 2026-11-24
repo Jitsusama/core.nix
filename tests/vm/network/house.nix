@@ -8,9 +8,11 @@
 # upload is held under what the house's 8 Mbit/s leaves, and still once the
 # other machine's route moves to another of its addresses, as a Mac's does
 # to its cable's; once they stop, it climbs back to the connection. Both
-# machines hold one key, so only signed reports are taken: one forged from
-# the house's own address, signed with another key or not at all, holds
-# nothing. The tests are house-vm-test.py, run through pytest.
+# machines hold one key, so only signed reports are taken: with the true
+# reporter stopped, reports forged from the house's own address under
+# another key, in step and saying what it sends, hold nothing, and the
+# upload climbs as it does once the house goes quiet. The tests are
+# house-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
