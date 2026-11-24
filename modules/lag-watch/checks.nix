@@ -30,14 +30,7 @@ onLinux {
       asked = toString (graphical.config.boot.kernel.sysctl."kernel.sched_schedstats" or "nothing");
     in
     pkgs.runCommandLocal "lag-watch-can-read-time-blocked" { } ''
-      if [ '${asked}' != 1 ]; then
-        echo "a machine with a screen sets kernel.sched_schedstats to ${asked}, not 1" >&2
-        exit 1
-      fi
-      if ! grep -qx 'CONFIG_SCHEDSTATS=y' ${self.packages.x86_64-linux.kernel.configfile}; then
-        echo "core's kernel is built without CONFIG_SCHEDSTATS, so nothing keeps time blocked" >&2
-        exit 1
-      fi
+      $BASH ${./can-read-time-blocked.sh} '${asked}' ${self.packages.x86_64-linux.kernel.configfile}
       touch $out
     '';
 }
