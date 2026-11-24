@@ -71,7 +71,8 @@
 //! failing for the routing: with no builder, or none ssh can reach, the
 //! same build runs here, saying so. It exits with the build's own status,
 //! or the first that failed, and journals where each part ran and what it
-//! sent, in `there.jsonl` beside the lender's journal.
+//! sent, in `there.jsonl` beside the lender's journal, with what its copies
+//! up spent on this machine's uplink (`uplink.rs`).
 //!
 //! A check that passed at a commit isn't built again, wherever it would
 //! go, since no builder lent since may hold it: a pass is kept by its
@@ -91,6 +92,7 @@ use crate::held;
 use crate::kept;
 use crate::passed;
 use crate::proof;
+use crate::uplink;
 
 /// What a `there` was asked to build, and how.
 #[derive(Debug, PartialEq, Eq)]
@@ -556,6 +558,8 @@ pub struct Ran {
     pub status: i32,
     /// What ssh sent the builder, as its own count says.
     pub sent: Option<u64>,
+    /// What it spent on this machine's uplink copying up to the builder.
+    pub up: uplink::Spent,
 }
 
 /// Builds what was asked on the builder `store` names (the store file's
@@ -572,7 +576,35 @@ pub struct Ran {
 /// minutes apart on 3 November found the second loss's wait spent by the
 /// first, while a loss sooner goes on with the last wait, so one that
 /// never reaches a builder still stops within `waiting.longest`.
+/// What it spent on the uplink copying up is counted for its line in the
+/// journal ([`uplink`]).
 pub fn run(
+    asked: &Asked,
+    store: Option<&str>,
+    again: &dyn Fn(std::time::Instant) -> Option<String>,
+    waiting: Waiting,
+    scratch: &Path,
+    [ssh, nix]: [&str; 2],
+    signatures: Signatures,
+) -> Ran {
+    uplink::begun();
+    let ran = run_counted(
+        asked,
+        store,
+        again,
+        waiting,
+        scratch,
+        [ssh, nix],
+        signatures,
+    );
+    Ran {
+        up: uplink::taken(),
+        ..ran
+    }
+}
+
+/// [`run`], while the uplink's count runs.
+fn run_counted(
     asked: &Asked,
     store: Option<&str>,
     again: &dyn Fn(std::time::Instant) -> Option<String>,
@@ -638,6 +670,7 @@ pub fn run(
                         on: Some(lent.host.clone()),
                         status: UNREACHED,
                         sent: None,
+                        up: uplink::Spent::default(),
                     })
                 }
             };
@@ -1234,13 +1267,17 @@ fn sent_up(
             copying.heard(),
         ))
     };
-    let (went, heard) = scoped_or_again(
-        upload_scope(),
-        sending,
-        |went| *went,
-        "nix-offload: the send couldn't be given a scope of its own, since the user manager's \
-         bus refused it, so it goes again outside one",
-    )?;
+    // Unsized: asking the store their sizes would cost every send a walk.
+    // A copy sent again for a scope refused counts with it, as one.
+    let (went, heard) = uplink::sent(None, || {
+        scoped_or_again(
+            upload_scope(),
+            sending,
+            |went| *went,
+            "nix-offload: the send couldn't be given a scope of its own, since the user \
+             manager's bus refused it, so it goes again outside one",
+        )
+    })?;
     if went {
         return Ok(());
     }
@@ -1393,6 +1430,7 @@ fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
         on: None,
         status: STAYS,
         sent: None,
+        up: uplink::Spent::default(),
     }
 }
 
@@ -1504,10 +1542,12 @@ fn derivations_up(
         Some(0) => format!("to {}, of a size this machine couldn't read,", lent.host),
         Some(size) => format!("of {} to {}", sized(size), lent.host),
     };
-    let turn = uplink_turn(rank, &about);
+    let turn = uplink::waited(|| uplink_turn(rank, &about));
     let within = turn_within(size);
-    let (ended, heard) = copied_up([nix, alive], upload_scope(), &copying, turn, within, &about)
-        .map_err(Uncopied::failed)?;
+    let (ended, heard) = uplink::sent(size, || {
+        copied_up([nix, alive], upload_scope(), &copying, turn, within, &about)
+    })
+    .map_err(Uncopied::failed)?;
     match ended {
         Ok(status) if status.success() => Ok(()),
         _ => Err(Uncopied::of(
@@ -2501,7 +2541,7 @@ fn sent_held(
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
     let about = format!("of {} of held outputs to {}", sized(size), lent.host);
-    let _turn = uplink_turn(rank, &about);
+    let _turn = uplink::waited(|| uplink_turn(rank, &about));
     let send = |scope: Option<&str>| {
         let mut copying = Copying::start(
             uploading(nix, scope, COPY_ALIVE)
@@ -2512,15 +2552,17 @@ fn sent_held(
         let ended = finished_within(&mut copying.child, within);
         Ok::<_, std::io::Error>((ended, copying.heard()))
     };
-    let ended = scoped_or_again(
-        upload_scope(),
-        send,
-        |ended| ended.is_some_and(|status| status.success()),
-        &format!(
-            "nix-offload: the send {about} couldn't be given a scope of its own, since the user \
-             manager's bus refused it, so it goes again outside one, keeping its turn"
-        ),
-    )
+    let ended = uplink::sent(Some(size), || {
+        scoped_or_again(
+            upload_scope(),
+            send,
+            |ended| ended.is_some_and(|status| status.success()),
+            &format!(
+                "nix-offload: the send {about} couldn't be given a scope of its own, since the \
+                 user manager's bus refused it, so it goes again outside one, keeping its turn"
+            ),
+        )
+    })
     .map(|(ended, _)| ended);
     match ended {
         Ok(Some(status)) if status.success() => return true,
@@ -2688,6 +2730,7 @@ fn unsent(asked: &Asked, nix: &str, why: &str) -> Ran {
         on: None,
         status: UNSENT,
         sent: None,
+        up: uplink::Spent::default(),
     }
 }
 
@@ -2789,6 +2832,7 @@ fn here(asked: &Asked, nix: &str) -> Ran {
         on: None,
         status,
         sent: None,
+        up: uplink::Spent::default(),
     }
 }
 
@@ -2807,6 +2851,7 @@ fn here_until(asked: &Asked, nix: &str, busy: &dyn Fn() -> bool) -> Option<Ran> 
             on: None,
             status: 1,
             sent: None,
+            up: uplink::Spent::default(),
         });
     };
     let mut read = std::time::Instant::now();
@@ -2840,6 +2885,7 @@ fn here_until(asked: &Asked, nix: &str, busy: &dyn Fn() -> bool) -> Option<Ran> 
         on: None,
         status,
         sent: None,
+        up: uplink::Spent::default(),
     })
 }
 
@@ -3971,6 +4017,7 @@ pub fn on_with(
         // A build killed by a signal there comes back as ssh's status.
         status: status.code().unwrap_or(UNREACHED),
         sent,
+        up: uplink::Spent::default(),
     })
 }
 
@@ -4055,6 +4102,7 @@ fn captured_on(
         on: Some(lent.host.clone()),
         status: output.status.code().unwrap_or(UNREACHED),
         sent,
+        up: uplink::Spent::default(),
     };
     Ok((ran, String::from_utf8_lossy(&output.stdout).into_owned()))
 }
@@ -5930,6 +5978,7 @@ fn sent_nearby(
                 on: Some(machine.host.clone()),
                 status: 1,
                 sent,
+                up: uplink::Spent::default(),
             });
         }
         Some(folder) => {
@@ -5944,6 +5993,7 @@ fn sent_nearby(
                     on: Some(machine.host.clone()),
                     status,
                     sent,
+                    up: uplink::Spent::default(),
                 });
             }
             copy_pinned(&folder, &machine.host, nix);
@@ -5990,6 +6040,7 @@ fn sent_nearby(
         on: Some(machine.host.clone()),
         status: status.code().unwrap_or(UNREACHED),
         sent,
+        up: uplink::Spent::default(),
     })
 }
 
@@ -6101,7 +6152,8 @@ fn copy_pinned(folder: &Path, host: &str, nix: &str) {
 /// Adds a line for a build to `journal`: when it ended, how long it took,
 /// what it built, where, its status and what it sent, and, where known,
 /// `waited`, the seconds of that it waited for room on its builder and for
-/// the builder to stand, so a queue shows before it's felt.
+/// the builder to stand, so a queue shows before it's felt. A run that
+/// copied up, or waited to, says what that spent as `up` ([`uplink`]).
 pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &Asked, ran: &Ran) {
     let mut line = serde_json::json!({
         "at": at,
@@ -6114,6 +6166,9 @@ pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &
     });
     if let Some(waited) = waited {
         line["waited"] = waited.into();
+    }
+    if ran.up.any() {
+        line["up"] = ran.up.said();
     }
     let written = journal
         .parent()
@@ -6287,6 +6342,44 @@ mod tests {
                 "{unread:?} was read as a load, perhaps from the wrong figure"
             );
         }
+    }
+
+    #[test]
+    fn a_runs_line_says_what_it_spent_on_the_uplink_only_where_it_did() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let journal = folder.path().join("there.jsonl");
+        let asked = asked(&words("github:o/r/abc checks.x.a")).expect("asked");
+        let ran = |up| Ran {
+            on: Some("b".to_owned()),
+            status: 0,
+            sent: Some(1),
+            up,
+        };
+        let none = ran(uplink::Spent::default());
+        note(&journal, 10, 5, None, &asked, &none);
+        let up = uplink::Spent {
+            waited: Duration::from_secs(146),
+            sending: Duration::from_millis(3_900),
+            bytes: 2_048,
+            copies: 2,
+        };
+        note(&journal, 20, 150, Some(146), &asked, &ran(up));
+        let lines: Vec<serde_json::Value> = fs::read_to_string(&journal)
+            .expect("the journal")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a line of JSON"))
+            .collect();
+        assert_eq!(lines.len(), 2, "each run wasn't given one line");
+        assert!(
+            lines[0].get("up").is_none(),
+            "a run that sent nothing up still said what it spent: {}",
+            lines[0]
+        );
+        assert_eq!(
+            lines[1]["up"],
+            serde_json::json!({"waited": 146, "seconds": 3, "bytes": 2_048, "copies": 2}),
+            "a run's uplink spend wasn't said as it was counted"
+        );
     }
 
     #[test]
