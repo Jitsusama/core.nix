@@ -136,6 +136,10 @@ def refuses_what_it_should() -> list[str]:
         let_through.append("a why after a first argument holding a comma")
     if unread("unhosted(said, why);") != ["why"]:
         let_through.append("a why held in a name, which can't be read")
+    if unread('unhosted(said, why ?? "hosted");') != ['why ?? "hosted"']:
+        let_through.append("a why held half in a name")
+    if whys('unhosted(said, named === "x" ? "a" : "b");') != {"a", "b"}:
+        let_through.append("a word a choice is made by, read as a why")
     if keys('provider.elsewhere("unopened", session), Theme.alert]]);') != {"unopened"}:
         let_through.append("a key the launcher names")
     vocabulary = {"things": [{"id": "agents:machine", "said": {"hosted": "x", "opening": ""}}]}

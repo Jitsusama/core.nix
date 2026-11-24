@@ -1,9 +1,10 @@
 # shellcheck shell=bash
 # Runs modules/quickshell/opens-in-sessions.sh through each door it can
-# take, over stand-ins for kitty's kitten, systemd-run, systemctl and
-# sleep, and the shell's qs: its socket, a socket that comes while it
+# take, over stand-ins for kitty's kitten, systemd-run, systemctl, sleep
+# and date, and the shell's qs: its socket, a socket that comes while it
 # waits, the unit's old kitty, and neither, which opens nothing and tells
-# the shell so, as it does when the kitty it asks opens nothing. The old
+# the shell so, as it does when the kitty it asks can't be reached or the
+# old one opens nothing, and says so when the shell doesn't hear it. The old
 # kitty is a real process with that kitty's words on its command line,
 # since the script reads /proc, which no stand-in can be. What the script
 # tells the shell is held to what Sessions.qml's handler takes, so the two
@@ -22,13 +23,16 @@ mkdir -p "$stand_ins"
 failed=0
 
 # Each stand-in says what it was asked, one line, into asked.
+# Each fails while a file of its name and -fails is there.
 for program in kitten systemd-run qs; do
-  printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" > "$stand_ins/$program"
+  printf '#!%s\necho "%s $*" >> "%s/asked"\n[ ! -f "%s/%s-fails" ]\n' \
+    "$BASH" "$program" "$work" "$work" "$program" > "$stand_ins/$program"
 done
-# A kitten that opens nothing, as a kitty hung with its socket still there.
-printf '[ ! -f "%s/kitten-fails" ]\n' "$work" >> "$stand_ins/kitten"
-# The time the script was started at, as the shell's own clock gives it.
-printf '#!%s\necho 1700000000000\n' "$BASH" > "$stand_ins/date"
+# The time the script was started at, as the shell's own clock gives it,
+# but only when asked in ms, as the shell's handler takes it: asked any
+# other way, it answers what it was asked, which no case wants.
+printf '#!%s\nif [ "$*" = +%%s%%3N ]; then echo 1700000000000; else echo "date $*"; fi\n' \
+  "$BASH" > "$stand_ins/date"
 # The unit's main process, as main-pid names it.
 printf '#!%s\ncat "%s/main-pid"\n' "$BASH" "$work" > "$stand_ins/systemctl"
 # Each wait counted, and the socket made at the wait came-at names.
@@ -45,7 +49,7 @@ old=""
 trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 
 fresh() {
-  rm -f "$work/came-at" "$work/kitty.sock" "$work/kitten-fails"
+  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails
   : > "$work/asked"
   : > "$work/waits"
   echo 0 > "$work/main-pid"
@@ -84,23 +88,26 @@ waited() {
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 opens pi-session.7 --directory /src/reef zsh -lic 'mycelium attach'
-expect "a kitty listening is asked over its socket, in the folder named" \
-  "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-session.7 \
---cwd /src/reef --env MYCELIUM_APP_ID=pi-session.7 zsh -lic mycelium attach" asked
+# Asked for no answer, so a kitty slow to draw it, which kitten would give
+# up on after its 10 s, is never taken as one that opened nothing.
+expect "a kitty listening is asked over its socket, in the folder named, for no answer" \
+  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+--os-window-class pi-session.7 --cwd /src/reef --env MYCELIUM_APP_ID=pi-session.7 \
+zsh -lic mycelium attach" asked
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 opens pi-spawned.8 pi
 expect "one naming no folder opens at home" \
-  "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-spawned.8 \
---cwd /home/joel --env MYCELIUM_APP_ID=pi-spawned.8 pi" asked
+  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+--os-window-class pi-spawned.8 --cwd /home/joel --env MYCELIUM_APP_ID=pi-spawned.8 pi" asked
 
 fresh
 echo 3 > "$work/came-at"
 opens pi-session.9 pi
 expect "a kitty starting again is waited on until its socket comes" \
-  "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-session.9 \
---cwd /home/joel --env MYCELIUM_APP_ID=pi-session.9 pi" asked
+  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+--os-window-class pi-session.9 --cwd /home/joel --env MYCELIUM_APP_ID=pi-session.9 pi" asked
 waited "it waits only until then" 3
 
 fresh
@@ -119,6 +126,17 @@ expect "the unit's own old kitty is reached as its single instance" \
 MYCELIUM_APP_ID=pi-session.10 kitty -1 --instance-group pi-sessions --class pi-session.10 \
 --directory /src/kelp pi" asked
 waited "it isn't waited on" 0
+# The old kitty failing to open it, the shell is told none took it.
+: > "$work/asked"
+touch "$work/systemd-run-fails"
+opens pi-hosted.s-old pi
+expect "an old kitty that opens nothing is asked once, and the shell is told none took it" \
+  "systemd-run --user --scope --collect --quiet --slice=agents.slice -- env \
+MYCELIUM_APP_ID=pi-hosted.s-old kitty -1 --instance-group pi-sessions --class pi-hosted.s-old \
+--directory /home/joel pi
+qs ipc call sessions untaken pi-hosted.s-old 1700000000000" asked
+expect "the journal says it opened nothing" \
+  "sessions: the sessions kitty opened no pi-hosted.s-old" said
 kill "$old"
 old=""
 
@@ -127,32 +145,35 @@ fresh
 "$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
 old=$!
 echo "$old" > "$work/main-pid"
-opens pi-session.11 pi
+opens pi-hosted.s-11 pi
 if [ "$status" -ne 1 ]; then
   echo "FAIL with neither, it ended $status, not 1"
   failed=1
 fi
 expect "with neither, no kitty is asked, and the shell is told none took it" \
-  "qs ipc call sessions untaken pi-session.11 1700000000000" asked
+  "qs ipc call sessions untaken pi-hosted.s-11 1700000000000" asked
 waited "it gave up after 20 s of waits" 99
-expect "the journal says why" "sessions: no sessions kitty to open pi-session.11 in" said
+expect "the journal says why" "sessions: no sessions kitty to open pi-hosted.s-11 in" said
 kill "$old"
 old=""
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
-touch "$work/kitten-fails"
-opens pi-session.12 pi
+# A socket kitty no longer listens on, as after a crash, which the ask never
+# reaches; and a shell that doesn't hear the give-up, which is said too.
+touch "$work/kitten-fails" "$work/qs-fails"
+opens pi-hosted.s-12 pi
 if [ "$status" -ne 1 ]; then
-  echo "FAIL with a kitty that opens nothing, it ended $status, not 1"
+  echo "FAIL with a kitty its ask can't reach, it ended $status, not 1"
   failed=1
 fi
-expect "a kitty that opens nothing is asked once, and the shell is told none took it" \
-  "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-session.12 \
---cwd /home/joel --env MYCELIUM_APP_ID=pi-session.12 pi
-qs ipc call sessions untaken pi-session.12 1700000000000" asked
-expect "the journal says it opened nothing" "sessions: the sessions kitty opened no pi-session.12" \
-  said
+expect "a kitty its ask can't reach is asked once, and the shell is told none took it" \
+  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+--os-window-class pi-hosted.s-12 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-12 pi
+qs ipc call sessions untaken pi-hosted.s-12 1700000000000" asked
+expect "the journal says it opened nothing, and that the shell didn't hear" \
+  "sessions: the sessions kitty opened no pi-hosted.s-12
+sessions: the shell didn't hear that no kitty took pi-hosted.s-12" said
 
 # The shell's handler takes what the script tells it: its target, the
 # function's name, and an argument for each word after it.

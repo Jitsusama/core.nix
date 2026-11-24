@@ -463,10 +463,11 @@ ShellRoot {
         Expect.expect("its place kept for its window as it wakes", place?.slept === true
             && place?.asleep === true && typeof place?.workspace === "number",
             JSON.stringify(Sessions.keptPlaces));
-        // Led by an orchestrator, it wakes where it was kept, never sent to
-        // its orchestrator's workspace, nor one made and named for it, as
-        // Reopen Them All puts back the rest of what it kept.
-        Expect.expect("one led by an orchestrator wakes where it was kept, naming nothing",
+        // Led by an orchestrator, its place is kept off its orchestrator's
+        // workspace, and the walk names none for it, as Reopen Them All
+        // puts back the rest of what it kept. It never wakes in this walk,
+        // so where its viewer opens is the sleepers' cases' to say.
+        Expect.expect("one led keeps no place on its orchestrator's workspace, naming none",
             !Niri.acts.some(act => act.SetWorkspaceName?.name === "NAPLED")
             && place?.workspace !== 46 && Niri.workspaces[place?.workspace]?.name !== "NAPLED",
             `${JSON.stringify(place)} ${JSON.stringify(Niri.acts)}`);

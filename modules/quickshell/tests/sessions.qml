@@ -492,6 +492,19 @@ ShellRoot {
         expect("a give-up older than the ask leaves it coming",
             Sessions.viewerComing("pi-hosted.s-untaken"),
             JSON.stringify(Sessions.attaching));
+        // Any program of Joel's can call the handler, so only a time in ms
+        // is a give-up's, and only a viewer's app id one the script asks
+        // under: a join's ask, say, is left coming as it was.
+        Sessions.untaken("pi-hosted.s-untaken", "1700000000%3N");
+        const joining = "harbour:JOIN";
+        Sessions.attaching = Object.assign({}, Sessions.attaching, { [joining]: Date.now() });
+        Sessions.untaken(joining, String(Date.now()));
+        expect("a give-up of no ms, or of no viewer's app id, takes nothing",
+            Sessions.viewerComing("pi-hosted.s-untaken") && joining in Sessions.attaching,
+            JSON.stringify(Sessions.attaching));
+        const joined = Object.assign({}, Sessions.attaching);
+        delete joined[joining];
+        Sessions.attaching = joined;
         // One asked for by itself into a kept place, unfocused, as
         // viewKept asks, then pressed for while it comes: the press is
         // said opening, and the viewer takes the focus once it's listed,
@@ -1132,12 +1145,43 @@ ShellRoot {
         expect("nor is it a running session's window, nor raised by Go To",
             window === null && !focused(88), `${JSON.stringify(window)} `
                 + JSON.stringify(Niri.acted));
+        // Whose window holds the viewer's name is said, so a pid read
+        // wrong, with every viewer refused, is seen at the press.
+        expect("and Go To says another program's window holds its name",
+            root.unhosted === "FORGED" && root.unhostedWhy === "unowned",
+            `${root.unhosted} ${root.unhostedWhy}`);
+        // A start's window in the sessions kitty is held to its pid too,
+        // as any program can name its window as a start's.
+        const startedNamed = "pi-session.3";
+        const lone = { id: 87, pid: 880, opened: startedNamed };
+        const inKitty = { socket: Sessions.sessionsSocket, window: 1 };
+        const started = Sessions.windowOf({ opened: startedNamed, kitty: inKitty }, {},
+            { [startedNamed]: [lone] });
+        expect("nor is one named as a start's in the sessions kitty its window",
+            started === null, JSON.stringify(started));
+        // With niri listing nothing, the windows daemon's index is read,
+        // held to the same pid.
+        const indexed = { index: Sessions.niriWindows, kept: Sessions.windowsKept };
+        Niri.windows = {};
+        Sessions.niriWindows = { pids: { "880": [forged] }, opened: { [named]: [forged] } };
+        Sessions.windowsKept = { "window:88": forged };
+        const keptWindow = Sessions.windowOf({ presence: hosting }, {}, undefined);
+        expect("nor is it a viewer listed in the index, nor its session's window there",
+            Sessions.listedNamed(named) === undefined && keptWindow === null,
+            `${JSON.stringify(Sessions.listedNamed(named))} ${JSON.stringify(keptWindow)}`);
+        Sessions.niriWindows = indexed.index;
+        Sessions.windowsKept = indexed.kept;
         // Its kitty started again under a new pid, which the file's watch
         // can miss, its folder made anew: the file is read again before a
         // window with the viewer's app id is refused.
         kittyPidFile.setText("5151\n");
         Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
         const anew = { id: 90, pid: 5151, opened: named };
+        // A look from a binding (running and the rest) reads no file, so
+        // changes nothing those bindings read while they're worked out.
+        expect("a look reads no file, so changes no pid its bindings read",
+            !Sessions.drawnHere(anew) && Sessions.sessionsKittyPid === "4242",
+            Sessions.sessionsKittyPid);
         Niri.windows = Object.assign({}, unforged, { "90": anew });
         Niri.windowOpenedOrChanged(anew);
         expect("one drawn by the kitty started again is taken as come",
