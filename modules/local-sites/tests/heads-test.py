@@ -136,7 +136,18 @@ def test_a_base_moving_the_sheets_path_is_named() -> None:
 
 
 @pytest.mark.parametrize(
-    "holder", [("<div hidden>", "</div>"), ("<dialog>", "</dialog>"), ("<div popover>", "</div>")]
+    "holder",
+    [
+        ("<div hidden>", "</div>"),
+        ("<dialog>", "</dialog>"),
+        ("<div popover>", "</div>"),
+        ("<canvas>", "</canvas>"),
+        ("<video>", "</video>"),
+        ("<audio>", "</audio>"),
+        ("<object>", "</object>"),
+        ("<datalist>", "</datalist>"),
+        ("<rp>", "</rp>"),
+    ],
 )
 def test_a_base_written_where_nothing_is_drawn_is_named(holder: tuple[str, str]) -> None:
     """A browser reads links from a base wherever it's parsed, drawn or not."""
@@ -363,6 +374,76 @@ def test_a_head_after_svg_holding_html_is_drawn() -> None:
     assert heads.head_faults(held + written()) == []
 
 
+# What the gate says of a heading drawn or heard above the head's title.
+FIRST_OUTSIDE = "its first heading, <h2>, sits outside its head: make the head's title first"
+
+
+@pytest.mark.parametrize(
+    "above",
+    [
+        "<svg><foreignObject><h2>Mine</h2></foreignObject></svg>",
+        "<math><mi><h2>Mine</h2></mi></math>",
+        "<canvas><h2>Mine</h2></canvas>",
+        "<object><h2>Mine</h2></object>",
+        '<div style="visibility: hidden"><h2 style="visibility: visible">Mine</h2></div>',
+        '<h2 style="opacity: 0">Mine</h2>',
+        '<h2 style="opacity: var(--one)">Mine</h2>',
+        '<h2 hidden style="display: -webkit-box">Mine</h2>',
+        '<h2 style="display: none; display: -webkit-box">Mine</h2>',
+    ],
+)
+def test_a_heading_a_browser_may_draw_or_hear_above_the_head_is_named(above: str) -> None:
+    """What may not be there is sought wherever a browser may draw it or a reader hear it.
+
+    HTML in SVG or MathML, a canvas's or an object's fallback, one shown
+    again under visibility, one heard though drawn clear, and a style this
+    can't read, which a browser may keep, all count.
+    """
+    assert heads.head_faults(above + written()) == [FIRST_OUTSIDE]
+
+
+@pytest.mark.parametrize(
+    "above",
+    [
+        '<div style="visibility: hidden"><h2>Mine</h2></div>',
+        '<h2 style="display: none">Mine</h2>',
+        "<h2 hidden>Mine</h2>",
+        '<div style="content-visibility: hidden"><h2>Mine</h2></div>',
+        "<details><summary>more</summary><h2>Mine</h2></details>",
+        "<template><h2>Mine</h2></template>",
+    ],
+)
+def test_a_heading_surely_undrawn_and_unheard_above_the_head_passes(above: str) -> None:
+    """Invisible all through, not displayed, skipped, shut or a template's says nothing."""
+    assert heads.head_faults(above + written()) == []
+
+
+def test_a_banner_in_svg_above_the_head_is_named() -> None:
+    """A header SVG holds again as HTML is drawn, and heard as a banner above the head."""
+    above = '<svg><foreignObject><header class="hero"><p>Mine</p></header></foreignObject></svg>'
+    assert heads.head_faults(above + written()) == [
+        'it draws a <header class="hero"> above its head: let the kit\'s head be its one banner'
+    ]
+
+
+@pytest.mark.parametrize(
+    "holder", ['<div role="img" aria-label="Sites">', '<div role="image">', "<button>"]
+)
+def test_a_head_held_by_what_flattens_its_children_is_unheard(holder: str) -> None:
+    """An image's or a button's children are heard only as its words, never as a banner."""
+    closing = "</button>" if holder == "<button>" else "</div>"
+    assert heads.head_faults(holder + written() + closing) == [
+        "its head is hidden from screen readers: let them hear it"
+    ]
+
+
+@pytest.mark.parametrize("mode", ['shadowrootmode="open"', 'shadowroot="closed"'])
+def test_a_shadow_root_is_named(mode: str) -> None:
+    """A browser draws a host's children only where its shadow root's slot puts them."""
+    host = f"<div><template {mode}><h2>Mine</h2><slot></slot></template>{written()}</div>"
+    assert heads.page_faults(page(host)) == [heads.SHADOWED]
+
+
 def test_a_head_after_html_written_in_svg_left_open_is_drawn() -> None:
     """A <p> in SVG left open leaves it, as a browser does, so the head after is HTML's."""
     assert heads.head_faults('<svg class="sprite"><p>Icons</p>' + written()) == []
@@ -436,9 +517,13 @@ def test_a_template_left_open_in_the_head_holds_the_page() -> None:
     assert heads.page_faults(markup) == [NO_HEAD]
 
 
-@pytest.mark.parametrize("holder", ["template", "noscript"])
+@pytest.mark.parametrize("holder", ["template", "noscript", "xmp", "textarea"])
 def test_an_end_tag_inside_what_holds_its_own_closes_nothing_outside(holder: str) -> None:
-    """A </main> in a template or noscript leaves the head in the <main>, where it's no banner."""
+    """A </main> in a template, or as words, leaves the head in the <main>, where it's no banner.
+
+    Raw text and a noscript read as words, as a browser running scripts
+    reads them, end nothing but themselves.
+    """
     faults = heads.head_faults(f"<main><{holder}></main></{holder}>{written()}</main>")
     assert (
         "its head sits in a <main>, where a header is no banner: draw it before, as the page's own"
@@ -507,6 +592,10 @@ def test_a_head_in_open_details_is_drawn() -> None:
         'hidden style="display: list-item grid"',
         'hidden style="display: contents block"',
         'hidden style="display: contents table-row"',
+        'hidden style="display: run-in"',
+        'hidden style="display: run-in flow"',
+        'hidden style="display: ruby-base"',
+        'hidden style="display: ruby-base-container"',
         'style="display: none; display: block block"',
     ],
 )
@@ -585,7 +674,9 @@ def test_a_heading_marked_by_role_before_the_head_is_named() -> None:
     ]
 
 
-@pytest.mark.parametrize("role", ["none", "presentation", "region"])
+@pytest.mark.parametrize(
+    "role", ["none", "presentation", "region", "doc-pageheader", "sectionheader"]
+)
 def test_a_head_marked_another_role_is_named(role: str) -> None:
     """A head marked another role is no longer the banner a screen reader lands on."""
     head = changed('<header class="page-head">', f'<header class="page-head" role="{role}">')
@@ -600,7 +691,7 @@ def test_a_head_marked_the_banner_passes() -> None:
     assert heads.head_faults(head) == []
 
 
-@pytest.mark.parametrize("role", ["none", "presentation", "generic"])
+@pytest.mark.parametrize("role", ["none", "presentation", "generic", "doc-subtitle"])
 def test_a_title_marked_no_heading_is_named(role: str) -> None:
     """A title a screen reader isn't told is a heading isn't the page's title to it."""
     head = changed("<h1>", f'<h1 role="{role}">')
@@ -820,6 +911,14 @@ def test_a_standing_line_with_no_status_is_named() -> None:
             '<span class="glyph" aria-hidden="true">',
             '<span class="glyph" aria-hidden="false" role="status">',
         ),
+        (
+            "Reaching its daemon.</span>",
+            'Reaching its daemon.</span><svg><g role="status"></g></svg>',
+        ),
+        (
+            "Reaching its daemon.</span>",
+            'Reaching its daemon.</span><span style="opacity: 0" aria-live="polite">.</span>',
+        ),
     ],
 )
 def test_a_standing_line_speaking_otherwise_is_named(old: str, new: str) -> None:
@@ -860,6 +959,11 @@ SPEAKS = "1 more of its head speaks as it changes: only the standing line's stat
     ("old", "new"),
     [
         ("Seven sites", "<output>Seven</output> sites"),
+        ("Seven sites", 'Seven <span style="opacity: 0" aria-live="assertive">.</span> sites'),
+        (
+            "Seven sites",
+            'Seven<svg><foreignObject><span role="status">.</span></foreignObject></svg> sites',
+        ),
         ('<p class="lede">', '<p class="lede" role="wobble status">'),
         ('<header class="page-head">', '<header class="page-head" aria-live="polite">'),
     ],

@@ -106,6 +106,7 @@ SPACE = " \t\n\f\r"
 BANNER = {None, "banner"}
 
 # The roles ARIA knows; of a role list, a browser takes the first it knows.
+# One of DPUB's or SVG's, written with a hyphen, counts as known too.
 ROLES = {
     "alert",
     "alertdialog",
@@ -137,6 +138,7 @@ ROLES = {
     "gridcell",
     "group",
     "heading",
+    "image",
     "img",
     "insertion",
     "link",
@@ -170,6 +172,8 @@ ROLES = {
     "scrollbar",
     "search",
     "searchbox",
+    "sectionfooter",
+    "sectionheader",
     "separator",
     "slider",
     "spinbutton",
@@ -198,6 +202,32 @@ ROLES = {
 # marquee's and a timer's are off unless they say otherwise.
 LIVE_ROLES = {"status", "alert", "log"}
 
+# The roles whose children a screen reader hears only as their words, never
+# as a heading, a banner or a status, and the tags that have one unmarked.
+FLATTENING = {
+    "button",
+    "checkbox",
+    "image",
+    "img",
+    "math",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "meter",
+    "option",
+    "progressbar",
+    "radio",
+    "scrollbar",
+    "separator",
+    "slider",
+    "switch",
+    "tab",
+}
+IMPLICIT = {"button": "button", "meter": "meter", "option": "option", "progress": "progressbar"}
+
+# What a template carries to attach a shadow root as it's parsed, the old
+# name beside the new.
+SHADOW_ROOTS = {"shadowrootmode", "shadowroot"}
+
 # What an element's own style may say that draws none of it, as a browser
 # reads each declaration, beside an opacity of nothing; a sheet's rules, and a
 # clip or a size of nothing, are the live tests' to hold.
@@ -222,8 +252,10 @@ ROLLED_BACK = {"revert", "revert-layer"}
 
 # A display's words, as CSS Display writes it: how it sits among others, how
 # it lays out what it holds, and a list item's marker, each at most once, the
-# marker only beside a flow; or one word that says it alone.
-OUTER = {"block", "inline", "run-in"}
+# marker only beside a flow; or one word that says it alone. Only those
+# Chromium keeps, as the live tests draw with it: it drops run-in and the
+# ruby containers, so hidden holds there.
+OUTER = {"block", "inline"}
 INNER = {"flow", "flow-root", "table", "flex", "grid", "ruby", "math"}
 MARKED = {"list-item"}
 FLOWS = {"flow", "flow-root"}
@@ -234,10 +266,7 @@ ALONE = {
     "inline-grid",
     "inline-table",
     "none",
-    "ruby-base",
-    "ruby-base-container",
     "ruby-text",
-    "ruby-text-container",
     "table-caption",
     "table-cell",
     "table-column",
@@ -334,24 +363,56 @@ class Element:
                 declared[key] = (kept, weighty)
         return {key: value for key, (value, _) in declared.items()}
 
+    def doubts(self, name: str) -> bool:
+        """Say whether its style gives `name` a value this can't read, which a browser may keep."""
+        style = COMMENT.sub(" ", self.attributes.get("style", ""))
+        for key, colon, value in (each.partition(":") for each in style.split(";")):
+            kept = IMPORTANT.sub("", value.strip(SPACE).lower()).strip(SPACE)
+            if colon and key.strip(SPACE).lower() == name and kept and not valid(name, kept):
+                return True
+        return False
+
+    def held(self) -> bool:
+        """Say whether hidden, or a popover never shown, keeps the browser's display: none."""
+        # The element's own display beats the browser's, unless it rolls back
+        # to it; hidden=until-found draws nothing it holds whatever it says.
+        return ("hidden" in self.attributes or "popover" in self.attributes) and (
+            self.styled().get("display", "revert") in ROLLED_BACK
+            or self.attributes.get("hidden", "").strip(SPACE).lower() == "until-found"
+        )
+
     def hides(self) -> bool:
         """Say whether it draws none of itself: hidden, a popover never shown, or styled out."""
         # A hidden link or meta still does its work; only what's drawn is hidden.
         if self.tag in HEAD_ONLY:
             return False
         styled = self.styled()
-        # hidden and an unshown popover hide by the browser's display: none,
-        # which the element's own display beats, unless it rolls back to the
-        # browser's; hidden=until-found doesn't.
-        held = ("hidden" in self.attributes or "popover" in self.attributes) and (
-            styled.get("display", "revert") in ROLLED_BACK
-            or self.attributes.get("hidden", "").strip(SPACE).lower() == "until-found"
-        )
         return (
-            held
+            self.held()
             or any(each in STYLED_OUT for each in styled.items())
             or not opaque(styled.get("opacity", "1"))
         )
+
+    def gone(self) -> bool:
+        """Say whether, beyond doubt, nothing draws it or anything it holds, and none hears it."""
+        # Only display: none and what keeps it do; an opacity of nothing is
+        # still heard, and a child may show itself again under visibility.
+        if self.tag in HEAD_ONLY:
+            return False
+        return (self.held() or self.styled().get("display") == "none") and not self.doubts(
+            "display"
+        )
+
+    def unseen(self, *, above: bool) -> bool:
+        """Say whether it's drawn invisible, by its own visibility or that of what holds it."""
+        if self.doubts("visibility"):
+            return False
+        said = self.styled().get("visibility")
+        if said in {"hidden", "collapse"}:
+            return True
+        if said in {"visible", "initial"}:
+            return False
+        return above
 
     def within(self) -> list[Element]:
         """Give every element drawn inside it, in the order they're written."""
@@ -367,9 +428,41 @@ class Element:
                     found.extend(summary.within())
             # SVG and MathML draw none of what they hold as the page's own,
             # HTML they hold again included: a description, a symbol or a
-            # frame of no size draws nothing, which fails closed.
+            # frame of no size draws nothing, which fails closed for the head.
+            # What may not be there is sought in rivals(), which reads them.
             elif child.tag not in UNDRAWN and child.tag not in FOREIGN:
                 found.extend(child.within())
+        return found
+
+    def rivals(self, *, above: bool = False) -> list[Element]:
+        """Give every element inside it a browser may draw or a screen reader hear, in order.
+
+        What the page may not hold beside its head is sought here, so each
+        doubt counts it: HTML in SVG or MathML, a canvas's or an object's
+        fallback, an opacity of nothing, one shown again under visibility:
+        hidden, and a style this can't read. Only what's surely undrawn and
+        unheard is left out: display: none, a template's or shut content.
+        """
+        found = []
+        for child in self.children:
+            if child.gone():
+                continue
+            unseen = child.unseen(above=above)
+            if not unseen:
+                found.append(child)
+            if child.tag == "template" or (
+                child.styled().get("content-visibility") == "hidden"
+                and not child.doubts("content-visibility")
+            ):
+                continue
+            if child.tag in SHUT and "open" not in child.attributes:
+                for summary in (each for each in child.children if each.tag == "summary"):
+                    if child.tag == "details" and not summary.gone():
+                        invisible = summary.unseen(above=unseen)
+                        found.extend([] if invisible else [summary])
+                        found.extend(summary.rivals(above=invisible))
+                continue
+            found.extend(child.rivals(above=unseen))
         return found
 
     def shown(self) -> list[Element]:
@@ -377,11 +470,16 @@ class Element:
         return [child for child in self.children if not child.hides()]
 
     def written(self) -> list[Element]:
-        """Give every element parsed inside it, drawn or not, but for what's read as words."""
+        """Give every element parsed into the page's tree inside it, drawn or not.
+
+        A template's content is a fragment of its own, apart from the tree;
+        raw text holds no elements, so what media, canvas or an object holds
+        is read here.
+        """
         found = []
         for child in self.children:
             found.append(child)
-            if child.tag not in UNDRAWN:
+            if child.tag != "template":
                 found.extend(child.written())
         return found
 
@@ -414,28 +512,56 @@ class Element:
     def role(self) -> str | None:
         """Give the role a browser takes it as: the first it knows, or an output's status."""
         written = self.attributes.get("role", "").lower().split()
-        known = next((role for role in written if role in ROLES), None)
+        known = next((role for role in written if role in ROLES or "-" in role), None)
         return known or ("status" if self.tag == "output" else None)
 
+    def flattens(self) -> bool:
+        """Say whether a screen reader hears what it holds only as its words."""
+        return (self.role() or IMPLICIT.get(self.tag)) in FLATTENING
+
+    def silenced(self) -> bool:
+        """Say whether it's marked so no screen reader hears it: aria-hidden or inert."""
+        hidden = self.attributes.get("aria-hidden", "").strip(SPACE).lower() == "true"
+        return hidden or "inert" in self.attributes
+
     def heard(self) -> bool:
-        """Say whether a screen reader hears it: nothing undrawn, inert or under aria-hidden is."""
-        element: Element | None = self
+        """Say whether a screen reader hears it as itself: nothing undrawn, inert or flattened is.
+
+        Neither is what's under aria-hidden, or held by a role, a button say,
+        whose children are heard only as its words.
+        """
+        if self.silenced() or self.hides():
+            return False
+        element = self.parent
         while element is not None:
-            if element.attributes.get("aria-hidden", "").strip(SPACE).lower() == "true":
-                return False
-            if element.hides() or "inert" in element.attributes:
+            if element.silenced() or element.hides() or element.flattens():
                 return False
             element = element.parent
         return True
 
-    def live(self) -> bool:
-        """Say whether a screen reader speaks its changes; an explicit aria-live decides."""
-        if not self.heard():
-            return False
+    def may_be_heard(self) -> bool:
+        """Say whether a screen reader may hear it: nothing surely gone or silenced holds it."""
+        element: Element | None = self
+        while element is not None:
+            if element.silenced() or element.gone():
+                return False
+            element = element.parent
+        return True
+
+    def speaks(self) -> bool:
+        """Say whether it's marked to speak its changes; an explicit aria-live decides."""
         said = self.attributes.get("aria-live", "").strip(SPACE).lower()
         if said in {"polite", "assertive", "off"}:
             return said != "off"
         return self.role() in LIVE_ROLES
+
+    def live(self) -> bool:
+        """Say whether a screen reader surely speaks its changes."""
+        return self.heard() and self.speaks()
+
+    def may_speak(self) -> bool:
+        """Say whether a screen reader may speak its changes."""
+        return self.may_be_heard() and self.speaks()
 
     def section(self) -> Element | None:
         """Give the section it sits in, by its tag or the role it's marked with, if any."""
@@ -547,8 +673,11 @@ def head_faults(markup: str) -> list[str]:
             f"its head sits in a {where}, where a header is no banner:"
             " draw it before, as the page's own"
         )
-    faults.extend(banner_faults(head, everything, document.every()))
-    faults.extend(title_faults(head, everything))
+    # What may not be there beside the head is sought among all a browser
+    # may draw or hear, which holds all drawn, the head included.
+    rivals = document.rivals()
+    faults.extend(banner_faults(head, rivals, document.every()))
+    faults.extend(title_faults(head, rivals))
     if any(isinstance(each, str) and each.strip(SPACE) for each in head.content):
         faults.append("its head writes words outside its parts: keep every word in a part")
     return faults + parts_faults(head) + speaking_faults(head)
@@ -679,8 +808,15 @@ def part_faults(part: Element) -> list[str]:
     if part.is_part("p", "eyebrow"):
         return eyebrow_faults(part)
     if part.is_part("p", "standing"):
-        live = [element for element in inner if element.live()]
-        if len(live) != 1 or live[0].role() != "status" or live[0].interrupts():
+        # Its one status is drawn and surely heard, and nothing else may speak.
+        live = [element for element in part.rivals() if element.may_speak()]
+        if (
+            len(live) != 1
+            or live[0] not in inner
+            or not live[0].live()
+            or live[0].role() != "status"
+            or live[0].interrupts()
+        ):
             return [
                 (
                     'its standing line needs one polite role="status" for the feed\'s state,'
@@ -700,19 +836,19 @@ def speaking_faults(head: Element) -> list[str]:
     standing = [child for child in head.children if child.is_part("p", "standing")]
     speaking = [
         element
-        for element in head.within()
-        if element.live() and not any(element.inside(line) for line in standing)
+        for element in head.rivals()
+        if element.may_speak() and not any(element.inside(line) for line in standing)
     ]
-    if speaking or head.live():
+    if speaking or head.may_speak():
         faults.append(
-            f"{len(speaking) + head.live()} more of its head speaks as it changes:"
+            f"{len(speaking) + head.may_speak()} more of its head speaks as it changes:"
             " only the standing line's status may be live"
         )
     # A live region speaks for all it holds, so one around the head speaks the whole head.
     around = []
     parent = head.parent
     while parent is not None:
-        if parent.live():
+        if parent.may_speak():
             around.append(parent)
         parent = parent.parent
     if around:
@@ -763,6 +899,14 @@ BASED = (
 )
 
 
+# What a page writing a shadow root must change, since its host then draws
+# what it holds only where a slot in that root puts it.
+SHADOWED = (
+    "it attaches a shadow root, whose host draws what it holds only where a <slot> puts it:"
+    " write the page in its own tree"
+)
+
+
 # What a page whose skip link shares its line must change, since site.sh puts
 # the strip after the line holding it, which would put it inside what follows.
 SKIP_LINE = (
@@ -797,7 +941,13 @@ def page_faults(markup: str) -> list[str]:
         sheet = []
     else:
         sheet = [NO_SHEET]
-    return sheet + skip_line_faults(markup) + head_faults(markup)
+    # The parser here builds no shadow tree, so a page writing one is named.
+    shadowed = [
+        SHADOWED
+        for element in parsed.every()
+        if element.tag == "template" and SHADOW_ROOTS & element.attributes.keys()
+    ][:1]
+    return sheet + shadowed + skip_line_faults(markup) + head_faults(markup)
 
 
 def main() -> int:
