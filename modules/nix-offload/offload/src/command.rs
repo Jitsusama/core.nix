@@ -131,7 +131,12 @@ pub fn asked(arguments: &[String]) -> Result<Asked, String> {
 /// once it has run `longest` seconds, saying so, and is ended with it
 /// otherwise. A watch beside it ends the group once nothing has followed
 /// it for `NIX_OFFLOAD_UNWATCHED` seconds, and takes its files away then
-/// too, whether it ended or not. The command's own status is the shell's. The clock's
+/// too, whether it ended or not, once the run's shell has ended or ten
+/// seconds have passed: removed at once, the files raced the shell writing
+/// the status of the command the TERM ended, and a status written while
+/// `rm` walked the folder left it behind, the watch gone (a test's "its
+/// files stayed", in loaded gates through November). The command's own
+/// status is the shell's. The clock's
 /// sleep holds no output open, since one left behind by a TERM landing
 /// before its pid is known would keep ssh, and so the builder, until it
 /// woke. Once it has run out, the clock ends the group before saying so,
@@ -159,13 +164,17 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     // before the clock sets its own trap is caught and then dropped as
     // dash clears what it inherited. A command as quick as `true` ends in
     // that window, and the shell then waited on a clock asleep for
-    // `longest` (14 November: 41 of 50 quick runs under dash).
+    // `longest` (14 November: 41 of 50 quick runs under dash). In the
+    // watch, a subshell, `$$` is still the run's own shell, so the watch
+    // waits on it to have written its status before taking the files.
     let apart = format!(
         "run=$1; leaves=$2; \
          (trap '' TERM; while sleep 2; do [ -d \"$run\" ] || exit 0; \
          beat=$(stat -c %Y \"$run/beat\" 2>/dev/null) || exit 0; \
          [ $(($(date +%s) - beat)) -gt \"${{NIX_OFFLOAD_UNWATCHED:-120}}\" ] || continue; \
-         [ -e \"$run/status\" ] || kill -TERM 0; rm -rf \"$run\"; \
+         [ -e \"$run/status\" ] || kill -TERM 0; waited=0; \
+         while kill -0 $$ 2>/dev/null && [ $waited -lt 50 ]; do \
+         sleep 0.2; waited=$((waited + 1)); done; rm -rf \"$run\"; \
          [ -z \"$leaves\" ] || rm -rf \"$leaves\"; exit 0; done) \
          </dev/null >/dev/null 2>&1 & \
          (trap 'kill $sleeping 2>/dev/null; exit 0' TERM; \
@@ -1059,9 +1068,47 @@ mod tests {
             // A look every tenth of a second, for the watch that ends it.
             std::thread::sleep(Duration::from_millis(100));
         }
-        assert!(!run.exists(), "its files stayed");
+        let stayed: Vec<String> = std::fs::read_dir(&run)
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert!(!run.exists(), "its files stayed: {stayed:?}");
         assert_eq!(carrying(&mark), Vec::<u32>::new(), "what it started ran on");
         assert!(!left.exists(), "it ran on unwatched");
+    }
+
+    /// A run nothing follows that writes in its folder as the watch's TERM
+    /// ends it, as the run's shell writes its status then, leaves nothing
+    /// behind: the watch removes the folder only once the writing is done.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_run_that_writes_as_it_ends_unwatched_leaves_nothing() {
+        let folder = tempfile::tempdir().unwrap();
+        let run = folder.path().join("nix-offload-runs/writing");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 600,
+            words: vec![
+                "sh".to_owned(),
+                "-c".to_owned(),
+                format!(
+                    "trap 'i=0; while [ $i -lt 100 ]; do : > {0}/f$i; i=$((i + 1)); \
+                     sleep 0.01; done; exit 3' TERM; echo started; sleep 60 & wait",
+                    run.display()
+                ),
+            ],
+        };
+        started_then_lost(&asked, "writing", folder.path(), "1");
+        let mark = folder.path().to_string_lossy().into_owned();
+        let deadline = Instant::now() + Duration::from_secs(45);
+        while (run.exists() || !carrying(&mark).is_empty()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let stayed = std::fs::read_dir(&run).map_or(0, Iterator::count);
+        assert!(!run.exists(), "{stayed} of its files stayed");
     }
 
     /// The processes whose words hold `mark`, this test's own aside.
