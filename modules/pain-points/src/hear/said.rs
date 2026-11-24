@@ -6,9 +6,9 @@
 //! opening with a bracket, or as words.rs knows the harness's and the
 //! mesh's text, is not his. What he had attached, the window he was
 //! looking at, is kept apart from his words. It also says when the agent
-//! answered him: a turn that ran a tool since his last message and ended
-//! speaking, which is how a session's own cell takes up a pain he said
-//! to it.
+//! answered him: a turn he opened, nobody else's message between, that ran
+//! a tool and ended speaking, with when he opened it, which is how a
+//! session's own cell takes up a pain he said to it.
 
 use crate::pi::iso_ms;
 use crate::words::automated;
@@ -21,6 +21,9 @@ const TOOLS_KEPT: usize = 4;
 /// How many of his own last messages a session keeps, to hear one said
 /// again.
 const EARLIER_KEPT: usize = 4;
+
+/// How many answers a session keeps while no cell is known to take them.
+const ANSWERS_KEPT: usize = 32;
 
 /// The openings of a message pi delivered from outside its window, when
 /// the one sending it was Joel.
@@ -63,14 +66,21 @@ pub struct Carried {
     /// an answer to him.
     #[serde(default)]
     pub acting: bool,
-    /// When the agent last answered him, in milliseconds since 1970, kept
-    /// until it is taken once the session's cell is known.
+    /// An answer a reading kept before answers held what they answered,
+    /// in milliseconds since 1970, taken as it was then: every pain said
+    /// in the session before it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answered: Option<i64>,
-    /// When he said the message that answer answered, so it takes up only
-    /// what he said from then, not a pain a failed turn left open before.
+    /// When he opened the turn under way, by his first message since the
+    /// last turn ended: none once it ends, or once someone else's message
+    /// makes the turn theirs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub asked: Option<i64>,
+    pub from: Option<i64>,
+    /// Each answer to him not yet taken, as when his turn opened and when
+    /// it was answered, kept until the session's cell is known, so every
+    /// answer in one reading takes what it answered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub answers: Vec<(i64, i64)>,
 }
 
 /// His words in a user message's text, and the window attached, or none
@@ -176,9 +186,17 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
                 Some("error" | "aborted") => carried.acting = false,
                 _ => carried.acting |= acted,
             }
-            if stopped == Some("stop") && carried.acting && !text_of(content).trim().is_empty() {
-                carried.answered = iso_ms(&head.timestamp);
-                carried.asked = carried.earlier.last().map(|(at, _)| *at);
+            if stopped == Some("stop")
+                && carried.acting
+                && !text_of(content).trim().is_empty()
+                && let (Some(from), Some(at)) = (carried.from, iso_ms(&head.timestamp))
+            {
+                carried.answers.push((from, at));
+                keep_last(&mut carried.answers, ANSWERS_KEPT);
+            }
+            // A turn ends on any stop but a call for tools, answered or not.
+            if stopped.is_some_and(|stop| stop != "toolUse") {
+                carried.from = None;
             }
             None
         }
@@ -196,8 +214,13 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             // that answers them, not him.
             carried.acting = false;
             let full: Value = serde_json::from_str(text).ok()?;
-            let (words, looking_at) = his(&text_of(full.pointer("/message/content")?))?;
+            let Some((words, looking_at)) = his(&text_of(full.pointer("/message/content")?))
+            else {
+                carried.from = None;
+                return None;
+            };
             let at = iso_ms(&head.timestamp)?;
+            carried.from.get_or_insert(at);
             let said = Said {
                 entry: head.id,
                 at,
@@ -325,12 +348,10 @@ mod tests {
         let at = iso_ms("2026-11-16T18:00:09.000Z");
         let answered = |lines: &[String]| {
             let mut carried = Carried::default();
-            let mut when = None;
             for text in lines {
                 line(text, &mut carried);
-                when = carried.answered.take().or(when);
             }
-            when
+            carried.answers.last().map(|&(_, at)| at)
         };
         let his = user("e1", "2026-11-16T18:00:05.000Z", "this is broken again");
         let ran = called(&["bash"]);
@@ -383,15 +404,40 @@ mod tests {
         ] {
             assert_eq!(answered(&lines), None, "{why}");
         }
-        let carried = Carried {
-            answered: at,
-            ..Carried::default()
-        };
+        let mut carried = Carried::default();
+        for text in [&his, &ran, &done] {
+            line(text, &mut carried);
+        }
         let kept = serde_json::to_string(&carried).expect("carried writes");
         let back: Carried = serde_json::from_str(&kept).expect("carried reads");
+        let opened = iso_ms("2026-11-16T18:00:05.000Z").expect("a time");
+        let at = at.expect("a time");
         assert_eq!(
-            back.answered, at,
-            "an answer is kept until the session's cell is known"
+            (back.answers, back.from),
+            (vec![(opened, at)], None),
+            "an answer is kept with when his turn opened until the session's cell is known"
+        );
+        let windows = |lines: &[&String]| {
+            let mut carried = Carried::default();
+            for text in lines {
+                line(text, &mut carried);
+            }
+            carried.answers
+        };
+        let steer = user("e2", "2026-11-16T18:00:06.000Z", "and the bar too");
+        let again = user("e3", "2026-11-16T18:00:08.000Z", "now the dock");
+        assert_eq!(
+            windows(&[&his, &steer, &ran, &done, &again, &ran, &done]),
+            vec![
+                (opened, at),
+                (iso_ms("2026-11-16T18:00:08.000Z").expect("a time"), at),
+            ],
+            "a turn he steered wasn't answered from its opening, or one answer hid another"
+        );
+        assert_eq!(
+            windows(&[&his, &peer, &ran, &done]),
+            Vec::new(),
+            "a turn a peer's message made theirs answered him"
         );
         let old: Carried = serde_json::from_str(r#"{"tools": [], "failed": [], "earlier": []}"#)
             .expect("a reading kept before answers reads");

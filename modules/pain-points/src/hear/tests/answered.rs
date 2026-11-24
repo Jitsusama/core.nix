@@ -63,7 +63,7 @@ fn an_answer_takes_up_only_what_it_answered_and_never_for_a_refused_cell() {
     live.extend(tool("bash"));
     live.extend([
         ended("2026-11-16T19:20:00.000Z", "error"),
-        user("c", "2026-11-16T19:25:00.000Z", "now make the bar green"),
+        user("c", "2026-11-16T19:25:00.000Z", "wtf, make the bar green"),
     ]);
     live.extend(tool("edit"));
     live.extend([
@@ -79,12 +79,17 @@ fn an_answer_takes_up_only_what_it_answered_and_never_for_a_refused_cell() {
         .iter()
         .map(|h| (h.entry.as_str(), h.taken_by.as_deref(), h.answered_at))
         .collect();
-    // 19:50 UTC on 16 November 2026.
-    let answered = Some(AT - 10 * 60_000);
+    // 19:30 and 19:50 UTC on 16 November 2026.
+    let (first, then) = (Some(AT - 30 * 60_000), Some(AT - 10 * 60_000));
     assert_eq!(
         taken,
-        vec![("a", None, None), ("b", Some("ABC123"), answered)],
-        "the pain a failed turn left stays open past an answer to another ask"
+        vec![
+            ("a", None, None),
+            ("c", Some("ABC123"), first),
+            ("b", Some("ABC123"), then),
+        ],
+        "the pain a failed turn left stays open past an answer to another ask, \
+         or one answer in a reading hid another"
     );
 
     let void = Place::new("answered-void");
@@ -93,7 +98,7 @@ fn an_answer_takes_up_only_what_it_answered_and_never_for_a_refused_cell() {
     hear(&void.ears(), CELLS, &mut |_, _| true).expect("a run");
     let heard = void.heard();
     assert!(
-        heard.len() == 2 && heard.iter().all(|h| h.void && h.taken_by.is_none()),
+        heard.len() == 3 && heard.iter().all(|h| h.void && h.taken_by.is_none()),
         "the void has no cell to take a pain up: {heard:?}"
     );
 
@@ -105,8 +110,9 @@ fn an_answer_takes_up_only_what_it_answered_and_never_for_a_refused_cell() {
     .expect("routes written");
     refused.log("src", "s-live", Path::new("/home/j/src"), &live);
     hear(&refused.ears(), CELLS, &mut |_, _| true).expect("a run");
+    let heard = refused.heard();
     assert!(
-        refused.heard().iter().all(|h| h.taken_by.is_none()),
-        "a cell the routes refuse took a pain up"
+        heard.len() == 3 && heard.iter().all(|h| h.taken_by.is_none()),
+        "a cell the routes refuse took a pain up: {heard:?}"
     );
 }

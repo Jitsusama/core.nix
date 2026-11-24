@@ -502,12 +502,16 @@ fn hear_logs(
         // An answer read while the node names no cell for the session
         // waits in its reading for a run that does; one by a cell the
         // routes refuse, as the void begun elsewhere, takes nothing up.
-        if let Some(cell) = cells.get(&log.session)
-            && let Some(at) = log.carried.answered.take()
-            && let Some(asked) = log.carried.asked.take()
-            && !routes.refuses(&cell.address)
-        {
-            answered(kept, &log.session, (asked, at), &cell.address);
+        // An answer kept before answers held their turn's opening takes,
+        // as it did then, every pain said before it.
+        if let Some(cell) = cells.get(&log.session) {
+            let older = log.carried.answered.take().map(|at| (i64::MIN, at));
+            let answers = std::mem::take(&mut log.carried.answers);
+            if !routes.refuses(&cell.address) {
+                for turn in older.into_iter().chain(answers) {
+                    answered(kept, &log.session, turn, &cell.address);
+                }
+            }
         }
     }
     following.retain(|name, _| present.contains(name));
@@ -519,15 +523,15 @@ fn hear_logs(
 /// replies to the question, as one did on 20 November after a restart cut
 /// its first turn short. A stall is no words of his to answer, the void
 /// has no cell to take anything, and a pain a carried-on log moved to
-/// another session waits for that one's answer. Only the pains said from
-/// the message it answered, `asked`, are taken, so one a failed turn left
-/// open before isn't taken by an answer to something else.
-fn answered(kept: &mut [Heard], session: &str, (asked, at): (i64, i64), by: &str) {
+/// another session waits for that one's answer. Only the pains said in
+/// the turn it answered, from when he opened it, `from`, are taken, so one
+/// a failed turn left open isn't taken by an answer to something else.
+fn answered(kept: &mut [Heard], session: &str, (from, at): (i64, i64), by: &str) {
     for h in kept
         .iter_mut()
         .filter(|h| h.session == session && !h.void && !stalled::is(h))
     {
-        if (asked..at).contains(&h.at) && h.taken_by.is_none() {
+        if (from..at).contains(&h.at) && h.taken_by.is_none() {
             h.taken_by = Some(by.to_owned());
             h.answered_at = Some(at);
         }
