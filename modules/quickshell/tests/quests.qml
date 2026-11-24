@@ -18,9 +18,10 @@ pragma ComponentBehavior: Bound
 // this one, each that can't take a session dimmed with why, each other
 // saying how it stands as Machines says it, from the node's machine
 // records, and Wherever It Fits last; a row told while the launcher is
-// open in another place is made ahead and drawn as it is now on the step
-// back, which makes no row, though none is made ahead as an opening fills
-// in at home or under a viewer's command line; and a quest made since is heard,
+// open in another place is made ahead, after a frame, and drawn as it is
+// now on the step back, which makes no row, though none is made ahead as
+// an opening fills in at home or in another place, under a viewer's
+// command line, or shut with a step held; and a quest made since is heard,
 // shut making no row, the daemon telling only the rows that moved, so a
 // list written again with only when each was heard moved tells none and
 // every other row is kept. It exits 0 once every case holds, and
@@ -69,10 +70,52 @@ ShellRoot {
         // and whether the command line is over a viewer's.
         property var held: []
         property bool viewing: false
+        // Whether it's opening or waking an opening's sources, as a chord's
+        // and a kept opening's place is as it holds its step.
+        property bool opening: false
+        property bool waking: false
+        // What waits for its next frame, run a frame's time later while
+        // open, and at once while shut, as no frame is coming.
+        property var framed: []
+        function afterFrame(then) {
+            if (!open) {
+                then();
+                return;
+            }
+            framed = framed.concat([then]);
+            frameDrawn.restart();
+        }
         // The orchestrators the harness lists, as the launcher's sources
         // hold them, which a case fills.
         property var sources: []
     }
+
+    Timer {
+        id: frameDrawn
+
+        interval: 16
+        onTriggered: {
+            const due = theLauncher.framed;
+            theLauncher.framed = [];
+            for (const then of due)
+                then();
+        }
+    }
+
+    // A moment for what's told to settle, then the next step, and the step
+    // waiting on the quest's row of the session told next.
+    Timer {
+        id: settle
+
+        property var then: null
+        interval: 200
+        onTriggered: then()
+    }
+    function settleThen(then) {
+        settle.then = then;
+        settle.restart();
+    }
+    property var toldWaits: null
 
     Launcher.Quests {
         id: theQuests
@@ -104,6 +147,11 @@ ShellRoot {
             if (root.waiting === "told away"
                 && root.told.includes("row:quests:QEST-20261003-PROMPT") && !settled.running)
                 settled.start();
+            if (root.toldWaits !== null && root.told.includes("row:quests:QEST-20261003-PROMPT")) {
+                const then = root.toldWaits;
+                root.toldWaits = null;
+                root.settleThen(then);
+            }
             if (root.waiting === "heard shut" && theQuests.counted() === "4 open, 1 driving")
                 Qt.callLater(root.heardShut);
             if (root.waiting === "only those heard"
@@ -530,8 +578,22 @@ ShellRoot {
             expect("no row made ahead as an opening fills in at home",
                 theQuests.tally.rows === root.counted,
                 `${theQuests.tally.rows - root.counted} rows: ${theQuests.tally.lately.join(", ")}`);
-            theLauncher.viewing = true;
+            // A chord, or a kept opening, holds its place's step as it
+            // opens, before that place has woken.
+            theLauncher.waking = true;
             theLauncher.held = [{ row: { from: theLauncher } }];
+            root.settleThen(root.filledInPlace);
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    function filledInPlace() {
+        try {
+            expect("nor as an opening fills in another place", theQuests.tally.rows === root.counted,
+                `${theQuests.tally.rows - root.counted} rows`);
+            theLauncher.viewing = true;
+            theLauncher.waking = false;
             settledViewing.start();
         } catch (error) {
             fail(error.message);
@@ -571,8 +633,53 @@ ShellRoot {
         if (root.waiting !== "told away")
             return;
         try {
+            expect("the row told made ahead in another place", theQuests.tally.rows > root.counted,
+                "none made");
+            // Its session runs again while the launcher stays there.
+            root.counted = theQuests.tally.rows;
+            root.waiting = "told elsewhere";
+            root.told = [];
+            root.toldWaits = root.toldElsewhere;
+            tell("session", { changed: [{ key: "session:WCJQSG", standing: "running",
+                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } }] });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Told while already in another place, the row is made there; shut with
+    // that place's step still held, as a kept place leaves it, the next
+    // isn't, until the launcher opens there again.
+    function toldElsewhere() {
+        try {
+            expect("a row told while in another place made ahead there",
+                theQuests.tally.rows > root.counted, "none made");
+            theLauncher.open = false;
+            root.counted = theQuests.tally.rows;
+            root.told = [];
+            root.toldWaits = root.toldShut;
+            tell("session", { changed: [{ key: "session:WCJQSG", standing: "parked",
+                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } }] });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    function toldShut() {
+        try {
+            expect("no row made shut, though a step stays held", theQuests.tally.rows === root.counted,
+                `${theQuests.tally.rows - root.counted} rows`);
+            theLauncher.open = true;
+            root.settleThen(root.reopenedElsewhere);
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    function reopenedElsewhere() {
+        try {
             const before = theQuests.tally.rows;
-            expect("the row told made ahead in another place", before > root.counted,
+            expect("the row told shut made ahead once open there again", before > root.counted,
                 "none made");
             theLauncher.held = [];
             theLauncher.wanting = true;

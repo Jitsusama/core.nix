@@ -234,12 +234,15 @@ Scope {
     // The rows owed so, by key, and how many are made a turn.
     readonly property var owedAhead: ({})
     readonly property int aheadEachTurn: 8
-    // Elsewhere is a step held in another place, not only these rows unwanted: they're unwanted
-    // too as a kept opening fills in at home, before their turn to wake, as a chord opens into
-    // a place, before its step is held, and under a viewer's command line, and rows made then
-    // would land in the frames those keep short (Wanted.js).
+    // Elsewhere is a step held in another place, settled, not only these rows unwanted: they're
+    // unwanted too as a kept opening fills in at home, before their turn to wake, and under a
+    // viewer's command line (Wanted.js), and a chord or a kept opening holds its place's step
+    // as it opens, before that place has woken. Rows made then would land in the frames those
+    // keep short, so none is made while the launcher opens or wakes its sources, and the first
+    // waits for the frame after.
     readonly property bool elsewhere: maker?.wanted === false
         && (maker?.launcher?.held?.length ?? 0) > 0 && maker?.launcher?.viewing !== true
+        && maker?.launcher?.opening !== true && maker?.launcher?.waking !== true
     readonly property bool makingAhead: madeAhead && drawn && elsewhere
     onMakingAheadChanged: aheadSoon()
 
@@ -248,12 +251,23 @@ Scope {
             owedAhead[key] = true;
     }
 
+    // Each turn after the launcher's next frame (its afterFrame), so no one frame makes them
+    // all, or the next turn of the event loop where it has no frames to wait on.
     function aheadSoon() {
-        if (makingAhead && Object.keys(owedAhead).length > 0)
+        if (!makingAhead || aheadWaiting || Object.keys(owedAhead).length === 0)
+            return;
+        if (typeof maker?.launcher?.afterFrame !== "function") {
             aheadTurn.start();
+            return;
+        }
+        aheadWaiting = true;
+        maker.launcher.afterFrame(() => {
+            aheadWaiting = false;
+            makeAhead();
+        });
     }
+    property bool aheadWaiting: false
 
-    // Each turn after the frame it was owed in, so no one frame makes them all.
     Timer {
         id: aheadTurn
         interval: 0
@@ -266,7 +280,7 @@ Scope {
         let count = 0;
         for (const key of Object.keys(owedAhead)) {
             if (count === aheadEachTurn) {
-                aheadTurn.start();
+                aheadSoon();
                 return;
             }
             delete owedAhead[key];

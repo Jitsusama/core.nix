@@ -4682,8 +4682,9 @@
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
-    ahead of the step back, making no row on it, though none as an opening fills in at home or
-    under a viewer's command line, and sees one made since, remaking only the quests a change
+    ahead of the step back, after a frame, and one told while already there, making no row on the
+    step back, though none as an opening fills in at home or in another place, under a viewer's
+    command line, or shut with a step held, and sees one made since, remaking only the quests a change
     names and none a list written again leaves the same, and breaking each title into the pieces
     A to Z reads once, again only when it changes
   '';
