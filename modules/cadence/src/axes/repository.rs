@@ -24,7 +24,7 @@ use serde_json::Value;
 use super::Reading;
 use super::landings::{self, Sources};
 use crate::records::Look;
-use crate::{DAY, command};
+use crate::{DAY, command, write_whole};
 
 /// update-to-main's config, which every account may read.
 const CONFIG: &str = "/etc/update-to-main/config.json";
@@ -129,7 +129,7 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
         times.push_str(&git(&args));
     }
     // Kept for the next read; a failure only costs it git again.
-    let _ = fs::write(&times_at, &times);
+    let _ = write_whole(&times_at, &times);
     Sources {
         looks: looks(&log.main, &built, &times),
         main: log.main,
@@ -215,7 +215,7 @@ fn keep_log(kept: &Path, at: &str, log: &Log) {
     if let Some(folder) = kept.parent() {
         let _ = fs::create_dir_all(folder);
     }
-    let _ = fs::write(kept, all.to_string());
+    let _ = write_whole(kept, &all.to_string());
 }
 
 /// The kept times, `<sha> <seconds>` a line, of the built commits still
