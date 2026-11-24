@@ -257,13 +257,36 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      # Keeping Joel's short answers that the echo filter took for the far
-      # end's took the rate from 17.7% to 17.5%; the ceiling sits between,
-      # so it fails the code from before it. The meetings hold no echo, so
-      # the check also names each line of Joel's the filter leaves out.
-      ceiling = "17.6";
+      # Cutting the far end's words from Joel's by word time and loudness
+      # took the rate from 17.5% to 17.4%, 594 words wrong to 590: the four
+      # cut are one of theirs heard in his microphone. The ceiling fails
+      # the code from before it. The meetings hold no echo, so the check
+      # also names each line of Joel's the filter leaves out.
+      ceiling = "17.4";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
+      DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
+      touch $out
+    '';
+
+  # The same meetings with the far end heard again in Joel's microphone, as
+  # a call on speakers with no echo cancelling hears it (echoed-meetings.nix):
+  # what of their echo is written as his words, and what of his own goes
+  # with it, stays under the ceiling.
+  call-transcripts-hears-echoed-meetings-as-well-as-it-did =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./parakeet.nix { };
+      meetings = pkgs.callPackage ./echoed-meetings.nix {
+        meetings = pkgs.callPackage ./meetings.nix { };
+      };
+      # Cutting their echo from Joel's lines by word time and loudness,
+      # rather than leaving out only whole lines that repeat theirs, took
+      # the rate from 25.8% to 21.7%, and his side's from 37.0% to 24.6%.
+      # The ceiling is what it reaches, as the clean meetings' is.
+      ceiling = "21.7";
+    in
+    pkgs.runCommand "call-transcripts-hears-echoed-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
       touch $out
     '';

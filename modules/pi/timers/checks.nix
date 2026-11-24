@@ -1,6 +1,6 @@
 # The checks of the harness's scripts that Linux runs on a schedule or at
 # login, which pi's checks.nix gathers beside its own, kept apart since they
-# change with timers.nix, and the sweep's with what a host's unit clears.
+# change with default.nix, and the sweep's with what a host's unit clears.
 {
   account,
   bareNixos,

@@ -20,7 +20,7 @@ fn here() -> String {
 }
 
 /// The number of a process that has ended, as a killed run's has.
-fn gone() -> u32 {
+pub(super) fn gone() -> u32 {
     let mut ended = std::process::Command::new("true").spawn().unwrap();
     ended.wait().unwrap();
     ended.id()

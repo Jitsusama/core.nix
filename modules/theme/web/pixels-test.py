@@ -1,19 +1,25 @@
-"""The web-design skill's pixels, words and names probes, held to their cases in headless Chromium.
+"""The web-design skill's pixels, floor, words and names probes, held to their cases in Chromium.
 
 Each case sets a small page in a phone's 390 px window and runs the probes
 on it as a live page's test does, reading the lines they answer: a page
 scrolling sideways and a shift as a part arrives (skill/pixels.js), text
-under the floor or faint (skill/words.js), and a control named apart from
-its words (skill/names.js). The cases come from the live sites as
+under the floor (skill/floor.js) or faint (skill/words.js), and a control
+named apart from its words (skill/names.js). The cases come from the live sites as
 1HE06W measured them on 22 November 2026: forage 601 px wide on a phone and
 shifting 0.81, its labels under 10 px, and the Network's buttons named
 "Find a cell" while showing "/". The probe's path comes from WEB_SKILL, as
 the check running this sets it, and its browser from probe_browser.py,
 loaded as a plugin.
+
+Long because each case is a small page of its own, and the four probes'
+cases share one browser, one window and one way of opening a page, which
+splitting them would copy into each.
 """
 
 import os
+import struct
 import time
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,8 +31,14 @@ if TYPE_CHECKING:
     from playwright.sync_api import Browser, Page, ViewportSize
 
 PROBE = (Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text()
+FLOOR = (Path(os.environ["WEB_SKILL"]) / "floor.js").read_text()
 WORDS = (Path(os.environ["WEB_SKILL"]) / "words.js").read_text()
 NAMES = (Path(os.environ["WEB_SKILL"]) / "names.js").read_text()
+# The words probe's line for paint it can't work out, given how many places.
+UNWORKED = (
+    "words in {} drawn through a filter, blend, mask, stroke, shadow alone or too many "
+    "layers to work out, so their contrast went unmeasured: paint them and their grounds plainly"
+)
 # Longest the probe may take on a page that never rests: its three seconds'
 # wait, its last half second of quiet, and a builder's slack.
 RESTLESS_SECONDS = 5
@@ -48,15 +60,38 @@ def tab(browser: Browser) -> Iterator[Page]:
     opened.close()
 
 
-def opened(tab: Page, body: str) -> None:
-    """Open `body` as a page.
+def opened(tab: Page, body: str, head: str = "") -> None:
+    """Open `body` as a page, `head` written in its head.
 
     The page comes by a real navigation, not `set_content`, whose written
     document keeps no layout shifts in its timeline as a loaded page does.
+    It's sent as UTF-8 and says so, as a live page is, or a browser reads
+    its bytes as windows-1252 and a mark such as "\u00d7" arrives as letters.
     """
-    page = f"<!doctype html><style>{STYLE}</style><body>{body}</body>"
-    tab.route(ORIGIN, lambda route: route.fulfill(content_type="text/html", body=page))
+    page = f"<!doctype html><head>{head}<style>{STYLE}</style></head><body>{body}</body>"
+    sent = "text/html; charset=utf-8"
+    tab.route(ORIGIN, lambda route: route.fulfill(content_type=sent, body=page))
     tab.goto(ORIGIN)
+
+
+def canvas(tab: Page) -> tuple[int, ...]:
+    """Give the colour the page paints at its window's last pixel, where no case draws.
+
+    A one-pixel PNG's only row reads the same under every filter PNG has,
+    since nothing lies left of it or above, so its bytes after the filter's
+    are the pixel.
+    """
+    shot = tab.screenshot(
+        clip={"x": PHONE["width"] - 1, "y": PHONE["height"] - 1, "width": 1, "height": 1}
+    )
+    chunks: dict[bytes, bytes] = {}
+    at = 8
+    while at < len(shot):
+        (length,) = struct.unpack(">I", shot[at : at + 4])
+        kind = shot[at + 4 : at + 8]
+        chunks[kind] = chunks.get(kind, b"") + shot[at + 8 : at + 8 + length]
+        at += 12 + length
+    return tuple(zlib.decompress(chunks[b"IDAT"])[1:4])
 
 
 def answered(tab: Page, probe: str) -> list[str]:
@@ -67,10 +102,14 @@ def answered(tab: Page, probe: str) -> list[str]:
 
 
 def probed(
-    tab: Page, body: str, settle_ms: int = 0, probes: tuple[str, ...] = (PROBE, WORDS)
+    tab: Page,
+    body: str,
+    settle_ms: int = 0,
+    probes: tuple[str, ...] = (PROBE, FLOOR, WORDS),
+    head: str = "",
 ) -> list[str]:
     """Open `body` as a page, let it settle `settle_ms`, and give what `probes` answer."""
-    opened(tab, body)
+    opened(tab, body, head)
     if settle_ms:
         tab.wait_for_timeout(settle_ms)
     return [line for probe in probes for line in answered(tab, probe)]
@@ -110,6 +149,21 @@ def test_text_under_the_floor_is_named(tab: Page) -> None:
     found = probed(tab, '<main><p style="font-size: 11.76px">12 cells</p></main>')
     assert len(found) == 1
     assert found[0].startswith('text at 11.8 px ("12 cells"), under 12 px'), found
+
+
+def test_words_in_a_box_drawn_as_its_children_are_held_to_the_floor(tab: Page) -> None:
+    """Words at 10 px in a display: contents span, which draws no box, are under the floor.
+
+    Its overflow is hidden, which on a box of no size would mark it as for ears only, had
+    it a box.
+    """
+    body = (
+        '<main><p><span style="display: contents; font-size: 10px; overflow: hidden">Ten</span>'
+        "</p></main>"
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text at 10.0 px ("Ten"), under 12 px'), found
 
 
 def test_text_at_the_floor_passes(tab: Page) -> None:
@@ -398,6 +452,239 @@ def test_a_mark_alone_is_named_without_a_label_too(tab: Page) -> None:
     ]
 
 
+def test_the_skills_key_line_passes_once_its_keys_are_pressable(tab: Page) -> None:
+    """The head's key line, its keycaps made buttons as pressable makes them, passes."""
+    key = '<kbd role="button" tabindex="0"{}>{}</kbd>'
+    body = (
+        '<main><p class="keys">'
+        f"{key.format(' data-tap', 'j')} and {key.format(' data-tap', 'k')} step from"
+        f" site to site, and {key.format('', '?')} lists every key</p></main>"
+    )
+    assert named(tab, body) == []
+
+
+def test_a_keycap_whose_line_says_nothing_after_it_is_named(tab: Page) -> None:
+    """A "/" keycap with only another keycap after it, and a "?" ending its line, are named."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = f'<main><p class="keys">{key.format("/")} {key.format("?")}</p></main>'
+    assert named(tab, body) == [
+        (
+            'a control showing only "/" (and 1 more): '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_keycap_beside_words_no_one_sees_or_a_joining_word_is_named(tab: Page) -> None:
+    """A comment, words kept for a screen reader, or "or" alone say nothing beside a key."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    heard = (
+        '<span style="position: absolute; width: 1px; height: 1px; overflow: hidden;'
+        ' clip-path: inset(50%)">lists every key</span>'
+    )
+    body = (
+        f'<main><p class="keys">{key.format("/")}<!-- searches --></p>'
+        f'<p class="keys">{key.format("?")}{heard}</p>'
+        f'<p class="keys">{key.format("[")} or {key.format("]")}</p></main>'
+    )
+    assert named(tab, body) == [
+        (
+            'a control showing only "/" (and 3 more): '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_keycap_its_line_passes_is_named_for_that_line(tab: Page) -> None:
+    """A ? keycap named "Delete everything" beside "lists every key" is named; its line passes."""
+    key = (
+        '<main><p class="keys"><kbd role="button" tabindex="0" aria-label="{}">?</kbd>'
+        " lists every key</p>"
+    )
+    assert named(tab, key.format("Lists every key") + "</main>") == []
+    assert named(tab, key.format("Delete everything") + "</main>") == [
+        (
+            'a keycap "?" beside "lists every key" named "Delete everything": '
+            "start its name with the words its line shows beside it, or drop the aria-label"
+        )
+    ]
+
+
+def test_a_keycap_named_for_its_line_up_to_a_comma_or_a_control_passes(tab: Page) -> None:
+    """The map's, the machines' and forage's key lines, each key named for its words, pass."""
+    key = '<kbd role="button" tabindex="0" aria-label="{}">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("Opens Now", ".")} opens Now, and'
+        f" {key.format('Lists every key', '?')} lists every key</p>"
+        f'<p class="keys">{key.format("Lists every key", "?")} lists every key'
+        ' <button class="help">Keys</button></p>'
+        f'<p class="keys">{key.format("To find one", "/")} to find one,'
+        f" {key.format('Return', 'Return')} opens it</p></main>"
+    )
+    assert named(tab, body) == []
+
+
+def test_a_keycap_line_is_cut_at_its_first_stop_past_any_it_opens_with(tab: Page) -> None:
+    """A line read on past its full stop, or opening with a colon, says what its key does."""
+    key = '<kbd role="button" tabindex="0" aria-label="Lists every key">?</kbd>'
+    body = (
+        f'<main><p class="keys">{key} lists every key. Esc closes it</p>'
+        f'<p class="keys">{key}: lists every key</p></main>'
+    )
+    assert named(tab, body) == []
+
+
+def test_a_keycap_line_ending_on_a_joining_word_before_the_next_key_passes(tab: Page) -> None:
+    """Before the next key, "lists every key and" says "lists every key"."""
+    key = '<kbd role="button" tabindex="0" aria-label="{}">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("Lists every key", "?")} lists every key and'
+        f" {key.format('Finds a cell', '/')} finds a cell</p></main>"
+    )
+    assert named(tab, body) == []
+
+
+def test_a_pressable_keycap_outside_a_line_of_keys_is_an_icon(tab: Page) -> None:
+    """A pressable kbd drawn as a mark elsewhere takes no word from what follows it."""
+    body = '<main><p><kbd role="button" tabindex="0">\u00d7</kbd> notifications</p></main>'
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "\u00d7"'), found
+
+
+def test_a_keycap_beside_another_control_takes_none_of_its_words(tab: Page) -> None:
+    """A "/" keycap whose line goes straight to a "Delete all" button shows no word."""
+    body = (
+        '<main><p class="keys"><kbd role="button" tabindex="0">/</kbd>'
+        "<button>Delete all</button></p></main>"
+    )
+    assert named(tab, body) == [
+        (
+            'a control showing only "/": '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_button_holding_a_keycap_reads_its_line_only_in_a_line_of_keys(tab: Page) -> None:
+    """A button around a "?" keycap reads its key line; one around an icon elsewhere doesn't."""
+    line = '<main><p class="keys"><button{}><kbd>?</kbd></button> lists every key</p></main>'
+    assert named(tab, line.format("")) == []
+    assert named(tab, line.format(' aria-label="Delete everything"')) == [
+        (
+            'a keycap "?" beside "lists every key" named "Delete everything": '
+            "start its name with the words its line shows beside it, or drop the aria-label"
+        )
+    ]
+    icon = "<main><p><button><kbd>\u00d7</kbd></button> <span>notifications</span></p></main>"
+    found = named(tab, icon)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "\u00d7"'), found
+
+
+def test_a_keycap_beside_words_drawn_unseen_is_named(tab: Page) -> None:
+    """Words in no ink, at no size, or moved off the page's start say nothing beside a key."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("/")}<span style="color: transparent">finds a cell'
+        "</span></p>"
+        f'<p class="keys">{key.format("?")}<span style="font-size: 0">lists every key</span></p>'
+        f'<p class="keys">{key.format("[")}<span style="position: absolute; left: -9999px">'
+        "steps back</span></p></main>"
+    )
+    assert named(tab, body) == [
+        (
+            'a control showing only "/" (and 2 more): '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_keycap_beside_words_painted_out_of_sight_is_named(tab: Page) -> None:
+    """Words indented off their box, clipped by a box around them, or cut away say none."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("/")}<span style="display: inline-block;'
+        ' width: 8em; text-indent: -9999px">finds a cell</span></p>'
+        '<p class="keys" style="position: relative; overflow: hidden; width: 10em">'
+        f'{key.format("?")}<span style="position: absolute; left: 400px">lists every key'
+        "</span></p>"
+        f'<p class="keys">{key.format("[")}<span style="clip-path: inset(100%)">steps back'
+        "</span></p>"
+        f'<p class="keys">{key.format("]")}<span style="position: absolute;'
+        ' clip: rect(0 0 0 0)">steps on</span></p>'
+        f'<p class="keys">{key.format("|")}<span style="display: inline-block;'
+        ' clip-path: inset(0 0 0 100%)">steps up</span></p></main>'
+    )
+    assert named(tab, body) == [
+        (
+            'a control showing only "/" (and 4 more): '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_keycap_beside_words_a_clip_leaves_in_sight_passes(tab: Page) -> None:
+    """Words an inset cuts only the top of, or in a box drawn as its contents, say a key's line."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = (
+        f'<main><p class="keys">{key.format("?")}<span style="display: inline-block;'
+        ' clip-path: inset(60% 0 0 0)">lists every key</span></p>'
+        f'<p class="keys">{key.format("/")}<span style="display: contents;'
+        ' overflow: hidden">finds a cell</span></p></main>'
+    )
+    assert named(tab, body) == []
+
+
+@pytest.mark.parametrize("clip", ["inset(calc(1px + 0%) 0px 0px 0px)", "circle(100%)"])
+def test_a_keycap_beside_words_a_clip_it_cant_measure_cuts_is_an_icon(tab: Page, clip: str) -> None:
+    """Words under a clip-path of another shape, or a side it can't read, count as unseen.
+
+    Each clip leaves the words in sight, so only the rule that what it can't read cuts
+    everything names the keycap.
+    """
+    body = (
+        '<main><p class="keys"><kbd role="button" tabindex="0">?</kbd>'
+        f'<span style="display: inline-block; clip-path: {clip}">lists every key</span>'
+        "</p></main>"
+    )
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "?"'), found
+
+
+def test_a_keycap_under_a_wrapper_marked_keys_is_an_icon(tab: Page) -> None:
+    """Only a line of keys holding the keycap itself lends it the words that follow."""
+    body = (
+        '<main class="keys"><p><kbd role="button" tabindex="0">\u00d7</kbd>'
+        " notifications</p></main>"
+    )
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "\u00d7"'), found
+
+
+def test_a_controls_words_in_a_box_drawn_as_its_children_are_held_to_its_name(
+    tab: Page,
+) -> None:
+    """A button showing "Find" through a display: contents span, named "Search", is named."""
+    body = (
+        '<main><button aria-label="Search"><span style="display: contents">Find</span>'
+        "</button></main>"
+    )
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing "Find" named "Search"'), found
+
+
+def test_a_button_showing_only_a_mark_is_named_whatever_follows(tab: Page) -> None:
+    """An icon button showing "+" in a line of keys is named: only a keycap reads its line."""
+    body = '<main><p class="keys"><button aria-label="Add">+</button> adds a cell</p></main>'
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "+", named "Add"'), found
+
+
 def test_a_name_given_by_another_element_is_held_to_what_shows(tab: Page) -> None:
     """A button labelled by a heading reading "Cells" while showing "Find" is named."""
     body = '<main><h2 id="cells">Cells</h2><button aria-labelledby="cells">Find</button></main>'
@@ -564,6 +851,143 @@ def test_a_dark_page_with_no_ground_sits_on_a_dark_canvas(tab: Page) -> None:
     assert probed(tab, body) == []
 
 
+def test_a_dark_scheme_named_in_the_head_sits_on_a_dark_canvas(tab: Page) -> None:
+    """#eee words read on the canvas a meta tag's dark scheme sets, the style saying none.
+
+    The canvas's own pixel is read too, so the case holds the browser to the
+    dark canvas the probe takes the meta to mean.
+    """
+    body = '<main><p style="color: #eee">Pale</p></main>'
+    head = '<meta name="color-scheme" content="dark">'
+    assert probed(tab, body, head=head) == []
+    painted = canvas(tab)
+    assert painted == (18, 18, 18), f"the canvas a dark meta sets is {painted}, not #121212"
+
+
+def test_words_in_a_box_drawn_as_its_children_are_measured(tab: Page) -> None:
+    """#ccc words held by a display: contents span are read where its parent is drawn."""
+    body = (
+        '<main><p style="color: #ccc"><span style="display: contents; overflow: hidden">Faint'
+        "</span></p></main>"
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Faint" at 1.6'), found
+
+
+def test_a_box_drawn_as_its_children_paints_nothing_under_them(tab: Page) -> None:
+    """#111 words on black are named though the contents span holding them sets white."""
+    body = (
+        '<main><div style="background: #000"><span style="display: contents; background: #fff;'
+        ' opacity: 0.3; color: #111">Dim</span></div></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_layer_of_none_leaves_the_layers_under_it(tab: Page) -> None:
+    """#111 words over a none layer above black are named on the black."""
+    body = (
+        '<main><p style="color: #111; background-image: none, linear-gradient(#000, #000)">'
+        "Dim</p></main>"
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_layer_sized_past_its_box_in_pixels_is_its_ground(tab: Page) -> None:
+    """#111 words on a black layer 4000 px wide, or contained, are named on the black."""
+    for size in ("4000px 100%", "contain"):
+        body = (
+            f'<main><p style="color: #111; background: linear-gradient(#000, #000) no-repeat'
+            f' 0 0 / {size}, #fff">Dim</p></main>'
+        )
+        found = probed(tab, body)
+        assert len(found) == 1, (size, found)
+        assert found[0].startswith('text "Dim" at 1.'), (size, found)
+        # Pale words pass only where the layer lies under them all, leaving no white.
+        pale = body.replace("#111", "#eee").replace("Dim", "Pale")
+        assert probed(tab, pale) == [], size
+
+
+def test_a_stripe_tiled_along_one_axis_is_a_ground(tab: Page) -> None:
+    """#111 words on white striped with black, tiled across and full height, are named."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(90deg, #000 50%,'
+        ' transparent 50%) repeat-x 0 0 / 20px 100%, #fff">Dim</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_layer_placed_off_its_origin_leaves_the_ground_under_it(tab: Page) -> None:
+    """#eee words on black are named for the white strip a black layer, moved over, leaves."""
+    body = (
+        '<main><p style="color: #eee; background: linear-gradient(#000, #000) no-repeat'
+        ' 3rem 0 / 100% 100%, #fff">Pale</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Pale" at 1.'), found
+
+
+def test_a_ground_under_a_mark_beside_the_words_is_still_their_ground(tab: Page) -> None:
+    """#111 words on black are named though a small red mark is drawn over the black."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(#f00, #f00) no-repeat 0 0 / '
+        '4px 4px, linear-gradient(#000, #000)">Dim</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_tiled_layer_is_the_ground_under_the_words(tab: Page) -> None:
+    """An 8 px black tile, repeated across the box, is what #111 words sit on."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(#000, #000) 0 0 / 8px 8px">'
+        "Dim</p></main>"
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+    # Pale words pass only where the tiles lie under them all, leaving no canvas.
+    assert probed(tab, body.replace("#111", "#eee").replace("Dim", "Pale")) == []
+
+
+def test_a_hard_stop_is_not_blended_across(tab: Page) -> None:
+    """#757575 passes on white and black halves split by a hard stop, with no grey between."""
+    body = (
+        '<main><div style="background: linear-gradient(90deg, #fff 50%, #000 50%)">'
+        '<p style="color: #757575">Split</p></div></main>'
+    )
+    assert probed(tab, body) == []
+
+
+def test_a_hard_stop_in_pixels_is_not_blended_across(tab: Page) -> None:
+    """#757575 passes on a white band 200 px wide, or one to 100%, that ends hard on black."""
+    for stops in ("#fff 0 200px, #000 200px", "#fff 100%, #000", "#fff 50%, #000 0"):
+        body = (
+            f'<main><div style="background: linear-gradient(90deg, {stops})">'
+            '<p style="color: #757575">Split</p></div></main>'
+        )
+        assert probed(tab, body) == [], stops
+
+
+def test_a_shimmer_twice_its_box_wide_is_measured(tab: Page) -> None:
+    """A clipped gradient sized past its box, as a shimmer is, still paints the words."""
+    body = (
+        '<main><h1 style="background: linear-gradient(90deg, #ddd, #fff, #ddd); '
+        'background-size: 200% 100%; background-clip: text; color: transparent">Shine</h1></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Shine" at 1.'), found
+
+
 def test_a_line_drawn_beside_the_words_is_not_their_ground(tab: Page) -> None:
     """A 1 px black line drawn as a gradient leaves the words on white."""
     body = (
@@ -571,6 +995,40 @@ def test_a_line_drawn_beside_the_words_is_not_their_ground(tab: Page) -> None:
         'background-size: 1px 100%"><p>Beside a line</p></div></main>'
     )
     assert probed(tab, body) == []
+
+
+def test_a_rule_is_a_hairline_to_two_pixels_and_a_band_past_them(tab: Page) -> None:
+    """#111 words pass beside a 2 px black rule under them, and are named on a 3 px one."""
+    rule = (
+        '<main><p style="color: #111; background: linear-gradient(#000, #000) no-repeat 0 100% /'
+        ' 100% {}, #fff">Dim</p></main>'
+    )
+    assert probed(tab, rule.format("2px")) == []
+    found = probed(tab, rule.format("3px"))
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_spaced_tile_a_pixel_across_is_no_hairline(tab: Page) -> None:
+    """Tiles of a pixel, spaced, may fill the box, so #111 words are named on their black."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(#000, #000) space 0 0 /'
+        ' 1px 1px, #fff">Dim</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_box_broken_across_lines_keeps_the_ground_under_its_layer(tab: Page) -> None:
+    """A wrapped span's layer, sized in px, can't be said to reach its box: the white stays."""
+    body = (
+        '<main><p style="width: 4em"><span style="color: #eee; background: linear-gradient('
+        '#000, #000) no-repeat 0 0 / 4000px 4000px, #fff">Pale words over lines</span></p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Pale words over lines" at 1.'), found
 
 
 def test_words_painted_with_a_gradient_are_measured_by_it(tab: Page) -> None:
@@ -595,6 +1053,73 @@ def test_words_filled_with_a_gradient_are_measured_by_it(tab: Page) -> None:
     assert found[0].startswith('text "Glow" at 1.'), found
 
 
+def test_a_spaced_tile_leaves_the_ground_between_its_tiles(tab: Page) -> None:
+    """Pale words on white are named though a black tile is spaced over it: space leaves gaps."""
+    body = (
+        '<main><p style="color: #eee; background: linear-gradient(#000, #000) space 0 0 /'
+        ' 30px 30px, #fff">Pale</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Pale" at 1.'), found
+
+
+def test_a_band_thicker_than_a_hairline_keeps_the_ground_under_it(tab: Page) -> None:
+    """#111 words on white are named on a black band under them, in em or an ancestor's em."""
+    bands = (
+        (
+            '<p style="color: #111; background: linear-gradient(#000, #000) no-repeat 0 100% /'
+            ' 100% 0.4em, #fff">Dim</p>'
+        ),
+        (
+            '<div style="font-size: 8px; background: linear-gradient(#000, #000) no-repeat 0'
+            ' 100% / 100% 1em, #fff"><p style="font-size: 16px; color: #111">Dim</p></div>'
+        ),
+    )
+    for band in bands:
+        found = probed(tab, f"<main>{band}</main>")
+        assert len(found) == 1, (band, found)
+        assert found[0].startswith('text "Dim" at 1.'), (band, found)
+        # Pale words are named on the white the band leaves above it.
+        pale = band.replace("#111", "#eee").replace("Dim", "Pale")
+        found = probed(tab, f"<main>{pale}</main>")
+        assert len(found) == 1, (pale, found)
+        assert found[0].startswith('text "Pale" at 1.'), (pale, found)
+
+
+def test_a_layer_tiling_the_whole_box_is_under_all_its_words(tab: Page) -> None:
+    """#eee words pass on black tiled across and full height over white: no strip is bare."""
+    body = (
+        '<main><p style="color: #eee; background: linear-gradient(#000, #000) repeat-x 0 0 /'
+        ' 20px 100%, #fff">Pale</p></main>'
+    )
+    assert probed(tab, body) == []
+
+
+def test_soft_stops_are_blended_between_them(tab: Page) -> None:
+    """#757575 is named on white fading to black between two stops, in percent or in px."""
+    for stops in ("#fff 20%, #000 80%", "#fff 0 100px, #000 300px"):
+        body = (
+            f'<main><div style="background: linear-gradient(90deg, {stops})">'
+            '<p style="color: #757575">Fade</p></div></main>'
+        )
+        found = probed(tab, body)
+        assert len(found) == 1, (stops, found)
+        assert found[0].startswith('text "Fade" at 1.'), (stops, found)
+
+
+def test_a_ground_clipped_to_the_words_in_one_layer_only_is_named_for_a_person(
+    tab: Page,
+) -> None:
+    """A shimmer clipped to its words over a black layer clipped to the box is unworked."""
+    body = (
+        '<main><h1 style="background: linear-gradient(90deg, #ddd, #fff),'
+        " linear-gradient(#000, #000); background-clip: text, border-box;"
+        ' color: transparent">Shine</h1></main>'
+    )
+    assert probed(tab, body) == [UNWORKED.format("1 place are")]
+
+
 def test_words_in_a_box_painting_them_with_a_gradient_are_measured_by_it(tab: Page) -> None:
     """A heading's clipped gradient paints the words of the span inside it."""
     body = (
@@ -612,12 +1137,19 @@ def test_words_through_a_filter_or_a_blend_are_named_for_a_person(tab: Page) -> 
         '<main><p style="filter: blur(1px)">Blurred</p>'
         '<p style="mix-blend-mode: difference">Blended</p></main>'
     )
-    assert probed(tab, body) == [
-        (
-            "words in 2 places are painted through a filter, a blend or too many layers to "
-            "work out, so their contrast went unmeasured: paint them and their grounds plainly"
-        )
-    ]
+    assert probed(tab, body) == [UNWORKED.format("2 places are")]
+
+
+def test_words_masked_stroked_or_drawn_by_a_shadow_are_named_for_a_person(tab: Page) -> None:
+    """A blended ground, a mask, a stroke and a shadow alone are paint it can't work out."""
+    body = (
+        '<main><p style="background: linear-gradient(#fff, #eee); '
+        'background-blend-mode: multiply">Multiplied</p>'
+        '<p style="-webkit-mask-image: linear-gradient(#000, transparent)">Masked</p>'
+        '<p style="-webkit-text-stroke: 1px #000">Stroked</p>'
+        '<p style="color: transparent; text-shadow: 0 0 2px #000">Shadowed</p></main>'
+    )
+    assert probed(tab, body) == [UNWORKED.format("4 places are")]
 
 
 def test_words_on_too_many_grounds_are_named_for_a_person(tab: Page) -> None:
@@ -625,7 +1157,7 @@ def test_words_on_too_many_grounds_are_named_for_a_person(tab: Page) -> None:
     ground = '<div style="background: linear-gradient(#fff, #eee)">'
     found = probed(tab, f"<main>{ground * 3}<p>Deep</p></div></div></div></main>")
     assert len(found) == 1, found
-    assert found[0].startswith("words in 1 place are painted through a filter"), found
+    assert found == [UNWORKED.format("1 place are")], found
 
 
 def test_words_a_style_hides_are_not_measured(tab: Page) -> None:

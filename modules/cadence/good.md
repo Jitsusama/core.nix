@@ -16,6 +16,9 @@ Each section names its measures' keys, a key ending in `*` naming every key that
 same way. A target that opens with a number is the one the hour must hold the measure to; one
 that opens with "none" means the measure is shown and never judged; one that opens with "set
 where it's read" is taken from the measure's own source. Any other target is counted as none.
+An item's later lines are indented under it with no blank line between, each field is said once,
+and a key holds no space; any other line or item in a section, a field said again, or a key
+holding a space, as one broken across two lines does, is counted too.
 
 ## Apps Under Load
 
@@ -206,7 +209,8 @@ where it's read" is taken from the measure's own source. Any other target is cou
 ## Slips
 
 - Measures: `slips`, `slips-derived`
-- Target: 0 dates that passed in the last day without landing.
+- Target: 0 dates that passed in the last day without landing, or passed since with no landing,
+  meeting or move from their owner, nor the ask put down.
 - Joel, 11 Nov 16:4x: "i need for you to make faster progress. i don't understand why so much
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.

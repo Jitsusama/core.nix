@@ -279,7 +279,7 @@ function ended(answer, said) {
     const why = answer.error?.message;
     if (typeof why === "string" && why !== "") {
         return answer.error.code === "unanswered" ? { started: false, unanswered: true, why }
-            : { started: false, why };
+            : { started: false, why, refusal: String(answer.error.refusal ?? "") };
     }
     return { started: false, why: String(said.unread ?? "") };
 }
@@ -359,7 +359,8 @@ const NEVER_TAKES = /^\S+ (?:lacks|isn't) |, (?:lacks|isn't) /u;
 // words for the two, is said again once the node runs; any other failure to
 // reach it isn't a node that's down. A refusal none of these knows is told in its own words alone.
 const ACTS = [
-    { says: /^it needs a repository to work in, /u, cut: /: say which, as `[^`]*`$/u,
+    { says: /^it needs a repository to work in, /u,
+        cut: /: say which, as `[^`]*`(?:; `mycelium places` lists the places)?$/u,
         act: "actRepository" },
     { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
         act: "actRepository" },
@@ -402,6 +403,38 @@ function acted(why, said) {
     }
     const cut = known.cut === null ? words : words.replace(known.cut, "");
     return `${cut}; ${act}`;
+}
+
+// Whether a start that ended `how` asks Joel where it starts: one refused
+// for want of a repository, which a folder Start New Work lists gets past,
+// so he's stepped back to them, his words carried to the one he picks
+// (Joel, 24 November, of a link refused so: "the UI was crap").
+const unplacedBy = why =>
+    ACTS.find(one => one.act === "actRepository" && one.says.test(String(why ?? "")));
+function asksWhere(how) {
+    return how?.started === false && how.unanswered !== true
+        && (how.refusal === "needs_folder" || unplacedBy(how.why) !== undefined);
+}
+
+// Whether `launcher` may step Joel back to pick where act `key` starts: he's
+// still in its emptied field, no key since his Return (`letters` its
+// lettersAt then), and `folders` are listed to pick from.
+function stepsBack(launcher, key, letters, folders) {
+    return launcher?.open === true && launcher.asking?.key === key
+        && launcher.lettersAt === letters && folders > 0;
+}
+
+// How a start that asks where is told, in `said`'s words: the refusal, the
+// command line's act cut, then that his words go with the folder he picks;
+// as `told` says it where those words are missing or the cut isn't there.
+function toldWhere(how, said) {
+    const words = String(how.why ?? "");
+    const known = unplacedBy(words);
+    const where = String(said?.askedWhere ?? "");
+    if (where === "" || (known?.cut && !known.cut.test(words))) {
+        return told(how, said);
+    }
+    return `${known?.cut ? words.replace(known.cut, "") : words}; ${where}`;
 }
 
 // What the act that ran says of how it ended, in `said`'s words: one

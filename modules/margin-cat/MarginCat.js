@@ -383,9 +383,24 @@ const SETTLED = 200;
 
 // Whether the pointer, last seen over the cat at `was` (null as it comes onto it) and now at `at`,
 // both in the screen's pixels, strokes it: moved there once the cat had rested `rested` ms (-1
-// while it goes), never a pointer at rest it came to under.
+// while it goes, and until niri has shown it sitting), never a pointer at rest it came to under.
 function strokes(was, at, rested) {
     return rested >= SETTLED && (was === null || was.x !== at.x || was.y !== at.y);
+}
+
+// What niri's answer for frame `frame`, whose sync began at `synchronizing` (undefined when
+// nothing was kept of it), says of a rest the cat asked for as it sat at `satAt`, once
+// `satFrom` frames had begun, both on the monotonic clock. "begins" for one synced after it
+// sat, which holds its cells where it sits. "asks" for one begun after its ask but synced
+// before it sat, which spent the ask on a frame that missed it. "waits" for one begun before
+// it sat, a walk's frame still on its way, whose answer asking again for would draw a frame
+// of its own. A frame nothing was kept of, as one niri never had a surface for, begins it
+// rather than asking for frame after frame.
+function restFrom(frame, synchronizing, satFrom, satAt) {
+    if (frame <= satFrom) {
+        return "waits";
+    }
+    return synchronizing === undefined || synchronizing >= satAt ? "begins" : "asks";
 }
 
 // Which way a cat `size` across leans into a pointer `across` it: -1 to its left, 1 to its right.

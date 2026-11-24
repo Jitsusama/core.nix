@@ -23,6 +23,7 @@ mod moved;
 mod owing;
 mod records;
 mod reviews;
+mod stuck;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -166,13 +167,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // closed before last hour stays so.
     measures::held(&misses, &mut measures, &kept.open);
     let said = measures::said(&misses, &TimeZone::system());
-    let (card, next) = compose(
+    let (mut card, mut next) = compose(
         &clock(now),
         &measures,
         &kept,
         &said,
         &format!("{} tomorrow", clock(now + DAY)),
     );
+    stuck::daily(&mut card, &mut next, &measures, now, &TimeZone::system());
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
     // miss as open: only the run sending the card keeps the hour and owes.
@@ -632,8 +634,8 @@ fn landed_by_session<'a>(
     landed
 }
 
-/// A measure for the card's and the owing's tests, said as "`key` said"
-/// and owned by `OWNER`.
+/// A measure for the card's, the owing's and the stuck runs' tests, said
+/// as "`key` said" and owned by `OWNER`.
 #[cfg(test)]
 fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
     Measure {

@@ -130,7 +130,13 @@ pub fn standing(status: &Status) -> Option<Notice> {
             .find(|filesystem| filesystem.path == path)
             .map_or(Band::Healthy, |filesystem| filesystem.band)
     };
+    // A pass at work on the same disk may clear what the one before
+    // couldn't, so the one before isn't told while it runs.
     if let Some(last) = &status.last
+        && status
+            .passing
+            .as_ref()
+            .is_none_or(|passing| passing.path != last.path)
         && last.end != "reached"
         && band(&last.path) != Band::Healthy
         && last.band >= band(&last.path)
@@ -252,6 +258,10 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
         "waiting" => format!(
             "{cleared}. Nix's store holds more to delete, which the guard takes once Nix's \
              database is free and its last delete has rested; nothing is needed from you yet."
+        ),
+        "unfinished" => format!(
+            "{cleared}. The guard ran as long as one pass may and takes up the rest at its \
+             next look; nothing is needed from you yet."
         ),
         failed => format!("{cleared}. The guard {failed}. disk-guard journal says more."),
     };

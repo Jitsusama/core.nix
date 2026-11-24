@@ -13,6 +13,7 @@ import qs
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
+import KeyTimes
 import "MarginCat.js" as MarginCat
 import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
@@ -159,11 +160,53 @@ PanelWindow {
     // came to under isn't one that moved onto it (MarginCat.strokes).
     readonly property bool still: going === null && moving === null && !holding
         && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
-    property real stillSince: 0
+    property real stillSince: -1
     onStillChanged: {
-        stillSince = Date.now();
-        if (!still)
+        if (still) {
+            rests();
+        } else {
+            satAt = -1;
+            stillSince = -1;
             unpetted();
+        }
+    }
+    // Its rest begins once niri has answered for the first frame synced
+    // after it sat, which holds its cells where it sits, and counts from
+    // when the shell heard that answer, on the monotonic clock. niri sends
+    // the pointer over its cells as it takes the commit moving them,
+    // before it answers for that frame, so however long niri was held up,
+    // a pointer it came to under is felt before its rest begins, or as
+    // soon after as the shell hands that enter on: 46.7 ms once in 12 on an
+    // idle builder, and never under load (2026-11-24), where SETTLED gives
+    // it 200. Counted from its walk's end, a builder under load held that
+    // commit up to 233 ms after it sat and the cat leant on a pointer it
+    // had walked under. An ask only marks the frame Qt draws for its
+    // sitting pose, drawing none of its own, but for when no frame was
+    // coming: a glance still draws two (MarginCat.restFrom).
+    property real satAt: -1
+    property int satFrom: 0
+    function rests(): void {
+        stillSince = -1;
+        if (!window.FramePresentation.available) {
+            stillSince = KeyTimes.now();
+            return;
+        }
+        satAt = KeyTimes.now();
+        satFrom = window.FramePresentation.framesBegun;
+        window.FramePresentation.ask();
+    }
+    // A frame niri showed or let go, `frame`, as MarginCat.restFrom says.
+    function restSeen(frame: int): void {
+        if (satAt < 0)
+            return;
+        const seen = MarginCat.restFrom(frame, window.FramePresentation.timesOf(frame).synchronizing,
+            satFrom, satAt);
+        if (seen === "begins") {
+            satAt = -1;
+            stillSince = KeyTimes.now();
+        } else if (seen === "asks") {
+            window.FramePresentation.ask();
+        }
     }
     // Where the pointer was last seen over it, in the screen's pixels,
     // null with none; the way it leans into it, 0 while it doesn't
@@ -694,6 +737,7 @@ PanelWindow {
     // answers still to come are only heard: each frame on its way was
     // asked of as it began.
     FramePresentation.onPresented: (frame, at) => {
+        restSeen(frame);
         if (going === null && moving === null && telling === "")
             return;
         const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
@@ -706,6 +750,7 @@ PanelWindow {
         answered(heard);
     }
     FramePresentation.onDiscarded: frame => {
+        restSeen(frame);
         if (going === null && moving === null && telling === "")
             return;
         const heard = Shown.heard(frame, begunAt, telling === "" ? null : tellsAt);
@@ -1238,7 +1283,19 @@ PanelWindow {
     // The pointer over it at `at`, in the screen's pixels, `across` its
     // cells: one that moved onto it as it sat still starts a pet.
     function felt(at: point, across: real): void {
-        const moved = MarginCat.strokes(pointer, at, still ? Date.now() - stillSince : -1);
+        const rested = still && stillSince >= 0 ? KeyTimes.now() - stillSince : -1;
+        const moved = MarginCat.strokes(pointer, at, rested);
+        // As the pointer comes onto it and as it strokes it, it says how
+        // long it had rested and where the pointer was, so a test that
+        // finds it leaning on a pointer it came to under can say why.
+        if (Options.reports && (pointer === null || moved))
+            Report.say(`feels cat ${named} ${JSON.stringify({
+                was: pointer,
+                at: { x: at.x, y: at.y },
+                rested: rested,
+                strokes: moved,
+                reach: window.implicitHeight
+            })}`);
         pointer = { x: at.x, y: at.y };
         window.across = across;
         if (moved && leaning === 0 && !petting.running) {
@@ -1377,8 +1434,14 @@ PanelWindow {
     // A scene's pose changes nothing of its place, so it says so too.
     readonly property string posed: window.scene.posed
     onPosedChanged: say()
+    // One still as it's made rests from there, since still's first value
+    // calls no onStillChanged. On a nested niri's start it comes to be
+    // still only after it's made, so a pet reaches it either way there
+    // (2026-11-24); this is for a screen where it's still from the first.
     Component.onCompleted: {
         follow();
+        if (still)
+            rests();
         say();
     }
 

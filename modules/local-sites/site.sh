@@ -136,10 +136,22 @@ for page in "${out}"/*.html; do
   # screen, so it's left to load when asked. The whole tag is asked for:
   # without crossorigin a preload is never matched to the face's own fetch,
   # and the page is read without its comments, where a preload asks for
-  # nothing: each ends at its first two dashes or more and a >, as HTML ends
-  # one, dashes and a lone -> inside it held, and one never ended runs to the
-  # page's end.
-  ended='s/<!--\([^-]\|-\+[^->]\|->\)*-\{2,\}>//g'
+  # nothing. Each ends where HTML's tokenizer ends one, the pattern built
+  # from its comment states: at once as <!--> or <!--->; else at an end,
+  # two dashes or more, then > or !>, where a bang's dash and one more lead
+  # back to an end (--!-->), and a step back into the comment (loop) never
+  # passes one. Since no step passes an end, sed's longest match is the
+  # first end, however many comments follow. Each is read as a space, so
+  # what's either side can't join into a comment's opening; and one never
+  # ended runs to the page's end. Only comments opened by <!-- are read so:
+  # a bogus comment (<! or <? alone), raw text (script, style, textarea,
+  # title) and what a template or a noscript holds, which fetches nothing
+  # with scripts on, are read as written, so a preload inside one counts.
+  ends='\(-\|!--\)*'
+  loop="\([^-]\|-[^-]\|--${ends}[^-!>]\|--${ends}![^->]\|--${ends}!-[^-]\)"
+  end="--${ends}!\?>"
+  dashed="${ends}\(!\?>\|\([^-!>]\|![^->]\|!-[^-]\)${loop}*${end}\)"
+  ended="s/<!--\(-\?>\|--${dashed}\|\([^->]\|-[^->]\)${loop}*${end}\)/ /g"
   bare=$(tr '\n' ' ' <"${page}" | sed -e "${ended}" -e 's/<!--.*$//')
   for face in fraunces fraunces-italic monaspace; do
     preload="<link rel=\"preload\" href=\"../local-sites/web/fonts/${face}.woff2\" as=\"font\""
