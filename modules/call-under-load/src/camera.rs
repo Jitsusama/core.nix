@@ -44,17 +44,22 @@ const ANSWER: Duration = Duration::from_secs(10);
 const FRAMES: &str = "5";
 /// How many frames are passed over first: a relay hands its splash to the
 /// loopback until it hears a reader, then stops it before the camera's
-/// setup, so only the first frames may be the splash. Five seconds of
-/// them at 30 a second gives a relay whose main loop is slowed by load
-/// time to hear the reader, while a camera whose first frame takes 40 s
-/// needs only about two frames a second after it to give the rest inside
-/// the wait.
-const SPLASH: &str = "150";
-/// How long systemd is given to say which run the relay is on: a quick
-/// ask, then one given twice as long, since an answer slowed by load can
-/// take longer than the first allows and a fresh ask starts it over. The
-/// 15 s a side keep the whole check inside its unit's four minutes.
-const SHOWN: [Duration; 2] = [Duration::from_secs(5), Duration::from_secs(10)];
+/// setup, so only the first frames may be the splash. Three seconds of
+/// them at 30 a second gives a loaded relay time to hear the reader,
+/// while a camera whose first frame takes 40 s needs only a little over
+/// a frame a second after it to give the rest inside the wait. A longer
+/// skip trades a missed splash for a slow camera told falsely, and which
+/// is likelier waits on the relay and camera measured under load.
+const SPLASH: &str = "90";
+/// How long systemd has to say which run the relay is on, each side of
+/// the read: one ask may take all of it, as an answer slowed by load
+/// needs, and one that fails at once is asked again a second later
+/// until it's spent. The 15 s a side keep the whole check inside its
+/// unit's four minutes.
+const SHOWN: Duration = Duration::from_secs(15);
+/// How long a failed ask waits before the next, so a bus that refused
+/// one isn't asked again in the same moment.
+const PAUSE: Duration = Duration::from_secs(1);
 /// How long a meeting's check is remembered, so each is checked once.
 const KEPT_MS: u64 = 24 * 60 * MIN_MS;
 
@@ -130,12 +135,27 @@ const RELAY: &str = "camera.service";
 
 /// The relay's run, by systemd's id for it, empty on a machine with no
 /// such unit or none running, or nothing when systemd couldn't be asked,
-/// as under the load that stalls a camera, after asking twice.
+/// as under the load that stalls a camera, in the time it's given.
 pub fn relay_run() -> Option<String> {
     let args = ["show", "--value", "--property=InvocationID", RELAY].map(String::from);
-    SHOWN
-        .iter()
-        .find_map(|&deadline| said("systemctl", &args, deadline))
+    answered("systemctl", &args, SHOWN, PAUSE)
+}
+
+/// What `program` printed once one of its runs answered inside `budget`:
+/// a run may take what's left of it, and one that failed is tried again
+/// after `pause` while any is left.
+fn answered(program: &str, args: &[String], budget: Duration, pause: Duration) -> Option<String> {
+    let until = Instant::now() + budget;
+    loop {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        if let Some(answer) = said(program, args, left) {
+            return Some(answer);
+        }
+        thread::sleep(pause.min(until.saturating_duration_since(Instant::now())));
+    }
 }
 
 /// What `program` printed, trimmed, once it exits 0 inside `deadline`, or
@@ -627,7 +647,7 @@ mod tests {
         let read = asked(Path::new("/dev/video32"), true);
         assert_eq!(
             read.join(" "),
-            "--device /dev/video32 --stream-mmap --stream-skip 150 --stream-count 5 \
+            "--device /dev/video32 --stream-mmap --stream-skip 90 --stream-count 5 \
              --stream-to /dev/null",
             "a loopback's frames weren't all sent to /dev/null"
         );
@@ -857,5 +877,55 @@ mod tests {
             started.elapsed() < Duration::from_secs(3),
             "an ask past its time was waited on to its end"
         );
+    }
+
+    #[test]
+    fn systemd_is_asked_again_after_a_refusal_and_a_slow_answer_gets_the_time_left() {
+        let words = |said: &[&str]| said.iter().map(|&word| word.to_owned()).collect::<Vec<_>>();
+        let asked = stand_in("asked");
+        let _ = fs::remove_file(&asked);
+        // Refuses its first ask and answers the next, as a bus that turned
+        // one call away does.
+        let script = format!(
+            "test -e {0} && echo run-a || {{ touch {0}; exit 1; }}",
+            asked.display()
+        );
+        assert_eq!(
+            answered(
+                "bash",
+                &words(&["-c", &script]),
+                Duration::from_secs(10),
+                Duration::from_millis(100)
+            ),
+            Some("run-a".to_string()),
+            "an ask refused once wasn't asked again"
+        );
+        // Answers after 1.5 s, past what a short fresh ask would wait.
+        assert_eq!(
+            answered(
+                "bash",
+                &words(&["-c", "sleep 1.5; echo run-b"]),
+                Duration::from_secs(10),
+                Duration::from_millis(100)
+            ),
+            Some("run-b".to_string()),
+            "a slow answer wasn't given the time left"
+        );
+        let started = Instant::now();
+        assert_eq!(
+            answered(
+                "false",
+                &[],
+                Duration::from_millis(800),
+                Duration::from_millis(100)
+            ),
+            None,
+            "an ask refused every time was taken for an answer"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "asks went on past their time"
+        );
+        let _ = fs::remove_file(&asked);
     }
 }
