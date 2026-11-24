@@ -5741,8 +5741,12 @@ Scope {
         // typing to it, or sent and not yet delivered, a shell started
         // again included (Drafts.qml). Words a link offered open with the
         // caret at their start, where Joel reads them from, rather than
-        // past their end (Y2YBTS, 2026-11-20).
+        // past their end (Y2YBTS, 2026-11-20). One a row carries, his own
+        // words a start gave it (Agents' askWhere), opens past their end,
+        // where Return gives them again.
+        const carried = typeof offered === "string" ? "" : String(row.offered?.() ?? "");
         const kept = typeof offered === "string" ? { text: offered, caret: 0 }
+            : carried !== "" ? { text: carried, caret: carried.length }
             : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
         restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.

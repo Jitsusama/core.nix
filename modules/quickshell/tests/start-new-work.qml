@@ -19,6 +19,7 @@ QtObject {
         empty: "say what the work is",
         unplaced: "that folder isn't a whole path",
         actRepository: "start it In a repository",
+        askedWhere: "pick where it starts below; your words go with it",
         actPlaced: "once one can take it, say it again",
         actNode: "once the node runs, say it again",
         offered: "a page offered this work; read it to its end, then Return starts it",
@@ -279,6 +280,51 @@ QtObject {
             refusal("this asks as a fence, so it runs only there: it needs a repository to "
                 + "work in"),
             "this asks as a fence, so it runs only there: it needs a repository to work in");
+
+        // A start refused for want of a repository asks Joel where it starts, his
+        // words carried to the folder he picks, rather than only saying so on the row
+        // he gave them from (Joel, 24 November: "the UI was crap").
+        const home = "it needs a repository to work in, and /home/j isn't one: say which, as "
+            + "`mycelium sprout --in <folder> ...`";
+        const unskilled = "a session begun in a home folder has none of its repository's "
+            + "skills: name the repository's folder";
+        for (const why of [home, unskilled, "/home/j/src/gone isn't a folder here"]) {
+            Expect.same(`one wanting a repository asks where: ${why.slice(0, 24)}`,
+                Sprouting.asksWhere({ started: false, why }), true);
+        }
+        for (const how of [{ started: true, machine: "kestrel", held: "h1" },
+            { started: false, unanswered: true, why: home },
+            { started: false, why: "nowhere: tern is out of reach" },
+            { started: false, why: "this asks as a fence, so it runs only there: it needs a "
+                + "repository to work in" },
+            { started: false, why: "" }]) {
+            Expect.same(`any other end asks nowhere: ${JSON.stringify(how).slice(0, 48)}`,
+                Sprouting.asksWhere(how), false);
+        }
+        Expect.same("asked where, it says the refusal and that his words go with the folder",
+            Sprouting.toldWhere({ started: false, why: home }, said),
+            "it needs a repository to work in, and /home/j isn't one; "
+                + "pick where it starts below; your words go with it");
+        Expect.same("and one begun at home",
+            Sprouting.toldWhere({ started: false, why: unskilled }, said),
+            "a session begun in a home folder has none of its repository's skills; "
+                + "pick where it starts below; your words go with it");
+        const stillIn = { open: true, asking: { key: "link" }, lettersAt: 7 };
+        Expect.same("he's stepped back while still in the act's emptied field",
+            Sprouting.stepsBack(stillIn, "link", 7, 2), true);
+        const away = [["the launcher shut", Object.assign({}, stillIn, { open: false }), 2],
+            ["at another act", Object.assign({}, stillIn, { asking: { key: "in" } }), 2],
+            ["on its row, out of the field", Object.assign({}, stillIn, { asking: false }), 2],
+            ["a key pressed since", Object.assign({}, stillIn, { lettersAt: 9 }), 2],
+            ["no folder to pick", stillIn, 0], ["no launcher", null, 2]];
+        for (const [why, launcher, folders] of away) {
+            Expect.same(`nor stepped anywhere with ${why}`,
+                Sprouting.stepsBack(launcher, "link", 7, folders), false);
+        }
+        Expect.same("with those words missing, it's told as any refusal is",
+            Sprouting.toldWhere({ started: false, why: home },
+                Object.assign({}, said, { askedWhere: "" })),
+            "it needs a repository to work in, and /home/j isn't one; start it In a repository");
         Expect.same("one unanswered keeps its own words, which say what to do",
             Sprouting.told({ started: false, unanswered: true,
                 why: "the node couldn't be reached in time" }, said),
@@ -306,6 +352,8 @@ QtObject {
         const written = writtenSaid();
         Expect.same("each refusal's act is in Start New Work's own words",
             Sprouting.refusalActs().filter(key => String(written[key] ?? "").trim() === ""), []);
+        Expect.same("and so is what asking where says",
+            String(written.askedWhere ?? "").trim() !== "", true);
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };

@@ -404,6 +404,37 @@ function acted(why, said) {
     return `${cut}; ${act}`;
 }
 
+// Whether a start that ended `how` asks Joel where it starts: one refused
+// for want of a repository, which a folder Start New Work lists gets past,
+// so he's stepped back to them, his words carried to the one he picks
+// (Joel, 24 November, of a link refused so: "the UI was crap").
+const unplacedBy = why =>
+    ACTS.find(one => one.act === "actRepository" && one.says.test(String(why ?? "")));
+function asksWhere(how) {
+    return how?.started === false && how.unanswered !== true && unplacedBy(how.why) !== undefined;
+}
+
+// Whether `launcher` may step Joel back to pick where act `key` starts: he's
+// still in its emptied field, no key since his Return (`letters` its
+// lettersAt then), and `folders` are listed to pick from.
+function stepsBack(launcher, key, letters, folders) {
+    return launcher?.open === true && launcher.asking?.key === key
+        && launcher.lettersAt === letters && folders > 0;
+}
+
+// How a start that asks where is told, in `said`'s words: the refusal, the
+// command line's act cut, then that his words go with the folder he picks;
+// as `told` says it where those words are missing or the cut isn't there.
+function toldWhere(how, said) {
+    const words = String(how.why ?? "");
+    const known = unplacedBy(words);
+    const where = String(said?.askedWhere ?? "");
+    if (known === undefined || where === "" || (known.cut !== null && !known.cut.test(words))) {
+        return told(how, said);
+    }
+    return `${known.cut === null ? words : words.replace(known.cut, "")}; ${where}`;
+}
+
 // What the act that ran says of how it ended, in `said`'s words: one
 // refused ends with what gets past it (acted), and one the node started
 // with no holder's id can't be found to open, so it promises none.

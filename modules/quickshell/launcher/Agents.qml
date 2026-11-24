@@ -1688,6 +1688,9 @@ Provider {
             glyph: Words.glyph(`verb:agents:start-new-work:${id}`),
             hue: "action",
             ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
+            // A folder's field opens on words a start refused for want of
+            // one carried here (askWhere).
+            offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
             given: said => provider.sprout(key, said, folder)
         });
@@ -1757,6 +1760,8 @@ Provider {
         }
         sprouting = key;
         sprouts += 1;
+        sproutGiven = { words: String(said), letters: launcher.lettersAt };
+        sproutCarried = "";
         const sprout = sprouts;
         sproutSays(key, words.starting);
         sproutPatience.restart();
@@ -1920,9 +1925,12 @@ Provider {
         if (sproutTokens[sproutToken] === "asking")
             sproutTokens[sproutToken] = "ended";
         sproutToken = "";
-        sproutSays(key, Sprouting.told(how, sproutWords()));
+        const where = Sprouting.asksWhere(how) && askWhere(key);
+        const text = where ? Sprouting.toldWhere(how, sproutWords())
+            : Sprouting.told(how, sproutWords());
+        sproutSays(key, text);
         // Told Joel before the daemon is told it's told, so it's kept until he is.
-        sproutReaches(how);
+        sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
@@ -1936,11 +1944,32 @@ Provider {
     // Says how a start ended beyond its own row (Sprouting.reach): in the
     // journal always, and told Joel when it opens no window, so no start
     // he gives ends unseen.
-    function sproutReaches(how) {
+    function sproutReaches(how, toldAs) {
         const reach = Sprouting.reach(how, sproutWords());
         console.info(`launcher: ${reach.journal}`);
-        if (reach.told !== null)
-            sproutTell([reach.told]);
+        const told = toldAs ?? reach.told;
+        if (told !== null)
+            sproutTell([told]);
+    }
+
+    // The words of the start running and the launcher's lettersAt at its
+    // Return, and the words a start refused for want of a repository
+    // carries to the folder Joel picks next, "" when none does.
+    property var sproutGiven: ({ words: "", letters: 0 })
+    property string sproutCarried: ""
+    // Steps Joel out of the act `key`, whose start wanted a repository, back
+    // onto Start New Work's folders, its words carried to whichever he picks
+    // (Sprouting.asksWhere), only while he's still in its field to be
+    // stepped back (Sprouting.stepsBack). Whether it did.
+    function askWhere(key) {
+        const launcher = provider.launcher ?? null;
+        const folders = (source("quests")?.folders() ?? []).length;
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+            return false;
+        sproutCarried = sproutGiven.words;
+        launcher.back();
+        console.info("launcher: new work wanted a repository; asking where it starts");
+        return true;
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -1976,6 +2005,7 @@ Provider {
         const footed = sproutFooted;
         const launcher = provider.launcher ?? null;
         sproutFooted = null;
+        sproutCarried = "";
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
