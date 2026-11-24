@@ -1718,12 +1718,8 @@ mod tests {
     }
 
     #[test]
-    fn keep_places_holds_a_failure_as_first_said_until_a_write_goes_through() {
+    fn a_write_of_the_places_holds_a_failure_as_first_said_until_one_goes_through() {
         let mut inputs = inputs();
-        inputs.boot = "this-one".into();
-        inputs.windows.took(&json!({"records": [
-            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
-        ]}));
         let folder =
             std::env::temp_dir().join(format!("agents-inputs-said-{}", std::process::id()));
         // Only this case's own folder, left by a run that failed.
@@ -1732,16 +1728,19 @@ mod tests {
         let blocked = folder.join("blocked");
         std::fs::write(&blocked, "").expect("a file where its folder would be");
         let path = blocked.join("arrangement.json");
-        inputs.keep_places(&path);
+        // At times a second apart, so one stamped again at each try
+        // can't pass for one held as first said.
+        let kept = inputs.arrangement.clone();
+        inputs.write_places(kept.clone(), &path, 1_000);
         let first = inputs.unwritten.clone().expect("the write failed");
-        inputs.keep_places(&path);
+        inputs.write_places(kept.clone(), &path, 2_000);
         assert_eq!(
-            inputs.unwritten,
-            Some(first),
+            (inputs.unwritten.clone(), first.since, first.said),
+            (Some(first.clone()), 1_000, 1_000),
             "failing the same way again, it's held as first said, so not said again"
         );
         std::fs::remove_file(&blocked).expect("the way cleared");
-        inputs.keep_places(&path);
+        inputs.write_places(kept, &path, 3_000);
         assert_eq!(inputs.unwritten, None, "written, nothing's held");
         // Only this case's own folder, which the next run makes afresh.
         let _ = std::fs::remove_dir_all(&folder);
@@ -1751,6 +1750,13 @@ mod tests {
     fn a_keep_where_nothing_moved_and_nothing_is_unwritten_writes_nothing() {
         let mut inputs = inputs();
         inputs.boot = "this-one".into();
+        // A session in a window, so there's a place that could move.
+        inputs.sessions.took(&json!({"records": [
+            {"key": "session:o", "standing": "running", "here": true,
+             "window": {"terminal": "kitty", "within": "unix:@kitty-4", "id": 2,
+                "app_id": "pi-session.1"},
+             "presence": {"addresses": ["O"], "session": "s-o"}}
+        ]}));
         inputs.windows.took(&json!({"records": [
             {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
         ]}));
@@ -1761,7 +1767,11 @@ mod tests {
         std::fs::create_dir_all(&folder).expect("a folder");
         let path = folder.join("arrangement.json");
         inputs.keep_places(&path);
-        assert!(path.exists(), "the first keep writes");
+        assert!(
+            path.exists() && inputs.arrangement.boots["this-one"]["s-o"].is_object(),
+            "the first keep writes its place: {:?}",
+            inputs.arrangement.boots
+        );
         std::fs::remove_file(&path).expect("taken away");
         inputs.keep_places(&path);
         assert!(
