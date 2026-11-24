@@ -62,8 +62,9 @@ onLinux {
   # puts its own tools ahead of the stand-ins. What btrfs itself writes to
   # disk isn't proven here; its own checksums guard that.
   pi-log-compression-keeps-its-rules =
-    pkgs.runCommandLocal "pi-log-compression-keeps-its-rules" { } ''
-      ${lib.getExe pkgs.bash} ${./compress-logs-keeps-its-rules.sh} ${./compress-logs.sh}
-      touch $out
-    '';
+    pkgs.runCommandLocal "pi-log-compression-keeps-its-rules" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./compress-logs-keeps-its-rules.sh} ${./compress-logs.sh}
+        touch $out
+      '';
 }
