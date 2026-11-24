@@ -1,6 +1,6 @@
 # An account in wheel traces its own niri off the CPU with no password, and
 # nobody else can (modules/niri-off-cpu). A stand-in named as niri's session
-# is runs as that account (niri-off-cpu/stand-in-niri.py). The tests are
+# is runs as that account (tests/vm/admin/niri-off-cpu/stand-in-niri.py). The tests are
 # niri-off-cpu-vm-test.py, which pytest runs inside the driver
 # (tests/lib/vm_pytest.py).
 { self, pkgs }:
