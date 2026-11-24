@@ -144,6 +144,8 @@ in
         // isn't answering, as Niri.qml says it; a case sets it.
         property bool standIn: false
         property var current: null
+        // The window Joel is in, none, which a press's goingTo keeps.
+        property var focused: null
         // Workspace 5, where a sleeper's window was, and 8, named for the
         // orchestrator of a session elsewhere, Joel on another.
         property var workspaces: ({
