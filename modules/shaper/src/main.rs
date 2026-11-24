@@ -426,12 +426,21 @@ impl Shaped {
         let split = self.lanes.split(&seen, dt);
         if split.moved_from(&self.split, rate) {
             let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
-            self.split = self.split.after(split, took);
-            if took {
-                self.split_agents_share = self.agents_share;
-            }
+            self.sent_split(split, took);
         }
         self.split.vpn
+    }
+
+    /// Takes `split` as sent to the classes, `took` saying whether every
+    /// command did, and the share agents straight were held to in it as
+    /// what their class holds: wherever a split is sent, a rate's move
+    /// between seconds included, so a trace never names a share the
+    /// classes weren't sent (follow-ups round 1's F1 and F24).
+    fn sent_split(&mut self, split: lanes::Split, took: bool) {
+        self.split = self.split.after(split, took);
+        if took {
+            self.split_agents_share = self.lanes.held_share();
+        }
     }
 
     /// Lets agents straight borrow the whole rate again once the
@@ -445,10 +454,7 @@ impl Shaped {
         self.lanes.let_agents_go();
         let split = self.lanes.at(float(self.applied.0));
         let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
-        self.split = self.split.after(split, took);
-        if took {
-            self.split_agents_share = 1.0;
-        }
+        self.sent_split(split, took);
     }
 
     /// The shares this link's queues are held to now, as a trace says them
@@ -818,7 +824,8 @@ struct Pinner {
     boot: String,
     asked_at: Option<(Instant, u64)>,
     /// Since when the primary uplink's router has named no network, so a
-    /// pin kept through that lets go once it lasts `pin::APART`.
+    /// pin that has stood `pin::APART` in that time lets go
+    /// (`Pinning::unheard`).
     unnamed_since: Option<Instant>,
 }
 
@@ -908,19 +915,13 @@ impl Pinner {
     /// transaction.
     fn step(&mut self, primary: Option<&Shaped>, calling: bool, now: Instant) -> String {
         let uplink = primary.map(|s| (s.uplink.name.as_str(), s.network.as_str()));
-        if let Some((link, network)) = uplink
-            && let Some(first) = self.pinning.network(link, network)
-        {
-            eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
+        if let Some((first, why)) = self.pinning.primary(uplink) {
+            eprintln!("{}", pin::let_go(first, why));
         }
-        let since = self.unnamed_since.unwrap_or(now);
-        self.unnamed_since = uplink
-            .filter(|&(_, network)| pin::unnamed(network))
-            .map(|_| since);
-        if self
-            .unnamed_since
-            .is_some_and(|at| now.saturating_duration_since(at) >= pin::APART)
-            && let Some(first) = self.pinning.unheard(now)
+        let unnamed = uplink.is_some_and(|(_, network)| pin::unnamed(network));
+        self.unnamed_since = unnamed.then(|| self.unnamed_since.unwrap_or(now));
+        if let Some(since) = self.unnamed_since
+            && let Some(first) = self.pinning.unheard(since, now)
         {
             eprintln!("{}", pin::let_go(first, pin::UNNAMED));
         }
@@ -1763,6 +1764,7 @@ fn look(
                     ) {
                         s.applied = (s.up.rate, s.down.rate);
                         s.joel_told = None;
+                        s.split_agents_share = s.lanes.held_share();
                     }
                 }
                 if !s.probes.running() {
@@ -1884,9 +1886,12 @@ fn step_links(
     let agents = live.agents_share(now);
     // What the link the recorder follows carried down its last second,
     // while that second says anything of the line now.
-    let carried = live
-        .carried(now)
-        .map(|(link, kbit)| (link.to_string(), kbit));
+    let carried = live.carried(now).map(|c| Down {
+        link: c.link.to_string(),
+        network: c.network.to_string(),
+        kbit: c.kbit,
+        cut: c.cut,
+    });
     for (name, s) in shaped.iter_mut() {
         let held = link.as_deref() == Some(name.as_str());
         // The VPN is held only while the upload is: a recorder gone
@@ -1911,16 +1916,16 @@ fn step_links(
             ceilings.get(&s.network).copied().map(rate::whole),
             house.get(&s.network).map(|&(_, most)| most),
         );
-        let its = carried.as_ref().filter(|(link, _)| link == name);
         let declared = lines.get(&s.network).copied();
-        // The controller's own cut of this link's download, which it
-        // makes only on a line it judged full.
-        let cut = held && rates.down.is_some();
         let (room, said) = s.room.step(
             name,
             &s.network,
             calling,
-            (its.map(|&(_, kbit)| kbit), cut),
+            room_heard(
+                carried.as_ref(),
+                (name, &s.network),
+                held && rates.down.is_some(),
+            ),
             declared,
         );
         if let Some(said) = said {
@@ -1929,6 +1934,34 @@ fn step_links(
         let rates = led(rates, held, most);
         let why = if held { &why } else { &why::Judged::Nothing };
         hold(s, rates, why, room);
+    }
+}
+
+/// What the recorder's last second said of the download of the link it
+/// follows (`live::Carried`), kept apart from the recorder so the links
+/// can be stepped.
+struct Down {
+    link: String,
+    network: String,
+    kbit: f64,
+    cut: bool,
+}
+
+/// What a call's download hold on link `name`, on `network`, hears of the
+/// download (src/room.rs): what it carried, and whether the controller's
+/// hold of it says the line is full, which counts only while the
+/// controller `holds` this link's download. Both are heard only where the
+/// recorder's last second was read on this link in a stay on this
+/// network, so a stay not yet moved with the link says nothing of the
+/// network it moved to (follow-ups round 1's F5 and F16).
+fn room_heard(
+    down: Option<&Down>,
+    (name, network): (&str, &str),
+    holds: bool,
+) -> (Option<f64>, bool) {
+    match down.filter(|d| d.link == name && d.network == network) {
+        Some(d) => (Some(d.kbit), holds && d.cut),
+        None => (None, false),
     }
 }
 
@@ -2304,7 +2337,7 @@ fn apply(s: &mut Shaped, most: u64) {
         if took {
             s.applied.0 = up;
         }
-        s.split = s.split.after(split, took);
+        s.sent_split(split, took);
     }
     // Apart from the classes, so a CAKE that refuses its rate never makes
     // them read as unmoved, and asked again each step until it takes.
@@ -3339,6 +3372,54 @@ mod tests {
     const OUR_IFB: &str = r#"[{"kind":"htb","handle":"1:","root":true},
         {"kind":"cake","handle":"2:","parent":"1:2"}]"#;
     const THE_KERNELS: &str = r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#;
+
+    #[test]
+    fn a_call_s_hold_hears_only_the_download_of_its_own_link_and_stay() {
+        let down = Down {
+            link: "eth1".into(),
+            network: "home".into(),
+            kbit: 44_700.0,
+            cut: true,
+        };
+        assert_eq!(
+            room_heard(Some(&down), ("eth1", "home"), true),
+            (Some(44_700.0), true),
+            "its own link's cut download"
+        );
+        assert_eq!(
+            room_heard(Some(&down), ("eth1", "home"), false),
+            (Some(44_700.0), false),
+            "a cut the controller doesn't apply to this link counted"
+        );
+        // The controller's own word on its hold, not that one lingers, is
+        // what counts (shaper holds round 1's F7).
+        let quiet = Down {
+            link: "eth1".into(),
+            network: "home".into(),
+            kbit: 44_700.0,
+            cut: false,
+        };
+        assert_eq!(
+            room_heard(Some(&quiet), ("eth1", "home"), true),
+            (Some(44_700.0), false),
+            "a cut kept over a quiet download counted"
+        );
+        assert_eq!(
+            room_heard(Some(&down), ("wlan0", "home"), true),
+            (None, false),
+            "another link's download was heard"
+        );
+        assert_eq!(
+            room_heard(Some(&down), ("eth1", "office"), true),
+            (None, false),
+            "a stay not yet moved with the link spoke for the network it moved to"
+        );
+        assert_eq!(
+            room_heard(None, ("eth1", "home"), true),
+            (None, false),
+            "nothing"
+        );
+    }
 
     // A read that failed changes nothing: install leaves the link, look
     // doesn't put its queues back, and its VPN isn't counted taken up

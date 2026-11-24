@@ -192,6 +192,14 @@ pub struct Pin {
     pub ms: f64,
 }
 
+impl Pin {
+    /// What its rules hold to: the pair from its first, for its server's
+    /// port, whatever delay the round read.
+    fn rule(&self) -> (u16, Ipv4Addr, u16) {
+        (self.first, self.to, self.port)
+    }
+}
+
 /// The rules that give new flows of the VPN's mark leaving by an uplink
 /// for the server the pin was measured toward the two ports from its
 /// first, flows already open keeping theirs: one counts a flow that comes
@@ -286,6 +294,27 @@ pub struct Pinning {
     retried: Option<u64>,
     failing: u64,
     back_at: Option<Instant>,
+    /// The rule `failing` counts returns to, so a pin moved or let go
+    /// starts its own count rather than taking the last one's, while a
+    /// round that finds the same pair again keeps it.
+    counting: Option<(u16, Ipv4Addr, u16)>,
+    /// When the pin's rule last took hold, before which and for
+    /// `REMEMBERED` after, what comes back was given the last pin's pair.
+    taken: Option<Instant>,
+    /// When the count was last read, so the first counted is read past
+    /// `REMEMBERED` after `taken`.
+    read_at: Option<Instant>,
+    /// When a round's pin last took hold, a pair re-found included, from
+    /// which it stands `APART` on a link no router names.
+    measured: Option<Instant>,
+    /// The primary link as last told, and whether it named no network,
+    /// or none while there's no primary.
+    here: Option<(String, bool)>,
+    /// The link the round out was asked on while it named no network,
+    /// for as long as it stays so; and the link a pin such a round found
+    /// took hold on, measured on the line its router names next.
+    asked_unnamed: Option<String>,
+    taken_unnamed: Option<String>,
     kept: bool,
     on: Option<(String, String)>,
     flows: Vec<(End, Option<u16>)>,
@@ -450,6 +479,16 @@ pub fn unnamed(network: &str) -> bool {
     network.starts_with("link ")
 }
 
+/// Why a pin measured while its link named no network is let go once
+/// that link was left: what line it split was forgotten as it left.
+pub const LEFT_UNNAMED: &str = "where it was measured was forgotten as its link was left";
+
+/// What the pin's network is set to once it was measured on a link
+/// naming none and the primary left that link, so no network a router
+/// names, nor that link's own name, is where it is: neither a router's
+/// address nor a link's own name (`unnamed`) reads so.
+const FORGOTTEN_ON: &str = "forgotten";
+
 impl Pinning {
     /// The flow to probe toward now, if any: one from a socket the VPN
     /// opened since the last round, at the start too, while no call is
@@ -480,6 +519,7 @@ impl Pinning {
         self.seen = ends.to_vec();
         self.probing = true;
         self.asked = Some(now);
+        self.asked_unnamed = self.unnamed_link().map(str::to_owned);
         Some(to)
     }
 
@@ -553,9 +593,51 @@ impl Pinning {
     /// pin waits for the router's name to judge it, keeping a good pin
     /// through docking onto the same network. A round may go at once,
     /// since the VPN opens a new socket on a new network. Gives the first
-    /// of the pair let go.
+    /// of the pair let go. Main steps the primary by `primary`; this is
+    /// the tests' shorter spelling of a step with one.
+    #[cfg(test)]
     pub fn network(&mut self, link: &str, network: &str) -> Option<u16> {
+        self.judge(link, network).map(|(first, _)| first)
+    }
+
+    /// Takes the primary uplink and its network, or `None` for a step
+    /// with none, as `network` does, giving the first of the pair let go
+    /// and why, so the one place a caller steps the primary is the one
+    /// the tests step (shaper holds round 4's F3 and F7).
+    pub fn primary(&mut self, primary: Option<(&str, &str)>) -> Option<(u16, &'static str)> {
+        if let Some((link, network)) = primary {
+            self.judge(link, network)
+        } else {
+            self.no_primary();
+            None
+        }
+    }
+
+    /// `network`, saying why a pin is let go.
+    fn judge(&mut self, link: &str, network: &str) -> Option<(u16, &'static str)> {
         let now = (link.to_owned(), network.to_owned());
+        let unnamed_now = unnamed(network);
+        // A round asked unnamed was measured on the line its link's router
+        // names next only while the link stays the same and unnamed, and
+        // a pin such a round took hold with only while the link stays the
+        // same: one the primary left, if only for another link's unnamed
+        // moment, may be on another line when it's back (shaper holds
+        // round 3's F1, F5, F11 and F16). So leaving it forgets where it
+        // was measured, and the pin is let go wherever it's judged next,
+        // the network named before the silence included (round 4's F10).
+        let moved = self.here.as_ref().is_none_or(|(was, _)| was != link);
+        if moved {
+            self.taken_unnamed = None;
+            if let Some((_, was)) = &mut self.on
+                && unnamed(was)
+            {
+                FORGOTTEN_ON.clone_into(was);
+            }
+        }
+        if moved || !unnamed_now {
+            self.asked_unnamed = None;
+        }
+        self.here = Some((link.to_owned(), unnamed_now));
         let Some((was_link, was)) = self.on.clone() else {
             self.on = Some(now);
             return None;
@@ -564,12 +646,19 @@ impl Pinning {
         // the pin was measured on as it was, so a move through an unnamed
         // moment to another router still lets go, and one to the same
         // router keeps it (pin round 8's F1 and F4, round 7's F1).
-        if unnamed(network) {
+        if unnamed_now {
             return None;
         }
+        // A pin whose round was asked and took hold while this link named
+        // no network was measured on the line its router now names,
+        // wherever the pin before it was (shaper holds round 1's F21); one
+        // measured named, or on another link, is judged by where it was
+        // (round 2's F1, F6, F12 and F15).
+        let measured_here =
+            self.taken_unnamed.take().as_deref() == Some(link) && self.pinned.is_some();
         // The same network by another link is where the pin is, and the
         // link it's now on is the one whose unnamed moments are its own.
-        if was == network {
+        if was == network || measured_here {
             self.on = Some(now);
             return None;
         }
@@ -582,20 +671,49 @@ impl Pinning {
         self.kept = false;
         self.asked = None;
         self.seen.clear();
-        self.pinned.take().map(|p| p.first)
+        let why = if was == FORGOTTEN_ON {
+            LEFT_UNNAMED
+        } else {
+            ELSEWHERE
+        };
+        self.pinned.take().map(|p| (p.first, why))
     }
 
-    /// Lets the pin go at `now` where its link has gone `APART` with no
-    /// router naming its network (pin round 9's F3 and F5): a pin kept
-    /// through a moment unnamed would otherwise be kept as long as the
-    /// router stays silent, on a line nothing says is the one it split.
-    /// The spacing and the flows probed for are left as they are, since a
-    /// silent router names no new network to probe on. Gives the first of
-    /// the pair let go.
-    pub fn unheard(&mut self, now: Instant) -> Option<u16> {
-        self.coming = None;
-        self.kept = false;
+    /// Takes a step with no primary uplink: whatever link comes next is a
+    /// move, so a round asked or a pin taken while the last named no
+    /// network isn't judged as measured on its line (shaper holds round
+    /// 3's F1 and F16).
+    fn no_primary(&mut self) {
+        self.here = None;
+    }
+
+    /// The primary link, while it names no network.
+    fn unnamed_link(&self) -> Option<&str> {
+        self.here
+            .as_ref()
+            .filter(|(_, unnamed)| *unnamed)
+            .map(|(link, _)| link.as_str())
+    }
+
+    /// Lets the pin go at `now` once it has stood `APART` while its link
+    /// has had no router naming its network, `since` then (pin round 9's
+    /// F3 and F5): a pin kept through a moment unnamed would otherwise be
+    /// kept as long as the router stays silent, on a line nothing says is
+    /// the one it split. Timed from the later of `since` and when the pin
+    /// took hold, so every pin a round takes there stands as long, rather
+    /// than whatever is left of a span (shaper holds round 1's F23), a
+    /// pair the round found again included (round 2's F9). The
+    /// spacing and the flows probed for are left as they are, since a
+    /// silent router names no new network to probe on, and so is a pin
+    /// still settling. With no pin standing, nothing changes. Gives the
+    /// first of the pair let go.
+    pub fn unheard(&mut self, since: Instant, now: Instant) -> Option<u16> {
+        let stood = self.measured.map_or(since, |measured| measured.max(since));
+        if now.saturating_duration_since(stood) < APART {
+            return None;
+        }
         let first = self.pinned.take()?.first;
+        self.kept = false;
         self.replaced = Some((first, now));
         Some(first)
     }
@@ -603,7 +721,13 @@ impl Pinning {
     /// Takes up what was kept across a restart (`Restart`), the last round
     /// asked at `asked`: the pin's rule is put back, a round still waits
     /// out the spacing and its kept-once mark, and leaves out every pair
-    /// the VPN's live flows were given.
+    /// the VPN's live flows were given. Whether a pin was measured while
+    /// its link named no network isn't kept, so one taken so before a
+    /// restart, its network kept as that link's own name, is let go as
+    /// forgotten once the router names the network, the first step being
+    /// a move, and a round goes again at once (shaper holds round 3's
+    /// F12): a pair lost for a round, not one kept on a line it didn't
+    /// split.
     pub fn resume(&mut self, kept: Restart, asked: Option<Instant>) {
         self.pinned = kept.pin;
         self.on = kept.on;
@@ -705,14 +829,30 @@ impl Pinning {
     }
 
     /// Puts the pin a round found in force once its time comes, and says
-    /// so when the pin moved.
+    /// so when the pin moved. A pin taken from a round asked and settled
+    /// on a link naming no network, a pair found again included, is kept
+    /// by the network that link names next (round 2's F4).
     pub fn take_hold(&mut self, now: Instant) -> Option<Moved> {
         let (pin, from) = self.coming?;
         if now < from {
             return None;
         }
         self.coming = None;
-        let was = std::mem::replace(&mut self.pinned, pin).map(|p| p.first);
+        let was = std::mem::replace(&mut self.pinned, pin);
+        if was.map(|p| p.rule()) != pin.map(|p| p.rule()) {
+            self.taken = pin.map(|_| now);
+        }
+        let asked = self.asked_unnamed.take();
+        let unnamed_here = asked.is_some() && asked.as_deref() == self.unnamed_link();
+        self.measured = pin.map(|_| now);
+        self.taken_unnamed = asked.filter(|_| unnamed_here && pin.is_some());
+        // Measured on a line no router has named yet, so not on the
+        // network named before the silence: the link's own name stands
+        // for where it is until the router names it (round 4's F10).
+        if let Some(link) = &self.taken_unnamed {
+            self.on = Some((link.clone(), format!("link {link}")));
+        }
+        let was = was.map(|p| p.first);
         let moved = was != pin.map(|p| p.first);
         if let Some(first) = was.filter(|_| moved) {
             self.replaced = Some((first, now));
@@ -726,10 +866,35 @@ impl Pinning {
     /// than the shaper looks still counts (pin round 10's F4), while a
     /// return longer after the last, as a VPN's few reconnects in a day
     /// give, starts the count over, as does a count that fell, as a
-    /// switch's does. Gives the pin let go and how many came back.
+    /// switch's does. A pin's count starts from the first reading under
+    /// its own rule, and counts only what came back after `REMEMBERED`
+    /// past the rule taking hold: one counter counts every pin's returns,
+    /// and a flow the last pin's rule remembered that comes back so soon
+    /// matches this one's, though it's the last pair that failed it
+    /// (shaper holds round 1's F16 and F24). So the first counted reading
+    /// is the one after a reading taken past then (round 2's F2, F7 and
+    /// F11), and for that long, `REMEMBERED` and up to a `LOOK`, a new
+    /// pin the VPN's flows can't get through isn't let go (F13): letting
+    /// a good pin go for the last one's returns would lose the quick way
+    /// for `APART`. Gives the pin let go and how many came back.
     pub fn heed(&mut self, retried: u64, now: Instant) -> Option<(Moved, u64)> {
         let was = self.retried.replace(retried);
-        let first = self.pinned?.first;
+        let read_before = self.read_at.replace(now);
+        let pin = self.pinned?;
+        let first = pin.first;
+        let fresh = self.taken.is_some_and(|at| {
+            read_before.is_none_or(|before| {
+                before
+                    .checked_duration_since(at)
+                    .is_none_or(|after| after <= REMEMBERED)
+            })
+        });
+        if fresh || self.counting != Some(pin.rule()) {
+            self.counting = Some(pin.rule());
+            self.failing = 0;
+            self.back_at = None;
+            return None;
+        }
         let was = was?;
         if retried < was {
             self.failing = 0;
@@ -1109,12 +1274,23 @@ mod tests {
             "a link named by itself named a network"
         );
         assert!(!unnamed("aa:bb"), "a router's name named no network");
+        let second = Duration::from_secs(1);
+        let under = APART.saturating_sub(second);
         assert_eq!(
-            pinning.unheard(start + APART),
+            pinning.unheard(start, start + under),
+            None,
+            "a pin unnamed under APART was let go"
+        );
+        assert_eq!(
+            pinning.unheard(start, start + APART),
             Some(30_006),
             "the pin wasn't let go"
         );
-        assert_eq!(pinning.unheard(start + APART), None, "no pin let go twice");
+        assert_eq!(
+            pinning.unheard(start, start + APART),
+            None,
+            "no pin let go twice"
+        );
         assert_eq!(
             pinning.ask(&[end(36_284)], false, start + APART / 2),
             None,
@@ -1125,6 +1301,238 @@ mod tests {
             Vec::<u16>::new(),
             "the pair let go is held with no flow first seen after it"
         );
+        // A round's pin found while the router is still silent settles and
+        // takes hold as anywhere, and stands its own APART from then, the
+        // spell long since that old.
+        let found = start + APART + second;
+        pinning.coming = Some((Some(pin_at(30_010)), found));
+        assert_eq!(
+            pinning.unheard(start, found),
+            None,
+            "nothing stood to let go"
+        );
+        assert!(
+            pinning.take_hold(found).is_some(),
+            "a pin found unnamed was thrown away before it took hold"
+        );
+        assert_eq!(
+            pinning.unheard(start, found + under),
+            None,
+            "a pin taken late in the spell was let go before its own APART"
+        );
+        // A round that finds the same pair again there measured it anew,
+        // so it stands APART from then (shaper holds round 2's F9).
+        let refound = found + under;
+        pinning.coming = Some((Some(pin_at(30_010)), refound));
+        assert!(
+            pinning.take_hold(refound).is_none(),
+            "the same pair was said moved"
+        );
+        assert_eq!(
+            pinning.unheard(start, found + APART),
+            None,
+            "a pair found again was let go on its first take's time"
+        );
+        assert_eq!(
+            pinning.unheard(start, refound + APART),
+            Some(30_010),
+            "a pin taken in the spell stood past its own APART"
+        );
+        // A pin taken long before the silence stands APART from its start,
+        // not from when it took hold (shaper holds round 3's F6).
+        let mut long_held = Pinning {
+            coming: Some((Some(pin_at(30_006)), start)),
+            ..Pinning::default()
+        };
+        assert!(
+            long_held.take_hold(start).is_some(),
+            "the pin didn't take hold"
+        );
+        let silent = start + APART;
+        assert_eq!(
+            long_held.unheard(silent, silent + second),
+            None,
+            "a pin held long before the silence was let go as it began"
+        );
+        assert_eq!(
+            long_held.unheard(silent, silent + APART),
+            Some(30_006),
+            "a pin held through APART of silence wasn't let go"
+        );
+    }
+
+    #[test]
+    fn a_pin_measured_while_unnamed_is_kept_by_the_network_its_link_names_next() {
+        let start = Instant::now();
+        let settled = start + Duration::from_secs(35);
+        let quick = read(&[30_010, 30_011], 66.0, &[]);
+        // Asked, found and taken hold while eth1 names no network, the pin
+        // was measured on the line eth1's router names next.
+        let mut unnamed_round = asked_on(30_006, "eth1", "link eth1", start);
+        unnamed_round.found(end(36_284), &quick, settled);
+        assert!(
+            unnamed_round.take_hold(settled).is_some(),
+            "the round's pin didn't move"
+        );
+        assert_eq!(
+            unnamed_round.network("eth1", "bb:bb"),
+            None,
+            "a pin measured while unnamed was let go as elsewhere"
+        );
+        assert_eq!(
+            unnamed_round.pinned.map(|p| p.first),
+            Some(30_010),
+            "the pin went"
+        );
+        // Once adopted, a move to another network lets it go as ever.
+        assert_eq!(
+            unnamed_round.network("eth1", "cc:cc"),
+            Some(30_010),
+            "a pin measured on one network was kept on another"
+        );
+        // The pair it stood on, found again there, was measured there too
+        // (shaper holds round 2's F4).
+        let mut again = asked_on(30_010, "eth1", "link eth1", start);
+        again.found(end(36_284), &quick, settled);
+        assert!(
+            again.take_hold(settled).is_none(),
+            "the same pair was said moved"
+        );
+        assert_eq!(
+            again.network("eth1", "bb:bb"),
+            None,
+            "a pair found again while unnamed was let go as elsewhere"
+        );
+        // A round asked while named, its pin taking hold in a silence
+        // after, was measured on the line named before it (round 2's F1,
+        // F6 and F15).
+        let mut named_round = asked_on(30_006, "eth1", "aa:aa", start);
+        named_round.network("eth1", "link eth1");
+        named_round.found(end(36_284), &quick, settled);
+        assert!(
+            named_round.take_hold(settled).is_some(),
+            "the round's pin didn't move"
+        );
+        assert_eq!(
+            named_round.network("eth1", "bb:bb"),
+            Some(30_010),
+            "a pin measured on aa:aa's line was kept on bb:bb's through a silence"
+        );
+        // A pin measured on eth1's line isn't kept on wlan0's, nor one
+        // whose round the primary left mid-round for another unnamed link
+        // (round 2's F12).
+        let mut docked = asked_on(30_006, "eth1", "link eth1", start);
+        docked.found(end(36_284), &quick, settled);
+        assert!(
+            docked.take_hold(settled).is_some(),
+            "the round's pin didn't move"
+        );
+        assert_eq!(
+            docked.network("wlan0", "cc:cc"),
+            Some(30_010),
+            "a pin measured on eth1's line was kept on wlan0's"
+        );
+        let mut roamed = asked_on(30_006, "eth1", "link eth1", start);
+        roamed.network("wlan0", "link wlan0");
+        roamed.found(end(36_284), &quick, settled);
+        assert!(
+            roamed.take_hold(settled).is_some(),
+            "the round's pin didn't move"
+        );
+        assert_eq!(
+            roamed.network("wlan0", "cc:cc"),
+            Some(30_010),
+            "a pin asked on eth1's line was kept on wlan0's"
+        );
+    }
+
+    #[test]
+    fn a_pin_measured_unnamed_is_judged_by_where_it_was_once_its_link_left_or_was_named() {
+        let start = Instant::now();
+        let settled = start + Duration::from_secs(35);
+        let quick = read(&[30_010, 30_011], 66.0, &[]);
+        // A pin measured unnamed isn't kept by eth1's next router once the
+        // primary has left eth1, for another link's unnamed moment or for
+        // no link at all, since eth1 may come back on another line
+        // (shaper holds round 3's F1 and F16).
+        for away in [Some("wlan0"), None] {
+            let mut redocked = asked_on(30_006, "eth1", "link eth1", start);
+            redocked.found(end(36_284), &quick, settled);
+            assert!(
+                redocked.take_hold(settled).is_some(),
+                "the round's pin didn't move"
+            );
+            let gone = away.map(|link| (link, format!("link {link}")));
+            redocked.primary(
+                gone.as_ref()
+                    .map(|(link, network)| (*link, network.as_str())),
+            );
+            redocked.primary(Some(("eth1", "link eth1")));
+            assert_eq!(
+                redocked.primary(Some(("eth1", "cc:cc"))),
+                Some((30_010, LEFT_UNNAMED)),
+                "a pin measured on eth1's line was kept after the primary went {away:?}"
+            );
+        }
+        // Nor is it kept by the network named before the silence, by
+        // another link or the same one, since it was measured on a line
+        // no router had named (round 4's F10).
+        for away in [Some("wlan0"), None] {
+            let mut returned = asked_on(30_006, "eth1", "link eth1", start);
+            returned.found(end(36_284), &quick, settled);
+            assert!(
+                returned.take_hold(settled).is_some(),
+                "the round's pin didn't move"
+            );
+            let back = if let Some(link) = away {
+                returned.primary(Some((link, "aa:aa")))
+            } else {
+                returned.primary(None);
+                returned.primary(Some(("eth1", "aa:aa")))
+            };
+            assert_eq!(
+                back,
+                Some((30_010, LEFT_UNNAMED)),
+                "a pin measured unnamed was kept back on aa:aa after {away:?}"
+            );
+        }
+        // A round named mid-way was measured partly on the line named
+        // then, so it isn't kept by another named after a second silence
+        // (round 3's F7).
+        let mut renamed = asked_on(30_006, "eth1", "link eth1", start);
+        renamed.network("eth1", "aa:aa");
+        renamed.network("eth1", "link eth1");
+        renamed.found(end(36_284), &quick, settled);
+        assert!(
+            renamed.take_hold(settled).is_some(),
+            "the round's pin didn't move"
+        );
+        assert_eq!(
+            renamed.primary(Some(("eth1", "bb:bb"))),
+            Some((30_010, ELSEWHERE)),
+            "a round partly measured on aa:aa's line was kept on bb:bb's"
+        );
+    }
+
+    /// A pinning standing on `first`, its link first named aa:aa and now
+    /// as `network` names it, that has just asked a round at `at`.
+    fn asked_on(first: u16, link: &str, network: &str, at: Instant) -> Pinning {
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(first)),
+            ..Pinning::default()
+        };
+        assert_eq!(
+            pinning.network(link, "aa:aa"),
+            None,
+            "the first named let go"
+        );
+        assert_eq!(pinning.network(link, network), None, "unnamed let go");
+        assert_eq!(
+            pinning.ask(&[end(36_284)], false, at),
+            Some(end(36_284)),
+            "no round was asked"
+        );
+        pinning
     }
 
     #[test]
@@ -1611,6 +2019,49 @@ mod tests {
             switched.heed(1, look(start, 3)),
             None,
             "one back after a switch was counted with one before it"
+        );
+
+        // A return under one pin isn't counted against the pin a round
+        // moved it to, nor one in the next look after the move, as main
+        // steps a move between looks, nor one in the time the last pin's
+        // rule remembers its flows: the new pin's own count starts after.
+        let mut moved = pinned_at(0, start);
+        assert_eq!(moved.heed(1, look(start, 1)), None, "one back let go");
+        let swap = look(start, 1) + Duration::from_secs(2);
+        moved.coming = Some((Some(pin_at(30_010)), swap));
+        assert!(moved.take_hold(swap).is_some(), "the pin didn't move");
+        for (n, retried) in (2..).zip([2, 3, 4, 4]) {
+            assert_eq!(
+                moved.heed(retried, look(start, n)),
+                None,
+                "look {n}: a return so soon after the move was counted against it"
+            );
+        }
+        // The look after the last within REMEMBERED of the move counts what
+        // came back from then, which the last pin's rule may have sent
+        // (shaper holds round 2's F7); the next counts the new pin's own.
+        assert_eq!(
+            moved.heed(5, look(start, 6)),
+            None,
+            "a return within the last rule's memory was counted"
+        );
+        assert_eq!(moved.heed(6, look(start, 7)), None, "one back let go");
+        // A round that finds the same pair again, measured anew, keeps its
+        // count, since its rule is the same.
+        let found = look(start, 7) + Duration::from_secs(1);
+        let again = Pin {
+            ms: 30.0,
+            ..pin_at(30_010)
+        };
+        moved.coming = Some((Some(again), found));
+        assert!(
+            moved.take_hold(found).is_none(),
+            "the same pair was said moved"
+        );
+        assert_eq!(
+            moved.heed(7, look(start, 8)),
+            Some((Moved { was: Some(30_010) }, 2)),
+            "two back under the new pin, once it was its own, kept it"
         );
 
         let mut unpinned = Pinning::default();

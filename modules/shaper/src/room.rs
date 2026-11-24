@@ -16,8 +16,11 @@
 //! declared again, or each call holds it at nine tenths of the old one.
 //!
 //! The download fills its line when it carries nine tenths of it, or when
-//! the controller already cuts it, having judged the line full by its
-//! delay. The controller can cut it within a second of a load starting,
+//! the controller's hold of it says the line is full: it cut the download
+//! by its delay in the last few seconds, or the download fills the rate
+//! it's held to (`oneway::Way::judged_full`). A cut kept on over a quiet
+//! download says nothing of the line, so a call starting then is given no
+//! room. The controller can cut it within a second of a load starting,
 //! before a second carrying nine tenths is recorded, and a hold that
 //! waited on one would never begin: the download, under the cut, never
 //! carries that much again. Its queue stands in CAKE while the cut lasts,
@@ -51,7 +54,8 @@ impl Room {
     /// in kbit/s, and the journal's line as a hold begins or ends. A hold
     /// begins while a call is on, `call`, and the download fills the line
     /// its network, `network`, declares, `line`: it carried, `carried` in
-    /// kbit/s, at least `ROOM` of it, or the controller cuts it, `cut`.
+    /// kbit/s, at least `ROOM` of it, or the controller's hold of it says
+    /// the line is full, `cut`.
     /// It holds at `ROOM` of the line until the call ends or the network
     /// declares none. A hold is kept only on the network it began on and
     /// at the line it filled: a link that moves to another network, even
@@ -72,10 +76,10 @@ impl Room {
         line: Option<u64>,
     ) -> (Option<u64>, Option<String>) {
         let room = line.filter(|_| call).map(|line| whole(float(line) * ROOM));
-        let full = cut
-            || carried
-                .zip(line)
-                .is_some_and(|(carried, line)| carried >= float(line) * ROOM);
+        let fills = carried
+            .zip(line)
+            .is_some_and(|(carried, line)| carried >= float(line) * ROOM);
+        let full = cut || fills;
         let was = self.held.take();
         let kept = |room: u64| {
             was.as_ref()
@@ -86,8 +90,13 @@ impl Room {
             .map(|room| (network.to_owned(), room));
         let said = match (&was, self.held()) {
             (_, Some(room)) if !kept(room) => Some(format!(
-                "{name}: a call is on and the download fills the line, so it's held to \
-                 {room} kbit/s, where its own queue puts the call first"
+                "{name}: a call is on and {}, so it's held to {room} kbit/s, where its own \
+                 queue puts the call first",
+                if fills {
+                    "the download fills the line"
+                } else {
+                    "the controller holds the download under a full line"
+                }
             )),
             (Some(_), None) => Some(format!("{name}: the download is no longer held for a call")),
             _ => None,
@@ -137,8 +146,12 @@ mod tests {
     #[test]
     fn a_hold_begins_where_the_download_carries_nine_tenths_of_its_line() {
         let mut room = Room::default();
-        let (held, _) = room.step("eth1", HOME, true, carried(81_000.0), Some(LINE));
+        let (held, said) = room.step("eth1", HOME, true, carried(81_000.0), Some(LINE));
         assert_eq!(held, Some(81_000), "a download at nine tenths wasn't held");
+        assert!(
+            said.is_some_and(|said| said.contains("the download fills the line")),
+            "the journal didn't say the download filled the line"
+        );
     }
 
     #[test]
@@ -153,25 +166,23 @@ mod tests {
             Some(81_000),
             "a cut download wasn't held for the call"
         );
-        assert!(said.is_some(), "the journal didn't say the hold began");
+        assert!(
+            said.is_some_and(|said| said.contains("the controller holds the download")),
+            "the journal didn't say the controller's hold began the call's"
+        );
         let (held, said) = room.step("eth1", HOME, true, carried(60_000.0), Some(LINE));
         assert_eq!(
             (held, said),
             (Some(81_000), None),
             "the controller letting go let the call's hold go too"
         );
-        let (held, said) = room.step("eth1", HOME, true, (None, true), Some(LINE));
+        // A second the recorder missed says nothing carried and no cut
+        // (main's room_heard), which keeps the hold.
+        let (held, said) = room.step("eth1", HOME, true, UNKNOWN, Some(LINE));
         assert_eq!(
             (held, said),
             (Some(81_000), None),
             "a second the recorder missed under the cut"
-        );
-        assert_eq!(
-            Room::default()
-                .step("eth1", HOME, true, (None, true), Some(LINE))
-                .0,
-            Some(81_000),
-            "a cut with nothing known carried starts a hold too"
         );
     }
 
