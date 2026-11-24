@@ -1232,7 +1232,8 @@ Provider {
             const moved = Looks.movedOn(one, Sessions.running, Sessions.parked);
             const told = provider.launcher?.toldGone(moved) === true;
             console.warn(`Now: no session held for look ${JSON.stringify(one.id)} to go to:`
-                + ` cell ${JSON.stringify(one.cell ?? null)},`
+                + ` cell ${JSON.stringify(one.cell ?? null)}`
+                + ` (led by ${JSON.stringify(Looks.cellNamed(one))}),`
                 + ` quest ${JSON.stringify(one.quest ?? null)},`
                 + ` session ${JSON.stringify(one.session ?? null)}, the daemon says`
                 + ` ${JSON.stringify(Looks.cellGoes(one, cellsDaemon.held))},`
