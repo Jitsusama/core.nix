@@ -23,6 +23,7 @@
 <link rel="preload" href="../local-sites/web/fonts/monaspace.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="site.css">
 <link rel="alternate" type="text/markdown" href="index.md">
 <link rel="describedby" type="text/plain" href="llms.txt">
@@ -31,16 +32,23 @@
 
 <a class="skip" href="#map-view">Skip to the map</a>
 
-<header class="head">
-  <h1 class="sentence"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+<div class="head">
+  <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
       <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
         <path d="M16 16L6 7 M16 16L27 9 M16 16L9 27 M16 16L26 25 M6 7L3 13 M27 9L30 15"/>
         <circle cx="6" cy="7" r="3.2"/><circle cx="27" cy="9" r="3.2"/><circle cx="9" cy="27" r="3.2" stroke-dasharray="2 1.6"/><circle cx="26" cy="25" r="3.2"/>
       </g>
       <circle cx="16" cy="16" r="4" fill="currentColor"/>
-    </svg><span class="sr">Your mycelium, now: </span><span id="status-words">Reading the node</span><span id="asks-words"></span>.</h1>
-  <p class="sr" id="status-said" aria-live="polite"></p>
-  <div class="under">
+  </svg>
+  <header class="page-head">
+  <p class="eyebrow">your mycelium<span class="sep">·</span>every cell at work for you</p>
+  <h1>Your Mycelium, <em>Now</em></h1>
+  <!-- Not a live region: its counts are written again with each reading; the line beside the
+       head says what changed, coarser, and the standing line speaks for the feeds. -->
+  <p id="sentence" class="lede sentence"><span id="status-words">Reading the node</span><span id="asks-words"></span>.</p>
+  <p class="standing"><span class="glyph" aria-hidden="true"></span>
+    <span id="asof" class="asof" role="status" data-state="connecting">Reaching this machine's node.</span></p>
+  <div class="quiet">
     <p class="keys">Arrows walk the map, <kbd>/</kbd> finds a cell, <kbd>s</kbd> starts new work, <kbd>.</kbd> opens Now, and <kbd>?</kbd> lists every key.</p>
     <div class="switch" role="radiogroup" aria-label="Theme">
       <button type="button" role="radio" aria-checked="false" tabindex="-1" data-choice="light" aria-label="Light" title="Light">
@@ -53,9 +61,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
       </button>
     </div>
-    <p id="asof" class="asof" data-state="connecting">Reaching this machine's node.</p>
   </div>
-</header>
+  </header>
+  <p class="sr" id="status-said" aria-live="polite"></p>
+</div>
 
 <main id="main" class="stage">
   <div class="headline">

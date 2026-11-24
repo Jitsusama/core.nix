@@ -4826,7 +4826,7 @@ import {
   };
   document.addEventListener("mycelium:now", (e) => take(e.detail));
 
-  // How things stand, as one sentence over the work, its last clause the
+  // How things stand, as one sentence, the head's lede, its last clause the
   // italic turn: who needs him, else what is stuck or moving, else that
   // all is quiet. A count Now lists is the way to that list: the cells to
   // the network as a tree, who needs him to the first of them. The
@@ -4838,7 +4838,7 @@ import {
   // reads them.
   const statusWords = document.getElementById("status-words");
   const asksWords = document.getElementById("asks-words");
-  const sentenceLine = statusWords.closest("h1");
+  const sentenceLine = document.getElementById("sentence");
   const statusSaid = document.getElementById("status-said");
   let statusShown = "";
   let sentenceShown = "";

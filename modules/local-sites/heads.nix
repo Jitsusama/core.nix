@@ -205,7 +205,6 @@ let
   waitingForTheHead = [
     "Forage"
     "Machines"
-    "Map"
   ];
 in
 pkgs.runCommandLocal "heads-are-the-kits"

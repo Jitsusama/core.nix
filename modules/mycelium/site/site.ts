@@ -23,7 +23,7 @@
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { clockTime, said } from "../../local-sites/kit/status.ts";
+import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
 import { expiryOf, type Heard, nowOf } from "./model.ts";
 import { asked, sayReach } from "./reach.ts";
 
@@ -37,7 +37,7 @@ const KINDS = ["network", "cell", "machine", "message"] as const;
 type Kind = (typeof KINDS)[number];
 
 const found = document.querySelector("#asof");
-if (!(found instanceof HTMLParagraphElement)) {
+if (!(found instanceof HTMLSpanElement)) {
   throw new Error("the page has no #asof, where the map says how it stands");
 }
 const asof = found;
@@ -86,10 +86,7 @@ function sayHow(): void {
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${sayStanding(now)}${trouble}`;
-  asof.dataset["state"] = now?.state ?? "connecting";
-  // The drawing's own look for a map that isn't now.
-  asof.classList.toggle("stale", now?.state === "stale" || now?.state === "broken");
+  tell(asof, `${sayStanding(now)}${trouble}`, now?.state ?? "connecting");
 }
 
 /** Hands the drawing the map as it stands now. */
