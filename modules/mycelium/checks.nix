@@ -866,6 +866,144 @@ in
       touch $out
     '';
 
+  # Every act Joel takes on his cells is on all four of his surfaces, the
+  # mycelium command, a pi session, the map and the launcher, or owed by a
+  # cell by a time, or waived for a reason (surfaces/acts.toml): Joel,
+  # 2026-11-24, "any interface i'm in should be directly engagable to a
+  # meaningful level". Where the table says a surface has an act, the file
+  # it names holds its words, or the locked mycelium's help for the command
+  # says them; a pi tool is taken by its name, since the harness isn't an
+  # input. So it can't pass by reading nothing, each way of straying is
+  # shown to fail first. It proves the acts are offered, not that they work.
+  mycelium-surfaces-stay-even =
+    let
+      table = ./surfaces/acts.toml;
+      acts = (builtins.fromTOML (builtins.readFile table)).act;
+      named = lib.unique (
+        lib.concatMap (
+          act:
+          lib.concatMap (
+            surface:
+            let
+              has = act.${surface}.has or { };
+            in
+            lib.optional (has ? file) has.file
+          ) (lib.attrNames act)
+        ) acts
+      );
+      # Only the files the table names, so an edit elsewhere rebuilds nothing.
+      root = lib.fileset.toSource {
+        root = ../..;
+        fileset = lib.fileset.unions (map (file: ../.. + "/${file}") named);
+      };
+      locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      untested = locked.overrideAttrs { doCheck = false; };
+      check = "${lib.getExe pkgs.python3} ${./surfaces/stays-even.py}";
+      # An act on each surface, with what one of them says in place of the
+      # rest, as a table of one act gives it.
+      act =
+        name: says:
+        pkgs.writeText "${name}.toml" ''
+          [[act]]
+          name = "go"
+          says = "go to a cell"
+          [act.session.has]
+          tool = "mesh_read"
+          [act.map.has]
+          file = "modules/mycelium/site/acts.ts"
+          holds = "Go to It"
+          ${says}
+        '';
+      # Each way of straying the check has to catch, with what it says.
+      strays = [
+        {
+          table = act "left-out" ''
+            [act.cli]
+            waived = "no window to raise"
+          '';
+          says = "go on the launcher: the table leaves it out";
+        }
+        {
+          table = act "not-held" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher.has]
+            file = "modules/mycelium/site/acts.ts"
+            holds = "Never Said Anywhere"
+          '';
+          says = ''go on the launcher: modules/mycelium/site/acts.ts doesn't hold "Never'';
+        }
+        {
+          table = act "not-helped" ''
+            [act.cli.has]
+            command = "steer"
+            holds = "flies to the moon"
+            [act.launcher]
+            waived = "none"
+          '';
+          says = ''go on the mycelium command: mycelium steer --help doesn't say "flies'';
+        }
+        {
+          table = act "undue" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher.owed]
+            by = "KP0L6A"
+            why = "soon"
+          '';
+          says = "go on the launcher is owed with no due time";
+        }
+        {
+          table = act "twice" ''
+            [act.cli]
+            waived = "no window to raise"
+            owed = { by = "KP0L6A", due = "2026-11-24 17:00", why = "soon" }
+            [act.launcher]
+            waived = "none"
+          '';
+          says = "go on the mycelium command says owed and waived, not one";
+        }
+        {
+          table = act "reasonless" ''
+            [act.cli]
+            waived = ""
+            [act.launcher]
+            waived = "none"
+          '';
+          says = "go on the mycelium command: its waived is malformed or gives no reason";
+        }
+        {
+          table = act "elsewhere" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher]
+            waived = "none"
+            [act.phone]
+            waived = "none"
+          '';
+          says = "go names phone, which isn't a surface";
+        }
+      ];
+    in
+    pkgs.runCommandLocal "mycelium-surfaces-stay-even" { } ''
+      strays() {
+        if ${check} "$1" ${root} ${lib.getExe untested} > said; then
+          echo "The surfaces check passed on $1, which strays."
+          exit 1
+        fi
+        if ! grep -qF -- "$2" said; then
+          echo "On $1 the surfaces check didn't say: $2"
+          cat said
+          exit 1
+        fi
+      }
+      ${lib.concatMapStrings (stray: ''
+        strays ${stray.table} ${lib.escapeShellArg stray.says}
+      '') strays}
+      ${check} ${table} ${root} ${lib.getExe untested}
+      touch $out
+    '';
+
   # The swarm's teams complete in a real zsh, asked of a stand-in node
   # (tests/completion.zsh).
   mycelium-completes-its-teams-in-zsh =
