@@ -152,8 +152,11 @@ let
         # It's made once a process and reused: each later boot asked for
         # another on the same subnet, which vmnet refused, so the build that
         # woke the guest after an idle stop failed (23 November). A guest that
-        # loses its attachment stops the reuse, so a dead network isn't kept,
-        # though the next boot likely still fails while it holds the subnet.
+        # loses its attachment stops the reuse, though the next boot likely
+        # still fails while it holds the subnet. Only a running guest sees a
+        # loss, so a network that dies with no guest on it (Internet Sharing
+        # restarting, say) is still handed to the next boot; a restart of
+        # the builder clears it.
         # Every guest of a process has one hardware address, so the reused
         # network's DHCP server leases it again rather than a new one each
         # boot; a new process still brings a new address, so a /30 can run
