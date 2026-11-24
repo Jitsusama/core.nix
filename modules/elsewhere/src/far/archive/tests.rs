@@ -20,7 +20,7 @@ fn unpacked(from: &Path, parts: &[Part], into: &Path) {
 
 #[test]
 fn a_link_left_at_an_archive_s_name_is_never_written_through() {
-    let root = crate::far::tests::scratch("archive-linked");
+    let root = crate::far::tests::scratch("archive-left-link");
     std::fs::create_dir_all(root.join("tree")).unwrap();
     std::fs::write(root.join("tree/a"), "a").unwrap();
     std::fs::write(root.join("outside"), "kept").unwrap();
