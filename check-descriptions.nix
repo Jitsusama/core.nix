@@ -1743,7 +1743,7 @@
   '';
   inlyne-says-the-file-it-shows = ''
     inlyne keeps the file it shows, read by its Recent's command as its process and whole path, and
-    nothing once q closes it, clearing what a killed one left
+    nothing once ZZ closes it, clearing what a killed one left
   '';
   inlyne-says-the-files-it-opens = ''
     inlyne says each file it's started with to the desktop's list of files opened lately, then runs
