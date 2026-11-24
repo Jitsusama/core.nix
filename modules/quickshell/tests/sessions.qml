@@ -471,6 +471,20 @@ ShellRoot {
             root.unhosted === "-row" && root.unhostedWhy === "unnamed"
             && !Niri.spawns.some(one => one.includes("pi-hosted.-row")),
             `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(before).join("\n")}`);
+        // A viewer no sessions kitty took, as opens-in-sessions.sh tells
+        // the shell (Sessions' untaken), is no longer opening: the next Go
+        // To asks for it again, rather than saying it's opening for 30 s.
+        const untaken = Object.assign({}, hosted, { address: "UNTAKEN",
+            attach: hosted.attach.slice(0, -1).concat(["s-untaken"]),
+            presence: Object.assign({}, hosted.presence, { session: "s-untaken" }) });
+        const untakenFrom = Niri.spawns.length;
+        Sessions.goTo(untaken);
+        Sessions.untaken("pi-hosted.s-untaken");
+        Sessions.goTo(untaken);
+        expect("one no kitty took is asked for again, not said as opening",
+            Niri.spawns.length === untakenFrom + 2
+            && Niri.spawns.slice(untakenFrom).every(one => one.includes("pi-hosted.s-untaken")),
+            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(untakenFrom).join("\n")}`);
         holdsAlone();
     }
 

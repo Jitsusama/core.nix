@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # Runs modules/quickshell/opens-in-sessions.sh through each door it can
 # take, over stand-ins for kitty's kitten, systemd-run, systemctl and
-# sleep: its socket, a socket that comes while it waits, the unit's old
-# kitty, and neither, which opens nothing. The old kitty is a real
+# sleep, and the shell's qs: its socket, a socket that comes while it
+# waits, the unit's old kitty, and neither, which opens nothing and tells
+# the shell so. The old kitty is a real
 # process with that kitty's words on its command line, since the script
 # reads /proc, which no stand-in can be.
 # usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3>
@@ -18,7 +19,7 @@ mkdir -p "$stand_ins"
 failed=0
 
 # Each stand-in says what it was asked, one line, into asked.
-for program in kitten systemd-run; do
+for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" > "$stand_ins/$program"
 done
 # The unit's main process, as main-pid names it.
@@ -124,7 +125,8 @@ if [ "$status" -ne 1 ]; then
   echo "FAIL with neither, it ended $status, not 1"
   failed=1
 fi
-expect "with neither, nothing is asked" "" asked
+expect "with neither, no kitty is asked, and the shell is told none took it" \
+  "qs ipc call sessions untaken pi-session.11" asked
 waited "it gave up after 20 s of waits" 99
 expect "the journal says why" "sessions: no sessions kitty to open pi-session.11 in" said
 

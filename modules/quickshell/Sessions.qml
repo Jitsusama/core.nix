@@ -2702,6 +2702,10 @@ Singleton {
         delete still[named];
         attaching = still;
     }
+    // A window no sessions kitty took, as opens-in-sessions.sh says when
+    // it gives up, by the app id it was asked under.
+    function untaken(named) {
+    }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
     // session id, so each one's viewer opens there once it runs hosted,
@@ -3157,6 +3161,12 @@ Singleton {
         // window of a session it puts to sleep, by pi's session id.
         function keepPlaceAsleep(session: string): string {
             return root.keepPlaceAsleep(session);
+        }
+
+        // untaken, as opens-in-sessions.sh says a window it was asked
+        // for found no sessions kitty to open in.
+        function untaken(named: string): void {
+            root.untaken(named);
         }
     }
 
