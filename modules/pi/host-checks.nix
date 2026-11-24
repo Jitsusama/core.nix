@@ -503,7 +503,7 @@ in
           inherit pi node proof;
           environment = {
             PROXY_ORIGIN = "https://proxy.example.com";
-            GREETING = ''say "hi" there'';
+            GREETING = ''say "hi" there, 100%'';
           };
         };
         two = {
@@ -632,8 +632,10 @@ in
         # The account's own mycelium realm, from the shared environment.
         && lib.elem ''"PI_HOME_REALM=mine"'' environment
         && lib.elem ''"PROXY_ORIGIN=https://proxy.example.com"'' environment
-        # systemd keeps a quoted entry whole, spaces and escaped quotes in it.
-        && lib.elem ''"GREETING=say \"hi\" there"'' environment;
+        # systemd keeps a quoted entry whole, spaces and escaped quotes in it,
+        # and takes a doubled % as one, so the realm's value reaches pi as
+        # written.
+        && lib.elem ''"GREETING=say \"hi\" there, 100%%"'' environment;
       # A realm naming folders runs node through env, which puts them before
       # the PATH systemd expands, quoted so it stays one word, with a folder's
       # % and $ doubled so systemd takes them as they are.
