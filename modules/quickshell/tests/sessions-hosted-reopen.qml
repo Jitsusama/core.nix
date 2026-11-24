@@ -132,6 +132,8 @@ ShellRoot {
                 opening();
             else if (stage === "walked")
                 walked();
+            else if (stage === "unlisted")
+                unlisted();
             else if (stage === "joel")
                 joel();
             else if (stage === "waiting")
@@ -248,6 +250,28 @@ ShellRoot {
             !Niri.acts.some(act => act.MoveWindowToWorkspace || act.MoveColumnToIndex
                 || act.FocusWindow || act.FocusWorkspace || act.FocusMonitor
                 || act.FocusColumnLast), JSON.stringify(Niri.acts));
+        // Its viewer the windows daemon's index still names, which niri no
+        // longer lists, as in a gap of the daemon's, is no viewer open
+        // (listedNow), so a walk asked again opens it rather than taking
+        // it as open.
+        const listing = Object.assign({}, Niri.windows);
+        delete listing["50"];
+        Niri.windows = listing;
+        stage = "unlisted";
+        Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-viewed": keptOn(2) }), "");
+    }
+
+    function unlisted() {
+        if (Sessions.reopening !== null)
+            return;
+        Expect.expect("a viewer niri no longer lists, the index still naming it, opens again",
+            viewerSpawns("s-viewed").length === 2, Niri.spawns.join("\n"));
+        // It comes back as niri lists it, so it's coming no more.
+        const window = { id: 50, pid: 500, workspace_id: 41, session: true,
+            opened: "pi-hosted.s-viewed", layout: { pos_in_scrolling_layout: [1, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "50": window });
+        Niri.windowOpenedOrChanged(window);
         // Joel goes to the empty workspace, and another host serves one,
         // told with a new digest, since the launcher is shut.
         joelOn(42);
