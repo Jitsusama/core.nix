@@ -22,46 +22,59 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use dictation::pieces::{pieces, within_takes};
 use dictation::transcript::Side;
 use dictation::voices::{self, Heard, LEAST_SHARE, Voices};
 
 use crate::score::{self, Meeting, Said, index, meetings, percent, samples, whose};
 use crate::takes;
 
-/// A take of a meeting's far end, cut as a call's is: where it starts and
-/// how many samples it holds, which of the takes embedded it is, none for
-/// one too short or odd to embed, and how many of its samples each
-/// speaker of theirs is speaking in, by the reference.
+/// A piece of a take of a meeting's far end, cut as a call's is: which
+/// take it's of, where it starts and how many samples it holds, which of
+/// the pieces embedded it is, none for one too short or odd to embed, and
+/// how many of its samples each speaker of theirs is speaking in, by the
+/// reference.
 pub struct Cut {
+    pub take: usize,
     pub start: usize,
     pub samples: usize,
     pub heard: Option<usize>,
     pub speakers: HashMap<String, usize>,
 }
 
-/// A meeting's far end cut into takes as a call's is, each embedded with
-/// `speaker` where it can be: the embeddings, and the takes.
+/// A meeting's far end cut into takes as a call's is, and each take into
+/// pieces (`dictation::pieces`), each embedded with `speaker` where it
+/// can be: the embeddings, and the pieces.
 pub fn cut(meeting: &Meeting, speaker: &mut Voices) -> Result<(Vec<Heard>, Vec<Cut>), String> {
     let sound = &meeting.sounds[index(Side::Theirs)];
     let mut heard = Vec::new();
     let mut cuts = Vec::new();
-    for take in takes(sound) {
-        let end = take.start + take.samples.len();
-        let speakers = spoken(take.start, end, &meeting.reference, meeting.mine);
-        let at = speaker.embed(&take.samples)?.map(|embedding| {
-            heard.push(Heard {
-                embedding,
-                samples: take.samples.len(),
-                worded: !speakers.is_empty(),
+    for (number, take) in takes(sound).into_iter().enumerate() {
+        for (from, to) in pieces(take.samples.len()) {
+            let start = take.start + from;
+            let samples = &take.samples[from..to];
+            let speakers = spoken(
+                start,
+                start + samples.len(),
+                &meeting.reference,
+                meeting.mine,
+            );
+            let at = speaker.embed(samples)?.map(|embedding| {
+                heard.push(Heard {
+                    embedding,
+                    samples: samples.len(),
+                    worded: !speakers.is_empty(),
+                });
+                heard.len() - 1
             });
-            heard.len() - 1
-        });
-        cuts.push(Cut {
-            start: take.start,
-            samples: take.samples.len(),
-            heard: at,
-            speakers,
-        });
+            cuts.push(Cut {
+                take: number,
+                start,
+                samples: samples.len(),
+                heard: at,
+                speakers,
+            });
+        }
     }
     Ok((heard, cuts))
 }
@@ -131,10 +144,16 @@ pub fn apart(model: &Path, set: &Path, floors: Option<(usize, usize)>) -> Result
         let (heard, cuts) = cut(meeting, &mut speaker)?;
         println!("{}", shares(meeting.name, &heard, &cuts));
         let grouped = voices::group(&heard, None);
+        let voiced: Vec<Option<usize>> = cuts
+            .iter()
+            .map(|cut| cut.heard.and_then(|at| grouped[at]))
+            .collect();
+        let of: Vec<usize> = cuts.iter().map(|cut| cut.take).collect();
         let takes: Vec<Take> = cuts
             .into_iter()
-            .map(|cut| Take {
-                voice: cut.heard.and_then(|at| grouped[at]),
+            .zip(within_takes(&of, &voiced))
+            .map(|(cut, voice)| Take {
+                voice,
                 speakers: cut.speakers,
             })
             .collect();

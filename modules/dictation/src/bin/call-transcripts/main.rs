@@ -95,6 +95,7 @@ mod receptor;
 mod rings;
 mod said;
 mod score;
+mod split;
 mod summarizer;
 mod summary;
 
@@ -432,9 +433,10 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
     for (side, file) in [(Side::Mine, mine), (Side::Theirs, theirs)] {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
         for take in takes(&wav::samples(&bytes)?) {
-            let (text, took) = speech.transcribe(&take.samples)?;
-            eprintln!("call-transcripts: {}", took.describe(&speech.device));
-            if let Some(text) = said::spoken(&text) {
+            // Heard as the daemon hears a take, their side by its words, so
+            // the checks that run this read what it writes.
+            let (text, _) = hear::transcribe_take(&mut speech, side, take.start, &take.samples);
+            if let Some(text) = text {
                 lines.push(Line {
                     side,
                     start: take.start,
