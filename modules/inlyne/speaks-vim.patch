@@ -4,12 +4,13 @@ The keys the settings bind were checked only by how the keys page drew
 them, so a binding inlyne read otherwise, or q closing it again, passed.
 The build now names the settings' keys, and a test presses Vim's keys
 through them: q and Escape alone do nothing, and :q and Return, ZZ and
-Space w close it.
+Space w close it, with a Shift key's own press between a sequence's
+keys, as a keyboard sends it, and : as Wayland names Shift+;.
 
 diff -ru a/src/keybindings/tests.rs b/src/keybindings/tests.rs
 --- a/src/keybindings/tests.rs
 +++ b/src/keybindings/tests.rs
-@@ -45,6 +45,47 @@
+@@ -45,6 +45,55 @@
      }
  }
  
@@ -35,18 +36,26 @@ diff -ru a/src/keybindings/tests.rs b/src/keybindings/tests.rs
 +        (key(VirtKey::G), Some(Action::ToEdge(VertDirection::Up))),
 +        (key(VirtKey::LShift), None),
 +        (shifted(VirtKey::G), Some(Action::ToEdge(VertDirection::Down))),
-+        // :q and Return.
++        // :q and Return, as Shift+; arrives on a Mac and on Wayland.
++        (key(VirtKey::LShift), None),
 +        (shifted(VirtKey::Semicolon), None),
 +        (key(VirtKey::Q), None),
 +        (key(VirtKey::Return), Some(Action::Quit)),
-+        // ZZ.
++        (key(VirtKey::LShift), None),
++        (shifted(VirtKey::Colon), None),
++        (key(VirtKey::Q), None),
++        (key(VirtKey::Return), Some(Action::Quit)),
++        // ZZ, with Shift pressed again between the two.
 +        (shifted(VirtKey::Z), None),
++        (key(VirtKey::LShift), None),
 +        (shifted(VirtKey::Z), Some(Action::Quit)),
-+        // Space w, and Space ? for the keys page.
++        // Space w, and Escape dropping a waiting Space.
 +        (key(VirtKey::Space), None),
 +        (key(VirtKey::W), Some(Action::Quit)),
 +        (key(VirtKey::Space), None),
-+        (shifted(VirtKey::Slash), Some(Action::Keys)),
++        (key(VirtKey::Escape), None),
++        (key(VirtKey::W), None),
++        (key(VirtKey::F1), Some(Action::Keys)),
 +    ];
 +
 +    for (pressed, maybe_action) in test_vectors {

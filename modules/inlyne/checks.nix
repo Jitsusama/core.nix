@@ -27,7 +27,7 @@ onLinux {
   # nobody's, with the theme's fonts and a software GPU: the page on the
   # theme's background, its heading in the strong text, and none of
   # inlyne's own colours, its words in the serif upright's cut, which its
-  # fonts answer for that name. The keys page its settings name, which Space ?
+  # fonts answer for that name. The keys page its settings name, which F1
   # opens, draws in the theme too. Markdown files open in inlyne.
   inlyne-reads-in-the-theme =
     let

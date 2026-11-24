@@ -1,7 +1,7 @@
 # inlyne, for reading a markdown file as a page: a quest's sheet, a plan, a
 # README, with its pictures, tables and code drawn in place. It reads and
 # never writes, follows the file as it's edited, and opens a link to
-# another markdown file in place, so ← comes back. Each file it's started
+# another markdown file in place, so Ctrl+O comes back. Each file it's started
 # with is said to the desktop's list of files opened lately
 # (../open-with/says-what-it-opens.nix), so its Recent in the launcher
 # lists them, led by the file each inlyne shows now, which Return goes to.
@@ -18,8 +18,8 @@
 # Up a screen, gg and G or Home and End the top and the bottom, Ctrl+O and
 # Ctrl+I back and forward through the pages followed, Ctrl and + or - larger
 # and smaller and Ctrl+0 as it was, Ctrl+C copies what's selected, :q and
-# Return, ZZ or Space w close it, as Vim's close a window, and Space ? or F1
-# opens a page saying all of them, which Ctrl+O leaves. q alone does
+# Return, ZZ or Space w close it, as Vim's close a window, and F1 opens a
+# page saying all of them, which Ctrl+O leaves. q alone does
 # nothing, since nothing records, and Escape nothing, which closes nothing
 # of ours (docs/design.md, Vi's Keys); inlyne has no command line, so :q is
 # a sequence its keys wait out. Six patches give it what it lacked: a
@@ -92,7 +92,10 @@ let
   # the pages followed, as through Vim's jumps. `says` is how the keys page
   # writes one where it isn't each key's face, as gg for g then g, and
   # `spelled` how the key map does where a held Shift types another key,
-  # as Space ? for Space then Shift+/.
+  # as : q Return for Shift+; then q then Return. `heard` is the other
+  # chords inlyne hears the same key as: its window library names the key
+  # a held Shift types, so on Wayland Shift+; arrives as :, and Ctrl with
+  # Shift+= as Ctrl+Shift++, though elsewhere as the key pressed.
   keys =
     scrolling [
       {
@@ -207,6 +210,15 @@ let
           "Ctrl"
           "="
         ];
+        heard = [
+          [
+            [
+              "Ctrl"
+              "Shift"
+              "+"
+            ]
+          ]
+        ];
         action = "ZoomIn";
         does = "Larger";
       }
@@ -236,21 +248,10 @@ let
         action = "Copy";
         does = "Copy what's selected";
       }
-      # ? alone searches up the page, as Vim's, which inlyne can't.
-      {
-        sequence = [
-          [ "Space" ]
-          [
-            "Shift"
-            "/"
-          ]
-        ];
-        says = "Space ?";
-        spelled = "Space ?";
-        act = "show-keys";
-        action = "Keys";
-        does = "The reader's keys";
-      }
+      # ? alone searches up the page, as Vim's, which inlyne can't, and
+      # Space ? can't be bound: its window library names no key for ?, so
+      # inlyne hears Shift+/ on Wayland only by its scan code, which its
+      # settings can't name. F1 is the language's other key for the page.
       {
         chord = [ "F1" ];
         act = "show-keys";
@@ -269,6 +270,16 @@ let
           ]
           [ "q" ]
           [ "Enter" ]
+        ];
+        heard = [
+          [
+            [
+              "Shift"
+              ":"
+            ]
+            [ "q" ]
+            [ "Enter" ]
+          ]
         ];
         says = ":q ↵";
         spelled = ": q Return";
@@ -317,17 +328,12 @@ let
         key = lib.last chord;
         mod = lib.init chord;
       };
-  # A key as inlyne reads one: a chord, or a sequence of them.
-  combo =
-    key:
-    let
-      chords = chordsOf key;
-    in
-    if lib.length chords == 1 then comboOf (lib.head chords) else map comboOf chords;
+  # Chords as inlyne reads them: one alone, or a sequence of them.
+  combo = chords: if lib.length chords == 1 then comboOf (lib.head chords) else map comboOf chords;
 
   # How the keys page draws a chord: each key in the theme's face for it
   # (../theme/keys.nix), by the name the theme knows it by, a letter as a
-  # capital, and Shift+/ as the ? it types.
+  # capital.
   themeNames = {
     PageUp = "Page_Up";
     PageDown = "Page_Down";
@@ -338,21 +344,10 @@ let
     key:
     config.jitsusama.theme.keys.${themeNames.${key} or key}.text
       or (if lib.stringLength key == 1 then lib.toUpper key else key);
-  said =
-    key:
-    key.says or (
-      if
-        key.chord == [
-          "Shift"
-          "/"
-        ]
-      then
-        "?"
-      else
-        lib.concatStringsSep " " (map face key.chord)
-    );
+  saidChord = lib.concatMapStringsSep " " face;
+  said = key: key.says or (lib.concatMapStringsSep " " saidChord (chordsOf key));
 
-  # The page ? opens: one row for each thing a key does, with every key
+  # The keys page: one row for each thing a key does, with every key
   # that does it, in the order the keys are listed.
   doings = lib.unique (map (key: key.does) keys);
   keysFor = does: lib.concatMapStringsSep ", " said (lib.filter (key: key.does == does) keys);
@@ -400,10 +395,13 @@ let
   # The keys alone, which inlyne's own tests read as it's built, so a key
   # bound here that inlyne would read otherwise fails its build
   # (speaks-vim.patch).
-  bindings.keybindings.base = map (key: [
-    key.action
-    (combo key)
-  ]) keys;
+  bindings.keybindings.base = lib.concatMap (
+    key:
+    map (chords: [
+      key.action
+      (combo chords)
+    ]) ([ (chordsOf key) ] ++ key.heard or [ ])
+  ) keys;
   bindingsFile = (pkgs.formats.toml { }).generate "inlyne-keys.toml" bindings;
 in
 {
