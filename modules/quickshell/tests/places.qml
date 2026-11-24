@@ -788,7 +788,8 @@ QtObject {
         // reading is what Agents' foot says next.
         const heard = [];
         const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
-        const walkOf = (tally, queue, looking) => ({ tally, queue, looking });
+        const walkOf = (tally, queue, looking, begun) => ({ tally, queue, looking,
+            begun: begun ?? [] });
         const walked = Reopening.tallyOf(null, ["a", "b", "c"], hear);
         Reopening.foundGone(walked, { id: "a" });
         expect("a list with no walk counts its own", heard, ["1 gone, 2 reopened"]);
@@ -818,6 +819,14 @@ QtObject {
         Reopening.foundGone(after, { id: "a" });
         expect("given once the walk can find no more gone, it counts afresh",
             [after === walked, heard[heard.length - 1]], [false, "1 gone, 2 reopened"]);
+        // Counting afresh on a walk that began some of what it's given, it
+        // counts none of those, which the walk won't look for again and
+        // the tally before counted, one found gone among them.
+        const later = Reopening.tallyOf(walkOf(walked, [], null, ["a", "b", "c"]),
+            ["a", "b", "c", "d"], hear);
+        Reopening.foundGone(later, { id: "d" });
+        expect("given once the walk began some of it, it counts only the rest",
+            heard[heard.length - 1], "1 gone, 0 reopened");
         // A walk the harness began counts nothing, and a list given during
         // it counts the sessions both hold, whichever list queued them.
         const harness = walkOf(null, [asked("h"), asked("a")], null);
