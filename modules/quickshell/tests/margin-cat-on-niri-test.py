@@ -1198,7 +1198,9 @@ def the_turn(places: list[Json | None]) -> tuple[int, Json, Json | None]:
     # None of these is nowhere, since a place said nowhere is the turn; this only says so.
     said = [one for one in places[first:turned] if one is not None]
     for before, one in itertools.pairwise(said):
-        ended = abs(one["x"] - ((before.get("walk") or {}).get("to") or math.inf)) < 1
+        # A walk to the screen's left edge goes to x 0, which is an end like any other.
+        to = (before.get("walk") or {}).get("to")
+        ended = to is not None and abs(one["x"] - to) < 1
         if one.get("move") is None and not one.get("walk") and not ended:
             gone = math.hypot(one["x"] - before["x"], one["y"] - before["y"])
             assert gone <= STEPS_ON * one["size"], (
@@ -1213,9 +1215,9 @@ def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> N
     The second move is held to the place said just before it, where a cut's walk or a late
     step of the first got to; a walk that falls far in one report passes; a halt is held to
     where the walk before it got to, not to where the first move left off; a walk's end,
-    said with no walk, passes where its fall ends far below; a cat put on its seat between
-    the two fails, after a walk going elsewhere too; and a cat said nowhere between the two is
-    the second move's first place, which fails its case.
+    said with no walk, passes where its fall ends far below, at the screen's left edge too; a
+    cat put on its seat between the two fails, after a walk going elsewhere too; and a cat
+    said nowhere between the two is the second move's first place, which fails its case.
     """
     down: Json = {"x": 0, "y": 10, "size": 30, "move": {"way": 1}}
     halted: Json = {"x": 0, "y": 10, "size": 30, "move": None}
@@ -1224,6 +1226,8 @@ def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> N
     stopped: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": None}
     dropped: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95, "to": 9}}
     landed: Json = {"x": 30, "y": 300, "size": 30, "move": None, "walk": None}
+    leftward: Json = {"x": 0, "y": 100, "size": 30, "move": None, "walk": {"t": 95, "to": 0}}
+    edge: Json = {"x": 0, "y": 300, "size": 30, "move": None, "walk": None}
     going: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8, "to": 500}}
     later: Json = {"x": 0, "y": 40, "size": 30, "move": {"way": 1}}
     seated: Json = {"x": 0, "y": 700, "size": 30, "move": None}
@@ -1232,6 +1236,7 @@ def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> N
     assert the_turn([down, later, up]) == (2, later, up)
     assert the_turn([down, walked, dropped, stopped, up]) == (4, stopped, up)
     assert the_turn([down, walked, fell, landed, up]) == (4, landed, up)
+    assert the_turn([down, leftward, edge, up]) == (3, edge, up)
     # The caller fails on a second move whose first place is nowhere.
     assert the_turn([down, halted, None, up]) == (2, halted, None)
     with pytest.raises(AssertionError, match="between the two moves it was put at"):
