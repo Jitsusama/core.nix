@@ -105,13 +105,16 @@ pub fn io_waited(text: &str) -> Option<u64> {
     sched_ns(text, "iowait_sum")
 }
 
-/// The milliseconds a `sched` line ending in `name` holds, in nanoseconds.
+/// The milliseconds the `sched` line keyed `name` holds, in nanoseconds.
+/// The key is `name` itself, as kernels since 6.x print it, or `name` after
+/// a dot, as `stats.` or `se.statistics.` before them; never another key
+/// that only ends in it.
 fn sched_ns(text: &str, name: &str) -> Option<u64> {
     let ms: f64 = text.lines().find_map(|line| {
         let (key, value) = line.split_once(':')?;
-        key.trim()
-            .ends_with(name)
-            .then(|| value.trim().parse().ok())?
+        let key = key.trim();
+        let named = key.strip_suffix(name)?;
+        (named.is_empty() || named.ends_with('.')).then(|| value.trim().parse().ok())?
     })?;
     #[expect(
         clippy::cast_possible_truncation,
@@ -469,6 +472,20 @@ pub mod tests {
         let unkept = "cat (7, #threads: 1)\n\
                       se.sum_exec_runtime          :          1.019739\n";
         assert_eq!(io_waited(unkept), None, "a file without it read as io");
+    }
+
+    #[test]
+    fn a_sched_line_is_read_by_its_whole_key_bare_or_after_a_dot() {
+        // A key only ending in the name is another key, wherever it sits.
+        let text = "chrome (7, #threads: 30)\n\
+                    stats.nr_iowait_sum          :       9999.000000\n\
+                    sum_block_runtime            :        842.500125\n\
+                    iowait_sum                   :        600.250000\n";
+        assert_eq!(
+            (blocked(text), io_waited(text)),
+            (Some(842_500_125), Some(600_250_000)),
+            "a key only ending in the name was read, or a bare key wasn't"
+        );
     }
 
     /// Writes `text` to a stand-in kernel file, making its folders.
