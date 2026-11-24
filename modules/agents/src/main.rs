@@ -48,7 +48,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
 
 use agents::acts;
-use agents::arrangement::{self, Arrangement, Still};
+use agents::arrangement::{Arrangement, Still};
 use agents::asker;
 use agents::cells;
 use agents::clock;
@@ -501,26 +501,6 @@ fn vocabulary(path: &Path) -> Result<Words, Failure> {
 ///
 /// 78 when the vocabulary can't be read, and 1 when it can't listen on
 /// its socket or hear the files it reads.
-/// Keeps both places files once the windows have been `still` long
-/// enough, and asks to be woken for what's to come though nothing moves.
-fn keep_places(inputs: &mut Inputs, still: &mut Still, paths: &Paths) {
-    if still.due(Instant::now()) {
-        inputs.keep_kept_places(&paths.kept_places);
-        if let Some(let_go) = inputs.keep_places(&paths.arrangement) {
-            // A place closed by hand goes once its time comes, though no
-            // window moves meanwhile.
-            let now = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
-            still.again(Instant::now() + arrangement::again_in(let_go, now));
-        }
-    }
-    // Kept places whose write failed, at the shell's word or just now,
-    // are tried again soon, though the shell says nothing more.
-    let now = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
-    if let Some(again) = inputs.kept_places_again_at(now) {
-        still.again(Instant::now() + arrangement::again_in(again, now));
-    }
-}
-
 fn serve(args: Args) -> Result<(), Failure> {
     let words = vocabulary(&args.vocabulary)?;
     let (to, heard) = mpsc::channel();
@@ -606,7 +586,7 @@ fn serve(args: Args) -> Result<(), Failure> {
             }
             inputs.hear(one, &paths);
         }
-        keep_places(&mut inputs, &mut still, &paths);
+        inputs.keep_when_still(&mut still, &paths, Instant::now());
         let moved = served.take(inputs.made());
         // The landings are read again only once they were made again, and
         // only what moved is told: 4,997 of them, read and cloned at every

@@ -9,13 +9,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
+use std::time::Instant;
 
 pub use daemon_serve::watch::{follow, follow_asking};
 use serde_json::Value;
 
 use crate::answered;
-use crate::arrangement::Arrangement;
+use crate::arrangement::{self, Arrangement, Still};
 use crate::carried::{Carried, Said};
+use crate::clock;
 use crate::file::{self, Files};
 use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
@@ -213,6 +215,25 @@ pub fn follow_files(paths: &Paths, to: Sender<Heard>) -> std::io::Result<()> {
 }
 
 impl Inputs {
+    /// Keeps both places files once the windows have been `still` long
+    /// enough at `now`, and asks `still` to be woken for what's to come
+    /// though nothing moves: a place closed by hand let go when due, and
+    /// kept places whose write failed, at the shell's word or here, tried
+    /// again soon though the shell says nothing more.
+    pub fn keep_when_still(&mut self, still: &mut Still, paths: &Paths, now: Instant) {
+        if still.due(now) {
+            self.keep_kept_places(&paths.kept_places);
+            if let Some(let_go) = self.keep_places(&paths.arrangement) {
+                let ms = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+                still.again(now + arrangement::again_in(let_go, ms));
+            }
+        }
+        let ms = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        if let Some(again) = self.kept_places_again_at(ms) {
+            still.again(now + arrangement::again_in(again, ms));
+        }
+    }
+
     /// Takes what a source said into the part of the inputs it changes.
     pub fn hear(&mut self, heard: Heard, paths: &Paths) {
         match heard {
