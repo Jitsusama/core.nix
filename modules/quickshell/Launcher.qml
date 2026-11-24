@@ -5444,18 +5444,22 @@ Scope {
             reshow(held.length);
     }
 
-    // The rows a search found this opening, by the steps to the list it
-    // searched and their ids, so one that waited unseen stays seen however
-    // many lists are shown after (Steady.seenAmong): searched again, or
-    // stepped into and back out of. Plain, so keeping notifies nothing,
-    // and let go as the launcher closes.
+    // The rows a search found this opening that waited unseen, by the
+    // steps to the list it searched and their ids, so each stays seen
+    // however many lists are shown after (Steady.seenAmong): searched
+    // again, or stepped into and back out of. Only those, as Emoji's
+    // search finds hundreds, none of them waiting. seenHere gives what was
+    // found as it's shown (Steady.searched). Plain, so keeping notifies
+    // nothing, and let go as the launcher closes.
     property var seenFound: ({})
     function seenHere(rows) {
-        const here = seenFound[stepsTaken] ?? {};
-        for (const row of rows)
-            here[steadyId(row)] = true;
+        const here = seenFound[stepsTaken] ?? Object.create(null);
+        for (const row of rows) {
+            if (row.unseen === true)
+                here[steadyId(row)] = true;
+        }
         seenFound[stepsTaken] = here;
-        return rows;
+        return Steady.searched(rows);
     }
     function seenSearched() {
         return Object.keys(seenFound[stepsTaken] ?? {});
@@ -7116,7 +7120,7 @@ Scope {
                 ? Steady.seen(Steady.seenAmong(offered, seenSearched(), steadyId))
                 : { rows: offered.slice(), waiting: 0 };
             root.found = words.length === 0 ? standing.rows
-                : seenHere(Steady.searched(inCategory(letters)));
+                : seenHere(inCategory(letters));
             const foundAt = Date.now();
             compose(!steadying);
             if (!steadying || ordering)
@@ -7172,13 +7176,13 @@ Scope {
                 found = steadying && !ordering ? offered.slice() : standing.rows;
                 unseen = standing.waiting;
             } else if (held[held.length - 1].row.finds)
-                found = seenHere(Steady.searched(held[held.length - 1].row.finds(letters)));
+                found = seenHere(held[held.length - 1].row.finds(letters));
             else
-                found = seenHere(Steady.searched((held[held.length - 1].row.typed?.(letters) ?? [])
+                found = seenHere((held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
                         row.offers && row.verbs ? row.verbs() : []), []), letters,
                         picks.weights(Rank.stepped(held[held.length - 1].row.key ?? "",
-                            letters))))));
+                            letters)))));
             found = found.concat(stillActed(found));
             answer = null;
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
