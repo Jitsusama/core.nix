@@ -174,14 +174,17 @@ PanelWindow {
     // after it sat, which holds its cells where it sits, and counts from
     // when the shell heard that answer, on the monotonic clock. niri sends
     // the pointer over its cells as it takes the commit moving them,
-    // before it answers for that frame, so a pointer it came to under is
-    // felt before its rest begins, however long the shell or niri were
-    // held up. Counted from its walk's end, a builder under load held
-    // that commit up to 233 ms after it sat and the cat leant on a
-    // pointer it had walked under (2026-11-24). An ask only marks the
-    // frame Qt draws for its sitting pose, drawing none of its own, but
-    // for when no frame was coming: a glance still draws two.
+    // before it answers for that frame, so however long niri was held up,
+    // a pointer it came to under is felt before its rest begins, or as
+    // soon after as the shell hands that enter on: 46.7 ms once in 12 on an
+    // idle builder, and never under load (2026-11-24), where SETTLED gives
+    // it 200. Counted from its walk's end, a builder under load held that
+    // commit up to 233 ms after it sat and the cat leant on a pointer it
+    // had walked under. An ask only marks the frame Qt draws for its
+    // sitting pose, drawing none of its own, but for when no frame was
+    // coming: a glance still draws two (MarginCat.restFrom).
     property real satAt: -1
+    property int satFrom: 0
     function rests(): void {
         stillSince = -1;
         if (!window.FramePresentation.available) {
@@ -189,17 +192,19 @@ PanelWindow {
             return;
         }
         satAt = KeyTimes.now();
+        satFrom = window.FramePresentation.framesBegun;
         window.FramePresentation.ask();
     }
-    // A frame niri showed or let go, `frame`: one synced after it sat
-    // begins its rest, and one on its way as it sat asks for the next.
+    // A frame niri showed or let go, `frame`, as MarginCat.restFrom says.
     function restSeen(frame: int): void {
         if (satAt < 0)
             return;
-        if (window.FramePresentation.timesOf(frame).synchronizing >= satAt) {
+        const seen = MarginCat.restFrom(frame, window.FramePresentation.timesOf(frame).synchronizing,
+            satFrom, satAt);
+        if (seen === "begins") {
             satAt = -1;
             stillSince = KeyTimes.now();
-        } else {
+        } else if (seen === "asks") {
             window.FramePresentation.ask();
         }
     }
@@ -1429,8 +1434,14 @@ PanelWindow {
     // A scene's pose changes nothing of its place, so it says so too.
     readonly property string posed: window.scene.posed
     onPosedChanged: say()
+    // One still as it's made rests from there, since still's first value
+    // calls no onStillChanged. On a nested niri's start it comes to be
+    // still only after it's made, so a pet reaches it either way there
+    // (2026-11-24); this is for a screen where it's still from the first.
     Component.onCompleted: {
         follow();
+        if (still)
+            rests();
         say();
     }
 
