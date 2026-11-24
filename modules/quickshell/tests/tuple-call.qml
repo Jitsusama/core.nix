@@ -234,6 +234,14 @@ ShellRoot {
     }
 
     function stopped() {
+        root.says(root.call("connected", root.started, [false, false, false], []));
+        root.step("my camera off", () => !Tuple.filming, root.off);
+    }
+
+    function off() {
+        const row = root.camera();
+        expect("the camera's picker offered again once it's off",
+            row?.name === "Show My Camera in the Call", JSON.stringify(row));
         Tuple.mute(true);
         root.step("asked to mute", () => /^call mute$/m.test(root.asked), root.muting);
     }
@@ -245,6 +253,7 @@ ShellRoot {
 
     function ended() {
         expect("no mute without a call", Tuple.muted === null, Tuple.muted);
+        expect("no camera without a call", root.camera() === null, JSON.stringify(root.camera()));
         const kept = Tuple.recent[0] ?? {};
         const had = (kept.people ?? []).map(one => `${one.id} ${one.name} ${one.email}`);
         expect("kept in Recent with everyone who was in it", Tuple.recent.length === 1

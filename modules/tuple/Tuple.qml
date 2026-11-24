@@ -245,8 +245,15 @@ Singleton {
 
     // Opens Tuple's camera picker, which shares nothing until Joel picks
     // there, or stops his camera; Tuple's stream says which it is after.
+    // The launcher has closed by the time Tuple answers, so a refusal,
+    // such as no camera Tuple can open, goes to the journal with Tuple's
+    // reason.
     function camera(on) {
-        calls.ask({ ask: "camera", on: on });
+        calls.ask({ ask: "camera", on: on }, answer => {
+            if (answer?.error)
+                console.warn(`tuple: the camera's ${on ? "picker" : "stop"} was refused: `
+                    + (answer.error.message ?? answer.error.code));
+        });
     }
 
     // Once Tuple says it's done, the record says so.

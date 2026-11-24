@@ -52,8 +52,10 @@ pub fn act(said: &Value) -> Option<Act> {
             muted: said.get("muted").and_then(Value::as_bool) != Some(false),
         },
         "share" => Act::Share,
+        // Only a plain yes turns the camera on, so an unclear ask leaves
+        // it off, as Muted's unclear ask leaves Joel unheard.
         "camera" => Act::Camera {
-            on: said.get("on").and_then(Value::as_bool) != Some(false),
+            on: said.get("on").and_then(Value::as_bool) == Some(true),
         },
         "accept" => Act::Accept,
         "open" => Act::Open,
@@ -113,9 +115,16 @@ mod tests {
             Some(Act::Camera { on: false })
         );
         assert_eq!(
-            asked(r#"{"id": 1, "ask": "camera"}"#),
+            asked(r#"{"id": 1, "ask": "camera", "on": true}"#),
             Some(Act::Camera { on: true })
         );
+        for unclear in [r#""#, r#", "on": "true""#, r#", "on": null"#] {
+            assert_eq!(
+                asked(&format!(r#"{{"id": 1, "ask": "camera"{unclear}}}"#)),
+                Some(Act::Camera { on: false }),
+                "an unclear camera ask ({unclear}) must stop the camera"
+            );
+        }
         for (word, act) in [
             ("leave", Act::Leave),
             ("share", Act::Share),
