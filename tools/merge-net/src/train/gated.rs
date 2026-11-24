@@ -12,14 +12,13 @@ use std::process::Command;
 /// the lines the train trusts with, so the same words in a rider's output
 /// stand for nothing (`words_of`). With no mark or log to be had it runs
 /// nothing, since an unmarked log's first line could be a rider's own
-/// mark line (round 7's F4), and reads as untaken: a gate that never
+/// mark line (round 7's F4), and reads as unstarted: a gate that never
 /// started says nothing of its riders, and a full disk would otherwise
-/// drop every one of them (round 8's F3, F15 and F19).
+/// drop every one of them (round 8's F3, F15 and F19). It says why, so a
+/// rider that falls for it is told the train's own fault, not a
+/// builder's (round 9's F2, F3, F6 and F8).
 pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
-    let unstarted = |why: &str| {
-        eprintln!("merge-net: the gate couldn't start, as {why}, so it's tried again");
-        Gated::Unsent
-    };
+    let unstarted = |why: &str| Gated::Unstarted(why.to_owned());
     let Ok(mut words) = fs::File::create(log) else {
         return unstarted("its log couldn't be made");
     };
@@ -93,6 +92,8 @@ pub(super) enum Gated {
     Red { whole: bool },
     /// No builder or evaluator took it, so it says nothing of its riders.
     Unsent,
+    /// It never started, as it says, so it says nothing of its riders.
+    Unstarted(String),
 }
 
 /// How a gate that exited `code`, saying `words`, ended. A run no builder

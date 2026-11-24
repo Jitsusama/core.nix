@@ -2,6 +2,7 @@
 //! of their own.
 
 use super::installed::newer;
+use super::splitting::UNTAKEN_FOR;
 use super::*;
 
 /// A state folder of the test's own.
@@ -422,13 +423,18 @@ fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
         "a red of four didn't narrow"
     );
     let log = Path::new("/state/train/u.log");
+    let untaken = Untaken {
+        candidate: "u1",
+        log,
+        unstarted: None,
+    };
     let riding = ["a1".to_owned(), "b2".to_owned()];
     // A gate that exits at once comes back every few seconds, so the
     // train gives up by time, not by how many it ran.
     let mut now = 1000;
     while now < 1000 + UNTAKEN_FOR {
         assert!(
-            unsent(&root, "u1", log, &riding, &mut splitting, now),
+            unsent(&root, &untaken, &riding, &mut splitting, now),
             "the train gave up {} s into candidates no builder took",
             now - 1000
         );
@@ -445,7 +451,7 @@ fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
         now += 5;
     }
     assert!(
-        !unsent(&root, "u1", log, &riding, &mut splitting, now),
+        !unsent(&root, &untaken, &riding, &mut splitting, now),
         "the train never gave up on candidates no builder took"
     );
     let left: Vec<String> = riders(&root).into_iter().map(|rider| rider.head).collect();
@@ -463,6 +469,39 @@ fn a_candidate_no_builder_took_keeps_its_riders_and_search_until_it_gives_up() {
     assert!(
         why.starts_with("no builder or evaluator took") && why.contains("u.log"),
         "a rider wasn't told no builder took the train, and where: {why}"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A gate that never started, on a full disk say, asked no builder, and
+/// its log may never have been made, so a rider that falls for it is told
+/// the train's own fault rather than sent to the builders.
+#[test]
+fn a_rider_falling_for_a_gate_that_never_started_is_told_why() {
+    let root = root("unstarted");
+    board(&root, &rider("a1", 10)).unwrap();
+    let mut splitting = Splitting::default();
+    let untaken = Untaken {
+        candidate: "u1",
+        log: Path::new("/state/train/u.log"),
+        unstarted: Some("its log couldn't be made"),
+    };
+    let riding = ["a1".to_owned()];
+    assert!(
+        unsent(&root, &untaken, &riding, &mut splitting, 1000),
+        "the train gave up on a gate that never started at once"
+    );
+    assert!(
+        !unsent(&root, &untaken, &riding, &mut splitting, 1000 + UNTAKEN_FOR),
+        "the train never gave up on a gate that never started"
+    );
+    let why = fell(&root, "a1").unwrap_or_default();
+    assert!(
+        why.contains("gate couldn't start")
+            && why.contains("its log couldn't be made")
+            && !why.contains("u.log")
+            && !why.starts_with("no builder"),
+        "a rider wasn't told the gate never started, and why: {why}"
     );
     fs::remove_dir_all(&root).unwrap();
 }

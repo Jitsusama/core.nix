@@ -4,7 +4,7 @@
 use std::fs;
 
 use super::super::tests::root;
-use super::{Gated, MARKED, gated, words_of};
+use super::{Gated, MARKED, fresh_mark, gate, gated, words_of};
 
 /// What nix-offload says once every part of a run ran to its end, as its
 /// own test pins it (`modules/nix-offload/offload/src/main.rs`).
@@ -205,6 +205,39 @@ fn a_gate_is_read_by_what_its_last_run_said() {
         "a check's own words set aside the failure before them"
     );
     fs::remove_dir_all(&root).unwrap();
+}
+
+/// A mark the gate makes is one its own reader takes, so a line signed
+/// with it reads as nix-offload's: were its length or digits to drift,
+/// every red would quietly read cut short (round 9's F4).
+#[test]
+fn a_fresh_mark_signs_what_the_gate_reads() {
+    let root = root("fresh");
+    fs::create_dir_all(&root).unwrap();
+    let log = root.join("candidate.log");
+    let mark = fresh_mark().expect("no mark from the kernel");
+    assert_ne!(Some(mark.clone()), fresh_mark(), "two marks alike");
+    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
+                  failed with exit code 1.\n";
+    fs::write(&log, format!("{MARKED}{mark}\n{failed}{WHOLE} [{mark}]\n")).unwrap();
+    assert_eq!(
+        gated(Some(1), &words_of(&log)),
+        Gated::Red { whole: true },
+        "a red signed with a fresh mark read as cut short"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A gate whose log can't be made runs nothing and says why.
+#[test]
+fn a_gate_that_cant_make_its_log_never_starts() {
+    let root = root("no-log");
+    let _ = fs::remove_dir_all(&root);
+    assert_eq!(
+        gate(&root, &root.join("missing").join("candidate.log")),
+        Gated::Unstarted("its log couldn't be made".to_owned()),
+        "a gate with no log to write started, or read as untaken"
+    );
 }
 
 /// The mark a test's gate log opens with.

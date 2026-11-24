@@ -1871,12 +1871,10 @@ fn changed_there(
     if code != finished.status {
         eprintln!("nix-offload: a check failed, but not every part of the run ran to its end");
     }
+    // `ended::status` marks every failure said already, so this text is
+    // never printed; the line above is what says a red was cut short.
     ended::status(code, || {
-        if finished.cut {
-            "the changed checks didn't pass, and not every part ran to its end".to_owned()
-        } else {
-            "the changed checks didn't pass, as the lines above say".to_owned()
-        }
+        "the changed checks didn't pass, as the lines above say".to_owned()
     })
 }
 
@@ -2275,7 +2273,8 @@ fn kept_passing(
 /// it ran to its end, so that its words name every check it broke, and
 /// whether a part is known cut short. The two differ: a run built on the
 /// evaluator or a machine nearby is never whole, for nothing signs it,
-/// yet a failure there ran to its end and ends 1 (round 8's F18).
+/// yet a failure there that ran to its end ends 1 (round 8's F18), and
+/// one a signal or a lost hearing cut short is cut (round 9's F1).
 struct Finished {
     status: i32,
     printed: Option<String>,
@@ -2795,14 +2794,23 @@ impl Sent<'_> {
         // as changed-checks builds it, so its failure blocks nothing
         // but in a subtest its entry doesn't list.
         let (blocking, held) = changed::apart(targets, &changed::held_on_main(folder));
+        // A build a signal ended, or one its hearing lost, ran no further,
+        // as Apart's `tested` says of its own (round 9's F1).
+        let cut = Cell::new(false);
         let status = if blocking.is_empty() {
             0
         } else {
-            built_evaluated(folder, system, &blocking)
+            built_evaluated(folder, system, &blocking, &cut)
         };
-        let alone = changed::built_alone(&held, &mut |names| built_heard(folder, system, names));
+        let alone =
+            changed::built_alone(&held, &mut |names| built_heard(folder, system, names, &cut));
+        // A blocking failure's 1 would hide a held build cut short.
+        if !ran_to_its_end(alone) {
+            cut.set(true);
+        }
         let status = if status == 0 { alone } else { status };
-        Finished::of(status, Some(printed))
+        let finished = Finished::of(status, Some(printed));
+        if cut.get() { finished.cut_short() } else { finished }
     }
 }
 
@@ -2931,28 +2939,46 @@ impl Apart<'_> {
 }
 
 /// How building `names`, which an evaluator named, from the flake in
-/// `folder` did.
-fn built_evaluated(folder: &Path, system: &str, names: &[String]) -> i32 {
+/// `folder` did, setting `cut` for one that didn't run to its end.
+fn built_evaluated(folder: &Path, system: &str, names: &[String], cut: &Cell<bool>) -> i32 {
     let built = changed::building(folder, system, names).status();
-    built.map_or(1, |built| evaluated_ended(built.code(), names.len()))
+    built.map_or_else(
+        |_| {
+            cut.set(true);
+            1
+        },
+        |built| evaluated_ended(built.code(), names.len(), cut),
+    )
 }
 
 /// How building `names` did, as `built_evaluated` says, with the subtests
 /// its log says failed.
-fn built_heard(folder: &Path, system: &str, names: &[String]) -> changed::Heard {
+fn built_heard(
+    folder: &Path,
+    system: &str,
+    names: &[String],
+    cut: &Cell<bool>,
+) -> changed::Heard {
     let heard = changed::hearing(&mut changed::building(folder, system, names));
     heard.map_or_else(
-        |_| (1, BTreeSet::new()),
+        |_| {
+            cut.set(true);
+            (1, BTreeSet::new())
+        },
         |(mut building, failed)| {
             let code = building.wait().ok().and_then(|built| built.code());
-            (evaluated_ended(code, names.len()), failed)
+            (evaluated_ended(code, names.len(), cut), failed)
         },
     )
 }
 
 /// What a build of `named` checks an evaluator named ended with, said as
-/// the run's own status.
-fn evaluated_ended(code: Option<i32>, named: usize) -> i32 {
+/// the run's own status, setting `cut` for one that didn't run to its
+/// end: a signal's, read as 1, among them.
+fn evaluated_ended(code: Option<i32>, named: usize, cut: &Cell<bool>) -> i32 {
+    if !code.is_some_and(ran_to_its_end) {
+        cut.set(true);
+    }
     match code {
         // Never `NOT_TAKEN`, which would have changed-checks do it all
         // here, the build it was just refused included.
@@ -4538,6 +4564,40 @@ mod tests {
             (1, true),
             "VM tests a signal ended left their run whole"
         );
+    }
+
+    #[test]
+    fn an_evaluator_s_build_cut_short_or_untaken_leaves_its_run_cut() {
+        // A red there ends 1 as a whole one does, so only `cut` tells a
+        // build a signal ended from one that failed (round 9's F1).
+        let ended = |code: Option<i32>| {
+            let cut = Cell::new(false);
+            (evaluated_ended(code, 2, &cut), cut.get())
+        };
+        assert_eq!(ended(Some(0)), (0, false), "a build that passed cut its run");
+        assert_eq!(ended(Some(1)), (1, false), "a build that failed cut its run");
+        assert_eq!(
+            ended(Some(100)),
+            (100, false),
+            "nix's failed build cut its run"
+        );
+        assert_eq!(
+            ended(None),
+            (1, true),
+            "a build a signal ended left its run whole"
+        );
+        assert_eq!(
+            ended(Some(there::UNSENT)),
+            (i32::from(changed::UNBUILT), true),
+            "a build no builder took left its run whole"
+        );
+        assert_eq!(
+            ended(Some(there::UNREACHED)),
+            (there::UNREACHED, true),
+            "a build whose builder ssh lost left its run whole"
+        );
+        let red = Finished::of(1, None).cut_short();
+        assert_ne!(red.ends(), 1, "a red cut short ended as a whole one");
     }
 
     #[test]

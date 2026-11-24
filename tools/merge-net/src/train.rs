@@ -76,6 +76,7 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
+mod untaken;
 use gated::{Gated, gate};
 use hub::GitHub;
 pub use installed::install;
@@ -84,7 +85,8 @@ use landed::{Left, boarded_at, keep_landed, keep_left};
 use landing::{Landing, land};
 use pulls::aboard;
 pub use pulls::drafted;
-use splitting::{After, Splitting, UNTAKEN_FOR};
+use splitting::{After, Splitting};
+use untaken::{Untaken, unsent};
 
 /// A change waiting on the train.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -533,11 +535,19 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 };
                 excused = checks;
             }
-            Gated::Unsent => {
+            gated @ (Gated::Unsent | Gated::Unstarted(_)) => {
                 // The train stays in its ride rather than waiting for a
                 // ready, since a rider is told it needn't ask again.
                 let now = crate::state::now();
-                if unsent(&root, &candidate, &log, &done.merged, &mut splitting, now) {
+                let untaken = Untaken {
+                    candidate: &candidate,
+                    log: &log,
+                    unstarted: match &gated {
+                        Gated::Unstarted(why) => Some(why.as_str()),
+                        _ => None,
+                    },
+                };
+                if unsent(&root, &untaken, &done.merged, &mut splitting, now) {
                     std::thread::sleep(UNTAKEN_PAUSE);
                 }
                 continue;
@@ -675,42 +685,6 @@ fn after_landing(root: &Path, landing: Landing, run: &Run, splitting: &mut Split
     }
     way(root, &Ended::Otherwise);
     *splitting = Splitting::default();
-}
-
-/// After no builder took the candidate `candidate` of `merged` riders,
-/// its words in `log`, `now`: whether the train tries again, its riders
-/// aboard, or the riders of that candidate fall back to running again
-/// alone, as `splitting` says. Riders that boarded since rode none of the
-/// untaken candidates, so they stay aboard and start afresh.
-fn unsent(
-    root: &Path,
-    candidate: &str,
-    log: &Path,
-    merged: &[String],
-    splitting: &mut Splitting,
-    now: u64,
-) -> bool {
-    if splitting.untaken(now) {
-        println!(
-            "merge-net: no builder took the candidate {}, its words in {}, so the train tries \
-             again with its riders aboard",
-            short(candidate),
-            log.display()
-        );
-        return true;
-    }
-    let why = format!(
-        "no builder or evaluator took the train's candidates for {} minutes, the last {}; \
-         its words are in {}",
-        UNTAKEN_FOR / 60,
-        short(candidate),
-        log.display()
-    );
-    println!("merge-net: {why}, so the riders of that candidate fall");
-    for head in merged {
-        let _ = fall(root, head, &why);
-    }
-    false
 }
 
 /// After the candidate `candidate` of `merged` riders failed, its words in
