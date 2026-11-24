@@ -136,11 +136,15 @@ function laidAgain(shown, now, id, withholding) {
             }
             continue;
         }
+        // One shown has been seen, though `now` hands it back marked, as a
+        // held step's rows do one a search found: kept marked, the refresh
+        // after would read it as never shown and move it to the end.
         if (left && left.length > 0) {
             const at = left.shift();
+            const again = asSeen(fresh[at]);
             taken[at] = true;
-            owner.set(fresh[at], under[at]);
-            out.push(fresh[at]);
+            owner.set(again, under[at]);
+            out.push(again);
         } else {
             out.push(dimmed(row));
         }
