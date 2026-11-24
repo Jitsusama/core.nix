@@ -8,8 +8,12 @@
   mounts,
 }:
 let
-  # The Python the gate reads markup in, with no browser.
-  plainPython = pkgs.python3.withPackages (python: [ python.pytest ]);
+  # The Python the gate reads markup in, with no browser, and the parser
+  # that builds a page's tree by HTML's own rules.
+  plainPython = pkgs.python3.withPackages (python: [
+    python.pytest
+    python.selectolax
+  ]);
   sites = import ./site.nix { inherit lib pkgs; };
 
   # Every live page's markup, by the name Joel knows it by, which the gate

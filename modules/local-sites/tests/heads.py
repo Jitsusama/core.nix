@@ -11,14 +11,13 @@ around the head is live, so a screen reader hears the state change and never
 a lede being rewritten.
 
 This reads each page's markup as written, since every page writes its head
-there, and as a browser parses it where a head would meet the difference:
-void elements hold nothing, a `<p>` ends where a block starts, a non-void
-element written closed stays open outside SVG and MathML, a `<head>` left
-unwritten or unclosed is implied where the parser implies it, the body begins
-at the first tag or words a head can't hold, and a second `<head>` is ignored.
-A browser keeps an attribute's first value, and a template or noscript in the
-head holds its own. What `<template>`, `<noscript>` or an element read as words
-holds, what a shut `<dialog>` or `<details>` holds past its summary, and what's
+there, parsed as a browser running scripts parses it, by lexbor, which builds
+HTML's own tree: what's implied, ended, moved out of a table, read as
+words or left in SVG or MathML is where a browser puts it. What `<template>`,
+`<noscript>`, an element read as words, a list of options, a ruby's fallback
+or what draws itself (media, a canvas, an object) holds, what SVG or MathML
+holds, even where they hold HTML, which fails closed, what a shut `<dialog>`
+or `<details>` holds past its summary, and what's
 `hidden` or a `popover` no script has shown, unless its own `style` displays it,
 or styled out by its own `style`'s display, visibility or opacity, each
 declaration's last value read, is never drawn; nor is it heard, and neither is
@@ -31,9 +30,8 @@ so its template writes the status around what's filled. The gate reads each
 page's source, which matches what's served while each skip link is a line of
 its own before the head, since site.sh puts the strip after that line.
 
-Long because it holds both a reader of markup as a browser parses it and the
-head's rules over what it reads, which change together: each way found that a
-browser reads a head otherwise moves both the reader and a rule.
+Long because it holds each of the head's rules and what a browser draws and
+hears of a parsed page, read together: a rule moves when what's drawn does.
 
 A page not yet moved to the head is named as waiting, and passes. A waiting
 page that keeps to the head fails until it is taken off the list, and a name
@@ -47,8 +45,9 @@ change and fails when any must.
 import argparse
 import re
 import sys
-from html.parser import HTMLParser
 from pathlib import Path
+
+from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 # The head's parts, in the order sites.md writes them, as the tag and class
 # each is drawn with.
@@ -59,151 +58,36 @@ PARTS = [("p", "eyebrow"), ("h1", None), ("p", "lede"), ("p", "standing"), ("div
 # waiting list does: a name added here is a way past the gate, review's alone.
 FIRST_WAITING = {"Code", "Forage", "Home", "Machines", "Map", "Murmurs", "Network"}
 
-# Elements that never hold others, so they never wait for an end tag.
-VOID = {
-    "area",
-    "base",
-    "br",
-    "col",
-    "embed",
-    "hr",
-    "img",
-    "input",
-    "link",
-    "meta",
-    "source",
-    "track",
-    "wbr",
-}
+# Where HTML gives way to another language's elements, all they hold read as theirs.
+FOREIGN = {"svg", "math"}
 
-# The blocks whose start ends a `<p>` left open, as HTML's parser ends it.
-ENDS_A_P = {
-    "address",
-    "article",
-    "aside",
-    "blockquote",
-    "center",
-    "dd",
-    "details",
-    "dialog",
-    "dir",
-    "div",
-    "dl",
-    "dt",
-    "fieldset",
-    "figcaption",
-    "figure",
-    "footer",
-    "form",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "header",
-    "hgroup",
-    "hr",
-    "li",
-    "listing",
-    "main",
-    "menu",
-    "nav",
-    "ol",
-    "p",
-    "plaintext",
-    "pre",
-    "search",
-    "section",
-    "summary",
-    "table",
-    "ul",
-    "xmp",
-}
-
-# What a parser puts in the page's `<head>` when it's written before the body
-# outside one, and what else a `<head>` may hold without ending.
+# What only does its work in the page's `<head>`, drawn or not.
 HEAD_ONLY = {"base", "link", "meta", "style", "title"}
-HEAD_HOLDS = HEAD_ONLY | {"head", "noscript", "script", "template"}
-# What a parser puts back in the head after `</head>` rather than begin the
-# body at, as its after-head mode does: a noscript there begins the body.
-AFTER_HEAD = HEAD_ONLY | {"basefont", "bgsound", "noframes", "script", "template"}
 
 # The headings, any of which may be the page's first.
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
-# The elements a `<p>` left open outside them isn't ended from within.
-P_SCOPE = {"button", "caption", "html", "marquee", "object", "table", "td", "template", "th"}
-
-# Where an element written closed is closed, as it is in SVG and MathML.
-FOREIGN = {"svg", "math"}
-
-# Where SVG or MathML holds HTML again, as HTML's integration points do.
-INTEGRATION = {"foreignobject", "desc", "title", "mi", "mo", "mn", "ms", "mtext"}
-
-# The tags that end SVG or MathML left open, as a browser reads them there.
-BREAKOUT = {
-    "b",
-    "big",
-    "blockquote",
-    "body",
-    "br",
-    "center",
-    "code",
-    "dd",
-    "div",
-    "dl",
-    "dt",
-    "em",
-    "embed",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "head",
-    "hr",
-    "i",
-    "img",
-    "li",
-    "listing",
-    "menu",
-    "meta",
-    "nobr",
-    "ol",
-    "p",
-    "pre",
-    "ruby",
-    "s",
-    "small",
-    "span",
-    "strike",
-    "strong",
-    "sub",
-    "sup",
-    "table",
-    "tt",
-    "u",
-    "ul",
-    "var",
-}
-
 # What holds markup never drawn as the page's own: a template, what shows only
-# without scripts, and what a browser reads as words, a script or another page's,
-# however a parser of this Python's version nests them. An end tag inside one
-# closes nothing outside it.
+# without scripts, what a browser reads as words, a script or another page's,
+# what its own sheet never draws, and the fallback of what draws itself. The
+# parser reads raw text as words already, so most of these hold none.
 UNDRAWN = {
+    "audio",
+    "canvas",
+    "datalist",
     "iframe",
     "noembed",
     "noframes",
     "noscript",
+    "object",
     "plaintext",
+    "rp",
     "script",
     "style",
     "template",
     "textarea",
     "title",
+    "video",
     "xmp",
 }
 
@@ -336,29 +220,24 @@ GLOBAL = {"inherit", "initial", "unset", "revert", "revert-layer"}
 # What rolls a display back to the browser's own, which hides what's hidden.
 ROLLED_BACK = {"revert", "revert-layer"}
 
-# The words a display is written in, one to three of them.
-DISPLAYS = {
-    "block",
+# A display's words, as CSS Display writes it: how it sits among others, how
+# it lays out what it holds, and a list item's marker, each at most once, the
+# marker only beside a flow; or one word that says it alone.
+OUTER = {"block", "inline", "run-in"}
+INNER = {"flow", "flow-root", "table", "flex", "grid", "ruby", "math"}
+MARKED = {"list-item"}
+FLOWS = {"flow", "flow-root"}
+ALONE = {
     "contents",
-    "flex",
-    "flow",
-    "flow-root",
-    "grid",
-    "inline",
     "inline-block",
     "inline-flex",
     "inline-grid",
     "inline-table",
-    "list-item",
-    "math",
     "none",
-    "ruby",
     "ruby-base",
     "ruby-base-container",
     "ruby-text",
     "ruby-text-container",
-    "run-in",
-    "table",
     "table-caption",
     "table-cell",
     "table-column",
@@ -368,7 +247,6 @@ DISPLAYS = {
     "table-row",
     "table-row-group",
 }
-MOST_DISPLAY_WORDS = 3
 
 # What a visibility or content-visibility may say.
 VISIBILITIES = {"visibility": {"visible", "hidden", "collapse"}}
@@ -385,11 +263,23 @@ def valid(name: str, value: str) -> bool:
     if value in GLOBAL:
         return True
     if name == "display":
-        words = value.split()
-        return len(words) <= MOST_DISPLAY_WORDS and all(word in DISPLAYS for word in words)
+        return displays(value.split())
     if name in VISIBILITIES:
         return value in VISIBILITIES[name]
     return True
+
+
+def displays(words: list[str]) -> bool:
+    """Say whether a browser reads `words` as a display, not dropping it."""
+    if len(words) == 1 and words[0] in ALONE:
+        return True
+    kinds = [kind for kind in (OUTER, INNER, MARKED) for word in words if word in kind]
+    inner = [word for word in words if word in INNER]
+    return (
+        len(kinds) == len(words)
+        and all(sum(word in kind for word in words) <= 1 for kind in (OUTER, INNER, MARKED))
+        and not (MARKED & set(words) and inner and inner[0] not in FLOWS)
+    )
 
 
 def opaque(value: str) -> bool:
@@ -419,8 +309,6 @@ class Element:
         self.parent = parent
         self.children: list[Element] = []
         self.content: list[Element | str] = []
-        # Whether it's SVG's or MathML's, as what they hold is but where they hold HTML.
-        self.foreign = False
 
     def classes(self) -> list[str]:
         """Give the classes it's marked with."""
@@ -477,7 +365,10 @@ class Element:
                 if child.tag == "details" and summary is not None:
                     found.append(summary)
                     found.extend(summary.within())
-            elif child.tag not in UNDRAWN:
+            # SVG and MathML draw none of what they hold as the page's own,
+            # HTML they hold again included: a description, a symbol or a
+            # frame of no size draws nothing, which fails closed.
+            elif child.tag not in UNDRAWN and child.tag not in FOREIGN:
                 found.extend(child.within())
         return found
 
@@ -558,13 +449,13 @@ class Element:
     def is_banner(self) -> bool:
         """Say whether it's heard as the page's banner: marked one, or a header in no section."""
         role = self.role()
-        return not self.foreign and (
-            role == "banner" or (self.tag == "header" and role is None and self.section() is None)
+        return role == "banner" or (
+            self.tag == "header" and role is None and self.section() is None
         )
 
     def is_heading(self) -> bool:
         """Say whether it's drawn or heard as a heading: h1 to h6, or marked one."""
-        return not self.foreign and (self.tag in HEADINGS or self.role() == "heading")
+        return self.tag in HEADINGS or self.role() == "heading"
 
     def interrupts(self) -> bool:
         """Say whether it cuts in on what's being read, as an alert does."""
@@ -580,161 +471,44 @@ class Element:
         return False
 
 
-class Reader(HTMLParser):
-    """Read markup into elements, closing what a browser would leave closed."""
-
-    def __init__(self) -> None:
-        """Start from an empty document."""
-        super().__init__(convert_charrefs=True)
-        self.document = Element("#document", {}, None)
-        self.open = self.document
-        self.head: Element | None = None
-        self.bodied = False
-
-    def add(self, tag: str, attrs: list[tuple[str, str | None]]) -> Element:
-        """Put an element under the one open now, keeping each attribute's first value."""
-        attributes: dict[str, str] = {}
-        for name, value in attrs:
-            attributes.setdefault(name, value or "")
-        element = Element(tag, attributes, self.open)
-        element.foreign = self.foreign()
-        self.open.children.append(element)
-        self.open.content.append(element)
-        return element
-
-    def foreign(self) -> bool:
-        """Say whether the open element sits in SVG or MathML, not in HTML they hold."""
-        element: Element | None = self.open
-        while element is not None:
-            if element.tag in FOREIGN:
-                return True
-            if element.tag in INTEGRATION and element.foreign:
-                return False
-            element = element.parent
-        return False
-
-    def end_a_p(self) -> None:
-        """End a `<p>` left open, as a block starting after it does."""
-        element: Element | None = self.open
-        while element is not None and element.tag not in P_SCOPE:
-            if element.tag == "p" and element.parent is not None:
-                self.open = element.parent
-                return
-            element = element.parent
-
-    def in_head(self) -> bool:
-        """Say whether the open element sits in the page's `<head>`."""
-        element: Element | None = self.open
-        while element is not None:
-            if element is self.head:
-                return True
-            element = element.parent
-        return False
-
-    def held_in_head(self) -> bool:
-        """Say whether the open element sits in a template or noscript the head holds."""
-        element: Element | None = self.open
-        while element is not None and element is not self.head:
-            if element.tag in UNDRAWN:
-                return True
-            element = element.parent
-        return False
-
-    def head_for(self, tag: str) -> Element | None:
-        """Give the `<head>` a parser puts `tag` in when written outside one before the body."""
-        if tag not in HEAD_ONLY or self.bodied or self.open.tag not in {"#document", "html"}:
-            return None
-        if self.head is None:
-            self.head = self.add("head", [])
-        return self.head
-
-    def before_body(self) -> bool:
-        """Say whether the open element is the document or its html, the body not begun."""
-        return not self.bodied and self.open.tag in {"#document", "html"}
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Open an element under the one open now, where a parser would put it."""
-        # SVG or MathML left open ends at a tag of HTML's own, as a browser
-        # leaves foreign content there.
-        if self.foreign() and tag in BREAKOUT:
-            while self.foreign() and self.open.parent is not None:
-                self.open = self.open.parent
-        # A browser ignores a second head, and one written in the body.
-        if tag == "head" and (self.head is not None or self.bodied):
-            return
-        self.begin_body_at(tag)
-        if tag in ENDS_A_P:
-            self.end_a_p()
-        home = self.head_for(tag)
-        was = self.open
-        if home is not None:
-            self.open = home
-        element = self.add(tag, attrs)
-        if tag == "head":
-            self.head = element
-        if tag not in VOID:
-            self.open = element
-        elif home is not None:
-            self.open = was
-
-    def begin_body_at(self, tag: str) -> None:
-        """Begin the body where `tag` begins it, leaving the head."""
-        # The body begins at its tag, or at the first tag a head can't hold,
-        # though not within a template or noscript there, which hold their own;
-        # after the head's end, at any but what goes back in it.
-        holds = AFTER_HEAD if self.head is not None and not self.in_head() else HEAD_HOLDS
-        if tag == "body" or (
-            tag not in holds
-            and tag != "html"
-            and ((self.in_head() and not self.held_in_head()) or self.before_body())
-        ):
-            self.bodied = True
-            while self.in_head() and self.open.parent is not None:
-                self.open = self.open.parent
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Add an element written closed: closed in SVG or MathML, else left open."""
-        if self.foreign() and tag not in BREAKOUT:
-            self.add(tag, attrs)
-            return
-        # Written closed or not, it begins the body, implies the head or ends
-        # a p as its start tag does; a void one opens nothing either way.
-        self.handle_starttag(tag, attrs)
-        if tag in FOREIGN and self.open.tag == tag and self.open.parent is not None:
-            self.open = self.open.parent
-        # A browser reads on after a script, style, title or the like written
-        # closed as its text, up to its end tag, as it does after its start tag.
-        if tag in self.CDATA_CONTENT_ELEMENTS:
-            self.set_cdata_mode(tag)
-        elif tag in self.RCDATA_CONTENT_ELEMENTS:
-            self.set_cdata_mode(tag, escapable=True)
-
-    def handle_endtag(self, tag: str) -> None:
-        """Close the nearest open element of this tag, and any left open in it."""
-        # Inside what holds its own markup, an end tag closes nothing outside it.
-        element: Element | None = self.open
-        while element is not None and element.tag != tag:
-            if element.tag in UNDRAWN:
-                return
-            element = element.parent
-        if element is not None and element.parent is not None:
-            self.open = element.parent
-
-    def handle_data(self, data: str) -> None:
-        """Keep the words written where they're written; words before the body begin it."""
-        if data.strip(SPACE) and (self.before_body() or self.open is self.head):
-            self.bodied = True
-            if self.open is self.head and self.open.parent is not None:
-                self.open = self.open.parent
-        self.open.content.append(data)
+def adopt(node: LexborNode, parent: Element) -> None:
+    """Put what the parser read as `node`, and all it holds, under `parent`, in order."""
+    if node.is_text_node:
+        parent.content.append(node.text_content or "")
+        return
+    # A comment or the doctype is no element, and says nothing.
+    if not node.is_element_node:
+        return
+    tag = (node.tag or "").lower()
+    attributes = {str(name): value or "" for name, value in node.attributes.items()}
+    element = Element(tag, attributes, parent)
+    parent.children.append(element)
+    parent.content.append(element)
+    # A template's content sits apart from the page's tree, which a script
+    # copies out to use; it's read as the template's own.
+    holders = [node]
+    if tag == "template":
+        holders = [
+            fragment
+            for fragment in node.template_fragments()
+            if fragment.parent is not None and fragment.parent.mem_id == node.mem_id
+        ]
+    for holder in holders:
+        for child in holder.iter(include_text=True):
+            adopt(child, element)
 
 
 def read(markup: str) -> Element:
-    """Give the document `markup` writes."""
-    reader = Reader()
-    reader.feed(markup)
-    reader.close()
-    return reader.document
+    """Give the document `markup` writes, as a browser running scripts parses it."""
+    document = Element("#document", {}, None)
+    # lexbor builds an html element for any markup, even none, so a page
+    # always has a root; a missing one would be a parser fault, said here.
+    root = LexborHTMLParser(markup, scripting=True).root
+    if root is None:
+        message = "lexbor built no html element"
+        raise ValueError(message)
+    adopt(root, document)
+    return document
 
 
 def said(part: tuple[str, str | None]) -> str:
@@ -752,11 +526,7 @@ def head_faults(markup: str) -> list[str]:
     """Say what `markup`'s head must change to be the kit's, or nothing."""
     document = read(markup)
     everything = document.within()
-    heads = [
-        element
-        for element in everything
-        if "page-head" in element.classes() and not element.foreign
-    ]
+    heads = [element for element in everything if "page-head" in element.classes()]
     if len(heads) != 1:
         return [f'it draws {len(heads)} heads: open it with one <header class="page-head">']
     head = heads[0]

@@ -366,6 +366,74 @@ def test_a_head_after_svg_holding_html_is_drawn() -> None:
 def test_a_head_after_html_written_in_svg_left_open_is_drawn() -> None:
     """A <p> in SVG left open leaves it, as a browser does, so the head after is HTML's."""
     assert heads.head_faults('<svg class="sprite"><p>Icons</p>' + written()) == []
+    # A <font> marked as HTML's, and a stray </p>, leave it too.
+    assert heads.head_faults('<svg class="sprite"><font color="red">' + written()) == []
+    assert heads.head_faults('<svg class="sprite"></p>' + written()) == []
+
+
+# What the gate says of a page drawing no head.
+NO_HEAD = 'it draws 0 heads: open it with one <header class="page-head">'
+
+
+@pytest.mark.parametrize(
+    "holder",
+    ["svg desc", "svg foreignObject", "math mi", "math annotation-xml", "math foreignObject"],
+)
+def test_a_head_svg_or_mathml_holds_is_no_head(holder: str) -> None:
+    """HTML that SVG or MathML holds again is theirs to draw, or not, which fails closed."""
+    tags = holder.split()
+    opening = "".join(f"<{tag}>" for tag in tags)
+    closing = "".join(f"</{tag}>" for tag in reversed(tags))
+    assert heads.head_faults(opening + written() + closing) == [NO_HEAD]
+
+
+@pytest.mark.parametrize(
+    "tag",
+    ["script", "style", "title", "textarea", "xmp", "iframe", "noembed", "noframes", "noscript"],
+)
+def test_a_head_after_raw_text_written_closed_in_the_body_is_its_text(tag: str) -> None:
+    """A browser running scripts reads on after each of these written closed as its words."""
+    assert heads.head_faults(f"<p>Mine<{tag}/>{written()}") == [NO_HEAD]
+
+
+def test_a_head_after_plaintext_is_its_text() -> None:
+    """Nothing ends plaintext, its own end tag included, so all after it is words."""
+    assert heads.head_faults(f"<p>Mine<plaintext></plaintext>{written()}") == [NO_HEAD]
+
+
+def test_raw_text_in_svg_is_markup() -> None:
+    """SVG's style holds markup, so a header written in one after </svg> is HTML's banner."""
+    above = '<svg><style></svg><header class="hero"><p>Mine</p></header></style></svg>'
+    assert heads.head_faults(above + written()) == [
+        'it draws a <header class="hero"> above its head: let the kit\'s head be its one banner'
+    ]
+
+
+def test_a_noscript_in_the_head_is_words_to_a_browser_running_scripts() -> None:
+    """Its words end at </noscript>, so a header written after it begins the body."""
+    held = '<noscript><style></noscript><header class="hero"><h2>Mine</h2></header></style>'
+    markup = (
+        f"<!doctype html><html><head>{LINK}{held}</noscript></head>"
+        f"<body>{written()}<main></main></body></html>"
+    )
+    assert heads.page_faults(markup) == [
+        'it draws a <header class="hero"> above its head: let the kit\'s head be its one banner',
+        "its first heading, <h2>, sits outside its head: make the head's title first",
+    ]
+
+
+def test_markup_after_a_table_inside_it_is_drawn_before_it() -> None:
+    """A browser draws what a table can't hold before the table, so its heading comes first."""
+    markup = f'<table><tr><td>{written()}</td></tr><div class="mast"><h2>Mine</h2></div></table>'
+    assert heads.head_faults(markup) == [
+        "its first heading, <h2>, sits outside its head: make the head's title first"
+    ]
+
+
+def test_a_template_left_open_in_the_head_holds_the_page() -> None:
+    """A template never closed holds all after it, as its own, so nothing is drawn."""
+    markup = f"<!doctype html><html><head>{LINK}<template></head><body>{written()}</body></html>"
+    assert heads.page_faults(markup) == [NO_HEAD]
 
 
 @pytest.mark.parametrize("holder", ["template", "noscript"])
@@ -385,9 +453,12 @@ def test_a_banner_wrapped_around_the_head_is_named() -> None:
     ]
 
 
-@pytest.mark.parametrize("holder", ["template", "noscript"])
+@pytest.mark.parametrize(
+    "holder",
+    ["template", "noscript", "datalist", "video", "audio", "canvas", "object", "rp"],
+)
 def test_a_head_never_drawn_is_no_head(holder: str) -> None:
-    """A head held where no browser draws it leaves the page's own showing."""
+    """A head held where no browser draws it, or only where media won't, leaves none drawn."""
     faults = heads.head_faults(f"<{holder}>{written()}</{holder}>")
     assert faults == ['it draws 0 heads: open it with one <header class="page-head">']
 
@@ -431,6 +502,12 @@ def test_a_head_in_open_details_is_drawn() -> None:
         'hidden style="display: revert"',
         'hidden style="display:"',
         'hidden style="display: banana"',
+        'hidden style="display: block inline"',
+        'hidden style="display: flex grid"',
+        'hidden style="display: list-item grid"',
+        'hidden style="display: contents block"',
+        'hidden style="display: contents table-row"',
+        'style="display: none; display: block block"',
     ],
 )
 def test_a_hidden_head_is_no_head(marked: str) -> None:
@@ -467,6 +544,9 @@ def test_a_head_held_in_a_popover_is_no_head() -> None:
         'style="opacity: 0.5"',
         'style="opacity: 50%"',
         'style="display: block flow"',
+        'hidden style="display: inline flow-root"',
+        'hidden style="display: block list-item"',
+        'hidden style="display: list-item flow-root block"',
     ],
 )
 def test_a_head_styled_otherwise_is_drawn(marked: str) -> None:
@@ -838,6 +918,8 @@ def test_a_break_or_an_svg_drawn_closed_holds_nothing() -> None:
     ("markup", "tag", "parent"),
     [
         ("<div><svg/><span>x</span></div>", "span", "div"),
+        ("<div><svg/><a>x</a></div>", "a", "div"),
+        ("<div><svg><path/><a>x</a></svg></div>", "a", "svg"),
         ("<div><math/><span>x</span></div>", "span", "div"),
         ("<div><p>a<dialog>b</dialog></div>", "dialog", "div"),
         ("<ul><p>a<li>b</li></ul>", "li", "ul"),
@@ -846,7 +928,7 @@ def test_a_break_or_an_svg_drawn_closed_holds_nothing() -> None:
 )
 def test_markup_is_nested_as_a_browser_nests_it(markup: str, tag: str, parent: str) -> None:
     """SVG and MathML written closed close, and the blocks HTML ends a <p> at end it."""
-    element = next(each for each in heads.read(markup).within() if each.tag == tag)
+    element = next(each for each in heads.read(markup).every() if each.tag == tag)
     assert element.parent is not None, f"<{tag}> sits under nothing"
     assert element.parent.tag == parent, f"<{tag}> sits under <{element.parent.tag}>"
 
