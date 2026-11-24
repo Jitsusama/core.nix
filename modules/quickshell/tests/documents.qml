@@ -334,6 +334,15 @@ ShellRoot {
             link.awaited[again]({ id: again, words: "road", keys: ["row:calendar:own"] });
             Expect.expect("its answer taken", borrower.found.words === "road",
                 borrower.found.words);
+            // Answered once asked again, its words are asked as any are once rows moving under
+            // them let the answer go; only words lost again after it wait for the next key.
+            borrower.letFoundGo();
+            const unheld = link.asked;
+            borrower.search("road");
+            Expect.expect("answered once asked again, its words are asked anew",
+                link.asked === unheld + 1, link.asked - unheld);
+            const roadAgain = `find-${link.asked}`;
+            link.awaited[roadAgain]({ id: roadAgain, words: "road", keys: ["row:calendar:own"] });
             const unasked = (what, set) => {
                 link.wire = null;
                 set();
@@ -383,6 +392,10 @@ ShellRoot {
             Expect.expect("lost again after it was asked again, it isn't asked a third time",
                 link.asked === restarted && borrower.searchState().lost === null,
                 JSON.stringify([link.asked - restarted, borrower.searchState()]));
+            borrower.search("ride");
+            Expect.expect("nor by a refresh of what's typed",
+                link.asked === restarted && borrower.asking === "",
+                JSON.stringify([link.asked - restarted, borrower.asking]));
             borrower.search("rid");
             borrower.search("ride");
             link.gone();
