@@ -1960,11 +1960,6 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
-  local-name-answers-by-a-job = ''
-    a Mac with a local name runs a root job advertising it as a workstation by that name, on
-    port 9, with macOS's own dns-sd, from its start and again whenever it ends, saying what
-    dns-sd says in its log, and a Mac with none advertises nothing
-  '';
   local-name-comes-back = ''
     a Mac macOS renamed gets its declared local name back, said once with what it was, at most
     once in five minutes by the time its stamp holds, a time still to come counting as old; a
@@ -1978,11 +1973,6 @@
     the host name, from its start, whenever macOS writes its network settings and once a
     minute, finding its tools only in macOS's own folders and saying what it does in its log,
     and a Mac with none runs nothing
-  '';
-  local-name-logs-are-rotated = ''
-    a Mac with a local name has newsyslog move aside, past 512 KB, the two logs its local-name
-    jobs write, by the jobs' own paths, keeping three of each and sending no signal, and a Mac
-    with none adds nothing to newsyslog
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
