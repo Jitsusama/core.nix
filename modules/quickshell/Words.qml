@@ -82,7 +82,7 @@ Singleton {
     function name(id, state, fill) {
         let said = of(id, state).name;
         for (const key of Object.keys(fill ?? {}))
-            said = said.replace(`{${key}}`, fill[key]);
+            said = said.replace(`{${key}}`, () => fill[key]);
         return said;
     }
 

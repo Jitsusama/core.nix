@@ -42,7 +42,7 @@ function whole(record) {
 function told(said, id, fill) {
     let words = said[id] ?? id;
     for (const key of Object.keys(fill ?? {})) {
-        words = words.replace(`{${key}}`, fill[key]);
+        words = words.replace(`{${key}}`, () => fill[key]);
     }
     return words;
 }

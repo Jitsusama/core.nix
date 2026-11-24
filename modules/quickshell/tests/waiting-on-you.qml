@@ -357,6 +357,8 @@ QtObject {
         expect("one of days says days", NeedsYou.waited(cable.raisedAt, raised + 3 * 86_400_000),
             "3 d");
         expect("one raised at no time says none", NeedsYou.waited(undefined, raised), "");
+        expect("a blank filled with $' or $& is said as given",
+            NeedsYou.fill("{name} waits", { name: "a$'b$&c" }), "a$'b$&c waits");
         expect("an older file's item that says nothing else says why",
             NeedsYou.note({ why: "It needs you." }, said, with_(told, { now: raised })),
             "It needs you.");

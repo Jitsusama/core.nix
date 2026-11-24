@@ -828,7 +828,7 @@ Provider {
     function word(key, fill) {
         let said = String((Words.of("agents").said ?? {})[key] ?? "");
         for (const name of Object.keys(fill ?? {}))
-            said = said.replace(`{${name}}`, fill[name]);
+            said = said.replace(`{${name}}`, () => fill[name]);
         return said;
     }
 

@@ -23,7 +23,7 @@ function waited(raisedAt, now) {
 function fill(words, blanks) {
     let filled = words ?? "";
     for (const key of Object.keys(blanks)) {
-        filled = filled.replace(`{${key}}`, blanks[key]);
+        filled = filled.replace(`{${key}}`, () => blanks[key]);
     }
     return filled;
 }

@@ -154,11 +154,11 @@ function refusal(said, who, act, fill) {
     if (who === "") {
         return said.nothing ?? "";
     }
-    let text = (said.refused ?? "").replace("{name}", who)
-        .replace("{done}", said[`done:${act}`] ?? act)
-        .replace("{why}", said[`why:${act}`] ?? "");
+    let text = (said.refused ?? "").replace("{name}", () => who)
+        .replace("{done}", () => said[`done:${act}`] ?? act)
+        .replace("{why}", () => said[`why:${act}`] ?? "");
     for (const key of Object.keys(fill ?? {})) {
-        text = text.replace(`{${key}}`, fill[key]);
+        text = text.replace(`{${key}}`, () => fill[key]);
     }
     return text;
 }
