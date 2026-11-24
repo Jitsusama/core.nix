@@ -16,10 +16,13 @@
 # unit's own main process, which nothing else can be. A kitty its unit is
 # starting again, 5 s after it ended, is waited on for up to 20 s, so a
 # window asked of it meanwhile opens once it's back rather than never;
-# with neither by then, nothing opens, the journal says why, and the
-# shell is told, so it stops counting the window as coming and asks
-# again at the next press (Sessions' untaken).
+# with neither by then, or with one that opens nothing, the journal says
+# why, and the shell is told, so it stops counting the window as coming
+# and asks again at the next press (Sessions' untaken). It's told when
+# this was started, so a press made since, whose window may yet come, is
+# left coming.
 
+asked=$(date +%s%3N)
 sock=$1
 class=$2
 shift 2
@@ -44,14 +47,16 @@ until [ -S "$sock" ] || old; do
 done
 
 if [ -S "$sock" ]; then
-  exec kitten @ --to "unix:$sock" launch --type=os-window --os-window-class "$class" \
-    --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@"
-fi
-if old; then
-  exec systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
+  kitten @ --to "unix:$sock" launch --type=os-window --os-window-class "$class" \
+    --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" && exit 0
+  echo "sessions: the sessions kitty opened no $class" >&2
+elif old; then
+  systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
     env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \
-    --directory "$dir" "$@"
+    --directory "$dir" "$@" && exit 0
+  echo "sessions: the sessions kitty opened no $class" >&2
+else
+  echo "sessions: no sessions kitty to open $class in" >&2
 fi
-echo "sessions: no sessions kitty to open $class in" >&2
-qs ipc call sessions untaken "$class" > /dev/null 2>&1 || true
+qs ipc call sessions untaken "$class" "$asked" > /dev/null 2>&1 || true
 exit 1

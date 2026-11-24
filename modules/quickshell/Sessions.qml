@@ -2717,9 +2717,12 @@ Singleton {
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
     // so the next press asks for it again rather than saying it's opening
-    // for as long as viewPatience, while nothing comes.
-    function untaken(named) {
-        if (attaching[named] === undefined)
+    // for as long as viewPatience, while nothing comes. Only an ask made
+    // no later than the script started (`asked`, its ms) is the one it
+    // gave up on: a press since, whose window may yet come, stays coming,
+    // so the next press opens no second viewer beside it.
+    function untaken(named, asked) {
+        if (attaching[named] === undefined || attaching[named] > Number(asked))
             return;
         const still = Object.assign({}, attaching);
         delete still[named];
@@ -3196,9 +3199,10 @@ Singleton {
         }
 
         // untaken, as opens-in-sessions.sh says a window it was asked
-        // for found no sessions kitty to open in.
-        function untaken(named: string): void {
-            root.untaken(named);
+        // for found no sessions kitty to open in, or one that opened
+        // nothing, with the ms it was started at.
+        function untaken(named: string, asked: string): void {
+            root.untaken(named, asked);
         }
     }
 
