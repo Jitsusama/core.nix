@@ -3,58 +3,16 @@
 // the same control, and otherwise to the row, so no other control takes the
 // next press. A control is the same where its markup but its look is the
 // same and says what it does of it alone, else where its words are too.
+// Forms are keyed-form's.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { keyed } from "../keyed.ts";
-import { type Act, type Cell, type Control, cells, draw, inside, List, Row } from "./rows.ts";
+import { bare, button, inPlace, refocused } from "./focused.ts";
+import { type Act, type Control, cells, draw, List, Row } from "./rows.ts";
 
-/**
- * Draws rows a and b with `before`'s acts, in a list inside `around` where
- * told, focuses b's second control (or, told `deep`, the control it
- * holds), then draws b afresh with `after`'s acts and, where told, new
- * words for b; and says whether focus landed on b's second control, the
- * one it holds, or b itself.
- */
-function refocused(
-  before: readonly Act[],
-  after: readonly Act[],
-  works = "on b",
-  { deep = false, around }: { readonly deep?: boolean; readonly around?: Control } = {},
-): string {
-  const list = new List();
-  if (around !== undefined) {
-    inside(list, around);
-  }
-  const rows = (acts: readonly Act[], told: readonly Cell[]) =>
-    keyed(list, {
-      rows: told,
-      key: (cell) => cell.key,
-      draw: (cell) => new Row(cell.works, list.ownerDocument, true, acts),
-      moved: ["b"],
-    });
-  rows(before, cells("a", "b"));
-  const second = list.rows[1]?.children[1];
-  (deep ? second?.children[0] : second)?.focus?.();
-  rows(after, [...cells("a"), { key: "b", works }]);
-  const now = list.ownerDocument.activeElement;
-  if (now === list.rows[1]?.children[1]) {
-    return "control";
-  }
-  if (deep && now === list.rows[1]?.children[1]?.children[0]) {
-    return "held";
-  }
-  return now === list.rows[1] ? "row" : "elsewhere";
-}
-
-/** A button named `name` sending `value`, saying `says`. */
-const button = (says: string, name: string, value?: string): Act => ({
-  says,
-  attributes: value === undefined ? { name } : { name, value },
-});
-
-/** A control saying `says` whose markup says nothing of what it does. */
-const bare = (says: string): Act => ({ says, attributes: {} });
+/** Two buttons, which a disabled fieldset disables, as it doesn't a link. */
+const buttons = [button("open", "act", "open"), button("copy", "act", "copy")];
 
 it("a focused row moved keeps its focus", () => {
   const list = new List();
@@ -89,41 +47,67 @@ it("a focused row drawn again where it stands hands focus to the same place", ()
   assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
 });
 
-it("a focused control disabled where it stands hands focus to its row", () => {
+it("a focused row drawn into itself keeps its focus", () => {
   const list = new List();
   draw(list, cells("a", "b"));
-  list.rows[1]?.children[1]?.focus();
+  list.rows[1]?.focus();
   keyed(list, {
     rows: cells("a", "b"),
     key: (cell) => cell.key,
-    draw: (cell, was) => {
-      was?.children[1]?.setAttribute("disabled", "");
-      return was ?? new Row(cell.works, list.ownerDocument);
-    },
+    draw: (cell, was) => was ?? new Row(cell.works, list.ownerDocument),
     moved: ["b"],
   });
   assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+});
+
+it("a focused control kept where it stands keeps focus, its state changed or not", () => {
+  assert.equal(
+    inPlace(() => undefined),
+    "control",
+  );
+  assert.equal(
+    inPlace((control) => control.setAttribute("aria-pressed", "true")),
+    "control",
+  );
+});
+
+it("a focused control that takes no press where it stands hands focus to its row", () => {
+  const disabling = (control: Row["children"][number]) => control.setAttribute("disabled", "");
+  assert.equal(inPlace(disabling), "row", "disabled");
+  assert.equal(inPlace(disabling, { acts: buttons }), "row", "a button disabled");
+  const hiding = (control: Row["children"][number]) =>
+    control.setAttribute("style", "display: none");
+  assert.equal(inPlace(hiding), "row", "hidden");
+  // A control a page lets take focus only by its tabindex, which goes.
+  const pin: Act = { says: "pin", kind: "span", attributes: { tabindex: "0", "data-act": "pin" } };
+  const untabbed = inPlace((control) => control.removeAttribute("tabindex"), {
+    acts: ["open", pin],
+  });
+  assert.equal(untabbed, "row", "no longer focusable");
 });
 
 it("a focused control marked in place for another act hands focus to its row", () => {
-  const list = new List();
-  draw(list, cells("a", "b"));
-  list.rows[1]?.children[1]?.focus();
-  keyed(list, {
-    rows: cells("a", "b"),
-    key: (cell) => cell.key,
-    draw: (cell, was) => {
-      was?.children[1]?.setAttribute("href", "#forget");
-      return was ?? new Row(cell.works, list.ownerDocument);
-    },
-    moved: ["b"],
-  });
-  assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+  const forgetting = (control: Row["children"][number]) => control.setAttribute("href", "#forget");
+  assert.equal(inPlace(forgetting), "row");
+  // A row taking no focus can't take it from the control, so it's let go.
+  assert.equal(inPlace(forgetting, { focusable: false }), "none");
 });
 
-it("focus in a list a disabled fieldset holds goes to the row", () => {
-  const shut: Control = { says: "", kind: "fieldset", attributes: { disabled: "" } };
-  assert.equal(refocused(["open", "copy"], ["open", "copy"], "on b", { around: shut }), "row");
+it("focus on a button a fieldset around the list disables goes to the row", () => {
+  const fenced: Control = { says: "", kind: "fieldset", attributes: {} };
+  const disabling = (
+    _: unknown,
+    around: { setAttribute(name: string, value: string): void } | null,
+  ) => around?.setAttribute("disabled", "");
+  assert.equal(inPlace(disabling, { acts: buttons, around: fenced }), "row");
+  // A disabled fieldset leaves the links it holds working, so they keep focus.
+  assert.equal(inPlace(disabling, { around: fenced }), "control");
+});
+
+it("focus in a list made inert is let go, since nothing in it takes focus", () => {
+  const holder: Control = { says: "", kind: "div", attributes: {} };
+  const inert = inPlace((_, around) => around?.setAttribute("inert", ""), { around: holder });
+  assert.equal(inert, "none");
 });
 
 it("a focused link whose words show the changed record keeps focus by where it goes", () => {
@@ -160,15 +144,6 @@ it("links told apart only by their ids are told apart", () => {
   const [open, forget] = [go("Open", "open-b"), go("Forget", "forget-b")];
   assert.equal(refocused([open, forget], [forget, open]), "row");
   assert.equal(refocused([open, forget], [open, forget], "on b, moved"), "control");
-});
-
-it("a button sending a form named by its form attribute hands focus to its row", () => {
-  const start: Act = {
-    says: "Start",
-    kind: "button",
-    attributes: { form: "act-b", name: "id", value: "b" },
-  };
-  assert.equal(refocused(["open", start], ["open", start]), "row");
 });
 
 it("buttons sharing a name are told apart by their values", () => {
@@ -295,132 +270,6 @@ it("a page's own act says what a control does, so its words may change", () => {
     "control",
   );
   assert.equal(refocused(["open", act("b", "forget")], ["open", act("b", "open")]), "row");
-});
-
-it("a button sending the same name and value from another form is another control", () => {
-  const sent = (action: string): Act => ({
-    says: "",
-    kind: "form",
-    attributes: { action, method: "post" },
-    holds: { says: "b", kind: "button", attributes: { name: "id", value: "b" } },
-  });
-  // Focus on the button inside lands on it again only where its form is the same.
-  assert.equal(
-    refocused(["open", sent("/start")], ["open", sent("/stop")], "on b", { deep: true }),
-    "row",
-  );
-  assert.equal(
-    refocused(["open", sent("/start")], ["open", sent("/start")], "on b", { deep: true }),
-    "held",
-  );
-});
-
-it("a button whose form sends another hidden value is another control", () => {
-  const sent = (op: string): Act => ({
-    says: "",
-    kind: "form",
-    attributes: { method: "post" },
-    holds: [
-      { says: "b", kind: "button", attributes: { name: "id", value: "b" } },
-      { says: "", kind: "input", attributes: { type: "hidden", name: "op", value: op } },
-    ],
-  });
-  assert.equal(
-    refocused(["open", sent("forget")], ["open", sent("start")], "on b", { deep: true }),
-    "row",
-  );
-  assert.equal(
-    refocused(["open", sent("forget")], ["open", sent("forget")], "on b", { deep: true }),
-    "held",
-  );
-});
-
-it("a list inside a form keeps focus on the same control", () => {
-  const form: Control = {
-    says: "",
-    attributes: { action: "/rows", method: "post" },
-    holds: { says: "", kind: "input", attributes: { type: "hidden", name: "page", value: "2" } },
-  };
-  assert.equal(refocused(["open", "copy"], ["open", "copy"], "on b", { around: form }), "control");
-  // What the form sends from the control's own row changes, the control not.
-  const op = (value: string): Act => ({
-    says: "",
-    kind: "input",
-    attributes: { type: "hidden", name: "op", value },
-  });
-  const go: Act = { says: "Go", kind: "button", attributes: { name: "id", value: "b" } };
-  const [forget, start] = [
-    [op("forget"), go],
-    [op("start"), go],
-  ];
-  assert.equal(refocused(forget, start, "on b", { around: form }), "row");
-  assert.equal(refocused(forget, start), "control", "with no form, no field is sent");
-});
-
-it("a form whose sending can't be read from its markup hands focus to the row", () => {
-  const typed: Control = {
-    says: "",
-    attributes: { action: "/rows" },
-    holds: { says: "", kind: "input", attributes: { name: "q" } },
-  };
-  assert.equal(refocused(["open", "copy"], ["open", "copy"], "on b", { around: typed }), "row");
-  const joined: Control = { says: "", attributes: { id: "rows", action: "/rows" } };
-  assert.equal(refocused(["open", "copy"], ["open", "copy"], "on b", { around: joined }), "row");
-});
-
-it("a list that is itself the form counts only the focused row's fields", () => {
-  const list = new List("form");
-  const field = (value: string): Act => ({
-    says: "",
-    kind: "input",
-    attributes: { type: "hidden", name: "op", value },
-  });
-  const rows = (a: string, b: string) =>
-    keyed(list, {
-      rows: cells("a", "b"),
-      key: (cell) => cell.key,
-      draw: (cell) =>
-        new Row(cell.works, list.ownerDocument, true, [
-          "open",
-          "copy",
-          field(cell.key === "a" ? a : b),
-        ]),
-      moved: ["a", "b"],
-    });
-  rows("1", "1");
-  list.rows[1]?.children[1]?.focus();
-  rows("2", "1");
-  assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
-  rows("2", "2");
-  assert.equal(list.ownerDocument.activeElement, list.rows[1]);
-});
-
-it("a list inside a form keeps focus however another row's fields change", () => {
-  const form: Control = { says: "", attributes: { action: "/rows", method: "post" } };
-  const field = (value: string): Act => ({
-    says: "",
-    kind: "input",
-    attributes: { type: "hidden", name: "seen", value },
-  });
-  const list = new List();
-  inside(list, form);
-  // Row a's field changes; b's, beside the focused control, stays.
-  const rows = (seen: string) =>
-    keyed(list, {
-      rows: cells("a", "b"),
-      key: (cell) => cell.key,
-      draw: (cell) =>
-        new Row(cell.works, list.ownerDocument, true, [
-          "open",
-          "copy",
-          field(cell.key === "a" ? seen : "1"),
-        ]),
-      moved: ["a", "b"],
-    });
-  rows("1");
-  list.rows[1]?.children[1]?.focus();
-  rows("2");
-  assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
 });
 
 it("a control labelled by another element is never known again", () => {

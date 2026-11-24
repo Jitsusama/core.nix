@@ -1,7 +1,7 @@
 // A list and its rows as keyed meets them in a page, faithful where keyed
 // leans on the DOM: an element taken out of the page takes no focus, nor
-// does a disabled one, a row taken out has no parent, and taking out or
-// moving what holds focus drops it to the page. Shared by keyed's drawing
+// does a disabled, inert or hidden one, a row taken out has no parent, and
+// taking out or moving what holds focus drops it to the page. Shared by keyed's drawing
 // tests and its focus tests.
 
 import { type Drawn, type Holder, KEY, keyed, type Placed } from "../keyed.ts";
@@ -48,12 +48,26 @@ type Act = string | null | Control;
 /** What takes focus with no tabindex, as a page lets it: a link only where it goes somewhere. */
 const FOCUSABLE = new Set(["button", "input", "select", "textarea"]);
 
+/** An inline style hiding what it's on, as a page writes one. */
+const HIDING = /display:\s*none|visibility:\s*hidden/u;
+
+/** Whether `node` or what holds it carries `name`. */
+function marked(node: Placed, name: string): boolean {
+  for (let at: Placed | null = node; at !== null; at = at.parentElement) {
+    if ((at.getAttribute?.(name) ?? null) !== null) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Something inside a row, as a row's link is, saying what it's given: a
  * link where told an href, else a button, unless told its kind. Taken out,
  * it has no parent and takes no focus, as an element out of the page
- * doesn't; nor does one disabled, a link going nowhere, a hidden input, or
- * an element with no tabindex that a page doesn't let take focus.
+ * doesn't; nor does a form control disabled, itself or by a fieldset, one
+ * inert or hidden, a link going nowhere, a hidden input, or an element
+ * with no tabindex that a page doesn't let take focus.
  */
 class Inner implements Placed {
   parentElement: Placed | null;
@@ -87,18 +101,53 @@ class Inner implements Placed {
       "tabindex" in this.#attributes ||
       (this.localName === "a" && "href" in this.#attributes) ||
       (FOCUSABLE.has(this.localName) && this.#attributes["type"] !== "hidden");
-    if (takes && this.#page.holds(this) && !("disabled" in this.#attributes)) {
+    if (
+      takes &&
+      this.#page.holds(this) &&
+      !this.#disabled() &&
+      !marked(this, "inert") &&
+      this.checkVisibility()
+    ) {
       this.#page.activeElement = this;
     }
   }
 
+  blur(): void {
+    if (this.#page.activeElement === this) {
+      this.#page.activeElement = null;
+    }
+  }
+
+  /** Whether it's drawn: neither it nor what holds it hidden. */
+  checkVisibility(): boolean {
+    return !(marked(this, "hidden") || HIDING.test(this.#attributes["style"] ?? ""));
+  }
+
   /**
    * Marks it where it stands, as a page updating it in place does. Marked
-   * disabled, it stays the page's focus, as a browser may say it is until
-   * it next draws.
+   * so it takes no focus, it stays the page's focus, as a browser may say
+   * it is until it next draws.
    */
   setAttribute(name: string, value: string): void {
     this.#attributes[name] = value;
+  }
+
+  removeAttribute(name: string): void {
+    delete this.#attributes[name];
+  }
+
+  /** Whether it's a form control disabled, itself or by a fieldset above it. */
+  #disabled(): boolean {
+    if (!FOCUSABLE.has(this.localName)) {
+      return false;
+    }
+    for (let at: Placed | null = this; at !== null; at = at.parentElement) {
+      const fieldset = at === this || at.localName === "fieldset";
+      if (fieldset && (at.getAttribute?.("disabled") ?? null) !== null) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -170,8 +219,14 @@ class Row implements Drawn, Placed {
   }
 
   focus(): void {
-    if (this.#focusable && this.#page.holds(this)) {
+    if (this.#focusable && this.#page.holds(this) && !marked(this, "inert")) {
       this.#page.activeElement = this;
+    }
+  }
+
+  blur(): void {
+    if (this.#page.activeElement === this) {
+      this.#page.activeElement = null;
     }
   }
 }
@@ -181,11 +236,11 @@ class Around implements Placed {
   readonly parentElement = null;
   readonly children: Placed[];
   readonly localName: string;
-  readonly #attributes: Readonly<Record<string, string>>;
+  readonly #attributes: Record<string, string>;
 
   constructor(list: List, told: Control) {
     this.localName = told.kind ?? "form";
-    this.#attributes = told.attributes;
+    this.#attributes = { ...told.attributes };
     const held = [told.holds ?? []].flat();
     this.children = [
       list,
@@ -201,6 +256,11 @@ class Around implements Placed {
 
   getAttributeNames(): string[] {
     return Object.keys(this.#attributes);
+  }
+
+  /** Marks it where it stands, as a page disabling a fieldset does. */
+  setAttribute(name: string, value: string): void {
+    this.#attributes[name] = value;
   }
 }
 

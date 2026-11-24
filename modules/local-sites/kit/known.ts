@@ -16,6 +16,8 @@ interface Placed {
   getAttribute?(name: string): string | null;
   getAttributeNames?(): string[];
   focus?(options?: FocusOptions): void;
+  blur?(): void;
+  checkVisibility?(): boolean;
 }
 
 /** Whether `node` is `row` or inside it. */
@@ -111,17 +113,24 @@ const TYPED = new Set(["select", "textarea"]);
 /** Inputs whose value is what their markup says. */
 const WRITTEN = new Set(["button", "hidden", "image", "reset", "submit"]);
 
-/** Whether what `field` sends is what its markup says, not a person's choice. */
+/**
+ * Whether what `field` sends is what its markup says, not a person's
+ * choice; a custom element's is what its script sets.
+ */
 function written(field: Placed): boolean {
-  if (TYPED.has(field.localName ?? "")) {
+  const tag = field.localName ?? "";
+  if (TYPED.has(tag) || tag.includes("-")) {
     return false;
   }
   const type = (field.getAttribute?.("type") ?? "text").trim().toLowerCase();
   return field.localName !== "input" || WRITTEN.has(type);
 }
 
-/** A field a form sends: its tag, name and value, and whether it's disabled, so not sent. */
-type Field = [string, string, string, boolean];
+/**
+ * A field a form sends: its tag, name, value, type and the form it names,
+ * and whether it's disabled, so not sent.
+ */
+type Field = [string, string, string, string | null, string | null, boolean];
 
 /**
  * What a form sends beside `control`: each other named element in it, by
@@ -142,7 +151,11 @@ function fieldsOf(form: Placed, control: Placed, list: object): Field[] | null {
         return null;
       }
       const value = each.getAttribute?.("value") ?? "";
-      fields.push([each.localName ?? "", name, value, carries(each, "disabled")]);
+      const [type, owner] = [
+        each.getAttribute?.("type") ?? null,
+        each.getAttribute?.("form") ?? null,
+      ];
+      fields.push([each.localName ?? "", name, value, type, owner, disabled(each)]);
     }
     const inner = fieldsOf(each, control, list);
     if (inner === null) {
@@ -226,17 +239,61 @@ function alike(one: Placed, other: Known | null, list: object): boolean {
   return other.words !== "" && one.textContent?.trim() === other.words;
 }
 
+/** The form controls a disabled fieldset disables; a link or a tabindex in one isn't. */
+const CONTROLS = new Set(["button", "input", "select", "textarea"]);
+
 /**
- * Whether `control` is disabled, itself or by a fieldset, or inert: what a
- * browser may still name as focused until it next draws, though it takes
- * no press. A fieldset's first legend isn't told apart, which fails safe.
+ * Whether `field` is disabled, itself or, as a form control, by a fieldset
+ * above it, so no form sends it. Marked disabled, any element counts, and
+ * a fieldset's first legend isn't told apart, which both fail safe.
  */
-function shut(control: Placed): boolean {
-  if (carries(control, "disabled")) {
+function disabled(field: Placed): boolean {
+  const tag = field.localName ?? "";
+  if (carries(field, "disabled")) {
+    return true;
+  }
+  if (!(CONTROLS.has(tag) || tag.includes("-"))) {
+    return false;
+  }
+  for (let at = field.parentElement; at !== null; at = at.parentElement) {
+    if (at.localName === "fieldset" && carries(at, "disabled")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a page lets `control` take focus by its markup alone: a link or
+ * an area going somewhere, a form control but a hidden input, a summary, a
+ * frame, or anything with a tabindex or editable. Anything else fails safe.
+ */
+function focusable(control: Placed): boolean {
+  const tag = control.localName ?? "";
+  const editable = (control.getAttribute?.("contenteditable") ?? "false").toLowerCase();
+  if (carries(control, "tabindex") || editable !== "false") {
+    return true;
+  }
+  if (tag === "a" || tag === "area") {
+    return carries(control, "href");
+  }
+  if (tag === "input") {
+    return (control.getAttribute?.("type") ?? "").trim().toLowerCase() !== "hidden";
+  }
+  return CONTROLS.has(tag) || tag === "summary" || tag === "iframe";
+}
+
+/**
+ * Whether `control` takes no press though a browser may still name it
+ * focused until it next draws: disabled, inert, no longer one a page lets
+ * take focus, or hidden, by itself or what holds it.
+ */
+function refuses(control: Placed): boolean {
+  if (disabled(control) || !focusable(control) || control.checkVisibility?.() === false) {
     return true;
   }
   for (let at: Placed | null = control; at !== null; at = at.parentElement) {
-    if ((at.localName === "fieldset" && carries(at, "disabled")) || carries(at, "inert")) {
+    if (carries(at, "inert")) {
       return true;
     }
   }
@@ -244,4 +301,4 @@ function shut(control: Placed): boolean {
 }
 
 export type { Known, Placed };
-export { alike, inside, knownAs, shut };
+export { alike, inside, knownAs, refuses };

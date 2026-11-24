@@ -16,7 +16,7 @@
 // throw keeps what it was given, and the records the throwing call moved
 // are the page's to draw again, whole, since keyed keeps no note of them.
 
-import { alike, inside, type Known, knownAs, type Placed, shut } from "./known.ts";
+import { alike, inside, type Known, knownAs, type Placed, refuses } from "./known.ts";
 
 /** As much of a drawn row as keyed reads: its key, kept on it. */
 interface Drawn {
@@ -215,12 +215,13 @@ interface Before {
  * itself, since by its place alone another control there would take the
  * next press. A place the new drawing doesn't reach all the way down to is
  * another place. A row that takes no focus lets it go, as the page does
- * when a focused element leaves. A control that won't take focus, or is
- * disabled, which a browser may still call focused, hands it to the row
- * too, rather than let it fall to the page.
+ * when a focused element leaves, and a control kept where it stands but
+ * no longer the same is let go too, since nothing else takes focus from
+ * it. A control that takes no press, which a browser may still call
+ * focused, hands it to the row too, rather than let it fall to the page.
  */
 function refocus({ focused, known, page, holder }: Before, path: number[], item: object) {
-  const took = (on: Placed) => (page === null || page.activeElement === on) && !shut(on);
+  const took = (on: Placed) => (page === null || page.activeElement === on) && !refuses(on);
   if (focused !== null && inside(focused, item)) {
     if (known === null || alike(focused, known, holder)) {
       focused.focus?.({ preventScroll: true });
@@ -230,6 +231,9 @@ function refocus({ focused, known, page, holder }: Before, path: number[], item:
     }
     if (walkable(item)) {
       item.focus?.({ preventScroll: true });
+    }
+    if (focused !== item && (page === null || page.activeElement === focused)) {
+      focused.blur?.();
     }
     return;
   }

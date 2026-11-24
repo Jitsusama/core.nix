@@ -24,8 +24,9 @@ a site's compiled imports land.
 
 The `tests/` folder holds a test for each script but `theme.ts` and
 `home.ts`, which have none yet, and `known.ts`, which keyed's focus cases
-(`keyed-focus.test.ts`) try through the list, and the stand-ins they share, `stand-in.ts`
-for a feed's socket and `hands.ts` for a clock moved by hand. Node runs them
+(`keyed-focus.test.ts`, and `keyed-form.test.ts` for forms) try through the
+list, drawn by `focused.ts` in `rows.ts`'s list; and the stand-ins they share,
+`stand-in.ts` for a feed's socket and `hands.ts` for a clock moved by hand. Node runs them
 as the kit builds.
 
 The kit is typechecked with `noPropertyAccessFromIndexSignature`, so a field
