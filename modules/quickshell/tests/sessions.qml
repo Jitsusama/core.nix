@@ -1178,7 +1178,13 @@ ShellRoot {
         // viewer of the same session with every press.
         const cameRefused = { id: 93, pid: 880, opened: named };
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
+        root.unhosted = "";
+        root.unhostedWhy = "";
         Niri.windowOpenedOrChanged(cameRefused);
+        expect("the press waiting on it is told its own came refused",
+            root.unhosted === "FORGED" && root.unhostedWhy === "disowned",
+            `${root.unhosted} ${root.unhostedWhy}`);
+        root.unhostedWhy = "";
         Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
             here: true });
         expect("one whose own came refused is asked for no more, said so",
@@ -1260,32 +1266,43 @@ ShellRoot {
             JSON.stringify(waitedOn));
         // Its viewer come refused, or taken by no kitty, the walk waits on
         // it no more, as none can come for that ask, rather than for its
-        // patience, viewer after viewer.
-        const refusedWalk = { id: 97, pid: 880, opened: "pi-hosted.s-refused-walk" };
+        // patience, viewer after viewer; it goes on at its pace, kept late,
+        // and the refused window is no late one's either.
+        const refusedWalk = { id: 97, pid: 880, session: true,
+            opened: "pi-hosted.s-refused-walk" };
         const waitedRefused = { id: "s-refused-walk", classed: refusedWalk.opened, opened: null };
-        Sessions.reopening = { waiting: waitedRefused, late: [], queue: [], placed: [],
+        const walkNext = { one: { id: "s-walk-next", cwd: "/tmp", hosted: true }, at: null };
+        Sessions.reopening = { waiting: waitedRefused, late: [], queue: [walkNext], placed: [],
             behind: [], begun: [], looking: false, settling: false, back: null, focused: false };
+        Sessions.reopenStartedAt = Date.now();
         Sessions.viewWith(view.slice(0, -1).concat(["s-refused-walk"]), refusedWalk.opened,
             null, "walk");
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused,
             "97": refusedWalk });
         Niri.windowOpenedOrChanged(refusedWalk);
         const goneOnRefused = Sessions.reopening?.waiting === null
-            && Sessions.reopening?.late.includes(waitedRefused);
+            && Sessions.reopening?.late.includes(waitedRefused) && waitedRefused.opened === null;
+        const paced = Sessions.reopening?.queue.length === 1;
         const untakenWalk = "pi-hosted.s-untaken-walk";
         const waitedUntaken = { id: "s-untaken-walk", classed: untakenWalk, opened: null };
-        if (Sessions.reopening)
+        Sessions.reopenStartedAt = 0;
+        if (Sessions.reopening) {
             Sessions.reopening.waiting = waitedUntaken;
+            Sessions.reopening.queue = [walkNext];
+        }
         Sessions.viewWith(view.slice(0, -1).concat(["s-untaken-walk"]), untakenWalk, null,
             "walk");
         Sessions.untaken(untakenWalk, String(Date.now()));
         const goneOnUntaken = Sessions.reopening?.waiting === null
             && Sessions.reopening?.late.includes(waitedUntaken);
+        const wentOn = Sessions.reopening?.queue.length === 0;
         Sessions.reopening = null;
         Sessions.forgetAsk(refusedWalk.opened);
         expect("the walk waits no more on one whose window came refused", goneOnRefused,
             JSON.stringify(waitedRefused));
         expect("nor on one no kitty took", goneOnUntaken, JSON.stringify(waitedUntaken));
+        expect("the next waits out the walk's pace", paced, "begun at once");
+        expect("and once it has passed, is begun", wentOn, "left queued");
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
