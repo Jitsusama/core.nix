@@ -634,7 +634,9 @@
     refuses a stale calendar, takes Chrome's and Slack's waits from lag-watch's last hour, sets
     the launcher's openings during the run against the same span before it, writes the hour
     in the shape cadence reads, and sums Joel's own calls' sending threads' waits for a CPU
-    into a line the hour reads and no test run is taken for
+    into a line the hour reads and no test run is taken for, and checks the camera once
+    between three and six minutes before each meeting, a camera plugged in over the
+    machine's, and tells plainly when it gives no picture
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine

@@ -4,9 +4,17 @@
 # cadence to judge (src/main.rs says how). It never runs into a call of
 # Joel's or within ten minutes of a meeting. `call-under-load` says the
 # last hour's figures.
-{ lib, pkgs, ... }:
+{
+  lib,
+  pkgs,
+  # The machine's own settings, which Home Manager gives when it's part of
+  # one, for its camera.
+  osConfig ? { },
+  ...
+}:
 let
   package = pkgs.callPackage ./package.nix { };
+  device = osConfig.jitsusama.camera.device or null;
 in
 {
   home.packages = [ package ];
@@ -52,6 +60,40 @@ in
       Slice = "app.slice";
     };
     Install.WantedBy = [ "default.target" ];
+  };
+
+  # The camera before each of Joel's meetings: three to six minutes out, with
+  # no call on, it's read for five frames, none kept, and a camera giving no
+  # picture is told to him then rather than seen by those he meets. The
+  # built-in's first frame can take 40 s under memory pressure, so the read
+  # is given two minutes.
+  systemd.user.services.call-under-load-camera = {
+    Unit.Description = "Checks Joel's camera gives a picture before each meeting";
+    Service = {
+      Type = "oneshot";
+      ExecStart = lib.escapeShellArgs (
+        [
+          (lib.getExe package)
+          "camera"
+        ]
+        ++ lib.optional (device != null) device
+      );
+      # The calendar unread, as in a VM test, leaves the minute unchecked.
+      SuccessExitStatus = [ 69 ];
+      # In the apps' slice, so its asks of a-call-is-on answer under load;
+      # the camera's own work is the camera service's.
+      Slice = "app.slice";
+      TimeoutStartSec = "4min";
+    };
+  };
+
+  systemd.user.timers.call-under-load-camera = {
+    Unit.Description = "Checks Joel's camera before each meeting, each minute";
+    Timer = {
+      OnCalendar = "minutely";
+      Persistent = false;
+    };
+    Install.WantedBy = [ "timers.target" ];
   };
 
   systemd.user.timers.call-under-load = {

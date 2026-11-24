@@ -24,10 +24,15 @@
 //! each hour's figures carry the worst of those since the hour before
 //! (src/watch.rs says how).
 //!
+//! `call-under-load camera DEVICE` checks before each of Joel's meetings
+//! that his camera gives a picture, and says when it doesn't (src/camera.rs
+//! says how).
+//!
 //! `call-under-load`, or `call-under-load now`, says the last hour's
 //! figures, in the form `--format` asks for (docs/commands.md).
 
 mod call;
+mod camera;
 mod cdp;
 mod figures;
 mod gate;
@@ -108,6 +113,23 @@ fn help() -> Help {
                 .exit(Exit::Refused, "another watch is running")
                 .exit(Exit::Failed, "a call's line couldn't be written"),
         )
+        .subcommand(
+            Help::new(
+                "camera",
+                "the camera before a meeting, as its timer checks it",
+            )
+            .argument(
+                "device",
+                "the machine's camera, or a file naming it; one plugged in comes first",
+            )
+            .example(
+                "call-under-load camera /run/camera/device",
+                "says when a meeting is near and the camera gives no picture",
+            )
+            .exit(Exit::Done, "checked, or nothing due")
+            .exit(Exit::Unavailable, "the calendar can't be read")
+            .exit(Exit::Failed, "the notice or the check couldn't be written"),
+        )
         .exit(Exit::NotFound, "no hour has been measured yet")
         .exit(Exit::BadInput, "the hour can't be read")
 }
@@ -124,6 +146,16 @@ fn main() -> ExitCode {
             "now" => none_after(rest).and_then(|()| now(context)),
             "run" => none_after(rest).and_then(|()| run(context)),
             "watch" => none_after(rest).and_then(|()| watch()),
+            "camera" => {
+                let mut words = rest
+                    .iter()
+                    .filter(|arg| !matches!(arg.as_str(), "--verbose" | "-v"));
+                let device = words.next();
+                match words.next() {
+                    Some(arg) => none_after(std::slice::from_ref(arg)),
+                    None => camera_check(context, device.map(String::as_str)),
+                }
+            }
             word => Err(flags::unknown("command", word, &commands)),
         }
     })
@@ -136,10 +168,72 @@ fn none_after(rest: &[String]) -> Result<(), Failure> {
         .find(|arg| !matches!(arg.as_str(), "--verbose" | "-v"))
     {
         Some(arg) => Err(Failure::new(Exit::Usage, format!("{arg} isn't taken here"))
-            .because("now, run and watch take nothing more")
+            .because("now, run and watch take nothing more, and camera only its device")
             .try_this("call-under-load --help")),
         None => Ok(()),
     }
+}
+
+/// Checks the camera before a meeting near enough, once each, when no call
+/// is on: a call on has its camera, and the check would only load it.
+fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> {
+    let said = |what: String| {
+        context
+            .say(&format!("{what}\n"))
+            .map_err(|error| unwritten(&error))
+    };
+    let runtime = env_dir("XDG_RUNTIME_DIR", ".cache");
+    let calendar = gate::ask(&runtime.join("daemons/google.sock"))
+        .and_then(|answer| gate::calendar(&answer))
+        .map_err(|why| {
+            Failure::new(Exit::Unavailable, "the calendar can't be read")
+                .because(why)
+                .try_this("systemctl --user status google")
+        })?;
+    let now = seconds_now() * 1000;
+    let file = folder().join("camera-checked.json");
+    let starts = camera::checked(&file, now);
+    let Some(meeting) = camera::due(&calendar, now, &starts) else {
+        return Ok(());
+    };
+    if gate::a_call() != gate::Call::Off {
+        return said(format!(
+            "the camera waits: a call may be on before {}",
+            meeting.title
+        ));
+    }
+    let Some((node, plugged)) = camera::which(Path::new("/"), device) else {
+        return said("no camera to check".to_string());
+    };
+    let gave = camera::gives(&node, plugged);
+    camera::remember(&file, starts, meeting.start).map_err(|error| {
+        Failure::new(Exit::Failed, "the check couldn't be kept")
+            .because(format!("{}: {error}", file.display()))
+    })?;
+    let Err(why) = gave else {
+        return said(format!(
+            "{} gives a picture before {}",
+            node.display(),
+            meeting.title
+        ));
+    };
+    let (summary, body) = camera::told(meeting, seconds_now() * 1000, plugged, &why);
+    said(format!("{}: {body}", node.display()))?;
+    camera::within(
+        "notify-send",
+        &[
+            "--app-name=Camera",
+            "--urgency=critical",
+            summary.as_str(),
+            body.as_str(),
+        ],
+        std::time::Duration::from_secs(10),
+    )
+    .map_err(|why| {
+        Failure::new(Exit::Failed, "the notice couldn't be sent")
+            .because(why)
+            .try_this("systemctl --user status notices")
+    })
 }
 
 fn unwritten(error: &std::io::Error) -> Failure {
