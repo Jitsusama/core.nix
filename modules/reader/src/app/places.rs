@@ -433,15 +433,14 @@ impl App {
         let mut marks: Vec<place::Mark> = self
             .marks
             .iter()
-            .map(
-                |(letter, pt)| match place::as_read(&self.landed, *letter, *pt) {
-                    Some(kept) => kept.clone(),
-                    None => {
-                        let line = moves::line_topped(lines, *pt);
-                        place::mark(&blocks, *letter, line, height, width_pt)
-                    }
-                },
-            )
+            .map(|(letter, pt)| {
+                if let Some(kept) = place::as_read(&self.landed, *letter, *pt) {
+                    kept.clone()
+                } else {
+                    let line = moves::line_topped(lines, *pt);
+                    place::mark(&blocks, *letter, line, height, width_pt)
+                }
+            })
             .collect();
         marks.extend(place::still_waiting(
             &self.kept_marks,
