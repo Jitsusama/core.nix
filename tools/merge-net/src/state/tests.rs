@@ -254,20 +254,15 @@ fn a_line_that_is_not_utf8_hides_no_run_after_it() {
         .append(true)
         .open(state.root.join("results.jsonl"))
         .unwrap()
-        .write_all(b"{\"commit\":\"aaaa\",\"check\":\"\xff\"}\n")
+        .write_all(b"{\"commit\":\"aaaa\",\"check\":\"vm-a\",\"passed\":false,\"log\":\"\xff\"}\n")
         .unwrap();
     state
         .record("aaaa", "vm-a", Ran::Passed, Some(0), &log, 600)
         .unwrap();
     assert_eq!(
         state.runs("aaaa", "vm-a"),
-        vec![Ran::Failed, Ran::Passed],
-        "the pass after the line that isn't UTF-8 was lost"
-    );
-    assert_eq!(
-        state.runs("aaaa", "\u{fffd}"),
-        vec![Ran::Failed],
-        "the line that isn't UTF-8 was dropped rather than read as near as it can be"
+        vec![Ran::Failed, Ran::Failed, Ran::Passed],
+        "the run on the line that isn't UTF-8, or the pass after it, was lost"
     );
     assert_eq!(
         state.lasted().get("vm-a"),
@@ -332,6 +327,56 @@ fn a_run_is_kept_by_its_commit_and_check() {
         .unwrap();
     assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
     assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
+}
+
+// Only a commit in the journal's own bytes is looked for in a line. An
+// empty one can't be looked for, and one JSON writes escaped is in the
+// journal in other bytes, so for both every line is parsed.
+#[test]
+fn a_commit_not_written_as_its_bytes_is_still_found() {
+    let state = state("escaped");
+    let log = state.log("aaaa", "vm-a", 1);
+    state
+        .record("a\"b", "vm-a", Ran::Passed, Some(0), &log, 0)
+        .unwrap();
+    assert_eq!(
+        state.runs("a\"b", "vm-a"),
+        vec![Ran::Passed],
+        "a commit JSON writes escaped was passed over by its bytes"
+    );
+    assert_eq!(
+        state.runs("", "vm-a"),
+        vec![],
+        "an empty commit found a run, or the read of it failed"
+    );
+    assert_eq!(
+        state.excused_logs("", "vm-a"),
+        Vec::<PathBuf>::new(),
+        "an empty commit found an excused failure"
+    );
+}
+
+// A journal whose every read fails, as a folder's does, ends its lines at
+// once rather than failing again on each, and says so in net.log.
+#[test]
+fn a_journal_that_cant_be_read_ends_and_is_said() {
+    let state = state("unreadable");
+    fs::create_dir(state.root.join("results.jsonl")).expect("the folder in its place");
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![],
+        "runs came of a journal that can't be read"
+    );
+    assert!(
+        state.lasted().is_empty(),
+        "times came of a journal that can't be read"
+    );
+    let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
+    assert_eq!(
+        log.matches("stopped part way").count(),
+        2,
+        "each failed read wasn't said once in net.log: {log:?}"
+    );
 }
 
 #[test]

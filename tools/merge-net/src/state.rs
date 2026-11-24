@@ -31,13 +31,17 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead as _, BufReader, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, ThreadId};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
+
+use journal::{Lines, names, sought};
+
+mod journal;
 
 /// The net's state folder and what it holds.
 pub struct State {
@@ -328,38 +332,21 @@ impl State {
     /// some 35 of glibc's arenas, and its unit had peaked at 4.8 GB. A line
     /// that isn't UTF-8 is read as near as it can be, hiding no line after
     /// it.
-    fn results(&self) -> impl Iterator<Item = String> + use<> {
-        self.result_lines()
-            .map(|line| String::from_utf8_lossy(&line).into_owned())
+    fn results(&self) -> Lines<impl FnMut(&[u8]) -> bool> {
+        self.lines(|_| true)
     }
 
-    /// The journal's lines as bytes. A read that fails part way ends them
-    /// there, and says so, since the runs before it are then all a caller
-    /// sees: a run missed that way is one the next read finds again.
-    fn result_lines(&self) -> impl Iterator<Item = Vec<u8>> + use<> {
-        let path = self.root.join("results.jsonl");
-        fs::File::open(&path).into_iter().flat_map(move |file| {
-            let path = path.clone();
-            BufReader::new(file).split(b'\n').map_while(move |line| {
-                line.inspect_err(|error| {
-                    eprintln!(
-                        "merge-net: reading {} stopped part way: {error}",
-                        path.display()
-                    );
-                })
-                .ok()
-            })
-        })
+    /// The journal's lines that `keep` takes, as text.
+    fn lines<F: FnMut(&[u8]) -> bool>(&self, keep: F) -> Lines<F> {
+        Lines::open(&self.root, keep)
     }
 
     /// The journal's lines that could be of `commit`'s runs: any naming it
     /// anywhere, so only those are decoded and parsed, the rest passed over
     /// as the bytes they were read as.
-    fn results_naming(&self, commit: &str) -> impl Iterator<Item = String> + use<> {
-        let commit = commit.as_bytes().to_owned();
-        self.result_lines()
-            .filter(move |line| names(line, &commit))
-            .map(|line| String::from_utf8_lossy(&line).into_owned())
+    fn results_naming(&self, commit: &str) -> Lines<impl FnMut(&[u8]) -> bool + use<>> {
+        let sought = sought(commit);
+        self.lines(move |line| names(line, sought.as_deref()))
     }
 
     /// The logs of `check`'s runs at `commit` that failed but counted as
@@ -566,18 +553,17 @@ impl State {
 
     /// Say something in the net's own log, and on its standard error.
     pub fn say(&self, what: &str) {
-        eprintln!("merge-net: {what}");
-        let _ = append_line(
-            &self.root.join("logs/net.log"),
-            &format!("{} {}", now(), one_line(what)),
-        );
+        say_in(&self.root, what);
     }
 }
 
-/// Whether `line` holds `commit`'s bytes anywhere. Every line holds an
-/// empty commit, which no run is of, so the parse after passes it over.
-fn names(line: &[u8], commit: &[u8]) -> bool {
-    commit.is_empty() || line.windows(commit.len()).any(|part| part == commit)
+/// Say something in the net's log under `root`, and on standard error.
+fn say_in(root: &Path, what: &str) {
+    eprintln!("merge-net: {what}");
+    let _ = append_line(
+        &root.join("logs/net.log"),
+        &format!("{} {}", now(), one_line(what)),
+    );
 }
 
 /// What's said as one line of net.log, whose every line opens with its

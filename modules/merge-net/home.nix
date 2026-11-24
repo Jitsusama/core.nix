@@ -57,14 +57,7 @@ in
     };
     Service = {
       ExecStart = "${lib.getExe net} watch --follow ${config.home.profileDirectory}/bin/merge-net";
-      # Two of glibc's arenas, not one for each of its threads: each thread
-      # kept what it freed in an arena of its own, and on 24 November the
-      # watch held 2 GiB it no longer used across some 35 of them. Its
-      # threads wait on builders, not on each other's allocations.
-      Environment = [
-        "PATH=${path}"
-        "MALLOC_ARENA_MAX=2"
-      ];
+      Environment = [ "PATH=${path}" ];
       Restart = "always";
       RestartSec = 60;
       # Below what Joel uses, as the timed work it is: its evaluations ran
