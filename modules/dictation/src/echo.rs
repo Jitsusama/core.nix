@@ -522,6 +522,46 @@ mod tests {
     }
 
     #[test]
+    fn their_echo_timed_just_before_their_word_is_cut_and_says_how_early() {
+        // Each side's words are timed by its own encoder frames, so echo
+        // can be timed before the word it echoes, as on AMI's meetings.
+        let theirs = timed("Lunch at noon on Thursday then.", 5_000);
+        let mut mine = timed("Fine by me.", 1_000);
+        mine.extend(timed("Lunch at noon on Thursday then.", 4_800));
+        let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+        let words = HashMap::from([(0, theirs), (1, mine)]);
+        let (cut, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        assert_eq!(
+            cut[1].text, "Fine by me.",
+            "their echo timed 200 ms before their words wasn't cut"
+        );
+        let early = isize::try_from(200 * RATE / 1000).unwrap();
+        assert_eq!(
+            cuts.iter().map(|cut| cut.after).collect::<Vec<_>>(),
+            [-early],
+            "the cut didn't say it was heard 200 ms before their word"
+        );
+    }
+
+    #[test]
+    fn a_line_whose_opening_echo_is_cut_starts_at_joels_first_word() {
+        // His microphone hears their "Lunch at noon" before he answers in
+        // the same take, so what's left of it starts when he does.
+        let theirs = timed("Lunch at noon", 5_000);
+        let mut mine = timed("Lunch at noon", 5_050);
+        mine.extend(timed("Fine by me.", 6_500));
+        let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+        let words = HashMap::from([(0, theirs), (1, mine)]);
+        let (cut, _) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        assert_eq!(cut[1].text, "Fine by me.", "their echo wasn't cut");
+        assert_eq!(
+            cut[1].start,
+            6_500 * RATE / 1000,
+            "Joel's line starts where their echo did, so it's written before what he answers"
+        );
+    }
+
+    #[test]
     fn a_line_whose_words_are_unknown_is_cut_from_by_its_text_alone() {
         // Lines read back after a restart have no words; the whole-line
         // rule still leaves their echo out where the transcript's written.
