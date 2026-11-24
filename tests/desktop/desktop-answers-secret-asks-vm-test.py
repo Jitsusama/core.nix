@@ -138,9 +138,7 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
     # yes that was lost.
     allowed = RELEASING * vm_helpers.pace(vm_helpers.busyness())
     try:
-        desktop.machine.wait_until_succeeds(
-            desktop.in_session(f"test -e {path}"), timeout=allowed
-        )
+        desktop.machine.wait_until_succeeds(desktop.in_session(f"test -e {path}"), timeout=allowed)
     except AssertionError as unanswered:
         # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
         # rather than a timeout of its own. The launcher's showings, each a whole state naming
@@ -253,9 +251,7 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     desktop.machine.send_key("esc")
     # The Escape is seen read by Asks alone too, since read with the j it resets the line.
     desktop.launcher_until(
-        lambda shown: shown["mode"] == "normal"
-        and selects(shown, why)
-        and shown["asksUnread"] == 0
+        lambda shown: shown["mode"] == "normal" and selects(shown, why) and shown["asksUnread"] == 0
     )
     # A j not read leaves the line untimed and the yes refused, so the release below is what
     # proves it was. It's seen read by Asks before Return goes, since keys read in one turn are
