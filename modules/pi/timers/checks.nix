@@ -1,6 +1,6 @@
 # The checks of the harness's scripts that Linux runs on a schedule or at
 # login, which pi's checks.nix gathers beside its own, kept apart since they
-# change with timers.nix, and the sweep's with what a host's unit clears.
+# change with default.nix, and the sweep's with what a host's unit clears.
 {
   account,
   bareNixos,
@@ -102,11 +102,36 @@ onLinux {
       # The slices it runs in, whose hard limit would kill it as its own
       # would: a graphical machine declares them (modules/slices, which the
       # workstation alone doesn't import), and an account could too, in
-      # home-manager's own shape.
+      # home-manager's own shape, on either machine.
       noHardLimit =
         name:
         !((graphical.config.systemd.user.slices.${name}.sliceConfig or { }) ? MemoryMax)
-        && !((home.systemd.user.slices.${name}.Slice or { }) ? MemoryMax);
+        && lib.all (one: !((one.systemd.user.slices.${name}.Slice or { }) ? MemoryMax)) [
+          home
+          (account graphical)
+        ];
+      # And what holds the account's manager, whose hard limit would kill
+      # it as surely: the account's slices and the manager's own unit, as
+      # a template or for any one uid, on either machine, since the
+      # workstation's memory module sets the manager's unit too.
+      noHardLimitAbove =
+        lib.all
+          (
+            machine:
+            let
+              inherit (machine.config) systemd;
+              named = p: all: lib.attrValues (lib.filterAttrs (n: _: lib.hasPrefix p n) all);
+              slices = map (one: one.sliceConfig or { }) (named "user-" systemd.slices);
+              managers = map (one: one.serviceConfig or { }) (named "user@" systemd.services);
+            in
+            lib.all (unit: !(unit ? MemoryMax)) (
+              [ (systemd.slices.user.sliceConfig or { }) ] ++ slices ++ managers
+            )
+          )
+          [
+            workstation
+            graphical
+          ];
       # A machine giving provider modules, a git of its own and a realm whose
       # host shows what a host's unit clears and whose folders the sweep's
       # PATH takes, written as systemd needs whatever they hold. Its builder
@@ -156,7 +181,7 @@ onLinux {
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, isn't made to give back memory past 1.5 GiB or has a hard limit, its own or its slices', to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, isn't made to give back memory past 1.5 GiB or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
@@ -171,6 +196,7 @@ onLinux {
         && !(service.Service ? MemoryMax)
         && noHardLimit "jobs"
         && noHardLimit "jobs-work"
+        && noHardLimitAbove
         && service.Unit.X-SwitchMethod == "keep-old"
         && lib.hasSuffix "/scripts/pi-sweep.ts" script
         &&

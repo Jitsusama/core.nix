@@ -50,6 +50,7 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Presented.js" as Presented
+import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
@@ -1688,6 +1689,9 @@ Provider {
             glyph: Words.glyph(`verb:agents:start-new-work:${id}`),
             hue: "action",
             ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
+            // A folder's field opens on words a start refused for want of
+            // one carried here (askWhere).
+            offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
             given: said => provider.sprout(key, said, folder)
         });
@@ -1757,7 +1761,15 @@ Provider {
         }
         sprouting = key;
         sprouts += 1;
+        sproutGiven = { words: String(said), letters: launcher.lettersAt };
+        sproutCarried = "";
         const sprout = sprouts;
+        // Marked again once the Return that gave the words has emptied the field, which moves
+        // lettersAt as a letter would (Launcher.qml's give), so only a key after it counts.
+        Qt.callLater(() => {
+            if (sprouts === sprout)
+                sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
+        });
         sproutSays(key, words.starting);
         sproutPatience.restart();
         const token = Sprouting.token(Date.now(), Math.random());
@@ -1920,9 +1932,12 @@ Provider {
         if (sproutTokens[sproutToken] === "asking")
             sproutTokens[sproutToken] = "ended";
         sproutToken = "";
-        sproutSays(key, Sprouting.told(how, sproutWords()));
+        const where = Sprouting.asksWhere(how) && askWhere(key);
+        const text = where ? Sprouting.toldWhere(how, sproutWords())
+            : Sprouting.told(how, sproutWords());
+        sproutSays(key, text);
         // Told Joel before the daemon is told it's told, so it's kept until he is.
-        sproutReaches(how);
+        sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
@@ -1936,11 +1951,37 @@ Provider {
     // Says how a start ended beyond its own row (Sprouting.reach): in the
     // journal always, and told Joel when it opens no window, so no start
     // he gives ends unseen.
-    function sproutReaches(how) {
+    function sproutReaches(how, toldAs) {
         const reach = Sprouting.reach(how, sproutWords());
         console.info(`launcher: ${reach.journal}`);
-        if (reach.told !== null)
-            sproutTell([reach.told]);
+        const told = toldAs ?? reach.told;
+        if (told !== null)
+            sproutTell([told]);
+    }
+
+    // The words of the start running and the launcher's lettersAt at its
+    // Return, and the words a start refused for want of a repository
+    // carries to the folder Joel picks next, "" when none does.
+    property var sproutGiven: ({ words: "", letters: 0 })
+    property string sproutCarried: ""
+    // Steps Joel out of the act `key`, whose start wanted a repository, back
+    // onto Start New Work's folders, its words carried to whichever he picks
+    // (Sprouting.asksWhere), only while he's still in its field to be
+    // stepped back (Sprouting.stepsBack). Whether it did.
+    function askWhere(key) {
+        const launcher = provider.launcher ?? null;
+        const folders = (source("quests")?.folders() ?? []).length;
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+            return false;
+        sproutCarried = sproutGiven.words;
+        // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
+        // stepping out of it steps into Start New Work too.
+        const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
+        launcher.back();
+        if (under !== "agents:start-new-work")
+            launcher.enter(startNewWorkMade());
+        console.info("launcher: new work wanted a repository; asking where it starts");
+        return true;
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -1976,6 +2017,7 @@ Provider {
         const footed = sproutFooted;
         const launcher = provider.launcher ?? null;
         sproutFooted = null;
+        sproutCarried = "";
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
@@ -2131,13 +2173,13 @@ Provider {
         const reopenable = lost.filter(one => !goneHere(one));
         // Reopen Them All reopens those that can be, its side counting them
         // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
-        // after is counted with how many reopened, and said once the
-        // launcher opens next.
-        const outcome = { asked: reopenable.length, gone: 0 };
-        const tellAll = () => provider.launcher?.tellOnOpen([
-            [String(outcome.gone), String(said[outcome.gone === 1 ? "folderGone"
-                : "foldersGone"] ?? ""), Theme.alert],
-            [String(outcome.asked - outcome.gone), String(said.reopened ?? "")]]);
+        // after is counted with how many reopened, by the walk Sessions
+        // joins the press to (Reopening.js's tallyOf), and said once the
+        // launcher opens next (ReopenTally.js).
+        const tellAll = now => {
+            const [gone, reopened] = ReopenTally.told(now, said);
+            provider.launcher?.tellOnOpen([[...gone, Theme.alert], reopened]);
+        };
         // Its count of what failed is drawn in the alert's colour, as the
         // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
         const themAll = () => act("all", {
@@ -2148,17 +2190,10 @@ Provider {
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to
             // carry on as it opens, so none waits to be poked; one reopened
-            // alone from its own row isn't, since Joel is there. Counted
-            // afresh each time, since the row is kept while what's to
-            // reopen stands (ownKept), and a second run would add to the
-            // first's.
-            run: () => {
-                outcome.gone = 0;
-                Sessions.reopenThemAll(reopenable, () => {
-                    outcome.gone += 1;
-                    tellAll();
-                });
-            }
+            // alone from its own row isn't, since Joel is there. Each walk
+            // counts on its own, though the row is kept, and a press
+            // mid-walk joins its count.
+            run: () => Sessions.reopenThemAll(reopenable, tellAll)
         });
         return thingRow({
             key: "agents:to-reopen",

@@ -336,8 +336,8 @@ pub fn tick() -> io::Result<crate::clock::Tick> {
 }
 
 /// The stalls PSI reports (`/proc/pressure`), each over its last ten
-/// seconds. A resource whose file is missing, or a line an older kernel
-/// doesn't write, reads as no stall.
+/// seconds, and all tasks' over its last minute too. A resource whose file
+/// is missing, or a line an older kernel doesn't write, reads as no stall.
 pub fn pressure(proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
     let stall = |resource: &str| -> io::Result<crate::moments::Stall> {
         let text = match fs::read_to_string(proc_pressure.join(resource)) {
@@ -350,12 +350,19 @@ pub fn pressure(proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
         for line in text.lines() {
             let mut words = line.split_whitespace();
             let which = words.next();
-            let average = words
-                .find_map(|word| word.strip_prefix("avg10="))
-                .and_then(|value| value.parse().ok());
-            match (which, average) {
-                (Some("some"), Some(value)) => stall.some = value,
-                (Some("full"), Some(value)) => stall.full = value,
+            let words: Vec<&str> = words.collect();
+            let average = |over: &str| {
+                words
+                    .iter()
+                    .find_map(|word| word.strip_prefix(over))
+                    .and_then(|value| value.parse().ok())
+            };
+            match which {
+                Some("some") => stall.some = average("avg10=").unwrap_or(0.0),
+                Some("full") => {
+                    stall.full = average("avg10=").unwrap_or(0.0);
+                    stall.full_minute = average("avg60=").unwrap_or(0.0);
+                }
                 _ => {}
             }
         }

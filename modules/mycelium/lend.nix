@@ -24,13 +24,24 @@ lib.types.submodule {
             };
             budget = lib.mkOption {
               type = lib.types.str;
-              description = "The budget, in `budgets`, their requests are carried through.";
+              description = ''
+                The budget, in `budgets`, their requests are carried through
+                where they name none.
+              '';
+            };
+            also = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = ''
+                The other budgets, in `budgets`, they may name, as a forge
+                beside their models.
+              '';
             };
             requests_a_day = lib.mkOption {
               type = lib.types.ints.positive;
               description = ''
-                How many requests each machine may make a day, past which each
-                is refused.
+                How many requests each machine may make a day, through all
+                its budgets, past which each is refused.
               '';
             };
           };
@@ -64,6 +75,18 @@ lib.types.submodule {
             host = lib.mkOption {
               type = lib.types.strMatching "[A-Za-z0-9.-]+(:[0-9]{1,5})?";
               description = "The host the requests are for, with no scheme.";
+            };
+            kind = lib.mkOption {
+              type = lib.types.enum [
+                "models"
+                "forge"
+              ];
+              default = "models";
+              description = ''
+                What answers at the upstream: a model relay, told nothing of
+                who asked, or a forge, told which machine asked, since it
+                signs and pushes for each by name.
+              '';
             };
             paths = lib.mkOption {
               # mycelium matches each exactly, or everything below it

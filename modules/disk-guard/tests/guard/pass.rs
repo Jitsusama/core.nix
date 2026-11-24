@@ -582,6 +582,44 @@ fn a_routine_pass_ends_unfinished_after_twenty_minutes() {
 }
 
 #[test]
+fn a_filling_disk_s_pass_ends_unfinished_after_two_hours() {
+    // On 23 November an account's reach judged a survey's 88,000 offers
+    // for 15 hours, never seeing what was new and never saying a pass.
+    let mut disk = FakeDisk::new(14 * GIB);
+    disk.each = 10.0;
+    let run = run(
+        disk,
+        &temps(2000, 1 << 20),
+        Goal::Reach,
+        BTreeMap::new(),
+        Vec::new(),
+    );
+    assert_eq!(run.end, End::Unfinished, "took {}", run.taken.len());
+    assert!(
+        (720..2000).contains(&run.taken.len()),
+        "two hours of 10 s entries is 720, short of all 2,000: took {}",
+        run.taken.len()
+    );
+}
+
+#[test]
+fn a_nearly_full_disk_s_pass_goes_on_past_two_hours() {
+    // A survey there would leave the disk with nothing cleared while it
+    // walks, so the pass goes on through what it was offered.
+    let mut disk = FakeDisk::new(7 * GIB);
+    disk.each = 10.0;
+    let run = run(
+        disk,
+        &temps(2000, 1 << 20),
+        Goal::Reach,
+        BTreeMap::new(),
+        Vec::new(),
+    );
+    assert_eq!(run.end, End::Exhausted, "took {}", run.taken.len());
+    assert_eq!(run.taken.len(), 2000, "every offer judged");
+}
+
+#[test]
 fn a_pass_for_free_space_runs_as_long_as_it_needs() {
     // Only routine work waits for the next step: a filling disk's pass
     // goes on to its target.

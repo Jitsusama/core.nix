@@ -66,7 +66,8 @@ fn named<'a>(said: &'a Value, field: &str) -> Result<Option<&'a str>, String> {
 }
 
 /// The answer to a sprout: `sprouted` with where the node started it,
-/// or an error in the node's words, or why it wasn't asked: `asker` says
+/// or an error in the node's words, with the code it refused by where it
+/// gave one (`refusal`, as `needs_folder`), or why it wasn't asked: `asker` says
 /// whether the shell asked, and `node` is the realm's, none where this
 /// machine runs no node.
 pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> Value {
@@ -78,14 +79,39 @@ pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> V
         Err(why) => return refused(&why),
     };
     match asked(node, &request, PATIENCE) {
-        Ok(reply) => match (&reply["Ok"]["Started"], &reply["Err"]) {
-            (Value::Object(started), _) => json!({"sprouted": started}),
-            (_, Value::String(why)) => refused(why),
+        Ok(reply) => match (&reply["Ok"]["Started"], &reply["Err"], refusal_of(&reply)) {
+            (Value::Object(started), _, _) => json!({"sprouted": started}),
+            (_, Value::String(why), _) => refused(why),
+            (_, _, Some((code, why))) => {
+                let mut answer = refused(why);
+                if let Some(code) = code {
+                    answer["error"]["refusal"] = json!(code);
+                }
+                answer
+            }
             _ => refused(&format!("the node's answer couldn't be read: {reply}")),
         },
         Err(Unanswered::Unreached(why)) => refused(&format!("the node couldn't be reached: {why}")),
         Err(Unanswered::Silent) => silent(),
     }
+}
+
+/// The code and words of a refusal its judging made, as the node says
+/// one, `{"Refused": {"code", "why"}}` (mycelium's PROTOCOL.md), alone or
+/// under `Ok`; none where it gave no words, and no code where it gave
+/// none that's a plain word of letters and underscores.
+fn refusal_of(reply: &Value) -> Option<(Option<&str>, &str)> {
+    let refusal = reply
+        .get("Refused")
+        .or_else(|| reply["Ok"].get("Refused"))?;
+    let code = refusal["code"].as_str().filter(|code| {
+        !code.is_empty()
+            && code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+    });
+    let why = refusal["why"].as_str().filter(|why| !why.is_empty())?;
+    Some((code, why))
 }
 
 /// Why the node gave no answer: it couldn't be reached, so nothing was
@@ -246,6 +272,56 @@ mod tests {
             json!({"error": {"code": "unsprouted",
                 "message": "/home/j isn't a repository's folder"}}),
             "the node's own reason"
+        );
+        let _ = asked.join();
+        let _ = std::fs::remove_file(&socket);
+    }
+
+    #[test]
+    fn a_sprout_the_node_refuses_by_code_says_its_words_and_code() {
+        for (name, reply) in [
+            (
+                "coded",
+                r#"{"Refused": {"code": "needs_folder", "why": "say which"}}"#,
+            ),
+            (
+                "coded-ok",
+                r#"{"Ok": {"Refused": {"code": "needs_folder", "why": "say which"}}}"#,
+            ),
+        ] {
+            let (socket, asked) = node(name, reply);
+            assert_eq!(
+                answer(&ask(&json!({})), Ok(()), Some(&socket)),
+                json!({"error": {"code": "unsprouted", "message": "say which",
+                    "refusal": "needs_folder"}}),
+                "{name}: the node's words, and the code it refused by"
+            );
+            let _ = asked.join();
+            let _ = std::fs::remove_file(&socket);
+        }
+        for (name, reply) in [
+            (
+                "odd-code",
+                r#"{"Refused": {"code": "Needs Folder", "why": "say which"}}"#,
+            ),
+            ("no-code", r#"{"Refused": {"why": "say which"}}"#),
+        ] {
+            let (socket, asked) = node(name, reply);
+            assert_eq!(
+                answer(&ask(&json!({})), Ok(()), Some(&socket)),
+                json!({"error": {"code": "unsprouted", "message": "say which"}}),
+                "{name}: its words alone, with no code that isn't one"
+            );
+            let _ = asked.join();
+            let _ = std::fs::remove_file(&socket);
+        }
+        let (socket, asked) = node("no-words", r#"{"Refused": {"code": "needs_folder"}}"#);
+        let answer = answer(&ask(&json!({})), Ok(()), Some(&socket));
+        assert!(
+            answer["error"]["message"]
+                .as_str()
+                .is_some_and(|why| why.starts_with("the node's answer couldn't be read")),
+            "one with no words is unread: {answer}"
         );
         let _ = asked.join();
         let _ = std::fs::remove_file(&socket);

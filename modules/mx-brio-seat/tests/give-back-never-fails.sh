@@ -5,8 +5,13 @@
 # camera a relay holds, even one of the Brio's maker or model; it bounds its
 # waits on udev inside the unit's limit, and ends well whether or not udev
 # answers; the add follows the removal even when the unit's timeout ends the
-# run; and it says the Brio was given back only when udev's record of every
-# node shows it was, warning with the way out otherwise.
+# run; it says the Brio was given back only when udev's record of every
+# node shows it was, and that the seat has it only when udev recorded every
+# camera, warning with the way out otherwise; it waits out an add the boot
+# still has queued rather than calling it lost, and points at udevadm's own
+# words for an add udevadm refused; and it warns nothing on a run that went
+# right, a boot whose adds came late or a machine with no camera, udevadm
+# included.
 #
 # Usage: give-back-never-fails.sh GIVE_BACK_SCRIPT UNIT_TIMEOUT_SECONDS
 set -euo pipefail
@@ -23,7 +28,8 @@ mkdir "$work/bin"
 printf '#!%s\nexec %q %q "$@"\n' "$BASH" "$BASH" "$here/udevadm.sh" >"$work/bin/udevadm"
 chmod +x "$work/bin/udevadm"
 
-brio='ID_USB_DRIVER=uvcvideo
+brio='USEC_INITIALIZED=1000000
+ID_USB_DRIVER=uvcvideo
 ID_VENDOR_ID=046d
 ID_MODEL_ID=091d'
 # As udev keeps a held Brio: 70-uaccess's tag is among every tag an event
@@ -40,12 +46,14 @@ TAGS=:seat:systemd:uaccess:
 CURRENT_TAGS=:seat:systemd:"
 # Another camera of the Brio's maker, and one of its model number from
 # another maker, each held for a relay of its own.
-kin='ID_USB_DRIVER=uvcvideo
+kin='USEC_INITIALIZED=1000000
+ID_USB_DRIVER=uvcvideo
 ID_VENDOR_ID=046d
 ID_MODEL_ID=082d
 CAMERA_RELAYED=1
 CURRENT_TAGS=:seat:systemd:'
-namesake='ID_USB_DRIVER=uvcvideo
+namesake='USEC_INITIALIZED=1000000
+ID_USB_DRIVER=uvcvideo
 ID_VENDOR_ID=1bcf
 ID_MODEL_ID=091d
 CAMERA_RELAYED=1
@@ -104,6 +112,14 @@ refuse() {
   fi
 }
 
+# Whether the run warned nothing, failing the test if it did.
+quiet() {
+  if [ -s "$work/warned" ]; then
+    echo "expected no warning in $1, but it warned: $(<"$work/warned")" >&2
+    exit 1
+  fi
+}
+
 # The replays made, in order, against those expected.
 replayed() {
   local made
@@ -117,13 +133,14 @@ replayed() {
 machine "$held" "$given"
 give_back "a Brio held for a relay"
 expect said "Gave the seat back the MX Brio."
+quiet "a Brio held for a relay"
 replayed "$both"
 
 machine "$held" "$given"
 touch "$work/root/fails"
 give_back "a udev that refuses each replay"
 expect warned "udev didn't settle the MX Brio's removal"
-expect warned "udev didn't settle the MX Brio's arrival"
+expect warned "udev refused the MX Brio's arrival"
 expect warned "still kept from the seat"
 refuse said "Gave the seat back"
 replayed "$both"
@@ -132,8 +149,16 @@ machine "$held" "$held"
 touch "$work/root/hangs"
 give_back "a udev that never settles"
 expect warned "udev didn't settle the MX Brio's removal"
-expect warned "udev didn't settle the MX Brio's arrival"
-expect warned "still kept from the seat"
+expect warned "udev didn't finish the MX Brio's arrival"
+refuse warned "still kept from the seat"
+refuse said "Gave the seat back"
+replayed "$both"
+
+machine "$held" "$given"
+touch "$work/root/lags"
+give_back "a udev that hasn't handled the arrival yet"
+expect warned "whether the seat has it isn't known yet"
+refuse warned "holds no record"
 refuse said "Gave the seat back"
 replayed "$both"
 
@@ -165,10 +190,22 @@ refuse said "Gave the seat back"
 machine "$held" "$given"
 touch "$work/root/adds-fail"
 give_back "a Brio removed and never added"
-expect warned "udev lost its record of the MX Brio at $work/root/dev/video0"
-expect warned "only replugging it gives it to the seat"
+expect warned "udev holds no record of the MX Brio at $work/root/dev/video0"
+expect warned "replugged or udevadm trigger --action=add $work/root/dev/video0 adds it"
+expect warned "udevadm's words above say why the add didn't come"
+refuse warned "journalctl -u systemd-udevd"
 refuse warned "systemctl restart mx-brio-seat"
 refuse said "Gave the seat back"
+# Run again, it finds no Brio to replay, and says why rather than that the
+# seat has it, replaying nothing.
+rm "$work/root/adds-fail"
+: >"$work/root/triggers"
+: >"$work/root/settles"
+give_back "a rerun after a Brio removed and never added"
+expect warned "udev holds no record of the cameras at $work/root/dev/video0 $work/root/dev/video1"
+expect warned "udevadm trigger --action=add $work/root/dev/video0 $work/root/dev/video1 adds it"
+refuse said "No MX Brio is held"
+replayed ""
 
 machine "$held" "$given"
 touch "$work/root/after/video0.unplugged" "$work/root/after/video1.unplugged"
@@ -188,6 +225,43 @@ replayed ""
 machine "$given" "$given"
 give_back "a Brio the seat has"
 expect said "No MX Brio is held for a relay"
+quiet "a Brio the seat has"
+replayed ""
+
+# A boot whose adds udev has queued and not yet handled: the Brio's nodes
+# hold only the kernel's keys until udev settles.
+queued() {
+  mkdir "$work/root/queued"
+  local node
+  for node in video0 video1; do
+    mv "$work/root/facts/$node" "$work/root/queued/$node"
+    printf 'DEVNAME=/dev/%s\nSUBSYSTEM=video4linux\n' "$node" >"$work/root/facts/$node"
+  done
+}
+
+machine "$held" "$given"
+queued
+give_back "a boot whose adds came late"
+expect said "Gave the seat back the MX Brio."
+quiet "a boot whose adds came late"
+replayed "$both"
+
+machine "$held" "$given"
+queued
+touch "$work/root/hangs"
+give_back "a boot udev hasn't caught up with"
+brio_nodes="$work/root/dev/video0 $work/root/dev/video1"
+expect warned "udev hasn't finished adding the cameras at $brio_nodes in"
+expect warned "isn't known yet"
+refuse warned "holds no record"
+refuse said "No MX Brio is held"
+replayed ""
+
+machine "$given" "$given"
+rm "$work/root/dev"/*
+give_back "a machine with no camera"
+expect said "No MX Brio is held for a relay"
+quiet "a machine with no camera"
 replayed ""
 
 echo "the give-back replays only the MX Brio and never fails"

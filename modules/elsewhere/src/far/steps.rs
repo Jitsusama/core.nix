@@ -119,9 +119,10 @@ done"#
 /// removal cut short or failed leaves the file that lets the next run
 /// here clear it. The copy, what lies beside it and its run's file go
 /// only once this line wrote that file, `mine`: before then, any there
-/// are another run's of the job. What lies in the handover is cleared
-/// only once no link the job left stands at it or above it, as
-/// `unlinked` makes sure.
+/// are another run's, of this job or of another job of the quest. What
+/// lies in the handover is cleared only once no link the job left stands
+/// at it or above it, as `unlinked` makes sure. Every copy, and what lies
+/// beside it, is taken away by `CLEARING`'s `cleared`.
 pub(super) fn stopping() -> String {
     format!(
         r#"# True once neither the job's handover folder nor either folder above
@@ -143,9 +144,9 @@ unlinked() {{
 }}
 stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && {{ ! unlinked || rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
+  cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
     {{ [ -z "$mine" ] || {{
-      rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
+      cleared "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
     }}; }}
   trap - "$1"
   kill -s "$1" "$$"
@@ -210,9 +211,7 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *'No such process'*) ;;
       *) continue ;;
     esac
-    find "$copy.names" "$copy.back" "$copy.back".* "$copy" -type d \
-      ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
-    {{ rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
+    {{ cleared "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
       rm -f "$run"; }} 2>/dev/null ||
       printf "elsewhere: couldn't clear %s, an earlier run's copy\n" "$copy" >&2
   done
@@ -224,62 +223,101 @@ fi"#
 /// and process space the run was in and its number there.
 pub(super) const RUN: &str = ".run";
 
+/// The far line's step defining `cleared`, which takes each path it is
+/// given away whole, its folders made the far line's own to enter and
+/// write first, since a job may close one so that nothing under it can be
+/// taken. It comes first, before any step that clears, so each finds it
+/// whichever runs first. It opens what its walk meets only below each
+/// path, and a link met there as itself alone; a folder above a path is
+/// passed through as `rm` passes it.
+pub(super) const CLEARING: &str = r#"# Takes each path away whole,
+# its folders made the far line's own to enter and write first: a job
+# may close one, so that what lies under it can't be taken. find takes a
+# link it meets as itself alone, as -P says, so nothing below one is
+# opened. Its answer is the removal's.
+cleared() {
+  find -P "$@" -type d ! -perm -700 -exec chmod u+rwx {} \; 2>/dev/null
+  rm -rf "$@"
+}"#;
+
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
 /// for this machine's, which another may not. Each name the list holds
 /// must be one of the archives the near side writes, `0.tar` and on, all
-/// checked before any is unpacked. A job with no file that travels sends
-/// none, and its tree is made empty.
+/// checked before any is unpacked. The list is read once, so the names
+/// unpacked are the very names checked, whatever is at its name after,
+/// and each pass is fed it through a pipe, not a here-document, which
+/// bash 3.2, the Mac's sh, writes to a file where a fence may let none
+/// be made. A job with no file that travels sends none, and its tree is
+/// made empty.
 ///
-/// The near side writes only files and folders, each named within the
-/// tree, so an archive naming a member from the root or through `..`
-/// came from no near side and is refused before it's unpacked. So is a
-/// tree holding anything else, a link of either kind, a pipe, a socket
-/// or a device, checked as each archive is unpacked, before the next,
-/// so no archive writes through what one before it made, and none takes
-/// away what one before it made before it's seen. Past that, the fence
-/// around the far line writes only the quest's scratch. A file under two
-/// names is found as one that isn't a folder yet has more than one link,
-/// not by its type, so this find reads apart from the bring-back step's.
-/// Each folder is made the far line's own to read, write and enter as it
-/// is unpacked, an unpacking that failed partway included, since an
-/// archive's folder modes are kept and one closed to its owner would
-/// leave its contents unchecked and its copy behind; one that still
-/// won't open fails the search after it, which can't read it. A file's
-/// mode stays as the near side sent it. Each archive's list of
-/// names is made new where nothing is, as the run's file is.
+/// The near side writes only plain ustar archives, so one whose first
+/// header's magic isn't ustar's, byte for byte, is refused before tar
+/// reads it, as a compressed one is: tar unpacks those too, to far more
+/// than a share carries. That catches an archive no near side of ours
+/// wrote, not one built to pass: a compressed archive can carry those
+/// bytes where a header's magic sits and still unpack. Such a near side
+/// gains nothing by it, since the job it sends runs here anyway. Each
+/// pass runs in a subshell of its own, so its `exit` ends the pass alone
+/// even in a shell that runs a pipe's last part itself. It writes only
+/// files and folders, each named within the tree, so an archive naming
+/// a member from the root or through `..` came from no near side and is
+/// refused before it's unpacked. So is a tree holding anything else, a
+/// link of either kind, a pipe, a socket or a device, checked as each
+/// archive is unpacked, before the next, so no archive writes through
+/// what one before it made, and none takes away what one before it made
+/// before it's seen. Past that, the fence around the far line writes
+/// only the quest's scratch. A file under two names is found as one that
+/// isn't a folder yet has more than one link, not by its type, so this
+/// find reads apart from the bring-back step's. Each folder is made the
+/// far line's own to read, write and enter as it is unpacked, an
+/// unpacking that failed partway included, since an archive's folder
+/// modes are kept and one closed to its owner would leave its contents
+/// unchecked and its copy behind; one that still won't open fails the
+/// search after it, which can't read it. A file's mode stays as the near
+/// side sent it. Each archive's list of names is made new where nothing
+/// is, as the run's file is.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
-  while IFS="$tab" read -r size part; do
+  left=$(cat "$job/{LEFT}") || return 2
+  # Each pass runs in a subshell of its own, so it ends by exit, and its
+  # answer is the pipe's.
+  printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
     case $number in
-      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; return 1 ;;
+      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; exit 1 ;;
     esac
-  done < "$job/{LEFT}"
-  while IFS="$tab" read -r size part; do
+  done) || return
+  printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
+    # ustar's magic, "ustar" and a NUL, then its version, "00".
+    magic=$(od -An -v -tx1 -j257 -N8 "$job/{TREE}/$part") || exit 2
+    [ "$(echo $magic)" = '75 73 74 61 72 00 30 30' ] || {{
+      printf "elsewhere: the job's archive %s isn't a plain one, as the near side writes\n" "$part" >&2
+      exit 1
+    }}
     rm -f "$work.names" && (set -C && tar -tf "$job/{TREE}/$part" > "$work.names") ||
-      return 2
+      exit 2
     while IFS= read -r member; do
       case /$member/ in
         //*|*/../*)
           printf "elsewhere: the job's archive %s names %s, outside its tree\n" "$part" "$member" >&2
-          return 1 ;;
+          exit 1 ;;
       esac
     done < "$work.names"
     tar -xf "$job/{TREE}/$part" -C "$work"; unpacked=$?
-    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || return 2
-    [ "$unpacked" -eq 0 ] || return 2
+    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || exit 2
+    [ "$unpacked" -eq 0 ] || exit 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
-      -o ! -type d -links +1) || return 2
+      -o ! -type d -links +1) || exit 2
     [ -z "$odd" ] || {{
       printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
 *}}" >&2
-      return 1
+      exit 1
     }}
-  done < "$job/{LEFT}"
+  done)
 }}"#
     )
 }
@@ -293,8 +331,8 @@ pub(super) fn copying() -> String {
 /// those under its copies' folder are opened, so a job that closed them
 /// changes nothing, and whatever lies at its list's name goes, a folder
 /// the job made there included, so the list's own write never fails on it.
-/// `find` takes a link it meets as itself alone, as `-P` says, so
-/// nothing past the handover is opened.
+/// `cleared` takes a link it meets as itself alone, so nothing past the
+/// handover is opened.
 /// Where the folder still can't be made new, as on a disk gone wrong, the
 /// tree goes too, to free its room, and the list is only its cut, so the
 /// near side says at once that nothing came back, whatever list the job
@@ -306,17 +344,15 @@ pub(super) fn handing() -> String {
 # stands, so nothing past the handover is opened.
 stuck="a link it left at its handover couldn't be cleared"
 if unlinked; then
-  find -P "$job/{BACK}" "$job/{BROUGHT}" -type d ! -perm -700 -exec chmod u+rwx {{}} \; \
-    2>/dev/null
   stuck="its folder for copies or its list couldn't be made new"
-  rm -rf "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
+  cleared "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
-  cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
+  cd "$HOME" && cleared "$work.names" "$work.back" "$work.back".* "$work" &&
     rm -f "$work{RUN}"
   ! unlinked || {{
-    rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+    cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
     (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}") ||
       printf "elsewhere: nor could it cut its list, so the near side waits it out\n" >&2
   }}
@@ -450,5 +486,5 @@ fi
 /// from, once nothing is brought back out of them, and then its run's
 /// file, once they went.
 fn freed() -> String {
-    format!("cd \"$HOME\" && rm -rf \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
+    format!("cd \"$HOME\" && cleared \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
 }

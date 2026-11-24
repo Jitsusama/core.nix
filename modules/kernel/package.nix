@@ -119,6 +119,13 @@ linux_7_3.override {
       patch = ./iwlwifi-txq-entries-kvzalloc.patch;
     }
     {
+      # Lets a camera set up its buffers in fragmented memory in a moment,
+      # rather than compacting for every block size on every piece. Written
+      # here; docs/kernel.md has the cause.
+      name = "vb2-dma-sg-orders";
+      patch = ./vb2-dma-sg-orders.patch;
+    }
+    {
       # Fills a bar on every screen as a hibernation's image is read, while
       # every process is frozen and the boot screen can't draw. Written here;
       # docs/kernel.md has the cause.

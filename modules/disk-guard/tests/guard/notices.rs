@@ -1,5 +1,5 @@
 use disk_guard::band::Band;
-use disk_guard::daemon::{FilesystemStatus, LastPass, Status, Writing};
+use disk_guard::daemon::{FilesystemStatus, LastPass, Passing, Status, Writing};
 use disk_guard::notices::{Change, Notice, Urgency, change, standing};
 use disk_guard::pass::Failing;
 use std::path::PathBuf;
@@ -30,6 +30,7 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
         cleared: Vec::new(),
         failed: last.clone().filter(|last| last.failing.is_some()),
         last,
+        passing: None,
         frozen: Vec::new(),
         writer: None,
         notice: None,
@@ -398,6 +399,40 @@ fn room_made_when_nearly_full_says_how_much_and_that_nothing_is_needed() {
     assert_eq!(notice.urgency, Urgency::Normal);
 }
 
+// On 23 November a pass reaching for room cleared for 15 hours while the
+// status still carried the pass before it and told Joel to delete
+// something by hand.
+#[test]
+fn a_pass_at_work_on_the_disk_takes_the_one_before_its_notice_away() {
+    let mut spent = status(
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "exhausted", 0)),
+    );
+    assert!(
+        standing(&spent).is_some_and(|notice| notice.body.starts_with("Nothing cleared")),
+        "the pass before told while none is at work"
+    );
+    spent.passing = Some(Passing {
+        since: 2.0,
+        path: PathBuf::from("/"),
+        band: Band::NearlyFull,
+        why: "reach".to_owned(),
+    });
+    let notice = standing(&spent).expect("a nearly full disk is still told");
+    assert_eq!(
+        notice.summary, "The disk is nearly full",
+        "the band told, not the pass before"
+    );
+    spent.passing = Some(Passing {
+        path: PathBuf::from("/var/cache/cargo-builds"),
+        ..spent.passing.clone().expect("set just above")
+    });
+    assert!(
+        standing(&spent).is_some_and(|notice| notice.body.starts_with("Nothing cleared")),
+        "a pass on another disk leaves this one's told"
+    );
+}
+
 #[test]
 fn a_pass_left_short_says_what_to_do_and_who_is_filling_the_disk() {
     let before = status(&[("/", Band::NearlyFull, 60)], None);
@@ -459,6 +494,20 @@ fn a_pass_that_stalled_waited_or_failed_says_so_plainly() {
         "Nothing cleared, and only 60.0 GiB is free. Nix's store holds more to delete, which \
          the guard takes once Nix's database is free and its last delete has rested; nothing \
          is needed from you yet."
+    );
+    // A filling disk raises no notice of its own, but what stands is
+    // kept in the status for whoever reads it.
+    let unfinished = status(
+        &[("/", Band::Filling, 60)],
+        Some(pass(1.0, Band::Filling, "unfinished", 0)),
+    );
+    assert_eq!(
+        standing(&unfinished)
+            .map(|notice| notice.body)
+            .unwrap_or_default(),
+        "Nothing cleared, and only 60.0 GiB is free. The guard ran as long as one pass may \
+         and takes up the rest at its next look; nothing is needed from you yet.",
+        "a pass its length cut short, told as a word for a failure"
     );
     let failed = status(
         &[("/", Band::NearlyFull, 60)],

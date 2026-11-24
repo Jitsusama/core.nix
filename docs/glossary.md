@@ -108,8 +108,8 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | read | a landing Joel has seen, by its drawer or Return, which leaves For You for its History, as mail he has opened is read | | `agents:landed`'s mark |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
-| carry | moving a quest's work and its session to another machine; Agents lists the day's in a row of their own, each by its quest, how it stands, where it went and when, and since a carry asks nothing of Joel, none stands in For You | | `carry`, `agents:carried` |
-| stuck | a carry the node judges stuck, its session seen running nowhere a while after the carry was ordered, with the node's reason; said in alert in Agents' row of carries, and nowhere else yet | | a carry's `stuck` |
+| carry | moving a quest's work and its session to another machine; Agents lists the day's in a row of their own, each by its session's title, else its quest's, how it stands, where it went and when it was ordered, and since a carry asks nothing of Joel, none stands in For You | | `carry`, `agents:carried` |
+| stuck | the node's word for work standing still: a carry it judges stuck, by its own rule, said in alert in Agents' row of carries with the node's reason, or a network's cell standing paused, which the node counts stuck in that network's counts and its site draws stuck | | a carry's `stuck`, a network's `stuck` count |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
@@ -693,7 +693,7 @@ says which module broke.
 | ---- | ----- | --- | ------- |
 | check | a check that `nix flake check` builds, one promise held | | `checks.x86_64-linux.<name>` |
 | VM test | a check that boots machines in VMs | | a `vm-` name |
-| subtest | a named part of a VM test, which can run alone | | `with subtest(...)` |
+| subtest | one of a VM test's pytest tests, as the driver's log names it, which can run alone | | `test_` functions in a `*-vm-test.py` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
 | bare machine | the least machine of a class that evaluates, which a check adds one module to, for checks only | | `lib.bareNixosModule`, `lib.bareDarwinModule`, `bareNixos` |
 | stand-in | something standing in for a real program or device in a check | fake | |

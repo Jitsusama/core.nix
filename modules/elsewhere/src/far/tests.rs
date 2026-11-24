@@ -321,6 +321,8 @@ pub(super) fn far_line_in(
         .args(["-c", &line])
         .env("HOME", &home)
         .env("PATH", path)
+        // As though inherited, so a line keeping it clears another's copy.
+        .env("mine", "1")
         .env_remove("XDG_CACHE_HOME")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -393,6 +395,9 @@ fn leave(
         std::fs::write(into, text).unwrap();
     }
     let paths = files.iter().map(|(path, _)| *path);
+    // 4 blocks of 512 bytes: a header, one block of a file and the close,
+    // so one file with data a part (two empty ones may share one), and one
+    // past 512 bytes or needing a pax header for its name is refused.
     let bytes = match left {
         Left::Parts => super::leave(&source, paths, job, 4 * 512, super::MOST_BYTES),
         _ => super::left(&source, paths, job),
@@ -445,8 +450,9 @@ fn quickened(line: &str) -> String {
             format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
         ),
     ] {
+        let brings_nothing = real.starts_with("most_files=") && !line.contains("most_files=");
         assert!(
-            line.contains(&real),
+            brings_nothing || line.contains(&real),
             "the far line no longer holds {real}:\n{line}"
         );
         line = line.replace(&real, &quick);

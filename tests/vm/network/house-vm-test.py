@@ -46,7 +46,8 @@ CLIMBED = HELD + 500
 # How many readings a second apart the hold has to keep.
 READINGS = 10
 # The address the house's other machine moves its route to, as a Mac does
-# to its cable's, which the client's house names beside its first.
+# to its cable's or a new lease, which the client's house names no more than
+# its first: its key alone says the reports are its.
 MOVED_TO = "192.168.1.12"
 # How long the client may take to boot to its first queues, the shaper to
 # hear the house and hold, the hold to let go once the reports stop (3 s
@@ -56,8 +57,8 @@ HOLDING = dt.timedelta(seconds=60)
 QUIETING = dt.timedelta(seconds=15)
 CLIMBING = dt.timedelta(seconds=120)
 # Where the house's other machine forges its reports from while its
-# reporter is stopped: the first address its house names, which it keeps
-# once its route moves. Signed under another key, in step on their own
+# reporter is stopped: the first address it sent from, which it keeps once
+# its route moves. Signed under another key, in step on their own
 # clock and saying the house sends 3 Mbit/s, taken they would hold the
 # upload as the true ones do.
 FORGED_FROM = "192.168.1.2"
@@ -180,7 +181,7 @@ def test_the_house_holds_the_upload_under_what_it_leaves(rig: Rig) -> None:
 
 
 def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
-    """Once the reporter's route sends from another address the house names, it still holds."""
+    """Once the reporter's route sends from another address, named nowhere, it still holds."""
     held(rig)
     rig.house.succeed(
         f"ip addr add {MOVED_TO}/24 dev eth1",
@@ -195,8 +196,8 @@ def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
         f' | grep -q "the house\'s first report from {MOVED_TO} was heard"',
         timeout=QUIETING,
     )
-    # The first address's last word goes stale, so a hold that stands
-    # past it was heard from the new one.
+    # The house's word from its first address goes stale, so a hold that
+    # stands past it was heard from the new one, where no house is named.
     rig.client.succeed("sleep 5")
     readings = rig.holds()
     print(f"held at {readings} kbit/s after the move")
@@ -217,7 +218,7 @@ def climbs(rig: Rig) -> None:
 
 
 def test_a_report_forged_without_the_key_holds_nothing(rig: Rig) -> None:
-    """In-step reports from the house's own address, under another key, hold nothing."""
+    """In-step reports from the house's first address, under another key, hold nothing."""
     held(rig)
     quiet = rig.said("went quiet")
     rig.house.succeed("systemctl stop house-report")
@@ -233,6 +234,9 @@ def test_a_report_forged_without_the_key_holds_nothing(rig: Rig) -> None:
         f" {shlex.quote(WRONG_KEY)} {SENDS // 8} {FORGED_FROM} 192.168.1.1"
     )
     try:
+        # Forgeries are no house's refusals, said apart from the house's own, so
+        # a stamp of the house's refused while the clocks settle at boot leaves
+        # their first to be said at once (house any round 4's F1, F6, F8 and F12).
         rig.client.wait_until_succeeds(
             f'test "$(journalctl -u shaper -o cat --no-pager | grep -c "{FORGED}")" -gt {refused}',
             timeout=QUIETING,

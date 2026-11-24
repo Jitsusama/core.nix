@@ -1,15 +1,12 @@
 """Test that run-subtests runs what is named, and only that.
 
-run-subtests keeps a test script's boot and helpers and only the subtests
-named, so what it runs is what was asked for. The script here has a helper
-between its subtests, a decorator, comments, and a string at the margin
-inside a subtest, which a cut by indentation would split. A test written for
-pytest is run whole, with pytest told which tests to pick. The tool is the
-file RUN_SUBTESTS names, since it's a program rather than a module; the
-whole program runs against stand-ins for nix and a check's driver.
+run-subtests runs a check's script whole, with pytest told which tests to
+pick, and refuses a script that doesn't hand its tests to pytest, so what it
+runs is what was asked for. The tool is the file RUN_SUBTESTS names, since
+it's a program rather than a module; the whole program runs against
+stand-ins for nix and a check's driver.
 """
 
-import ast
 import importlib.machinery
 import importlib.util
 import json
@@ -27,25 +24,9 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-SCRIPT = "".join(
-    line + "\n"
-    for line in [
-        "start_all()",
-        "# The first one.",
-        'with subtest("the bar shows"):',
-        '    machine.succeed("""',
-        "text at the margin",
-        '""")',
-        "",
-        "@contextlib.contextmanager",
-        "def held():",
-        "    yield",
-        "",
-        'with subtest("the launcher opens"):',
-        "    held()",
-        'shoot("desktop")',
-    ]
-)
+# A script the driver runs top to bottom, as VM tests were written before
+# pytest, which has no tests to pick.
+SCRIPT = 'start_all()\nwith subtest("the bar shows"):\n    machine.succeed("true")\n'
 
 # A check's script as a pytest-driven VM test's testScript writes it.
 PYTEST_SCRIPT = 'import vm_pytest\nvm_pytest.run(globals(), "/nix/store/x-signing-vm-test.py")\n'
@@ -60,12 +41,18 @@ else:
 """
 
 # A stand-in for a check's driver: it notes the script it was handed and the
-# options pytest would read, which go with the run's folder, and fails as told.
+# options pytest would read, which go with the run's folder, lists two tests
+# as pytest's quiet listing does when asked for one, and fails as told.
 DRIVER = """
 import json, os, sys
 script = open(sys.argv[sys.argv.index("--test-script") + 1]).read()
 with open(os.environ["STAND_IN_RAN"], "w") as ran:
     json.dump({"script": script, "pytest": os.environ.get("PYTEST_ADDOPTS")}, ran)
+if "--collect-only" in os.environ.get("PYTEST_ADDOPTS", ""):
+    print("signing-vm-test.py::test_terminal")
+    print("signing-vm-test.py::test_refused[the password]")
+    print()
+    print("2 tests collected in 0.01s")
 sys.exit(int(os.environ.get("STAND_IN_STATUS", "0")))
 """
 
@@ -81,6 +68,9 @@ if os.environ.get("STAND_IN_OFFLOAD_SAYS"):
     print(os.environ["STAND_IN_OFFLOAD_SAYS"], file=sys.stderr)
 if not os.environ.get("STAND_IN_NO_PICTURES"):
     open(os.path.join(out, "desktop.png"), "w").close()
+if os.environ.get("STAND_IN_OFFLOAD_LISTS"):
+    with open(os.path.join(out, "subtests"), "w") as listed:
+        listed.write(os.environ["STAND_IN_OFFLOAD_LISTS"])
 sys.exit(int(os.environ.get("STAND_IN_OFFLOAD_STATUS", "0")))
 """
 
@@ -100,15 +90,6 @@ print(open(listed).read())
 
 class Tool(Protocol):
     """What the tests use of run-subtests."""
-
-    def chunks(self, script: str) -> list[tuple[str | None, list[str]]]:
-        """Split a test script into its top-level statements."""
-
-    def names(self, script: str) -> list[str]:
-        """List the script's subtests, in the order they run."""
-
-    def cut(self, script: str, words: Sequence[str]) -> str:
-        """Cut the script down to the subtests the words name."""
 
     def pytest_driven(self, script: str) -> bool:
         """Say whether the script hands its tests to pytest."""
@@ -198,31 +179,6 @@ def a_stand_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Stan
     shutil.rmtree(runtime)
 
 
-def test_the_subtests_are_named_in_order(tool: Tool) -> None:
-    assert tool.names(SCRIPT) == ["the bar shows", "the launcher opens"]
-
-
-def test_the_boot_and_helpers_stay_with_the_subtest_named(tool: Tool) -> None:
-    cut = tool.cut(SCRIPT, ["launcher"])
-    for kept in ("start_all()", "@contextlib", "def held", "    held()", "shoot"):
-        assert kept in cut
-
-
-def test_a_subtest_not_named_goes_with_its_comment_and_strings(tool: Tool) -> None:
-    cut = tool.cut(SCRIPT, ["launcher"])
-    for dropped in ("the bar shows", "text at the margin", "The first one"):
-        assert dropped not in cut
-
-
-def test_the_cut_still_parses(tool: Tool) -> None:
-    ast.parse(tool.cut(SCRIPT, ["launcher"]))
-
-
-def test_the_pieces_make_the_script_whole(tool: Tool) -> None:
-    pieces = "".join(line for _, lines in tool.chunks(SCRIPT) for line in lines)
-    assert pieces == SCRIPT
-
-
 def test_a_script_handing_its_tests_to_pytest_is_known_by_its_call(tool: Tool) -> None:
     assert tool.pytest_driven(PYTEST_SCRIPT)
     assert not tool.pytest_driven(SCRIPT)
@@ -240,15 +196,19 @@ def test_a_word_pytest_would_read_as_more_than_a_name_is_refused(tool: Tool, wor
         tool.selecting([word])
 
 
-def test_a_scripts_subtests_named_are_all_it_runs(tool: Tool, stand_in: StandIn) -> None:
+def test_a_script_not_handed_to_pytest_is_refused_before_anything_runs(
+    tool: Tool, stand_in: StandIn, capsys: pytest.CaptureFixture[str]
+) -> None:
     stand_in.script.write_text(SCRIPT)
 
-    assert tool.main(["vm-desktop-x", "launcher"]) == 0
+    assert tool.main(["vm-desktop-x", "bar"]) == tool.USAGE
 
-    assert stand_in.ran_script() == tool.cut(SCRIPT, ["launcher"])
-    ran = stand_in.ran()
-    assert ran is not None
-    assert ran["pytest"] is None
+    said = capsys.readouterr().err
+    assert "doesn't hand its tests to pytest" in said, f"the refusal said: {said!r}"
+    assert re.search(r"nix-offload there \. checks\.\S+\.vm-desktop-x", said), (
+        f"the refusal didn't say how to run the whole test: {said!r}"
+    )
+    assert stand_in.ran() is None, "a script with no tests to pick ran the driver"
 
 
 def test_a_pytest_check_runs_whole_with_its_tests_picked(
@@ -270,7 +230,7 @@ def test_a_run_without_words_lists_and_says_it_ran_none(
 ) -> None:
     # On 15 November merge-net needs told a session to run fifteen tests'
     # subtests with no words, and each listed, ran nothing and passed.
-    stand_in.script.write_text(SCRIPT)
+    stand_in.script.write_text(PYTEST_SCRIPT)
 
     assert tool.main(["vm-desktop-x"]) == 0
 
@@ -278,17 +238,51 @@ def test_a_run_without_words_lists_and_says_it_ran_none(
     assert "ran none" in said.err, f"a listing didn't say it ran nothing: {said.err!r}"
     whole = re.search(r"nix-offload there \. checks\.\S+\.vm-desktop-x", said.err)
     assert whole, f"a listing didn't say how to run the whole test: {said.err!r}"
-    assert stand_in.ran() is None, "a run with no words ran the driver"
-
-
-def test_a_pytest_checks_tests_are_listed_without_words(tool: Tool, stand_in: StandIn) -> None:
-    stand_in.script.write_text(PYTEST_SCRIPT)
-
-    assert tool.main(["vm-commits-are-signed"]) == 0
-
     ran = stand_in.ran()
-    assert ran is not None
-    assert ran["pytest"] == "--collect-only --quiet"
+    assert ran is not None, "a listing never asked pytest for the tests"
+    assert ran["pytest"] == "--collect-only --quiet", f"a listing ran {ran['pytest']!r}"
+
+
+def test_a_listing_built_elsewhere_gives_the_names_the_build_kept(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Kept as the build's output, so a build already made lists them too.
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_LISTS", "test_terminal\n")
+
+    assert tool.main(["--there", "vm-desktop-x"]) == 0
+
+    asked = stand_in.asked()
+    assert asked is not None, "a listing elsewhere never asked nix-offload"
+    assert asked[-1] == "legacyPackages.x86_64-linux.subtests", f"it asked for {asked!r}"
+    apply = asked[asked.index("--apply") + 1]
+    assert "words = [  ]" in apply, f"a listing elsewhere asked for {apply!r}"
+    said = capsys.readouterr()
+    assert said.out == "test_terminal\n", f"a listing elsewhere printed {said.out!r}"
+    assert "pictures" not in said.err, f"a listing spoke of pictures: {said.err!r}"
+
+
+def test_a_listing_built_elsewhere_never_prints_a_list_left_from_before(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 1
+
+    assert stand_in.asked() is not None, "a listing elsewhere never asked nix-offload"
+    said = capsys.readouterr().out
+    assert "test_stale" not in said, f"a failed build printed an earlier list: {said!r}"
 
 
 def test_a_pytest_check_that_fails_fails_the_run(
@@ -543,7 +537,7 @@ def test_a_shell_loaded_for_another_tree_is_refused_rather_than_this_folder_test
 def test_without_a_list_on_main_a_failure_fails_the_run(
     tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    stand_in.script.write_text(SCRIPT)
+    stand_in.script.write_text(PYTEST_SCRIPT)
     monkeypatch.setenv("STAND_IN_STATUS", "1")
 
     assert tool.main(["vm-desktop-x", "launcher"]) == 1
@@ -552,7 +546,7 @@ def test_without_a_list_on_main_a_failure_fails_the_run(
 def test_inside_a_build_a_quarantined_failure_is_the_builds_own(
     tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    stand_in.script.write_text(SCRIPT)
+    stand_in.script.write_text(PYTEST_SCRIPT)
     listed = tmp_path / "quarantine.json"
     listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
     monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
@@ -565,24 +559,53 @@ def test_inside_a_build_a_quarantined_failure_is_the_builds_own(
 def test_an_offload_that_cant_take_it_runs_it_here(
     tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    stand_in.script.write_text(SCRIPT)
+    stand_in.script.write_text(PYTEST_SCRIPT)
     monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", str(tool.USAGE))
 
     assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
 
-    assert stand_in.ran_script() == tool.cut(SCRIPT, ["launcher"])
+    assert stand_in.ran_script() == PYTEST_SCRIPT
+    ran = stand_in.ran()
+    assert ran is not None
+    assert ran["pytest"] == "-k launcher", f"the run here picked {ran['pytest']!r}"
 
 
 def test_inside_a_build_the_driver_given_is_run_and_none_is_built(
-    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
 ) -> None:
-    stand_in.script.write_text(SCRIPT)
+    stand_in.script.write_text(PYTEST_SCRIPT)
     monkeypatch.setenv("STAND_IN_DRIVER", "/nowhere")
     out = tmp_path / "out"
 
     assert tool.main(["--driver", str(stand_in.driver), "--out", str(out), "vm-desktop-x"]) == 0
 
-    assert (out / "subtests").read_text() == "the bar shows\nthe launcher opens\n"
+    ran = stand_in.ran()
+    assert ran is not None, "the driver given never ran"
+    assert ran["pytest"] == "--collect-only --quiet", f"a listing ran {ran['pytest']!r}"
+    listed = (out / "subtests").read_text()
+    wanted = "test_terminal\ntest_refused[the password]\n"
+    assert listed == wanted, f"the build kept {listed!r}"
+    said = capsys.readouterr().out
+    assert "signing-vm-test.py::test_terminal" in said, f"the log lost the listing: {said!r}"
+
+
+def test_inside_a_build_a_failed_listing_keeps_no_names(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stand_in.script.write_text(PYTEST_SCRIPT)
+    monkeypatch.setenv("STAND_IN_STATUS", "1")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+
+    assert tool.main(["--driver", str(stand_in.driver), "--out", str(out), "vm-desktop-x"]) == 1
+
+    assert stand_in.ran() is not None, "the driver given never ran"
+    assert not (out / "subtests").exists(), "a failed listing kept names"
 
 
 def test_a_word_is_written_for_nix_as_it_reads(tool: Tool) -> None:

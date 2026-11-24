@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::lines::{figure, shown_lines};
 use super::measures::{Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag};
 use super::owing::by_owner;
+use super::stuck::Out;
 
 /// How many hours a drag may stay unmoved before the orchestrator is
 /// asked to steer it.
@@ -31,6 +32,13 @@ pub struct Kept {
     /// train's merge waits from the fetch that saw main without it.
     #[serde(default)]
     pub fetched: Vec<i64>,
+    /// Each judged measure's unbroken run out of its target, by its key, so
+    /// the card can name one out three days running.
+    #[serde(default)]
+    pub out: BTreeMap<String, Out>,
+    /// The day the card last named the measures out three days running.
+    #[serde(default)]
+    pub out_told: Option<String>,
 }
 
 /// How many misses told fixed the hour keeps, newest last.
@@ -170,6 +178,8 @@ pub fn compose(
         // are kept, so the file can't grow without end.
         told: told.split_off(told.len().saturating_sub(TOLD_KEPT)),
         fetched: kept.fetched.clone(),
+        out: kept.out.clone(),
+        out_told: kept.out_told.clone(),
     };
     (card, next)
 }
@@ -301,7 +311,9 @@ fn follow(last: Option<&Held>, measures: &[Measure]) -> (Option<String>, u32) {
     }
 }
 
-fn owner_or_none(owner: &str) -> &str {
+/// `owner`, or "no owner" when it's empty.
+#[must_use]
+pub fn owner_or_none(owner: &str) -> &str {
     if owner.is_empty() { "no owner" } else { owner }
 }
 

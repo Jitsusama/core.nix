@@ -36,14 +36,17 @@ const CALM: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         memory: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         cpu: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
     },
 };
@@ -798,6 +801,7 @@ const BUSY: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 50.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         ..CALM.pressure
     },
@@ -841,6 +845,7 @@ const OVERLOADED: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 98.0,
             full: 2.6,
+            full_minute: 2.6,
         },
         ..CALM.pressure
     },
@@ -908,6 +913,102 @@ fn a_nearly_full_store_is_listed_at_full_priority_however_overloaded_the_machine
         Some(format!("list {}", own_policy())),
         "at full priority, as the guard's own"
     );
+}
+
+/// A machine whose memory stalled every task at once for a tenth of the
+/// last minute, as a workstation's did beside long listings on 23 November.
+const MEMORY_STRAINED: Senses = Senses {
+    pressure: Pressure {
+        memory: disk_guard::moments::Stall {
+            some: 40.0,
+            full: 4.0,
+            full_minute: 10.0,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+/// A machine whose disk stalled every task at once for a fifth of the last
+/// minute.
+const DISK_STRAINED: Senses = Senses {
+    pressure: Pressure {
+        io: disk_guard::moments::Stall {
+            some: 40.0,
+            full: 8.0,
+            full_minute: 20.0,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+#[test]
+fn a_filling_store_is_listed_only_once_memory_and_the_disk_have_room() {
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later(&mut guard, 0.0, &MEMORY_STRAINED);
+    assert_eq!(
+        lists(&store),
+        0,
+        "listed while memory stalled: {:?}",
+        store.log()
+    );
+    step_later(&mut guard, 0.0, &DISK_STRAINED);
+    assert_eq!(
+        lists(&store),
+        0,
+        "listed while the disk stalled: {:?}",
+        store.log()
+    );
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    let listed = store
+        .log()
+        .into_iter()
+        .find(|line| line.starts_with("list "));
+    assert_eq!(listed.as_deref(), Some("list 5"), "at idle priority");
+}
+
+#[test]
+fn a_filling_store_waits_for_room_no_longer_than_six_hours() {
+    // A machine whose memory never quiets would otherwise list a filling
+    // store only once it's nearly full, and then at full priority.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later(&mut guard, 0.0, &MEMORY_STRAINED);
+    step_later(&mut guard, 5.0 * 3600.0, &MEMORY_STRAINED);
+    assert_eq!(
+        lists(&store),
+        0,
+        "listed while memory stalled, before six hours: {:?}",
+        store.log()
+    );
+    step_later_until(
+        &store,
+        &mut guard,
+        6.0 * 3600.0 + 60.0,
+        &MEMORY_STRAINED,
+        |store, _| lists(store) == 1,
+    );
+    let listed = store
+        .log()
+        .into_iter()
+        .find(|line| line.starts_with("list "));
+    assert_eq!(listed.as_deref(), Some("list 5"), "at idle priority");
+}
+
+#[test]
+fn a_nearly_full_store_is_listed_however_memory_stalls() {
+    // Near full, what the listing finds is what keeps the disk from
+    // filling, so it can't wait for room.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &MEMORY_STRAINED, |store, _| {
+        lists(store) == 1
+    });
 }
 
 /// This process's scheduling policy, as /proc gives it, which what the
@@ -1621,6 +1722,125 @@ fn an_ask_naming_a_fuller_band_than_the_disk_reads_still_waits_for_writers() {
         passes.last().map(|pass| pass["end"].clone()),
         Some(serde_json::json!("waiting")),
         "{passes:?}"
+    );
+}
+
+#[test]
+fn a_pass_ending_waiting_teaches_nothing_of_how_long_a_pass_takes() {
+    // A pass that ends waiting ends in moments, so learning its length
+    // drew the forecast's lead toward its floor, and a fill rate that
+    // should have started a pass in time didn't. An ask reaches for room,
+    // as a pass of the guard's own nearly full does.
+    let store = Store::new();
+    store.dead("aaa-older", 10.0 * DAY, BATCH_BYTES);
+    store.dead("bbb-newer", 9.0 * DAY, BATCH_BYTES);
+    let shared = written_database(&store);
+    let _writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    let memory = store.root.join("state/memory.json");
+    let learned = || {
+        disk_guard::state::load::<disk_guard::state::Memory>(&memory)
+            .unwrap()
+            .unwrap_or_default()
+            .pass_seconds
+    };
+    let before = learned();
+    let (_ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::NearlyFull,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    let passes = store.passes();
+    assert_eq!(
+        passes.last().map(|pass| pass["end"].clone()),
+        Some(serde_json::json!("waiting")),
+        "{passes:?}"
+    );
+    // An ask's step saves nothing, so a step past the guard's five minutes
+    // between saves writes down what the waiting pass taught it.
+    let later = Tick {
+        wall: now() + 301.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+    assert_eq!(
+        store.passes().len(),
+        passes.len(),
+        "the saving step passed too"
+    );
+    assert_eq!(
+        learned(),
+        before,
+        "learned from a pass ending waiting: {passes:?}"
+    );
+}
+
+/// What the guard has learned a pass takes, as its memory file holds it.
+fn learned_pass_seconds(store: &Store) -> Option<f64> {
+    disk_guard::state::load::<disk_guard::state::Memory>(&store.root.join("state/memory.json"))
+        .unwrap()
+        .unwrap_or_default()
+        .pass_seconds
+}
+
+/// Steps `guard` past its five minutes between saves, so its memory file
+/// says what the passes before taught it.
+fn saved(guard: &mut Guard) {
+    let later = Tick {
+        wall: now() + 301.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+}
+
+#[test]
+fn a_pass_with_nothing_to_judge_teaches_nothing_of_how_long_a_pass_takes() {
+    // A filling disk with nothing on it to clear ends its pass exhausted
+    // in moments, and so does a forecast's on a disk past its target,
+    // reached; learned, either drew the forecast's lead to its floor.
+    let store = Store::new();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    saved(&mut guard);
+    let passes = store.passes();
+    assert!(
+        passes
+            .iter()
+            .any(|pass| pass["why"] == "reach" && pass["judged"] == 0),
+        "a reach with nothing to judge: {passes:?}"
+    );
+    assert_eq!(
+        learned_pass_seconds(&store),
+        None,
+        "learned from a pass that judged nothing: {passes:?}"
+    );
+}
+
+#[test]
+fn a_pass_that_reclaims_teaches_how_long_a_pass_takes() {
+    // Generations past the two kept are judged and taken by the first reach.
+    let store = Store::new();
+    generations(&store);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    store.step_until(&mut guard, |store| {
+        store
+            .passes()
+            .iter()
+            .any(|pass| pass["why"] == "reach" && pass["judged"] != 0)
+    });
+    saved(&mut guard);
+    assert!(
+        learned_pass_seconds(&store).is_some(),
+        "learned nothing from a pass that reclaimed: {:?}",
+        store.passes()
     );
 }
 

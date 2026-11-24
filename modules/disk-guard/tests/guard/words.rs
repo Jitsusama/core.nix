@@ -1,5 +1,5 @@
 use disk_guard::band::Band;
-use disk_guard::words::{Room, cleared, filesystem, machine};
+use disk_guard::words::{Room, cleared, filesystem, machine, span};
 use std::path::Path;
 
 const GIB: u64 = 1 << 30;
@@ -39,6 +39,16 @@ fn a_disk_filling_fast_says_when_it_fills() {
         ),
         "The disk has 300.0 GiB free.",
         "a month away is nothing to tell"
+    );
+}
+
+#[test]
+fn a_forecast_whose_moment_has_passed_says_nothing() {
+    assert_eq!(
+        filesystem(&room("/", Band::Filling, 104 * GIB, Some(-3600.0)), None),
+        "The disk is filling, with 104.0 GiB free. \
+         The guard is clearing builds and caches nobody has used lately.",
+        "a disk with room left hasn't filled, whatever an old forecast said"
     );
 }
 
@@ -141,6 +151,15 @@ fn a_machine_with_room_everywhere_says_so_by_its_system_disk() {
         machine(&disks[..1], None),
         "Plenty of room: 400.0 GiB free on the disk."
     );
+    let disks = [
+        room("/", Band::Healthy, 300 * GIB, None),
+        room("/scratch", Band::Healthy, 20 * GIB, Some(-3600.0)),
+    ];
+    assert_eq!(
+        machine(&disks, None),
+        "Plenty of room: 300.0 GiB free on the disk.",
+        "a forecast whose moment passed doesn't put the small disk first"
+    );
 }
 
 #[test]
@@ -180,5 +199,17 @@ fn what_was_cleared_is_said_by_what_it_was() {
         cleared("something-new", Path::new("/x"), 2048, home),
         "Cleared /x (2.0 KiB of files).",
         "a kind it doesn't know is said by its path alone"
+    );
+}
+
+#[test]
+fn a_span_that_never_ends_says_forever() {
+    // A producer whose folder changed is offered as idle forever, and the
+    // plan's table once said that as 213503982334601 d 7 h.
+    assert_eq!(span(f64::INFINITY), "forever", "a span that never ends");
+    assert_eq!(
+        span(90.0),
+        "1 m 30 s",
+        "a span that ends still says its length"
     );
 }

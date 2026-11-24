@@ -5741,8 +5741,12 @@ Scope {
         // typing to it, or sent and not yet delivered, a shell started
         // again included (Drafts.qml). Words a link offered open with the
         // caret at their start, where Joel reads them from, rather than
-        // past their end (Y2YBTS, 2026-11-20).
+        // past their end (Y2YBTS, 2026-11-20). One a row carries, his own
+        // words a start gave it (Agents' askWhere), opens past their end,
+        // where Return gives them again.
+        const carried = typeof offered === "string" ? "" : String(row.offered?.() ?? "");
         const kept = typeof offered === "string" ? { text: offered, caret: 0 }
+            : carried !== "" ? { text: carried, caret: carried.length }
             : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
         restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.
@@ -12604,10 +12608,13 @@ Scope {
         // frame, where giving them back made every opening fault them in
         // zeroed (heap.h's lendBack). What's lent is counted again at each
         // closing until the kernel takes it, so the line says too how much
-        // of the shell the kernel holds lent (heap.h's lent).
+        // of the shell the kernel holds lent (heap.h's lent), read after the
+        // lending's time is taken, since the kernel walks the whole shell's
+        // pages to say it.
         const lent = Math.round(Heap.lendBack());
-        const lentAll = Math.round(Heap.lent());
         const lending = Math.round(KeyTimes.now() - weighed);
+        const lentAll = Heap.lent();
+        const holding = lentAll < 0 ? "an unknown amount" : `${Math.round(lentAll)} MB`;
         const took = Math.round(collected - began);
         const weighing = Math.round(weighed - collected);
         const live = Math.round(weight.live);
@@ -12625,7 +12632,7 @@ Scope {
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
-            + ` ${lentAll} MB of the shell lent`
+            + ` ${holding} of the shell lent`
             + (allocator.used === undefined ? ""
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`

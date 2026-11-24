@@ -27,7 +27,8 @@
 //! The call's acts are asks on the same socket, each done through Tuple's
 //! own command on a thread of its own, so a share waiting on the portal
 //! holds up nothing else: join a link, leave, mute or unmute, share a
-//! screen, answer a ring, and open Joel's room, whose link `tuple new`
+//! screen, open Tuple's camera picker or stop sharing the camera, answer
+//! a ring, and open Joel's room, whose link `tuple new`
 //! prints and this keeps, in `tuple-call/room` in the state folder, for
 //! the record to say from then on; until then, the record says the newest
 //! of Joel's own rooms, as Tuple's state lists them.
@@ -615,6 +616,8 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
         Act::Mute { muted: true } => vec!["call", "mute"],
         Act::Mute { muted: false } => vec!["call", "unmute"],
         Act::Share => vec!["share"],
+        Act::Camera { on: true } => vec!["webcam", "start"],
+        Act::Camera { on: false } => vec!["webcam", "stop"],
         Act::Accept => vec!["call", "accept"],
         Act::Open => return open(shared, doing),
     };

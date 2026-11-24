@@ -24,12 +24,12 @@ const STALE: i64 = 2 * 3600;
 pub const FIGURE: &str = "apps:";
 
 /// The key the one line takes when there's no hour to read.
-const UNREAD: &str = "apps-under-load";
+pub const UNREAD: &str = "apps-under-load";
 
 /// How many hours unread before it's a fault of its own: apps-under-load
 /// leaves its hour unwritten while a call is on, and a working day of
 /// calls runs no longer, so six hours with none is one that stopped.
-const LOST: f64 = 6.0;
+pub const LOST: f64 = 6.0;
 
 /// Each figure in apps-under-load's `hour.json`, written as code-health
 /// writes its hour: `{"at": seconds, "measures": [{"measure", "now",

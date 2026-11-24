@@ -181,9 +181,10 @@ pub(super) fn said_status(
     blocks
 }
 
-/// Each disk a guard watches and its last pass, as facts: a disk's band,
-/// what's free and when it reaches the next band, and the pass's when,
-/// where, band, end and what it freed.
+/// Each disk a guard watches and its passes, as facts: a disk's band,
+/// what's free and when it reaches the next band; the pass at work's
+/// start, disk, band and why; and the last pass's when, where, band, end
+/// and what it freed.
 fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
     let mut disks: Vec<(String, String)> = Vec::new();
     for filesystem in status["filesystems"].as_array().into_iter().flatten() {
@@ -209,6 +210,21 @@ fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
             disk["name"].as_str().unwrap_or("?").to_owned(),
             wear_said(disk),
         ));
+    }
+    // A pass reaching for room can judge for hours, so the one at work is
+    // told before the one that last ended.
+    let passing = &status["passing"];
+    if passing.is_object() {
+        let said = [
+            format!(
+                "since {} ago on {}",
+                span(now - passing["since"].as_f64().unwrap_or(now)),
+                passing["path"].as_str().unwrap_or("?")
+            ),
+            passing["band"].as_str().unwrap_or("?").to_owned(),
+            passing["why"].as_str().unwrap_or("?").to_owned(),
+        ];
+        disks.push(("pass at work".to_owned(), said.join(layout::ITEMS)));
     }
     let last = &status["last"];
     if last.is_object() {

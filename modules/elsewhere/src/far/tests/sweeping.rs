@@ -3,7 +3,7 @@
 //! writes through one a job left among the copies.
 
 use super::{Left, far_line, far_line_in, kind, scratch, work};
-use crate::far::steps::{RUN, sweeping};
+use crate::far::steps::{CLEARING, RUN, sweeping};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +20,7 @@ fn here() -> String {
 }
 
 /// The number of a process that has ended, as a killed run's has.
-fn gone() -> u32 {
+pub(super) fn gone() -> u32 {
     let mut ended = std::process::Command::new("true").spawn().unwrap();
     ended.wait().unwrap();
     ended.id()
@@ -75,7 +75,11 @@ fn sweep_in(sh: &str, work: &Path, programs: &[(&str, &str)], before: &str) -> S
         .env("LC_ALL", "C")
         .args([
             "-c",
-            &format!("{before}\nwork='{}'\n{}", work.display(), sweeping()),
+            &format!(
+                "{before}\nwork='{}'\n{CLEARING}\n{}",
+                work.display(),
+                sweeping()
+            ),
         ])
         .env("PATH", path)
         .output()

@@ -22,8 +22,9 @@ pub type Ceilings = BTreeMap<String, f64>;
 /// A network's house: the most the upload this machine and another on the
 /// same line send between them may come to, in kbit/s, and the addresses
 /// the other reports what it sends from, one for each interface it may
-/// send by (src/house.rs), and the file holding the key its reports are
-/// signed with, where it names one.
+/// send by (src/house.rs), or none for a keyed house heard by its key
+/// alone, and the file holding the key its reports are signed with, where
+/// it names one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct House {
     pub most: u64,
@@ -128,8 +129,8 @@ pub fn ceilings(path: &Path) -> Ceilings {
 const HOUSE_MOST_KBIT: f64 = 10_000_000.0;
 
 /// The houses written at `path`, or none where there is no such file or it
-/// can't be read as one, leaving out one with no address, or one that
-/// isn't one, or is IPv4's written as IPv6, mapped or compatible
+/// can't be read as one, leaving out one naming neither an address nor a
+/// key, or an address that isn't one, or is IPv4's written as IPv6, mapped or compatible
 /// (`Ipv6Addr::to_ipv4`, as nixos.nix refuses), which the firewall and the
 /// ear would read apart, or whose ceiling is under the least a trial may
 /// set or past the most, as nixos.nix refuses too. One naming a key file
@@ -155,7 +156,10 @@ pub fn houses(path: &Path) -> Houses {
             let keyed = key.as_deref().is_none_or(Path::is_absolute);
             let least = crate::oneway::MOST_KBIT_LEAST;
             let bounded = (least..=HOUSE_MOST_KBIT).contains(&house.most);
-            (bounded && keyed && !mapped && !from.is_empty()).then(|| {
+            // A house naming no address is heard by its key alone, so one
+            // with neither would hear nothing (src/house.rs).
+            let heard = !from.is_empty() || key.is_some();
+            (bounded && keyed && !mapped && heard).then(|| {
                 let most = crate::rate::whole(house.most);
                 (router, House { most, from, key })
             })
@@ -350,7 +354,9 @@ mod tests {
                 r#""00:00:5e:00:53:03": {"up": 9000, "#,
                 r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": "house.key"}}, "#,
                 r#""00:00:5e:00:53:04": {"up": 9000, "#,
-                r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": 7}}}"#,
+                r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": 7}}, "#,
+                r#""00:00:5e:00:53:05": {"up": 9000, "#,
+                r#""house": {"most": 7000, "from": [], "keyFile": "/etc/house.key"}}}"#,
             ),
         )
         .expect("houses with keys");
@@ -365,9 +371,15 @@ mod tests {
             [
                 ("00:00:5e:00:53:01", Some(Path::new("/etc/house.key"))),
                 ("00:00:5e:00:53:02", None),
+                ("00:00:5e:00:53:05", Some(Path::new("/etc/house.key"))),
             ],
             "an absolute key file read, a null one none; a relative one, or one that isn't a \
-             path, left the house out rather than taking unsigned reports"
+             path, left the house out rather than taking unsigned reports; a keyed house \
+             naming no address kept, heard by its key alone"
+        );
+        assert!(
+            houses["00:00:5e:00:53:05"].from.is_empty(),
+            "a keyed house naming no address was given one"
         );
     }
 

@@ -11,16 +11,19 @@
 //! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, `owing` files its drag with each owner, `records`
-//! reads the queues' records, and `reviews` the harness's review records.
+//! says and keeps, `good` holds each measure to the definition of good,
+//! `owing` files its drag with each owner, `records` reads the queues'
+//! records, and `reviews` the harness's review records.
 
 mod card;
+mod good;
 mod lines;
 mod measures;
 mod moved;
 mod owing;
 mod records;
 mod reviews;
+mod stuck;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -92,6 +95,9 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let whole = gone.as_ref().is_some_and(Vec::is_empty);
     kept.open
         .retain(|open| !gone.as_ref().is_some_and(|gone| gone.contains(open)));
+    // A miss its owner said was none isn't fixed, so it leaves without Joel
+    // being told it is; the card shows why for a day instead.
+    measures::forget_said_none(&misses, &mut kept.open);
     let mut measures = gather(
         &folder,
         &state_home,
@@ -101,17 +107,8 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &mut kept.fetched,
         to,
     )?;
-    // Nor whether the misses name tests: an emptied ledger names none, so
-    // judging it would close every owner's ask, to be filed again after.
-    for m in measures
-        .iter_mut()
-        .filter(|m| !whole && (m.class == Class::Miss || m.key == measures::UNTESTED))
-    {
-        m.target = None;
-        // A torn line has already said so.
-        if !m.says.ends_with(measures::UNREAD) {
-            m.says.push_str(measures::UNREAD);
-        }
+    if !whole {
+        unread_misses(&mut measures);
     }
     // A realm whose node doesn't answer says nothing of its machines.
     if !realms.is_empty() {
@@ -162,18 +159,22 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         measures.push(spent_beside_landed(&state_home, now));
         measures.extend(spend_watch_measures(now));
     }
+    // Every measure read, each is held to its line on the definition of
+    // good, and one with none, or another target, is counted.
+    measures.push(good::undefined(&measures));
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
     // closed before last hour stays so.
     measures::held(&misses, &mut measures, &kept.open);
     let said = measures::said(&misses, &TimeZone::system());
-    let (card, next) = compose(
+    let (mut card, mut next) = compose(
         &clock(now),
         &measures,
         &kept,
         &said,
         &format!("{} tomorrow", clock(now + DAY)),
     );
+    stuck::daily(&mut card, &mut next, &measures, now, &TimeZone::system());
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
     // miss as open: only the run sending the card keeps the hour and owes.
@@ -201,6 +202,22 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
+}
+
+/// The misses measured from a ledger not read whole, left unjudged, and
+/// nor whether they name tests: an emptied ledger names none, so judging
+/// it would close every owner's ask, to be filed again after.
+fn unread_misses(measures: &mut [Measure]) {
+    for m in measures
+        .iter_mut()
+        .filter(|m| m.class == Class::Miss || m.key == measures::UNTESTED)
+    {
+        m.target = None;
+        // A torn line has already said so.
+        if !m.says.ends_with(measures::UNREAD) {
+            m.says.push_str(measures::UNREAD);
+        }
+    }
 }
 
 /// Whom the card goes to, and as what: the orchestrator for context, and
@@ -273,6 +290,7 @@ fn gather(
         ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(measures::said_none(misses, now));
     all.extend(found);
     all.extend(rounds_per_merge(
         state_home,
@@ -616,8 +634,8 @@ fn landed_by_session<'a>(
     landed
 }
 
-/// A measure for the card's and the owing's tests, said as "`key` said"
-/// and owned by `OWNER`.
+/// A measure for the card's, the owing's and the stuck runs' tests, said
+/// as "`key` said" and owned by `OWNER`.
 #[cfg(test)]
 fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
     Measure {
