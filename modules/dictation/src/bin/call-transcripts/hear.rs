@@ -110,7 +110,20 @@ impl Writing {
     /// word wrongly cut is gone from the file, so this is all that says
     /// where to listen for it.
     fn untold_cuts(&mut self) -> Vec<String> {
-        Vec::new()
+        let (_, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
+        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+        cuts.into_iter()
+            .filter(|cut| self.told.insert((cut.line, cut.at)))
+            .map(|cut| {
+                format!(
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, \
+                     {} ms after theirs",
+                    cut.text.split_whitespace().count(),
+                    transcript::clock(cut.at),
+                    cut.after * 1000 / rate,
+                )
+            })
+            .collect()
     }
 
     /// Keeps the embedding of each piece of a take of theirs embedded,
