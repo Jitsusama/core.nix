@@ -428,6 +428,15 @@ impl Inputs {
         self.kept_places_written(kept, path, at);
     }
 
+    /// Writes the kept places again while their last write failed.
+    pub fn keep_kept_places(&mut self, _path: &Path) {}
+
+    /// When, from `at`, the kept places are to be written again.
+    #[must_use]
+    pub fn kept_places_again_at(&self, _at: u64) -> Option<u64> {
+        None
+    }
+
     /// [`Inputs::write_kept_places`] at `at`.
     fn kept_places_written(&mut self, kept: KeptPlaces, path: &Path, at: u64) {
         let why = kept.write(path).err().map(|why| why.to_string());
@@ -1603,6 +1612,82 @@ mod tests {
             write_heard(path, None, Some(&first), 31_000).0,
             Some("agents: kept /k/arrangement.json again, 30 s behind".into())
         );
+    }
+
+    #[test]
+    fn a_failure_lasting_past_the_clock_stepped_back_is_said_again() {
+        let path = Path::new("/k/arrangement.json");
+        let first = Unwritten {
+            why: "full".into(),
+            since: 5_000_000,
+            said: 5_000_000,
+        };
+        let (heard, left) = write_heard(path, Some("full"), Some(&first), 1_000);
+        assert_eq!(
+            heard,
+            Some(
+                "agents: still can't keep /k/arrangement.json, the clock stepped back: full".into()
+            ),
+            "a clock stepped back past when it was said is said at once, not an hour past \
+             the step"
+        );
+        assert_eq!(
+            left,
+            Some(Unwritten {
+                why: "full".into(),
+                since: 1_000,
+                said: 1_000,
+            }),
+            "and counted from there, so the next hour's line comes an hour on"
+        );
+    }
+
+    #[test]
+    fn kept_places_whose_write_failed_are_held_as_first_said_and_written_again() {
+        let mut inputs = inputs();
+        let folder =
+            std::env::temp_dir().join(format!("agents-inputs-kept-again-{}", std::process::id()));
+        // Only this case's own folder, left by a run that failed.
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let blocked = folder.join("blocked");
+        std::fs::write(&blocked, "").expect("a file where its folder would be");
+        let path = blocked.join("kept-places.json");
+        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
+            .expect("places");
+        inputs.kept_places_written(said.clone(), &path, 1_000);
+        let first = inputs
+            .kept_places_unwritten
+            .clone()
+            .expect("the write failed");
+        inputs.kept_places_written(said.clone(), &path, 2_000);
+        assert_eq!(
+            inputs.kept_places_unwritten,
+            Some(first),
+            "failing the same way again, it's held as first said, so not said again"
+        );
+        assert_eq!(
+            inputs.kept_places_again_at(2_000),
+            Some(2_000 + WRITE_AGAIN_MS),
+            "and it's tried again in WRITE_AGAIN_MS"
+        );
+        std::fs::remove_file(&blocked).expect("the way cleared");
+        inputs.keep_kept_places(&path);
+        assert_eq!(
+            (
+                inputs.kept_places_unwritten.clone(),
+                KeptPlaces::read(&path)
+            ),
+            (None, Some(said)),
+            "the next try writes them, though the shell said nothing more"
+        );
+        assert_eq!(
+            inputs.kept_places_again_at(3_000),
+            None,
+            "written, nothing's tried again"
+        );
+        // Only this case's own folder, which the next run makes afresh.
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

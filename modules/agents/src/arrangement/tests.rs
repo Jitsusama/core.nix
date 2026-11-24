@@ -608,6 +608,32 @@ fn a_closed_mark_that_isnt_a_time_counts_from_now() {
 }
 
 #[test]
+fn a_closed_mark_cleared_by_hand_is_no_mark() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-null": {"column": 4, "closed": null},
+                "s-false": {"column": 5, "closed": false}}}}));
+    let cleared = json!({"s-null": {"column": 4}, "s-false": {"column": 5}});
+    assert_eq!(
+        kept.let_go("this", at + grace).boots["this"],
+        cleared,
+        "a mark set to null or false, as a hand edit clearing it leaves, is no mark, \
+         so its place stays"
+    );
+    let heard = Windowless {
+        heard: HashSet::from(["s-null".to_owned(), "s-false".to_owned()]),
+        ..Windowless::default()
+    };
+    assert_eq!(
+        kept.kept("this", "", Map::new(), Vec::new(), &heard, at + grace)
+            .boots["this"],
+        cleared,
+        "and the same while a window is listed"
+    );
+}
+
+#[test]
 fn let_go_takes_only_this_boots_places_due_and_counts_a_mark_ahead_from_now() {
     let at = 1_000_000;
     let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
