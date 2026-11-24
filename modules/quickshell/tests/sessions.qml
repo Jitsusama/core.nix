@@ -534,6 +534,17 @@ ShellRoot {
             `${stillComing} ${JSON.stringify(Niri.acted)}`);
         expect("while the one the sessions' kitty drew is",
             drawnRaised === '{"FocusWindow":{"id":89}}', drawnRaised);
+        // A row's Reopen, being Joel's press, opens its viewer where Go To
+        // would, home on its orchestrator's workspace, and focused once
+        // it comes.
+        Niri.acted = null;
+        Sessions.reopen({ id: "s-row-led", cwd: "/tmp", hosted: true, orchestratedBy: "FARLED",
+            view: view.slice(0, -1).concat(["s-row-led"]) });
+        const ledOpened = Niri.acted?.OpenNextWindowOn;
+        expect("a row's Reopen opens its viewer home, to be focused as it comes",
+            ledOpened?.reference?.Id === 8 && ledOpened?.app_id === "pi-hosted.s-row-led"
+            && Sessions.goingTo?.app === "pi-hosted.s-row-led",
+            `${JSON.stringify(Niri.acted)} ${JSON.stringify(Sessions.goingTo)}`);
         holdsAlone();
     }
 
