@@ -431,12 +431,19 @@ fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
     // under C, since a locale a machine lacks is a warning of its own, and
     // its NUL warning comes under any.
     let utf8 = "export LC_ALL=en_US.UTF-8 2>/dev/null";
+    // On a Mac, its own tr, which refuses such bytes, rather than the GNU
+    // one a dev shell puts first, which never does.
+    let own_tr: &[(&str, &str)] = if cfg!(target_os = "macos") {
+        &[("tr", "exec /usr/bin/tr \"$@\"")]
+    } else {
+        &[]
+    };
     for (sh, locale) in [(far_sh(), utf8), ("bash".to_owned(), "")] {
         copy(&runs, "2", "");
         let mut run = format!("{} {}", gone(), here()).into_bytes();
         run.extend_from_slice(b"\0\n\xff\xfe\0\n");
         std::fs::write(runs.join(format!("2{RUN}")), run).unwrap();
-        let said = sweep_in(&sh, &runs.join("9"), &[], locale);
+        let said = sweep_in(&sh, &runs.join("9"), own_tr, locale);
         assert!(
             said.is_empty(),
             "the sweep in {sh} said something of the bytes: {said}"
@@ -446,6 +453,27 @@ fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
             "a gone run's copy was kept in {sh} for what followed its line"
         );
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn only_a_run_s_file_s_first_512_bytes_are_read() {
+    let root = scratch("far-swept-bound");
+    let runs = root.join("s");
+    let (here, gone) = (here(), gone());
+    let past = " ".repeat(600);
+    // A gone run here, with a word past the bytes read, which is never
+    // heard, so its copy goes; and one whose machine lies past them, so
+    // its file names no machine and its copy stays.
+    copy(&runs, "1", &format!("{gone} {here}{past}more"));
+    copy(&runs, "2", &format!("{gone}{past}{here}"));
+    let said = sweep(&runs.join("9"));
+    assert!(said.is_empty(), "the sweep said something: {said}");
+    assert_eq!(
+        left_in(&runs),
+        ["2", "2.run"],
+        "the sweep read a run's file past its first 512 bytes"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 

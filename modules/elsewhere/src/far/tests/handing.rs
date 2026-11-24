@@ -239,12 +239,15 @@ fn a_link_a_job_leaves_at_its_folder_for_copies_is_never_opened_through() {
     let mode = std::fs::metadata(&closed).map(|closed| closed.permissions().mode() & 0o777);
     let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
     let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+    // Nothing written through it either: what it leads to holds only d.
+    let beyond = left_in(&home.join("beyond"));
     assert!(
         code == Some(0)
             && mode.as_ref().is_ok_and(|mode| *mode == 0o500)
+            && beyond == ["d"]
             && listed == "1\tout/a\nend\n",
-        "the far line opened what a link at its folder for copies leads to, or didn't list \
-         what the job made ({code:?}): {mode:?} {listed:?} {err}"
+        "the far line opened or wrote what a link at its folder for copies leads to, or \
+         didn't list what the job made ({code:?}): {mode:?} {beyond:?} {listed:?} {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
