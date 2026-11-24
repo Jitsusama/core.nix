@@ -336,8 +336,8 @@ import ./host-checks.nix args
       '';
 
   # A hosted pi evaluates a keyed package's modules once for all its
-  # extensions, while every other package's extensions keep a copy each, and
-  # a reload or a moved link lets go of what the package's loads cached.
+  # extensions, in a cache of the package's own, while every other package's
+  # extensions keep a copy each, and a reload or a moved link lets go of it.
   pi-hosted-shares-keyed-modules = pkgs.runCommandLocal "pi-hosted-shares-keyed-modules" { } ''
     HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
       ${./tests/pi-hosted-shares-keyed-modules.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
