@@ -199,12 +199,50 @@ fn a_failure_main_quarantines_leaves_an_untaken_gate_unsent() {
         "a check only named like a quarantined one is no excused failure"
     );
     let unexcused = "error: Cannot build '/nix/store/x-the-cat-sits.drv'.\n       Reason: builder \
-                     failed with exit code 1.\nchanged-checks: the-cat-sits failed in test_b, \
-                     which main's quarantine doesn't hold, so it blocks the change\n";
+                     failed with exit code 1.\nchanged-checks: the-cat-sits failed, but main \
+                     quarantines only test_a, so test_b blocks the change\n";
     assert_eq!(
         gated(Some(75), unexcused),
         Gated::Red,
         "a failure the quarantine doesn't excuse is red"
+    );
+    let parted = format!(
+        "{excused}error: Cannot build '/nix/store/w-the-launcher-part-of-it.drv'.\n       \
+         Reason: builder failed with exit code 1.\n"
+    );
+    assert_eq!(
+        gated(Some(75), &parted),
+        Gated::Red,
+        "a check named past a quarantined one's part was excused as its part"
+    );
+}
+
+/// nix-offload builds main's quarantined tests alone and says so itself,
+/// and a VM test's derivation is named `vm-test-run-` and the test's name,
+/// not the check's: its failure still blocks nothing.
+#[test]
+fn a_quarantined_vm_test_nix_offload_built_leaves_an_untaken_gate_unsent() {
+    let excused = "error: Cannot build '/nix/store/x-vm-test-run-desktop-reads-mail.drv'.\n       \
+                   Reason: builder failed with exit code 1.\nnix-offload: \
+                   vm-desktop-reads-mail failed, but main quarantines test_a, so it blocks \
+                   nothing\n";
+    assert_eq!(
+        gated(Some(75), excused),
+        Gated::Unsent,
+        "a quarantined VM test nix-offload built alone made an untaken gate red"
+    );
+}
+
+/// A failed builder nix names no derivation for can't be told from a
+/// rider's own failure, so it reads red rather than unsent.
+#[test]
+fn a_failed_build_nothing_names_reads_red() {
+    let unnamed = "       Reason: builder failed with exit code 1.\nchanged-checks: the-cat-sits \
+                   failed, but main quarantines it, so it blocks nothing\n";
+    assert_eq!(
+        gated(Some(75), unnamed),
+        Gated::Red,
+        "a failed builder no Cannot build line named read as no failure"
     );
 }
 
