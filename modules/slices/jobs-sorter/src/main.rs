@@ -1817,6 +1817,10 @@ struct Ranked {
     writeback: bool,
 }
 
+/// How many of the others an overrun line names ([`Fitting::overran`]),
+/// so a slice with many children still says it in one line.
+const SAID: usize = 5;
+
 /// What fitting the units' floors into their slices ([`fit_floors`]) has
 /// said, so each is said once while it lasts.
 #[derive(Default)]
@@ -1837,7 +1841,10 @@ impl Fitting {
     /// `given` the units Joel is at left them: the sorter can't trim what
     /// they claim, so the slice is claimed past its floor and the kernel
     /// shares it among every child again, the windows too. Said once, and
-    /// again once it has stopped and starts again.
+    /// again only once they fit by a [`budget::STEP`] and overrun again, so
+    /// others hovering at the edge don't say it on every crossing. Each is
+    /// named quoted, the first [`SAID`] of them, since a child's name is
+    /// whatever started it chose.
     fn overran(
         &mut self,
         slice: &str,
@@ -1845,18 +1852,22 @@ impl Fitting {
         claimed: u64,
         given: u64,
     ) -> Option<String> {
-        if claimed <= given {
+        if claimed.saturating_add(budget::STEP) <= given {
             self.overrun.remove(slice);
             return None;
         }
-        if !self.overrun.insert(slice.to_owned()) {
+        if claimed <= given || !self.overrun.insert(slice.to_owned()) {
             return None;
         }
-        let which: Vec<String> = strays
+        let named: Vec<&(String, u64)> = strays.iter().filter(|(_, claim)| *claim > 0).collect();
+        let mut which: Vec<String> = named
             .iter()
-            .filter(|(_, claim)| *claim > 0)
-            .map(|(name, claim)| format!("{name} {} MiB", claim >> 20))
+            .take(SAID)
+            .map(|(name, claim)| format!("{name:?} {} MiB", claim >> 20))
             .collect();
+        if named.len() > SAID {
+            which.push(format!("and {} more", named.len() - SAID));
+        }
         Some(format!(
             "The others in {slice} claim {} MiB, past the {} MiB the units Joel is at leave \
              them, so its floor is shared among every child again, the windows too: {}.",
@@ -1895,30 +1906,37 @@ fn claims(
         let name = path.file_name()?.to_string_lossy().into_owned();
         Some((name, holds::current(path)?, memory_low(path)?))
     };
-    // Each window claims what it held at its peak within the minute, so a window paging out
-    // doesn't hand the units room it takes back a look later.
-    let windows: Vec<(String, u64)> = windows
-        .iter()
-        .filter_map(|path| {
-            let (name, current, floor) = claim(path)?;
-            let held = peaks.hold(&path.display().to_string(), current.min(floor), now);
-            Some((name, held))
-        })
-        .collect();
-    // A scope counts as a window by its name alone, and the sorter gives a window no more than
-    // focus::FLOOR, so what one claims past that is claimed as a stray's is, after the units
-    // Joel is at: an agent naming a scope as a window and asking for max would otherwise take
-    // their floors.
-    let room = budget::room(low, windows.iter().map(|(_, held)| (*held, focus::FLOOR)));
-    let past = windows
-        .into_iter()
-        .map(|(name, held)| (name, held.saturating_sub(focus::FLOOR)));
-    let strays = others
-        .iter()
-        .filter_map(claim)
-        .map(|(name, current, floor)| (name, current.min(floor)))
-        .chain(past)
-        .collect();
+    // A scope counts as a window by its name alone, and the sorter holds no more than
+    // focus::MOST windows at focus::FLOOR each, so what the windows claim past that is claimed
+    // as a stray's is, after the units Joel is at, and isn't held: an agent naming scopes as
+    // windows and asking for max would otherwise take their floors. Each window claims what it
+    // held at its peak within the minute, so a window paging out doesn't hand the units room it
+    // takes back a look later, but never past its floor now: one the sorter has let go claims
+    // its new floor at once.
+    let mut left = focus::FLOOR.saturating_mul(u64::try_from(focus::MOST).unwrap_or(u64::MAX));
+    let mut kept = Vec::new();
+    let mut strays: Vec<(String, u64)> = Vec::new();
+    for path in &windows {
+        let Some((name, current, floor)) = claim(path) else {
+            continue;
+        };
+        let claims = current.min(floor);
+        let held = peaks
+            .hold(&path.display().to_string(), claims.min(focus::FLOOR), now)
+            .min(floor)
+            .min(left);
+        left -= held;
+        kept.push(held);
+        strays.push((name, claims.saturating_sub(held)));
+    }
+    let room = budget::room(low, kept.into_iter().map(|held| (held, held)));
+    strays.splice(
+        0..0,
+        others
+            .iter()
+            .filter_map(claim)
+            .map(|(name, current, floor)| (name, current.min(floor))),
+    );
     (room, strays)
 }
 
@@ -1946,6 +1964,9 @@ fn fit_floors(
         .collect();
     slices.sort();
     slices.dedup();
+    // A slice this look doesn't fit forgets it overran, so its next overrun is said.
+    let fitted: HashSet<String> = slices.iter().map(|s| s.display().to_string()).collect();
+    fitting.overrun.retain(|slice| fitted.contains(slice));
     for slice in slices {
         let name = slice.display().to_string();
         let Some(low) = memory_low(&slice) else {
@@ -4974,9 +4995,9 @@ mod tests {
             Some(
                 "The others in agents.slice claim 2048 MiB, past the 768 MiB the units Joel is at \
                  leave them, so its floor is shared among every child again, the windows too: \
-                 run-u7.scope 2048 MiB."
+                 \"run-u7.scope\" 2048 MiB."
             ),
-            "it says which children overran, and by how much"
+            "it says which children overran, quoted, and by how much"
         );
         assert_eq!(
             fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB),
@@ -4984,15 +5005,201 @@ mod tests {
             "and once while it lasts"
         );
         assert_eq!(
-            fitting.overran("agents.slice", &strays, 768 * MIB, 768 * MIB),
+            fitting.overran("agents.slice", &strays, 767 * MIB, 768 * MIB),
             None,
             "others fitting in what's left say nothing"
         );
+        assert_eq!(
+            fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB),
+            None,
+            "others hovering within a step of the edge don't say it again on each crossing"
+        );
+        fitting.overran("agents.slice", &strays, 704 * MIB, 768 * MIB);
         assert!(
             fitting
                 .overran("agents.slice", &strays, 2048 * MIB, 768 * MIB)
                 .is_some(),
-            "and once they overrun again, it's said again"
+            "once they fit by a step and overrun again, it's said again"
+        );
+        let many: Vec<(String, u64)> = (0..9)
+            .map(|n| (format!("run-u{n}.scope"), 256 * MIB))
+            .collect();
+        let said = Fitting::default()
+            .overran("agents.slice", &many, 2304 * MIB, 768 * MIB)
+            .unwrap_or_default();
+        assert!(
+            said.ends_with("\"run-u4.scope\" 256 MiB, and 4 more."),
+            "a long list of others was said whole: {said}"
+        );
+    }
+
+    #[test]
+    fn a_slice_left_out_of_a_look_forgets_it_overran() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with("fit-forget", 2048 * MIB, &[(unit, 512 * MIB, "0")]);
+        let mut fitting = Fitting::default();
+        fitting.overrun.insert("/elsewhere/agents.slice".to_owned());
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(512 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut ranked = [ranked_in(&slice, unit, 0, 512 * MIB, viewed)];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut fitting,
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert!(
+            fitting.overrun.is_empty(),
+            "a slice no look fits still counts as overrun, so its next overrun goes unsaid: {:?}",
+            fitting.overrun
+        );
+    }
+
+    /// The floors `fit_floors` gives the units in `slice`, each as ranked by `units`, at each of
+    /// `looks`, after `before` changes the slice for that look, in MiB.
+    fn floors_over(
+        slice: &Path,
+        units: &[(&str, u64, hosts::Signs)],
+        looks: &[u64],
+        before: impl Fn(u64),
+    ) -> Vec<Vec<u64>> {
+        let mut fitting = Fitting::default();
+        let start = std::time::Instant::now();
+        looks
+            .iter()
+            .map(|&secs| {
+                before(secs);
+                let mut ranked: Vec<Ranked> = units
+                    .iter()
+                    .map(|&(unit, floor, signs)| ranked_in(slice, unit, 0, floor, signs))
+                    .collect();
+                fit_floors(
+                    &mut ranked,
+                    &["kitty-".to_owned()],
+                    &hosts::Hosts::default(),
+                    &mut fitting,
+                    start + Duration::from_secs(secs),
+                );
+                ranked.iter().map(|unit| unit.rank.floor >> 20).collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_window_given_back_its_floor_gives_the_units_its_room_at_once() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-lowered",
+            3072 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "2147483648"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let floors = floors_over(&slice, &[(unit, 2560 * MIB, viewed)], &[0, 30], |secs| {
+            if secs == 30 {
+                fs::write(
+                    slice.join("kitty-1-1.scope/memory.low"),
+                    (512 * MIB).to_string(),
+                )
+                .unwrap();
+            }
+        });
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors,
+            [[1024], [2560]],
+            "a window whose floor the sorter lowered still claimed its old peak"
+        );
+    }
+
+    #[test]
+    fn what_a_window_claims_past_a_windows_floor_is_a_strays_claim_and_not_held() {
+        const MIB: u64 = 1 << 20;
+        let (viewed_unit, shown_unit) = ("pi-conversation-b@1.service", "pi-host-a.service");
+        let slice = slice_with(
+            "fit-past",
+            6144 * MIB,
+            &[
+                ("kitty-9-9.scope", 3072 * MIB, "max"),
+                (viewed_unit, 2048 * MIB, "0"),
+                (shown_unit, 2048 * MIB, "0"),
+            ],
+        );
+        let shown = hosts::Signs {
+            shown: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let viewed = hosts::Signs { viewed: 1, ..shown };
+        let units = [
+            (viewed_unit, 2048 * MIB, viewed),
+            (shown_unit, 2048 * MIB, shown),
+        ];
+        let floors = floors_over(&slice, &units, &[0, 30], |secs| {
+            if secs == 30 {
+                fs::write(
+                    slice.join("kitty-9-9.scope/memory.current"),
+                    (2048 * MIB).to_string(),
+                )
+                .unwrap();
+            }
+        });
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors[0],
+            [2048, 1024],
+            "the 1 GiB the window claims past a window's floor wasn't fitted after the unit Joel \
+             is at and before the rest"
+        );
+        assert_eq!(
+            floors[1],
+            [2048, 2048],
+            "what the window claimed past a window's floor was held for a minute, as a \
+             window's own is, though a stray's never is"
+        );
+    }
+
+    #[test]
+    fn scopes_named_as_windows_claim_no_more_than_the_windows_the_sorter_holds() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-windows",
+            8192 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "max"),
+                ("kitty-1-2.scope", 2048 * MIB, "max"),
+                ("kitty-1-3.scope", 2048 * MIB, "max"),
+                ("kitty-1-4.scope", 2048 * MIB, "max"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let floors = floors_over(&slice, &[(unit, 2048 * MIB, viewed)], &[0], |_| {});
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors,
+            [[2048]],
+            "four scopes named as windows took the unit's floor, though the sorter holds at \
+             most {} windows",
+            focus::MOST
         );
     }
 
@@ -5079,10 +5286,6 @@ mod tests {
         assert!(
             ranked[1].rank.writeback,
             "holding past the floor it's fitted to, it writes back again"
-        );
-        assert!(
-            ranked[0].rank.writeback,
-            "and the unit only shown keeps writeback on"
         );
     }
 

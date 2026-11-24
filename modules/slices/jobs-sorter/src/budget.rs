@@ -113,35 +113,35 @@ pub fn order(signs: &[Signs]) -> Vec<usize> {
 /// ([`Peaks`]).
 pub const PEAK_FOR: Duration = Duration::from_secs(60);
 
-/// Each window's claim at its peak, with when it peaked, so a claim that
-/// dips is held for [`PEAK_FOR`]: a window's claim falls as soon as what
-/// it holds does, and the room the units are fitted into rose and fell
-/// with every page reclaimed, so their floors hunted.
+/// Each window's claims within the last [`PEAK_FOR`], each with when it
+/// was made, so a claim that dips is held at the highest of them: a
+/// window's claim falls as soon as what it holds does, and the room the
+/// units are fitted into rose and fell with every page reclaimed, so
+/// their floors hunted. Every claim is kept, not only the first peak, so
+/// when that one ages out the claim falls to the next highest of the
+/// minute rather than to the look's own.
 #[derive(Debug, Default)]
-pub struct Peaks(HashMap<String, (u64, Instant)>);
+pub struct Peaks(HashMap<String, Vec<(u64, Instant)>>);
 
 impl Peaks {
-    /// What `window` claims at `now`, as it claims `claim`: its peak, while
-    /// that came within [`PEAK_FOR`], or `claim` itself, which is its peak
-    /// from then.
+    /// What `window` claims at `now`, as it claims `claim`: the highest it
+    /// claimed within [`PEAK_FOR`], this look's included.
     pub fn hold(&mut self, window: &str, claim: u64, now: Instant) -> u64 {
-        match self.0.get(window) {
-            Some(&(peak, at)) if peak > claim && now.saturating_duration_since(at) < PEAK_FOR => {
-                peak
-            }
-            _ => {
-                self.0.insert(window.to_owned(), (claim, now));
-                claim
-            }
-        }
+        let claims = self.0.entry(window.to_owned()).or_default();
+        claims.retain(|&(_, at)| now.saturating_duration_since(at) < PEAK_FOR);
+        // A claim no higher than this one can never be the peak again, as this one outlives it.
+        claims.retain(|&(was, _)| was > claim);
+        claims.push((claim, now));
+        claims.iter().map(|&(was, _)| was).max().unwrap_or(claim)
     }
 
-    /// Forgets the windows whose peak came [`PEAK_FOR`] or more before
-    /// `now`, as each would fall to what it claims anyway, so a window
-    /// gone is forgotten.
+    /// Forgets the claims made [`PEAK_FOR`] or more before `now`, and the
+    /// windows left with none, so a window gone is forgotten.
     pub fn forget_before(&mut self, now: Instant) {
-        self.0
-            .retain(|_, (_, at)| now.saturating_duration_since(*at) < PEAK_FOR);
+        self.0.retain(|_, claims| {
+            claims.retain(|&(_, at)| now.saturating_duration_since(at) < PEAK_FOR);
+            !claims.is_empty()
+        });
     }
 }
 
@@ -286,6 +286,25 @@ mod tests {
             steady(640 * MIB, 576 * MIB, None),
             640 * MIB,
             "one never set gets what fits"
+        );
+    }
+
+    #[test]
+    fn a_windows_claim_falls_only_to_the_highest_of_the_last_minute() {
+        let mut peaks = Peaks::default();
+        let start = Instant::now();
+        let at = |secs: u64| start + Duration::from_secs(secs);
+        peaks.hold("kitty-1-1.scope", 2 * GIB, at(0));
+        peaks.hold("kitty-1-1.scope", GIB, at(30));
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", 512 * MIB, at(70)),
+            GIB,
+            "the first peak's end let the claim fall past the one after it"
+        );
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", 512 * MIB, at(90)),
+            512 * MIB,
+            "a minute with no higher claim kept one"
         );
     }
 
