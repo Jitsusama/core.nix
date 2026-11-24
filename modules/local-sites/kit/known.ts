@@ -17,7 +17,7 @@ interface Placed {
   getAttributeNames?(): string[];
   focus?(options?: FocusOptions): void;
   blur?(): void;
-  checkVisibility?(): boolean;
+  checkVisibility?(options?: { readonly visibilityProperty?: boolean }): boolean;
 }
 
 /** Whether `node` is `row` or inside it. */
@@ -289,7 +289,13 @@ function focusable(control: Placed): boolean {
  * take focus, or hidden, by itself or what holds it.
  */
 function refuses(control: Placed): boolean {
-  if (disabled(control) || !focusable(control) || control.checkVisibility?.() === false) {
+  // A browser's checkVisibility counts visibility: hidden only when asked,
+  // and a control so hidden takes no focus as surely as one with no box.
+  if (
+    disabled(control) ||
+    !focusable(control) ||
+    control.checkVisibility?.({ visibilityProperty: true }) === false
+  ) {
     return true;
   }
   for (let at: Placed | null = control; at !== null; at = at.parentElement) {

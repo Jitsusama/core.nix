@@ -11,6 +11,9 @@ import { keyed } from "../keyed.ts";
 import { bare, button, inPlace, refocused } from "./focused.ts";
 import { type Act, type Control, cells, draw, List, Row } from "./rows.ts";
 
+/** What a drawing throws on a record its row can't read. */
+const MISSHAPEN = /isn't the shape/u;
+
 /** Two buttons, which a disabled fieldset disables, as it doesn't a link. */
 const buttons = [button("open", "act", "open"), button("copy", "act", "copy")];
 
@@ -58,6 +61,62 @@ it("a focused row drawn into itself keeps its focus", () => {
     moved: ["b"],
   });
   assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+  // Its words changed where it stands, it's still the row it was.
+  keyed(list, {
+    rows: cells("a", "b"),
+    key: (cell) => cell.key,
+    draw: (cell, was) => {
+      if (was !== undefined) {
+        was.words = `${cell.works}, moved`;
+      }
+      return was ?? new Row(cell.works, list.ownerDocument);
+    },
+    moved: ["b"],
+  });
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+});
+
+it("focus on what a page lets take it, in a row the drawing left alone, stays", () => {
+  const list = new List();
+  const acts: Act[] = ["open", { says: "log", kind: "pre", attributes: {} }];
+  const rows = (moved: string[]) =>
+    keyed(list, {
+      rows: cells("a", "b"),
+      key: (cell) => cell.key,
+      draw: (cell) => new Row(cell.works, list.ownerDocument, true, acts),
+      moved,
+    });
+  rows([]);
+  // A scroller, which a browser focuses with no tabindex, as markup can't say.
+  const log = list.rows[1]?.children[1] ?? null;
+  list.ownerDocument.activeElement = log;
+  rows(["a"]);
+  assert.equal(list.ownerDocument.activeElement, log);
+});
+
+it("a drawing that throws after marking the focused control for another act lets it go", () => {
+  for (const throwing of ["b", "c"]) {
+    const list = new List();
+    const rows = (changed: boolean) =>
+      keyed(list, {
+        rows: cells("a", "b", "c"),
+        key: (cell) => cell.key,
+        draw: (cell, was) => {
+          if (changed && cell.key === "b") {
+            was?.children[1]?.setAttribute("href", "#forget");
+          }
+          if (changed && cell.key === throwing) {
+            throw new Error("a record isn't the shape its row reads");
+          }
+          return was ?? new Row(cell.works, list.ownerDocument);
+        },
+        moved: changed ? ["b", "c"] : [],
+      });
+    rows(false);
+    list.rows[1]?.children[1]?.focus();
+    assert.throws(() => rows(true), MISSHAPEN);
+    assert.equal(list.ownerDocument.activeElement, list.rows[1], `${throwing} throwing`);
+  }
 });
 
 it("a focused control kept where it stands keeps focus, its state changed or not", () => {
@@ -73,11 +132,13 @@ it("a focused control kept where it stands keeps focus, its state changed or not
 
 it("a focused control that takes no press where it stands hands focus to its row", () => {
   const disabling = (control: Row["children"][number]) => control.setAttribute("disabled", "");
-  assert.equal(inPlace(disabling), "row", "disabled");
   assert.equal(inPlace(disabling, { acts: buttons }), "row", "a button disabled");
-  const hiding = (control: Row["children"][number]) =>
-    control.setAttribute("style", "display: none");
-  assert.equal(inPlace(hiding), "row", "hidden");
+  // A link marked disabled still works in a browser, but fails safe here.
+  assert.equal(inPlace(disabling), "row", "marked disabled, even a link");
+  const hiding = (style: string) => (control: Row["children"][number]) =>
+    control.setAttribute("style", style);
+  assert.equal(inPlace(hiding("display: none")), "row", "taken out of the drawing");
+  assert.equal(inPlace(hiding("visibility: hidden")), "row", "unseen where it stands");
   // A control a page lets take focus only by its tabindex, which goes.
   const pin: Act = { says: "pin", kind: "span", attributes: { tabindex: "0", "data-act": "pin" } };
   const untabbed = inPlace((control) => control.removeAttribute("tabindex"), {

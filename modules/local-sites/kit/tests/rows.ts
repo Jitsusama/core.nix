@@ -48,8 +48,26 @@ type Act = string | null | Control;
 /** What takes focus with no tabindex, as a page lets it: a link only where it goes somewhere. */
 const FOCUSABLE = new Set(["button", "input", "select", "textarea"]);
 
-/** An inline style hiding what it's on, as a page writes one. */
-const HIDING = /display:\s*none|visibility:\s*hidden/u;
+/** An inline style taking away what it's on's box, as a page writes one. */
+const BOXLESS = /display:\s*none/u;
+
+/** An inline style leaving what it's on unseen in its box. */
+const UNSEEN = /visibility:\s*hidden/u;
+
+/**
+ * Whether `node` is drawn, as a browser's checkVisibility says: not hidden
+ * and with a box, it and what holds it, and seen only when asked about.
+ */
+function drawn(node: Placed, options?: { readonly visibilityProperty?: boolean }): boolean {
+  for (let at: Placed | null = node; at !== null; at = at.parentElement) {
+    const style = at.getAttribute?.("style") ?? "";
+    const unseen = options?.visibilityProperty === true && UNSEEN.test(style);
+    if ((at.getAttribute?.("hidden") ?? null) !== null || BOXLESS.test(style) || unseen) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /** Whether `node` or what holds it carries `name`. */
 function marked(node: Placed, name: string): boolean {
@@ -106,7 +124,7 @@ class Inner implements Placed {
       this.#page.holds(this) &&
       !this.#disabled() &&
       !marked(this, "inert") &&
-      this.checkVisibility()
+      this.checkVisibility({ visibilityProperty: true })
     ) {
       this.#page.activeElement = this;
     }
@@ -118,9 +136,8 @@ class Inner implements Placed {
     }
   }
 
-  /** Whether it's drawn: neither it nor what holds it hidden. */
-  checkVisibility(): boolean {
-    return !(marked(this, "hidden") || HIDING.test(this.#attributes["style"] ?? ""));
+  checkVisibility(options?: { readonly visibilityProperty?: boolean }): boolean {
+    return drawn(this, options);
   }
 
   /**
@@ -154,7 +171,7 @@ class Inner implements Placed {
 /**
  * A row as a list holds one: its attributes, its words and a link for each
  * of its acts saying them (open and copy, unless told), and whether it
- * takes focus itself, as a row with a tabindex does. An act told as null is
+ * takes focus itself, by a tabindex, as a page's row does. An act told as null is
  * a control showing no words and saying nothing of what it does; one told
  * as a Control shows its words before the row's, with its own attributes.
  */
@@ -179,6 +196,9 @@ class Row implements Drawn, Placed {
     this.#focusable = focusable;
     this.#acts = acts;
     this.children = this.#links();
+    if (focusable) {
+      this.#attributes.set("tabindex", "0");
+    }
   }
 
   get textContent(): string {
@@ -219,7 +239,8 @@ class Row implements Drawn, Placed {
   }
 
   focus(): void {
-    if (this.#focusable && this.#page.holds(this) && !marked(this, "inert")) {
+    const takes = this.#focusable && this.#page.holds(this) && !marked(this, "inert");
+    if (takes && drawn(this, { visibilityProperty: true })) {
       this.#page.activeElement = this;
     }
   }
@@ -228,6 +249,10 @@ class Row implements Drawn, Placed {
     if (this.#page.activeElement === this) {
       this.#page.activeElement = null;
     }
+  }
+
+  checkVisibility(options?: { readonly visibilityProperty?: boolean }): boolean {
+    return drawn(this, options);
   }
 }
 

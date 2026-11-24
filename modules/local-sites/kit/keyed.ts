@@ -13,8 +13,9 @@
 // drawing. Every row is drawn before the list's children are moved or taken
 // out, so a drawing that throws on a record leaves its rows and their order
 // as they were; a row it brought up to date where it stands before the
-// throw keeps what it was given, and the records the throwing call moved
-// are the page's to draw again, whole, since keyed keeps no note of them.
+// throw keeps what it was given, focus in it given back as after any
+// drawing, and the records the throwing call moved are the page's to draw
+// again, whole, since keyed keeps no note of them.
 
 import { alike, inside, type Known, knownAs, type Placed, refuses } from "./known.ts";
 
@@ -108,23 +109,22 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   const redrawing = focus !== null && (moved === null || moved.has(focus.key));
   const known = redrawing && focused !== null ? knownAs(focused, holder) : null;
 
+  const before = { focused, known, page, holder, redrawing };
+
   // Every row is drawn first, so nothing is touched if one throws.
   const rows: { key: string; item: Item; old: Item | undefined; fresh: boolean }[] = [];
-  const drawn = new Set<string>();
-  for (const row of drawing.rows) {
-    const key = drawing.key(row);
-    if (drawn.has(key)) {
-      continue;
+  const reached = new Set<string>();
+  try {
+    drawEach(drawing, { moved, shown, rows, reached });
+  } catch (error) {
+    // The focused row may have been changed where it stands before the
+    // throw, its own drawing's or a later one's, which a drawing again
+    // would learn as the control it now is.
+    const old = focus === null ? undefined : shown.get(focus.key);
+    if (focus !== null && redrawing && reached.has(focus.key) && old !== undefined) {
+      refocus(before, focus.path, old);
     }
-    drawn.add(key);
-    const old = shown.get(key);
-    if (old === undefined) {
-      rows.push({ key, item: marked(drawing.draw(row), key), old, fresh: true });
-    } else if (moved === null || moved.has(key)) {
-      rows.push({ key, item: marked(drawing.draw(row, old), key), old, fresh: true });
-    } else {
-      rows.push({ key, item: old, old, fresh: false });
-    }
+    throw error;
   }
 
   for (const node of stale) {
@@ -157,10 +157,46 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   if (focus !== null) {
     const now = rows.find((row) => row.key === focus.key);
     if (now !== undefined) {
-      refocus({ focused, known, page, holder }, focus.path, now.item);
+      refocus(before, focus.path, now.item);
     }
   }
   return { made, redrawn, kept, removed: stale.length, placed };
+}
+
+/**
+ * Draws each of `drawing`'s rows into `rows`, once for each key, noting
+ * each key in `reached` as its drawing starts: a new key's afresh, a moved
+ * record's from its row until now, and every other row as it was.
+ */
+function drawEach<Row, Item extends Drawn>(
+  drawing: Drawing<Row, Item>,
+  {
+    moved,
+    shown,
+    rows,
+    reached,
+  }: {
+    readonly moved: ReadonlySet<string> | null;
+    readonly shown: ReadonlyMap<string, Item>;
+    readonly rows: { key: string; item: Item; old: Item | undefined; fresh: boolean }[];
+    readonly reached: Set<string>;
+  },
+) {
+  for (const row of drawing.rows) {
+    const key = drawing.key(row);
+    if (reached.has(key)) {
+      continue;
+    }
+    reached.add(key);
+    const old = shown.get(key);
+    if (old === undefined) {
+      rows.push({ key, item: marked(drawing.draw(row), key), old, fresh: true });
+    } else if (moved === null || moved.has(key)) {
+      rows.push({ key, item: marked(drawing.draw(row, old), key), old, fresh: true });
+    } else {
+      rows.push({ key, item: old, old, fresh: false });
+    }
+  }
 }
 
 /** `item`, marked with the key it's drawn from. */
@@ -200,12 +236,16 @@ function within(
   return null;
 }
 
-/** Focus before a drawing: what had it, what that was, where focus is kept, and the list. */
+/**
+ * Focus before a drawing: what had it, what that was, where focus is kept,
+ * the list, and whether its row is drawn again.
+ */
 interface Before {
   readonly focused: Placed | null;
   readonly known: Known | null;
   readonly page: { readonly activeElement: Placed | null } | null;
   readonly holder: object;
+  readonly redrawing: boolean;
 }
 
 /**
@@ -218,10 +258,17 @@ interface Before {
  * when a focused element leaves, and a control kept where it stands but
  * no longer the same is let go too, since nothing else takes focus from
  * it. A control that takes no press, which a browser may still call
- * focused, hands it to the row too, rather than let it fall to the page.
+ * focused, hands it to the row too, rather than let it fall to the page;
+ * in a row the drawing left alone, what has focus is left with it, since
+ * a page may let more take focus than markup says.
  */
-function refocus({ focused, known, page, holder }: Before, path: number[], item: object) {
-  const took = (on: Placed) => (page === null || page.activeElement === on) && !refuses(on);
+function refocus(
+  { focused, known, page, holder, redrawing }: Before,
+  path: number[],
+  item: object,
+) {
+  const took = (on: Placed) =>
+    (page === null || page.activeElement === on) && !(redrawing && refuses(on));
   if (focused !== null && inside(focused, item)) {
     if (known === null || alike(focused, known, holder)) {
       focused.focus?.({ preventScroll: true });
