@@ -34,6 +34,22 @@ exits() {
   fi
 }
 
+# says <text> <program> <words...>: the program, given the words, ends
+# well and says the text on its standard error; with no text, it says
+# nothing there.
+says() {
+  local want=$1 said
+  shift
+  said=$("$@" 2>&1 > /dev/null) || {
+    echo "${*##*/} failed, saying '$said'"
+    exit 1
+  }
+  if [[ -z $want && -n $said ]] || [[ $said != *"$want"* ]]; then
+    echo "${*##*/} said '$said', not '$want'"
+    exit 1
+  fi
+}
+
 # reads <file> <want>: the file holds the line.
 reads() {
   local got
@@ -83,7 +99,7 @@ reads "$throttle" -1
 for kept in "" 20x; do
   echo 0 > "$throttle"
   printf %s "$kept" > "$WRITEBACK_GOAL_RUN/nvme0n1"
-  exits 0 "$goal" nvme0n1 kernel
+  says "record reads '$kept', so it gets the kernel's goal" "$goal" nvme0n1 kernel
   reads "$throttle" -1
   if [[ -e $WRITEBACK_GOAL_RUN/nvme0n1 ]]; then
     echo "a record reading '$kept' outlived its giving back"
@@ -93,14 +109,35 @@ done
 # A throttle that reads as no number is recorded as the kernel's default,
 # so a second goal doesn't record the first and give that back.
 echo busy > "$throttle"
-exits 0 "$goal" nvme0n1 0
+says "throttle reads 'busy', so the kernel's default is recorded" "$goal" nvme0n1 0
+reads "$WRITEBACK_GOAL_RUN/nvme0n1" -1
 exits 0 "$goal" nvme0n1 75000
 reads "$throttle" 75000
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" -1
+# A throttle that can't be read is recorded as the kernel's default too,
+# and its goal is still set.
+echo 2000 > "$throttle"
+chmod a-r "$throttle"
+says "throttle can't be read, so the kernel's default is recorded" "$goal" nvme0n1 0
+chmod u+r "$throttle"
+reads "$WRITEBACK_GOAL_RUN/nvme0n1" -1
+reads "$throttle" 0
+exits 0 "$goal" nvme0n1 kernel
+# A record of the kernel's default is taken as written, with nothing to
+# say.
+echo 0 > "$throttle"
+echo -1 > "$WRITEBACK_GOAL_RUN/nvme0n1"
+says "" "$goal" nvme0n1 kernel
+reads "$throttle" -1
 # A name that isn't one disk's is a wrong call, so nothing outside the
-# records is removed.
+# records, or hidden among them, is removed.
+echo kept > "$PWD/nvme0n1"
 exits 64 "$goal" ../nvme0n1 kernel
+reads "$PWD/nvme0n1" kept
+echo kept > "$WRITEBACK_GOAL_RUN/.nvme0n1"
+exits 64 "$goal" .nvme0n1 kernel
+reads "$WRITEBACK_GOAL_RUN/.nvme0n1" kept
 # A disk gone by its giving back drops its record, so a disk taking its
 # name later records its own goal rather than giving back the old one's.
 disk sdy 4000

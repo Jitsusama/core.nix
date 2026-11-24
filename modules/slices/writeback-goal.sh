@@ -71,12 +71,16 @@ if [ "$goal" = kernel ]; then
 fi
 # Only the first goal's record is kept, so a goal set twice gives back
 # the disk's own, not the first goal. It's written whole, through a file
-# renamed into place; a throttle that reads as no number is recorded as
-# the kernel's goal, so a second goal can't be taken for the disk's own.
+# renamed into place; a throttle that can't be read, or reads as no
+# number, is recorded as the kernel's default, so a second goal can't be
+# taken for the disk's own. A failed read goes on to set the goal, whose
+# write fails loudly if the throttle can't take one either.
 if [ ! -e "$record" ]; then
-  now=$(< "$held")
-  if [[ -z $now || $now == *[!0-9]* ]]; then
-    echo "writeback-goal: $disk's throttle reads '$now', so the kernel's goal is kept" >&2
+  if ! now=$(cat "$held" 2> /dev/null); then
+    echo "writeback-goal: $disk's throttle can't be read, so the kernel's default is recorded" >&2
+    now=-1
+  elif [[ -z $now || $now == *[!0-9]* ]]; then
+    echo "writeback-goal: $disk's throttle reads '$now', so the kernel's default is recorded" >&2
     now=-1
   fi
   mkdir -p "${record%/*}"
