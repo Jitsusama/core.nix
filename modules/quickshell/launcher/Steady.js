@@ -74,8 +74,9 @@ function seenAmong(rows, found, id) {
 }
 
 // The rows laid again, `rows`, with `lit(rows)` dimming each heading said
-// again with no row of its own standing under it in `rows`, and `late`,
-// how many new ones wait to be shown afresh where `withholding`.
+// again with no row of its own standing under it in `rows`, `late`, how
+// many new ones wait to be shown afresh where `withholding`, and
+// `putBack`, how many of `rows` the rows shown put back.
 // Where a list has headings (Headings.js), as For You's cells do, what
 // stands under a heading reads as its, so a new row of a heading that
 // isn't the last above the end, dimmed or not, has it said again over it,
@@ -106,23 +107,17 @@ function laidAgain(shown, now, id, withholding) {
     const lit = rows => rows.map((row, at) => row.repeated && !row.went
         && !standsUnder(rows, at, owner, id) ? dimmed(row) : row);
     if (shown.length === 0) {
-        return { rows: fresh.map(asSeen), late: 0, lit: rows => rows };
+        return { rows: fresh.map(asSeen), late: 0, lit: rows => rows, putBack: 0 };
     }
     const headingsNow = fresh.filter(row => row.heading === true);
-    const waiting = {};
+    const waiting = Object.create(null);
     fresh.forEach((row, at) => {
         const said = id(row);
-        if (waiting[said] === undefined) {
-            waiting[said] = [];
-        }
-        waiting[said].push(at);
+        waiting[said] = (waiting[said] ?? []).concat([at]);
     });
     const taken = fresh.map(() => false);
     const out = [];
-    const put = (row, its) => {
-        owner[out.length] = its;
-        out.push(row);
-    };
+    const put = (row, its) => { owner[out.length] = its; out.push(row); };
     let late = 0;
     for (const row of shown) {
         if (row.repeated) {
@@ -158,6 +153,7 @@ function laidAgain(shown, now, id, withholding) {
             out.push(dimmed(row));
         }
     }
+    const putBack = out.length;
     let headed = out.some(row => row.heading === true);
     let last = endingHeading(out, owner);
     fresh.forEach((row, at) => {
@@ -185,7 +181,7 @@ function laidAgain(shown, now, id, withholding) {
         const coming = asSeen(typeof row.ranked === "function" ? row.ranked() : row);
         put(coming, its);
     });
-    return { rows: out, late, lit };
+    return { rows: out, late, lit, putBack };
 }
 
 // Whether a row new to a list waits unseen: one of no heading (`its`)
@@ -256,8 +252,11 @@ function standsUnder(rows, at, owner, id) {
 // that doesn't has every row to the next. One said again stands for the
 // heading it repeats.
 function headingsUnder(rows, id) {
-    const holders = rows.filter(row => row.heading === true && !row.repeated
-        && Array.isArray(row.holding));
+    const holderOf = Object.create(null);
+    for (const one of rows.filter(row => row.heading === true && !row.repeated
+        && Array.isArray(row.holding))) {
+        for (const key of one.holding) { holderOf[key] = holderOf[key] ?? one; }
+    }
     let above = null;
     return rows.map(row => {
         if (row.heading === true) {
@@ -265,7 +264,7 @@ function headingsUnder(rows, id) {
                 && id(one) === id(row)) ?? row : row;
             return null;
         }
-        const holder = holders.find(one => one.holding.includes(row.key));
+        const holder = holderOf[row.key];
         if (holder !== undefined) {
             return holder;
         }
@@ -281,8 +280,8 @@ function headingsUnder(rows, id) {
 // heading said again is dimmed by the rows held, not by one that waits.
 function held(shown, now, id) {
     const again = laidAgain(shown, now, id, true);
-    return { rows: again.lit(again.rows.slice(0, shown.length)),
-        waiting: again.rows.slice(shown.length).filter(row => row.heading !== true).length
+    return { rows: again.lit(again.rows.slice(0, again.putBack)),
+        waiting: again.rows.slice(again.putBack).filter(row => row.heading !== true).length
             + again.late };
 }
 
