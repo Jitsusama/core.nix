@@ -1763,6 +1763,12 @@ Provider {
         sproutGiven = { words: String(said), letters: launcher.lettersAt };
         sproutCarried = "";
         const sprout = sprouts;
+        // Marked again once the Return that gave the words has emptied the field, which moves
+        // lettersAt as a letter would (Launcher.qml's give), so only a key after it counts.
+        Qt.callLater(() => {
+            if (sprouts === sprout)
+                sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
+        });
         sproutSays(key, words.starting);
         sproutPatience.restart();
         const token = Sprouting.token(Date.now(), Math.random());
@@ -1967,7 +1973,12 @@ Provider {
         if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
             return false;
         sproutCarried = sproutGiven.words;
+        // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
+        // stepping out of it steps into Start New Work too.
+        const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
         launcher.back();
+        if (under !== "agents:start-new-work")
+            launcher.enter(startNewWorkMade());
         console.info("launcher: new work wanted a repository; asking where it starts");
         return true;
     }
