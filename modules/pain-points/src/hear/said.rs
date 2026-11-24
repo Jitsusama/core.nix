@@ -243,7 +243,10 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             // that answers them, not him.
             carried.acting = false;
             let full: Value = serde_json::from_str(text).ok()?;
-            let content = full.pointer("/message/content").map(text_of).unwrap_or_default();
+            let content = full
+                .pointer("/message/content")
+                .map(text_of)
+                .unwrap_or_default();
             let at = iso_ms(&head.timestamp);
             let Some((words, looking_at)) = his(&content) else {
                 // Only someone else's message makes the turn theirs: one of
@@ -522,8 +525,14 @@ mod tests {
         let done = ended("stop", "Fixed: the launcher opens again.");
         for (lines, what) in [
             (vec![&his, &asking, &done], "a call for tools"),
-            (vec![&his, &asking, &failed, &asking, &done], "pi's retry after an error"),
-            (vec![&his, &shot, &asking, &done], "a screenshot of his alone"),
+            (
+                vec![&his, &asking, &failed, &asking, &done],
+                "pi's retry after an error",
+            ),
+            (
+                vec![&his, &shot, &asking, &done],
+                "a screenshot of his alone",
+            ),
         ] {
             let mut carried = Carried::default();
             for text in lines {

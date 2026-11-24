@@ -140,7 +140,11 @@ fn an_answer_kept_before_answers_takes_what_it_took_then() {
         let following_at = place.root.join("state/hear.json");
         let read = fs::read(&following_at).expect("hear.json");
         let mut following: Value = serde_json::from_slice(&read).expect("hear.json reads");
-        for log in following.as_object_mut().expect("logs by name").values_mut() {
+        for log in following
+            .as_object_mut()
+            .expect("logs by name")
+            .values_mut()
+        {
             log["carried"]["answered"] = json!(at);
             if let Some(asked) = kept_asked {
                 log["carried"]["asked"] = json!(asked);
@@ -151,8 +155,7 @@ fn an_answer_kept_before_answers_takes_what_it_took_then() {
         let heard = place.heard();
         let took: Vec<Option<&str>> = heard.iter().map(|h| h.taken_by.as_deref()).collect();
         assert_eq!(
-            took,
-            taken,
+            took, taken,
             "an answer kept before answers didn't take, from the message it answered \
              or else from the start, what it took then: {name}"
         );
