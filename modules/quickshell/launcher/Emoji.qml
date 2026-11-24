@@ -142,6 +142,10 @@ Provider {
         return ready.search(letters) === null && ready.asking === letters;
     }
 
+    function searchState() {
+        return ready.searchState();
+    }
+
     // Its groups, as the history serves them.
     function everything() {
         return ready.rows();

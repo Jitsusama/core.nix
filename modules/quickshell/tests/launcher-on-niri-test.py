@@ -2741,7 +2741,12 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     shell.close_launcher()
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
-    shell.type_in("tada", selecting="Party popper")
+    # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
+    # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
+    try:
+        shell.type_in("tada", selecting="Party popper")
+    except AssertionError as failed:
+        raise AssertionError(f"{failed}; Emoji's search: {shell.searching('emoji')}") from failed
     shell.close_launcher()
 
 

@@ -391,6 +391,8 @@ Scope {
     // nothing of a window resized. Read only when asked, so nothing wakes
     // for it.
     property int linesHeard: 0
+    // Whether a line that isn't JSON was said since it last connected.
+    property bool unreadSaid: false
 
     // Each line is marked as heard from when it's read until all it set
     // going has returned, so the launcher times a change from it
@@ -417,6 +419,12 @@ Scope {
         try {
             answer = JSON.parse(line);
         } catch (error) {
+            // Said once a connection, so a daemon speaking garbage can't
+            // flood the journal, but an answer lost this way is named.
+            if (!unreadSaid)
+                console.warn(`${heardAs}: a line that isn't JSON let go, `
+                    + `${line.length} characters: ${line.slice(0, 80)}`);
+            unreadSaid = true;
             return;
         }
         if (answer === null || typeof answer !== "object")
@@ -589,6 +597,13 @@ Scope {
     // Gone: said so, and every answer awaited given none. The watch went
     // with the wire, so what's held waits for the next watch's answer.
     function gone() {
+        // Its asks are answered with nothing below; said, since each went
+        // unanswered and the connection's going says nothing of its own.
+        const unanswered = Object.keys(awaited);
+        if (unanswered.length > 0)
+            console.warn(`${heardAs}: the connection went with ${unanswered.length} asks `
+                + `unanswered: ${unanswered.slice(0, 8).join(", ")}`);
+        unreadSaid = false;
         wire = null;
         state = "not answering";
         answeredThisWatch = false;
