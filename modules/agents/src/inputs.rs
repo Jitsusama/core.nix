@@ -83,8 +83,10 @@ pub struct Unwritten {
 /// that failed with `why`, or succeeded with none, after the writes
 /// before it left `was` unwritten, and what's left unwritten after it:
 /// a failure once until its error changes, so a full disk isn't
-/// journalled at every try, and again each [`SAY_AGAIN_MS`] it lasts;
-/// then once more on success, saying how long the file was behind.
+/// journalled at every try, and again each [`SAY_AGAIN_MS`] it lasts,
+/// or at once if the wall clock stepped back past when it was said, which
+/// would otherwise hush it for as long as the clock stepped; then once
+/// more on success, saying how long the file was behind.
 fn write_heard(
     path: &Path,
     why: Option<&str>,
@@ -107,6 +109,18 @@ fn write_heard(
         })
     };
     match was {
+        // Counted from here, as how long it was behind can't be said.
+        Some(was) if was.why == why && at < was.said => (
+            Some(format!(
+                "agents: still can't keep {}, the clock stepped back: {why}",
+                path.display()
+            )),
+            Some(Unwritten {
+                why: why.to_owned(),
+                since: at,
+                said: at,
+            }),
+        ),
         Some(was) if was.why == why && at.saturating_sub(was.said) < SAY_AGAIN_MS => {
             (None, left(was.said))
         }
