@@ -3288,14 +3288,21 @@ ShellRoot {
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
     }
 
-    // The notices moving, with For You held, are asked with For You's own
-    // after the change rather than said outright: a session's notice updated
+    // The notices moving, with For You held, aren't said outright as they
+    // move, Now leaving them to For You's own ask: a session's notice updated
     // as its work turned just after Return into For You was drawn as
-    // Return's act (the niri case, 2026-11-18). Deeper, where the notices
+    // Return's act (seen on niri, 2026-11-18). This is where that's proven:
+    // a case on niri laying a session's turn beside Return couldn't land
+    // one within the launcher's 50 ms on a loaded builder, its turns heard
+    // 150 to 520 ms after Return's work with the node itself held, so it
+    // never reached the race (2026-11-24). Deeper, where the notices
     // themselves are shown, and with nothing held, they're said outright;
     // so too with Desktop or what's on screen held right under Now, where
     // Super+N leads with no critical notice waiting (round 7, F77), though
-    // not with another of Now's rows there, Mail's (round 8, F80).
+    // not with another of Now's rows there, Mail's (round 8, F80). What
+    // isn't proven here is that For You's ask then draws them, nor that a
+    // say put off a turn is none: each case reads what was said as the
+    // notices move.
     function noticesWeighed(into) {
         const outright = (name, held, said) => {
             theLauncher.held = held;
@@ -3308,6 +3315,29 @@ ShellRoot {
         };
         outright("For You held, the notices moving aren't said outright",
             into(now.waiting.verbs()), 0);
+        // So too as Now hears them, by the notices' rows and history, not
+        // only through noticesMoved: a handler that went round it would
+        // say them outright again with For You held.
+        // Each is first heard with nothing held, said outright by its own
+        // words, so the silence held after it is the guard's and not a
+        // move that never reached Now.
+        const heardBy = (name, why, moves) => {
+            for (const held of [[], into(now.waiting.verbs())]) {
+                const said = held.length === 0 ? 1 : 0;
+                theLauncher.held = held;
+                root.nowChanged = 0;
+                root.nowMoved = "";
+                moves();
+                expect(said === 1 ? `${name}, heard with nothing held` : name,
+                    root.nowChanged === said && root.nowMoved === (said === 1 ? why : ""),
+                    JSON.stringify([root.nowChanged, root.nowMoved]));
+            }
+        };
+        heardBy("nor as their daemon says its rows moved", "the notices' rows",
+            () => pastNotices.changed());
+        heardBy("nor as their history moves", "the notices' history", () => {
+            Notices.history = Notices.history.slice();
+        });
         outright("held below For You, they are", into(now.waiting.verbs()).concat([
             { row: { key: "on:waiting:screen" }, rows: [] }]), 1);
         const underNow = key => [{ row: { from: now, key: "on" } },
@@ -3388,7 +3418,7 @@ ShellRoot {
             root.nowMoved === "its own rows as it stepped", root.nowMoved);
         // For You held, one of Now's other rows moving is drawn nowhere,
         // so it's no key's act: a session's work turning just after Return
-        // was timed as Return's (the niri case, 16 November).
+        // was timed as Return's (seen on niri, 16 November).
         const another = { key: "on:another", name: "Another" };
         const said = (name, changes, unseen) => expect(name,
             root.nowChanged === changes && root.nowUnseen === unseen,
