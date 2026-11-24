@@ -32,19 +32,26 @@ fi
 [[ ! -e "$work/failing" ]] || exit 1
 [[ \$4 != update || -e "$work/there" ]]
 EOF
-# The stand-in for ssh-add lists, as the proxy does, the key it's told
-# the proxy holds, under the proxy's comment, and nothing while it holds
-# none; it answers only at the proxy's socket beside the key.
-cat >"$work/bin/ssh-add" <<EOF
-#!$BASH
-[[ \$1 == -L && \$SSH_AUTH_SOCK == "$work/agent.sock" && -e "$work/held" ]] || exit 1
-read -r kind blob _ <"$work/held"
-echo "\$kind \$blob pi-agent-proxy OS Login"
-EOF
-chmod +x "$work/bin/gcloud" "$work/bin/ssh-add"
+chmod +x "$work/bin/gcloud"
+# The proxy stands in as a real ssh-agent at its socket beside the key,
+# since the script's own PATH puts the real ssh-add ahead of any stand-in;
+# it holds the keys the test gives it, as the proxy holds the one it made.
+ssh-agent -D -a "$work/agent.sock" >/dev/null 2>&1 &
+agent=$!
+trap 'kill "$agent"' EXIT
+until [[ -S $work/agent.sock ]]; do
+  kill -0 "$agent" || exit 1
+  sleep 0.1
+done
+hold() {
+  SSH_AUTH_SOCK=$work/agent.sock ssh-add -q "$1" 2>/dev/null
+}
+hold_none() {
+  SSH_AUTH_SOCK=$work/agent.sock ssh-add -qD 2>/dev/null
+}
 ssh-keygen -q -t ed25519 -N '' -C 'pi-agent-proxy OS Login 1' -f "$work/key"
 key=$work/key.pub
-cp "$key" "$work/held"
+hold "$work/key"
 fails=0
 fail() {
   echo "os-login.sh $1" >&2
@@ -53,7 +60,7 @@ fail() {
 # Only the stand-in and the tools the script needs are on its PATH, so a
 # real gcloud here never answers in the stand-in's place.
 mkdir "$work/tools"
-for tool in ssh-keygen timeout sleep cp cat; do
+for tool in ssh-keygen ssh-add timeout sleep cp cat; do
   found=$(command -v "$tool")
   ln -s "$found" "$work/tools/$tool"
 done
@@ -97,21 +104,23 @@ grep -q "^EXIT" "$work/said" || fail "said no help"
 # A previous proxy's key, left in the file, is one the proxy now running
 # doesn't hold.
 ssh-keygen -q -t ed25519 -N '' -C 'pi-agent-proxy OS Login 2' -f "$work/other"
-cp "$work/other.pub" "$work/held"
+hold_none
+hold "$work/other"
 : >"$work/asked"
 run register "$key" || fail "failed with a key the proxy doesn't hold"
 grep -q "holds no key" "$work/said" || fail "didn't say the proxy holds no such key"
 grep -q "ssh-keys" "$work/asked" && fail "registered a key the proxy doesn't hold"
 
 # The proxy comes to hold the key while the register waits.
-rm "$work/held"
+hold_none
 : >"$work/asked"
 (
   sleep 1
-  cp "$key" "$work/held"
+  hold "$work/key"
 ) &
+holding=$!
 run register "$key" || fail "failed with a key the proxy came to hold"
-wait
+wait "$holding"
 asked "update --key-file=$key --ttl=12h" || fail "didn't wait for the proxy to hold its key"
 
 : >"$work/asked"
