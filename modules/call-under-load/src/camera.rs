@@ -15,9 +15,14 @@
 //! Frames arriving is what's checked, not what's in them. When the camera
 //! gives nothing, a notice from Camera says so, with the meeting and how
 //! soon it starts.
+//!
+//! Long because each way a check can go wrong under load, a relay mending
+//! itself, a camera not there yet, systemd slow to answer, is a case its
+//! tests replay beside the code that decides it.
 
 use crate::gate::{Calendar, Call, Meeting};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -38,11 +43,16 @@ const ANSWER: Duration = Duration::from_secs(10);
 /// frame and stalls isn't taken for one that works.
 const FRAMES: &str = "5";
 /// How many frames are passed over first: a relay hands its splash to the
-/// loopback until it hears a reader and starts the camera, so the first
-/// frames may be the splash. Ten seconds of them at 30 a second leaves a
-/// relay slowed by load time to hear the reader, and a working camera
-/// still gives its five well inside the wait.
-const SPLASH: &str = "300";
+/// loopback until it hears a reader, then stops it before the camera's
+/// setup, so only the first frames may be the splash. Three seconds of
+/// them at 30 a second gives a loaded relay time to hear the reader,
+/// while a camera whose first frame takes 40 s needs only a little over
+/// a frame a second after it to give the rest inside the wait.
+const SPLASH: &str = "90";
+/// How long systemd is given to say which run the relay is on, each time
+/// it's asked: six asks at most keep the whole check inside its unit's
+/// four minutes.
+const SHOWN: Duration = Duration::from_secs(5);
 /// How long a meeting's check is remembered, so each is checked once.
 const KEPT_MS: u64 = 24 * 60 * MIN_MS;
 
@@ -120,15 +130,36 @@ const RELAY: &str = "camera.service";
 /// such unit or none running, or nothing when systemd couldn't be asked,
 /// as under the load that stalls a camera, after asking three times.
 pub fn relay_run() -> Option<String> {
-    (0..3).find_map(|_| {
-        let shown = Command::new("systemctl")
-            .args(["show", "--value", "--property=InvocationID", RELAY])
-            .stderr(Stdio::null())
-            .output()
-            .ok()
-            .filter(|shown| shown.status.success())?;
-        Some(String::from_utf8_lossy(&shown.stdout).trim().to_owned())
-    })
+    let args = ["show", "--value", "--property=InvocationID", RELAY].map(String::from);
+    (0..3).find_map(|_| said("systemctl", &args, SHOWN))
+}
+
+/// What `program` printed, trimmed, once it exits 0 inside `deadline`, or
+/// nothing when it couldn't run, failed, or was killed at the deadline.
+fn said(program: &str, args: &[String], deadline: Duration) -> Option<String> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let until = Instant::now() + deadline;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => break,
+            Ok(None) if Instant::now() < until => thread::sleep(Duration::from_millis(50)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(Some(_)) | Err(_) => return None,
+        }
+    }
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    Some(out.trim().to_owned())
 }
 
 /// What a read came to, given the relay's run before and after it: frames
@@ -378,6 +409,11 @@ pub fn gives(camera: &Path, read: bool) -> Result<(), Fault> {
     }
     let before = relay_run();
     let gave = within("v4l2-ctl", &asked(camera, true), WAIT);
+    // A camera silent the whole wait is told whichever run it was on, so
+    // the relay isn't asked again and the notice isn't held up.
+    if gave == Err(Fault::Silent) {
+        return gave;
+    }
     judged(gave, before.as_deref(), relay_run().as_deref())
 }
 
@@ -587,7 +623,7 @@ mod tests {
         let read = asked(Path::new("/dev/video32"), true);
         assert_eq!(
             read.join(" "),
-            "--device /dev/video32 --stream-mmap --stream-skip 300 --stream-count 5 \
+            "--device /dev/video32 --stream-mmap --stream-skip 90 --stream-count 5 \
              --stream-to /dev/null",
             "a loopback's frames weren't all sent to /dev/null"
         );
@@ -786,6 +822,36 @@ mod tests {
         assert!(
             started.elapsed() < Duration::from_secs(3),
             "a program past its time was waited on to its end"
+        );
+    }
+
+    #[test]
+    fn systemd_s_answer_is_taken_only_when_it_comes_in_time() {
+        let words = |said: &[&str]| said.iter().map(|&word| word.to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            said("echo", &words(&[" run-a "]), Duration::from_secs(10)),
+            Some("run-a".to_string()),
+            "an answer in time wasn't taken"
+        );
+        assert_eq!(
+            said("true", &[], Duration::from_secs(10)),
+            Some(String::new()),
+            "an empty answer, as for no such unit, was taken for a failed ask"
+        );
+        assert_eq!(
+            said("false", &[], Duration::from_secs(10)),
+            None,
+            "a failed ask was taken for an answer"
+        );
+        let started = Instant::now();
+        assert_eq!(
+            said("sleep", &words(&["5"]), Duration::from_millis(300)),
+            None,
+            "an ask past its time was taken for an answer"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "an ask past its time was waited on to its end"
         );
     }
 }
