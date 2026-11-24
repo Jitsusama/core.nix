@@ -918,6 +918,9 @@ impl Pinner {
         if let Some((first, why)) = self.pinning.primary(uplink) {
             eprintln!("{}", pin::let_go(first, why));
         }
+        if let Some(link) = self.pinning.voided() {
+            eprintln!("{}", pin::voided_on(&link));
+        }
         let unnamed = uplink.is_some_and(|(_, network)| pin::unnamed(network));
         self.unnamed_since = unnamed.then(|| self.unnamed_since.unwrap_or(now));
         if let Some(since) = self.unnamed_since

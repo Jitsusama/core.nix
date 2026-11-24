@@ -19,8 +19,12 @@ pub enum Why {
     /// The guard sent it back to its base three times in a row, and left
     /// it unlimited a while.
     GaveUp,
-    /// Nothing stands, and it holds or climbs where it may.
-    Clear,
+    /// Nothing stands, and it holds or climbs where it may; `probing`
+    /// while it looks past its hold for a few seconds for more room, as a
+    /// stay's first probe does at a tenth over, so a rate over the line's
+    /// doesn't read as a hold above it (23 November, 23:54: "12.5 Mb/s of
+    /// 12.0 Mb/s").
+    Clear { probing: bool },
     /// The line's own delay stood this long, in ms, and it was cut; eased
     /// once the cut drained it.
     Line { delay_ms: f64, eased: bool },
@@ -70,7 +74,7 @@ impl Why {
             Why::LetGo => "let-go",
             Why::Unanswered => "unanswered",
             Why::GaveUp => "gave-up",
-            Why::Clear => "clear",
+            Why::Clear { .. } => "clear",
             Why::Line { .. } => "line",
             Why::Vpn { .. } => "vpn",
             Why::Far { .. } => "far",
@@ -104,16 +108,21 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             "Upload {rate}: three returns in a row found no queue a cut drains, so it's left \
              alone a while."
         ),
-        Why::Clear => match anchor {
-            Some(anchor) => {
-                format!(
-                    "Upload {rate} of {}, the line's rate: clear for {}.",
+        Why::Clear { probing } => {
+            let looking = if probing {
+                ", looking past its hold a few seconds for more room"
+            } else {
+                ""
+            };
+            match anchor {
+                Some(anchor) => format!(
+                    "Upload {rate} of {}, the line's rate{looking}: clear for {}.",
                     mbit(anchor),
                     plural(for_s)
-                )
+                ),
+                None => format!("Upload {rate}{looking}: clear for {}.", plural(for_s)),
             }
-            None => format!("Upload {rate}: clear for {}.", plural(for_s)),
-        },
+        }
         Why::Line { delay_ms, eased } => format!(
             "Upload {rate}: the line's delay stood {delay_ms:.0} ms, so it was cut{}; {held}.",
             if eased { ", and that eased it" } else { "" }
@@ -276,12 +285,31 @@ mod tests {
     #[test]
     fn a_clear_upload_says_its_rate_against_the_line_and_for_how_long() {
         assert_eq!(
-            say(Why::Clear, Some(10_800), Some(12_000.0), 754.0),
+            say(
+                Why::Clear { probing: false },
+                Some(10_800),
+                Some(12_000.0),
+                754.0
+            ),
             "Upload 10.8 Mb/s of 12.0 Mb/s, the line's rate: clear for 12 min."
         );
         assert_eq!(
-            say(Why::Clear, Some(10_800), None, 42.0),
+            say(Why::Clear { probing: false }, Some(10_800), None, 42.0),
             "Upload 10.8 Mb/s: clear for 42 s."
+        );
+    }
+
+    #[test]
+    fn a_probe_past_the_line_says_it_looks_for_room_rather_than_holds_there() {
+        assert_eq!(
+            say(
+                Why::Clear { probing: true },
+                Some(12_505),
+                Some(12_000.0),
+                60.0
+            ),
+            "Upload 12.5 Mb/s of 12.0 Mb/s, the line's rate, looking past its hold a few \
+             seconds for more room: clear for 1 min."
         );
     }
 
@@ -408,7 +436,7 @@ mod tests {
             (Why::LetGo, "let-go"),
             (Why::Unanswered, "unanswered"),
             (Why::GaveUp, "gave-up"),
-            (Why::Clear, "clear"),
+            (Why::Clear { probing: false }, "clear"),
             (
                 Why::Line {
                     delay_ms: 1.0,
@@ -506,7 +534,12 @@ mod tests {
         // taken back each time (16 times on 16 November).
         let clear = Reason {
             up: Some(10_800),
-            said: say(Why::Clear, Some(10_800), Some(12_000.0), 5.0),
+            said: say(
+                Why::Clear { probing: false },
+                Some(10_800),
+                Some(12_000.0),
+                5.0,
+            ),
         };
         assert_eq!(
             holding("wlp0s20f3", Some(10_800), None, Some(&clear)),
@@ -594,7 +627,7 @@ mod tests {
     fn a_hold_of_the_download_alone_is_not_given_the_upload_s_reason() {
         let clear = Reason {
             up: None,
-            said: say(Why::Clear, None, Some(12_000.0), 5.0),
+            said: say(Why::Clear { probing: false }, None, Some(12_000.0), 5.0),
         };
         assert_eq!(
             holding("wlp0s20f3", None, Some(80_000), Some(&clear)),
