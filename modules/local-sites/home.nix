@@ -181,7 +181,12 @@ let
     else if builtins.isList id && builtins.length id == 1 then
       keyOf (builtins.head id)
     else if builtins.isAttrs id then
-      keyOf (builtins.fromJSON (builtins.toJSON id))
+      # A set toJSON writes as an object comes back a set, which Words.qml
+      # keys as "[object Object]", no act's id.
+      let
+        json = builtins.fromJSON (builtins.toJSON id);
+      in
+      if builtins.isAttrs json then null else keyOf json
     else
       null;
   nameIn =

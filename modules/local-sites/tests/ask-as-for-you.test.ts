@@ -157,9 +157,12 @@ const LOOK = {
   },
 };
 
-/** The stops and closing marks a part's end is tried with, and none of either. */
+/**
+ * The stops and closing marks a part's end is tried with, none of either,
+ * and marks ENDED takes for neither, so a set widened shows as one narrowed.
+ */
 const TRIED_STOPS = ["", ".", "!", "?", "\u2026", ",", ":", ";"];
-const TRIED_CLOSERS = ["", '"', "'", "\u2019", "\u201d", ")", "]", '")'];
+const TRIED_CLOSERS = ["", '"', "'", "\u2019", "\u201d", ")", "]", '")', "\u00bb", "*"];
 
 /** Each kind and state a look may say, and one of each For You doesn't know. */
 const KINDS = ["pr", "page", "file", "diff", "terminal", "folder"];
@@ -193,9 +196,9 @@ const LOOKS: Record<string, object> = {
     happened: "Merged v1.2 of the kit",
     matters: "Done. Then more",
   },
-  // Each stop ENDED takes or doesn't, then each mark it lets close one,
-  // none or two, so its anchor, its set of stops and of closers and how
-  // many it takes all show.
+  // Each stop ENDED takes or doesn't, then each mark it lets close one or
+  // doesn't, none or two, so its anchor, its set of stops and of closers
+  // and how many it takes all show.
   ...Object.fromEntries(
     TRIED_STOPS.flatMap((stop) =>
       TRIED_CLOSERS.map((closer) => [

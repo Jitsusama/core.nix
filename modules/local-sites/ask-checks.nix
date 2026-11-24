@@ -67,6 +67,7 @@ in
   local-sites-refuses-renamed-look-acts =
     let
       clear = "verb:on:look:clear";
+      talk = "verb:agent:talk";
       # The graphical machine's account with the sites, its launcher saying `words`.
       sites =
         said:
@@ -104,23 +105,54 @@ in
             name = "Dismiss";
           }
           {
+            # Written as the string its __toString gives.
+            id = {
+              __toString = _: talk;
+            };
+            name = "Chat";
+          }
+          {
             id = other;
             name = "Something Else";
           }
         ];
       };
+      # Ids words.json writes as objects, which Words.qml keys as no act.
+      odd = coreWords // {
+        things = coreWords.things ++ [
+          {
+            id = {
+              a = 1;
+            };
+            name = "Odd";
+          }
+          {
+            id = [ { a = 1; } ];
+            name = "Odder";
+          }
+          {
+            id = {
+              outPath = {
+                a = 1;
+              };
+            };
+            name = "Oddest";
+          }
+        ];
+      };
       refusals = lib.mapAttrs (_: refused) {
         core = coreWords;
-        inherit inPlace appended;
+        inherit inPlace appended odd;
       };
       says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
       lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry keyed by a list of one set words.json writes as the id, refuses core's own words, or doesn't name only the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry keyed by a list of one set or a set words.json writes as the id, refuses core's own words or ids written as objects, or doesn't name only the act's old and new word."
       (
         refusals.core == null
+        && refusals.odd == null
         && says "inPlace" "acts on a look (${clear} from Clear It to Drop It),"
-        && says "appended" "acts on a look (${clear} from Clear It to Dismiss),"
+        && says "appended" "acts on a look (${clear} from Clear It to Dismiss, ${talk} from Talk to Chat),"
       );
 }
