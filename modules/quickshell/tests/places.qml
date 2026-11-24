@@ -952,6 +952,13 @@ QtObject {
         expect("no view words, or none whole, are none", [Viewers.waitingWords({}),
             Viewers.waitingWords({ view: [] }), Viewers.waitingWords({ view: ["node", 3] }),
             Viewers.waitingWords(null)], [null, null, null, null]);
+        // A row's Reopen is said by the row's name as the daemon words it,
+        // its id only where the row has no name to say.
+        expect("a row is said by its name", Viewers.rowSaid("s-a", { name: "Reef" }),
+            { address: "Reef", machine: "" });
+        expect("one with an empty name, or none, by its id", [Viewers.rowSaid("s-a",
+            { name: "" }).address, Viewers.rowSaid("s-a", {}).address,
+            Viewers.rowSaid("s-a", undefined).address], ["s-a", "s-a", "s-a"]);
 
         // Each kept place is one viewer to open once its session runs
         // hosted with words to view it by, and then kept no more; one whose
