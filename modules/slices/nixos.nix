@@ -357,6 +357,7 @@ let
   ++ lib.attrNames systemFloors
   ++ map (disk: "disk-order-${disk}") (lib.attrNames disks)
   ++ map (disk: "disk-writeback-${disk}") (lib.attrNames throttled);
+  systemdRun = pkgs.callPackage ./systemd-run.nix { systemd = config.systemd.package; };
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -478,6 +479,10 @@ in
   };
 
   config = {
+    # A wrapper whose table nothing could hold is said where evaluation
+    # reports, not only traced, so core.lib.evaluates refuses such a machine.
+    warnings = lib.optional (!systemdRun.held) systemdRun.unheld;
+
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.
@@ -530,10 +535,9 @@ in
     # A unit an agent starts with systemd-run stays in the agent's slice,
     # rather than landing among Joel's apps, as systemd-run.sh says. It reads
     # calls by the options of the systemd the machine runs, held to them as
-    # it's built.
-    environment.systemPackages = [
-      (pkgs.callPackage ./systemd-run.nix { systemd = config.systemd.package; })
-    ];
+    # it's built where the builder can run that systemd or has one built as
+    # it is, and warned of where it can't.
+    environment.systemPackages = [ systemdRun ];
 
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;

@@ -411,8 +411,11 @@
     only inside another's scope, a call naming a slice and a call to the system manager as they
     were; and that the hold refuses, each by the step that says so, a table short of an option
     or reading one as valued that isn't, an option the table can't say, and a systemd-run that
-    can't list its options, while it holds a stand-in saying them unchanged, and the wrapper
-    isn't built without it
+    can't list its options, failing its build, while it holds a stand-in saying them unchanged;
+    that the wrapper isn't built without the hold, which is to the systemd it wraps, or for an
+    aarch64 machine built here to the builder's own systemd built alike; and that one with a
+    patched systemd, or one of no version, or cross-built from a Mac, is built unheld with no
+    hold to read and says so, and that a machine cross-built with a patched systemd warns of it
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
