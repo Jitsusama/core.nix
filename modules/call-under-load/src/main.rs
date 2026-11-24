@@ -200,8 +200,8 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     let Some(meeting) = camera::due(&calendar, now, &starts) else {
         return Ok(());
     };
-    // Asked up to three times, as the hourly run does, since one slow
-    // answer under the heaviest load would leave the minute unchecked.
+    // Asked up to three times, since one slow answer under the heaviest
+    // load would leave the minute unchecked.
     let mut asked = gate::a_call();
     for _ in 1..call::UNSURE {
         if !matches!(asked, gate::Call::Unknown(_)) {
@@ -215,17 +215,46 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
             meeting.title
         ));
     }
-    let Some(node) = camera::which(Path::new("/"), device) else {
-        return said("no camera to check".to_string());
+    let (node, read, gave) = match camera::which(Path::new("/"), device) {
+        Some(node) => {
+            let read = camera::loopback(Path::new("/"), &node);
+            let gave = camera::gives(&node, read);
+            (node, read, gave)
+        }
+        None => match device {
+            Some(device) => (PathBuf::from(device), true, Err(camera::Fault::Missing)),
+            None => return said("no camera to check".to_string()),
+        },
     };
-    let read = camera::loopback(Path::new("/"), &node);
-    let gave = camera::gives(&node, read);
-    // He's told before the check is kept, so a state file that can't be
-    // written never keeps the notice from him, and a notice that couldn't
-    // be sent keeps the meeting due, to be checked and told next minute.
-    let noticed = match &gave {
-        Ok(()) => Ok(()),
-        Err(fault) => notice(&camera::told(meeting, seconds_now() * 1000, read, fault)),
+    let now = seconds_now() * 1000;
+    let what = if read {
+        "gives frames"
+    } else {
+        "answers; its picture isn't read"
+    };
+    let (line, noticed) = match camera::settled(gave, meeting.start, now) {
+        camera::Outcome::Fine => (format!("{} {what}", node.display()), Ok(())),
+        camera::Outcome::Again(fault) => {
+            let line = format!(
+                "{}: {fault}; it's looked at again next minute",
+                node.display()
+            );
+            return said(format!("{line} before {}", meeting.title));
+        }
+        camera::Outcome::Late(fault) => (
+            format!(
+                "{}: {fault}, though the meeting had begun, so untold",
+                node.display()
+            ),
+            Ok(()),
+        ),
+        // He's told before the check is kept, so a state file that can't
+        // be written never keeps the notice from him, and a notice that
+        // couldn't be sent keeps the meeting due for the next minute.
+        camera::Outcome::Tell(fault) => (
+            format!("{}: {fault}", node.display()),
+            notice(&camera::told(meeting, now, read, &fault)),
+        ),
     };
     let kept = if noticed.is_ok() {
         camera::remember(&file, starts, meeting.start).map_err(|error| {
@@ -235,18 +264,7 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     } else {
         Ok(())
     };
-    said(match &gave {
-        Ok(()) => format!(
-            "{} gives a picture before {}",
-            node.display(),
-            meeting.title
-        ),
-        Err(fault) => format!(
-            "{} gives no picture before {}: {fault}",
-            node.display(),
-            meeting.title
-        ),
-    })?;
+    said(format!("{line} before {}", meeting.title))?;
     noticed.and(kept)
 }
 

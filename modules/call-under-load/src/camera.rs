@@ -50,6 +50,42 @@ pub enum Fault {
     /// The relay feeding the loopback started again while it was read, so
     /// what came may be its placeholder rather than the camera.
     Restarted,
+    /// The machine's camera, or the file naming it, isn't there.
+    Missing,
+}
+
+/// What a check comes to.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Outcome {
+    /// The camera gave what it was asked for.
+    Fine,
+    /// Joel is told, and the meeting kept as checked once he is.
+    Tell(Fault),
+    /// Read again next minute: a relay mending itself or a camera not
+    /// there yet may be fine by then, and the window has a minute left.
+    Again(Fault),
+    /// The meeting began while it was read, as across a suspend, so it's
+    /// kept as checked and only journalled: a notice now would be late.
+    Late(Fault),
+}
+
+/// Whether the next minute's check would fall outside the window, so a
+/// fault seen now must be told now.
+pub fn last_chance(start: u64, now: u64) -> bool {
+    start < now + SOONEST_MS + MIN_MS
+}
+
+/// What a check of the meeting starting at `start`, ended at `now`, comes
+/// to.
+pub fn settled(gave: Result<(), Fault>, start: u64, now: u64) -> Outcome {
+    match gave {
+        Ok(()) => Outcome::Fine,
+        Err(fault) if start <= now => Outcome::Late(fault),
+        Err(fault @ (Fault::Restarted | Fault::Missing)) if !last_chance(start, now) => {
+            Outcome::Again(fault)
+        }
+        Err(fault) => Outcome::Tell(fault),
+    }
 }
 
 impl std::fmt::Display for Fault {
@@ -58,6 +94,7 @@ impl std::fmt::Display for Fault {
             Fault::Silent => f.write_str("nothing came"),
             Fault::Ended(how) => f.write_str(how),
             Fault::Restarted => f.write_str("its relay started again while it was read"),
+            Fault::Missing => f.write_str("it isn't there"),
         }
     }
 }
@@ -257,6 +294,7 @@ pub fn told(meeting: &Meeting, now: u64, read: bool, fault: &Fault) -> (String, 
         (true, Fault::Silent) => "The camera gave no picture in 2 minutes",
         (true, Fault::Ended(_)) => "The camera couldn't be opened",
         (true, Fault::Restarted) => "The camera gave no picture and had to start again",
+        (_, Fault::Missing) => "The camera isn't there",
         (false, _) => "The camera didn't answer",
     };
     (
@@ -462,8 +500,10 @@ mod tests {
         let plugged = which(&root, Some("/run/camera/device"));
         let none = which(&root.join("nowhere"), None);
         let gone = which(&root.join("nowhere"), Some("/run/camera/device"));
-        fs::write(root.join("run/camera/device"), "\n").unwrap();
-        let empty = which(&root.join("nowhere"), Some("/run/camera/device"));
+        let alone = root.join("alone");
+        fs::create_dir_all(alone.join("run/camera")).unwrap();
+        fs::write(alone.join("run/camera/device"), "\n").unwrap();
+        let empty = which(&alone, Some("/run/camera/device"));
         // A folder stands in for a camera's node: there, and not a file, so
         // never read as one.
         fs::create_dir_all(root.join("nowhere/dev/video0")).unwrap();
@@ -576,6 +616,52 @@ mod tests {
         assert!(
             cut.contains(&format!("{}... starts", "x".repeat(57))),
             "a long title wasn't cut short: {cut}"
+        );
+    }
+
+    #[test]
+    fn a_fault_is_told_once_the_window_has_no_minute_left_or_at_once_if_it_s_final() {
+        let start = 100 * MIN_MS;
+        let early = start - 5 * MIN_MS;
+        let last = start - 3 * MIN_MS - 1;
+        assert_eq!(
+            settled(Ok(()), start, early),
+            Outcome::Fine,
+            "frames weren't taken"
+        );
+        assert_eq!(
+            settled(Err(Fault::Restarted), start, early),
+            Outcome::Again(Fault::Restarted),
+            "a relay mending itself was told with minutes left to read it again"
+        );
+        assert_eq!(
+            settled(Err(Fault::Missing), start, early),
+            Outcome::Again(Fault::Missing),
+            "a camera not there yet was told with minutes left to look again"
+        );
+        assert_eq!(
+            settled(Err(Fault::Missing), start, last),
+            Outcome::Tell(Fault::Missing),
+            "a camera missing for the whole window was never told"
+        );
+        assert_eq!(
+            settled(Err(Fault::Restarted), start, last),
+            Outcome::Tell(Fault::Restarted),
+            "a relay restarting at the last chance was never told"
+        );
+        assert_eq!(
+            settled(Err(Fault::Silent), start, early),
+            Outcome::Tell(Fault::Silent),
+            "two minutes of nothing wasn't told at once"
+        );
+        assert_eq!(
+            settled(Err(Fault::Silent), start, start),
+            Outcome::Late(Fault::Silent),
+            "a meeting already begun was told as starting"
+        );
+        assert!(
+            !last_chance(start, start - 4 * MIN_MS) && last_chance(start, last),
+            "the last minute of the window wasn't told from the rest"
         );
     }
 
