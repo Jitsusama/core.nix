@@ -1768,7 +1768,7 @@ Singleton {
             // The quest's name, "" where the launcher didn't say it, and
             // what the foot says the start by, as its name.
             property string title: ""
-            readonly property var said: ({ address: quest, machine: "", name: title })
+            readonly property var footed: ({ address: quest, machine: "", name: title })
             required property string folder
             required property bool orchestrates
             property bool opening: false
@@ -1793,7 +1793,7 @@ Singleton {
                         + `as ${id ?? "no id"}, but it can't be viewed by that host and id`);
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
                         + " in pi's host");
-                    root.unhosted(said, "unviewable");
+                    root.unhosted(footed, "unviewable");
                     return;
                 }
                 if (started) {
@@ -1805,7 +1805,7 @@ Singleton {
                     const listed = root.listedNamed(viewer);
                     if (listed)
                         Niri.act({ FocusWindow: { id: listed.id } });
-                    else if (!root.heldBack(id, viewer, said))
+                    else if (!root.heldBack(id, viewer, footed))
                         root.viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""),
                             "attach", "--host", host, "--session", id],
                             viewer, null, Viewers.viewerTitle("", title || quest, folder));
