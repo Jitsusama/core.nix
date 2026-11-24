@@ -155,7 +155,9 @@ let
         # loses its attachment stops the reuse, so a dead network isn't kept,
         # though the next boot likely still fails while it holds the subnet.
         # Every guest of a process has one hardware address, so the reused
-        # network's DHCP server doesn't run out of leases for new ones.
+        # network's DHCP server leases it again rather than a new one each
+        # boot; a new process still brings a new address, so a /30 can run
+        # out of leases at a restart until the old one's lease ends.
         virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [
             ./vzvm-without-dns-proxy.patch
