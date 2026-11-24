@@ -635,7 +635,8 @@ import ../lib/pytest-vm-test.nix { inherit pkgs; } {
         (config.boot.kernelPackages.callPackage ../stand-ins/stand-in-light { })
         (config.boot.kernelPackages.callPackage ../stand-ins/stand-in-lid { })
         (config.boot.kernelPackages.callPackage ../stand-ins/stand-in-monitor { })
-        # The one the role's cameras relay through, so the two never meet.
+        # The loopback module's, so the stand-in camera below is made with
+        # the build the laptop's cameras relay through.
         config.jitsusama.v4l2loopback.package
       ];
       boot.kernelModules = [
@@ -763,8 +764,11 @@ import ../lib/pytest-vm-test.nix { inherit pkgs; } {
           ExecStart = "${lib.getExe pkgs.python3} ${frontDesk}";
         };
       };
+      # The loopback makes no camera as it loads, as on the laptop, whose
+      # relays name theirs; this VM names none, so it says so itself.
       boot.extraModprobeConfig = ''
         options mac80211_hwsim radios=3
+        options v4l2loopback devices=0
       '';
       systemd.services.stand-in-camera = {
         wantedBy = [ "multi-user.target" ];
