@@ -27,6 +27,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -39,6 +40,8 @@ RELEASED = "op://Keeping/Lighthouse Console/password"
 STAND_IN = "stand-in-password"
 # Where agents put their asks up, and the daemon its answers.
 ASKS = "$XDG_RUNTIME_DIR/secret-asks"
+# How long a yes may take to release and run on a quiet host, the fence and op's stand-in included.
+RELEASING = dt.timedelta(seconds=30)
 # The fence's list of what it hides, which the daemon reads at every ask and refuses every ask
 # without, from the harness's install, which no VM has.
 FENCE_LIST = (
@@ -131,20 +134,27 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
     changed, rather than only the time it waited.
     """
     path = f"{ASKS}/{ask}.answer.json"
+    # Paced as every other wait here is, so a release slow on a busy builder isn't read as a
+    # yes that was lost.
+    allowed = RELEASING * vm_helpers.pace(vm_helpers.busyness())
     try:
         desktop.machine.wait_until_succeeds(
-            desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
+            desktop.in_session(f"test -e {path}"), timeout=allowed
         )
     except AssertionError as unanswered:
         # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
-        # rather than a timeout of its own; the launcher's reports, each a whole state naming
-        # the ask, would bury the refusal line, so they're left out.
+        # rather than a timeout of its own. The launcher's showings, each a whole state naming
+        # the ask, would bury the refusal, so they're left out; its other reports stay, since
+        # the refusal is one (Launcher.qml's becameNot says "not become ask:...").
         said = desktop.diagnosis(
             "journalctl --user -u quickshell --no-pager -o cat"
-            f" --after-cursor={shlex.quote(since)} | grep -avF 'report['"
+            f" --after-cursor={shlex.quote(since)} | grep -avF 'report[showing '"
             f" | grep -a -F 'ask:{ask}' || true"
         )
-        message = f"the ask was never answered; the shell said of it: {said.strip() or 'nothing'}"
+        message = (
+            f"the ask wasn't answered within {allowed.total_seconds():.0f} s;"
+            f" the shell said of it: {said.strip() or 'nothing'}"
+        )
         raise AssertionError(message) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
     return answer
@@ -237,8 +247,16 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     asks_open_on(desktop, ask, why)
     # A move of his over the rows times the line, though there's nowhere to move to; on the
     # find, where the launcher opens, an arrow could be a terminal's.
+    # Asks reads keys only over passwords; elsewhere asksUnread is null, and the waits below
+    # would order nothing, so that's said here rather than left to a timeout.
+    assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
     desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    # The Escape is seen read by Asks alone too, since read with the j it resets the line.
+    desktop.launcher_until(
+        lambda shown: shown["mode"] == "normal"
+        and selects(shown, why)
+        and shown["asksUnread"] == 0
+    )
     # A j not read leaves the line untimed and the yes refused, so the release below is what
     # proves it was. It's seen read by Asks before Return goes, since keys read in one turn are
     # read together, and a move read with the Return after it times nothing
