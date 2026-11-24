@@ -260,7 +260,9 @@ impl Keeping {
 
 /// Of `answer`, the daemon's to a sprout, only what the shell tells: the
 /// machine and holder's id of one started, or the code and words of one
-/// that wasn't.
+/// that wasn't, with the node's own code for its refusal where it gave
+/// one, so a start told from its kept end still asks where as the
+/// answer itself would (Sprouting.js reads `refusal`).
 fn told_of_an_end(answer: &Value) -> Value {
     let mut kept = json!({});
     if let Some(begun) = answer.get("sprouted") {
@@ -269,6 +271,9 @@ fn told_of_an_end(answer: &Value) -> Value {
     }
     if let Some(error) = answer.get("error") {
         kept["error"] = json!({"code": words(&error["code"]), "message": words(&error["message"])});
+        if let Some(refusal) = error.get("refusal").filter(|refusal| refusal.is_string()) {
+            kept["error"]["refusal"] = words(refusal);
+        }
     }
     kept
 }
@@ -445,6 +450,19 @@ mod tests {
         let mut starts = Starts::default();
         starts.begun("a-1", NOW);
         let refused = json!({"error": {"code": "refused", "message": "no folder there"}});
+        starts.ended("a-1", &refused);
+        assert_eq!(starts.records()[0]["start"]["ended"], refused);
+    }
+
+    /// A refusal the node coded keeps its code, so a start told from its
+    /// kept end, the daemon having gone while it asked, still asks where
+    /// (#6373's review, F22).
+    #[test]
+    fn a_coded_refusal_keeps_the_nodes_code() {
+        let mut starts = Starts::default();
+        starts.begun("a-1", NOW);
+        let refused = json!({"error": {"code": "unsprouted", "message": "say which",
+            "refusal": "needs_folder"}});
         starts.ended("a-1", &refused);
         assert_eq!(starts.records()[0]["start"]["ended"], refused);
     }

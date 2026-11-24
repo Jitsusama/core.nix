@@ -1935,6 +1935,7 @@ Provider {
         const text = where ? Sprouting.toldWhere(how, sproutWords())
             : Sprouting.told(how, sproutWords());
         sproutSays(key, text);
+        sproutAsked = where ? { key, how, text } : null;
         // Told Joel before the daemon is told it's told, so it's kept until he is.
         sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
@@ -1963,6 +1964,11 @@ Provider {
     // carries to the folder Joel picks next, "" when none does.
     property var sproutGiven: ({ words: "", letters: 0 })
     property string sproutCarried: ""
+    // The start that last asked where, `{ key, how, text }`, `text` what it
+    // said; null once none does. A shut lets its carried words go, so what
+    // it said, which promised they go with the folder, is said plainly then
+    // (sproutShut).
+    property var sproutAsked: null
     // Steps Joel out of the act `key`, whose start wanted a repository, back
     // onto Start New Work's folders, its words carried to whichever he picks
     // (Sprouting.asksWhere), only while he's still in its field to be
@@ -2012,11 +2018,21 @@ Provider {
     // The launcher shut, or its opening was let go: what the foot said of
     // a start, unread by Sprouting.noticedAtShut, is noticed, and the foot
     // forgets it, so the next opening doesn't say it again.
+    // Words it carried to a folder go too, so what the start that asked
+    // where said, on its act and in the notice, no longer says they go with
+    // it, but what gets past it (#6373's review, F34).
     function sproutShut() {
-        const footed = sproutFooted;
+        const asked = sproutCarried !== "" ? sproutAsked : null;
+        const plain = asked === null ? "" : Sprouting.told(asked.how, sproutWords());
+        const unpromised = text => asked !== null && text === asked.text ? plain : text;
+        const footed = sproutFooted === null ? null : Object.assign({}, sproutFooted,
+            { told: sproutFooted.told.map(unpromised) });
         const launcher = provider.launcher ?? null;
         sproutFooted = null;
         sproutCarried = "";
+        sproutAsked = null;
+        if (asked !== null && sproutSaid[asked.key] === asked.text)
+            sproutSays(asked.key, plain);
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;

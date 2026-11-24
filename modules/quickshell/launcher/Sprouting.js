@@ -417,8 +417,8 @@ function asksWhere(how) {
 }
 
 // Whether `launcher` may step Joel back to pick where act `key` starts: he's
-// still in its emptied field, no key since his Return (`letters` its
-// lettersAt then), and `folders` are listed to pick from.
+// in its emptied field, no letter or arrow since his Return (`letters` its
+// lettersAt then; Escape moves none), and `folders` are listed to pick from.
 function stepsBack(launcher, key, letters, folders) {
     return launcher?.open === true && launcher.asking?.key === key
         && launcher.lettersAt === letters && folders > 0;
