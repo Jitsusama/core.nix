@@ -48,7 +48,11 @@
 //! [`PACED`] after a call ends, or after [`QUIET`] with no new heavy start,
 //! starts come in [`PER_MINUTE`] a minute, oldest first, and none while
 //! memory stalls past [`STALLED`]; the rest wait their turn, frozen as
-//! though short of room, and are told so. A switch never waits its turn.
+//! though short of room, and are told so. The pace lasts past [`PACED`]
+//! until what it holds has come in, so its backlog isn't let in together
+//! as it ends. A switch never waits its turn, and the turn is no more
+//! than a wait for room: one that has waited [`LONGEST`] still comes in,
+//! [`SPACED`] apart, and counts against the pace.
 //!
 //! A start whose environment carries [`FIRST`] lands a switch, which
 //! every merged fix waits on: it waits behind other switches alone, and
@@ -72,6 +76,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -320,6 +325,7 @@ impl Door {
         self.admitted
             .retain(|scope, _| memory.contains_key(scope.as_path()));
         self.follow_call(machine, now);
+        self.settle_pace(now);
         // Let in before the room is counted, so it counts as growing.
         let blocking = self.let_in_blocking(coming, now, &mut act);
         let mut done: Vec<Done> = blocking.into_iter().map(Done::LetIn).collect();
@@ -445,7 +451,9 @@ impl Door {
             .first()
             .is_some_and(|held| now.saturating_duration_since(held.since) >= LONGEST);
         let switch = self.held.first().is_some_and(|held| held.first);
-        if machine.calling || !spaced || !waited || !switch && !self.turn(machine, now) {
+        // Its turn isn't asked: a start waits LONGEST at most, paced or
+        // not, and one each SPACED keeps the pace these come in at.
+        if machine.calling || !spaced || !waited {
             return None;
         }
         // Short of its floor still, it comes in ranked and capped at its own
@@ -490,10 +498,20 @@ impl Door {
     }
 
     /// Whether starts come in paced `now`: for [`PACED`] after a call ends
-    /// or a quiet stretch.
+    /// or a quiet stretch, and past it while a start other than a switch
+    /// is still held.
     fn pacing(&self, now: Instant) -> bool {
-        self.paced_from
-            .is_some_and(|from| now.saturating_duration_since(from) < PACED)
+        self.paced_from.is_some_and(|from| {
+            now.saturating_duration_since(from) < PACED || self.held.iter().any(|it| !it.first)
+        })
+    }
+
+    /// Ends a paced stretch `now` once [`PACED`] has passed and nothing it
+    /// held still waits, so a later hold for room alone isn't paced.
+    fn settle_pace(&mut self, now: Instant) {
+        if !self.pacing(now) {
+            self.paced_from = None;
+        }
     }
 
     /// Whether a start other than a switch may come in `now` on `machine`:
@@ -712,13 +730,22 @@ pub fn marked_first(environ: &[u8]) -> bool {
         .any(|pair| pair == FIRST.as_bytes())
 }
 
-/// Tells the process `pid`, on its standard error, that it waits at the
-/// door on `machine`; a process with nowhere to say it hears nothing.
-pub fn tell(pid: u32, machine: Machine) {
-    if let Ok(mut said) = fs::OpenOptions::new()
+/// Opens the standard error of the process `pid` to tell it something:
+/// without waiting, so a full pipe or a slow terminal never holds the
+/// sorter's one loop, which a paced stretch tells often, and never as the
+/// sorter's own terminal. A process with nowhere to say it hears nothing.
+fn stderr_of(pid: u32) -> Option<fs::File> {
+    fs::OpenOptions::new()
         .append(true)
+        .custom_flags(crate::joins::O_NONBLOCK | crate::joins::O_NOCTTY)
         .open(format!("/proc/{pid}/fd/2"))
-    {
+        .ok()
+}
+
+/// Tells the process `pid`, on its standard error, that it waits at the
+/// door on `machine`.
+pub fn tell(pid: u32, machine: Machine) {
+    if let Some(mut said) = stderr_of(pid) {
         let why = if machine.calling {
             "a call is on and this machine has"
         } else {
@@ -741,16 +768,14 @@ pub fn tell(pid: u32, machine: Machine) {
 /// Tells the process `pid`, on its standard error, that it waits its turn
 /// at the door while starts come in paced.
 pub fn tell_paced(pid: u32) {
-    if let Ok(mut said) = fs::OpenOptions::new()
-        .append(true)
-        .open(format!("/proc/{pid}/fd/2"))
-    {
+    if let Some(mut said) = stderr_of(pid) {
         let _ = writeln!(
             said,
             "jobs-sorter: heavy starts come in {PER_MINUTE} a minute for {} minutes after a call \
              or a quiet stretch, and none while memory stalls past {STALLED}%, so this waits its \
-             turn",
-            PACED.as_secs() / 60
+             turn, at most {} minutes",
+            PACED.as_secs() / 60,
+            LONGEST.as_secs() / 60
         );
     }
 }
@@ -1367,8 +1392,86 @@ mod tests {
         );
         assert_eq!(
             let_in(&door.look(work, ended, at + MINUTE + PACED, 1004, |_, _| true)),
-            4,
-            "once the pacing has run its course the rest come in as room allows"
+            PER_MINUTE + 1,
+            "past PACED the rest still come in at the pace, with the one waited LONGEST"
+        );
+        assert_eq!(
+            let_in(&door.look(work, ended, at + MINUTE * 2 + PACED, 1005, |_, _| true)),
+            1,
+            "and the last a minute later"
+        );
+        assert!(
+            !door.pacing(at + MINUTE * 2 + PACED),
+            "with nothing held the pace is over"
+        );
+    }
+
+    // Joel, 9 November: "we need to not pause anything". A start that waits
+    // its turn still waits no longer than LONGEST, as one short of room does.
+    #[test]
+    fn a_paced_start_comes_in_once_it_has_waited_longest() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..4];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 4);
+        let stalled = Machine {
+            stalled: STALLED * 4.0,
+            ..free(1 << 40)
+        };
+        assert_eq!(
+            let_in(&door.look(work, stalled, at + MINUTE, 1001, |_, _| true)),
+            0,
+            "while memory stalls none takes its turn"
+        );
+        assert_eq!(
+            let_in(&door.look(work, stalled, at + MINUTE + LONGEST, 1002, |_, _| true)),
+            1,
+            "the one held longest comes in once it has waited LONGEST, its turn or not"
+        );
+        assert_eq!(
+            let_in(&door.look(
+                work,
+                stalled,
+                at + MINUTE + LONGEST + SPACED,
+                1003,
+                |_, _| true
+            )),
+            1,
+            "and the next one SPACED later, as a wait for room is let go"
+        );
+    }
+
+    // The backlog a call or a quiet stretch leaves isn't let in together
+    // once PACED has passed: it comes in at the pace until it's gone.
+    #[test]
+    fn the_pace_lasts_until_what_it_held_has_come_in() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 13);
+        let ended = Machine {
+            stalled: STALLED * 4.0,
+            ..free(1 << 40)
+        };
+        let end = at + MINUTE;
+        assert_eq!(let_in(&door.look(work, ended, end, 1001, |_, _| true)), 0);
+        let roomy = free(1 << 40);
+        let came = let_in(&door.look(work, roomy, end + PACED, 1002, |_, _| true));
+        assert!(
+            (1..=PER_MINUTE + 1).contains(&came),
+            "past PACED, what's still held comes in at the pace, not all {came} at once"
+        );
+        assert!(
+            door.pacing(end + PACED),
+            "the pace holds while anything it held still waits"
         );
     }
 
