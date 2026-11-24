@@ -161,6 +161,9 @@ PanelWindow {
     readonly property bool still: going === null && moving === null && !holding
         && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
     property real stillSince: -1
+    // A check waits for its rest to begin before it pets it, since when
+    // that comes is niri's to say.
+    onStillSinceChanged: say()
     onStillChanged: {
         if (still) {
             rests();
@@ -182,9 +185,9 @@ PanelWindow {
     // commit up to 233 ms after it sat and the cat leant on a pointer it
     // had walked under. An ask only marks the frame Qt draws for its
     // sitting pose, drawing none of its own, but for when no frame was
-    // coming: a glance still draws two (MarginCat.restFrom).
+    // coming: a glance still draws two. Which frame took the ask, the
+    // frame alone can say (MarginCat.restFrom).
     property real satAt: -1
-    property int satFrom: 0
     function rests(): void {
         stillSince = -1;
         if (!window.FramePresentation.available) {
@@ -192,15 +195,13 @@ PanelWindow {
             return;
         }
         satAt = KeyTimes.now();
-        satFrom = window.FramePresentation.framesBegun;
         window.FramePresentation.ask();
     }
     // A frame niri showed or let go, `frame`, as MarginCat.restFrom says.
     function restSeen(frame: int): void {
         if (satAt < 0)
             return;
-        const seen = MarginCat.restFrom(frame, window.FramePresentation.timesOf(frame).synchronizing,
-            satFrom, satAt);
+        const seen = MarginCat.restFrom(window.FramePresentation.timesOf(frame), satAt);
         if (seen === "begins") {
             satAt = -1;
             stillSince = KeyTimes.now();
@@ -1380,6 +1381,8 @@ PanelWindow {
             leaning: window.leaning,
             swatting: window.swatting,
             held: window.holding,
+            // Whether its rest has begun, from which a pet may come.
+            resting: window.stillSince >= 0,
             // Whether it's held still under the launcher's card, which
             // what Joel's hand set off never is.
             stilled: window.stilled && !window.byHand,
