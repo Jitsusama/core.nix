@@ -38,6 +38,22 @@ const TARGET: f64 = 2.0;
 const SAYS: &str = "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it \
                     past 1 s, this hour";
 
+/// How long the hour waits for journalctl's reading of wifid's lines
+/// before reading the measure as unread, as every reading of the hour
+/// waits on it in turn.
+const READ_WITHIN: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// wifid's lines in the hour to `now` as journalctl prints them, or none
+/// when it fails or takes past `READ_WITHIN`, said in cadence's journal.
+#[must_use]
+pub fn read(now: i64) -> Option<String> {
+    let args = journal(now);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    crate::watch::down::answer("journalctl", &args, READ_WITHIN)
+        .inspect_err(|e| eprintln!("cadence: wifid's journal: {e}"))
+        .ok()
+}
+
 /// journalctl's arguments for wifid's lines in the hour to `now`, every
 /// one of them, since `--grep` matching nothing exits as if it failed.
 #[must_use]

@@ -150,7 +150,9 @@ pub fn unrun(
         let path = path.to_string_lossy();
         let key = format!("{} #{}", change.repo, change.number);
         let rev = revs.get(&change.repo).map(String::as_str);
-        let merge = merge_judged(&change.repo, rev, &path, change.number);
+        let walked = merge_judged(&change.repo, rev, &path, change.number);
+        let left = walked.is_err();
+        let merge = walked.ok().flatten();
         let why = judge(
             &change.repo,
             rev,
@@ -196,6 +198,9 @@ pub fn unrun(
                 })
             },
         );
+        // A walk left at its time says so, since its owner can't find a
+        // merge that is there, only wait for a quieter hour.
+        let why = why.map(|why| if left && why == UNFOUND { LEFT } else { why });
         keep_unseen(&firsts, &mut now_firsts, &key, why);
         if let Some(why) = why {
             unrun.insert(change.clone(), why);
@@ -207,28 +212,34 @@ pub fn unrun(
         .chain(&ran)
         .cloned()
         .collect();
-    if now_ran != ran
-        && let Err(error) = serde_json::to_string(&now_ran)
-            .map_err(std::io::Error::from)
-            .and_then(|kept| write_whole(&ran_at, &kept))
-    {
-        eprintln!(
-            "cadence: keeping what runs in {}: {error}",
-            ran_at.display()
-        );
-    }
-    if now_firsts != firsts
-        && let Err(error) = serde_json::to_string(&now_firsts)
-            .map_err(std::io::Error::from)
-            .and_then(|kept| write_whole(&firsts_at, &kept))
-    {
-        eprintln!(
-            "cadence: keeping when changes were installed in {}: {error}",
-            firsts_at.display()
-        );
-    }
+    keep_changed(&ran_at, &ran, &now_ran, "what runs");
+    keep_changed(
+        &firsts_at,
+        &firsts,
+        &now_firsts,
+        "when changes were installed",
+    );
     unrun
 }
+
+/// Writes `now` whole to `at` where it differs from `was`, what an hour
+/// read there, saying `what` it couldn't keep.
+fn keep_changed<T: serde::Serialize + PartialEq>(at: &Path, was: &T, now: &T, what: &str) {
+    if now != was
+        && let Err(error) = serde_json::to_string(now)
+            .map_err(std::io::Error::from)
+            .and_then(|kept| write_whole(at, &kept))
+    {
+        eprintln!("cadence: keeping {what} in {}: {error}", at.display());
+    }
+}
+
+/// Why a change merged here is held open when no merge of it is on main.
+const UNFOUND: &str = "cadence can't find its merge";
+
+/// Why a change is held open when its walk for its merge was left at its
+/// time, as on a loaded machine.
+const LEFT: &str = "cadence ran out of time walking main for its merge";
 
 /// Why the harness installed doesn't hold a change, which ends the time
 /// kept for its first install.
@@ -338,7 +349,7 @@ fn judge(
         return Some("cadence can't see what runs here");
     };
     let Some(sha) = merge else {
-        return Some("cadence can't find its merge");
+        return Some(UNFOUND);
     };
     match carries(sha, rev) {
         None => return Some("cadence can't find the revision running here"),
@@ -564,10 +575,17 @@ fn installed() -> Option<String> {
 
 /// `merge_of`, only where `judge` reads it, since a merge that isn't found
 /// costs a walk to main's root.
-fn merge_judged(repo: &str, rev: Option<&str>, path: &str, number: u64) -> Option<String> {
-    (rev.is_some() && RUN_HERE.contains(&repo))
-        .then(|| merge_of(path, number))
-        .flatten()
+fn merge_judged(
+    repo: &str,
+    rev: Option<&str>,
+    path: &str,
+    number: u64,
+) -> Result<Option<String>, Duration> {
+    if rev.is_some() && RUN_HERE.contains(&repo) {
+        merge_of(path, number)
+    } else {
+        Ok(None)
+    }
 }
 
 /// The commit on `path`'s main that merged pull request `number`, by its
@@ -577,7 +595,7 @@ fn merge_judged(repo: &str, rev: Option<&str>, path: &str, number: u64) -> Optio
 /// main's root: at 05:10 on 23 November, World's #2511610 had an hour's
 /// run reading 920 MB/s at 3.7 GB for over ten minutes, every hour, on a
 /// machine already short of memory.
-fn merge_of(path: &str, number: u64) -> Option<String> {
+fn merge_of(path: &str, number: u64) -> Result<Option<String>, Duration> {
     let first = *WALKS_FROM.get_or_init(Instant::now);
     let left = WALKS_FOR.saturating_sub(first.elapsed());
     merge_within(path, number, WALK_FOR.min(left))
@@ -599,11 +617,13 @@ const WALKS_FOR: Duration = Duration::from_secs(300);
 /// closed.
 const WALK_FOR: Duration = Duration::from_secs(60);
 
-/// `merge_of`, left once `within` has passed. The log is read on a thread
-/// of its own, so a walk with nothing to say for a while can still be
-/// left at its time.
-fn merge_within(path: &str, number: u64, within: Duration) -> Option<String> {
-    let mut log = walk(path, number).spawn().ok()?;
+/// `merge_of`, left once `within` has passed, which it then answers as
+/// its error. The log is read on a thread of its own, so a walk with
+/// nothing to say for a while can still be left at its time.
+fn merge_within(path: &str, number: u64, within: Duration) -> Result<Option<String>, Duration> {
+    let Ok(mut log) = walk(path, number).spawn() else {
+        return Ok(None);
+    };
     let (sent, found) = mpsc::channel();
     if let Some(out) = log.stdout.take() {
         std::thread::spawn(move || {
@@ -617,9 +637,9 @@ fn merge_within(path: &str, number: u64, within: Duration) -> Option<String> {
         });
     }
     // Said, since a merge read unfound keeps its miss open on the card.
-    let merge = found.recv_timeout(within).unwrap_or_else(|_| {
+    let merge = found.recv_timeout(within).map_err(|_| {
         eprintln!("cadence: #{number}'s merge walk in {path} left at {within:?}, read as unfound");
-        None
+        within
     });
     // A walk that already ended has nothing to stop, and one stopped here is
     // only reaped, so neither result says anything the merge found doesn't;
