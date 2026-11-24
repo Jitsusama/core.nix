@@ -63,8 +63,9 @@ CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # What a first visit to the forage page may cost, drawn from the stand-in's cells. Its files sit
 # at what the page asks for now, on purpose: each module is one more file a first visit waits
 # on, so splitting one out raises this as a choice rather than slipping past it. The kit's
-# cell.ts is the 23rd, the one way every site names a cell.
-BUDGET = Budget(files=23, kilobytes=513, elements=255)
+# cell.ts is the 23rd, the one way every site names a cell, and its head.css the 24th, the
+# head every live page opens with, whose eyebrow's dot is one element more.
+BUDGET = Budget(files=24, kilobytes=516, elements=256)
 
 
 @pytest.fixture

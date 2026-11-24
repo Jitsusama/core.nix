@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="site.css">
 <link rel="stylesheet" href="panel.css">
 <link rel="alternate" type="text/markdown" href="index.md">
@@ -38,29 +39,13 @@
 
 <a class="skip" href="#cells">Skip to the cells</a>
 
-<header class="hero">
-  <figure class="floor" aria-label="The cells on the floor, as the list below says them" aria-describedby="floor-says">
-    <div id="floor" class="drawn">
-    <svg class="crest" viewBox="0 0 240 104" aria-hidden="true">
-    <path class="ground" d="M8 58H232"/>
-    <path class="hypha" d="M14 80C52 80 70 74 106 74S178 82 226 78"/>
-    <path class="hypha" d="M128 75C138 86 150 92 172 94"/>
-    <rect class="whole" x="40" y="74" width="26" height="12" rx="6"/>
-    <rect class="whole" x="96" y="68" width="26" height="12" rx="6"/>
-    <rect class="hollow" x="164" y="72" width="26" height="12" rx="6"/>
-    <rect class="whole" x="168" y="89" width="20" height="10" rx="5"/>
-    <path class="stalk" d="M109 68V40"/>
-    <path class="cap" d="M88 41C88 22 98 12 109 12S130 22 130 41Z"/>
-    <path class="gill" d="M95 41v-5M102 41v-7M109 41v-8M116 41v-7M123 41v-5"/>
-  </svg>
-    </div>
-  </figure>
-  <p class="eyebrow">the <a href="../code/#repo=Jitsusama%2Fmycelium">mycelium</a> · cells standing on <span id="substrate">this machine</span> · what each is for</p>
+<header class="page-head">
+  <p class="eyebrow">what each <a href="../code/#repo=Jitsusama%2Fmycelium">mycelium</a> cell is for<span class="sep">·</span>standing on <span id="substrate">this machine</span></p>
   <h1 id="headline" class="headline" tabindex="-1">Asking the mycelium node.</h1>
   <p id="lede" class="lede">Each cell here works on a quest, and its purpose is what that quest says it's for.</p>
-  <p class="standing"><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path class="cap" d="M2 10C2 5 5 2 8 2S14 5 14 10Z"/><path class="stalk" d="M8 10v4"/></svg><span id="asof" class="asof" data-state="connecting">Reaching the mycelium node.</span></p>
-  <div class="ways">
-    <p class="keys">Press <kbd data-key="j">j</kbd> and <kbd data-key="k">k</kbd> to step through the cells, <kbd data-key="/">/</kbd> to find one, <kbd data-key="Enter">Return</kbd> to open it on the map, and <kbd data-key="?">?</kbd> for every key.</p>
+  <p class="standing"><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path class="cap" d="M2 10C2 5 5 2 8 2S14 5 14 10Z"/><path class="stalk" d="M8 10v4"/></svg><span id="asof" class="asof" role="status" data-state="connecting">Reaching the mycelium node.</span></p>
+  <div class="quiet">
+    <p class="keys">Press <kbd data-key="j" data-tap>j</kbd> and <kbd data-key="k" data-tap>k</kbd> to step through the cells, <kbd data-key="/" data-tap>/</kbd> to find one, <kbd data-key="Enter" data-tap>Return</kbd> to open it on the map, and <kbd data-key="?">?</kbd> for every key.</p>
     <div class="switch" role="radiogroup" aria-label="Theme">
       <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -74,6 +59,23 @@
     </div>
   </div>
 </header>
+
+<figure class="floor" aria-label="The cells on the floor, as the list below says them" aria-describedby="floor-says">
+  <div id="floor" class="drawn">
+    <svg class="crest" viewBox="0 0 240 104" aria-hidden="true">
+      <path class="ground" d="M8 58H232"/>
+      <path class="hypha" d="M14 80C52 80 70 74 106 74S178 82 226 78"/>
+      <path class="hypha" d="M128 75C138 86 150 92 172 94"/>
+      <rect class="whole" x="40" y="74" width="26" height="12" rx="6"/>
+      <rect class="whole" x="96" y="68" width="26" height="12" rx="6"/>
+      <rect class="hollow" x="164" y="72" width="26" height="12" rx="6"/>
+      <rect class="whole" x="168" y="89" width="20" height="10" rx="5"/>
+      <path class="stalk" d="M109 68V40"/>
+      <path class="cap" d="M88 41C88 22 98 12 109 12S130 22 130 41Z"/>
+      <path class="gill" d="M95 41v-5M102 41v-7M109 41v-8M116 41v-7M123 41v-5"/>
+    </svg>
+  </div>
+</figure>
 
 <main id="main" class="work">
   <section class="whole-list" aria-labelledby="cells-title">

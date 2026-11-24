@@ -12,7 +12,7 @@ import { addressIn } from "../../local-sites/kit/cell.ts";
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { said } from "../../local-sites/kit/status.ts";
+import { said, tell } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import {
@@ -112,8 +112,8 @@ function machine(): string {
 function sayWhen(): void {
   const problems = [...unread, ...(heard === undefined ? [] : [heard])];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
-  asof.dataset["state"] = standing?.state ?? "connecting";
+  const words = standing === undefined ? "Reaching the mycelium node." : said(standing);
+  tell(asof, `${words}${trouble}`, standing?.state ?? "connecting");
   if (!given && standing?.state === "broken") {
     title.textContent = "Nothing to draw yet.";
     ledeLine.textContent =
@@ -367,13 +367,10 @@ function copy(): void {
     return;
   }
   const line = command(open);
+  const say = (words: string): void => tell(asof, words, standing?.state ?? "connecting");
   navigator.clipboard.writeText(line).then(
-    () => {
-      asof.textContent = `Copied ${line}.`;
-    },
-    (error: unknown) => {
-      asof.textContent = `Couldn't copy (${String(error)}); the command is ${line}.`;
-    },
+    () => say(`Copied ${line}.`),
+    (error: unknown) => say(`Couldn't copy (${String(error)}); the command is ${line}.`),
   );
 }
 
@@ -511,7 +508,7 @@ themeSwitch();
 
 // The keys the head names, each a button doing what typing it does, for a
 // reader who taps: j and k step the list and leave it where its keys go.
-pressable(".hero .keys kbd", {
+pressable(".page-head .keys kbd", {
   j: () => {
     move(1);
     list.focus();
