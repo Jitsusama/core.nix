@@ -127,7 +127,10 @@ fn a_link_put_in_a_file_s_place_after_the_look_is_never_followed() {
     std::os::unix::fs::symlink(root.join("file"), root.join("link")).unwrap();
     // The open itself, as it meets a link swapped in once the look found
     // a plain file: the link leads to a file it could read, and isn't.
-    assert!(unfollowed(&root.join("file")).is_ok(), "a plain file wasn't opened");
+    assert!(
+        unfollowed(&root.join("file")).is_ok(),
+        "a plain file wasn't opened"
+    );
     let opened = unfollowed(&root.join("link"));
     assert!(opened.is_err(), "a link was followed: {opened:?}");
     let _ = std::fs::remove_dir_all(&root);

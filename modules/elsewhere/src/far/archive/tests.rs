@@ -36,7 +36,10 @@ fn a_link_left_at_an_archive_s_name_is_never_written_through() {
         "an archive was written through a link at its name"
     );
     let archive = std::fs::symlink_metadata(parts.join(&written[0].name)).unwrap();
-    assert!(archive.is_file(), "the archive isn't a plain file of its own");
+    assert!(
+        archive.is_file(),
+        "the archive isn't a plain file of its own"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 

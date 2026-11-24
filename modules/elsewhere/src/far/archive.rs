@@ -188,7 +188,10 @@ fn made_new(path: &Path) -> io::Result<fs::File> {
         Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
         _ => {}
     }
-    fs::OpenOptions::new().write(true).create_new(true).open(path)
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
 }
 
 /// The archive numbered `number`'s name while it is written: hidden, so

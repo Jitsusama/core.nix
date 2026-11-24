@@ -46,7 +46,10 @@ const OPEN_NONBLOCKING: i32 = 0x4;
 /// than opening whatever it leads to: a device outside the tree is never
 /// opened, even to be refused. Its value is the platform's, as above;
 /// arm64's Linux has its own.
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "riscv64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "riscv64")
+))]
 const OPEN_UNFOLLOWED: i32 = 0o400_000;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 const OPEN_UNFOLLOWED: i32 = 0o100_000;
