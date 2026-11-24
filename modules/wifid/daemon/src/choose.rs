@@ -44,6 +44,10 @@ use crate::measure::{Measured, SPAN};
 pub const SETTLE: Duration = Duration::from_secs(600);
 
 /// How long a move is on trial: worse by then, and the card goes back.
+/// One carrying badly two minutes running goes back on the second where
+/// it carries worse, as one failing does on its first: on 23 Nov 2026 a
+/// trial whose video echoes waited 0.75 to 2.8 s, its best effort quick,
+/// held the card for five minutes, held 10% or less till its last.
 pub const TRIAL: Duration = Duration::from_secs(300);
 
 /// How long an access point found worse from here is left untried.
@@ -292,6 +296,17 @@ struct Kept {
     from: Option<String>,
 }
 
+/// How the card's link carried at a choice, as a trial is judged by it.
+#[derive(Clone, Copy, PartialEq)]
+enum Carrying {
+    /// It lost more than `FAILING`.
+    Failing,
+    /// It carried badly this minute and the one before.
+    Badly,
+    /// Neither.
+    Enough,
+}
+
 /// Why a trial went back.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Against {
@@ -408,7 +423,12 @@ impl Chooser {
             && measured.lost <= LOSSY
             && (!resting(measured) || !slow_air)
             && heard(measured, signal) >= i32::from(FAINTEST);
-        let judging = (failing, queued_lately, holds_wide);
+        let carrying = match (failing, bad) {
+            (true, _) => Carrying::Failing,
+            (false, true) => Carrying::Badly,
+            (false, false) => Carrying::Enough,
+        };
+        let judging = (carrying, queued_lately, holds_wide);
         if let Some(judged) = self.judge(now, (point, measured), judging) {
             return judged;
         }
@@ -714,7 +734,9 @@ impl Chooser {
     /// Judges the move on trial, if any, from what the card's point carried:
     /// `Stay` while it's on trial, `Back` where it carried worse than the
     /// point it left did or usually does, whichever is quicker, or nothing
-    /// once it's over and choosing goes on. A card not on the point it tried
+    /// once it's over and choosing goes on. A trial failing, or carrying
+    /// badly two minutes running, is judged before it's over, and one that
+    /// doesn't go back for it stays on trial. A card not on the point it tried
     /// never reached it, and that point is kept off as one carrying worse is.
     /// A trial over while the card brings a download down waits for it to
     /// end, as its figures aren't the ones the move was made on, until a
@@ -729,8 +751,9 @@ impl Chooser {
         &mut self,
         now: Instant,
         on: (&str, &Measured),
-        (failing, queued, holds_wide): (bool, bool, bool),
+        (carrying, queued, holds_wide): (Carrying, bool, bool),
     ) -> Option<Choice> {
+        let failing = carrying == Carrying::Failing;
         let (point, measured) = on;
         let mut trial = self.trial.take()?;
         // What the card's on now isn't what was tried, as when the move
@@ -772,7 +795,7 @@ impl Chooser {
         let over = self
             .moved
             .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
-        if !over && !failing {
+        if !over && carrying == Carrying::Enough {
             self.trial = Some(trial);
             return Some(Choice::Stay);
         }
@@ -816,6 +839,13 @@ impl Chooser {
         } else {
             worse(measured, &against).then_some(Against::Usually(against))
         };
+        // Judged early for carrying badly, a trial with no worse to go back
+        // for waits out its trial as before, lest a point that carried no
+        // better stand on two minutes.
+        if !over && !failing && why.is_none() {
+            self.trial = Some(trial);
+            return Some(Choice::Stay);
+        }
         let moved = (trial.from.clone(), point.to_owned());
         // A trial that stands carrying as well as the point left usually
         // does, as loaded as that was learned, losing no more than `LOSSY`
@@ -3836,7 +3866,7 @@ pub(crate) mod tests {
         });
         chooser.moved = Some(start);
         let now = start + TRIAL;
-        chooser.judge(now, (HALL, there), (false, false, false));
+        chooser.judge(now, (HALL, there), (Carrying::Enough, false, false));
         let kept = chooser.keeps_off(HALL, now + HOUR_LESS_A_SECOND);
         (chooser.went_back(), kept)
     }
@@ -3910,7 +3940,11 @@ pub(crate) mod tests {
             });
             chooser.moved = Some(moved);
             let now = moved + TRIAL;
-            chooser.judge(now, (HALL, &unloaded(there)), (false, false, false));
+            chooser.judge(
+                now,
+                (HALL, &unloaded(there)),
+                (Carrying::Enough, false, false),
+            );
             let back = chooser.went_back().is_some();
             (back, chooser.keeps_off(HALL, now))
         };
@@ -3954,6 +3988,52 @@ pub(crate) mod tests {
         let judged = chooser.choose(minute, (HALL, &failing, -53, CH52), &[], false);
 
         assert_eq!(judged, Choice::Back(DESK.into()), "15% lost is judged");
+    }
+
+    #[test]
+    fn a_move_on_trial_carrying_badly_and_worse_two_minutes_running_goes_back() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        // Its video echoes held as on 23 Nov 2026, the card moving 15 Mbit/s.
+        let held = Measured {
+            moving: Some(15),
+            ..carried(754, 1.9)
+        };
+        let first = start + Duration::from_secs(60);
+        let second = start + Duration::from_secs(120);
+        let once = chooser.choose(first, (HALL, &held, -53, CH52), &[], false);
+        let twice = chooser.choose(second, (HALL, &held, -53, CH52), &[], false);
+
+        assert_eq!(once, Choice::Stay, "one bad minute is no trial");
+        assert_eq!(twice, Choice::Back(DESK.into()), "two worse ones are");
+        assert!(chooser.keeps_off(HALL, second), "and kept off");
+    }
+
+    #[test]
+    fn a_move_on_trial_carrying_badly_but_no_worse_waits_out_its_trial() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        let as_badly = carried(125, 0.5);
+        let minutes = [60, 120, 180].map(|seconds| {
+            let now = start + Duration::from_secs(seconds);
+            chooser.choose(now, (HALL, &as_badly, -53, CH52), &[], false)
+        });
+        let worse = carried(200, 1.0);
+        let judged = chooser.choose(start + TRIAL, (HALL, &worse, -53, CH52), &[], false);
+
+        let stays = vec![Choice::Stay; 3];
+        assert_eq!(minutes.to_vec(), stays, "no worse, it stays on trial");
+        assert_eq!(judged, Choice::Back(DESK.into()), "judged at its end");
     }
 
     #[test]
