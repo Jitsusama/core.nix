@@ -5,69 +5,36 @@
 // moved on, lets go of what a package's loads kept, so the next load reads
 // its files as they are now, and a load begun before a reload hands nothing
 // to a load after. A package's loads take turns, so none is given a module
-// another is still evaluating, a reload lets go of loads waiting behind one
-// that never ends, and a failed load's retry evaluates again every module it
-// added. Without the patch, a keyed package's library is
-// evaluated once for each of its extensions; sharing every package's modules
-// lets one extension's module state reach another's.
-// Run as: node THIS PI_ROOT
+// another is still evaluating, a reload or a moved link lets go of loads
+// waiting behind one that never ends and keeps none for the copy the link
+// moved to, and a failed load's retry evaluates again every module it
+// imported but none another extension imported meanwhile. Without the patch,
+// a keyed package's library is evaluated once for each of its extensions;
+// sharing every package's modules lets one extension's module state reach
+// another's.
+// Run as: node THIS PI_ROOT, with the helper beside it.
 import assert from "node:assert/strict";
+import { mkdirSync, rmSync, symlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
-import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
-
-const root = resolve(process.argv[2]);
-// The coding agent sits beside its libraries in an installed tree, or is the
-// tree itself where the package was installed from its own workspace.
-const loaderModule = [
-  `${root}/node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js`,
-  `${root}/packages/coding-agent/dist/core/extensions/loader.js`,
-  `${root}/dist/core/extensions/loader.js`,
-].find((path) => existsSync(path));
-assert.ok(loaderModule, `no extension loader under ${root}`);
-const { clearExtensionCache, loadExtensionsCached } = await import(
-  pathToFileURL(loaderModule).href
-);
-
-// Resolved, since Node's module cache holds each file by its real path.
-const scratch = realpathSync(mkdtempSync(join(tmpdir(), "pi-hosted-keyed-modules-")));
-const write = (path, text) => {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, text);
-};
-const manifest = (pi) => JSON.stringify({ name: "probe", type: "module", pi });
-const keyedManifest = { extensions: ["./extensions"], sessionStateKeyed: true };
-
-// The files Node's module cache holds under `where`.
-const nodeCache = createRequire(import.meta.url).cache;
-const cached = (where) => Object.keys(nodeCache).filter((file) => file.startsWith(where + sep));
-// A file required here is seen in the cache, so its emptiness below means
-// something.
-const seen = join(scratch, "seen.cjs");
-write(seen, "module.exports = 1;\n");
-createRequire(import.meta.url)(seen);
-assert.deepEqual(cached(scratch), [seen], "the cache check can't see what Node's cache holds");
-delete nodeCache[seen];
-
-// A library counts each evaluation of it under its name, and says which
-// version of its file it was evaluated from.
-const counted = (name) =>
-  [
-    "globalThis.evaluations ??= {};",
-    `globalThis.evaluations[${JSON.stringify(name)}] = (globalThis.evaluations[${JSON.stringify(name)}] ?? 0) + 1;`,
-  ].join("\n");
-const library = (name, version) =>
-  [counted(name), `export const version = ${JSON.stringify(version)};`, ""].join("\n");
+  afresh,
+  cached,
+  clearExtensionCache,
+  counted,
+  evaluations,
+  folder,
+  gate,
+  gated,
+  keyedManifest,
+  library,
+  loadExtensionsCached,
+  manifest,
+  open,
+  pendingAfter,
+  scratch,
+  within,
+  write,
+} from "./hosted-keyed-packages.mjs";
 // A library outside every package, which extensions of both kinds import.
 const outsideAt = join(scratch, "outside", "helper.ts");
 write(outsideAt, library("outside", "first"));
@@ -100,65 +67,6 @@ const keyedAt = join(scratch, "keyed");
 const keyed = aPackage(keyedAt, "keyed", keyedManifest);
 const other = aPackage(join(scratch, "other"), "other", keyedManifest);
 const unkeyed = aPackage(join(scratch, "unkeyed"), "unkeyed", { extensions: ["./extensions"] });
-
-const folder = (name) => {
-  const where = join(scratch, "folders", name);
-  mkdirSync(where, { recursive: true });
-  return where;
-};
-// A conversation opening in a folder, which can run its extensions' commands.
-const open = async (name, entries) => {
-  const loaded = await loadExtensionsCached(entries, folder(name));
-  assert.deepEqual(loaded.errors, [], `the probes didn't load in ${name}`);
-  return (command) => {
-    const owner = loaded.extensions.find((one) => one.commands.has(command));
-    assert.ok(owner, `no probe in ${name} has ${command}`);
-    return owner.commands.get(command).handler();
-  };
-};
-const evaluations = () => ({ ...globalThis.evaluations });
-const afresh = () => {
-  clearExtensionCache();
-  globalThis.evaluations = {};
-};
-// A module that says it was reached and waits for the test to let it go on;
-// a load reaching it once the gate is put away goes straight through.
-const gated = (name, version) =>
-  [
-    `globalThis.${name}Reached?.();`,
-    `await globalThis.${name}Gate;`,
-    `export const ${name} = ${JSON.stringify(version)};`,
-    "",
-  ].join("\n");
-const gate = (name) => {
-  const opened = Promise.withResolvers();
-  const reached = Promise.withResolvers();
-  globalThis[`${name}Gate`] = opened.promise;
-  globalThis[`${name}Reached`] = reached.resolve;
-  const putAway = () => {
-    globalThis[`${name}Gate`] = undefined;
-    globalThis[`${name}Reached`] = undefined;
-  };
-  return { open: opened.resolve, reached: reached.promise, putAway };
-};
-// Settles as `promise` does, or fails saying `message` once `ms` have
-// passed, so a wait that never ends fails the check rather than hanging it.
-const within = (promise, message, ms = 10_000) => {
-  let timer;
-  const late = new Promise((_, fail) => {
-    timer = setTimeout(() => fail(new assert.AssertionError({ message })), ms);
-  });
-  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
-};
-// Whether `promise` is still pending once `ms` have passed.
-const pendingAfter = (promise, ms) =>
-  Promise.race([
-    promise.then(
-      () => false,
-      () => false,
-    ),
-    new Promise((go) => setTimeout(go, ms, true)),
-  ]);
 
 // A keyed package's two extensions are given one evaluation of each module
 // they reach, its own library and the outside one alike, and so are imports
@@ -310,8 +218,8 @@ assert.equal(
   "an extension loading twice at once was evaluated twice",
 );
 
-// A failed load forgets every module it added, so a retry evaluates again
-// what it left unfinished and what it finished alike.
+// A failed load forgets every module it imported, so a retry evaluates
+// again what it left unfinished and what it finished alike.
 afresh();
 const flakyAt = join(scratch, "flaky");
 write(join(flakyAt, "package.json"), manifest(keyedManifest));
@@ -351,6 +259,53 @@ assert.deepEqual(
   evaluations(),
   { steady: 2, flaky: 2 },
   "a retry was given a module a failed load added",
+);
+
+// A failed load forgets only what it imported: a module another of the
+// package's extensions imports as it runs, while the failed load waits,
+// stays, so it is evaluated once.
+afresh();
+const mixedAt = join(scratch, "mixed");
+write(join(mixedAt, "package.json"), manifest(keyedManifest));
+write(join(mixedAt, "lib", "late.ts"), library("mixed-late", "late"));
+write(join(mixedAt, "lib", "waits.ts"), gated("wait", "waited"));
+write(
+  join(mixedAt, "lib", "throws.ts"),
+  'throw new Error("never loads");\nexport const never = 1;\n',
+);
+const runsLate = join(mixedAt, "extensions", "late", "index.ts");
+write(
+  runsLate,
+  [
+    "export default function (pi) {",
+    '  pi.registerCommand("mixed-late", { description: "", handler: async () => (await import("../../lib/late.ts")).version });',
+    "}",
+    "",
+  ].join("\n"),
+);
+const fails = join(mixedAt, "extensions", "fails", "index.ts");
+write(
+  fails,
+  [
+    'import { wait } from "../../lib/waits.ts";',
+    'import { never } from "../../lib/throws.ts";',
+    "export default function () { return [wait, never]; }",
+    "",
+  ].join("\n"),
+);
+const mixed = await open("mixed", [runsLate]);
+const waitGate = gate("wait");
+const failing = loadExtensionsCached([fails], folder("mixed-failing"));
+await waitGate.reached;
+assert.equal(await mixed("mixed-late"), "late", "an import beside a waiting load failed");
+waitGate.putAway();
+waitGate.open();
+assert.equal((await failing).errors.length, 1, "a load whose library throws didn't fail");
+assert.equal(await mixed("mixed-late"), "late", "an import after a failed load failed");
+assert.deepEqual(
+  evaluations(),
+  { "mixed-late": 1 },
+  "a failed load forgot a module another extension imported meanwhile",
 );
 
 // A link that moves on lets go of the copy it pointed at, once no extension
@@ -410,20 +365,26 @@ assert.equal(
 
 // A load that never ends holds up the package's loads behind it until its
 // modules are let go, by a reload or by a link moving off its copy, and
-// those then load as an unkeyed package's do.
+// those then load as an unkeyed package's do, evaluating afresh what the
+// load that never ends had finished. One a link let go of isn't kept for
+// the copy the link moved to.
 const hungPackage = (where, hangs) => {
   write(join(where, "package.json"), manifest(keyedManifest));
   write(
     join(where, "lib", "hangs.ts"),
     hangs ? gated("hang", "hung") : 'export const hang = "moved";\n',
   );
-  write(join(where, "lib", "shared.ts"), library("behind", "behind"));
+  write(
+    join(where, "lib", "shared.ts"),
+    hangs ? library("behind", "behind") : library("behind-moved", "moved"),
+  );
   write(
     join(where, "extensions", "hangs", "index.ts"),
     [
+      'import { version } from "../../lib/shared.ts";',
       'import { hang } from "../../lib/hangs.ts";',
       "// Used, since jiti's compile drops an import nothing uses.",
-      "export default function () { return hang; }",
+      "export default function () { return [version, hang]; }",
       "",
     ].join("\n"),
   );
@@ -457,6 +418,11 @@ const heldUpUntil = async (what, [hangs, behind], letGo) => {
     `${what} didn't let go of a load waiting behind one that never ends`,
   );
   assert.equal(await released("behind-version"), "behind", `a load ${what} let go of failed`);
+  assert.equal(
+    evaluations().behind,
+    2,
+    `a load ${what} let go of was given the modules it let go of`,
+  );
   hangGate.putAway();
   hangGate.open();
   await hanging;
@@ -473,6 +439,12 @@ await heldUpUntil("link", throughStuck, async () => {
   pointAt(stuck, join(scratch, "hung-second"));
   await within(open("link-moved", throughStuck), "a load through a moved link never ended");
 });
+const afterMove = await open("link-after", throughStuck);
+assert.equal(
+  await afterMove("behind-version"),
+  "moved",
+  "a load a moved link let go of was kept for the copy it moved to",
+);
 
 assert.deepEqual(cached(scratch), [], "a load put modules in Node's cache");
 rmSync(scratch, { recursive: true, force: true });
