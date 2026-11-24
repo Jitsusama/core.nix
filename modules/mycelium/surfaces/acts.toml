@@ -18,6 +18,9 @@
 # owed by every other until it's there or waived. Where a surface lists its
 # acts in a file of its own, an offered entry at the end reads that list, and
 # an act in it the table doesn't name fails, so a gained act can't go unseen.
+# Only the launcher's session row is read so far, its verb:agent: ids; the
+# map's drawer lists its words in a file once core.nix#6389 lands, and is
+# read from then.
 # The pi tools aren't read, since the harness that holds them isn't an input
 # of core.nix; each session has says where its tool does the act.
 #
@@ -103,7 +106,7 @@ through = "a cell's asked, its wants where a node sends none (mycelium#426)"
 
 [act.cli.owed]
 by = "KP0L6A"
-due = "2026-11-25 12:00"
+due = "2026-11-26 12:00"
 why = "unanswered says how a question opens, not all of it"
 
 [act.session.owed]
@@ -311,6 +314,8 @@ holds = '"id": "for-you:kind:look"'
 
 # The acts a surface lists in a file of its own, each its word there and
 # the act of the table it is, or set apart with why it is no act on a cell.
+# The launcher's are its session row's verbs, verb:agent:; its verbs under
+# other ids, such as Carry Back and Pause All Agents, aren't read yet.
 
 [[offered]]
 surface = "launcher"

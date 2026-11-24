@@ -10,9 +10,10 @@ Reads the table of acts (acts.toml) and fails, naming each, on:
   and a waiver giving no reason;
 - an act named twice or with no name, or one that doesn't say what it is
   or the way to it every surface takes;
-- an act a surface lists in its own file (the launcher's verbs, the map
-  drawer's words) that the table doesn't name, or names apart with no
-  reason, and a name the table gives that the file no longer lists.
+- an act a surface lists in its own file (so far the launcher session
+  row's verbs) that the table doesn't name, or names apart with no
+  reason, a name the table gives that the file no longer lists or maps
+  to no act, and a list its pattern reads nothing of.
 
 A has proves its words are where it says, not that the surface's code
 offers the act; the surfaces' own tests prove that. Nor are an act's words

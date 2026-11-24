@@ -874,8 +874,10 @@ in
   # it names holds its words, or the locked mycelium's help for the command
   # says them; a pi tool is taken by its name, since the harness isn't an
   # input. Where a surface lists its acts in a file, an act there the table
-  # doesn't name fails, so one a surface gains is seen. So it can't pass by
-  # reading nothing, each way of straying is shown to fail first. It proves
+  # doesn't name fails, so one a surface gains is seen; so far only the
+  # launcher's session row is read. So it can't pass by reading nothing,
+  # each way of straying is shown to fail first, beside a clean act that
+  # passes, so each fails on its own fault alone. It proves
   # each act's words are where the table says, not that the code offers or
   # works it, nor that an act is worded alike on each surface.
   mycelium-surfaces-stay-even =
@@ -895,9 +897,11 @@ in
           ) (lib.attrNames act)
         ) acts
         ++ map (offered: offered.file) (read.offered or [ ])
-        # The strays' own file, named here so they don't rest on the table.
+        # The strays' own files, named here so they don't rest on the table;
+        # nowhere.ts is never there, so the gone stray goes through kept.
         ++ [
           "modules/mycelium/site/view.js"
+          "modules/mycelium/site/nowhere.ts"
           "modules/quickshell/launcher/words/agents.json"
         ]
       );
@@ -914,7 +918,14 @@ in
       check = "${lib.getExe pkgs.python3} ${./surfaces/stays-even.py}";
       # An act on each surface, with what one of them says in place of the
       # rest, as a table of one act gives it. Only the wayless act leaves
-      # out the way to it every surface takes.
+      # out the way to it every surface takes. The clean act, which strays
+      # nowhere, must pass, so each stray fails on its own fault alone.
+      clean = act "clean" ''
+        [act.cli]
+        waived = "no window to raise"
+        [act.launcher]
+        waived = "none"
+      '';
       act =
         name: says:
         pkgs.writeText "${name}.toml" ''
@@ -925,8 +936,8 @@ in
           [act.session.has]
           tool = "mesh_read"
           [act.map.has]
-          file = "modules/mycelium/site/acts.ts"
-          holds = "Go to It"
+          file = "modules/mycelium/site/view.js"
+          holds = "See What It Is For, and Its Plans"
           ${says}
         '';
       # Each way of straying the check has to catch, with what it says.
@@ -1027,6 +1038,41 @@ in
           says = "launcher/words/agents.json no longer lists gone";
         }
         {
+          table = act "misaimed" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher]
+            waived = "none"
+            [[offered]]
+            surface = "launcher"
+            file = "modules/quickshell/launcher/words/agents.json"
+            pattern = '"id": "verb:agent:([a-z-]+)"'
+            [offered.acts]
+            switch = "went"
+            talk = "go"
+            take-back = "go"
+            pause = "go"
+            resume = "go"
+            wake = "go"
+            stop = "go"
+            close = "go"
+          '';
+          says = "switch is said to be went, no act of the table";
+        }
+        {
+          table = act "unmatched" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher]
+            waived = "none"
+            [[offered]]
+            surface = "launcher"
+            file = "modules/quickshell/launcher/words/agents.json"
+            pattern = '"id": "verb:nobody:([a-z-]+)"'
+          '';
+          says = "agents.json lists no act, as";
+        }
+        {
           table = act "left-out" ''
             [act.cli]
             waived = "no window to raise"
@@ -1116,6 +1162,11 @@ in
           exit 1
         fi
       }
+      if ! ${check} ${clean} ${root} ${lib.getExe untested} > said; then
+        echo "The surfaces check refused the clean act, so no stray shows its own fault."
+        cat said
+        exit 1
+      fi
       ${lib.concatMapStrings (stray: ''
         strays ${stray.table} ${lib.escapeShellArg stray.says}
       '') strays}
