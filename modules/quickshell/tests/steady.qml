@@ -394,6 +394,24 @@ QtObject {
             .find(row => row.key === "notices");
         if (asSeenRead(laidAfresh) !== JSON.stringify([false, "", true, 1]))
             failures.push(`a row kept unseen, laid afresh: ${asSeenRead(laidAfresh)}`);
+        // A row marked unseen, then seen, hands on a getter it holds unread,
+        // as Member.js's copied does, so it's neither read at its cost nor
+        // frozen as it read then.
+        let reads = 0;
+        let preparing = "a";
+        const lazy = Object.defineProperty({ key: "lazy" }, "prepared", {
+            get: () => { reads += 1; return preparing; }, enumerable: true
+        });
+        const lazyKept = Steady.kept(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1").concat([lazy]), id).filter(row => row.key === "lazy");
+        const lazySeen = Steady.searched(lazyKept);
+        const readsCopying = reads;
+        preparing = "b";
+        if (lazyKept[0]?.unseen !== true || lazySeen.length !== 1 || "unseen" in lazySeen[0]
+                || readsCopying !== 0
+                || lazySeen[0].prepared !== "b")
+            failures.push(`a getter seen: ${readsCopying} reads copying, `
+                + `reading "${lazySeen[0]?.prepared}"`);
         // Found by what's typed in the step, by rank and with no heading, a
         // row kept unseen is shown where it was found, and stays there as
         // the list is said again and again, as it is while rows are held
@@ -431,7 +449,11 @@ QtObject {
                 + `"${readHeaded(clearedUnfound.rows)}" with ${clearedUnfound.waiting}`);
         // Found once, it stays seen as the step is made again, hands it back
         // marked and lists it after other lists were shown, as when Joel
-        // searches again or steps into a row and back out.
+        // searches again or steps into a row and back out. It stands at the
+        // end, under the last heading, where a list laid afresh puts To
+        // Look At too: Joel found it by name, so it isn't hidden again, and
+        // nothing yet ends a heading before the rows of none (a follow-up,
+        // not the reading this pins as right).
         const madeAgain = Steady.kept(lateStep, underHeadings("#A=a1 a1 look"), id);
         const clearedLater = Steady.seen(Steady.seenAmong(madeAgain, typedFound.map(id), id));
         if (madeAgain[2]?.unseen !== true || readHeaded(clearedLater.rows) !== "#A a1 look"

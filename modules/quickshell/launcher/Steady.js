@@ -32,13 +32,10 @@ function standing(shown, gaveWay) {
 // titled alike keep their places. The rows that wait unseen (laidAgain)
 // come in once the list is shown afresh.
 //
-// What waits unseen comes in here, at the end under no heading, marked
-// `unseen`, since kept is also how a held step's rows are made again
-// (Held.js's keep), which the list shown is then laid from (refreshed):
-// withheld there, a row would be gone before the list could count it. It
-// stays marked as the step is made again, so a key that lists the step's
-// rows as they stand (seen) still leaves it out and counts it, rather than
-// showing it at the end as the last heading's.
+// What waits unseen comes in here, at the end, marked `unseen`, as kept
+// makes a held step's rows again (Held.js's keep), the list shown laid from
+// them (refreshed), so a key listing the step's rows (seen) leaves it out
+// and counts it, rather than show it at the end as the last heading's.
 function kept(shown, now, id) {
     const again = laidAgain(shown, now, id, false);
     return again.lit(again.rows);
@@ -60,20 +57,20 @@ function seen(rows) {
         waiting: rows.filter(row => row.unseen === true && row.went !== true).length };
 }
 
-// What a search typed in a held step found among its rows, as it's shown:
-// a row found is seen, so none keeps the mark of one waiting unseen, which
-// the refresh after would read as never shown and move to the end, under
-// the cursor and among rows held still.
+// What a search typed in a held step found, as it's shown: seen, so none
+// keeps the mark the refresh after would read as never shown and move to
+// the end, under the cursor and among rows held still.
 function searched(rows) {
     return rows.map(asSeen);
 }
 
 // A held step's rows with nothing typed: one waiting unseen that a search
-// found since it opened (its `id` in `found`) is seen, not hidden again,
-// counted new and losing the selection, however many lists came between.
+// found since it opened (its `id` in `found`, kept in a plain record, as
+// Qt 6.12 walks a Set whole, Rank.js) is seen, not hidden again, counted
+// new and losing the selection, however many lists came between.
 function seenAmong(rows, found, id) {
-    const ids = new Set(found);
-    return rows.map(row => row.unseen === true && ids.has(id(row)) ? asSeen(row) : row);
+    const ids = Object.assign(Object.create(null), ...found.map(one => ({ [one]: true })));
+    return rows.map(row => row.unseen === true && ids[id(row)] === true ? asSeen(row) : row);
 }
 
 // The rows laid again, `rows`, with `lit(rows)` dimming each heading said
@@ -103,7 +100,9 @@ function laidAgain(shown, now, id, withholding) {
     const owners = headingsUnder(now, id);
     const fresh = now.filter(row => !row.repeated);
     const under = owners.filter((_, at) => !now[at].repeated);
-    const owner = new Map();
+    // Each row's heading by its place in `out` (`lit` is given only it or
+    // its first rows), not a Map, which Qt 6.12 walks whole (Rank.js).
+    const owner = [];
     const lit = rows => rows.map((row, at) => row.repeated && !row.went
         && !standsUnder(rows, at, owner, id) ? dimmed(row) : row);
     if (shown.length === 0) {
@@ -120,6 +119,10 @@ function laidAgain(shown, now, id, withholding) {
     });
     const taken = fresh.map(() => false);
     const out = [];
+    const put = (row, its) => {
+        owner[out.length] = its;
+        out.push(row);
+    };
     let late = 0;
     for (const row of shown) {
         if (row.repeated) {
@@ -139,7 +142,7 @@ function laidAgain(shown, now, id, withholding) {
                 taken[at] = true;
                 late += withholding ? 1 : 0;
                 if (!withholding) {
-                    out.push(Object.assign({}, fresh[at], { unseen: true }));
+                    out.push(asUnseen(fresh[at]));
                 }
             }
             continue;
@@ -150,8 +153,7 @@ function laidAgain(shown, now, id, withholding) {
             const at = left.shift();
             const again = asSeen(fresh[at]);
             taken[at] = true;
-            owner.set(again, under[at]);
-            out.push(again);
+            put(again, under[at]);
         } else {
             out.push(dimmed(row));
         }
@@ -168,7 +170,7 @@ function laidAgain(shown, now, id, withholding) {
         if (waits(row, its, headed)) {
             late += withholding ? 1 : 0;
             if (!withholding) {
-                out.push(Object.assign({}, row, { unseen: true }));
+                out.push(asUnseen(row));
             }
             return;
         }
@@ -181,8 +183,7 @@ function laidAgain(shown, now, id, withholding) {
             headed = true;
         }
         const coming = asSeen(typeof row.ranked === "function" ? row.ranked() : row);
-        owner.set(coming, its);
-        out.push(coming);
+        put(coming, its);
     });
     return { rows: out, late, lit };
 }
@@ -193,20 +194,19 @@ function waits(row, its, headed) {
     return its === null && headed && !pressing(row);
 }
 
-// A row as it's shown, no longer marked as waiting unseen: a copy holding
-// all else it holds, so the row that was given keeps its mark. Built by
-// hand, as Qt's engine has no Object.fromEntries.
+// A row as it's shown, no longer marked as waiting unseen, or so marked:
+// a copy, so the row given keeps its mark, laid from its descriptors as
+// Member.js's copied lays one, a getter handed on unread and unfrozen.
 function asSeen(row) {
-    if (row.unseen !== true) {
-        return row;
-    }
-    const shown = {};
-    for (const [name, value] of Object.entries(row)) {
-        if (name !== "unseen") {
-            shown[name] = value;
-        }
-    }
-    return shown;
+    return row.unseen === true ? marked(row, {}) : row;
+}
+function asUnseen(row) {
+    return marked(row, { unseen: { value: true, enumerable: true, writable: true } });
+}
+function marked(row, laid) {
+    const own = Object.getOwnPropertyDescriptors(row);
+    return Object.defineProperties({}, Object.keys(own).filter(name => name !== "unseen")
+        .reduce((all, name) => Object.assign(all, { [name]: own[name] }), laid));
 }
 
 // The heading the end of `rows` reads as under: the last one, unless a row
@@ -214,10 +214,10 @@ function asSeen(row) {
 // that came in does, which ends it however long ago it came.
 function endingHeading(rows, owner) {
     let last = null;
-    for (const row of rows) {
+    for (const [at, row] of rows.entries()) {
         if (row.heading === true) {
             last = row;
-        } else if (owner.has(row) && owner.get(row) === null) {
+        } else if (owner[at] === null) {
             last = null;
         }
     }
@@ -240,7 +240,7 @@ function dimmed(row) {
 // (`owner`, each row's heading), stands under it, before the next heading.
 function standsUnder(rows, at, owner, id) {
     for (let next = at + 1; next < rows.length && rows[next].heading !== true; next += 1) {
-        const its = owner.get(rows[next]) ?? null;
+        const its = owner[next] ?? null;
         if (!rows[next].went && its !== null && id(its) === id(rows[at])) {
             return true;
         }
