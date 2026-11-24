@@ -55,13 +55,10 @@ Piece {
             name: Words.name("verb:agent:switch"),
             verb: Words.verb("verb:agent:switch"),
             side: session.title,
-            // One parked is woken first, as its row in For You wakes it.
-            run: () => {
-                const resting = Sessions.parkedAs(session.address);
-                if (resting)
-                    Sessions.wake(resting);
-                Sessions.goTo(session);
-            }
+            // One parked is woken first, as its row in For You wakes it,
+            // and one only viewing wakes is left to Go To's own viewer
+            // (wakeToGo), so one press isn't told its window is opening.
+            run: () => Sessions.wakeToGo(Sessions.parkedAs(session.address), session)
         };
     }
     readonly property var every: wanting.map(session => going(session))

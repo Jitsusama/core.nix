@@ -3057,12 +3057,17 @@ Singleton {
         if (drawnHere(window))
             return;
         refusedViewers[id] = true;
-        // Come while its viewer was asked for, within viewPatience, it's
-        // taken for that one refused, so nothing asks for more beside it;
-        // a stray come after, or one niri listed as the ask was made
-        // (listedAtAsk), leaves the ask as it was.
+        // Come while its viewer was asked for, within viewPatience, or for
+        // one the walk still holds late, as a kitty slow to draw at a cold
+        // boot brings it past both patiences, it's taken for that one
+        // refused, so nothing asks for more beside it; a stray come after,
+        // or one niri listed as the ask was made (listedAtAsk), leaves the
+        // ask as it was.
         const named = String(window.opened);
-        const own = viewerComing(named) && !(listedAtAsk[named] ?? []).includes(id);
+        const late = reopening?.late.some(one => one.classed === named && one.opened === null)
+            ?? false;
+        const own = (viewerComing(named) || late)
+            && !(listedAtAsk[named] ?? []).includes(id);
         // Nor is it still coming, so a press once that window closes asks
         // afresh rather than saying opening; refusedOwn holds off a second
         // ask while it's listed.
@@ -3809,9 +3814,12 @@ Singleton {
             // Joel's press, said as Go To's is: refused (disowned), keeping
             // where it slept for the press that can open it once that
             // window closes; held back while its viewer comes (heldBack);
-            // or told if no kitty takes it (untaken).
-            if (pressed && disowned(named, session))
+            // or told if no kitty takes it (untaken). The walk's, refused,
+            // keeps its place too, said to no one.
+            if (pressed ? disowned(named, session) : refusedOwn(named)) {
+                console.info(`sessions: ${id} not woken, its own refused`);
                 return;
+            }
             if (keptPlaces[id] !== undefined) {
                 const kept = Object.assign({}, keptPlaces);
                 delete kept[id];
@@ -3901,8 +3909,8 @@ Singleton {
     // Go To on `session`, waking `resting` first, its parked record, when
     // it's parked. One only viewing wakes is left to goTo's own viewer,
     // which opens where Joel is and takes focus: wake's would open where it
-    // slept, unfocused, and hold goTo's off while it came. Agents' Go To
-    // and For You's Deal With It both go through here.
+    // slept, unfocused, and hold goTo's off while it came. Agents' Go To,
+    // What's On's and For You's Deal With It all go through here.
     function wakeToGo(resting, session) {
         if (resting && !wokenByViewing(resting))
             wake(resting);
