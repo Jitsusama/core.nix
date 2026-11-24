@@ -2431,8 +2431,8 @@ fn a_folder_the_checkout_holds_without_its_files_is_read_whole() {
 }
 
 /// A folder the checkout holds under its id but with other contents is
-/// never built from: its contents are hashed before they're gone down,
-/// so the read stops and nothing is built from what that tree claims.
+/// never built from: git refuses it as it gives it, or the read hashes its
+/// contents before going down it, so nothing is built from what it claims.
 #[test]
 fn a_folder_the_checkout_holds_with_other_contents_is_never_built() {
     let world = with_api();
@@ -2473,9 +2473,18 @@ fn a_folder_the_checkout_holds_with_other_contents_is_never_built() {
     let impostor = loose(real);
     fs::create_dir_all(impostor.parent().unwrap()).unwrap();
     fs::copy(loose(other.trim()), &impostor).unwrap();
+    // git itself may refuse the object on reading it whole, as `cat-file -p`
+    // does; either way the read must stop short of building.
+    let holds = Command::new(program("git"))
+        .arg("-C")
+        .arg(&checkout)
+        .args(["cat-file", "-e", real])
+        .status()
+        .unwrap()
+        .success();
     assert!(
-        git(&checkout, &["cat-file", "-p", real]).contains("other"),
-        "the checkout doesn't hold machine's id with other contents, so the test proves nothing"
+        holds,
+        "the checkout doesn't hold machine's id, so the test proves nothing"
     );
     fs::remove_file(world.root.join("api/git/trees").join(real)).unwrap();
     world.system(&head);
