@@ -1,6 +1,6 @@
 # The checks of the nightly rewrite of pi's closed session logs, which
 # pi's checks.nix gathers beside its own, kept apart since they change with
-# compressed-logs.nix and the script it runs.
+# compressed-logs.nix and the script it runs, beside it.
 {
   account,
   holds,
@@ -43,7 +43,7 @@ onLinux {
 
   # Off btrfs the rewrite ends at once, with nothing done and saying so,
   # rather than failing every night on a machine whose file system doesn't
-  # compress. /proc is never btrfs, in a build's sandbox or out of it.
+  # compress.
   pi-log-compression-passes-over-other-file-systems =
     let
       home = account workstation;
@@ -51,11 +51,7 @@ onLinux {
       program = lib.head (lib.splitString " " (lib.head (lib.toList service.Service.ExecStart)));
     in
     pkgs.runCommandLocal "pi-log-compression-passes-over-other-file-systems" { } ''
-      said=$(${program} /proc)
-      echo "$said"
-      case $said in
-        *"isn't on btrfs, so there's nothing to compress") touch $out ;;
-        *) echo "the rewrite didn't say it passed over /proc" >&2; exit 1 ;;
-      esac
+      ${lib.getExe pkgs.bash} ${./compress-logs-passes-over-other-file-systems.sh} ${program}
+      touch $out
     '';
 }

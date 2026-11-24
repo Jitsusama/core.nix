@@ -15,9 +15,10 @@
 # (chime.nix).
 # On Linux the installed harness's own scripts run on a schedule or at
 # login, its morning measure and its sweep of ended work trees among them
-# (timers.nix), and its closed session logs are rewritten compressed each
-# night (compressed-logs.nix). A realm a machine names in jitsusama.pi.hosts runs its
-# conversations in shared pi hosts, started with the session (host.nix).
+# (timers/), and its closed session logs are rewritten compressed each
+# night (timers/compressed-logs.nix). A realm a machine names in
+# jitsusama.pi.hosts runs its conversations in shared pi hosts, started
+# with the session (host.nix).
 {
   config,
   lib,
@@ -187,11 +188,11 @@ in
   imports = [
     ./agents.nix
     ./compile-cache.nix
-    ./compressed-logs.nix
     ./fence.nix
     ./harness-settings.nix
     ./host.nix
-    ./timers.nix
+    ./timers
+    ./timers/compressed-logs.nix
     ../theme/home.nix
     ../keys/home.nix
     ../prompt/home.nix
