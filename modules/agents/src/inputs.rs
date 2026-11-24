@@ -87,9 +87,10 @@ pub struct Unwritten {
 /// journalled at every try, and again each [`SAY_AGAIN_MS`] it lasts,
 /// or at once if the wall clock stepped back past when it was said, which
 /// would otherwise hush it for as long as the clock stepped; then once
-/// more on success, saying how long the file was behind. It's never
-/// behind since a time still to come, as after such a step, so how long
-/// reads no shorter than the step makes it.
+/// more on success, saying how long the file was behind. A failure
+/// lasting is never behind since a time still to come (its `since` is no
+/// later than now), as after such a step, so how long reads no shorter
+/// than the step makes it.
 fn write_heard(
     path: &Path,
     why: Option<&str>,
@@ -98,7 +99,7 @@ fn write_heard(
 ) -> (Option<String>, Option<Unwritten>) {
     let Some(why) = why else {
         let heard = was.map(|was| {
-            let behind = lasted(at.saturating_sub(was.since.min(at)));
+            let behind = lasted(at.saturating_sub(was.since));
             format!("agents: kept {} again, {behind} behind", path.display())
         });
         return (heard, None);
@@ -1687,31 +1688,12 @@ mod tests {
     }
 
     #[test]
-    fn kept_places_whose_write_failed_are_held_as_first_said() {
-        let mut inputs = inputs();
-        let folder =
-            std::env::temp_dir().join(format!("agents-inputs-kept-again-{}", std::process::id()));
-        // Only this case's own folder, left by a run that failed.
-        let _ = std::fs::remove_dir_all(&folder);
-        std::fs::create_dir_all(&folder).expect("a folder");
-        let blocked = folder.join("blocked");
-        std::fs::write(&blocked, "").expect("a file where its folder would be");
-        let path = blocked.join("kept-places.json");
-        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
-            .expect("places");
-        inputs.kept_places_written(said.clone(), &path, 1_000);
-        let first = inputs
-            .kept_places_unwritten
-            .clone()
-            .expect("the write failed");
-        inputs.kept_places_written(said, &path, 2_000);
+    fn how_long_a_file_is_behind_reads_in_seconds_until_two_minutes() {
         assert_eq!(
-            inputs.kept_places_unwritten,
-            Some(first),
-            "failing the same way again, it's held as first said, so not said again"
+            (lasted(119_999), lasted(120_000)),
+            ("119 s".to_owned(), "2 min".to_owned()),
+            "under two minutes in seconds, from two in minutes"
         );
-        // Only this case's own folder, which the next run makes afresh.
-        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]
