@@ -245,8 +245,8 @@ fn judge(
         age: read_at.saturating_sub(said_at),
     };
     let gated = gate(&asked, &sent, read_at, replies_off(state));
-    let line = record::line(&source, &decision, gated, now, reader.shadow);
-    if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
+    let entry = record::line(&source, &decision, gated, now, reader.shadow);
+    if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
     }
     if agreed && gated.goes() {
@@ -277,7 +277,7 @@ fn judge(
             ", in an answer no second ask agreed with"
         };
         match record::keep(&state.join("stops"), &key, &stop) {
-            Ok(true) => eprintln!("<5>a stop{shadow}{unagreed}: {}", message.link),
+            Ok(true) => eprintln!("<5>a stop{shadow}{unagreed}: {link}"),
             Ok(false) => {}
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
         }
