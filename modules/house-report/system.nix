@@ -73,12 +73,15 @@ in
         machine's house names in its `keyFile`, at least 16, which each
         report is signed with, so a device on the line can't forge one
         from this machine's address. Make it root's alone, as a root
-        shell does with `install -d -m 0755 /etc/house-report`, then
-        `install -m 0400 /dev/null /etc/house-report/house.key` and
-        `head -c 32 /dev/urandom > /etc/house-report/house.key`: any
-        account that can read the key may sign a report, and a redirect
-        alone keeps an existing file's mode, so `chmod 0400` a key
-        already in place. On Linux the service reads it
+        shell does with `install -d -m 0755 /etc/house-report` and
+        `install -m 0400 /dev/null /etc/house-report/house.key`, then
+        writes the shaped machine's key into it, or makes one with
+        `head -c 32 /dev/urandom > /etc/house-report/house.key` and
+        writes the same bytes there: any account that can read the key
+        may sign a report. A key another account could ever read is made
+        again on both machines, the same way, rather than given a new
+        mode, since a copy taken of it stays good (house keys round 2's
+        F5 and F7). On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,

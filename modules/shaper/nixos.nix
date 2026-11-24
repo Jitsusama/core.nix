@@ -252,9 +252,10 @@ in
                   as a root shell does with `install -m 0400 /dev/null
                   FILE` and then `head -c 32 /dev/urandom > FILE`, the
                   same bytes on both machines: any account that can
-                  read it may sign a report, and a redirect alone keeps
-                  an existing file's mode, so `chmod 0400` a key
-                  already in place. The shaper's service sees no /root, /home,
+                  read it may sign a report, so a key another account
+                  could ever read is made again on both, the same way,
+                  rather than given a new mode, since a copy taken of
+                  it stays good. The shaper's service sees no /root, /home,
                   /tmp or /var/tmp, so keep it elsewhere, as under
                   /var/lib, spelled plainly and not through a link;
                   houses naming one address name one key. Never a Nix

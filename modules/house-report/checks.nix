@@ -95,6 +95,27 @@ let
       + "\"$houseReportNew\" \\"
     )
   ];
+  # What a refusal does, whole: a switch says it each time and forgets
+  # `said`, kept beside the copy's folder; the job says it once until it
+  # changes, and forgets it once a copy is made (house keys round 2's F1,
+  # F2, F4 and F9).
+  noKey = "house-report: $houseReportKey $houseReportWhy, so the daemon has no key";
+  refusing = lib.concatStringsSep "\n" [
+    "houseReportSaid=/var/db/house-report.said"
+    "if [ -n \"$houseReportWhy\" ]; then"
+    "  /bin/rm -f \"$houseReportCopy\" \"$houseReportCopy\".* 2>/dev/null || :"
+    "  houseReportWhy=\"${noKey}\""
+    "  if [ -n \"\${houseReportAtSwitch:-}\" ]; then"
+    "    echo \"$houseReportWhy\" >&2"
+    "    /bin/rm -f \"$houseReportSaid\" 2>/dev/null || :"
+    "  elif [ \"$(/bin/cat \"$houseReportSaid\" 2>/dev/null)\" != \"$houseReportWhy\" ]; then"
+    "    echo \"$houseReportWhy\" >&2"
+    "    echo \"$houseReportWhy\" 2>/dev/null >\"$houseReportSaid\" || :"
+    "  fi"
+    "elif [ -z \"\${houseReportAtSwitch:-}\" ]; then"
+    "  /bin/rm -f \"$houseReportSaid\" 2>/dev/null || :"
+    "fi"
+  ];
   # Each test the walk makes of a folder, whole, refusing as it says:
   # its owner, its mode and its access list's rights (round 5's F3 and
   # F6).
@@ -265,13 +286,12 @@ in
         ]
         && lib.hasInfix chained watched
         && lib.hasInfix watched keyedPrepared
-        # A switch says a refusal each time and leaves the job's `said`
-        # alone, so the log still gets it (house keys round 1's F1, F6,
-        # F13 and F17).
+        # A switch says a refusal each time and forgets the job's `said`,
+        # so the log still gets it (house keys round 1's F1, F6, F13 and
+        # F17; round 2's F1, F4 and F9).
         && lib.hasInfix ("houseReportAtSwitch=1\n" + watched) keyedPrepared
         && !lib.hasInfix "houseReportAtSwitch=" watched
-        && lib.hasInfix "[ -n \"\${houseReportAtSwitch:-}\" ]" watched
-        && lib.hasInfix "[ -z \"\${houseReportAtSwitch:-}\" ]" watched
+        && lib.hasInfix refusing watched
         && watching.UserName or null == null
         && watching.RunAtLoad or null == true
         && watching.StartInterval or null == 60
