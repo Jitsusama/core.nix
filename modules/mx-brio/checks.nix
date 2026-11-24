@@ -31,7 +31,7 @@ onLinux {
   # is named as the Brio is and removed when the Brio goes, and the shell
   # lists the Brio only while that file is there, by its card; and the
   # Brio's own watch writes in the hidden folder, never beside the
-  # loopback's file.
+  # loopback's file; and the seat's give-back is dropped.
   the-mx-brio-is-shared =
     let
       inherit (shared.config) environment services systemd;
@@ -64,6 +64,9 @@ onLinux {
           lib.any (lib.hasInfix "/bin/rm -f '/run/camera-holders/${card}'") holders.serviceConfig.ExecStopPost;
         "the Brio's own watch doesn't write in the hidden folder" =
           lib.hasSuffix " /run/camera-holders/.relayed" watch.serviceConfig.ExecStart;
+        # The sharing drops the seat's give-back (nixos.nix's disabledModules),
+        # which would otherwise replay the Brio's arrival at every boot.
+        "the seat's give-back runs beside the relay" = !(systemd.services ? mx-brio-seat);
         "a relayed camera's watch could write beside its loopback's" =
           lib.hasInfix ''ENV{CAMERA_RELAYED}!="1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="usb-camera-holders@%k.service"'' services.udev.extraRules;
       };

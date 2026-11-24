@@ -583,10 +583,18 @@ during a switch on 9 November. A call that gave up and came back in that
 time had its stop and start handled late, and the camera was left running
 with nothing asking it for frames until the relay was restarted by hand.
 A patch has the relay start the camera's pipeline again once a client has
-waited 10 s with no frame, and end for its service to start it afresh if
-that brings none, or if its loop stays blocked for 90 s; each says so in
-the relay's log. The relay comes first for the processor and the disk, is
-kept out of swap, and writes the HAL's log a line at a time. The HAL's
+waited 90 s for a first frame, or 10 s once frames have stopped, and end
+for its service to start it afresh if that brings none in another 90 s,
+the wait a fresh setup gets, so a camera dead mid-call ends it in about
+100 s, and one that fails before its first frame in about 180 s; or if its
+loop stays blocked for 90 s. Each says so in the relay's
+log. A setup past 90 s would still never give a frame. The first wait is that long because
+the first frame can come 40 s after the start even once the loop is free:
+on 23 November, under load, the HAL waited that long for its capture
+buffers while the kernel compacted memory to give them out. A 10 s wait
+started the camera again before it could give one, every time, and no
+call got a picture. The relay comes first for the processor and the disk,
+is kept out of swap, and writes the HAL's log a line at a time. The HAL's
 complaints about a sensor control and its tuning at every start are
 harmless: a start that worked logs them too.
 

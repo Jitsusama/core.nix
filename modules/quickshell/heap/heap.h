@@ -75,6 +75,26 @@ public:
     // still be reading them; it gives nothing back while one is.
     Q_INVOKABLE double giveBack();
 
+    // Lends the same free pages back to the kernel, which takes them only
+    // when memory runs short, and says how many megabytes of them were
+    // resident: a page lent and not yet taken is still resident, so it's
+    // counted again at each lending until the kernel takes it. Until then,
+    // a page Qt writes again keeps its frame, where one given back faults
+    // in a zeroed one (on a CPU that tracks dirty pages in software, the
+    // write still takes a fault, though one that zeroes nothing); one it
+    // took comes back zeroed, as Qt zeroes what it makes anyway. Asked after
+    // the closing's collection, and, as giveBack(), never during one. A
+    // span the kernel refuses to take lent is warned of once and not
+    // counted.
+    Q_INVOKABLE double lendBack();
+
+    // How many megabytes of the whole process the kernel holds lent, to
+    // take when memory runs short: smaps_rollup's LazyFree, which counts
+    // what was lent and not yet taken, so what the shell's weight, which
+    // counts it as resident, would lose under pressure. -1 when the kernel
+    // doesn't say.
+    Q_INVOKABLE double lent() const;
+
     // What's live, by what each item is: `classes`, the `top` largest of
     // Qt's classes, each a list of its name, megabytes and count; and
     // `shapes`, the `top` largest shapes, each its class, its first six

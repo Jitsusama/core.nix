@@ -67,6 +67,12 @@ pub struct Heard {
     /// or the session's own cell, by answering him where he said it.
     #[serde(default)]
     pub taken_by: Option<String>,
+    /// When the session's own cell answered him where he said it, when
+    /// that is how it was taken rather than by a peer on its question's
+    /// thread, so a take that proves wrong can be told apart, and a peer's
+    /// reply named in its place.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answered_at: Option<i64>,
     /// The commit that closed it: a landing in its question's thread that
     /// a switch carried.
     #[serde(default)]
@@ -161,6 +167,7 @@ mod tests {
             routed_at: None,
             tries: 0,
             taken_by: None,
+            answered_at: None,
             closed_by: None,
             closed_at: None,
             thread: Vec::new(),

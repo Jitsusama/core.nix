@@ -1,8 +1,8 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js, tests/lib/Expect.js and the
-// launcher's words.json beside this file and runs it offscreen.
+// modules/quickshell/launcher/Sprouting.js, tests/lib/Expect.js and Agents'
+// words, as words.json, beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Sprouting.js" as Sprouting
@@ -25,8 +25,8 @@ QtObject {
         offeredFrom: "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"
     })
 
-    // What Start New Work says, as the launcher's words.json the check copies
-    // beside this file holds it.
+    // What Start New Work says, as Agents' own words, which the check copies
+    // beside this file as words.json, hold it.
     function writtenSaid() {
         const request = new XMLHttpRequest();
         request.open("GET", Qt.resolvedUrl("words.json"), false);
@@ -239,6 +239,21 @@ QtObject {
             refusal("nowhere: skiff lacks system macos; tern is out of reach"),
             "nowhere: skiff lacks system macos; tern is out of reach; "
                 + "once one can take it, say it again");
+        for (const never of ["nowhere: skiff lacks system macos",
+            "nowhere: skiff lacks system macos, is out of reach; tern isn't kestrel",
+            "nowhere: skiff is out of reach, lacks system macos",
+            "nowhere: the realm knows no machine"]) {
+            Expect.same(`one no machine will ever take is told in its own words: ${never}`,
+                refusal(never), never);
+        }
+        Expect.same("one placed nowhere now, a machine out of reach would do, says it too",
+            refusal("nowhere now, though a machine out of reach would do: tern is out of reach"),
+            "nowhere now, though a machine out of reach would do: tern is out of reach; "
+                + "once one can take it, say it again");
+        Expect.same("one a machine lacking nothing may yet take says to say it again",
+            refusal("nowhere: skiff lacks tool gh; tern holds the 8 sessions it holds at most"),
+            "nowhere: skiff lacks tool gh; tern holds the 8 sessions it holds at most; "
+                + "once one can take it, say it again");
         Expect.same("one whose node's socket is missing says to say it again once it runs",
             refusal("the node couldn't be reached: No such file or directory (os error 2)"),
             "the node couldn't be reached: No such file or directory (os error 2); "
@@ -268,6 +283,10 @@ QtObject {
             Sprouting.told({ started: false, unanswered: true,
                 why: "the node couldn't be reached in time" }, said),
             "the node couldn't be reached in time");
+        Expect.same("even words a refusal's act would end, since it may yet start",
+            Sprouting.told({ started: false, unanswered: true,
+                why: "nowhere: kestrel is full" }, said),
+            "nowhere: kestrel is full");
         Expect.same("with the act's words missing, it's told as it was said",
             Sprouting.told({ started: false, why: "nowhere: kestrel is full" }, {}),
             "nowhere: kestrel is full");

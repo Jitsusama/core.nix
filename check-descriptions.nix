@@ -395,8 +395,9 @@
   '';
   a-disks-writeback-throttle-is-the-machines = ''
     each disk a machine names in jitsusama.slices.writebackThrottle has a unit, started at boot,
-    by a switch and as the disk appears, that sets its writeback throttle's goal, each its own,
-    and gives the kernel's back as it stops; a machine naming none has no such unit, and a name
+    by a switch and as the disk appears, with no condition to skip a name that reaches nothing
+    and stopped as the disk leaves, that sets its writeback throttle's goal, each its own, and
+    gives back what the disk had as it stops; a machine naming none has no such unit, and a name
     that isn't a disk's plain one, or a disk io.cost shares, is refused while another disk beside
     io.cost's is not. Whether the goal reaches the disk is the switch's to show, where a unit
     whose name reaches no throttle fails
@@ -1035,6 +1036,13 @@
   disk-guard-stays-in-the-background = ''
     the disk guard yields to the account, and a command overrunning its memory never stops it
   '';
+  disk-throttles-come-back-as-they-were = ''
+    on a stand-in sysfs, writeback-goal refuses a wrong call with 64 before it looks for the
+    disk, fails on a name that reaches no throttle, gives back a disk that's gone quietly, and
+    gives back what the throttle had before its first goal, or the kernel's default where none
+    was recorded; disk-order stands the throttle down beside io.cost and gives the kernel's
+    default back as it hands the disk back
+  '';
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
   '';
@@ -1672,6 +1680,14 @@
     kind's first claim, passes a page that links none of a pattern's things, fails with no row home
     to anything, and reads a shortened name's tail as no mention
   '';
+  house-report-hands-a-mac-its-key-safely = ''
+    a Mac given a key runs house-report signing with activation's copy of it, readable by nobody's
+    account alone in a folder of root's, ahead of the address; activation copies the key only once
+    every folder on its real path is root's and written by no other account, by its mode or an
+    access list, reading it in that real folder as a plain file, through a name of each run's own,
+    and changes no file's owner or mode nor installs any other; and the build refuses a Mac's key
+    outside /etc, /private/etc or /var/root, or spelled through dots
+  '';
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started
     again when it ends but not after its usage exit, and is told only an address as the shaper's
@@ -1693,6 +1709,15 @@
     uplink that moves counts on from the new one's count, the way reports go is said first and
     each time its interface or address moves, this machine's own address is sent to by its
     loopback from a loopback address, and an interface's count is read from its statistics alone
+  '';
+  house-report-takes-up-a-macs-swapped-key = ''
+    a Mac given a key copies it again, as root, by the same text activation runs, whenever the key
+    or its folder changes, so a key swapped while the Mac runs is taken without a switch
+  '';
+  house-report-takes-up-a-swapped-key = ''
+    a Linux machine given a key hands it to house-report as a credential read by --key, and
+    restarts it whenever the key file changes, leaving one someone stopped stopped, with no start
+    limit on either unit, so a key written in several steps never leaves the reporter down
   '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
@@ -2176,7 +2201,8 @@
     it leaves idle, at once if stopped again, says what it waited on and its counts once more, last,
     once what it cut has ended, even with its counts moved meanwhile, its cuts apart from pi's
     cancels, counts a request still waiting on its first connection as cut when stopped and as
-    pi's cancel when pi leaves it, refuses a drain of none and each flag it no longer takes, telling
+    pi's cancel when pi leaves it, and one whose body is still being read as cut, by a drain or by
+    a stop as it leaves idle, refuses a drain of none and each flag it no longer takes, telling
     them by their words, keeps its socket to its account, from a second
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
@@ -3217,6 +3243,14 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
+  pi-hosted-names-handlers-that-hold = ''
+    pi built with the host's patches, applied exactly, writes one line to stderr for each
+    extension whose handlers for one session event, or resources_discover, took 250 ms or
+    more, each timed from its own start, its path quoted on one line, for session_start, a
+    cancelling event, once, and resources_discover alike, a throwing handler too, two slow
+    extensions on a line each, and none for an extension under the bar or for a turn's
+    streamed events
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
@@ -3791,6 +3825,12 @@
     IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried, and a
     list to one address at least
   '';
+  shaper-refuses-a-house-key-it-can-t-read = ''
+    a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
+    or spelled through doubled slashes or dot folders, is refused as the machine builds, and so are
+    two houses naming one address under two keys, while a key under /var/lib, and a keyed house
+    beside a keyless one naming the same address, are taken
+  '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
   '';
@@ -4057,7 +4097,8 @@
     added up, how many cells have no purpose written, what each quest waits on its person for, a
     record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
     with the cells it started and every cell each grew from, kept on its cell through records,
-    and a floor wider for its gaps drawing its words no smaller than site.css's cut allows
+    and a floor wider for its gaps drawing its words no smaller than site.css's cut allows, which
+    grows them by as much
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
@@ -4068,8 +4109,9 @@
     of the view of cells without purpose taking the cursor with it, a wait answered no longer
     said, a cell going and the crest drawn again once every cell has, broken while the node is
     away with its cells kept and live with them read again once it's back, stale once the server
-    goes with its cells kept, a first visit holding still at a phone's width and a desk's in a
-    room for its floor with no word under 12 px and a long link, open in its panel, never
+    goes with its cells kept, a first visit holding still at a phone's width, a desk's and a
+    wide desk's in a room for its floor, drawing its machine's name at the wide desk's and no
+    word under 12 px, and a long link, open in its panel, never
     widening the page, a first visit within its budget and a second answered unchanged, the
     web-design skill's page checks passing at a phone's
     width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
@@ -4494,9 +4536,7 @@
     its record says over the folder it works in; a paused one's glyph is never drawn in a
     listening one's colour; and an orchestration's waiting sessions fold into one row after its
     own, which Return steps into and typing still finds each in; and a look's choice in For You
-    steers its answer to the session that left it and, once taken, moves to History saying it;
-    and a session's work turning just after Return into For You, moving none of it, is drawn
-    as no act of Return's
+    steers its answer to the session that left it and, once taken, moves to History saying it
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
@@ -5030,7 +5070,11 @@
     running its piece's act as it is now; and Now's Desktop holds the notices unread as the
     notices' own rows, and its History those read, stepping in again after one is read making
     only that one's row again; and Now, stepped into For You since it last said what it shows,
-    says it changed only where For You's rows differ from those the launcher shows
+    says it changed only where For You's rows differ from those the launcher shows; and the
+    notices moving, by their rows or their history, each heard outright with nothing held, aren't
+    said outright as they move with For You held, so a session's notice updated just after Return
+    into For You isn't said as Return's act then, while with Desktop, Slack's notices or what's on
+    screen held right under Now they are said outright
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
@@ -5180,13 +5224,25 @@
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
     loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, and the Brio's own watch writes in the hidden
-    folder, never beside it
+    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
+    folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
-    a graphical machine runs no relay on the MX Brio, has no udev rule taking the seat's tag off
-    it, and gives the seat back a Brio a relay held, so the seat opens the Brio itself while its
-    relay gives no picture
+    a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
+    however it's assigned or taking the Brio's seat tag off as the sharing's rule does, as a
+    search with each pattern shown to find its line says, and starts at every boot, and at a
+    switch bringing it in, the give-back of a Brio a relay held, so the seat opens the Brio itself
+    while its relay gives no picture
+  '';
+  the-mx-brio-give-back-never-fails = ''
+    the MX Brio's give-back, run under set -e against a stand-in udevadm, replays both of the
+    Brio's nodes and never another camera a relay holds, even of its maker or model number, never
+    triggers with no device, bounds each wait on udev to a second or more and to fit twice, and
+    every wait together once, within its unit's limit, ends well when udev refuses a replay, never
+    settles, loses the Brio's record or can't be read, adds the Brio back when its unit's timeout
+    ends the run, says a Brio unplugged midway is the seat's once plugged in, and says it gave the
+    Brio back only when udev's record of every node shows it tagged for the seat and unmarked,
+    warning with the way out otherwise
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
@@ -5456,7 +5512,10 @@
     and a cap's open the drawer served with it, and a period's its days and what its cuts went
     to most; acts are asked of the socket, spawning nothing; told by the socket, a change remakes
     only the rows it changed, and a watch never answered is drawn from what's held while still
-    reading
+    reading; and a row shown elsewhere reads as served, as none once the place has answered
+    without it or while the screen is shared, before the quiet place's first answer too, and as
+    can't say only before the first answer on a screen said unshared, reading no more of how
+    Spend stands than it needs
   '';
   the-deep-rest-hold-starts-unless-turned-off = ''
     the XPS 14's hold keeping the cores from their deepest rest starts with the machine, and with
@@ -5496,9 +5555,10 @@
   still-windows-draw-nothing-as-animations-start-on-niri = ''
     a window the shell shows standing still draws no frame while two other windows' squares
     start moving ten times, one by a NumberAnimation and one by an XAnimator, through Qt's
-    threaded render loop, Qt logging its timer starting over all three windows within at least
-    half of those starts; each moving window draws a frame in every start and at least two in
-    all but one, and the still one draws when its colour changes
+    threaded render loop, Qt logging its timer starting over all three windows straight after
+    its animationStarted() within at least half of those starts; each moving window draws a
+    frame in every start and at least two in all but one, and the still one draws when its
+    colour changes
   '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,
@@ -6472,7 +6532,8 @@
   vm-a-switch-takes-a-plugged-in-brio = ''
     a switch that brings in the MX Brio's sharing over a Brio already plugged in and handed to the
     seat names it for its relay, starts the relay, and takes it back from the seat, with nobody
-    plugging it in again
+    plugging it in again; and a switch back to the seat's machine gives the seat the Brio again,
+    tagged for it, unmarked and watched as its own, with nobody replugging it
   '';
   vm-lid-shuts-with-the-hinge = ''
     logind hears lid-hinge's switch and not the lid's own: a lid shut with the hinge coming down
@@ -6629,8 +6690,10 @@
     sending 3 Mbit/s across the home network, the shaper hears it through its firewall, its
     reports read 2.4 to 3.6 Mbit/s, and it holds its own upload under what the house's 8 Mbit/s
     leaves, never under 4, and says so; once the reporter's route moves to another address the
-    house names, the reporter says so, the shaper hears the new address and the hold stands; once
-    the reports stop it says the house went quiet and the upload climbs past the hold
+    house names, the reporter says so, the shaper hears the new address and the hold stands; the
+    reports are signed, and ones signed under another key are refused and hold nothing; a key
+    swapped on both machines is taken up and the hold stands again; once the reports stop it says
+    the house went quiet and the upload climbs past the hold
   '';
   vm-the-cores-stay-out-of-deep-rest = ''
     a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit

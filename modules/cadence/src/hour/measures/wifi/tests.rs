@@ -230,6 +230,55 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
 }
 
 #[test]
+fn a_minute_holds_only_past_the_bars_and_the_point_held_most_leads() {
+    let held = |p95: &str, late: &str| {
+        let message = said_by_wifid(NEAR, Some(&clause(p95, late)), false);
+        let line: Option<Value> = serde_json::from_str(&entry(AT, &message)).ok();
+        line.as_ref()
+            .and_then(minute)
+            .as_ref()
+            .is_some_and(Minute::held)
+    };
+    for (p95, late, was) in [
+        ("100.0", "1.0", false),
+        ("100.1", "0.0", true),
+        ("9.0", "1.1", true),
+    ] {
+        assert_eq!(
+            held(p95, late),
+            was,
+            "a minute at {p95} ms and {late}% past 1 s misread PN2VZC's bars"
+        );
+    }
+    let on = |bssid: &str, n: i64, video: &str, call: bool| {
+        entry(AT + 60 * n, &said_by_wifid(bssid, Some(video), call))
+    };
+    let text = journal(&[
+        on(NEAR, 0, &clause("300.0", "0.0"), false),
+        on(FAR, 1, &clause("20.0", "2.0"), false),
+        on(FAR, 2, &clause("20.0", "3.0"), true),
+        on(FAR, 3, &clause("20.0", "2.5"), false),
+        // As late as the worst but quicker, and last, so only the p95
+        // keeps it from being chosen.
+        on(FAR, 4, &clause("15.0", "3.0"), false),
+    ]);
+    assert_eq!(
+        video(Some(&text), &TimeZone::UTC).behind,
+        [
+            format!(
+                "on {FAR}, 4 of 4 minutes held, the worst 20.0 ms at p95 and 3.0% past 1 s at \
+                 11:27, during a call, best effort then 15.0 ms"
+            ),
+            format!(
+                "on {NEAR}, 1 of 1 minutes held, the worst 300.0 ms at p95 and 0.0% past 1 s at \
+                 11:25, best effort then 15.0 ms"
+            ),
+        ],
+        "the point held most didn't lead, or its worst minute lost its call"
+    );
+}
+
+#[test]
 fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why() {
     let (held, quick) = (clause("300.0", "0.0"), clause("9.0", "0.0"));
     let moment = journal(&[

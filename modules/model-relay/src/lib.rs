@@ -1221,6 +1221,10 @@ impl Relay {
         if stopped_as_it_left {
             eprintln!("model-relay: stopped as it left, so it ends what it was sending direct");
             relay.lets_the_late_finish(&mut stops).await;
+            // What's still held, such as another origin's body still being
+            // read, which holds no idle leave back, is dropped with the
+            // runtime by this stop, so it's cut, not pi's cancel.
+            relay.counts.cutting.store(true, Ordering::SeqCst);
         }
         // Those refused while it left are said in its last word.
         last_word

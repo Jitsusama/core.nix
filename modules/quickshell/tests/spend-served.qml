@@ -887,12 +887,21 @@ ShellRoot {
         // is shared, whose quiet place holds no Budgets, rather than with
         // its amounts (core.nix#6073).
         const elsewhere = unwanted("spend:budgets");
+        const unshared = readOf(shutSpend.standingNow());
         Quiet.sharing = true;
         const shared = unwanted("spend:budgets");
+        const sharedRead = readOf(shutSpend.standingNow());
         Quiet.sharing = false;
         expect("shown elsewhere it reads as served, and as none while sharing",
             elsewhere?.side === "$100 this month" && shared === null,
             JSON.stringify([elsewhere?.side, shared]));
+        // The moment before the quiet place first answers is said by how
+        // Spend stands (tests/spend-now.qml, and beforeAnswer here as it's
+        // made), so what rowNow gives it must follow the screen as it's
+        // shared once it has answered too.
+        expect("rowNow is told the screen is shared, and reads the quiet place",
+            unshared === "false spend" && sharedRead === "true spend-quiet",
+            JSON.stringify([unshared, sharedRead]));
 
         // The rows come as the daemon placed them, the shell ranking none
         // (2026-11-10).
@@ -1007,6 +1016,11 @@ ShellRoot {
             }));
     }
 
+    // Whether Spend says the screen is shared, and the place it reads.
+    function readOf(standing) {
+        return `${standing.sharing} ${standing.place}`;
+    }
+
     // What the shut Spend says a row reads now while its rows aren't
     // wanted, as Agents' Budgets and Now's drawers ask it, wanted again after.
     function unwanted(key) {
@@ -1017,7 +1031,24 @@ ShellRoot {
     }
 
 
+    // Before its socket first answers, in the turn it's made, rowNow can't
+    // say what Budgets reads unshared, so Agents keeps the row it last
+    // made, and says none while the screen is shared, holding no amount
+    // (core.nix#6243).
+    function beforeAnswer() {
+        const unshared = unwanted("spend:budgets");
+        Quiet.sharing = true;
+        const shared = unwanted("spend:budgets");
+        Quiet.sharing = false;
+        expect("before Spend first answers, rowNow can't say, and says none while shared",
+            shutSpend.down === false && unshared === undefined && shared === null,
+            JSON.stringify([shutSpend.down, String(unshared), String(shared)]));
+    }
+
     // Spend over the files spend-watch wrote, read once they're there.
-    Component.onCompleted: waits.until("the written files read, and the socket heard down",
-        () => root.collected !== "" && root.budgeted !== "" && shutSpend.down, collect)
+    Component.onCompleted: step(() => {
+        beforeAnswer();
+        waits.until("the written files read, and the socket heard down",
+            () => root.collected !== "" && root.budgeted !== "" && shutSpend.down, collect);
+    })
 }

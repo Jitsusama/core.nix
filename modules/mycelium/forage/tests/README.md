@@ -42,7 +42,9 @@ run by Node's own test runner when the local sites build the page.
   line cut, however shallow, to leave the cells booked as grown from it
   up to half the floor, and kept whole when they only claim it; a ring
   longer than the room filling it cut at its top; an ellipsis wherever the floor
-  skips cells of its list, and none on a list that fits; the cells the
+  skips cells of its list, none on a list that fits, and none between two
+  where all it skips is the rest of the first's brood, folded under it,
+  though a ring's cut stays marked; the cells the
   node's book holds started before those only claimed; that a step draws
   the floor again only for a cell it leaves off or one that grew a cell it
   leaves off, no cursor at all not among them; that a live
@@ -52,6 +54,12 @@ run by Node's own test runner when the local sites build the page.
   over the list it was worked out for; and that with no cursor a floor
   whose own cell ends goes back to the first 48, and stays there when
   that cell comes back.
+- `lineage.test.ts` tries which skipped cells the floor folds: all that
+  is left of a drawn cell's brood, grandchildren too, the next cell drawn
+  not of it, and never one that only shares a ring with it.
+- `floors.ts` builds the forages the floor draws, and reads what the floor
+  drew of them: its compartments, what stands along its main line, and
+  the runs that line is broken into.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.
@@ -69,7 +77,8 @@ draws the crest again once every cell has gone and the floor again once
 one is heard again,
 lets a cell a purpose takes out of the view of cells without purpose
 take the cursor with it, find or not, holds a first visit still at a
-phone's width and a desk's while a long link never widens the page, and
+phone's width, a desk's and a wide desk's, where the floor draws its
+machine's name and no word under 12 px, while a long link never widens the page, and
 keeps the page within its budget and passing the web-design skill's page checks. Beside a second
 stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn

@@ -264,7 +264,9 @@ rect.hollow {
 
 /* Narrower than this a 1512 floor's 13 px words, and so any floor's, would
    be drawn under the kit's 12 px floor for text. The eyebrow names the machine, the
-   headline counts every cell and the list holds them all, so the words go. */
+   headline counts every cell and the list holds them all, so the words go. The gap
+   marks where cells are skipped and the note of how many more the list holds, at
+   14 px, go with the name, so the floor never shows half its words. */
 @container (max-width: 1396px) {
   .drawn text {
     display: none;

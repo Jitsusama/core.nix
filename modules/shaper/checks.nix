@@ -137,6 +137,58 @@ let
       "the mac"
     ]) "a list holding a name"
     ++ lib.optional (takes [ ]) "a list of none";
+  # What the shaper's assertions refuse of a machine whose networks name
+  # `houses`, by network: their messages, the machine's others left out.
+  keyRefusals =
+    houses:
+    lib.pipe
+      (bareNixos [
+        self.nixosModules.shaper
+        {
+          jitsusama.shaper.networks = lib.mapAttrs (_: house: {
+            up = 12000;
+            house = {
+              most = 7000;
+            }
+            // house;
+          }) houses;
+        }
+      ]).config.assertions
+      [
+        (lib.filter (check: !check.assertion))
+        (map (check: check.message))
+        (lib.filter (lib.hasPrefix "jitsusama.shaper.networks"))
+      ];
+  keyedAt = from: keyFile: { inherit from keyFile; };
+  one = "00:00:5e:00:53:01";
+  other = "00:00:5e:00:53:02";
+  # Keys the shaper's service can't see, under a folder it's given empty
+  # or spelled through one, each of which must be refused.
+  unseenKeys = [
+    "/root/house.key"
+    "/home/someone/house.key"
+    "/tmp/house.key"
+    "/var/tmp/house.key"
+    "//root/house.key"
+    "/var/lib/./house.key"
+    "/var/lib/../../tmp/house.key"
+  ];
+  takenUnseen = lib.filter (
+    path: keyRefusals { ${one} = keyedAt "192.0.2.7" path; } == [ ]
+  ) unseenKeys;
+  wronglyRefused = keyRefused.plain ++ keyRefused.oneKeyed;
+  refusedText = lib.concatStringsSep "; " wronglyRefused;
+  keyRefused = {
+    plain = keyRefusals { ${one} = keyedAt "192.0.2.7" "/var/lib/house.key"; };
+    twoKeys = keyRefusals {
+      ${one} = keyedAt "192.0.2.7" "/var/lib/one.key";
+      ${other} = keyedAt "192.0.2.7" "/var/lib/other.key";
+    };
+    oneKeyed = keyRefusals {
+      ${one} = keyedAt "192.0.2.7" "/var/lib/one.key";
+      ${other}.from = "192.0.2.7";
+    };
+  };
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -183,6 +235,20 @@ onLinux {
     else
       "A house's address check misreads: ${lib.concatStringsSep ", " misread}"
   ) (opened && misread == [ ]);
+
+  # A house's key the shaper's service can't see, under /root, /home,
+  # /tmp or /var/tmp or spelled through them, is refused as the machine
+  # builds rather than read as missing at run time, holding nothing; and
+  # so are two houses naming one address under two keys, while one keyed
+  # beside one keyless, which the ear holds to the key, builds.
+  shaper-refuses-a-house-key-it-can-t-read = holds "shaper-refuses-a-house-key-it-can-t-read" (
+    if takenUnseen != [ ] then
+      "A key the shaper can't see was taken: ${lib.concatStringsSep ", " takenUnseen}"
+    else if keyRefused.twoKeys == [ ] then
+      "Two houses naming one address under two keys were taken."
+    else
+      "A plain key, or a keyed house beside a keyless one, was refused: ${refusedText}"
+  ) (takenUnseen == [ ] && keyRefused.twoKeys != [ ] && wronglyRefused == [ ]);
 
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for

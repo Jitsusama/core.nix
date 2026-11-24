@@ -38,10 +38,11 @@ Scope {
     readonly property var pi: ["pi-ask", "--no-launcher"]
 
     // The row explained last, by its act's key, and how each stands, as
-    // Explaining.js's shown reads it: { stage, message, at }, where stage is
-    // "reading" while the node is asked, "asking" once the pi is, and
-    // "unknown" or "failed" when the node can't say. Replaced whole, so
-    // bindings hear it.
+    // Explaining.js's shown reads it: { stage, message, at, beside }, where
+    // stage is "reading" while the node is asked, "asking" once the pi is,
+    // and "unknown" or "failed" when the node can't say, and beside names
+    // the acts on its row it was asked with (Explaining.fits). Replaced
+    // whole, so bindings hear it.
     property string explaining: ""
     property var explained: ({})
 

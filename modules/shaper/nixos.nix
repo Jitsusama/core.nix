@@ -156,8 +156,10 @@ in
           description = ''
             What the network's line carries down, in kbit/s, or null where
             it isn't known. While a call is on and the download carries
-            nine tenths of it, or the controller already holds it, the
-            download is held at nine tenths, under the router's queue, so
+            nine tenths of it, or the controller holds it under a full
+            line, having cut it in the last few seconds or with the
+            download filling its hold, the download is held at nine
+            tenths, under the router's queue, so
             it queues in this machine's CAKE, which puts the call first,
             rather than in a router's flow queues, where a call that
             shares one with a bulk download loses what it loses. The
@@ -224,7 +226,35 @@ in
                   machine sends from: reports from a new lease, or from a
                   temporary IPv6 address, are dropped without a word, and
                   the house holds nothing. house-report sends over IPv4
-                  alone, for that reason.
+                  alone, for that reason. With a `keyFile`, a report from
+                  one of these is taken only when it's signed.
+                '';
+              };
+              options.keyFile = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.pathWith {
+                    inStore = false;
+                    absolute = true;
+                  }
+                );
+                default = null;
+                example = "/var/lib/shaper/house.key";
+                description = ''
+                  A file holding the house's key, at least 16 bytes, which
+                  the other machine's house-report signs each report with
+                  (its `keyFile`), so a device on the line can't forge one
+                  from the other machine's address. Set, only signed
+                  reports are taken, stamped within 3 s of this machine's
+                  clock; while the file can't be read, the house holds
+                  nothing and the journal says why. Unset, a report is
+                  taken by its address alone. The path is read by the
+                  shaper, which runs as root, so make it root's alone:
+                  `head -c 32 /dev/urandom`, the same bytes on both
+                  machines. The shaper's service sees no /root, /home,
+                  /tmp or /var/tmp, so keep it elsewhere, as under
+                  /var/lib, spelled plainly and not through a link;
+                  houses naming one address name one key. Never a Nix
+                  path or a value in the store.
                 '';
               };
             }
@@ -308,6 +338,57 @@ in
       if lib.hasInfix ":" address then "ip6" else "ip"
     } saddr ${address} udp dport ${toString housePort} accept
   '') (lib.unique (lib.concatMap (house: house.from) houses));
+
+  # The shaper's service sees an empty /root, /home, /tmp and /var/tmp, so
+  # a key kept there would read as missing, as would one spelled through
+  # those by `//`, `/./` or `/../`; and the ear holds each address to one
+  # key, so two houses naming one address, spelled alike, must name the
+  # same key. A link into those folders still passes, for the journal to
+  # say.
+  config.assertions =
+    let
+      keyed = lib.filter (house: house.keyFile != null) houses;
+      unseen = [
+        "/root/"
+        "/home/"
+        "/tmp/"
+        "/var/tmp/"
+      ];
+      unplain = [
+        "//"
+        "/./"
+        "/../"
+      ];
+      hides =
+        path:
+        lib.any (dir: lib.hasPrefix dir path) unseen
+        || lib.any (part: lib.hasInfix part path) unplain
+        || lib.hasSuffix "/." path
+        || lib.hasSuffix "/.." path;
+      hidden = lib.filter hides (map (house: toString house.keyFile) keyed);
+      naming = address: lib.filter (house: lib.elem address house.from) keyed;
+      keysOf = address: lib.unique (map (house: house.keyFile) (naming address));
+      shared = lib.filter (address: lib.length (keysOf address) > 1) (
+        lib.unique (lib.concatMap (house: house.from) keyed)
+      );
+    in
+    [
+      {
+        assertion = hidden == [ ];
+        message =
+          "jitsusama.shaper.networks: a house's keyFile can't be under /root, /home, "
+          + "/tmp or /var/tmp, which the shaper's service can't see, nor spelled with "
+          + "//, /./ or /../: "
+          + lib.concatStringsSep ", " hidden;
+      }
+      {
+        assertion = shared == [ ];
+        message =
+          "jitsusama.shaper.networks: houses naming one address must name one "
+          + "keyFile: "
+          + lib.concatStringsSep ", " shared;
+      }
+    ];
 
   # The shaper makes the IFBs it needs, one per link; the module's own two
   # would only sit there.

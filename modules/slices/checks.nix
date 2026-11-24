@@ -56,6 +56,10 @@
         lib.hasSuffix "/writeback-goal ${disk} ${goal}" (service.ExecStart or "")
         && lib.hasSuffix "/writeback-goal ${disk} kernel" (service.ExecStop or "")
         && service.RemainAfterExit or false
+        # A condition would skip a name that reaches no throttle unseen, and
+        # the disk's leaving has to stop the unit so its return starts it.
+        && !(unit.unitConfig or { } ? ConditionPathExists)
+        && unit.unitConfig.StopPropagatedFrom or null == "dev-${disk}.device"
         && lib.elem "dev-${disk}.device" (unit.wantedBy or [ ])
         && lib.elem "multi-user.target" (unit.wantedBy or [ ]);
       refusing = config: lib.any (a: !a.assertion) config.assertions;
@@ -665,6 +669,19 @@
         ${pkgs.bash}/bin/bash ${./efficient-cores-test.sh} ${
           lib.getExe (pkgs.callPackage ./efficient-cores.nix { })
         }
+        touch $out
+      '';
+
+  # writeback-goal and disk-order, on a stand-in sysfs, take each exit they
+  # say they take, give back what a disk's throttle had before its first
+  # goal, and stand the throttle down beside io.cost and up after it.
+  disk-throttles-come-back-as-they-were =
+    pkgs.runCommandLocal "disk-throttles-come-back-as-they-were" { }
+      ''
+        mkdir work && cd work
+        ${pkgs.bash}/bin/bash ${./disk-throttle-test.sh} \
+          ${lib.getExe (pkgs.callPackage ./writeback-goal.nix { })} \
+          ${lib.getExe (pkgs.callPackage ./disk-order.nix { })}
         touch $out
       '';
 

@@ -100,6 +100,16 @@ function poses(name, taken) {
         && (TURNS.test(String(name)) || taken.some(each => readAs(each) === read));
 }
 
+// What Explain It is told a look's row offers, by the names the row shows
+// them under: `cellActs`, those on the cell behind it, then a terminal
+// look's own Open (`openName`), which goes to that cell's window. Any other
+// look's Open, like its choices, answers the look, not what the cell asks
+// now. A terminal's Open may go by the look's own words, as its row shows
+// it, which actOf keeps from passing for any act the launcher names.
+function presses(one, cellActs, openName) {
+    return one.kind === "terminal" ? cellActs.concat([openName]) : cellActs.slice();
+}
+
 // Whether a look in its second form asks Joel back: it wants a choice or
 // his own words, or offers choices. One in its first form says so in its ask.
 function asksBack(one) {

@@ -4,8 +4,9 @@ mx-brio-at-switch.nix, beside this, runs this through pytest inside the driver
 (tests/lib/vm_pytest.py), and its opening comment says what has to hold. The machine boots
 without the sharing, with a stand-in Brio and someone at the seat, and the module's fixture
 switches it in once, so every test reads the machine the switch left. The tests run in the
-order written: the last two run the take-hold again, and the last unplugs the stand-in. The
-cameras' names are Nix's, given as the `values` fixture.
+order written: the last three run the take-hold again, switch back to the seat's machine and
+in again, and the last unplugs the stand-in. The cameras' names are Nix's, given as the
+`values` fixture.
 """
 
 from __future__ import annotations
@@ -222,6 +223,48 @@ def test_a_later_run_leaves_the_relay_running(machine: BaseMachine, switched: st
         "the take-hold took the Brio away from its relay"
     )
     assert not the_seat_can_open(machine, switched), "the seat got the Brio back"
+
+
+GIVEN = "journalctl -b -u mx-brio-seat -o cat --no-pager"
+
+
+def test_a_switch_back_gives_the_seat_the_brio(machine: BaseMachine, switched: str) -> None:
+    """Switched back to the seat's machine, the seat has the Brio again, with no replug.
+
+    udev forgets the sharing's marks only as the Brio arrives again, which the give-back
+    replays; the seat's camera watch then takes it, as it does any camera. The sharing is
+    switched in again however the test ends, so a failure here stays this test's own.
+    """
+    base = machine.succeed("readlink -f /run/booted-system").strip()
+    shared = machine.succeed(f"readlink -f {base}/specialisation/shared").strip()
+    try:
+        # A give-back that fails fails the switch, which is said with its journal.
+        status, out = machine.execute(f"{base}/bin/switch-to-configuration test")
+        if status != 0:
+            said = machine.execute(GIVEN)[1]
+            pytest.fail(f"the switch back ended {status}: {out} | the give-back said: {said}")
+        try:
+            machine.wait_until_succeeds(
+                f"getfacl -p {switched} | grep -q user:someone:", timeout=SEATING
+            )
+        except RequestedAssertionFailed:
+            said = machine.execute(GIVEN)[1]
+            pytest.fail("the seat didn't get the Brio back: " + " | ".join(said.splitlines()))
+        facts = machine.succeed(f"udevadm info --query=property {switched}").splitlines()
+        assert "CAMERA_RELAYED=1" not in facts, f"udev still marks the Brio relayed: {facts}"
+        tags = machine.succeed(
+            f"udevadm info --query=property --property=CURRENT_TAGS --value {switched}"
+        )
+        assert ":uaccess:" in tags, f"udev doesn't tag the Brio for the seat: {tags.strip()}"
+        machine.wait_for_unit(the_old_watch(switched), timeout=STARTING)
+        given = "Gave the seat back the MX Brio."
+        try:
+            machine.wait_until_succeeds(f"{GIVEN} | grep -qF {shlex.quote(given)}", timeout=FILING)
+        except RequestedAssertionFailed:
+            pytest.fail(f"the give-back said: {machine.execute(GIVEN)[1]}")
+    finally:
+        machine.succeed(f"{shared}/bin/switch-to-configuration test")
+        machine.wait_for_unit("mx-brio.service", timeout=STARTING)
 
 
 def test_with_no_brio_the_take_hold_does_nothing(machine: BaseMachine, switched: str) -> None:

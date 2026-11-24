@@ -9,35 +9,7 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { floorAfter, floorFor, floorOf, floorStepped, stepsOff, UNDRAWN } from "../draw.ts";
 import type { Forage } from "../model.ts";
-
-/** A forage for `cell` with `more` over its fields, its documents none. */
-function forage(cell: string, more: Partial<Forage> = {}): Forage {
-  return {
-    cell,
-    machine: "kestrel",
-    quest: `QEST-20261116-${cell}`,
-    purpose: `${cell} learns to hover.`,
-    status: "active",
-    documents: [],
-    waits: [],
-    startedBy: undefined,
-    booked: false,
-    parent: undefined,
-    splitFrom: undefined,
-    splitInto: [],
-    serves: [],
-    relies: [],
-    depth: 0,
-    ...more,
-  };
-}
-
-/** The cell at `at` in the lists below. */
-const named = (at: number): string => `C${String(at).padStart(2, "0")}`;
-
-/** The cells from `first` to `last`, both drawn. */
-const span = (first: number, last: number): string[] =>
-  Array.from({ length: last - first + 1 }, (_, at) => named(first + at));
+import { along, compartments, floorAt, forage, MAIN, named, runs, span } from "./floors.ts";
 
 /** Sixty top cells, C00 to C59, with a starter at C10 and the cell it booked at C55. */
 const LONG: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
@@ -47,33 +19,6 @@ const LONG: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
 /** `LONG` with `cell` started by `by`. */
 const startedOn = (list: readonly Forage[], cell: string, by: string): readonly Forage[] =>
   list.map((each) => (each.cell === cell ? { ...each, startedBy: by, depth: 1 } : each));
-
-/** The cells `floor` draws a compartment for, in the order it draws them. */
-const compartments = (floor: string): string[] =>
-  [...floor.matchAll(/<rect class="[^"]*" data-cell="([^"]+)"/gu)].map((match) => match[1] ?? "");
-
-/**
- * What `floor` draws along its main line, left to right: each compartment's
- * cell, and an ellipsis for each gap where it skips cells of its list.
- */
-const along = (floor: string): string[] =>
-  [
-    ...[...floor.matchAll(/<rect class="[^"]*" data-cell="([^"]+)" x="([^"]+)"/gu)].map(
-      (match) => ({ mark: match[1] ?? "", x: Number(match[2]) + 11 }),
-    ),
-    ...[...floor.matchAll(/<text class="gap" x="([^"]+)"/gu)].map((match) => ({
-      mark: "\u2026",
-      x: Number(match[1]),
-    })),
-  ]
-    .sort((one, other) => one.x - other.x)
-    .map((each) => each.mark);
-
-/** The main line, the one hypha naming no cell. */
-const MAIN = /<path class="hypha" d="([^"]+)"/u;
-
-/** The runs `floor`'s main line is drawn in, broken at each gap. */
-const runs = (floor: string): number => (floor.match(MAIN)?.[1] ?? "").split("M").length - 1;
 
 /** A ringed compartment, naming its cell. */
 const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
@@ -88,13 +33,6 @@ const LEAST_PX = 12;
 
 /** The cell whose compartment `floor` rings. */
 const ringed = (floor: string): string | undefined => floor.match(RINGED)?.[1];
-
-/** The floor of `list` drawn around `around`, ringing `cursor`. */
-const floorAt = (
-  list: readonly Forage[],
-  cursor: string | null,
-  around: string | null = cursor,
-): string => floorOf(floorFor(list, around), cursor, "kestrel");
 
 it("draws every cell of a list that fits, whatever the cursor", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 5), "C04")), span(0, 4));
@@ -275,6 +213,39 @@ it("cuts a line only for the booked part of a mixed brood", () => {
   assert.deepEqual(compartments(floorAt(mixed, "C39")), span(2, 49));
 });
 
+/**
+ * A top cell, C00, that booked 24 cells, each of which booked 7 more, read
+ * as the list reads a tree, then seven more top cells: 200 in all.
+ */
+const FAMILY: readonly Forage[] = Array.from({ length: 200 }, (_, at) => {
+  const under = (at - 1) % 8;
+  if (at === 0 || at > 192) {
+    return forage(named(at));
+  }
+  return under === 0
+    ? forage(named(at), { startedBy: "C00", booked: true, depth: 1 })
+    : forage(named(at), { startedBy: named(at - under), booked: true, depth: 2 });
+});
+
+it("folds the cells skipped under a cell they grew from, marking only a gap that leaves it", () => {
+  const cut = "\u2026";
+  const floor = floorAt(FAMILY, "C00");
+  const children = Array.from({ length: 20 }, (_, at) => named(33 + at * 8));
+  // C00 and its nearest 27, then the rest of its brood, each with its own
+  // 7 folded under it. C28 to C32 grew from C25, not from C27, so that gap
+  // is marked, and the one past C185 is marked as the list goes on.
+  assert.deepEqual(along(floor), [...span(0, 27), cut, ...children, cut]);
+  // Two gaps' room, as wide as a long list's around a cell in its middle.
+  assert.ok(floor.startsWith('<svg viewBox="0 0 1536 '), floor);
+  assert.equal(runs(floor), 3);
+});
+
+it("marks a gap after a cell when the floor draws more of its brood past it", () => {
+  // Around C150, deep under C00, all it skips after C00 grew from C00, but so
+  // did C121 past them, so the brood isn't closed and the gap stays.
+  assert.deepEqual(along(floorAt(FAMILY, "C150")).slice(0, 3), ["C00", "\u2026", "C121"]);
+});
+
 /** A top cell, C00, then a ring of 59 claimed starts: C01 started by C59, each other by the one before. */
 const RING: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
   at === 0
@@ -284,7 +255,10 @@ const RING: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
 
 it("fills the floor from a ring longer than the room it leaves, cut at its top", () => {
   // No whole line of the ring fits beside C00, so C01's is cut to the 47 places left.
-  assert.deepEqual(compartments(floorAt(RING, "C00")), ["C00", "C01", ...span(14, 59)]);
+  const floor = floorAt(RING, "C00");
+  assert.deepEqual(compartments(floor), ["C00", "C01", ...span(14, 59)]);
+  // C14's line comes up through C02 to C01, so the cut is marked, not folded.
+  assert.deepEqual(along(floor), ["C00", "C01", "\u2026", ...span(14, 59)]);
 });
 
 it("stops a line at a cell already drawn, so a long line leaves room for the cells it started", () => {
@@ -462,16 +436,16 @@ it("fits its room to a floor of the most cells and a gap, growing a wider one's 
   assert.ok(sheet.includes(room), `site.css holds no room of ${room}`);
   // The words go where this floor would draw its smallest under the kit's floor for text.
   const cut = Math.ceil((Number(width) * LEAST_PX) / WORD_PX);
-  const words = `@container (max-width: ${cut}px)`;
-  assert.ok(sheet.includes(words), `site.css holds no ${words}`);
-  // A floor skipping cells in more places is wider, and grows its words to match.
+  assert.ok(sheet.includes(`@container (max-width: ${cut}px)`), `site.css cuts no words at ${cut}`);
+  // A floor skipping cells in more places is wider, and site.css grows its words to match.
+  const grows = (px: string) => sheet.includes(`calc(${px} * var(--grown, 1))`);
+  assert.ok(["13px", "14px"].every(grows), "site.css grows no words by --grown");
   const floors = [
     ...[null, "C10", "C55"].map((cursor) => floorAt(LONG, cursor)),
     ...GROWN.map(({ cell }) => floorAt(GROWN, cell)),
   ];
   const widths = floors.map((other) => Number(other.match(VIEWED)?.[1]));
-  const wider = widths.some((each) => each > Number(width));
-  assert.ok(wider, "none drew wider than this");
+  assert.ok(Math.max(...widths) > Number(width), "none drew wider than this");
   // Where words first show, meet fits a floor to the room's height or, if wider, its width.
   for (const [at, other] of floors.entries()) {
     const wide = Math.max(widths[at] ?? 0, Number(width));

@@ -147,25 +147,13 @@ let
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
   efficientCores = pkgs.callPackage ./efficient-cores.nix { };
-  diskOrder = pkgs.writeShellApplication {
-    name = "disk-order";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.findutils
-      pkgs.gnugrep
-    ];
-    text = builtins.readFile ./disk-order.sh;
-  };
+  diskOrder = pkgs.callPackage ./disk-order.nix { };
   writebackThrottle = config.jitsusama.slices.writebackThrottle;
   # A name that isn't a disk's plain one makes no unit, so the assertion
   # below refuses it in its own words rather than a unit's type failing.
   plainDisk = disk: builtins.match "[a-z0-9]+" disk != null;
   throttled = lib.filterAttrs (disk: _: plainDisk disk) writebackThrottle;
-  writebackGoal = pkgs.writeShellApplication {
-    name = "writeback-goal";
-    runtimeInputs = [ pkgs.coreutils ];
-    text = builtins.readFile ./writeback-goal.sh;
-  };
+  writebackGoal = pkgs.callPackage ./writeback-goal.nix { };
 
   # The programs Joel works in, and agents' sessions beside them, keep their
   # memory while a build fills the rest. With a build taking all but 2 GiB
@@ -462,11 +450,13 @@ in
       The kernel's writeback throttle's latency goal on each disk named, by
       its name under /sys/block, in microseconds; 0 turns the throttle off.
       It's set as a switch brings it in and as the disk appears, and a
-      switch without it gives back the kernel's default goal, 2 ms on a
-      solid disk, set by hand, so io.cost added to that disk later won't
-      stand the throttle down until the next boot. A name that reaches no
-      throttle, such as a partition's, fails its unit. The name is the
-      kernel's, which follows the order disks are found in: on a machine
+      switch without it gives back the goal the disk had before its first
+      goal, so one stood down before, by BFQ or by io.cost, stays down.
+      Where nothing whole was recorded, as after a boot, it's the kernel's
+      default, 2 ms on a solid disk, set by hand; io.cost added to that disk
+      later still stands it down, since disk-order turns it off as it
+      starts. A name that reaches no throttle, such as a partition's, fails
+      its unit. The name is the kernel's, which follows the order disks are found in: on a machine
       with two of a kind, the goal can land on the other one. A disk
       io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
       already turns its throttle off and giving it back would turn it on.
@@ -831,7 +821,8 @@ in
     # one machine tells the two apart, so a machine sets it rather than core.
     # A unit, rather than a udev rule, since a switch replays no disk's
     # event: starting it sets the goal, and stopping it, as a switch without
-    # it does, gives the kernel's back.
+    # it does, gives back what the disk had before its first goal this boot,
+    # or the kernel's default goal where nothing was recorded.
     // lib.mapAttrs' (
       disk: goal:
       lib.nameValuePair "disk-writeback-${disk}" {

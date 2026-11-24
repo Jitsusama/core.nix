@@ -84,7 +84,7 @@ pub fn write<'a>(
     let mut done = 0;
     let close = CLOSED;
     for path in paths {
-        let (data, meta) = read(&root.join(path), most)?;
+        let (data, meta) = read(root, path, most)?;
         let entry = entry(path, &data, &meta);
         let length = entry.len() as u64;
         if length + close > most {
@@ -121,21 +121,28 @@ pub fn write<'a>(
     Ok(parts)
 }
 
-/// The plain file at `path`, read whole through one opening, with what
-/// that opening says of it. A link or a pipe where the file was gathered
-/// from is refused before any of it is read: one there at the look is never
-/// opened, and one swapped in after it is opened without waiting and
-/// refused as not the file looked at. So nothing outside the tree goes in
-/// and nothing holds the job. A file past `most` bytes, as it is opened or
+/// The plain file at `name` in the tree at `root`, read whole through one
+/// opening, with what that opening says of it. A link or a pipe where the
+/// file was gathered from is refused before any of it is read: one there
+/// at the look is never opened, and one swapped in after it is opened
+/// without waiting and refused as not the file looked at. A folder on its
+/// way that is a link once it is open is refused too, as the file may lie
+/// outside the tree. So nothing outside the tree goes in, unless a link is
+/// put in a folder's place and taken out again while the file is opened,
+/// which something swapping it over and over could win, as only opening
+/// each folder from the one before would close it and std can't; and
+/// nothing holds the job. A file past `most` bytes, as it is opened or
 /// as it is read, is refused without being read whole, as no share
 /// carries it.
-fn read(path: &Path, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
-    let mut file = super::landing::opened_plain(path).map_err(|error| {
-        io::Error::new(
-            error.kind(),
-            format!("{} can't go in: {error}", path.display()),
-        )
-    })?;
+fn read(root: &Path, name: &str, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
+    let path = root.join(name);
+    let refused =
+        |error: &dyn std::fmt::Display| format!("{} can't go in: {error}", path.display());
+    let mut file = super::landing::opened_plain(&path)
+        .map_err(|error| io::Error::new(error.kind(), refused(&error)))?;
+    if !super::names::Folders::default().own(root, name) {
+        return Err(io::Error::other(refused(&"a folder on its way is a link")));
+    }
     let meta = file.metadata()?;
     let past = |how: &str| {
         io::Error::new(

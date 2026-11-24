@@ -8,7 +8,9 @@
 // and hands a pi of its own on the machine's quick model, one with no
 // tools (Explainer.qml), a question holding only what Joel would know the
 // work by: its title, repository, machine, how it stands, what it's doing,
-// since when, and its plan's latest and next, each on one line of its own.
+// since when, and its plan's latest and next, each on one line of its own,
+// and, while it waits on Joel, what it asks him, quoted, and the acts on its
+// row that answer it, so the answer ends with the one to press (facts).
 // Never its ids, quest, folders, trees, spend or networks, which say
 // nothing to him and would only come back in the answer. Its title and
 // plan are an agent's own words, so each is flattened to one line and cut
@@ -112,27 +114,40 @@ function presses(cell, beside) {
 }
 
 // What the quick model is told of `cell`, a line each, only those it says.
-// One waiting on Joel says what it asks him, its want's own words quoted,
-// so none of them reads as a fact of the launcher's, and then the acts on
-// its row he can answer it by (presses), each quoted, so a name holding a
-// comma stays one act, and the answer says what it waits on and which to
-// press.
+// What's in the session's own words, its title, what it's doing, its plan
+// and what it asks Joel, is quoted, so none of it reads as a fact of the
+// launcher's, nor forges the acts it lists. One waiting on Joel says what
+// it asks him and then the acts on its row he can answer it by (presses),
+// each quoted, so a name holding a comma stays one act, and the answer
+// says what it waits on and which to press.
 function facts(cell, beside) {
     const plan = cell?.plan ?? {};
+    const own = value => ({ own: value });
     return [
-        ["Its title", cell?.title],
+        ["Its title", own(cell?.title)],
         ["Its repository", cell?.repo],
         ["Its machine", cell?.machine],
         ["How it stands", cell?.standing],
-        [ASKS, cell?.asks],
+        [ASKS, own(cell?.asks)],
         ["The person can press", presses(cell, beside).map(name => JSON.stringify(name))],
-        ["Doing now", cell?.doing],
+        ["Doing now", own(cell?.doing)],
         ["Running since", cell?.since],
-        ["Latest in its plan", plan.chose],
-        ["Next in its plan", plan.next]
-    ].map(([label, value]) => [label, Array.isArray(value) ? value.join(", ") : plain(value)])
+        ["Latest in its plan", own(plan.chose)],
+        ["Next in its plan", own(plan.next)]
+    ].map(([label, value]) => [label, worded(value)])
         .filter(([, value]) => value !== "")
-        .map(([label, value]) => `${label}: ${label === ASKS ? JSON.stringify(value) : value}`);
+        .map(([label, value]) => `${label}: ${value}`);
+}
+
+// A fact's words as `facts` tells them: a list joined, a session's own
+// words ({ own }) quoted, and none at all as "".
+function worded(value) {
+    if (Array.isArray(value)) {
+        return value.join(", ");
+    }
+    const quoted = value !== null && typeof value === "object" && "own" in value;
+    const words = plain(quoted ? value.own : value);
+    return quoted && words !== "" ? JSON.stringify(words) : words;
 }
 
 // The question for `cell`: `asks`, the act's words, with its facts where
@@ -159,7 +174,7 @@ function fits(asked, beside) {
 }
 
 // What an act explained shows at `now`, from how it stands, `one` ({ stage,
-// message, at }), and its pi (`ask`: posed, said, stage), in the act's
+// message, at, beside }), and its pi (`ask`: posed, said, stage), in the act's
 // words `said`: { name, reads, note, hue }, or null where it's the act as
 // it was: never asked, stale, of another question, or stopped as the
 // launcher closed, so Return asks again. One asked with other acts on its
