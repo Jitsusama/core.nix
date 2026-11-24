@@ -165,15 +165,31 @@ fn excluded(path: &str, pattern: &str) -> bool {
 /// Whether `path` names somewhere within a tree: a relative path of plain
 /// names, never from the root, through `..` or `.`. Git writes no other
 /// into its index, but an index written by hand could, and the near side
-/// would then read from outside the tree.
+/// would then read from outside the tree; one from the root names `""`.
 fn within_tree(path: &str) -> bool {
-    use std::path::Component;
     !path
         .split('/')
         .any(|name| name.is_empty() || name == "." || name == "..")
-        && Path::new(path)
-            .components()
-            .all(|part| matches!(part, Component::Normal(_)))
+}
+
+/// Whether the tracked `path` travels, or why the job can't: one outside
+/// the tree is refused first, as `..` would read as hidden and pass unsaid,
+/// and one that travels holds no tab or newline, which no list carries.
+fn tracked(path: &str, excludes: &[String]) -> Result<bool, String> {
+    if !within_tree(path) {
+        return Err(format!(
+            "the tracked name {path:?} isn't a path within the tree"
+        ));
+    }
+    if !travels(path, excludes) {
+        return Ok(false);
+    }
+    if path.contains(['\t', '\n']) {
+        return Err(format!(
+            "the tracked name {path:?} holds a tab or a newline"
+        ));
+    }
+    Ok(true)
 }
 
 /// The files of the tree at `root` that travel: git's tracked files,
@@ -198,18 +214,8 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<String>, String> {
         let Ok(path) = std::str::from_utf8(path) else {
             return Err("a tracked file's name isn't UTF-8".to_owned());
         };
-        if path.is_empty() || !travels(path, &kind.excludes) {
+        if path.is_empty() || !tracked(path, &kind.excludes)? {
             continue;
-        }
-        if path.contains(['\t', '\n']) {
-            return Err(format!(
-                "the tracked name {path:?} holds a tab or a newline"
-            ));
-        }
-        if !within_tree(path) {
-            return Err(format!(
-                "the tracked name {path:?} isn't a path within the tree"
-            ));
         }
         // A file tracked but gone, a link or a submodule doesn't travel.
         let Ok(meta) = fs::symlink_metadata(root.join(path)) else {
