@@ -78,6 +78,9 @@ let
       images
       ;
     startupScript = if lines.startupScript == null then null else "${lines.startupScript}";
+    # The service's own StateDirectory, where the scripts named before are
+    # kept, so a switch that changes the script doesn't cut every builder.
+    state = "/var/lib/nix-offload-lines";
     hookKey = "/etc/nix/offload_ed25519.pub";
     standing = map (builder: {
       inherit (builder)

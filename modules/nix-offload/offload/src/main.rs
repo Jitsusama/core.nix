@@ -184,6 +184,7 @@ mod queue;
 mod relay;
 mod replay;
 mod running;
+mod scripts;
 mod sleep;
 mod standing;
 #[cfg(test)]
