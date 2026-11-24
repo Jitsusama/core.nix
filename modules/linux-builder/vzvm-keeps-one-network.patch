@@ -1,28 +1,49 @@
+--- a/Sources/vzvm/Guest.swift
++++ b/Sources/vzvm/Guest.swift
+@@ -84,5 +84,6 @@
+     attachmentWasDisconnectedWithError error: Error
+   ) {
+     Log.warn("network detached: \(error.localizedDescription)")
++    VirtualMachineBuilder.networkLost = true
+   }
+ }
 --- a/Sources/vzvm/VirtualMachineBuilder.swift
 +++ b/Sources/vzvm/VirtualMachineBuilder.swift
-@@ -196,7 +196,8 @@
+@@ -196,8 +196,11 @@
      return vmc
    }
  
 -  /// Kept for the process's lifetime, as the attachment's network must outlive the guest.
 +  /// Kept for the process's lifetime, as the attachment's network must outlive the guest,
-+  /// and given to every guest the process boots.
++  /// and given to every guest the process boots until a guest's attachment to it is lost.
    private static var network: vmnet_network_ref?
++  /// Set when a guest's attachment to the kept network is lost, so no later guest is put on it.
++  static var networkLost = false
  
    /// The host's NAT. With its DNS proxy, macOS's Internet Sharing has mDNSResponder
-@@ -218,6 +219,15 @@
+   /// answer on the host's port 53, where a VPN's own resolver can then no longer bind,
+@@ -218,6 +221,16 @@
      guard #available(macOS 26.0, *) else {
        throw VZVMError.config("dnsProxy: false needs macOS 26 or newer")
      }
 +    // Each boot after the first builds its configuration again. On 23 November the one
 +    // after an idle stop asked vmnet for a second network on the subnet the first still
 +    // held, was refused with status 1001 and the process exited, failing the build that
-+    // woke it. So a later boot is put on the first network again. If a guest then fails to
-+    // start, the process still exits, and launchd starts one that makes a new network.
-+    if let network {
++    // woke it. So a later boot is put on the first network again, unless a guest lost its
++    // attachment to it: then vmnet is asked again, and if it refuses, the guest fails to
++    // start, the process exits, and launchd starts one that makes a new network.
++    if let network, !networkLost {
 +      Log.info("guest network: the process's shared vmnet again")
 +      return VZVmnetNetworkDeviceAttachment(network: network)
 +    }
      var status: vmnet_return_t = .VMNET_SUCCESS
      guard let shared = vmnet_network_configuration_create(.VMNET_SHARED_MODE, &status) else {
        throw VZVMError.runtime("vmnet network configuration failed: status \(status.rawValue)")
+@@ -240,6 +253,7 @@
+       throw VZVMError.runtime("vmnet network failed: status \(status.rawValue)")
+     }
+     network = created
++    networkLost = false
+     Log.info("guest network: shared vmnet, no DNS proxy, subnet \(subnet ?? "vmnet's own")")
+     return VZVmnetNetworkDeviceAttachment(network: created)
+   }

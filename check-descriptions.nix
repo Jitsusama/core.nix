@@ -1928,9 +1928,10 @@
   '';
   linux-builder-reuses-its-network = ''
     a changed Linux builder guest's vzvm patches apply in the module's order, with no fuzz, to the
-    source the Mac builds, and the patched source keeps the network it makes and hands a kept one
-    back before vmnet is asked for another; it compiles nothing, and whether vmnet takes the
-    network again is shown only on a Mac
+    source the Mac builds, and the patched source keeps the network it makes and, past the macOS
+    26 guard, hands a kept one back before vmnet is asked for another, unless a guest lost its
+    attachment to it; it compiles nothing, and whether vmnet takes the network again is shown
+    only on a Mac
   '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,

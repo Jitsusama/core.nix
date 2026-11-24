@@ -226,9 +226,11 @@ in
   # Mac builds, with no fuzz, so one that no longer applies fails here, not
   # only on a Mac. That source is fetched the same for either system, so the
   # Linux package's copy is the Mac's, which the check holds to rather than
-  # assumes. The test then wants the network kept and handed back before any
-  # is made. It compiles nothing, and whether vmnet takes the network again
-  # is what only a Mac shows.
+  # assumes. The test then wants a kept network handed back, past the macOS
+  # 26 guard, before vmnet is asked for another, the one made kept, and a
+  # guest losing its attachment to stop the next boot reusing it. It compiles
+  # nothing, and whether vmnet takes the network again is what only a Mac
+  # shows.
   linux-builder-reuses-its-network =
     let
       package = opened.virtualisation.vz.package;

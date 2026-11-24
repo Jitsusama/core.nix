@@ -151,7 +151,8 @@ let
         # The network it asks for is in macOS 26's SDK, not nixpkgs' default.
         # It's made once a process and reused: each later boot asked for
         # another on the same subnet, which vmnet refused, so the build that
-        # woke the guest after an idle stop failed (23 November).
+        # woke the guest after an idle stop failed (23 November). A guest that
+        # loses its attachment stops the reuse, so a dead network isn't kept.
         virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [
             ./vzvm-without-dns-proxy.patch
