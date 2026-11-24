@@ -285,7 +285,12 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       if texts.len() == 0 { texts = ("",) }
       let middle = texts.slice(1, calc.max(1, texts.len() - 1))
       let cells(t) = t.clusters().map(c => if c.len() == 1 { 1 } else { 2 }).sum(default: 0)
-      if middle.len() > 8 { middle = middle.sorted(key: t => -cells(t)).slice(0, 8) }
+      // Each stretch counted once, so a sort that asks its key in every
+      // comparison reads an array rather than walking the stretch again.
+      if middle.len() > 8 {
+        let counts = middle.map(t => -cells(t))
+        middle = range(middle.len()).sorted(key: i => counts.at(i)).slice(0, 8).map(i => middle.at(i))
+      }
       let (head, tail) = (measure(raw(texts.first())).width, measure(raw(texts.last())).width)
       let first = if p.held { run + by + head } else { head }
       widest = calc.max(widest, first, tail, ..middle.map(t => measure(raw(t)).width))

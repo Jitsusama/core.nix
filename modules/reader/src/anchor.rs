@@ -3,6 +3,7 @@
 //! it was there.
 
 use crate::text::Line;
+use crate::{moves, place};
 
 /// Where the view's top line is on a new page: the same words, the same
 /// how-many-th time they come, at the same height in the view; the end of
@@ -11,21 +12,64 @@ pub fn anchored(old: &[Line], new: &[Line], top_pt: f64, at_end: bool, new_most_
     if at_end {
         return new_most_pt;
     }
-    let Some((index, line)) = old
+    matched(old, new, top_pt, new_most_pt).unwrap_or_else(|| top_pt.min(new_most_pt))
+}
+
+/// Where the words of the line at `top_pt` are on a new page, as
+/// `anchored` finds them, or none where no new line says them: at another
+/// width a paragraph's lines wrap anew, and only its unbroken lines match.
+fn matched(old: &[Line], new: &[Line], top_pt: f64, new_most_pt: f64) -> Option<f64> {
+    let (index, line) = old
         .iter()
         .enumerate()
-        .find(|(_, line)| line.baseline_pt >= top_pt)
-    else {
-        return top_pt.min(new_most_pt);
-    };
+        .find(|(_, line)| line.baseline_pt >= top_pt)?;
     let nth = old[..index]
         .iter()
         .filter(|other| other.text == line.text)
         .count();
     let same: Vec<&Line> = new.iter().filter(|other| other.text == line.text).collect();
-    match same.get(nth).or(same.last()) {
-        Some(found) => (found.baseline_pt - (line.baseline_pt - top_pt)).clamp(0.0, new_most_pt),
-        None => top_pt.min(new_most_pt),
+    let found = same.get(nth).or(same.last())?;
+    Some((found.baseline_pt - (line.baseline_pt - top_pt)).clamp(0.0, new_most_pt))
+}
+
+/// A page set again, as a mark, the cursor's line and a jump's place are
+/// moved across it: whether the file was `edited`, where its blocks started
+/// `before` when it was set at another width (none at the same one) and
+/// start `after`, the lines it was set from (`was`) and is set from now
+/// (`now`, and their tops and baselines, `ends`), and the most the view goes.
+pub struct Moving<'a> {
+    pub edited: bool,
+    pub before: Option<&'a [(usize, f64)]>,
+    pub after: &'a [(usize, f64)],
+    pub was: &'a [Line],
+    pub now: &'a [Line],
+    pub ends: &'a [(f64, f64)],
+    pub most_pt: f64,
+}
+
+impl Moving<'_> {
+    /// Where a point goes. After an edit, with its line's words, since an
+    /// edit may renumber the blocks. Where no new line says them, as at
+    /// another width, where a paragraph wraps anew, or with no edit, as far
+    /// through its block as it was, on that block's nearest line. At the
+    /// same width with no edit, nowhere; after an edit there with its words
+    /// gone, no further than the page goes.
+    pub fn moved(&self, pt: f64) -> f64 {
+        let words = if self.edited {
+            matched(self.was, self.now, pt, self.most_pt)
+        } else {
+            None
+        };
+        words
+            .or_else(|| {
+                let line = moves::line_topped(self.was, pt);
+                place::moved(self.before?, self.after, line, self.ends)
+            })
+            .unwrap_or(if self.edited {
+                pt.min(self.most_pt)
+            } else {
+                pt
+            })
     }
 }
 
@@ -79,6 +123,81 @@ mod tests {
         let old = [line(20.0, "one"), line(40.0, "two")];
         let new = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
         assert_eq!(anchored(&old, &new, 40.0, false, 500.0), 60.0);
+    }
+
+    /// Where `pt` goes across a page set again, each line its own block
+    /// unless told: `before`'s blocks at another width, or none.
+    fn moving(
+        edited: bool,
+        before: Option<&[(usize, f64)]>,
+        after: &[(usize, f64)],
+        was: &[Line],
+        now: &[Line],
+        pt: f64,
+    ) -> f64 {
+        let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
+        Moving {
+            edited,
+            before,
+            after,
+            was,
+            now,
+            ends: &ends,
+            most_pt: 500.0,
+        }
+        .moved(pt)
+    }
+
+    #[test]
+    fn an_edit_moves_a_mark_with_its_words_though_the_width_changed_too() {
+        // A paragraph saved in above "two" renumbers its block: by its
+        // block, a mark on it would land on "one".
+        let old = [line(20.0, "one"), line(40.0, "two")];
+        let new = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
+        let before = [(0, 0.0), (1, 25.0)];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        assert_eq!(
+            moving(true, Some(&before), &after, &old, &new, 30.0),
+            50.0,
+            "edited, it goes with \"two\""
+        );
+        assert_eq!(
+            moving(false, Some(&before), &after, &old, &new, 30.0),
+            30.0,
+            "unedited, it goes as far through its block"
+        );
+    }
+
+    #[test]
+    fn an_edit_at_a_new_width_whose_line_wrapped_anew_moves_a_mark_by_its_block() {
+        // Words saved into a paragraph set at a wider window: its lines
+        // wrap anew, so no new line says "delta" alone, and the mark on it
+        // goes as far through the paragraph, onto the line holding it.
+        let old = [line(50.0, "alpha beta gamma"), line(70.0, "delta")];
+        let new = [
+            line(50.0, "inserted"),
+            line(70.0, "alpha beta"),
+            line(90.0, "gamma delta"),
+        ];
+        let before = [(0, 0.0), (1, 30.0), (2, 80.0)];
+        let after = [(0, 0.0), (1, 30.0), (2, 100.0)];
+        assert_eq!(
+            moving(true, Some(&before), &after, &old, &new, 60.0),
+            80.0,
+            "it lands on \"gamma delta\", not where \"delta\" stood"
+        );
+        assert_eq!(
+            moving(true, None, &after, &old, &new, 60.0),
+            60.0,
+            "at the same width with its words gone, it stays"
+        );
+    }
+
+    #[test]
+    fn a_page_set_again_at_its_width_unedited_moves_nothing() {
+        let lines = [line(20.0, "one"), line(40.0, "two")];
+        let starts = [(0, 0.0), (1, 25.0)];
+        assert_eq!(moving(false, None, &starts, &lines, &lines, 33.0), 33.0);
     }
 
     #[test]

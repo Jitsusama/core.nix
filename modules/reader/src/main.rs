@@ -195,11 +195,6 @@ struct App {
     /// Kept marks taken back onto the page, as read and where each landed,
     /// until he moves one.
     landed: Vec<place::Landed>,
-    /// The page's width, in points, when the kept marks were read: the
-    /// first screen's, set at the window kept last time, or a followed
-    /// file's. Their distances were kept at it, so only a page set at it
-    /// says how tall a block stood for them.
-    read_at_pt: f64,
     /// The places jumped from, oldest first, each with its file, and where
     /// Ctrl+O and Ctrl+I stand in them; at its length, past the newest.
     jumps: Vec<Spot>,

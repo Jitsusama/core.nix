@@ -108,6 +108,10 @@ fn a_stretch_of_wide_characters_past_the_eighth_is_still_measured() {
     // characters take two cells each, so it's the widest, and the column
     // needs it whole.
     let code = format!("{}-漢漢-x", ["ll"; 30].join("-"));
+    // Boxed, least-code would count the whole piece, wider than any
+    // stretch, and pass without measuring one.
+    let pieces = held(&code, 360.0);
+    assert!(pieces.ends_with('!'), "the span is unboxed: {pieces}");
     let widths = probed(
         r#"text(size: 2pt, (least-code(s), raw("漢漢-"), raw("ll-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
         &code,

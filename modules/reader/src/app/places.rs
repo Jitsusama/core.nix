@@ -21,6 +21,19 @@ fn bands_over(offset: f64, screen: f64, band: f64, height: f64) -> Range<u32> {
     first..last
 }
 
+/// Moves each place jumped from on `file` as `moving` moves the page set
+/// again under it, as its marks go, so '' and Ctrl+O land on the words
+/// they left.
+fn spots_moved<'a>(
+    spots: impl Iterator<Item = &'a mut super::Spot>,
+    file: &std::path::Path,
+    moving: &anchor::Moving,
+) {
+    for spot in spots.filter(|spot| spot.file == file) {
+        (spot.pt, spot.aim) = (moving.moved(spot.pt), moving.moved(spot.aim));
+    }
+}
+
 impl App {
     /// The whole page has been set: draw from it, keeping each band above
     /// where the first screen's page settled and redrawing the rest in place.
@@ -48,12 +61,14 @@ impl App {
             }
         };
         // One set for a width the window has since left is let go, since
-        // the reloader sets it again at the new one. Its words are never
-        // held against the page shown here: only a page taken is, so the
-        // set at the new width still says the edit.
-        if !self.fits(&page) {
+        // the reloader sets it again at the new one. Its words are held
+        // against the page shown, which takes them only once it shows, so
+        // the set at the new width still says the edit.
+        let page_pt = page.frame.size().x.to_pt();
+        let Some(edited) = super::taken(page_pt, self.width.page_pt(), self.shown_words, words)
+        else {
             return;
-        }
+        };
         self.let_incoming_go();
         let px_per_pt = self.px_per_pt();
         let screen_pt = self.screen_px() / px_per_pt;
@@ -89,6 +104,7 @@ impl App {
             opens: opens.then_some(file),
             title,
             words,
+            edited,
         });
         self.ask_incoming();
     }
@@ -210,9 +226,9 @@ impl App {
         self.jump = None;
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
-        // Held against the page shown, so an edit whose set was let go for
-        // a width the window left still counts once its words show.
-        let edited = super::edited(&mut self.shown_words, incoming.words);
+        // The page shown holds its words from now, so a set after it is
+        // judged against them.
+        self.shown_words = incoming.words;
         // Set again at another width, the page's blocks have moved, so each
         // mark, and the cursor's line, goes as far through its block from
         // the line it's on. Set again at the same width with its pictures
@@ -224,24 +240,27 @@ impl App {
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
         let before = reflowed.then(|| place::starts(&self.painter.page().frame));
         self.painter.take(incoming.page, incoming.version);
-        let edited = edited && incoming.opens.is_none();
+        let edited = incoming.edited && incoming.opens.is_none();
         if incoming.opens.is_none() && (reflowed || edited || !self.landed.is_empty()) {
             let after = place::starts(&self.painter.page().frame);
-            let was = self.words.as_deref().unwrap_or(&[]);
-            let now: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
-            let most = self.painter.height_pt();
-            let moved = |pt: f64| match &before {
-                _ if edited => anchor::anchored(was, &incoming.lines, pt, false, most),
-                Some(before) => {
-                    let line = moves::line_topped(was, pt);
-                    place::moved(before, &after, line, &now).unwrap_or(pt)
-                }
-                None => pt,
+            let ends: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
+            let moving = anchor::Moving {
+                edited,
+                before: before.as_deref(),
+                after: &after,
+                was: self.words.as_deref().unwrap_or(&[]),
+                now: &incoming.lines,
+                ends: &ends,
+                most_pt: self.painter.height_pt(),
             };
-            place::set_again(&mut self.landed, &mut self.marks, &after, edited, moved);
+            place::set_again(&mut self.landed, &mut self.marks, &after, edited, |pt| {
+                moving.moved(pt)
+            });
             if let Some(pt) = self.aim.as_mut() {
-                *pt = moved(*pt);
+                *pt = moving.moved(*pt);
             }
+            let spots = self.jumps.iter_mut().chain(self.last_jump.as_mut());
+            spots_moved(spots, &self.file, &moving);
         }
         self.offset = incoming.offset;
         self.clamp();
@@ -292,7 +311,6 @@ impl App {
         self.aim = None;
         self.marks.clear();
         self.landed.clear();
-        self.read_at_pt = self.painter.width_pt();
         self.kept_marks = place::read(&file)
             .map(|kept| kept_marks(&kept))
             .unwrap_or_default();
@@ -340,26 +358,24 @@ impl App {
     }
 
     /// Takes back the kept marks whose blocks the page has, `whole` when
-    /// no block past the page's comes. Only a page set at the width they
-    /// were read at gives one kept without its block's height that height,
-    /// since its distance was kept at that width: one at another would pair
-    /// it with a height it never had, and closing would keep that.
+    /// no block past the page's comes. Only a page set as wide as a mark's
+    /// distance was measured on gives one kept without its block's height
+    /// that height: one at another would pair it with a height it never
+    /// had, and closing would keep that.
     fn take_kept_marks_as(&mut self, whole: bool) {
         let lacking = self.landed.iter().any(|one| one.kept.block_pt.is_none());
         if self.kept_marks.is_empty() && !lacking {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
-        let learns = (self.painter.width_pt() - self.read_at_pt).abs() < 0.01;
-        if learns {
-            place::heights_known(&mut self.landed, &starts);
-        }
+        let width_pt = self.painter.width_pt();
+        place::heights_known(&mut self.landed, &starts, width_pt);
         place::take_kept(
             &mut self.kept_marks,
             &mut self.marks,
             &mut self.landed,
             &starts,
-            place::Taking { whole, learns },
+            place::Taking { whole, width_pt },
         );
         self.marks_on_lines();
     }
@@ -413,13 +429,17 @@ impl App {
         // goes, and known as `most` is.
         let height = self.whole.then(|| self.end_px() / px_per_pt);
         let lines = self.words.as_deref().unwrap_or(&[]);
+        let width_pt = self.painter.width_pt();
         let mut marks: Vec<place::Mark> = self
             .marks
             .iter()
             .map(
                 |(letter, pt)| match place::as_read(&self.landed, *letter, *pt) {
                     Some(kept) => kept.clone(),
-                    None => place::mark(&blocks, *letter, moves::line_topped(lines, *pt), height),
+                    None => {
+                        let line = moves::line_topped(lines, *pt);
+                        place::mark(&blocks, *letter, line, height, width_pt)
+                    }
                 },
             )
             .collect();
@@ -448,7 +468,7 @@ impl App {
 
     /// Whether a page was set at the width the window asks for now.
     pub(crate) fn fits(&self, page: &typst_layout::Page) -> bool {
-        (page.frame.size().x.to_pt() - self.width.page_pt()).abs() < 0.01
+        super::sets_for(page.frame.size().x.to_pt(), self.width.page_pt())
     }
 
     pub(crate) fn replace(&mut self, page: typst_layout::Page, ms: f64) {

@@ -117,9 +117,12 @@ pub(crate) struct Incoming {
     opens: Option<std::path::PathBuf>,
     /// The window's title once it shows.
     title: String,
-    /// The words it was set from, hashed, held against the page shown's
-    /// to know whether the file was edited, which may renumber its blocks.
+    /// The words it was set from, hashed, which the page shown holds once
+    /// it shows.
     words: u64,
+    /// Whether it comes of an edit to the page shown, which may renumber
+    /// its blocks, as `taken` judged it when it was set.
+    edited: bool,
 }
 
 /// A place on the jump list: a file, how far down it the view's top was,
@@ -159,7 +162,7 @@ pub(crate) enum Reload {
 /// What asks that came while one set are taken as: the newest file asked
 /// for and the newest width, each if any asked. Setting again needs no
 /// more than the set itself, since whether the file was edited is judged
-/// by its words against the page shown (`edited`), not by what was heard.
+/// by its words against the page shown (`taken`), not by what was heard.
 pub(crate) fn newest(
     asks: impl IntoIterator<Item = Reload>,
 ) -> (Option<String>, Option<page::Width>) {
@@ -171,12 +174,20 @@ pub(crate) fn newest(
         })
 }
 
-/// Whether a page set from words hashed `set` comes of an edit to the file
-/// shown, whose page was set from `shown`, which then holds `set`. Held
-/// against the page shown rather than the set before, a set let go
-/// unshown, as one for a width the window has left, can't lose an edit.
-pub(crate) fn edited(shown: &mut u64, set: u64) -> bool {
-    std::mem::replace(shown, set) != set
+/// Whether a page `page_pt` wide is set for a window whose page is
+/// `window_pt` wide.
+pub(crate) fn sets_for(page_pt: f64, window_pt: f64) -> bool {
+    (page_pt - window_pt).abs() < 0.01
+}
+
+/// Whether a page set from words hashed `set`, `page_pt` wide, is taken for
+/// a window whose page is `window_pt` wide, and if so whether it comes of an
+/// edit to the page shown, set from `shown`. One set for a width the window
+/// has left is let go unjudged, and only a page that shows holds its words,
+/// so a set let go, or one a newer set replaces before it shows, can't lose
+/// an edit.
+pub(crate) fn taken(page_pt: f64, window_pt: f64, shown: u64, set: u64) -> Option<bool> {
+    sets_for(page_pt, window_pt).then_some(set != shown)
 }
 
 /// A page the reloader set, of the file it names, with the window's title

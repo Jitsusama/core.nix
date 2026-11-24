@@ -42,7 +42,13 @@ pub(crate) fn reload_on_save(
                 if let Some(width) = fit {
                     setter.fit(width);
                 }
-                let set = setter.set().map(|(page, ms)| {
+                // A panic setting it is told as the set failing, as the
+                // rest's setter tells one, so the thread lives on to set the
+                // next save, and a file being opened is let go rather than
+                // waited on all session.
+                let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| setter.set()))
+                    .unwrap_or_else(|_| Err("it panicked".to_string()));
+                let set = set.map(|(page, ms)| {
                     let lines = text::lines(text::runs(&page.frame));
                     (page, ms, lines, setter.title().to_string(), setter.words())
                 });

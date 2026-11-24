@@ -25,7 +25,6 @@ impl App {
         senders: Senders,
         opening: Opening,
     ) -> App {
-        let read_at_pt = opening.page.frame.size().x.to_pt();
         App {
             seats: SeatState::new(globals, &qh),
             registry: RegistryState::new(globals),
@@ -79,7 +78,6 @@ impl App {
             selected: None,
             words: None,
             landed: Vec::new(),
-            read_at_pt,
             incoming: None,
             next_version: 1,
             reloaded: false,
