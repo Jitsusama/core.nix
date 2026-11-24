@@ -212,17 +212,21 @@ impl Ears for Through {
         // Cut short, it's only a count to ask again for, and as the gateway
         // cuts by size, an ask for as many as it gave may be cut again.
         let mut asked = count;
+        let mut cuts = Vec::new();
         for _ in 0..CUTS {
             let Some(given) = gateway::cut_to(&answer).filter(|given| *given < asked) else {
                 break;
             };
+            cuts.push(given.to_string());
             asked = given;
             answer = self.newest(query, asked)?;
         }
         let cut = asked < count;
+        // Each count it was cut to, so a journal shows every cut.
+        let cuts = cuts.join(", then ");
         let cut_to = |why: String| {
             if cut {
-                format!("cut to {asked} of {COUNT}, then asked for {asked}, {why}")
+                format!("cut to {cuts} of {COUNT}, then asked for {asked}, {why}")
             } else {
                 why
             }
@@ -241,9 +245,10 @@ impl Ears for Through {
                 ))));
             }
         }
-        // Fewer than asked for is every message it finds, and one holding
-        // the last read has all said since, as a quiet stretch's does.
-        if found.len() == asked && found.iter().all(|message| message.ts != back_to) {
+        // Fewer than asked for is every message it finds. A full answer
+        // must reach a minute before the last read, even one holding it,
+        // as a message said in that minute may be found only later.
+        if found.len() == asked {
             let oldest = found.first().map_or("", |message| message.ts.as_str());
             let reaches = slack::micros(oldest).zip(slack::micros(back_to));
             if reaches.is_none_or(|(oldest, back_to)| oldest.saturating_add(FOUND_LATE) > back_to) {
@@ -267,7 +272,7 @@ impl Ears for Through {
         self.told.remove(query);
         if cut {
             eprintln!(
-                "<5>the gateway cut its answer for {query:?} to {asked} of {COUNT}, so it read \
+                "<5>the gateway cut its answer for {query:?} to {cuts} of {COUNT}, so it read \
                  the newest {asked}, back to the last read, at {back_to}"
             );
         }

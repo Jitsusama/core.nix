@@ -377,6 +377,10 @@ fn a_row_that_failed_to_write_tells_nothing() {
     let tag = Round::Deaf(Deafness::Unread(Search::Tag));
     let _ = deaf.heard(tag, AT);
     let told = deaf.heard(tag, AT + 30_000);
+    assert!(
+        matches!(told, Change::Tell(_)) && deaf.tells(Search::Tag),
+        "deaf two rounds, a row is to be written"
+    );
     deaf.failed(&told);
     assert!(
         !deaf.tells(Search::Tag),
