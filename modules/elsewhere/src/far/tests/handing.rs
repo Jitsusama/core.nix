@@ -138,8 +138,9 @@ fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
     kind.brings_back = vec!["out".into()];
     // A folder for copies that can't be made, as on a disk gone wrong, and
     // at the list's name, one the job wrote itself, claiming all came, or
-    // a folder holding one the job closed, which the cut can't be written
-    // over.
+    // a folder holding one the job closed, which the step making the
+    // handover new opens and clears before it gets that far, so the cut
+    // has a name of its own to be written at.
     let list = format!("../../{HANDOVER}/1/{BROUGHT}");
     for made in [
         format!("printf '1\tout/a\nend\n' > {list}"),
@@ -193,8 +194,13 @@ fn a_handover_folder_the_far_line_cant_open_is_never_said_to_be_a_link() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
     // A chmod that fails on the job's handover folder alone, as on one the
-    // far line doesn't own, though it stays open to it.
-    let (chmod, refused) = refusing("chmod", &format!("*\"/{HANDOVER}/1 \"*"), "exit 1");
+    // far line doesn't own, though it stays open to it, leaving word that
+    // it was asked.
+    let (chmod, refused) = refusing(
+        "chmod",
+        &format!("*\"/{HANDOVER}/1 \"*"),
+        "touch \"$HOME/refused\"; exit 1",
+    );
     let programs = [(chmod, refused.as_str())];
     let (code, err, home) = far_line(
         Left::Whole,
@@ -206,9 +212,39 @@ fn a_handover_folder_the_far_line_cant_open_is_never_said_to_be_a_link() {
     );
     let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
     assert!(
+        home.join("refused").exists(),
+        "the far line never asked to open its handover folder ({code:?}): {err}"
+    );
+    assert!(
         code == Some(0) && !err.contains("a link it left") && listed == "1\tout/a\nend\n",
         "a handover folder that couldn't be opened was taken for a link ({code:?}): \
          {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_a_job_leaves_at_its_folder_for_copies_is_never_opened_through() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A link where the folder for copies goes, to a folder holding one
+    // closed, which a find that followed the link it starts at would open.
+    let at = format!("../../{HANDOVER}/1/{BACK}");
+    let job = format!(
+        "mkdir out && printf a > out/a && mkdir -p \"$HOME/beyond/d\" &&
+         chmod 500 \"$HOME/beyond/d\" && rm -rf {at} && ln -s \"$HOME/beyond\" {at}"
+    );
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
+    let closed = home.join("beyond").join("d");
+    let mode = std::fs::metadata(&closed).map(|closed| closed.permissions().mode() & 0o777);
+    let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
+    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+    assert!(
+        code == Some(0)
+            && mode.as_ref().is_ok_and(|mode| *mode == 0o500)
+            && listed == "1\tout/a\nend\n",
+        "the far line opened what a link at its folder for copies leads to, or didn't list \
+         what the job made ({code:?}): {mode:?} {listed:?} {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -312,7 +348,7 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
         // it may not.
         let linked = std::fs::symlink_metadata(handover(&home)).is_ok_and(|at| at.is_symlink());
         assert!(
-            linked == !programs.is_empty(),
+            linked != programs.is_empty(),
             "a stopped far line {} the link at its handover {pinned}: {err}",
             if linked { "kept" } else { "cleared" }
         );
