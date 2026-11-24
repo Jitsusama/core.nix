@@ -75,7 +75,7 @@ fn a_date_past_a_day_counts_until_its_owner_answers_it() {
     ]);
     assert_eq!(
         slips(&text, NOW, Tracking::His).behind,
-        ["unanswered · A"],
+        ["unanswered, due 3 days ago · A"],
         "a date days past was dropped unanswered, or one kept, landed, moved or put down \
          stayed"
     );
@@ -92,7 +92,10 @@ fn an_old_date_isnt_answered_by_what_says_no_date_or_has_yet_to_happen() {
     ]);
     assert_eq!(
         slips(&text, NOW, Tracking::His).behind,
-        ["rewritten undated · A", "landing ahead · B"],
+        [
+            "rewritten undated, due 3 days ago · A",
+            "landing ahead, due 3 days ago · B"
+        ],
         "a rewrite with no date it could read, or a landing after now, answered a slip"
     );
 }
@@ -103,6 +106,8 @@ fn the_day_boundary_and_each_asks_own_moves_decide_an_old_date() {
         // Just inside the day and landed late: a slip as before.
         json!({"words": "inside", "owner": "A", "expected": at(NOW - DAY + 60),
             "landed": at(NOW - 60)}),
+        // At the day's edge and unanswered: a slip a day old.
+        json!({"words": "edge", "owner": "E", "expected": at(NOW - DAY)}),
         // Just past the day and landed late: answered.
         json!({"words": "past", "owner": "B", "expected": at(NOW - DAY),
             "landed": at(NOW - 60)}),
@@ -117,7 +122,12 @@ fn the_day_boundary_and_each_asks_own_moves_decide_an_old_date() {
     ]);
     assert_eq!(
         slips(&text, NOW, Tracking::His).behind,
-        ["twin · C", "inside · A"],
-        "the day's edge moved, or one ask's rewrite answered another's date"
+        [
+            "twin, due 2 days ago · C",
+            "edge, due a day ago · E",
+            "inside · A"
+        ],
+        "the day's edge moved, one ask's rewrite answered another's date, or an old \
+         slip's line didn't say how long ago it was due"
     );
 }
