@@ -605,12 +605,19 @@
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
+  sound-services-are-what-runs-a-pipewire-or-sits-beside-it = ''
+    sound-services.nix counts a unit that runs a PipeWire of its own wherever it sits, and one
+    PipeWire wants in session.slice by a list or one name, but not one it wants in app.slice, a
+    program named like it, or a NixOS unit switched off, and a home's only for its account
+  '';
   sound-takes-real-time-before-the-seat = ''
     PipeWire's three units, each tuning chain and each service PipeWire wants in session.slice,
     by name in the account's session.slice or app.slice and nothing below them, are granted
-    rtkit's real time and high priority before the seat has a session, each grant logged with
-    what it runs, while an app's scope, the system's units, another service and a near name keep
-    rtkit's own answer with no grant logged, and agents' places are still refused
+    rtkit's real time and high priority before the seat has a session, a home's service for its
+    own account alone, PipeWire's grant logged with what it runs and one ps can't read as
+    unknown, while a watcher in app.slice, an app's scope, the system's units, another service
+    and a near name keep rtkit's own answer with no grant logged, and agents' places are still
+    refused
   '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
