@@ -9,9 +9,10 @@ host refuses carries on as the join, which attaches again in that window. Joel w
 the windows stay where they are (OSPHT4, 11 November), so the window keeps its id, workspace,
 column and size, takes no focus, never changes on his screen, and loses none of his keys; the
 node gives the session that window, so the launcher opens no second viewer and Go To goes to
-it. The programs are tests/stand-ins/pi-stand-in.sh, whose in-place modes stand in for pi, the
-join and the viewer; how the real pi goes quiet and the real join decides are proven in the
-harness's own tests.
+it. A held session's window Joel closes leaves the session in its hold, and Go To attaches
+a new window to it. The programs are tests/stand-ins/pi-stand-in.sh, whose in-place modes
+stand in for pi, the join and the viewer; how the real pi goes quiet and the real join
+decides are proven in the harness's own tests.
 
 tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. Every test asks for the desktop, started once a run
@@ -185,6 +186,70 @@ def test_a_session_whose_attach_its_host_refuses_keeps_its_window(desktop: Deskt
         desktop.as_account(f"rm -f ~/refusals-{session} ~/refuse-attach-{session}")
 
 
+def test_a_held_sessions_window_closed_keeps_the_session_for_go_to_to_open(
+    desktop: Desktop,
+) -> None:
+    """A held session's window Joel closes leaves the session running, and Go To opens it again.
+
+    Closing the window hangs up only on its own terminal, so the holder keeps the same program
+    on its own (Jitsusama/mycelium's PROTOCOL.md, A Held Session), the node lists the session
+    with its hold and no window, and Go To attaches a new window to that hold rather than
+    starting a second pi, so every key typed there reaches the program that ran before.
+    """
+    machine = desktop.machine
+    session = "01d1-unviewed"
+    try:
+        window = opened_held(desktop, session)
+        held = holding(desktop, session)
+        pid = desktop.as_account(f"cat $XDG_RUNTIME_DIR/moves-{session}").split()[0]
+        desktop.close(window)
+        machine.wait_until_fails(
+            desktop.in_session(f"niri msg --json windows | grep -q '\"id\":{window['id']},'"),
+            timeout=STEP,
+        )
+        seen: list[dict[str, Any]] = []
+
+        def windowless(_last: bool) -> bool:
+            try:
+                seen[:] = [node_row(desktop, session)]
+            except AssertionError:
+                # Between reads the node may not list it; the next look may find it.
+                return False
+            return seen[0].get("held") == held and not seen[0].get("window")
+
+        try:
+            desktop_session.retry(windowless, timeout=STEP)
+        except Exception as failed:
+            msg = f"the node never let the closed window go: {seen}"
+            raise AssertionError(msg) from failed
+        desktop.as_account(f"kill -0 {pid}")
+        assert programs_for(desktop, session) == 1, "the closed window ended its program"
+        before = {one["id"] for one in desktop.windows()} | {window["id"]}
+        go_to_pressed(desktop, session)
+        focused: list[Any] = []
+
+        def opened_anew(_last: bool) -> bool:
+            focused[:] = [json.loads(desktop.as_account("niri msg --json focused-window"))]
+            return bool(focused[0]) and focused[0]["id"] not in before
+
+        try:
+            desktop_session.retry(opened_anew, timeout=STEP)
+        except Exception as failed:
+            msg = f"Go To focused no new window: {focused} among {desktop.windows()}"
+            raise AssertionError(msg) from failed
+        assert holding(desktop, session) == held, "Go To held the session anew"
+        assert programs_for(desktop, session) == 1, "Go To started a second program"
+        desktop.as_account(f"kill -0 {pid}")
+        # The keys go through the new window's attach to the hold's terminal, where the
+        # program that ran before writes each one down.
+        machine.send_chars("kept")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -q kept ~/typed-{session}"), timeout=STEP
+        )
+    finally:
+        cleaned(desktop, session)
+
+
 def opened_held(desktop: Desktop, session: str) -> Json:
     """Reopen a session as the launcher does, held, focused, and give its window once drawn."""
     machine = desktop.machine
@@ -235,6 +300,16 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     That's from Return to niri focusing the session's window, which is the only window Go To
     may focus.
     """
+    began = go_to_pressed(desktop, session)
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"niri msg --json focused-window | grep -q '\"id\":{window},'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    return time.monotonic() - began
+
+
+def go_to_pressed(desktop: Desktop, session: str) -> float:
+    """Press the launcher's Go To on the session from another window, giving when it was pressed."""
     machine = desktop.machine
     titles = {one["title"] for one in desktop.windows()}
     if "Elsewhere" not in titles:
@@ -274,11 +349,7 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
     began = time.monotonic()
     machine.send_chars("buffer\n")
-    machine.wait_until_succeeds(
-        desktop.in_session(f"niri msg --json focused-window | grep -q '\"id\":{window},'"),
-        timeout=dt.timedelta(seconds=10),
-    )
-    return time.monotonic() - began
+    return began
 
 
 def watched_while_typing(
