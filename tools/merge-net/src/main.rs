@@ -129,6 +129,7 @@ fn main() -> ExitCode {
         Asked::Ride => {
             train::ride(&env::var("MERGE_NET_REPOSITORY").unwrap_or_else(|_| REPOSITORY.to_owned()))
         }
+        Asked::Trial { head, main } => train::trial::run(&head, &main),
     };
     done.unwrap_or_else(|why| {
         eprintln!("merge-net: {why}");

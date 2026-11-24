@@ -70,6 +70,7 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
+pub mod trial;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;

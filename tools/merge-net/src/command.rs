@@ -34,6 +34,9 @@ pub enum Asked {
     RunAgain { commit: String },
     /// Merge the changes waiting on the train, as `ready` starts it.
     Ride,
+    /// Try a head merged onto main through changed-checks, as `needs`
+    /// starts it.
+    Trial { head: String, main: String },
 }
 
 /// merge-net's help, with each subcommand's under it.
@@ -61,6 +64,7 @@ pub fn help() -> Help {
     .subcommand(status())
     .subcommand(run_again())
     .subcommand(ride())
+    .subcommand(trial())
 }
 
 fn watch() -> Help {
@@ -152,6 +156,23 @@ fn ride() -> Help {
     .exit(Exit::Failed, "its checkout couldn't be made or moved")
 }
 
+fn trial() -> Help {
+    Help::new(
+        "trial",
+        "runs changed-checks at HEAD merged onto MAIN, as needs starts it",
+    )
+    .example(
+        "merge-net trial $(git rev-parse HEAD) $(git rev-parse origin/main)",
+        "what needs starts when main moved a file of a change that passed",
+    )
+    .argument("HEAD", "the head whose pass main moved files under")
+    .argument("MAIN", "the main it's merged onto")
+    .exit(
+        Exit::Failed,
+        "HEAD conflicts with MAIN, or changed-checks failed",
+    )
+}
+
 /// What the words, past the kit's own flags, ask it to do.
 ///
 /// # Errors
@@ -161,7 +182,7 @@ fn ride() -> Help {
 pub fn asked(words: &[String]) -> Result<Asked, Failure> {
     let Some((first, rest)) = words.split_first() else {
         return Err(Failure::new(Exit::Usage, "merge-net needs a subcommand")
-            .because("watch, needs, ready, status, run-again or ride")
+            .because("watch, needs, ready, status, run-again, ride or trial")
             .try_this("merge-net --help"));
     };
     let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
@@ -188,6 +209,14 @@ pub fn asked(words: &[String]) -> Result<Asked, Failure> {
         "ride" => match rest.as_slice() {
             [] => Ok(Asked::Ride),
             [word, ..] => Err(unknown(word, &SHARED, "ride")),
+        },
+        "trial" => match rest.as_slice() {
+            [head, main] if !head.starts_with('-') && !main.starts_with('-') => Ok(Asked::Trial {
+                head: (*head).to_owned(),
+                main: (*main).to_owned(),
+            }),
+            [_] | [] => Err(short_of("trial needs the HEAD and the MAIN", "trial")),
+            [word, ..] => Err(unknown(word, &SHARED, "trial")),
         },
         // The kit refuses a word no subcommand answers to before this.
         other => {
@@ -298,6 +327,13 @@ mod tests {
         assert!(
             matches!(asking(&["ride"]), Asked::Ride),
             "ride, as ready starts the train, wasn't taken"
+        );
+        assert!(
+            matches!(
+                asking(&["trial", "h1", "m1"]),
+                Asked::Trial { head, main } if head == "h1" && main == "m1"
+            ),
+            "trial HEAD MAIN, as needs starts it, didn't try HEAD on MAIN"
         );
     }
 }
