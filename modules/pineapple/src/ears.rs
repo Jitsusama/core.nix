@@ -30,6 +30,11 @@ const FOUND_LATE: u128 = 60 * 1_000_000;
 /// short, before it's said as one that can't be read.
 const CUTS: usize = 4;
 
+/// How many days before the one the last read was said on a gap's second
+/// search asks after: Slack takes a day as Joel's, up to a day either side
+/// of the one UTC names, and leaves out the day `after:` names.
+const DAYS_BACK: u64 = 3;
+
 /// What a reader hears Slack through.
 pub trait Ears {
     /// The newest messages `query` finds, oldest first; else whether the
@@ -106,9 +111,10 @@ impl Ears for Api<'_> {
 /// is numbered "of" one count, so the same text can't pass for both, as
 /// it could for one answer the gateway cut short where the real results
 /// were dropped. And one full answer is read only when it reaches back to
-/// the last read; one that doesn't is deaf until Joel's row says that
-/// search can't be read, and is then read on past what it left unread,
-/// as the span between can never be asked for again.
+/// the last read. One that doesn't is asked again for only what was said
+/// in the days since, and that answer, given whole, is read. Else it's
+/// deaf until Joel's row says that search can't be read, and is then read
+/// on past what it left unread, as the span between can't be asked for.
 pub struct Through {
     gateway: Gateway,
     /// How many rounds each search's answer, by its query, has left
@@ -197,10 +203,13 @@ impl Through {
             round
         })
     }
-}
 
-impl Ears for Through {
-    fn search(&mut self, query: &str, back_to: &str) -> Result<Vec<Message>, Round> {
+    /// The newest messages a search for `query` finds, read only when an
+    /// ask for one fewer agrees, with how many it asked for at the last and
+    /// each count it was cut to: cut short, it's asked again for as many as
+    /// it gave, as the gateway cuts by size and an ask for as many as it
+    /// gave may be cut again.
+    fn agreed(&mut self, query: &str) -> Result<(Vec<Message>, usize, String), Round> {
         // An answer it can't read is no quiet Slack: it isn't heard, and
         // since its cause lasts, it's said as deaf rather than let go.
         let unread = |why: String| {
@@ -209,8 +218,6 @@ impl Ears for Through {
         };
         let count = usize::from(COUNT);
         let mut answer = self.newest(query, count)?;
-        // Cut short, it's only a count to ask again for, and as the gateway
-        // cuts by size, an ask for as many as it gave may be cut again.
         let mut asked = count;
         let mut cuts = Vec::new();
         for _ in 0..CUTS {
@@ -221,16 +228,9 @@ impl Ears for Through {
             asked = given;
             answer = self.newest(query, asked)?;
         }
-        let cut = asked < count;
         // Each count it was cut to, so a journal shows every cut.
         let cuts = cuts.join(", then ");
-        let cut_to = |why: String| {
-            if cut {
-                format!("cut to {cuts} of {COUNT}, then asked for {asked}, {why}")
-            } else {
-                why
-            }
-        };
+        let cut_to = |why: String| cut_to(&cuts, asked, why);
         let found = gateway::found(&answer).map_err(|why| unread(cut_to(why)))?;
         if let Some(fewer) = found.len().checked_sub(1).filter(|fewer| *fewer > 0) {
             let again = self.newest(query, fewer)?;
@@ -245,6 +245,39 @@ impl Ears for Through {
                 ))));
             }
         }
+        Ok((found, asked, cuts))
+    }
+
+    /// Every message a search for `query` finds said after a day well
+    /// before the last read, `back_to`, with that day, when the gateway
+    /// gives them whole: none when it finds as many as it may give, or its
+    /// answer can't be read.
+    fn since(&mut self, query: &str, back_to: &str) -> Option<(String, Vec<Message>)> {
+        let day = slack::day_before(back_to, DAYS_BACK)?;
+        let (found, asked, _) = self.agreed(&format!("{query} after:{day}")).ok()?;
+        (asked == usize::from(COUNT) && found.len() < asked).then_some((day, found))
+    }
+}
+
+/// Why an answer can't be read, saying first each count it was cut to,
+/// `cuts`, and how many it `asked` for at the last, when it was cut.
+fn cut_to(cuts: &str, asked: usize, why: String) -> String {
+    if cuts.is_empty() {
+        why
+    } else {
+        format!("cut to {cuts} of {COUNT}, then asked for {asked}, {why}")
+    }
+}
+
+impl Ears for Through {
+    fn search(&mut self, query: &str, back_to: &str) -> Result<Vec<Message>, Round> {
+        let unread = |why: String| {
+            eprintln!("<4>the gateway's search for {query:?} can't be read: {why}");
+            Round::Deaf(Deafness::Unreadable)
+        };
+        let (found, asked, cuts) = self.agreed(query)?;
+        let cut = !cuts.is_empty();
+        let cut_to = |why: String| cut_to(&cuts, asked, why);
         // Fewer than asked for is every message it finds. A full answer
         // must reach a minute before the last read, even one holding it,
         // as a message said in that minute may be found only later.
@@ -252,12 +285,22 @@ impl Ears for Through {
             let oldest = found.first().map_or("", |message| message.ts.as_str());
             let reaches = slack::micros(oldest).zip(slack::micros(back_to));
             if reaches.is_none_or(|(oldest, back_to)| oldest.saturating_add(FOUND_LATE) > back_to) {
-                let gaps = self.gaps.entry(query.to_owned()).or_default();
-                *gaps = gaps.saturating_add(1);
                 let unheard = format!(
                     "back to {oldest:?}, it leaves unread what was said from a minute before \
                      {back_to} to then"
                 );
+                if let Some((day, since)) = self.since(query, back_to) {
+                    eprintln!(
+                        "<5>the gateway's search for {query:?}, {}, so asked for what was \
+                         said after {day}: given whole, that's read",
+                        cut_to(unheard)
+                    );
+                    self.gaps.remove(query);
+                    self.told.remove(query);
+                    return Ok(since);
+                }
+                let gaps = self.gaps.entry(query.to_owned()).or_default();
+                *gaps = gaps.saturating_add(1);
                 if *gaps <= deaf::ROUNDS || !self.told.contains(query) {
                     return Err(unread(cut_to(unheard)));
                 }

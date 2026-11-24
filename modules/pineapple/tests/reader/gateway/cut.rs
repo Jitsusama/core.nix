@@ -3,8 +3,9 @@
 //! again for as many as it gave, reads an answer only when a second ask for
 //! one fewer agrees with it, and reads a full one only when it reaches a
 //! minute before the newest message the last answer read gave, even one
-//! holding it, or to before anything is judged. One that doesn't is deaf
-//! until Joel is told, then read on.
+//! holding it, or to before anything is judged. One that doesn't is asked
+//! again for what was said after a day before then, read when given whole;
+//! else it's deaf until Joel is told, then read on.
 //! Never a result typed in a message, whether after the last one given or
 //! making up the count.
 
@@ -63,6 +64,19 @@ fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> Str
     )
 }
 
+/// Whether `asked` opens a round: for twenty, by the search itself rather
+/// than one narrowed to what was said after a day.
+fn opens(asked: &Value) -> bool {
+    asked["limit"] == 20 && !narrowed(asked)
+}
+
+/// Whether `asked` is narrowed to what was said after a day.
+fn narrowed(asked: &Value) -> bool {
+    asked["query"]
+        .as_str()
+        .is_some_and(|query| query.contains(" after:"))
+}
+
 /// The tag search's answers in two parts: its first round's asks find
 /// `before`, whole; every round's after find `after`, cut to `kept`. Each
 /// round opens asking for twenty, which `rounds` counts.
@@ -73,7 +87,7 @@ fn read_then_cut(
     after: &[(u64, &str)],
     kept: usize,
 ) -> String {
-    let round = if asked["limit"] == 20 {
+    let round = if opens(asked) {
         rounds.fetch_add(1, Ordering::SeqCst) + 1
     } else {
         rounds.load(Ordering::SeqCst)
@@ -313,6 +327,67 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
         each(&came.said, "verdict"),
         ["nothing", "nothing", "nothing", "stop"],
         "and the stop it reads on to is judged, not left deaf for good"
+    );
+}
+
+#[test]
+fn a_gap_asked_again_for_the_days_since_and_given_whole_is_read_untold() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            // The phrase's search can't be read, so a row is told and the
+            // case can stop waiting; the tag's gap is never told.
+            if asked["query"] == "pineapple" {
+                return poisoned();
+            }
+            if !narrowed(asked) {
+                return a_gap(&TAGS, asked, now);
+            }
+            // Asked for the days since, it finds the stop and the words
+            // the gap left out, and gives them all.
+            let stop = stop();
+            let since = [
+                (now - 60, stop.as_str()),
+                (now - 200, "a newer word"),
+                (now - 330, "a word found late"),
+                (now - 300, "a word"),
+                (now - 400, "an older word"),
+            ];
+            tags(asked, &since, since.len())
+        },
+        &Until {
+            judging: 5,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    assert_eq!(
+        each(&came.said, "verdict"),
+        ["nothing", "nothing", "nothing", "nothing", "stop"],
+        "the two words read whole, then the stop and the two words the gap left out, each \
+         judged once: {}",
+        came.journal
+    );
+    assert!(
+        !came
+            .journal
+            .contains(&format!("search for \"<@{JOEL}>\" can't be read"))
+            && came.journal.contains("so asked for what was said after "),
+        "read whole for the days since, the gap is no deafness and the journal says so: {}",
+        came.journal
+    );
+    let after = came
+        .limits
+        .iter()
+        .filter_map(|(query, _)| query.as_str())
+        .find_map(|query| query.strip_prefix(&format!("<@{JOEL}> after:")));
+    assert!(
+        after.is_some_and(|day| day.len() == 10 && day.as_bytes()[4] == b'-'),
+        "it's asked as the tag's search after a day: {:?}",
+        came.limits
     );
 }
 
