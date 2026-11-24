@@ -64,17 +64,18 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 32 files since the balance, who started each cell, the tree beside the map,
+# 33 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
 # each is doing, what each spent, what waits, how wide each line is drawn, how
 # a cell is named, how the map's motion is timed, where everything stands,
-# what the ground layer's canvas touches, a reading's shape and what new work
-# hands the Launcher were read in modules of their own; about 668 KB since the
+# what the ground layer's canvas touches, a reading's shape, what new work
+# hands the Launcher and what a cell's drawer offers were read in modules of
+# their own; about 668 KB since the
 # builders, the legend's moving samples and new work's line, and since no
 # comment is sent, view.js's and the styles' included, with a little room
 # above; new work's line and its hidden controls draw about 20 elements of the
 # 611.
-BUDGET = Budget(files=32, kilobytes=677, elements=620)
+BUDGET = Budget(files=33, kilobytes=677, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
