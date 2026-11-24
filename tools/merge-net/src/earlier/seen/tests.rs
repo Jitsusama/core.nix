@@ -467,3 +467,30 @@ fn newest_round_files_of_another_shape_are_said_so() {
     fs::remove_dir_all(&folder).unwrap();
     assert!(said.contains("record shape"), "{said}");
 }
+
+// A mirrored range's base stands here only as a full commit id in git's
+// own spelling, 40 or 64 lowercase hex: a ref, an uppercase id or a short
+// one is no base, and a change's round, with no base, keeps none.
+#[test]
+fn a_mirrored_base_stands_here_only_as_a_commit_id() {
+    let sha256 = "e".repeat(64);
+    let cases = [
+        (Some(id('8')), Some(id('8'))),
+        (Some(sha256.clone()), Some(sha256)),
+        (Some(id('e').to_uppercase()), Some(String::new())),
+        (Some("origin/main".to_owned()), Some(String::new())),
+        (Some("eeeeeee".to_owned()), Some(String::new())),
+        (None, None),
+    ];
+    for (from, stands) in cases {
+        let here = as_read_here(Read {
+            commit: id('c'),
+            from: from.clone(),
+        });
+        assert_eq!(
+            here.from, stands,
+            "a mirrored base {from:?} stood as the wrong one"
+        );
+        assert_eq!(here.commit, id('c'), "the commit read changed");
+    }
+}

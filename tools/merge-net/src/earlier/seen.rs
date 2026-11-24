@@ -11,7 +11,11 @@
 //! `closed`), and one of them answered. The harness's own merge reads its
 //! records the same way (`readSomething` in its review store). A round
 //! over a range of commits counts only where its base is on main: the
-//! commit it records as `from`, else the base the range is named by.
+//! commit it records as `from`. A recorded `from` that's no full commit
+//! id is no base, so the round counts for no head; only a round that
+//! records none, from before rounds did, falls back to the base the
+//! range is named by, and a mirrored one does so only when that name is
+//! a commit id.
 
 use std::collections::HashSet;
 use std::fs;
@@ -244,8 +248,10 @@ fn shaped(text: &str) -> bool {
 
 /// The commits the rounds of one change's file `text` read in full, each
 /// with the base it read from when the change is a range of commits: the
-/// commit the round itself records as `from`, else the base the range is
-/// named by, which a ref may spell and so means nothing on another machine.
+/// commit the round itself records as `from`, or no base when what it
+/// records is no commit id. Only a round recording no `from` at all falls
+/// back to the base the range is named by, which a ref may spell and so
+/// means nothing on another machine (`as_read_here` blanks it there).
 fn read_in(text: &str) -> Vec<Read> {
     let Ok(change) = serde_json::from_str::<Value>(text) else {
         return Vec::new();
@@ -344,6 +350,17 @@ pub fn unread(short: &str) -> String {
         "no review round of ours read {short}, nor an earlier commit of the same change \
          (a squash or a reworded subject is told as another): ask a council (review_ask) at \
          this head, and ask ready again once it's collected"
+    )
+}
+
+/// Why `commit`, which only rounds over a range of commits read, may not
+/// merge: each read from a base that's on no main, or that it recorded as
+/// no commit (`read_in` above), so none stands for the commits under it.
+pub fn read_from_no_base(short: &str) -> String {
+    format!(
+        "a review round read {short} only over a range whose base isn't a commit on main, \
+         so it doesn't stand for the commits under it: ask a council (review_ask) on the \
+         change, or on a range from main, and ask ready again once it's collected"
     )
 }
 
