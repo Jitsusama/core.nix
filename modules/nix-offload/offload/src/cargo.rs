@@ -316,7 +316,7 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> Result<(), Failure> {
 /// Nix store too, the targets no run holds are cleared, longest unused
 /// first, until it has; only then is the run's own begun afresh. Room it
 /// can't read clears nothing.
-pub const WARM: &str = include_str!("warm.sh");
+pub const WARM: &str = include_str!("cargo/warm.sh");
 
 /// The name a run's warm target is kept under: the repository `origin`
 /// names, with its host, or the top folder's name `top` where it names
