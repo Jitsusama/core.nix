@@ -480,13 +480,17 @@ pub fn unnamed(network: &str) -> bool {
 }
 
 /// Why a pin measured while its link named no network is let go once
-/// that link was left: what line it split was forgotten as it left.
-pub const LEFT_UNNAMED: &str = "where it was measured was forgotten as its link was left";
+/// that link was left, or the shaper restarted, before a router named
+/// it: what line it split wasn't kept, so a journal read after a restart
+/// doesn't send anyone looking for a move (shaper holds round 5's F3
+/// and F11).
+pub const LEFT_UNNAMED: &str = "where it was measured, on a link no router named, wasn't kept";
 
 /// What the pin's network is set to once it was measured on a link
-/// naming none and the primary left that link, so no network a router
-/// names, nor that link's own name, is where it is: neither a router's
-/// address nor a link's own name (`unnamed`) reads so.
+/// naming none and the primary left that link, or the shaper restarted,
+/// so no network a router names, nor that link's own name, is where it
+/// is: neither a router's address nor a link's own name (`unnamed`)
+/// reads so.
 const FORGOTTEN_ON: &str = "forgotten";
 
 impl Pinning {
@@ -627,6 +631,7 @@ impl Pinning {
         // the network named before the silence included (round 4's F10).
         let moved = self.here.as_ref().is_none_or(|(was, _)| was != link);
         if moved {
+            self.left_unnamed_round();
             self.taken_unnamed = None;
             if let Some((_, was)) = &mut self.on
                 && unnamed(was)
@@ -684,7 +689,22 @@ impl Pinning {
     /// network isn't judged as measured on its line (shaper holds round
     /// 3's F1 and F16).
     fn no_primary(&mut self) {
+        self.left_unnamed_round();
         self.here = None;
+    }
+
+    /// Takes the primary leaving its link, or a step with none, while a
+    /// round asked as that link named no network is out or settling: the
+    /// round counts for nothing, as one whose network changed does, since
+    /// its pin was measured on a line no router named, and the network
+    /// named before the silence would otherwise keep it (shaper holds
+    /// round 5's F1 and F13). The pin in force stays as it was, judged by
+    /// where it was measured.
+    fn left_unnamed_round(&mut self) {
+        if self.asked_unnamed.take().is_some() {
+            self.stale = self.probing;
+            self.coming = None;
+        }
     }
 
     /// The primary link, while it names no network.
@@ -831,7 +851,9 @@ impl Pinning {
     /// Puts the pin a round found in force once its time comes, and says
     /// so when the pin moved. A pin taken from a round asked and settled
     /// on a link naming no network, a pair found again included, is kept
-    /// by the network that link names next (round 2's F4).
+    /// by the network that link names next (round 2's F4). A pair found
+    /// again keeps where it was first measured too, so the same network
+    /// by another link still keeps it (round 5's F9).
     pub fn take_hold(&mut self, now: Instant) -> Option<Moved> {
         let (pin, from) = self.coming?;
         if now < from {
@@ -839,7 +861,8 @@ impl Pinning {
         }
         self.coming = None;
         let was = std::mem::replace(&mut self.pinned, pin);
-        if was.map(|p| p.rule()) != pin.map(|p| p.rule()) {
+        let ruled = was.map(|p| p.rule()) != pin.map(|p| p.rule());
+        if ruled {
             self.taken = pin.map(|_| now);
         }
         let asked = self.asked_unnamed.take();
@@ -849,7 +872,7 @@ impl Pinning {
         // Measured on a line no router has named yet, so not on the
         // network named before the silence: the link's own name stands
         // for where it is until the router names it (round 4's F10).
-        if let Some(link) = &self.taken_unnamed {
+        if let Some(link) = self.taken_unnamed.as_ref().filter(|_| ruled) {
             self.on = Some((link.clone(), format!("link {link}")));
         }
         let was = was.map(|p| p.first);
@@ -1418,9 +1441,10 @@ mod tests {
             Some(30_010),
             "a pin measured on aa:aa's line was kept on bb:bb's through a silence"
         );
-        // A pin measured on eth1's line isn't kept on wlan0's, nor one
-        // whose round the primary left mid-round for another unnamed link
-        // (round 2's F12).
+        // A pin measured on eth1's line isn't kept on wlan0's (round 2's
+        // F12), and a round the primary left mid-round for another unnamed
+        // link counts for nothing, so the pin before it is judged as ever
+        // (round 5's F1 and F13).
         let mut docked = asked_on(30_006, "eth1", "link eth1", start);
         docked.found(end(36_284), &quick, settled);
         assert!(
@@ -1436,13 +1460,107 @@ mod tests {
         roamed.network("wlan0", "link wlan0");
         roamed.found(end(36_284), &quick, settled);
         assert!(
-            roamed.take_hold(settled).is_some(),
-            "the round's pin didn't move"
+            roamed.take_hold(settled).is_none(),
+            "a round whose link was left mid-round took hold"
         );
         assert_eq!(
             roamed.network("wlan0", "cc:cc"),
-            Some(30_010),
-            "a pin asked on eth1's line was kept on wlan0's"
+            Some(30_006),
+            "a pin measured on aa:aa's line was kept on cc:cc's"
+        );
+    }
+
+    #[test]
+    fn a_round_asked_unnamed_counts_for_nothing_once_its_link_was_left() {
+        let start = Instant::now();
+        let settled = start + Duration::from_secs(35);
+        let quick = read(&[30_010, 30_011], 66.0, &[]);
+        // Left while the round is out or while its pin settles, for
+        // another link's unnamed moment or for none, and back on eth1
+        // before the pin would take hold: the round counts for nothing,
+        // so the pin it measured on a line no router named is neither
+        // adopted by eth1's next router nor kept by the network named
+        // before the silence, where the pin before it stays (shaper holds
+        // round 5's F1, F6 and F13).
+        for away in [Some("wlan0"), None] {
+            for settling in [false, true] {
+                let mut left = asked_on(30_006, "eth1", "link eth1", start);
+                if settling {
+                    left.found(end(36_284), &quick, settled);
+                }
+                let gone = away.map(|link| (link, format!("link {link}")));
+                left.primary(
+                    gone.as_ref()
+                        .map(|(link, network)| (*link, network.as_str())),
+                );
+                left.primary(Some(("eth1", "link eth1")));
+                if !settling {
+                    left.found(end(36_284), &quick, settled);
+                }
+                assert!(
+                    left.take_hold(settled).is_none(),
+                    "a round left for {away:?}, settling {settling}, took hold"
+                );
+                assert_eq!(
+                    left.primary(Some(("eth1", "aa:aa"))),
+                    None,
+                    "the pin measured on aa:aa's line let go there"
+                );
+                assert_eq!(
+                    left.pinned.map(|p| p.first),
+                    Some(30_006),
+                    "a round left for {away:?}, settling {settling}, moved the pin"
+                );
+            }
+        }
+        // A pair found again while unnamed keeps where it was first
+        // measured, so the same network by another link keeps it (round
+        // 5's F9).
+        let mut again = asked_on(30_010, "eth1", "link eth1", start);
+        again.found(end(36_284), &quick, settled);
+        assert!(
+            again.take_hold(settled).is_none(),
+            "the same pair was said moved"
+        );
+        assert_eq!(
+            again.primary(Some(("wlan0", "aa:aa"))),
+            None,
+            "a pair measured on aa:aa and found again unnamed let go on aa:aa"
+        );
+    }
+
+    #[test]
+    fn a_pin_kept_unnamed_through_a_restart_is_let_go_once_named_and_measured_again() {
+        let start = Instant::now();
+        // A pin standing on eth1's own name, saved and taken back: its
+        // link's unnamed moment isn't kept, so the router naming the
+        // network, even the same link's, lets it go, saying where it was
+        // measured wasn't kept rather than blaming a move, and a round
+        // goes again at once (shaper holds round 5's F3, F7, F11 and F12).
+        let kept = Restart {
+            pin: Some(pin_at(30_010)),
+            on: Some(("eth1".to_owned(), "link eth1".to_owned())),
+            ..Restart::default()
+        };
+        let mut after = Pinning::default();
+        after.resume(
+            restored(&saved(&kept, "b0"), "b0").expect("kept"),
+            Some(start),
+        );
+        assert_eq!(
+            after.primary(Some(("eth1", "link eth1"))),
+            None,
+            "a pin let go while its link was still unnamed"
+        );
+        assert_eq!(
+            after.primary(Some(("eth1", "aa:aa"))),
+            Some((30_010, LEFT_UNNAMED)),
+            "a pin measured unnamed before a restart was kept once named"
+        );
+        assert_eq!(
+            after.ask(&[end(41_000)], false, start + Duration::from_secs(1)),
+            Some(end(41_000)),
+            "no round went once the pin was let go"
         );
     }
 
@@ -2037,15 +2155,21 @@ mod tests {
                 "look {n}: a return so soon after the move was counted against it"
             );
         }
-        // The look after the last within REMEMBERED of the move counts what
-        // came back from then, which the last pin's rule may have sent
-        // (shaper holds round 2's F7); the next counts the new pin's own.
+        // The look after the last within REMEMBERED of the move reads past
+        // it, so it starts the count afresh, counting nothing the last
+        // pin's rule may have sent (shaper holds round 2's F7). The next is
+        // the first to count, and one return alone lets nothing go, which
+        // two would if the look before had counted too (round 5's F8).
         assert_eq!(
             moved.heed(5, look(start, 6)),
             None,
-            "a return within the last rule's memory was counted"
+            "a look starting the count afresh let go"
         );
-        assert_eq!(moved.heed(6, look(start, 7)), None, "one back let go");
+        assert_eq!(
+            moved.heed(6, look(start, 7)),
+            None,
+            "a return within the last rule's memory was counted, or one back let go"
+        );
         // A round that finds the same pair again, measured anew, keeps its
         // count, since its rule is the same.
         let found = look(start, 7) + Duration::from_secs(1);
