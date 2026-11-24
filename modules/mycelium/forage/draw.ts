@@ -363,13 +363,13 @@ interface Placing {
 /**
  * Where each cell `floor` draws sits, by its place among those drawn and its
  * depth, with a gap's room wherever it skips cells of its list: before its
- * first, between two, or after its last. Cells skipped between two that all
- * grew from the first of them, just before `next`, are folded under it, with
- * no gap, so a brood drawn apart by its own broods reads as one row.
+ * first, between two, or after its last. Cells skipped between two that are
+ * the rest of the first's brood, the second not of it, are folded under the
+ * first with no gap, so a brood drawn apart by its own broods reads as one row.
  */
 function placed(floor: Floor): Placing {
   const place = new Map(floor.of.map((each, at) => [each.cell, at]));
-  const { under } = kinOf(floor.of, grewFrom);
+  const { rest } = kinOf(floor.of, grewFrom);
   const cells: Placing["cells"][number][] = [];
   const gaps: number[] = [];
   let end = FLOOR.margin;
@@ -380,7 +380,7 @@ function placed(floor: Floor): Placing {
   };
   for (const forage of floor.drawn) {
     const at = place.get(forage.cell) ?? next;
-    if (at > next && (cells.length === 0 || !under(next - 1, next, at))) {
+    if (at > next && (cells.length === 0 || !rest(next - 1, next, at))) {
       skip();
     }
     const y = FLOOR.hypha + Math.min(forage.depth, FLOOR.steps) * FLOOR.drop;

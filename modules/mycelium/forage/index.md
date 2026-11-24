@@ -37,9 +37,10 @@ a terminal, `mycelium forage` gathers the realm's.
   as in a ring of starts longer than the room, when the
   floor is filled with lines cut at their tops. Where it skips cells of
   the list, before, between or after those it draws, the main line breaks
-  at an ellipsis, unless all it skips between two grew from the first of
-  them: those are folded under it, so a brood drawn apart by its own
-  broods reads as one row. A list that grows past 48 is drawn around the cell you're on. As
+  at an ellipsis, unless all it skips between two is the rest of the
+  first's brood, the second not of it: those are folded under the first,
+  so a brood drawn apart by its own broods reads as one row. A ring's ties
+  never count for it. A list that grows past 48 is drawn around the cell you're on. As
   records arrive over a list past 48, or a find narrows the list, it
   stays drawn around the same cell, though a cell added or ended near it
   shifts the cells beside it. It draws again around the cell you're on when it

@@ -233,11 +233,17 @@ it("folds the cells skipped under a cell they grew from, marking only a gap that
   const children = Array.from({ length: 20 }, (_, at) => named(33 + at * 8));
   // C00 and its nearest 27, then the rest of its brood, each with its own
   // 7 folded under it. C28 to C32 grew from C25, not from C27, so that gap
-  // is marked, as is the one past C185 that leaves C00's tree.
+  // is marked, and the one past C185 is marked as the list goes on.
   assert.deepEqual(along(floor), [...span(0, 27), cut, ...children, cut]);
   // Two gaps' room, as wide as a long list's around a cell in its middle.
   assert.ok(floor.startsWith('<svg viewBox="0 0 1536 '), floor);
   assert.equal(runs(floor), 3);
+});
+
+it("marks a gap after a cell when the floor draws more of its brood past it", () => {
+  // Around C150, deep under C00, all it skips after C00 grew from C00, but so
+  // did C121 past them, so the brood isn't closed and the gap stays.
+  assert.deepEqual(along(floorAt(FAMILY, "C150")).slice(0, 3), ["C00", "\u2026", "C121"]);
 });
 
 /** A top cell, C00, then a ring of 59 claimed starts: C01 started by C59, each other by the one before. */
@@ -249,7 +255,10 @@ const RING: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
 
 it("fills the floor from a ring longer than the room it leaves, cut at its top", () => {
   // No whole line of the ring fits beside C00, so C01's is cut to the 47 places left.
-  assert.deepEqual(compartments(floorAt(RING, "C00")), ["C00", "C01", ...span(14, 59)]);
+  const floor = floorAt(RING, "C00");
+  assert.deepEqual(compartments(floor), ["C00", "C01", ...span(14, 59)]);
+  // C14's line comes up through C02 to C01, so the cut is marked, not folded.
+  assert.deepEqual(along(floor), ["C00", "C01", "\u2026", ...span(14, 59)]);
 });
 
 it("stops a line at a cell already drawn, so a long line leaves room for the cells it started", () => {
