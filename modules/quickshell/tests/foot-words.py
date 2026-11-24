@@ -8,10 +8,11 @@ why Sessions says a session by (`unhosted(session, "why")`, one or a choice
 of two) and each key the launcher says in its foot (`elsewhere("key", ...)`)
 must have words in agents:machine's `said`: the launcher reads them there and
 says nothing for a key it hasn't, so a press would be met with an empty foot
-(Joel, 2026-11-15: a press must never do nothing). Each why or key missing,
-or worded "", fails, printed. The check first proves it finds a why in a
-choice and refuses a why with no words, so a rule that stopped finding or
-refusing fails it too.
+(Joel, 2026-11-15: a press must never do nothing). A call is read to its
+closing paren, however it's wrapped. Each why or key missing, or worded "",
+fails, printed, and so does a why given by a name, which can't be read. The
+check first proves it finds a why in a choice or a wrapped call and refuses
+a why with no words, so a rule that stopped finding or refusing fails it too.
 """
 
 from __future__ import annotations
@@ -24,34 +25,82 @@ from pathlib import Path
 # The vocabulary's file, Sessions.qml and Agents.qml.
 ARGUMENTS = 3
 
-# A call of the signal, not its declaration, to its line's end.
-UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(([^;\n]*)")
-# The launcher saying a key of agents:machine's in its foot.
-ELSEWHERE = re.compile(r"\belsewhere\(([^;\n]*)")
-WORD = re.compile(r'"([A-Za-z]+)"')
+# A call of the signal, not its declaration.
+UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(")
+# The launcher saying a key of agents:machine's in its foot, not the
+# function's own declaration.
+ELSEWHERE = re.compile(r"(?<!function )\belsewhere\(")
+# A string in double quotes, as each why and key is said, "" too, so the
+# quote that closes one is never read as opening the next.
+WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
+OPENS = "([{"
+CLOSES = ")]}"
+QUOTES = "\"'`"
+
+
+def given_to(source: str, start: int) -> list[str]:
+    """Give the arguments of the call whose paren closes after `start`, across lines.
+
+    Commas inside brackets or quotes are an argument's own, as in an object
+    literal's, so only the call's own split it.
+    """
+    given: list[str] = []
+    depth = 0
+    quote = ""
+    begun = start
+    at = start
+    while at < len(source):
+        one = source[at]
+        if quote:
+            if one == "\\":
+                at += 1
+            elif one == quote:
+                quote = ""
+        elif one in QUOTES:
+            quote = one
+        elif one in OPENS:
+            depth += 1
+        elif one in CLOSES and depth > 0:
+            depth -= 1
+        elif one in CLOSES or (one == "," and depth == 0):
+            given.append(source[begun:at].strip())
+            if one in CLOSES:
+                return given
+            begun = at + 1
+        at += 1
+    return given
+
+
+def argument(source: str, call: re.Pattern[str], which: int) -> list[str]:
+    """Give argument `which` of each call `call` finds, or "" for a call with fewer."""
+    found: list[str] = []
+    for one in call.finditer(source):
+        given = given_to(source, one.end())
+        found.append(given[which] if len(given) > which else "")
+    return found
 
 
 def whys(source: str) -> set[str]:
     """Give each why a call of unhosted gives, every word of its second argument."""
     found: set[str] = set()
-    for call in UNHOSTED.findall(source):
-        _, _, why = call.partition(",")
-        found.update(WORD.findall(why))
+    for why in argument(source, UNHOSTED, 1):
+        found.update(said for said in WORD.findall(why) if said)
     return found
 
 
 def unread(source: str) -> list[str]:
     """Give each call's why that names no word of its own, so can't be read."""
-    del source
-    return []
+    return [why for why in argument(source, UNHOSTED, 1) if not any(WORD.findall(why))]
 
 
 def keys(source: str) -> set[str]:
-    """Give each key the launcher's elsewhere is asked for by name, its first argument's."""
+    """Give each key the launcher's elsewhere is asked for by name, its first argument's.
+
+    One passed on by name is a why the shell gave, so whys reads it there.
+    """
     found: set[str] = set()
-    for call in ELSEWHERE.findall(source):
-        first, _, _ = call.partition(",")
-        found.update(WORD.findall(first))
+    for first in argument(source, ELSEWHERE, 0):
+        found.update(said for said in WORD.findall(first) if said)
     return found
 
 
@@ -104,7 +153,11 @@ def main(arguments: list[str]) -> int:
     for rule in let_through:
         print(f"foot-words: the check lets {rule} through", file=sys.stderr)
     vocabulary = json.loads(Path(arguments[0]).read_text(encoding="utf-8"))
-    given = whys(Path(arguments[1]).read_text(encoding="utf-8"))
+    sessions = Path(arguments[1]).read_text(encoding="utf-8")
+    given = whys(sessions)
+    named = unread(sessions)
+    for why in named:
+        print(f"foot-words: a why given as {why or 'nothing'} can't be read", file=sys.stderr)
     asked = keys(Path(arguments[2]).read_text(encoding="utf-8"))
     if not given:
         print(
@@ -113,7 +166,7 @@ def main(arguments: list[str]) -> int:
     missing = unworded(given | asked, said(vocabulary))
     for key in missing:
         print(f"foot-words: {key} has no words in agents:machine's said", file=sys.stderr)
-    return 1 if let_through or missing or not given else 0
+    return 1 if let_through or missing or named or not given else 0
 
 
 if __name__ == "__main__":
