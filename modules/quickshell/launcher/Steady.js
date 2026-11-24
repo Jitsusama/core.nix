@@ -68,12 +68,12 @@ function searched(rows) {
     return rows.map(asSeen);
 }
 
-// A held step's rows as what's typed is taken away from `shown`: one that
-// waits unseen and was shown there (by `id`) has been seen, rather than
-// hidden again, counted new and losing the selection; the rest still wait.
-function seenAmong(rows, shown, id) {
-    const found = new Set(shown.filter(row => row.unseen !== true).map(id));
-    return rows.map(row => row.unseen === true && found.has(id(row)) ? asSeen(row) : row);
+// A held step's rows with nothing typed: one waiting unseen that a search
+// found since it opened (its `id` in `found`) is seen, not hidden again,
+// counted new and losing the selection, however many lists came between.
+function seenAmong(rows, found, id) {
+    const ids = new Set(found);
+    return rows.map(row => row.unseen === true && ids.has(id(row)) ? asSeen(row) : row);
 }
 
 // The rows laid again, `rows`, with `lit(rows)` dimming each heading said
