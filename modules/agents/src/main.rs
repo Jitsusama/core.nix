@@ -56,6 +56,7 @@ use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
+use agents::places;
 use agents::reopen::Kept;
 use agents::row::Words;
 use agents::said::Said;
@@ -309,12 +310,13 @@ fn own(
     })
 }
 
-/// Start New Work and Let Them Start, asked of `node` only for the
-/// shell, told apart by the connection each came on, so no agent lifts
-/// the stop Joel put on their starts; what the node says of the starts
-/// once they're let start is `stood` at once, rather than at the next
-/// poll. Feedback, a sprout and letting them start wait on the node, so
-/// none holds up an ask after it. Each start the shell names by a
+/// Start New Work, where it can begin, and Let Them Start, asked of
+/// `node` only for the shell, told apart by the connection each came on,
+/// so no agent lifts the stop Joel put on their starts or reads his
+/// places; what the node says of the starts once they're let start is
+/// `stood` at once, rather than at the next poll. Feedback, a sprout,
+/// the places and letting them start wait on the node, so none holds up
+/// an ask after it. Each start the shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
 /// says it told Joel its end (starts.rs), so neither a restart of the
@@ -328,8 +330,17 @@ fn sprouts_for_the_shell(
     (stood, words): (Arc<starts_stopped::Told>, Said),
 ) {
     shared.peered(
-        &[sprout::ASK, starts::TOLD, starts::KEPT, starts_stopped::ASK],
+        &[
+            sprout::ASK,
+            places::ASK,
+            starts::TOLD,
+            starts::KEPT,
+            starts_stopped::ASK,
+        ],
         Box::new(move |said, stream| {
+            if said["ask"] == places::ASK {
+                return Some(places::answer(asker::the_shell(stream), node.as_deref()));
+            }
             if said["ask"] == starts_stopped::ASK {
                 let (answer, now) =
                     starts_stopped::answer(asker::the_shell(stream), node.as_deref(), &words);
@@ -381,7 +392,13 @@ fn sprouts_for_the_shell(
         }),
     );
     // Told asks the shell's systemd who the shell is, as a sprout does.
-    shared.slow(&["feedback", sprout::ASK, starts::TOLD, starts_stopped::ASK]);
+    shared.slow(&[
+        "feedback",
+        sprout::ASK,
+        places::ASK,
+        starts::TOLD,
+        starts_stopped::ASK,
+    ]);
 }
 
 /// Follows the node: every kind of record it holds that Agents reads.

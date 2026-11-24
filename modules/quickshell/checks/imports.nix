@@ -347,6 +347,7 @@
     "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
+  "launcher/Wheres.js" = [ "launcher/Sprouting.js" ];
   "launcher/WindowTargets.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"

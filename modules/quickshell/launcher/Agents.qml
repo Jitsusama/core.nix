@@ -57,6 +57,7 @@ import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
 import "StartsStopped.js" as StartsStopped
 import "TalkTo.js" as TalkTo
+import "Wheres.js" as Wheres
 import "Wanted.js" as Wanted
 
 Provider {
@@ -1659,7 +1660,7 @@ Provider {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
-            .concat((source("quests")?.folders() ?? []).map(one => newWorkAct("in", one.folder,
+            .concat(startWheres().map(one => newWorkAct("in", one.start,
                 Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
@@ -1970,8 +1971,7 @@ Provider {
     // stepped back (Sprouting.stepsBack). Whether it did.
     function askWhere(key) {
         const launcher = provider.launcher ?? null;
-        const folders = (source("quests")?.folders() ?? []).length;
-        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, startWheres().length))
             return false;
         sproutCarried = sproutGiven.words;
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
@@ -1982,6 +1982,30 @@ Provider {
             launcher.enter(startNewWorkMade());
         console.info("launcher: new work wanted a repository; asking where it starts");
         return true;
+    }
+    // Where Start New Work can begin, as the realm's node last listed them
+    // (the agents daemon's places.rs), asked again each time the launcher
+    // opens, so a zone or checkout made since is there by the next; none
+    // until it answers, or where it can't, which leaves the quests' folders,
+    // why journalled once as each new why comes rather than at every opening.
+    property var startPlaces: []
+    property string startPlacesUnlisted: ""
+    function askPlaces() {
+        rowsKind?.ask({ ask: "places" }, answer => {
+            const why = String(answer?.error?.message ?? "");
+            if (Array.isArray(answer?.places)) {
+                provider.startPlaces = answer.places;
+                provider.startPlacesUnlisted = "";
+            } else if (why !== "" && why !== provider.startPlacesUnlisted) {
+                provider.startPlacesUnlisted = why;
+                console.info(`launcher: no places to start in: ${why}`);
+            }
+        });
+    }
+    // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
+    // node's places, World's zones among them.
+    function startWheres() {
+        return Wheres.wheres(source("quests")?.folders() ?? [], startPlaces);
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -2216,6 +2240,8 @@ Provider {
         function onOpenChanged() {
             provider.wrapAhead();
             provider.wrapForTyping();
+            if (provider.launcher.open)
+                provider.askPlaces();
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";
