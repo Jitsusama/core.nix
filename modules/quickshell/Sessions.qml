@@ -1579,8 +1579,6 @@ Singleton {
                 Reopening.satHere(one)) }))
             .sort(order));
         if (reopening !== null) {
-            if (tally !== null)
-                reopening.tally = tally;
             reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
