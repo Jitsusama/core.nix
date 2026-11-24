@@ -37,6 +37,10 @@ const ANSWER: Duration = Duration::from_secs(10);
 /// How many frames make a picture: more than one, so a camera that sends a
 /// frame and stalls isn't taken for one that works.
 const FRAMES: &str = "5";
+/// How many frames are passed over first: a relay hands its splash to the
+/// loopback until it hears a reader and starts the camera, so the first
+/// frames, up to two seconds of them at 30 a second, may be the splash.
+const SPLASH: &str = "60";
 /// How long a meeting's check is remembered, so each is checked once.
 const KEPT_MS: u64 = 24 * 60 * MIN_MS;
 
@@ -61,8 +65,10 @@ pub enum Outcome {
     Fine,
     /// Joel is told, and the meeting kept as checked once he is.
     Tell(Fault),
-    /// Read again next minute: a relay mending itself or a camera not
-    /// there yet may be fine by then, and the window has a minute left.
+    /// Read again next minute: a relay mending itself, a camera not there
+    /// yet or one that couldn't be opened while its relay starts may be
+    /// fine by then, and the window has a minute to spare. Only a camera
+    /// silent for the whole wait is told at once.
     Again(Fault),
     /// The meeting began while it was read, as across a suspend, so it's
     /// kept as checked and only journalled: a notice now would be late.
@@ -82,7 +88,9 @@ pub fn settled(gave: Result<(), Fault>, start: u64, now: u64) -> Outcome {
     match gave {
         Ok(()) => Outcome::Fine,
         Err(fault) if start <= now => Outcome::Late(fault),
-        Err(fault @ (Fault::Restarted | Fault::Missing)) if !last_chance(start, now) => {
+        Err(fault @ (Fault::Restarted | Fault::Missing | Fault::Ended(_)))
+            if !last_chance(start, now) =>
+        {
             Outcome::Again(fault)
         }
         Err(fault) => Outcome::Tell(fault),
@@ -127,7 +135,11 @@ pub fn judged(
     after: Option<&str>,
 ) -> Result<(), Fault> {
     match gave {
-        Ok(()) | Err(Fault::Ended(_)) if before != after => Err(Fault::Restarted),
+        // A side that couldn't be asked, as when systemd is slow to answer
+        // under load, says nothing of a restart.
+        Ok(()) | Err(Fault::Ended(_)) if before.zip(after).is_some_and(|(b, a)| b != a) => {
+            Err(Fault::Restarted)
+        }
         gave => gave,
     }
 }
@@ -247,13 +259,15 @@ pub fn loopback(root: &Path, camera: &Path) -> bool {
         .is_ok_and(|class| class.starts_with("sys/devices/virtual"))
 }
 
-/// What `v4l2-ctl` is asked of `camera`: a loopback's five frames, each to
-/// /dev/null, and any other camera only what it sends.
+/// What `v4l2-ctl` is asked of `camera`: a loopback's five frames past its
+/// splash, each to /dev/null, and any other camera only what it sends.
 pub fn asked(camera: &Path, read: bool) -> Vec<String> {
     let device = camera.to_string_lossy().into_owned();
     let words: &[&str] = if read {
         &[
             "--stream-mmap",
+            "--stream-skip",
+            SPLASH,
             "--stream-count",
             FRAMES,
             "--stream-to",
@@ -567,7 +581,8 @@ mod tests {
         let read = asked(Path::new("/dev/video32"), true);
         assert_eq!(
             read.join(" "),
-            "--device /dev/video32 --stream-mmap --stream-count 5 --stream-to /dev/null",
+            "--device /dev/video32 --stream-mmap --stream-skip 60 --stream-count 5 \
+             --stream-to /dev/null",
             "a loopback's frames weren't all sent to /dev/null"
         );
         assert_eq!(
@@ -652,6 +667,16 @@ mod tests {
             "a relay restarting at the last chance was never told"
         );
         assert_eq!(
+            settled(Err(Fault::Ended("v4l2-ctl ended 1".into())), start, early),
+            Outcome::Again(Fault::Ended("v4l2-ctl ended 1".into())),
+            "a camera that couldn't be opened, as while its relay starts, wasn't tried again"
+        );
+        assert_eq!(
+            settled(Err(Fault::Ended("v4l2-ctl ended 1".into())), start, last),
+            Outcome::Tell(Fault::Ended("v4l2-ctl ended 1".into())),
+            "a camera that couldn't be opened all window was never told"
+        );
+        assert_eq!(
             settled(Err(Fault::Silent), start, early),
             Outcome::Tell(Fault::Silent),
             "two minutes of nothing wasn't told at once"
@@ -678,6 +703,16 @@ mod tests {
             judged(Ok(()), Some("a"), Some("b")),
             Err(Fault::Restarted),
             "frames from a relay that started again were taken for the camera's"
+        );
+        assert_eq!(
+            judged(Ok(()), Some("a"), None),
+            Ok(()),
+            "a relay that couldn't be asked after the read was taken for a restart"
+        );
+        assert_eq!(
+            judged(Ok(()), None, Some("a")),
+            Ok(()),
+            "a relay that couldn't be asked before the read was taken for a restart"
         );
         assert_eq!(
             judged(Ok(()), None, None),
