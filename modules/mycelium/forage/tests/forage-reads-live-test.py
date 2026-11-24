@@ -544,10 +544,10 @@ DRAWN = """() => ({
 LEAST_WORD_PX = 12
 # A desk wide enough for the floor's words, which site.css hides at a phone's width and at
 # SIZES' desk, where they'd draw under LEAST_WORD_PX.
-WORDED = (1920, 1080)
+WIDE_DESK = (1920, 1080)
 
 
-@pytest.mark.parametrize("size", [*SIZES, WORDED])
+@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
 def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
     browser: Browser, forage_served: Served, mycelium_node: StandIn, size: tuple[int, int]
 ) -> None:
@@ -565,7 +565,7 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         drawn = page.evaluate(DRAWN)
         # A floor of a few cells on a phone still reads, in a room no shorter than 6rem.
         assert drawn["room"] >= 6 * drawn["rem"] - 1, f"at {size} the floor's room was {drawn}"
-        assert drawn["words"] or size != WORDED, f"at {size} the floor drew no words"
+        assert drawn["words"] or size != WIDE_DESK, f"at {size} the floor drew no words"
         small = [each for each in drawn["words"] if each < LEAST_WORD_PX]
         assert not small, f"at {size} the floor drew words at {small} px"
         mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])

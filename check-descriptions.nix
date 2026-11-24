@@ -4101,8 +4101,8 @@
     said, a cell going and the crest drawn again once every cell has, broken while the node is
     away with its cells kept and live with them read again once it's back, stale once the server
     goes with its cells kept, a first visit holding still at a phone's width, a desk's and a
-    wide desk's in a room for its floor, drawing its words at the wide desk's and none under
-    12 px, and a long link, open in its panel, never
+    wide desk's in a room for its floor, drawing its machine's name at the wide desk's and no
+    word under 12 px, and a long link, open in its panel, never
     widening the page, a first visit within its budget and a second answered unchanged, the
     web-design skill's page checks passing at a phone's
     width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
