@@ -61,7 +61,12 @@ let
   # 5's F2, F11, F12 and F16). The Mac's own tools are named,
   # since GNU's stat, which a PATH may name first, reads -f otherwise.
   # nobody is an account other daemons may share, so any of them could
-  # read the copy (round 4's F26).
+  # read the copy (round 4's F26). A switch, which sets
+  # houseReportAtSwitch, says a refusal on its own terminal each time and
+  # leaves `said` alone; only the watch job, whose words go to the log,
+  # says it once until it changes, so a refusal first met at a switch
+  # still reaches the log within a minute (house keys round 1's F1, F6,
+  # F13 and F17).
   #
   # Kept as text here rather than a script of its own, which a sandboxed
   # check could walk over a tree of folders, until that follows (round
@@ -107,11 +112,13 @@ let
     if [ -n "$houseReportWhy" ]; then
       /bin/rm -f "$houseReportCopy" "$houseReportCopy".* 2>/dev/null || :
       houseReportWhy="house-report: $houseReportKey $houseReportWhy, so the daemon has no key"
-      if [ "$(/bin/cat "$houseReportSaid" 2>/dev/null)" != "$houseReportWhy" ]; then
+      if [ -n "''${houseReportAtSwitch:-}" ]; then
+        echo "$houseReportWhy" >&2
+      elif [ "$(/bin/cat "$houseReportSaid" 2>/dev/null)" != "$houseReportWhy" ]; then
         echo "$houseReportWhy" >&2
         echo "$houseReportWhy" 2>/dev/null >"$houseReportSaid" || :
       fi
-    else
+    elif [ -z "''${houseReportAtSwitch:-}" ]; then
       /bin/rm -f "$houseReportSaid" 2>/dev/null || :
     fi
   '';
@@ -141,7 +148,7 @@ in
     # The daemon reads its key as nobody, so the key in place as the
     # machine switches is copied for it (`copying`); until one is there,
     # it reports nothing and says so.
-    + lib.optionalString (keyFile != null) copying
+    + lib.optionalString (keyFile != null) ("houseReportAtSwitch=1\n" + copying)
   );
 
   # Copies the key again whenever it or its folder changes, as root, so a

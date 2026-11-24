@@ -228,17 +228,24 @@ in
         # walk (round 5's F7 and F17).
         && times "houseReportRead=" watched == 1
         && lib.hasInfix "/usr/bin/install -d -o root -g wheel -m 0755 /var/db/house-report " watched
-        # Nothing in the copy's text hands a file over but the one install
-        # into this run's own name, moved onto the copy (round 4's F6),
-        # however a command is spelled (round 5's F7); the access list's
-        # right of the name stays a word in the walk's pattern.
+        # The copy's text names no chown or chmod, and no install or mv
+        # but the one install into this run's own name, moved onto the
+        # copy (round 4's F6), however a command is spelled (round 5's
+        # F7); the access list's right of the name stays a word in the
+        # walk's pattern. A cp, a cat or a redirect isn't counted: a
+        # text check of an unrun script proves no more (house keys round
+        # 1's F3, F10 and F15).
         && times "chown " watched == 0
         && times "chmod " watched == 0
         && times "install " watched == 2
         && times "mv " watched == 1
         && lib.hasInfix "/bin/mv -f \"$houseReportNew\" \"$houseReportCopy\"" watched
         && lib.hasInfix "houseReportNew=\"$houseReportCopy.$$\"" watched
-        && lib.hasInfix "2>/dev/null || :" watched
+        # The failing run's cleanup is the line that must never end a
+        # switch, so it's pinned whole (house keys round 1's F9).
+        && lib.hasInfix (
+          "/bin/rm -f \"$houseReportCopy\" \"$houseReportCopy\".*" + " 2>/dev/null || :"
+        ) watched
       );
 
   # A Mac given a key copies it again, as root, whenever the key or its
@@ -258,6 +265,13 @@ in
         ]
         && lib.hasInfix chained watched
         && lib.hasInfix watched keyedPrepared
+        # A switch says a refusal each time and leaves the job's `said`
+        # alone, so the log still gets it (house keys round 1's F1, F6,
+        # F13 and F17).
+        && lib.hasInfix ("houseReportAtSwitch=1\n" + watched) keyedPrepared
+        && !lib.hasInfix "houseReportAtSwitch=" watched
+        && lib.hasInfix "[ -n \"\${houseReportAtSwitch:-}\" ]" watched
+        && lib.hasInfix "[ -z \"\${houseReportAtSwitch:-}\" ]" watched
         && watching.UserName or null == null
         && watching.RunAtLoad or null == true
         && watching.StartInterval or null == 60

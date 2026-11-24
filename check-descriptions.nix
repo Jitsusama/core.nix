@@ -1685,8 +1685,8 @@
     account alone in a folder of root's, ahead of the address; activation copies the key only once
     every folder on its real path is root's and written or taken by no other account, by its mode
     or an access list, each tested whole within the walk, reading it in that real folder, set once,
-    as a plain file root's and read by no other account, through a name of each run's own, and
-    changes no file's owner or mode nor installs or moves any other, however spelled; and the build
+    as a plain file root's and read by no other account, through a name of each run's own, its text
+    naming no chown or chmod and no install or mv but its own, however spelled; and the build
     refuses a Mac's key outside /etc, /private/etc or /var/root, or spelled through or ending in
     dots
   '';
@@ -1715,7 +1715,8 @@
   house-report-takes-up-a-macs-swapped-key = ''
     a Mac given a key copies it again, as root, by the same text activation runs, whenever the key
     or its folder changes and each minute, so a key swapped while the Mac runs is taken without a
-    switch, and one launchd missed within a minute
+    switch, and one launchd missed within a minute; a switch says a refusal each time, and the job
+    says it in its log once until it changes
   '';
   house-report-takes-up-a-swapped-key = ''
     a Linux machine given a key hands it to house-report as a credential read by --key, and

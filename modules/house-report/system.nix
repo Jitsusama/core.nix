@@ -72,10 +72,13 @@ in
         A file holding the house's key, the same bytes as the shaped
         machine's house names in its `keyFile`, at least 16, which each
         report is signed with, so a device on the line can't forge one
-        from this machine's address. Make it root's alone, as
-        `(umask 077; head -c 32 /dev/urandom > /etc/house-report/house.key)`
-        does, since a plain redirect leaves every account able to read
-        it, and any that can may sign a report. On Linux the service reads it
+        from this machine's address. Make it root's alone, as a root
+        shell does with `install -d -m 0755 /etc/house-report`, then
+        `install -m 0400 /dev/null /etc/house-report/house.key` and
+        `head -c 32 /dev/urandom > /etc/house-report/house.key`: any
+        account that can read the key may sign a report, and a redirect
+        alone keeps an existing file's mode, so `chmod 0400` a key
+        already in place. On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,
