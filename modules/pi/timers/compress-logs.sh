@@ -90,15 +90,19 @@ disk_waits() {
 
 # Whether the log at $1 is still untouched long enough to be closed.
 still_closed() {
-  [ -n "$(find "$1" -maxdepth 0 -mtime +"$whole_days_past" -print 2> /dev/null)" ]
+  local found
+  found=$(find "$1" -maxdepth 0 -mtime +"$whole_days_past" -print 2> /dev/null) || return 1
+  [ -n "$found" ]
 }
 
 # What a reader sees of the log at $1: its length, its modification time
 # and its bytes' checksum.
 seen() {
   local said
+  local sum
   said=$(stat -c '%s %Y' -- "$1") || return 1
-  echo "$said $(cksum < "$1")"
+  sum=$(cksum < "$1") || return 1
+  echo "$said $sum"
 }
 
 # The logs to look at, found once before any is rewritten, so the walk
