@@ -3386,6 +3386,9 @@ struct Doorway {
     elsewhere: Option<elsewhere::Elsewhere>,
     /// Where builds and jobs stand braked for a call (src/brake.rs).
     brake: brake::Brake,
+    /// Whether memory's pressure couldn't be read when last looked at, so
+    /// the pace's stall gate going off is said once, not every look.
+    unstalled: bool,
 }
 
 impl Doorway {
@@ -3396,6 +3399,7 @@ impl Doorway {
             calls: pw_dump.map(calls::Calls::follow),
             elsewhere: None,
             brake: brake::Brake::default(),
+            unstalled: false,
         }
     }
 }
@@ -3491,10 +3495,19 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
         return;
     };
     let now = std::time::Instant::now();
+    let stalled = door::stalled(&fs::read_to_string("/proc/pressure/memory").unwrap_or_default());
+    if stalled.is_none() && !doorway.unstalled {
+        eprintln!(
+            "Can't read memory's pressure from /proc/pressure/memory, so paced starts aren't \
+             held for a stall."
+        );
+    }
+    doorway.unstalled = stalled.is_none();
     let machine = door::Machine {
         total,
         free,
         calling: doorway.calls.as_mut().is_some_and(|calls| calls.on(now)),
+        stalled: stalled.unwrap_or(0.0),
     };
     let read: Vec<(u32, u64, String, PathBuf)> = real_time::processes_under(&cgroup)
         .into_iter()
@@ -3537,6 +3550,14 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 door::tell(pid, machine);
                 let call = if machine.calling { ", a call on" } else { "" };
                 eprintln!("Held {pid} at the door, with {free} bytes available{call}.");
+            }
+            door::Done::Paced(pid) => {
+                door::tell_paced(pid);
+                eprintln!(
+                    "Held {pid} at the door for its turn, with starts paced and memory full {}% \
+                     over a minute.",
+                    machine.stalled
+                );
             }
             door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
             door::Done::Ranked(pid, high) => eprintln!(
