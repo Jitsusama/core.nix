@@ -1084,7 +1084,7 @@ fn children(pid: u32) -> Vec<u32> {
 fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
     set_holds_by(held, pis, ranks, |unit, hard, scope| {
-        let hold = hard.is_some();
+        let what = if hard.is_some() { "hold" } else { "give back" };
         match Command::new("busctl")
             .args(holds::hold_call(
                 unit,
@@ -1096,14 +1096,10 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ran
         {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(format!(
-                "Couldn't {} {unit}: {}",
-                if hold { "hold" } else { "give back" },
+                "Couldn't {what} {unit}: {}",
                 String::from_utf8_lossy(&output.stderr).trim()
             )),
-            Err(error) => {
-                let what = if hold { "hold" } else { "give back" };
-                Err(format!("Couldn't run busctl to {what} {unit}: {error}"))
-            }
+            Err(error) => Err(format!("Couldn't run busctl to {what} {unit}: {error}")),
         }
     });
 }
