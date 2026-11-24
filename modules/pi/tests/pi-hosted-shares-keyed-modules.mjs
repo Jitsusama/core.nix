@@ -5,18 +5,20 @@
 // moved on, lets go of what a package's loads kept, so the next load reads
 // its files as they are now, and a load begun before a reload hands nothing
 // to a load after. A package's loads take turns, so none is given a module
-// another is still evaluating, a reload or a moved link lets go of loads
-// waiting behind one that never ends and keeps none for the copy the link
-// moved to, and a failed load's retry evaluates again every module it
-// imported but none another extension imported meanwhile. Without the patch,
+// another is still evaluating; a reload, a moved link or a turn held too long
+// lets go of loads waiting behind one that never ends, and none is kept
+// for the copy the link moved to or once its modules are let go. A failed
+// load's retry evaluates again every module it was first to import, however
+// deep, but none another extension was first to import. Without the patch,
 // a keyed package's library is evaluated once for each of its extensions;
 // sharing every package's modules lets one extension's module state reach
 // another's.
 // Run as: node THIS PI_ROOT, with the helper beside it.
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, symlinkSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import {
+  aPackage,
   afresh,
   cached,
   clearExtensionCache,
@@ -25,12 +27,15 @@ import {
   folder,
   gate,
   gated,
+  heldUpUntil,
+  hungPackage,
   keyedManifest,
   library,
   loadExtensionsCached,
   manifest,
   open,
   pendingAfter,
+  pointAt,
   scratch,
   within,
   write,
@@ -38,30 +43,6 @@ import {
 // A library outside every package, which extensions of both kinds import.
 const outsideAt = join(scratch, "outside", "helper.ts");
 write(outsideAt, library("outside", "first"));
-// An extension that imports its package's library and the outside one. Its
-// `<command>-version` says which versions it was given, and
-// `<command>-late` imports a library of its package that no extension
-// imports before it runs.
-const extension = (command) =>
-  [
-    'import { version } from "../../lib/shared.ts";',
-    'import { version as outside } from "../../../outside/helper.ts";',
-    "export default function (pi) {",
-    `  pi.registerCommand(${JSON.stringify(`${command}-version`)}, { description: "", handler: async () => version + " " + outside });`,
-    `  pi.registerCommand(${JSON.stringify(`${command}-late`)}, { description: "", handler: async () => (await import("../../lib/late.ts")).version });`,
-    "}",
-    "",
-  ].join("\n");
-// A package of two extensions sharing one library, keyed or not.
-const aPackage = (where, name, pi, version = "first") => {
-  write(join(where, "package.json"), manifest(pi));
-  write(join(where, "lib", "shared.ts"), library(name, version));
-  write(join(where, "lib", "late.ts"), library(`${name}-late`, version));
-  for (const one of ["one", "two"]) {
-    write(join(where, "extensions", one, "index.ts"), extension(`${name}-${one}`));
-  }
-  return ["one", "two"].map((one) => join(where, "extensions", one, "index.ts"));
-};
 
 const keyedAt = join(scratch, "keyed");
 const keyed = aPackage(keyedAt, "keyed", keyedManifest);
@@ -218,12 +199,17 @@ assert.equal(
   "an extension loading twice at once was evaluated twice",
 );
 
-// A failed load forgets every module it imported, so a retry evaluates
-// again what it left unfinished and what it finished alike.
+// A failed load forgets every module it was first to import, through any
+// module it imported, so a retry evaluates again what it left unfinished
+// and what it finished alike.
 afresh();
 const flakyAt = join(scratch, "flaky");
 write(join(flakyAt, "package.json"), manifest(keyedManifest));
-write(join(flakyAt, "lib", "steady.ts"), library("steady", "steady"));
+write(join(flakyAt, "lib", "deep.ts"), library("deep", "deep"));
+write(
+  join(flakyAt, "lib", "steady.ts"),
+  `import { version as deep } from "./deep.ts";\n${library("steady", "steady")}export const deeper = deep;\n`,
+);
 write(
   join(flakyAt, "lib", "flaky.ts"),
   [
@@ -257,17 +243,22 @@ assert.equal(
 );
 assert.deepEqual(
   evaluations(),
-  { steady: 2, flaky: 2 },
+  { steady: 2, flaky: 2, deep: 2 },
   "a retry was given a module a failed load added",
 );
 
-// A failed load forgets only what it imported: a module another of the
-// package's extensions imports as it runs, while the failed load waits,
-// stays, so it is evaluated once.
+// A failed load forgets only what it was first to import: a module another
+// of the package's extensions imports as it runs, while the failed load
+// waits, stays, and so does one that module imports, so each is evaluated
+// once.
 afresh();
 const mixedAt = join(scratch, "mixed");
 write(join(mixedAt, "package.json"), manifest(keyedManifest));
-write(join(mixedAt, "lib", "late.ts"), library("mixed-late", "late"));
+write(join(mixedAt, "lib", "deeper.ts"), library("mixed-deeper", "deeper"));
+write(
+  join(mixedAt, "lib", "late.ts"),
+  `import { version as deeper } from "./deeper.ts";\n${library("mixed-late", "late")}export const deep = deeper;\n`,
+);
 write(join(mixedAt, "lib", "waits.ts"), gated("wait", "waited"));
 write(
   join(mixedAt, "lib", "throws.ts"),
@@ -304,19 +295,15 @@ assert.equal((await failing).errors.length, 1, "a load whose library throws didn
 assert.equal(await mixed("mixed-late"), "late", "an import after a failed load failed");
 assert.deepEqual(
   evaluations(),
-  { "mixed-late": 1 },
+  { "mixed-late": 1, "mixed-deeper": 1 },
   "a failed load forgot a module another extension imported meanwhile",
 );
 
 // A link that moves on lets go of the copy it pointed at, once no extension
-// resolves into it, so moving back reads that copy as it is now.
+// resolves into it still, though one of the link's extensions last loaded
+// from it, so moving back reads that copy as it is now.
 afresh();
 write(outsideAt, library("outside", "link"));
-const pointAt = (link, copy) => {
-  mkdirSync(dirname(link), { recursive: true });
-  rmSync(link, { force: true });
-  symlinkSync(copy, link);
-};
 const linked = join(scratch, "links", "keyed");
 const firstCopy = join(scratch, "keyed-first");
 aPackage(firstCopy, "keyed-first", keyedManifest);
@@ -327,7 +314,7 @@ assert.equal(await before("keyed-first-one-version"), "first link", "the link's 
 const secondCopy = join(scratch, "keyed-second");
 aPackage(secondCopy, "keyed-second", keyedManifest, "second");
 pointAt(linked, secondCopy);
-const moved = await open("b", throughLink);
+const moved = await open("b", [throughLink[0]]);
 assert.equal(
   await moved("keyed-second-one-version"),
   "second link",
@@ -353,10 +340,12 @@ aPackage(heldFirst, "held-first", keyedManifest);
 aPackage(join(scratch, "held-second"), "held-second", keyedManifest);
 pointAt(held, heldFirst);
 const throughHeld = ["one", "two"].map((one) => join(held, "extensions", one, "index.ts"));
+const heldOne = join(heldFirst, "extensions", "one", "index.ts");
 await open("held-a", throughHeld);
+await open("held-direct", [heldOne]);
 pointAt(held, join(scratch, "held-second"));
 await open("held-b", [throughHeld[0]]);
-await open("held-c", [join(heldFirst, "extensions", "one", "index.ts")]);
+await open("held-c", [heldOne]);
 assert.equal(
   evaluations()["held-first"],
   1,
@@ -364,69 +353,11 @@ assert.equal(
 );
 
 // A load that never ends holds up the package's loads behind it until its
-// modules are let go, by a reload or by a link moving off its copy, and
-// those then load as an unkeyed package's do, evaluating afresh what the
-// load that never ends had finished. One a link let go of isn't kept for
-// the copy the link moved to.
-const hungPackage = (where, hangs) => {
-  write(join(where, "package.json"), manifest(keyedManifest));
-  write(
-    join(where, "lib", "hangs.ts"),
-    hangs ? gated("hang", "hung") : 'export const hang = "moved";\n',
-  );
-  write(
-    join(where, "lib", "shared.ts"),
-    hangs ? library("behind", "behind") : library("behind-moved", "moved"),
-  );
-  write(
-    join(where, "extensions", "hangs", "index.ts"),
-    [
-      'import { version } from "../../lib/shared.ts";',
-      'import { hang } from "../../lib/hangs.ts";',
-      "// Used, since jiti's compile drops an import nothing uses.",
-      "export default function () { return [version, hang]; }",
-      "",
-    ].join("\n"),
-  );
-  write(
-    join(where, "extensions", "behind", "index.ts"),
-    [
-      'import { version } from "../../lib/shared.ts";',
-      "export default function (pi) {",
-      '  pi.registerCommand("behind-version", { description: "", handler: async () => version });',
-      "}",
-      "",
-    ].join("\n"),
-  );
-  return ["hangs", "behind"].map((one) => join(where, "extensions", one, "index.ts"));
-};
-// Hangs a load of `hangs`, queues one of `behind`, then lets go as `what`
-// does and expects the queued load to end.
-const heldUpUntil = async (what, [hangs, behind], letGo) => {
-  const hangGate = gate("hang");
-  const hanging = open(`${what}-hanging`, [hangs]);
-  await hangGate.reached;
-  const waiting = open(`${what}-waiting`, [behind]);
-  assert.equal(
-    await pendingAfter(waiting, 200),
-    true,
-    `a load didn't wait behind one that never ends, before ${what}`,
-  );
-  await letGo();
-  const released = await within(
-    waiting,
-    `${what} didn't let go of a load waiting behind one that never ends`,
-  );
-  assert.equal(await released("behind-version"), "behind", `a load ${what} let go of failed`);
-  assert.equal(
-    evaluations().behind,
-    2,
-    `a load ${what} let go of was given the modules it let go of`,
-  );
-  hangGate.putAway();
-  hangGate.open();
-  await hanging;
-};
+// modules are let go, by a reload, by a link moving off its copy to a keyed
+// copy or an unkeyed one, or by its turn being held too long, and those
+// then load as an unkeyed package's do, evaluating afresh what the load
+// that never ends had finished. One a link let go of, ending after the
+// moved link's own load, isn't kept for the copy the link moved to.
 afresh();
 await heldUpUntil("reload", hungPackage(join(scratch, "hung"), true), () => clearExtensionCache());
 afresh();
@@ -435,9 +366,12 @@ hungPackage(join(scratch, "hung-first"), true);
 hungPackage(join(scratch, "hung-second"), false);
 pointAt(stuck, join(scratch, "hung-first"));
 const throughStuck = ["hangs", "behind"].map((one) => join(stuck, "extensions", one, "index.ts"));
+const releaseGate = gate("release");
 await heldUpUntil("link", throughStuck, async () => {
   pointAt(stuck, join(scratch, "hung-second"));
   await within(open("link-moved", throughStuck), "a load through a moved link never ended");
+  releaseGate.putAway();
+  releaseGate.open();
 });
 const afterMove = await open("link-after", throughStuck);
 assert.equal(
@@ -445,6 +379,99 @@ assert.equal(
   "moved",
   "a load a moved link let go of was kept for the copy it moved to",
 );
+afresh();
+const toUnkeyed = join(scratch, "links", "unkeyed");
+hungPackage(join(scratch, "unkeyed-first"), true);
+hungPackage(join(scratch, "unkeyed-second"), false, { extensions: ["./extensions"] });
+pointAt(toUnkeyed, join(scratch, "unkeyed-first"));
+const throughUnkeyed = ["hangs", "behind"].map((one) =>
+  join(toUnkeyed, "extensions", one, "index.ts"),
+);
+await heldUpUntil("a link to an unkeyed copy", throughUnkeyed, async () => {
+  pointAt(toUnkeyed, join(scratch, "unkeyed-second"));
+  await within(open("unkeyed-moved", throughUnkeyed), "a load through a moved link never ended");
+});
+afresh();
+const stalled = hungPackage(join(scratch, "stalled"), true);
+await heldUpUntil("a turn held too long", stalled, () => undefined, 30_000);
+await open("stalled-after", [stalled[1]]);
+await open("stalled-again", [stalled[1]]);
+assert.equal(evaluations().behind, 3, "loads after a held turn didn't share new modules");
+
+// A load in flight as its link moves to another copy, while the copy it
+// began in is still held, isn't kept for the copy the link moved to.
+afresh();
+const flight = join(scratch, "links", "flight");
+const [flightFirst, flightSecond] = ["first", "second"].map((version) => {
+  const where = join(scratch, `flight-${version}`);
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "slow.ts"), gated("flight", version));
+  write(
+    join(where, "extensions", "slow", "index.ts"),
+    [
+      'import { flight } from "../../lib/slow.ts";',
+      "export default function (pi) {",
+      '  pi.registerCommand("flight-version", { description: "", handler: async () => flight });',
+      "}",
+      "",
+    ].join("\n"),
+  );
+  write(join(where, "extensions", "still", "index.ts"), "export default function () {}\n");
+  return where;
+});
+await open("flight-still", [join(flightFirst, "extensions", "still", "index.ts")]);
+pointAt(flight, flightFirst);
+const flightGate = gate("flight");
+const inFlight = open("flight-a", [join(flight, "extensions", "slow", "index.ts")]);
+await flightGate.reached;
+pointAt(flight, flightSecond);
+flightGate.putAway();
+flightGate.open();
+await within(inFlight, "a load in flight as its link moved never ended");
+const landed = await open("flight-b", [join(flight, "extensions", "slow", "index.ts")]);
+assert.equal(
+  await landed("flight-version"),
+  "second",
+  "a load in flight as its link moved was kept for the copy it moved to",
+);
+
+// A load in flight as its link moves away and back, its copy's modules let
+// go of meanwhile, isn't kept, so the next load shares the copy's new ones.
+afresh();
+const aba = join(scratch, "links", "aba");
+const [abaFirst, abaSecond] = ["first", "second"].map((version) => {
+  const where = join(scratch, `aba-${version}`);
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "slow.ts"), gated("aba", version));
+  write(
+    join(where, "extensions", "slow", "index.ts"),
+    [
+      'import { aba } from "../../lib/slow.ts";',
+      counted("aba-slow"),
+      "export default function () { return aba; }",
+      "",
+    ].join("\n"),
+  );
+  write(join(where, "extensions", "other", "index.ts"), "export default function () {}\n");
+  return where;
+});
+pointAt(aba, abaFirst);
+const [abaSlow, abaOther] = ["slow", "other"].map((one) =>
+  join(aba, "extensions", one, "index.ts"),
+);
+await open("aba-other", [abaOther]);
+const abaGate = gate("aba");
+const abaInFlight = open("aba-a", [abaSlow]);
+await abaGate.reached;
+pointAt(aba, abaSecond);
+await open("aba-b", [abaOther]);
+pointAt(aba, abaFirst);
+await open("aba-c", [abaOther]);
+abaGate.putAway();
+abaGate.open();
+await within(abaInFlight, "a load in flight as its link moved away and back never ended");
+await open("aba-d", [abaSlow]);
+assert.equal(evaluations()["aba-slow"], 2, "a load through modules let go of was kept");
 
 assert.deepEqual(cached(scratch), [], "a load put modules in Node's cache");
 rmSync(scratch, { recursive: true, force: true });
