@@ -7,14 +7,15 @@
 //! REPO that runs here, which that repository's own checks ran before it
 //! merged. A miss stays on this measure, open or closed, until it does.
 
+use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 
 use serde_json::Value;
 
 use super::super::{Class, Measure, count, first_owner, lines};
 use super::running::{RUN_HERE, running};
-use super::{Checkouts, main_of, named_as, repo_word};
+use super::{main_of, named_as, repo_word};
 
 /// The measure's key, which its drag is filed under for each owner.
 pub const UNTESTED: &str = "misses-untested";
@@ -29,8 +30,12 @@ struct Test<'a> {
 }
 
 /// The test `said` names, as `REPO PATH NAME`, or none when it isn't one:
-/// a path git would read as an option names none.
+/// a path git would read as an option names none, nor does a test that
+/// would break its line on the card. pain-points' `test` refuses the same.
 fn test_of(said: &str) -> Option<Test<'_>> {
+    if said.contains(char::is_control) {
+        return None;
+    }
     let mut parts = said.trim().splitn(3, ' ');
     let repo = repo_word(parts.next()?);
     let path = parts.next()?;
@@ -46,6 +51,8 @@ enum Look {
     Runs,
     /// Not there: never merged, renamed, or named wrongly.
     Missing,
+    /// Its path is a folder, not the file a test is in.
+    Folder,
     /// In a repository cadence has no checkout of.
     Unknown,
     /// The hour couldn't look: its own blindness, not the owner's to move.
@@ -61,43 +68,86 @@ enum Look {
 #[must_use]
 pub fn untested(text: &str, folder: &Path, checkouts: &[String], switches: &str) -> Measure {
     let repos = super::checkouts_of(folder, checkouts);
-    let revs = running(switches, &repos);
-    judged(text, |test| {
-        let Some(path) = repos.get(&test.repo) else {
-            return Look::Unknown;
-        };
-        let at = path.to_string_lossy();
-        let rev = match revs.get(&test.repo) {
-            Some(rev) => rev.as_str(),
-            None if RUN_HERE.contains(&test.repo.as_str()) => return Look::Blind,
-            None => main_of(&at),
-        };
-        found(path, rev, test)
+    let revs = revisions(&repos, &running(switches, &repos));
+    judged(text, |test| match (repos.get(&test.repo), revs.get(&test.repo)) {
+        (Some(path), Some(Some(rev))) => found(path, rev, test),
+        (Some(_), _) => Look::Blind,
+        (None, _) => Look::Unknown,
     })
 }
 
-/// Whether `test` is in the checkout at `repo` at `rev`, by git's grep of
-/// its path for its name as fixed text.
-fn found(repo: &Path, rev: &str, test: &Test<'_>) -> Look {
-    let grep = Command::new("git")
+/// Each of `repos`' revisions as it runs here, read once an hour, or none
+/// when the hour can't read one: a repository it follows to what runs,
+/// `RUN_HERE`, at `runs`, and any other at its main.
+fn revisions(
+    repos: &super::Checkouts,
+    runs: &BTreeMap<String, String>,
+) -> BTreeMap<String, Option<String>> {
+    repos
+        .iter()
+        .map(|(repo, path)| {
+            let rev = match runs.get(repo) {
+                Some(rev) => Some(rev.clone()),
+                None if RUN_HERE.contains(&repo.as_str()) => None,
+                None => Some(main_of(&path.to_string_lossy()).to_owned()),
+            };
+            let commit = |rev: &String| {
+                let rev = format!("{rev}^{{commit}}");
+                asked(path, &["rev-parse", "-q", "--verify", &rev])
+                    .is_some_and(|out| out.status.success())
+            };
+            (repo.clone(), rev.filter(commit))
+        })
+        .collect()
+}
+
+/// What git answers in the checkout at `repo`, or none when it couldn't
+/// start, which cadence's log says.
+fn asked(repo: &Path, args: &[&str]) -> Option<Output> {
+    Command::new("git")
         .arg("-C")
         .arg(repo)
-        .args(["grep", "-q", "-F", "-e", test.name, rev, "--", test.path])
+        .args(args)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    match grep.map(|status| status.code()) {
-        Ok(Some(0)) => Look::Runs,
-        Ok(Some(1)) => Look::Missing,
-        _ => Look::Blind,
+        .output()
+        .inspect_err(|e| eprintln!("cadence: git couldn't start in {}: {e}", repo.display()))
+        .ok()
+}
+
+/// Whether `test` is in the checkout at `repo` at `rev`, a revision it
+/// holds: its path a file there, read as a path rather than a pattern, so
+/// "." or "*" names no test, holding its name as whole words.
+fn found(repo: &Path, rev: &str, test: &Test<'_>) -> Look {
+    let file = format!("{rev}:{}", test.path);
+    let Some(kind) = asked(repo, &["cat-file", "-t", &file]) else {
+        return Look::Blind;
+    };
+    match String::from_utf8_lossy(&kind.stdout).trim() {
+        "blob" => {}
+        "" => return Look::Missing,
+        _ => return Look::Folder,
+    }
+    let path = format!(":(literal){}", test.path);
+    let grep: [&str; 9] = ["grep", "-q", "-w", "-F", "-e", test.name, rev, "--", &path];
+    let Some(grep) = asked(repo, &grep) else {
+        return Look::Blind;
+    };
+    match grep.status.code() {
+        Some(0) => Look::Runs,
+        Some(1) => Look::Missing,
+        _ => {
+            let why = String::from_utf8_lossy(&grep.stderr);
+            eprintln!("cadence: couldn't look in {file}: {}", why.trim());
+            Look::Blind
+        }
     }
 }
 
 /// The measure of `text`'s misses as `look` finds each one's test. A line
 /// the hour couldn't look for is left off, so its owner isn't asked about
-/// the hour's blindness, and said in the measure's words; a ledger not
-/// read whole judges none.
+/// the hour's blindness, and said in the measure's words; it leaves the
+/// measure unjudged, as a ledger not read whole does, so no owner's ask
+/// is closed for a miss the hour couldn't see and filed again after.
 fn judged(text: &str, look: impl Fn(&Test<'_>) -> Look) -> Measure {
     let whole = text
         .lines()
@@ -120,7 +170,7 @@ fn judged(text: &str, look: impl Fn(&Test<'_>) -> Look) -> Measure {
         behind.push(format!("{} ({at}), {why} · {owner}", named_as(&miss)));
     }
     let unseen = if blind > 0 {
-        format!(" ({blind} couldn't be looked for)")
+        format!(" ({blind} couldn't be looked for, so none is judged)")
     } else {
         String::new()
     };
@@ -130,7 +180,7 @@ fn judged(text: &str, look: impl Fn(&Test<'_>) -> Look) -> Measure {
         class: Class::Cells,
         says: format!("misses Joel found himself naming no test that runs here{unseen}{unread}"),
         now: count(behind.len()),
-        target: whole.then_some(0.0),
+        target: (whole && blind == 0).then_some(0.0),
         // The oldest untested miss's owner moves it first.
         owner: behind
             .first()
@@ -157,6 +207,7 @@ fn standing(miss: &Value, look: impl Fn(&Test<'_>) -> Look) -> Untested {
         return Untested::Because("naming no test".to_owned());
     };
     let Some(test) = test_of(said) else {
+        let said = said.escape_debug();
         return Untested::Because(format!("its test \"{said}\" isn't REPO PATH NAME"));
     };
     match look(&test) {
@@ -169,6 +220,10 @@ fn standing(miss: &Value, look: impl Fn(&Test<'_>) -> Look) -> Untested {
         Look::Missing => Untested::Because(format!(
             "its test {} isn't in {}'s {} as it runs here",
             test.name, test.repo, test.path
+        )),
+        Look::Folder => Untested::Because(format!(
+            "its test's path {} is a folder in {}, not its file",
+            test.path, test.repo
         )),
     }
 }

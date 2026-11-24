@@ -32,6 +32,7 @@ fn a_test_is_named_by_its_repository_path_and_name() {
         "core modules/x.rs",
         "core modules/x.rs  ",
         "core --output=x a",
+        "core modules/x.rs a\nb",
     ] {
         assert_eq!(test_of(said), None, "{said:?} was read as a test");
     }
@@ -49,12 +50,15 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
         r#"{"at": "x", "owner": "WCJQSG", "what": "carried", "carried": true}"#.to_owned(),
     ]
     .join("\n");
-    let m = judged(&ledger, |test| match (test.repo.as_str(), test.name) {
-        ("world", _) => Look::Unknown,
-        (_, "runs") => Look::Runs,
-        (_, "unseen") => Look::Blind,
-        _ => Look::Missing,
-    });
+    let look = |unseen| {
+        move |test: &Test<'_>| match (test.repo.as_str(), test.name) {
+            ("world", _) => Look::Unknown,
+            (_, "runs") => Look::Runs,
+            (_, "unseen") => unseen,
+            _ => Look::Missing,
+        }
+    };
+    let m = judged(&ledger, look(Look::Blind));
     assert_eq!(
         m.behind,
         vec![
@@ -75,16 +79,19 @@ fn each_miss_is_judged_by_whether_its_test_runs_here() {
         "a miss was judged wrongly, or one that runs, was carried or unseen was counted"
     );
     assert_eq!(m.now, 4.0, "the count isn't its lines'");
-    assert_eq!(m.target, Some(0.0), "a whole ledger was left unjudged");
     assert_eq!(
         m.owner, "XY9H5C",
         "the oldest untested miss's owner doesn't lead"
     );
+    // An owner's ask isn't closed for a miss the hour couldn't see.
+    assert_eq!(m.target, None, "an hour that couldn't look judged");
     assert!(
-        m.says.ends_with("(1 couldn't be looked for)"),
+        m.says.ends_with("(1 couldn't be looked for, so none is judged)"),
         "the miss the hour couldn't look for went unsaid: {}",
         m.says
     );
+    let seen = judged(&ledger, look(Look::Runs));
+    assert_eq!(seen.target, Some(0.0), "a whole ledger was left unjudged");
 }
 
 #[test]
@@ -108,7 +115,8 @@ fn test(path: &'static str, name: &'static str) -> Test<'static> {
     }
 }
 
-fn git(repo: &Path, args: &[&str]) {
+/// What git says in `repo`, run as no one's config would change it.
+fn git(repo: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
@@ -126,6 +134,7 @@ fn git(repo: &Path, args: &[&str]) {
         "git {args:?}: {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
 #[test]
@@ -138,18 +147,43 @@ fn a_test_is_found_in_its_path_at_the_revision_that_runs() {
     std::fs::write(repo.join("b.rs"), "fn elsewhere() {}\n").expect("another");
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-q", "-m", "the test"]);
+    // A folder, a pattern or part of a word names no test.
     let cases = [
-        ("main", test("src/a.rs", "the_cat_never_waits"), Look::Runs),
-        ("main", test("src", "the_cat_never_waits"), Look::Runs),
-        ("main", test("src/a.rs", "elsewhere"), Look::Missing),
-        ("main", test("src/a.rs", "the_cat_never"), Look::Runs),
-        ("0000000", test("src/a.rs", "the_cat"), Look::Blind),
+        (test("src/a.rs", "the_cat_never_waits"), Look::Runs),
+        (test("src/a.rs", "elsewhere"), Look::Missing),
+        (test("src/a.rs", "the_cat_never"), Look::Missing),
+        (test("src", "the_cat_never_waits"), Look::Folder),
+        (test(".", "fn"), Look::Folder),
+        (test("*", "fn"), Look::Missing),
+        (test("src/b.rs", "fn"), Look::Missing),
     ];
-    for (rev, test, look) in cases {
+    for (test, look) in cases {
         assert_eq!(
-            found(&repo, rev, &test),
+            found(&repo, "main", &test),
             look,
-            "{test:?} at {rev} was found wrongly"
+            "{test:?} was found wrongly"
+        );
+    }
+    // A repository is read at what runs here, a switch's revision for one
+    // it follows and its main for any other, or none it doesn't hold.
+    let repos = super::super::Checkouts::from([
+        ("core".to_owned(), repo.clone()),
+        ("other".to_owned(), repo.clone()),
+    ]);
+    let head = git(&repo, &["rev-parse", "HEAD"]);
+    for (runs, core) in [
+        (Some(head.clone()), Some(head.clone())),
+        (Some("0000000".to_owned()), None),
+        (None, None),
+    ] {
+        let runs: BTreeMap<String, String> =
+            runs.map(|rev| ("core".to_owned(), rev)).into_iter().collect();
+        let revs = revisions(&repos, &runs);
+        assert_eq!(revs["core"], core, "core was read at the wrong revision");
+        assert_eq!(
+            revs["other"].as_deref(),
+            Some("main"),
+            "a repository cadence doesn't follow wasn't read at its main"
         );
     }
     std::fs::remove_dir_all(&repo).ok();

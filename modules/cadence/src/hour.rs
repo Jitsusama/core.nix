@@ -101,9 +101,11 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &mut kept.fetched,
         to,
     )?;
+    // Nor whether the misses name tests: an emptied ledger names none, so
+    // judging it would close every owner's ask, to be filed again after.
     for m in measures
         .iter_mut()
-        .filter(|m| !whole && m.class == Class::Miss)
+        .filter(|m| !whole && (m.class == Class::Miss || m.key == measures::UNTESTED))
     {
         m.target = None;
         // A torn line has already said so.
@@ -251,10 +253,10 @@ fn gather(
         now,
         orchestrator,
     );
-    let (missed, found) =
+    let (checked, found) =
         measures::checked_beside(misses, folder, checkouts, &switches, findings.as_ref(), now)?;
     let mut all = vec![
-        missed,
+        checked,
         measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),

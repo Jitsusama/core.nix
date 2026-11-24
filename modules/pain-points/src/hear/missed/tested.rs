@@ -31,7 +31,7 @@ pub fn help() -> Help {
         .option("--test TEST", "its test, as REPO PATH NAME")
         .option("--ledgers DIR", "its ledger's folder, or the mission's")
         .exit(Exit::Usage, "no miss or test, or a test not REPO PATH NAME")
-        .exit(Exit::NotFound, "no one miss at that time")
+        .exit(Exit::NotFound, "no ledger, or no one miss at that time")
         .exit(Exit::TryAgain, "the ledger stayed locked")
         .exit(Exit::Failed, "the ledger couldn't be read or written")
 }
@@ -63,25 +63,32 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
 }
 
 /// Whether `test` reads as cadence reads one: a repository, a path git
-/// won't read as an option, and words to find in it.
+/// won't read as an option, and words to find in it, none breaking its
+/// line on the card.
 fn shaped(test: &str) -> bool {
     let mut parts = test.splitn(3, ' ');
     let (repo, path, name) = (parts.next(), parts.next(), parts.next());
-    repo.is_some_and(|repo| !repo.is_empty())
+    !test.contains(char::is_control)
+        && repo.is_some_and(|repo| repo.contains(|c: char| c.is_ascii_alphanumeric()))
         && path.is_some_and(|path| !path.is_empty() && !path.starts_with('-'))
         && name.is_some_and(|name| !name.trim().is_empty())
 }
 
 /// Names `test` on the line of the one miss at `at` in `ledger`.
 fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
+    if !ledger.is_file() {
+        let what = format!("no misses ledger at {}", ledger.display());
+        return Err(Failure::new(Exit::NotFound, what).try_this("the mission's folder"));
+    }
     let (_lock, name) = held(ledger).map_err(|why| {
         Failure::new(Exit::TryAgain, "the misses ledger couldn't be held").because(why)
     })?;
     let failed = |why: String| Failure::new(Exit::Failed, "the misses ledger").because(why);
-    let text = fs::read_to_string(ledger).map_err(|e| failed(format!("{name}: {e}")))?;
+    let read = || fs::read_to_string(ledger).map_err(|e| failed(format!("{name}: {e}")));
+    let before = read()?;
     let mut found = 0;
     let mut already = false;
-    let mut lines: Vec<String> = text
+    let mut lines: Vec<String> = before
         .lines()
         .map(|line| {
             let Ok(mut read) = serde_json::from_str::<Value>(line) else {
@@ -106,6 +113,12 @@ fn name_in(ledger: &Path, at: &str, test: &str) -> Result<String, Failure> {
         ));
     }
     lines.push(String::new());
+    // Read again before it's written whole, as `write` does, so a line a
+    // hand added without the lock isn't lost.
+    if read()? != before {
+        let what = format!("{name} changed as its miss was named");
+        return Err(Failure::new(Exit::TryAgain, what).try_this("pain-points test again"));
+    }
     crate::write_whole(ledger, &lines.join("\n")).map_err(failed)?;
     Ok(format!(
         "pain-points: the miss at {at} now names its test, {test}"
@@ -131,8 +144,8 @@ mod tests {
     #[test]
     fn a_test_is_named_on_its_miss_alone_and_every_other_line_kept() {
         let other = r#"{"at":"2026-11-15T00:28:00-05:00","owner":"5FWIUS"}"#;
-        let text = format!("{other}\n{{\"at\":\"{AT}\",\"owner\":\"XY9H5C\"}}\nnot json\n");
-        let path = ledger("named", &text);
+        let written = format!("{other}\n{{\"at\":\"{AT}\",\"owner\":\"XY9H5C\"}}\nnot json\n");
+        let path = ledger("named", &written);
         let test = "core modules/cat/src/air.rs the_cat_never_waits";
         let said = name_in(&path, AT, test).expect("named");
         assert!(said.contains(test), "it didn't say what it named: {said}");
@@ -185,6 +198,8 @@ mod tests {
             "core modules/x.rs",
             "core --output=x a",
             "core  a",
+            "core a.rs a\nb",
+            "\"\" a.rs a",
         ] {
             assert!(!shaped(test), "\"{test}\" was taken as a test");
         }
