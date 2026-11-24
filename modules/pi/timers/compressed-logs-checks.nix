@@ -41,9 +41,12 @@ onLinux {
         && !(mac.systemd.user.timers ? pi-logs-compressed)
       );
 
-  # Off btrfs the rewrite ends at once, with nothing done and saying so,
+  # Off btrfs the rewrite ends at once with 0, nothing done and saying so,
   # rather than failing every night on a machine whose file system doesn't
-  # compress.
+  # compress; and asked wrongly, or for a folder that isn't there, it
+  # refuses with the status its help names. A build's sandbox has no btrfs
+  # to rewrite on, so the rewrite itself, and its check that each log
+  # reads the same after, aren't proven here.
   pi-log-compression-passes-over-other-file-systems =
     let
       home = account workstation;
