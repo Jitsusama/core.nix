@@ -3,7 +3,7 @@
 //! told to him before he joins rather than seen by those he meets.
 //!
 //! Each minute its timer runs `call-under-load camera`. When a meeting of
-//! his starts between 18 and 20 minutes from now, no call is on, no
+//! his starts between 18 and 22 minutes from now, no call is on, no
 //! meeting is on or less than 15 minutes off while it reads, and that
 //! meeting wasn't checked yet, it takes the camera his programs take:
 //! one plugged in that he can open, as Joel chose for the camera program,
@@ -27,22 +27,24 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 const MIN_MS: u64 = 60_000;
-/// The latest a meeting may start for its check to begin: 20 minutes out,
-/// giving the window three runs of the timer.
-const LEAD_MS: u64 = 20 * MIN_MS;
-/// The soonest: a read begun later could still be lighting the camera
-/// inside the quarter hour before the meeting, when Joel may be setting
-/// up and a camera in use is one he sees and didn't start (24 Nov 09:51).
-const SOONEST_MS: u64 = 18 * MIN_MS;
-/// How long before a meeting, and through it, no camera is read: Joel's
-/// own, from the hold of 24 Nov after he saw his camera in use.
+/// How long before a meeting, and through it, no camera is read, since
+/// Joel may be setting up and a camera in use is one he sees and didn't
+/// start, as at 09:51 on 24 Nov.
 const UNREAD_MS: u64 = 15 * MIN_MS;
-/// The longest a check holds a camera, from its first ask of systemd to
-/// its last, rounded up: both asks and the wait, with room to spare.
+/// The longest a check takes from its first question to its last, rounded
+/// up: up to three asks of a-call-is-on, systemd's budget each side of the
+/// read and the read's own wait come to 165 s.
 const READ_MS: u64 = 3 * MIN_MS;
+/// The soonest a meeting may start for its check to begin: any later and
+/// the check could still be reading inside the quarter hour.
+const SOONEST_MS: u64 = UNREAD_MS + READ_MS;
+/// The latest: 22 minutes out, so a fault worth a second look found at the
+/// first run still has the minute it needs, with a minute's slack, before
+/// the window closes.
+const LEAD_MS: u64 = SOONEST_MS + 4 * MIN_MS;
 /// How long a loopback is given to send its frames.
 pub const WAIT: Duration = Duration::from_secs(120);
 /// How long any other camera is given to answer.
@@ -97,8 +99,10 @@ pub enum Outcome {
     /// fine by then, and the window has a minute to spare. Only a camera
     /// silent for the whole wait is told at once.
     Again(Fault),
-    /// The meeting began while it was read, as across a suspend, so it's
-    /// kept as checked and only journalled: a notice now would be late.
+    /// The read ended inside the quarter hour before the meeting or after
+    /// it began, which only a suspend or a stall past its deadlines brings
+    /// about, so it's kept as checked and only journalled: the fault may
+    /// be the pause's, and a notice now would be late.
     Late(Fault),
 }
 
@@ -114,7 +118,7 @@ pub fn last_chance(start: u64, now: u64) -> bool {
 pub fn settled(gave: Result<(), Fault>, start: u64, now: u64) -> Outcome {
     match gave {
         Ok(()) => Outcome::Fine,
-        Err(fault) if start <= now => Outcome::Late(fault),
+        Err(fault) if start < now + UNREAD_MS => Outcome::Late(fault),
         Err(fault @ (Fault::Restarted | Fault::Missing | Fault::Ended(_)))
             if !last_chance(start, now) =>
         {
@@ -422,7 +426,10 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| Fault::Ended(format!("{program} couldn't run: {error}")))?;
-    let until = Instant::now() + deadline;
+    // The wall clock's deadline too, since the monotonic one stands still
+    // across a suspend and a read woken by it would light the camera when
+    // the meeting is near.
+    let (until, wall) = (Instant::now() + deadline, SystemTime::now() + deadline);
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
@@ -430,7 +437,9 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
                 let said = last_said(&mut child);
                 return Err(Fault::Ended(format!("{program} ended {status}: {said}")));
             }
-            Ok(None) if Instant::now() < until => thread::sleep(Duration::from_millis(100)),
+            Ok(None) if Instant::now() < until && SystemTime::now() < wall => {
+                thread::sleep(Duration::from_millis(100));
+            }
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -482,10 +491,10 @@ mod tests {
     }
 
     #[test]
-    fn the_soonest_meeting_is_checked_once_between_18_and_20_minutes_before() {
+    fn the_soonest_meeting_is_checked_once_between_18_and_22_minutes_before() {
         let now = 100 * MIN_MS;
         let calendar = at(&[
-            now + 21 * MIN_MS,
+            now + 23 * MIN_MS,
             now + 19 * MIN_MS + 30_000,
             now + 18 * MIN_MS - 1,
             now + 19 * MIN_MS,
@@ -507,8 +516,8 @@ mod tests {
                 now + MIN_MS,
                 &[now + 19 * MIN_MS, now + 19 * MIN_MS + 30_000]
             )),
-            Some(now + 21 * MIN_MS),
-            "a meeting 20 minutes out wasn't due"
+            Some(now + 23 * MIN_MS),
+            "a meeting 22 minutes out wasn't due"
         );
         assert_eq!(
             start(due(&at(&[now + 18 * MIN_MS]), now, &[])),
@@ -521,9 +530,24 @@ mod tests {
             "a meeting under 18 minutes out was checked, its read running into the quarter hour"
         );
         assert_eq!(
-            start(due(&at(&[now + 20 * MIN_MS + 1]), now, &[])),
+            start(due(&at(&[now + 22 * MIN_MS + 1]), now, &[])),
             None,
-            "a meeting over 20 minutes out was checked"
+            "a meeting over 22 minutes out was checked"
+        );
+    }
+
+    #[test]
+    fn a_check_s_longest_run_fits_between_its_window_and_the_quarter_hour() {
+        let longest =
+            crate::gate::ASKING * u32::try_from(crate::call::UNSURE).unwrap() + 2 * SHOWN + WAIT;
+        assert!(
+            u128::from(READ_MS) >= longest.as_millis(),
+            "a check can take {longest:?}, past the {READ_MS} ms the window keeps for it"
+        );
+        assert_eq!(
+            SOONEST_MS,
+            UNREAD_MS + READ_MS,
+            "the window's soonest start lets a read run into the quarter hour"
         );
     }
 
@@ -756,7 +780,9 @@ mod tests {
     #[test]
     fn a_fault_is_told_once_the_window_has_no_minute_left_or_at_once_if_it_s_final() {
         let start = 100 * MIN_MS;
-        let early = start - 20 * MIN_MS;
+        // A check begun at the window's first run and done in 10 s, and one
+        // ending where the next run, a minute's slack given, would be late.
+        let early = start - LEAD_MS + 10_000;
         let last = start - 20 * MIN_MS + 1;
         assert_eq!(
             settled(Ok(()), start, early),
@@ -802,6 +828,11 @@ mod tests {
             settled(Err(Fault::Silent), start, start),
             Outcome::Late(Fault::Silent),
             "a meeting already begun was told as starting"
+        );
+        assert_eq!(
+            settled(Err(Fault::Silent), start, start - UNREAD_MS + 1),
+            Outcome::Late(Fault::Silent),
+            "a read that ended inside the quarter hour, as across a suspend, was told"
         );
         assert!(
             !last_chance(start, early) && last_chance(start, last),

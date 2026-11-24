@@ -72,7 +72,7 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
-  # The camera before each of Joel's meetings: 18 to 20 minutes out, with
+  # The camera before each of Joel's meetings: 18 to 22 minutes out, with
   # no call on and no meeting on or a quarter hour off, so he never sees
   # his camera in use as he sets up, a loopback is read for five frames,
   # none kept, and any other

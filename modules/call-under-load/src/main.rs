@@ -202,7 +202,7 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     };
     if let Some(other) = camera::near(&calendar, now) {
         return said(format!(
-            "the camera waits: {} is on or under a quarter hour off",
+            "the camera waits: a read now could still run during {} or its quarter hour before",
             other.title
         ));
     }
