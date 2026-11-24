@@ -2193,7 +2193,8 @@
     it leaves idle, at once if stopped again, says what it waited on and its counts once more, last,
     once what it cut has ended, even with its counts moved meanwhile, its cuts apart from pi's
     cancels, counts a request still waiting on its first connection as cut when stopped and as
-    pi's cancel when pi leaves it, refuses a drain of none and each flag it no longer takes, telling
+    pi's cancel when pi leaves it, and one whose body is still being read as cut, by a drain or by
+    a stop as it leaves idle, refuses a drain of none and each flag it no longer takes, telling
     them by their words, keeps its socket to its account, from a second
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
