@@ -35,9 +35,12 @@ const SHARE: f32 = 0.6;
 const WORDS: usize = 4;
 
 /// How long after one of their words Joel's microphone may hear it, in
-/// samples: the speakers' and the microphone's buffers, and a word timed
-/// by the encoder frame it was written on, 80 ms each. Joel saying their
-/// words back starts after they've finished saying them.
+/// samples. On AMI's meetings with their side mixed into his, echo landed
+/// within 400 ms of their word; a live call's two recorders may also sit
+/// up to half a second apart, since a side is only filled with silence
+/// once it falls further behind than that (follow.rs). The cost is that
+/// Joel saying two of their words back within a second of each, no louder
+/// than they said them, is cut as their echo.
 const LAG: usize = RATE;
 
 /// How long before one of their words its echo may be timed, in samples,
@@ -167,8 +170,10 @@ pub struct Cut {
 
 /// `lines` with the others' echo cut from each of Joel's whose words
 /// `words` holds, by the line's index, what's left tidied by `tidy`, and
-/// what was cut. A line left with nothing has no text, and isn't
-/// written, so the lines keep their indices.
+/// what was cut. A line whose opening words are cut starts at the first
+/// word kept, so his answer to what they said is written after it. A
+/// line left with nothing has no text, and isn't written, so the lines
+/// keep their indices.
 pub fn cut_echoes<S: BuildHasher>(
     lines: &[Line],
     words: &HashMap<usize, Vec<Word>, S>,
@@ -194,10 +199,12 @@ pub fn cut_echoes<S: BuildHasher>(
             continue;
         }
         let mut kept = Vec::new();
+        let mut first = None;
         let mut run: Option<Cut> = None;
         for (word, echo) in mine.iter().zip(&echoes) {
             let Some(j) = *echo else {
                 kept.push(word.text.as_str());
+                first = first.or(Some(word.at));
                 cuts.extend(run.take());
                 continue;
             };
@@ -214,6 +221,11 @@ pub fn cut_echoes<S: BuildHasher>(
             }
         }
         cuts.extend(run);
+        if echoes[0].is_some()
+            && let Some(at) = first
+        {
+            line.start = at;
+        }
         line.text = tidy(&kept.join(" ")).unwrap_or_default();
     }
     (cut, cuts)
