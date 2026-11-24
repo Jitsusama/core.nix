@@ -614,9 +614,16 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
 
 
 def carried(rig: Rig) -> int:
-    """Give the kbit/s the client took in over a second of its own clock."""
-    rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
-    return int(rig.client.succeed(f"a=$({rx}); sleep 1; b=$({rx}); echo $(((b - a) / 125))"))
+    """Give the kbit/s the client took in over about a second, timed by its own clock.
+
+    The counter and the clock are read by the shell's builtins, with no command forked between
+    them, and the window is divided by its own length rather than taken for a second, as a
+    starved builder stretches it most (call fills round 1's F2, F6, F14 and F16).
+    """
+    rx = "/sys/class/net/eth1/statistics/rx_bytes"
+    read = f"read -r a < {rx}; t=${{EPOCHREALTIME/./}}; sleep 1"
+    again = f"read -r b < {rx}; u=${{EPOCHREALTIME/./}}"
+    return int(rig.client.succeed(f"{read}; {again}; echo $(((b - a) * 8000 / (u - t)))"))
 
 
 def under_load(
@@ -638,8 +645,10 @@ def under_load(
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
     With room, they run until a second carries the room too, as the shaper gives none to a
-    download short of it: a builder too starved to carry it fails saying so, with its best
-    second, rather than as a hold that never came (#4228).
+    download short of it, or until the shaper already holds the room, as it does from the
+    controller's cut too: a builder too starved for either fails saying so, with its best
+    second, rather than as a hold that never came (#4228; call fills round 1's F1, F5, F13
+    and F17).
     They run on until the controller holds the link too, as it has all day on a
     connection the jobs keep full: a call that starts in the seconds before it does crosses
     the router's queue as an unshaped one would. The loads stop however the calls end, so a
@@ -663,15 +672,22 @@ def under_load(
         best = [0]
 
         def filled(last_try: bool) -> bool:
-            if room:
+            # Sampled only until a second carries the room, as each sample takes a second
+            # (call fills round 1's F7 and F18).
+            if room and best[0] < ROOM_KBIT:
                 best[0] = max(best[0], carried(rig))
+            given = not room or best[0] >= ROOM_KBIT or rig.room() == ROOM_KBIT
             now = int(rig.client.succeed(rx)) - first >= FULL_BYTES
-            short = f", carrying {best[0]} kbit/s at best of the {ROOM_KBIT} its room needs"
             return met(
                 rig,
-                now=now and (not room or best[0] >= ROOM_KBIT),
+                now=now and given,
                 last_try=last_try,
-                otherwise="the loads never filled the line" + (short if room else ""),
+                otherwise="the loads never filled the line"
+                + (
+                    ""
+                    if given
+                    else f", carrying {best[0]} kbit/s at best of the {ROOM_KBIT} its room needs"
+                ),
             )
 
         retry(filled, timeout=FILLING)

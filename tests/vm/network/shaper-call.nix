@@ -87,8 +87,12 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     # its slowest busy hour as the option asks, under the router's 90
     # Mbit/s: a builder starved of CPU carried 76 at best on 24 November,
     # short of nine tenths of 90, so the shaper rightly gave the call no
-    # room (#4228). The upload is left undeclared, as before, so the
-    # controller finds it.
+    # room (#4228). The room, nine tenths of 75, sits a quarter under the
+    # router's line, so this test proves the room's wiring, not that nine
+    # tenths is far enough under a true line to keep its queue empty:
+    # room.rs's own tests pin that (call fills round 1's F3, F9 and F12).
+    # The upload is left undeclared, as before, so the controller finds
+    # it.
     jitsusama.shaper.networks.${routerMac}.down = 75000;
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
     systemd.services.shaper.path = lib.mkBefore [ callIsOn ];
