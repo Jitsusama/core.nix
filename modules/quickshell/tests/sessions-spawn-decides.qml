@@ -166,8 +166,12 @@ ShellRoot {
                 Expect.fail(`started but never said: ${JSON.stringify(root.unhosted)}`);
             return;
         }
-        Expect.expect("and each is said started, though it can't be viewed",
-            unviewed.every(quest => root.unhosted[quest] === "unviewable"),
+        // Said by which held: its id, or its host's name, which mycelium
+        // couldn't be given.
+        const why = { "QEST-DOTTED": "unviewable", "QEST-DASHID": "unviewable",
+            "QEST-BADHOST": "unviewableHost", "QEST-DASHHOST": "unviewableHost" };
+        Expect.expect("and each is said started, though it can't be viewed, by which held",
+            unviewed.every(quest => root.unhosted[quest] === why[quest]),
             JSON.stringify(root.unhosted));
         // By its quest's name where the launcher gave one, never its id.
         Expect.expect("one started by its quest's name is said by that name",
