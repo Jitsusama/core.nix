@@ -30,7 +30,14 @@ import shlex
 import time
 from typing import TYPE_CHECKING, Any
 
-from desktop_session import ARRANGED, KEPT_PLACES, PI_PRESENCE, kept
+from desktop_session import (
+    ARRANGED,
+    KEPT_PLACES,
+    PI_PRESENCE,
+    kept,
+    listed_quest,
+    quests_listed,
+)
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
@@ -962,6 +969,49 @@ def test_new_work_that_starts_nothing_is_told_once_the_launcher_is_shut(
     finally:
         desktop.as_account("systemctl --user kill --signal=CONT mycelium")
         desktop.launcher_left_closed()
+
+
+def test_a_link_refused_for_want_of_a_repository_steps_back_to_the_folders(
+    desktop: Desktop,
+) -> None:
+    """A link with no checkout, refused for want of a repository, steps Joel back to pick one.
+
+    Joel, 2026-11-24 12:23, of a link Start New Work refused that way: "the UI was crap". His
+    Return empties the field, as the launcher's give does once his words are taken, which is
+    no letter of his, so he's still there to be stepped back onto Start New Work's folders,
+    an open quest's among them, rather than left in an empty field told to run a command.
+    """
+    machine = desktop.machine
+    link = "https://github.com/harbour/nowhere/issues/9"
+    folder = "/home/jitsusama/src/github.com/harbour/lighthouse"
+    desktop.as_account(f"mkdir -p {folder}")
+    quests_listed(desktop, [listed_quest("QEST-20261124-HARBQA", "Harbour", start=folder)])
+    since = desktop.mark()
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        machine.send_chars(link)
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                "journalctl --user --unit=quickshell --no-pager --output=cat"
+                f" --after-cursor={shlex.quote(since)}"
+                " | grep -q 'launcher: new work wanted a repository; asking where it starts'"
+            ),
+            timeout=dt.timedelta(seconds=60),
+        )
+        desktop.launcher_until(
+            lambda shown: shown["open"] is True and shown["rows"][:1] == ["From a Link"]
+        )
+    finally:
+        desktop.launcher_left_closed()
+        quests_listed(desktop, [])
+        desktop.as_account("rm -rf ~/src/github.com/harbour")
 
 
 def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
