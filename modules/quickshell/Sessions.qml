@@ -2835,24 +2835,30 @@ Singleton {
         const said = pressedFor[named] ?? null;
         forgetAsk(named);
         console.info(`sessions: no sessions kitty took ${named}, so it's no longer taken as `
-            + "opening, and the next ask, a press's or a kept place's, asks afresh"
+            + "opening, and a press asks for it afresh"
             + (said !== null ? "; its press is told" : ""));
         if (said !== null)
             unhosted(said, "untaken");
-        waitedOnNoMore(named, "no sessions kitty took it");
+        waitedOnNoMore(named, "no sessions kitty took it", false);
     }
     // Reopen Them All's walk waits on viewer `named` no more once its
     // window came refused (heardWindow) or no kitty took it (untaken),
     // since none can come for that ask: it goes on as its patience would,
-    // the viewer kept late should one come yet, rather than 30 s later,
-    // viewer after viewer; at its pace and as the machine has room
-    // (reopenSoon), as a refusal can come within moments of the ask.
-    function waitedOnNoMore(named, why) {
+    // rather than 30 s later, viewer after viewer; at its pace and as the
+    // machine has room (reopenSoon), as a refusal can come within moments
+    // of the ask. One refused is kept late, as a pid read right yet makes
+    // its window the one come; one no kitty took can't come, so it's kept
+    // neither late nor begun (`comes` false), and Reopen Them All pressed
+    // again asks for it rather than taking it as asked already.
+    function waitedOnNoMore(named, why, comes) {
         const waiting = reopening?.waiting;
         if (!waiting || waiting.opened !== null || waiting.classed !== named)
             return;
         console.info(`sessions: ${waiting.id}'s viewer waited on no more, as ${why}`);
-        reopening.late.push(waiting);
+        if (comes === false)
+            reopening.begun = reopening.begun.filter(id => id !== waiting.id);
+        else
+            reopening.late.push(waiting);
         reopening.waiting = null;
         reopenPatience.stop();
         reopenSoon();
@@ -3048,7 +3054,7 @@ Singleton {
             unhosted(said, "disowned");
         }
         if (own)
-            waitedOnNoMore(named, "its window wasn't the sessions kitty's");
+            waitedOnNoMore(named, "its window wasn't the sessions kitty's", true);
     }
     // Each window heardWindow refused, by niri's id, journalled once, so a
     // stray window or a pid read wrong is seen rather than a viewer that
