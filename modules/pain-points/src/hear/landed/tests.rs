@@ -73,7 +73,6 @@ fn taken(by: &str) -> Standing {
     Standing {
         taken_by: Some(by.into()),
         closed_by: None,
-        closed_at: None,
     }
 }
 

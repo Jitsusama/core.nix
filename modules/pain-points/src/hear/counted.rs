@@ -25,10 +25,7 @@ pub(super) fn hour_of(kept: &[Heard], at: i64) -> Hour {
     };
     // One closed before runs said when counts by when it was said.
     let closed_today = |h: &&&Heard| {
-        h.closed_by.is_some()
-            && h.closed_at.unwrap_or(h.at) >= at - DAY_MS
-            && !h.carried
-            && !h.void
+        h.closed_by.is_some() && h.closed_at.unwrap_or(h.at) >= at - DAY_MS && !h.carried && !h.void
     };
     let open = |h: &&&Heard| h.closed_by.is_none() && h.taken_by.is_none() && !lost(h);
     let worst = standing.iter().filter(open).max_by_key(|h| (h.hits, h.at));

@@ -93,7 +93,9 @@ pub struct Message {
     pub text: String,
 }
 
-/// Who took a pain up, and the commit that closed it, if one has.
+/// Who took a pain up, and the commit that closed it, if one has: how its
+/// tests read a thread followed whole.
+#[cfg(test)]
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Standing {
     pub taken_by: Option<String>,
@@ -361,6 +363,7 @@ fn closing(pain: &Heard, on: &mut dyn FnMut(&str) -> bool) -> Option<String> {
 /// `held` are the entries of every pain kept, to tell a question that held
 /// this one alone; `messages` are in the order they were sent; `on` says
 /// whether the machine runs a commit.
+#[cfg(test)]
 pub fn standing(
     pain: &Heard,
     asker: &str,
