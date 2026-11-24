@@ -16,7 +16,11 @@
 // is only to be read. Only while it waits does it show its question, what
 // happens if he does nothing and its choices, as For You's drawer does.
 // Its choices are the first form's, each sending the value the session
-// offered exactly as written.
+// offered exactly as written, but for one whose label poses as one of the
+// launcher's own acts, which For You hides (Now.qml's lookOffers). Its act
+// is For You's "Open" unless the second form names one LookForm.js takes.
+// The check the-ask-row-reads-as-for-you holds these against the
+// launcher's own code.
 //
 // The harness writes version 1 with the second form's fields beside the
 // first's (85PKB2, 22 November 2026), so what happened, why it matters,
@@ -62,17 +66,24 @@ type Kind = (typeof KINDS)[number];
 const ENDED = /[.!?\u2026]["'\u2019\u201d)\]]*$/u;
 
 /**
- * The act's words for a look of the first form, which names none: what
- * pressing it does to the thing it's about, short and in Title Case, as
- * the second form's act must be.
+ * The act's words where the look names none For You takes: what For You
+ * calls opening it (words/on.json's verb:on:look:open).
  */
-const ACTS: Readonly<Record<Kind, string>> = {
-  pr: "Review It",
-  page: "Open the Page",
-  file: "Read the File",
-  diff: "Read the Diff",
-  terminal: "Go to the Session",
-};
+const OPEN = "Open";
+
+/**
+ * The names of the launcher's own acts on a look, which neither its act
+ * nor a choice may pass for, as Now.qml's lookActNames: Open, Answer,
+ * Clear It, Go To, Explain It and Talk, each as the launcher's words name it.
+ */
+const LAUNCHER_ACTS: readonly string[] = [
+  OPEN,
+  "Answer",
+  "Clear It",
+  "Go To",
+  "Explain It",
+  "Talk",
+];
 
 /** One answer a look offers. */
 interface Choice {
@@ -110,9 +121,10 @@ interface Ask {
   readonly ifNothing: string;
   /**
    * When it stops waiting if he does nothing, in milliseconds since the
-   * epoch: its expiresAt, else three days after it came; null while it
-   * doesn't wait or neither is known. A page sets its row asking no more
-   * then, since nothing else tells it.
+   * epoch: the first moment it's past its expiresAt or quiet three days
+   * after it came, whichever is sooner; null while it doesn't wait or
+   * neither is known. A page sets its row asking no more then, since
+   * nothing else tells it.
    */
   readonly lapses: number | null;
   /**
@@ -124,10 +136,11 @@ interface Ask {
   /** The answers it offers, at most four. */
   readonly choices: readonly Choice[];
   /**
-   * Whether it takes an answer in his own words. No page sends one yet:
-   * the launcher's shape for them comes with For You's second part.
+   * Whether, while it waits, it takes an answer in his own words, which
+   * only the second form asks for (LookForm.js's asksBack). No page sends
+   * one yet: the launcher's shape for them comes with For You's second part.
    */
-  readonly words: boolean;
+  readonly takesWords: boolean;
   /** Whether it waits on him, as For You's Waiting holds it, but for the gap above. */
   readonly asks: boolean;
 }
@@ -200,23 +213,59 @@ function onTheWeb(target: string): string | null {
 /** The most words an act runs to, as LookForm.js's ACT_WORDS. */
 const ACT_WORDS = 4;
 
-/** Spaces, and the stops a name may end in, as LookForm.js's SPACES and STOPS. */
+/**
+ * What a name may hide in to pass for another, as LookForm.js reads it:
+ * spaces, and the stops it may end in; what draws as nothing (UNSEEN,
+ * UNMARKED and UNDRAWN, the last by code point here, as Qt's engine can't);
+ * what draws as a space (FILLERS); and what turns the letters after it
+ * around (TURNS), so "\u202etI raelC" draws as Clear It.
+ */
 const SPACES = /\s+/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
+const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
+const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
+const UNDRAWN =
+  /\u17b4|\u17b5|[\u180b-\u180d]|\u180f|[\ufe00-\ufe0f]|[\u{1bca0}-\u{1bca3}]|[\u{1d173}-\u{1d17a}]|[\u{e0000}-\u{e0fff}]/gu;
+const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
+const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
-/** A name as it reads, to tell two apart: its spaces one, its closing stops gone, small. */
+/**
+ * A name as it reads, to tell two apart, as LookForm.js's readAs: what
+ * draws as nothing gone, its spaces one, its closing stops gone, small.
+ */
 function readAs(name: string): string {
-  return name.replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
+  return name
+    .replace(UNDRAWN, "")
+    .replace(UNSEEN, "")
+    .replace(UNMARKED, "")
+    .replace(FILLERS, " ")
+    .replace(SPACES, " ")
+    .replace(STOPS, "")
+    .trim()
+    .toLowerCase();
 }
 
 /**
- * The second form's act in its own words, as LookForm.js's actOf takes it:
- * never past four words or read as one of its choices; else "".
+ * Whether `name` reads as one of `taken`, as LookForm.js's poses: one
+ * holding a turn poses as any, since it can draw as either.
+ */
+function poses(name: string, taken: readonly string[]): boolean {
+  const read = readAs(name);
+  return taken.length > 0 && (TURNS.test(name) || taken.some((each) => readAs(each) === read));
+}
+
+/**
+ * The second form's act in its own words, as LookForm.js's actOf takes it
+ * with the launcher's act names: never past four words, holding a turn,
+ * or read as one of the launcher's acts or of `choices`, the look's offers
+ * before any posing is dropped, as LookForm.js reads them; else "".
  */
 function actOf(act: string, choices: readonly Choice[]): string {
   const read = readAs(act);
   return read === "" ||
     read.split(" ").length > ACT_WORDS ||
+    TURNS.test(act) ||
+    poses(act, LAUNCHER_ACTS) ||
     choices.some((one) => readAs(one.label) === read)
     ? ""
     : act;
@@ -232,14 +281,17 @@ function ended(text: string): string {
  * sending a value, each value exactly as written, labelled by its value
  * where it has no label, with what follows its own else the first of the
  * second form's choices of that label, two of one label sharing it, as
- * Looks.js finds it. What follows is said only in the second form (`said`),
- * as For You's drawer says it. A page never sends a value the session
- * didn't offer.
+ * Looks.js finds it, a choice's own kept wherever it says one. What follows
+ * is said only in the second form (`said`), as For You's drawer says it. A
+ * page never sends a value the session didn't offer. These are what the
+ * act is told apart from; `shown` drops those posing as the launcher's.
  */
 function choicesOf(look: Fields, wants: Fields, said: boolean): readonly Choice[] {
   const wanted = (Array.isArray(wants["choices"]) ? wants["choices"] : []).filter(isObject);
   const follows = (one: Fields, label: string): string =>
-    written(one["follows"]) || written(wanted.find((each) => each["label"] === label)?.["follows"]);
+    named(one["follows"])
+      ? written(one["follows"])
+      : written(wanted.find((each) => each["label"] === label)?.["follows"]);
   return (Array.isArray(look["choices"]) ? look["choices"] : [])
     .filter(isObject)
     .filter((one) => named(one["value"]))
@@ -251,10 +303,24 @@ function choicesOf(look: Fields, wants: Fields, said: boolean): readonly Choice[
     });
 }
 
-/** When `look` stops waiting if he does nothing: its expiresAt, else three days after it came. */
+/**
+ * The choices a page offers, as Now.qml's lookOffers: the first four,
+ * less any whose label poses as the launcher's own acts, so none takes a
+ * refused one's place.
+ */
+function shown(offered: readonly Choice[]): readonly Choice[] {
+  return offered.filter((one) => !poses(one.label, LAUNCHER_ACTS));
+}
+
+/**
+ * When `look` first stops waiting if he does nothing: at its expiresAt, or
+ * the moment it's more than three days since it came, whichever is sooner.
+ */
 function lapsing(look: Fields): number | null {
   const came = when(look["at"]);
-  return when(look["expiresAt"]) ?? (came === null ? null : came + QUIET_AFTER);
+  const ends = [when(look["expiresAt"]), came === null ? null : came + QUIET_AFTER + 1];
+  const known = ends.filter((one) => one !== null);
+  return known.length === 0 ? null : Math.min(...known);
 }
 
 /**
@@ -273,9 +339,9 @@ function waits(look: Fields, now: number): boolean {
   );
 }
 
-/** The act for a look `opens` links to: the second form's own words, else its kind's. */
-function actFor(look: Fields, kind: Kind, choices: readonly Choice[], said: boolean): string {
-  return (said ? actOf(written(look["act"]), choices) : "") || ACTS[kind];
+/** The act for a look `opens` links to: the second form's own words, else For You's. */
+function actFor(look: Fields, choices: readonly Choice[], said: boolean): string {
+  return (said ? actOf(written(look["act"]), choices) : "") || OPEN;
 }
 
 /**
@@ -313,9 +379,9 @@ function asked(look: unknown, now: number): Ask | null {
     question: asks ? written(look["ask"]) : "",
     ifNothing: asks ? written(look["ifNothing"]) : "",
     lapses: asks ? lapsing(look) : null,
-    act: opens === null ? null : actFor(look, kind, offered, happened !== ""),
-    choices: asks ? offered : [],
-    words: wants["words"] === true,
+    act: opens === null ? null : actFor(look, offered, happened !== ""),
+    choices: asks ? shown(offered) : [],
+    takesWords: asks && happened !== "" && wants["words"] === true,
     asks,
   };
 }
@@ -337,7 +403,11 @@ function answering(look: unknown, choice: string, now: number): Answer | null {
 }
 
 export {
-  ACTS,
+  actOf,
+  LAUNCHER_ACTS,
+  OPEN,
+  poses,
+  readAs,
   type Answer,
   type Ask,
   answering,

@@ -14,8 +14,8 @@
 
    with every word drawn as text, never as markup, since a session wrote it.
    The answers show only while ask.asks. No page takes his own words yet,
-   since For You's shape for them comes in its second part, so a look that
-   takes them is answered in the launcher for now. Where ask.act is null,
+   since For You's shape for them comes in its second part, so a look whose
+   ask.takesWords is true is answered in the launcher for now. Where ask.act is null,
    the look is about a file or a session no browser opens, so the act line
    shows ask.target as text instead of a link that goes nowhere.
 
