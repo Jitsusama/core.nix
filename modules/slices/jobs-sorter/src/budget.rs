@@ -64,13 +64,27 @@ pub fn room(low: u64, others: impl IntoIterator<Item = (u64, u64)>) -> u64 {
     })
 }
 
+/// What of `room` is left once `wanted` hold what they do under their own
+/// floors and the first of them are `given` what [`fit`] gave them: the
+/// room the next could take, exact rather than rounded to a [`STEP`].
+pub fn left_after(wanted: &[Wanted], room: u64, given: &[u64]) -> u64 {
+    given.iter().fold(held_left(wanted, room), |left, given| {
+        left.saturating_sub(*given)
+    })
+}
+
+/// What of `room` is left once `wanted` hold what they do under their own floors.
+fn held_left(wanted: &[Wanted], room: u64) -> u64 {
+    wanted.iter().fold(room, |left, unit| {
+        left.saturating_sub(unit.current.min(unit.own))
+    })
+}
+
 /// How much of what each of `wanted` would add it's given, in the order
 /// given, out of `room` less what they hold under their own floors: whole
 /// while it fits, then what's left rounded down to a [`STEP`], then none.
 pub fn fit(wanted: &[Wanted], room: u64) -> Vec<u64> {
-    let mut left = wanted.iter().fold(room, |left, unit| {
-        left.saturating_sub(unit.current.min(unit.own))
-    });
+    let mut left = held_left(wanted, room);
     wanted
         .iter()
         .map(|unit| {

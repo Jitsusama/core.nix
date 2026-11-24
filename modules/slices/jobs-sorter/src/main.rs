@@ -1834,7 +1834,7 @@ struct Fitting {
 impl Fitting {
     /// What to say of `slice` when the others beside its units, `strays`,
     /// each by name with its claim, claim more in all, `claimed`, than the
-    /// `given` the units Joel is at left them: the sorter can't trim what
+    /// room the units Joel is at `left` them: the sorter can't trim what
     /// they claim, so the slice is claimed past its floor and the kernel
     /// shares it among every child again, the windows too. Said once, and
     /// again only once they fit by a [`budget::STEP`] and overrun again, so
@@ -1846,13 +1846,13 @@ impl Fitting {
         slice: &str,
         strays: &[(String, u64)],
         claimed: u64,
-        given: u64,
+        left: u64,
     ) -> Option<String> {
-        if claimed.saturating_add(budget::STEP) <= given {
+        if claimed.saturating_add(budget::STEP) <= left {
             self.overrun.remove(slice);
             return None;
         }
-        if claimed <= given || !self.overrun.insert(slice.to_owned()) {
+        if claimed <= left || !self.overrun.insert(slice.to_owned()) {
             return None;
         }
         let named: Vec<&(String, u64)> = strays.iter().filter(|(_, claim)| *claim > 0).collect();
@@ -1868,7 +1868,7 @@ impl Fitting {
             "The others in {slice} claim {} MiB, past the {} MiB the units Joel is at leave \
              them, so its floor is shared among every child again, the windows too: {}.",
             claimed >> 20,
-            given >> 20,
+            left >> 20,
             which.join(", ")
         ))
     }
@@ -2012,9 +2012,12 @@ fn fit_floors(
         );
         let mut fitted = budget::fit(&wanted, room);
         let mut margin = budget::fit(&wanted, room.saturating_sub(budget::STEP));
-        let given = fitted.remove(viewed);
+        // Weighed against the room the units Joel is at leave them, not what fit gave them,
+        // which is never more than they claim, so the mark could never clear.
+        let left = budget::left_after(&wanted, room, &fitted[..viewed]);
+        fitted.remove(viewed);
         margin.remove(viewed);
-        if let Some(line) = fitting.overran(&name, &strays, claimed, given) {
+        if let Some(line) = fitting.overran(&name, &strays, claimed, left) {
             eprintln!("{line}");
         }
         for ((&at, fitted), margin) in order.iter().zip(fitted).zip(margin) {
@@ -5026,6 +5029,48 @@ mod tests {
         assert!(
             said.ends_with("\"run-u4.scope\" 256 MiB, and 4 more."),
             "a long list of others was said whole: {said}"
+        );
+    }
+
+    #[test]
+    fn others_that_shrink_well_inside_the_room_left_them_clear_the_overrun_mark() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let stray = "run-u1.service";
+        let slice = slice_with(
+            "fit-clears",
+            2048 * MIB,
+            &[(unit, 512 * MIB, "0"), (stray, 2048 * MIB, "max")],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(512 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut fitting = Fitting::default();
+        let mut marked = Vec::new();
+        for stray_mib in [2048, 256, 2048] {
+            fs::write(
+                slice.join(stray).join("memory.current"),
+                (stray_mib * MIB).to_string(),
+            )
+            .unwrap();
+            let mut ranked = [ranked_in(&slice, unit, 0, 512 * MIB, viewed)];
+            fit_floors(
+                &mut ranked,
+                &["kitty-".to_owned()],
+                &hosts::Hosts::default(),
+                &mut fitting,
+                std::time::Instant::now(),
+            );
+            marked.push(!fitting.overrun.is_empty());
+        }
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            marked,
+            [true, false, true],
+            "others that fit with room to spare kept the overrun mark, so their next overrun \
+             went unsaid"
         );
     }
 
