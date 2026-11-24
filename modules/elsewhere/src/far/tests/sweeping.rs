@@ -461,18 +461,24 @@ fn only_a_run_s_file_s_first_512_bytes_are_read() {
     let root = scratch("far-swept-bound");
     let runs = root.join("s");
     let (here, gone) = (here(), gone());
-    let past = " ".repeat(600);
-    // A gone run here, with a word past the bytes read, which is never
-    // heard, so its copy goes; and one whose machine lies past them, so
-    // its file names no machine and its copy stays.
-    copy(&runs, "1", &format!("{gone} {here}{past}more"));
-    copy(&runs, "2", &format!("{gone}{past}{here}"));
+    // Spaces that bring what follows them to a run file's byte `at`.
+    let to = |before: &str, at: usize| " ".repeat(at - before.len());
+    // Gone runs here, each read only as far as its 512th byte: one with a
+    // word from its 513th, which is never heard, and one whose machine
+    // ends at its 512th, its last letter no space, which is heard whole.
+    // So both copies go, and a bound a byte either way keeps one.
+    let named = format!("{gone} {here}");
+    copy(&runs, "1", &format!("{named}{}more", to(&named, 512)));
+    let machine = here.trim_end();
+    let number = gone.to_string();
+    let past = to(&number, 512 - machine.len());
+    copy(&runs, "2", &format!("{number}{past}{machine}"));
     let said = sweep(&runs.join("9"));
     assert!(said.is_empty(), "the sweep said something: {said}");
-    assert_eq!(
-        left_in(&runs),
-        ["2", "2.run"],
-        "the sweep read a run's file past its first 512 bytes"
+    assert!(
+        left_in(&runs).is_empty(),
+        "the sweep read a run's file to other than its 512th byte: {:?}",
+        left_in(&runs)
     );
     let _ = std::fs::remove_dir_all(&root);
 }

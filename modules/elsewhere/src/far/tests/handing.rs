@@ -240,7 +240,12 @@ fn a_link_a_job_leaves_at_its_folder_for_copies_is_never_opened_through() {
     let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
     let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
     // Nothing written through it either: what it leads to holds only d.
-    let beyond = left_in(&home.join("beyond"));
+    // Read only where it's still there, so its loss is said, not a panic.
+    let beyond = if home.join("beyond").is_dir() {
+        left_in(&home.join("beyond"))
+    } else {
+        Vec::new()
+    };
     assert!(
         code == Some(0)
             && mode.as_ref().is_ok_and(|mode| *mode == 0o500)
