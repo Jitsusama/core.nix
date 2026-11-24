@@ -8,7 +8,9 @@
 // and hands a pi of its own on the machine's quick model, one with no
 // tools (Explainer.qml), a question holding only what Joel would know the
 // work by: its title, repository, machine, how it stands, what it's doing,
-// since when, and its plan's latest and next, each on one line of its own.
+// since when, and its plan's latest and next, each on one line of its own,
+// and, while it waits on Joel, what it asks him, quoted, and the acts on its
+// row that answer it, so the answer ends with the one to press (facts).
 // Never its ids, quest, folders, trees, spend or networks, which say
 // nothing to him and would only come back in the answer. Its title and
 // plan are an agent's own words, so each is flattened to one line and cut
@@ -159,7 +161,7 @@ function fits(asked, beside) {
 }
 
 // What an act explained shows at `now`, from how it stands, `one` ({ stage,
-// message, at }), and its pi (`ask`: posed, said, stage), in the act's
+// message, at, beside }), and its pi (`ask`: posed, said, stage), in the act's
 // words `said`: { name, reads, note, hue }, or null where it's the act as
 // it was: never asked, stale, of another question, or stopped as the
 // launcher closed, so Return asks again. One asked with other acts on its
