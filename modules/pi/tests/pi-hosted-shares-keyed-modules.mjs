@@ -5,9 +5,10 @@
 // moved on, lets go of what a package's loads kept, so the next load reads
 // its files as they are now, and a load begun before a reload hands nothing
 // to a load after. A package's loads take turns, so none is given a module
-// another is still evaluating; a reload, a moved link or a turn held too long
-// lets go of loads waiting behind one that never ends, and none is kept
-// for the copy the link moved to or once its modules are let go. A failed
+// another is still evaluating; a reload or a moved link lets go of loads
+// waiting behind one that never ends, and none is kept for the copy the
+// link moved to or once its modules are let go. While a turn is held too
+// long, loads go on unshared, and nothing kept is let go of. A failed
 // load's retry evaluates again every module it was first to import, however
 // deep, but none another extension was first to import. Without the patch,
 // a keyed package's library is evaluated once for each of its extensions;
@@ -27,6 +28,7 @@ import {
   folder,
   gate,
   gated,
+  gatedPackage,
   heldUpUntil,
   hungPackage,
   keyedManifest,
@@ -37,6 +39,7 @@ import {
   pendingAfter,
   pointAt,
   scratch,
+  stalledPackage,
   within,
   write,
 } from "./hosted-keyed-packages.mjs";
@@ -353,9 +356,8 @@ assert.equal(
 );
 
 // A load that never ends holds up the package's loads behind it until its
-// modules are let go, by a reload, by a link moving off its copy to a keyed
-// copy or an unkeyed one, or by its turn being held too long, and those
-// then load as an unkeyed package's do, evaluating afresh what the load
+// modules are let go, by a reload or by a link moving off its copy to a
+// keyed copy or an unkeyed one, and those then load as an unkeyed package's do, evaluating afresh what the load
 // that never ends had finished. One a link let go of, ending after the
 // moved link's own load, isn't kept for the copy the link moved to.
 afresh();
@@ -391,34 +393,56 @@ await heldUpUntil("a link to an unkeyed copy", throughUnkeyed, async () => {
   pointAt(toUnkeyed, join(scratch, "unkeyed-second"));
   await within(open("unkeyed-moved", throughUnkeyed), "a load through a moved link never ended");
 });
+// While a load holds its turn too long, the load waiting behind it and one
+// begun meanwhile load as an unkeyed package's do, and a factory kept
+// before stays kept. Once the load ends, it is kept too, and later loads
+// share the package's modules again.
 afresh();
-const stalled = hungPackage(join(scratch, "stalled"), true);
-await heldUpUntil("a turn held too long", stalled, () => undefined, 30_000);
-await open("stalled-after", [stalled[1]]);
-await open("stalled-again", [stalled[1]]);
-assert.equal(evaluations().behind, 3, "loads after a held turn didn't share new modules");
+const { entries: stall, counts: stalledCounts } = stalledPackage(join(scratch, "stalled"));
+await open("stalled-early", [stall.early]);
+const stallGate = gate("hang");
+const lagGate = gate("lag");
+const stallHanging = open("stalled-hanging", [stall.hangs]);
+await stallGate.reached;
+const stallWaiting = open("stalled-waiting", [stall.behind]);
+assert.equal(
+  await pendingAfter(lagGate.reached, 200),
+  true,
+  "a load didn't wait behind one holding its turn",
+);
+await within(lagGate.reached, "a turn held too long held up the load behind it", 30_000);
+// The load that waited now lags in a load of its own, so a load queued in
+// turn behind it would wait too.
+await within(
+  open("stalled-meanwhile", [stall.meanwhile, stall.early]),
+  "a load begun while a turn was held too long waited for it",
+);
+lagGate.putAway();
+lagGate.open();
+await within(stallWaiting, "a load that went on behind a turn held too long never ended");
+assert.deepEqual(
+  stalledCounts(),
+  // The held extension counts itself only once its imports end.
+  [3, 1, 0, 1, 1, 0],
+  "loads while a turn was held too long shared its modules, or a factory kept before was let go",
+);
+stallGate.putAway();
+stallGate.open();
+await within(stallHanging, "a load that held its turn too long never ended");
+await open("stalled-after", [stall.hangs, stall.after]);
+assert.deepEqual(
+  stalledCounts(),
+  [3, 1, 1, 1, 1, 1],
+  "a load that held its turn too long wasn't kept once it ended, or later loads didn't share again",
+);
 
 // A load in flight as its link moves to another copy, while the copy it
 // began in is still held, isn't kept for the copy the link moved to.
 afresh();
 const flight = join(scratch, "links", "flight");
-const [flightFirst, flightSecond] = ["first", "second"].map((version) => {
-  const where = join(scratch, `flight-${version}`);
-  write(join(where, "package.json"), manifest(keyedManifest));
-  write(join(where, "lib", "slow.ts"), gated("flight", version));
-  write(
-    join(where, "extensions", "slow", "index.ts"),
-    [
-      'import { flight } from "../../lib/slow.ts";',
-      "export default function (pi) {",
-      '  pi.registerCommand("flight-version", { description: "", handler: async () => flight });',
-      "}",
-      "",
-    ].join("\n"),
-  );
-  write(join(where, "extensions", "still", "index.ts"), "export default function () {}\n");
-  return where;
-});
+const [flightFirst, flightSecond] = ["first", "second"].map((version) =>
+  gatedPackage(join(scratch, `flight-${version}`), "flight", version),
+);
 await open("flight-still", [join(flightFirst, "extensions", "still", "index.ts")]);
 pointAt(flight, flightFirst);
 const flightGate = gate("flight");
@@ -439,24 +463,11 @@ assert.equal(
 // go of meanwhile, isn't kept, so the next load shares the copy's new ones.
 afresh();
 const aba = join(scratch, "links", "aba");
-const [abaFirst, abaSecond] = ["first", "second"].map((version) => {
-  const where = join(scratch, `aba-${version}`);
-  write(join(where, "package.json"), manifest(keyedManifest));
-  write(join(where, "lib", "slow.ts"), gated("aba", version));
-  write(
-    join(where, "extensions", "slow", "index.ts"),
-    [
-      'import { aba } from "../../lib/slow.ts";',
-      counted("aba-slow"),
-      "export default function () { return aba; }",
-      "",
-    ].join("\n"),
-  );
-  write(join(where, "extensions", "other", "index.ts"), "export default function () {}\n");
-  return where;
-});
+const [abaFirst, abaSecond] = ["first", "second"].map((version) =>
+  gatedPackage(join(scratch, `aba-${version}`), "aba", version),
+);
 pointAt(aba, abaFirst);
-const [abaSlow, abaOther] = ["slow", "other"].map((one) =>
+const [abaSlow, abaOther] = ["slow", "still"].map((one) =>
   join(aba, "extensions", one, "index.ts"),
 );
 await open("aba-other", [abaOther]);

@@ -3538,9 +3538,9 @@
     its per-session state keyed reaches once for all of its extensions, while another keyed package
     and each extension of an unkeyed one evaluate their own, and puts none in Node's module cache;
     a reload or a moved link reads the files afresh, a load begun before a reload hands a later
-    load nothing, loads take turns, a reload, a moved link or a turn held too long lets go of
-    loads queued behind one that never ends, keeping none it let go of for the copy it moved to,
-    and a failed load's retry evaluates afresh every module, however deep, the failed load was
+    load nothing, loads take turns, a reload or a moved link lets go of loads queued behind one
+    that never ends, keeping none it let go of for the copy it moved to, a turn held too long
+    lets loads go on unshared while it lasts, keeping every factory, and a failed load's retry evaluates afresh every module, however deep, the failed load was
     first to import and none another extension was first to import
   '';
   pi-hosted-keeps-each-conversations-keys = ''

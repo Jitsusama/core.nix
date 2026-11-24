@@ -202,12 +202,65 @@ export const hungPackage = (where, hangs, pi = keyedManifest) => {
   );
   return ["hangs", "behind"].map((one) => join(where, "extensions", one, "index.ts"));
 };
+/** A keyed package at `where` whose `slow` extension imports a library
+ * that waits at the gate `name` and says it is `version`, which the
+ * extension's `<name>-version` command answers; evaluating it counts under
+ * `<name>-slow`. Its `still` extension imports nothing. Its folder. */
+export const gatedPackage = (where, name, version) => {
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "slow.ts"), gated(name, version));
+  write(
+    join(where, "extensions", "slow", "index.ts"),
+    [
+      `import { ${name} } from "../../lib/slow.ts";`,
+      counted(`${name}-slow`),
+      "export default function (pi) {",
+      `  pi.registerCommand("${name}-version", { description: "", handler: async () => ${name} });`,
+      "}",
+      "",
+    ].join("\n"),
+  );
+  write(join(where, "extensions", "still", "index.ts"), "export default function () {}\n");
+  return where;
+};
+/** A keyed package at `where` whose library counts under `stalled`, with
+ * the extensions `early`, `hangs`, `behind`, `meanwhile` and `after`, each
+ * counting under `stalled-<name>`; `hangs` waits at the gate `hang`, and
+ * `behind` at the gate `lag`. Its entries by name, and its counts, the
+ * library's first. */
+export const stalledPackage = (where) => {
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "shared.ts"), library("stalled", "stalled"));
+  write(join(where, "lib", "hangs.ts"), gated("hang", "hung"));
+  write(join(where, "lib", "lags.ts"), gated("lag", "lagged"));
+  const names = ["early", "hangs", "behind", "meanwhile", "after"];
+  const entries = {};
+  for (const one of names) {
+    entries[one] = join(where, "extensions", one, "index.ts");
+    const gatedBy = { hangs: "hangs", behind: "lags" }[one];
+    write(
+      entries[one],
+      [
+        'import { version } from "../../lib/shared.ts";',
+        gatedBy ? `import * as gated from "../../lib/${gatedBy}.ts";` : "const gated = 0;",
+        counted(`stalled-${one}`),
+        "// Used, since jiti's compile drops an import nothing uses.",
+        "export default function () { return [version, gated]; }",
+        "",
+      ].join("\n"),
+    );
+  }
+  const counts = () =>
+    ["stalled", ...names.map((one) => `stalled-${one}`)].map((name) => evaluations()[name] ?? 0);
+  return { entries, counts };
+};
 /** Hangs a load of `hangs`, queues one of `behind`, then lets go as `what`
  * does and expects the queued load to end within `ms` of the hung load
  * reaching its hang, evaluating afresh what the hung load had finished.
- * The default ends before a turn held 10 seconds is let go of, so only
- * `letGo` can end the wait. */
-export const heldUpUntil = async (what, [hangs, behind], letGo, ms = 8000) => {
+ * `ms` ends before a turn held 10 seconds lets the queued load go on, so
+ * only `letGo` can end the wait. */
+export const heldUpUntil = async (what, [hangs, behind], letGo) => {
+  const ms = 8000;
   const hangGate = gate("hang");
   const hanging = open(`${what}-hanging`, [hangs]);
   await hangGate.reached;

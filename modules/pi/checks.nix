@@ -337,8 +337,8 @@ import ./host-checks.nix args
 
   # A hosted pi evaluates a keyed package's modules once for all its
   # extensions, in a cache of the package's own, while an unkeyed package's
-  # extensions keep a copy each, and a reload, a moved link or a turn held
-  # too long lets go of it.
+  # extensions keep a copy each; a reload or a moved link lets go of it,
+  # and a turn held too long lets loads go on unshared while it lasts.
   # The test imports the loader it drives from the helper beside it.
   pi-hosted-shares-keyed-modules =
     let

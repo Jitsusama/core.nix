@@ -8,10 +8,12 @@ own, so each file they reach is evaluated once for the package. Node's
 module cache is neither read nor written, and every other package's loads
 keep their modules their own. A reload, and a link moving off a copy, give
 the package's next load a new cache. Its loads take turns, so none is
-given a module another is still evaluating. A reload, a link moving off
-the copy, or a load holding its turn past ten seconds lets go of the loads
-waiting behind one that never ends; those import as an unkeyed package's
-do. A failed load forgets each module it was first to import, however
+given a module another is still evaluating. A reload, or a link moving
+off the copy, lets go of the loads waiting behind one that never ends;
+those import as an unkeyed package's do. While a load holds its turn past
+ten seconds, the loads behind it and any begun meanwhile import so too,
+and nothing kept is let go of; once it ends, it is kept and loads share
+again. A failed load forgets each module it was first to import, however
 deep, and keeps those another extension was first to import as it ran.
 A factory is kept only from a load through modules still its package's,
 so none from a copy a link has moved off, or from modules let go of. An
@@ -27,7 +29,7 @@ cache until a reload.
 +		if (keyed) keyedRoots.add(folder);
  	} else {
  		const parent = path.dirname(folder);
-@@ -237,18 +238,196 @@
+@@ -237,18 +238,198 @@
  // package keeps a copy for each folder.
  function sharedFileOf(extensionPath: string): string | undefined {
 -	let file: string;
@@ -57,8 +59,8 @@ cache until a reload.
 -	if (before !== undefined && before !== file) sharedFactories.delete(before);
 -	sharedFiles.set(extensionPath, file);
 -	return file;
- }
- 
++}
++
 +// pi-host: a keyed package's extensions share the modules they import, too.
 +// jiti gives each import of an extension a module cache of its own, so a
 +// library its extensions share was evaluated once for each extension
@@ -71,11 +73,11 @@ cache until a reload.
 +// elsewhere, gives its next load a new cache. A load keeps the cache it
 +// began with, so its own modules stay one graph, and nothing it reads
 +// reaches a load begun after. The package's loads take turns, so none is
-+// given a module another is still evaluating. A load holding its turn past
-+// TURN_HELD_MS lets go of the package's modules and factories, as a reload
-+// does for the package, so one that never ends holds up the loads behind it
-+// no longer: they import as an unkeyed package's do, and later loads share
-+// a new cache. A failed load forgets each module it was first to import, so
++// given a module another is still evaluating. While a load holds its turn
++// past TURN_HELD_MS, the loads behind it, and any begun before it ends,
++// import as an unkeyed package's do, so one that never ends holds them up
++// no longer. Nothing is let go of, so each factory kept stays kept; once
++// the load ends, its own is kept too, and later loads share again. A failed load forgets each module it was first to import, so
 +// none it finished keeps what one that threw left behind, and keeps those
 +// another extension was first to import as it ran; jiti records only the
 +// first, so one it finished that another extension was handed meanwhile is
@@ -96,23 +98,30 @@ cache until a reload.
 +	turn: Promise<void>;
 +	// Whether these modules have been let go.
 +	dropped: boolean;
++	// Whether a load still holds the turn past TURN_HELD_MS.
++	overdue: boolean;
 +	// Starts each load still waiting for its turn.
 +	waiting: Set<() => void>;
-+}
-+
-+// How long a load may hold its package's turn before the package's modules
-+// are let go: long past what evaluating one extension takes.
+ }
+ 
++// How long a load may hold its package's turn before the loads behind it
++// go on unshared: long past what evaluating one extension takes.
 +const TURN_HELD_MS = 10_000;
 +
 +function newPackageModules(root: string): PackageModules {
-+	return { root, cache: {}, turn: Promise.resolve(), dropped: false, waiting: new Set() };
++	return { root, cache: {}, turn: Promise.resolve(), dropped: false, overdue: false, waiting: new Set() };
++}
++
++// Starts each load still waiting for its turn in `modules`.
++function startWaiting(modules: PackageModules): void {
++	for (const go of modules.waiting) go();
++	modules.waiting.clear();
 +}
 +
 +// Lets go of `modules`, starting each load waiting for its turn in them.
 +function dropModules(modules: PackageModules): void {
 +	modules.dropped = true;
-+	for (const go of modules.waiting) go();
-+	modules.waiting.clear();
++	startWaiting(modules);
 +}
 +// Each keyed package's modules, by its folder.
 +const packageModules = new Map<string, PackageModules>();
@@ -143,15 +152,6 @@ cache until a reload.
 +	const modules = packageModules.get(root);
 +	if (modules !== undefined) dropModules(modules);
 +	packageModules.delete(root);
-+}
-+
-+// Lets go of a package's modules and factories once a load has held their
-+// turn too long, as a reload does for the package, unless they already are.
-+function letGoOfHeldModules(modules: PackageModules): void {
-+	if (packageModules.get(modules.root) !== modules) return;
-+	packageModules.delete(modules.root);
-+	dropModules(modules);
-+	for (const file of sharedFactories.keys()) if (isUnder(file, modules.root)) sharedFactories.delete(file);
 +}
 +
 +// The modules of the keyed package a shared extension's file belongs to.
@@ -187,10 +187,10 @@ cache until a reload.
 +}
 +
 +// Imports the shared extension at `file` through its package's modules, in
-+// the package's turn, or as an unkeyed package's is once they are let go
-+// before its turn comes.
++// the package's turn, or as an unkeyed package's is while they are let go
++// or a load holds their turn past TURN_HELD_MS.
 +async function importShared(jiti: Jiti, file: string, modules: PackageModules): Promise<unknown> {
-+	if (modules.dropped) return jiti.import(file, { default: true });
++	if (modules.dropped || modules.overdue) return jiti.import(file, { default: true });
 +	const { cache } = modules;
 +	let go = (): void => undefined;
 +	const ready = new Promise<void>((resolve) => {
@@ -200,11 +200,14 @@ cache until a reload.
 +	modules.turn.then(go);
 +	const imported = ready.then(async () => {
 +		modules.waiting.delete(go);
-+		if (modules.dropped) return jiti.import(file, { default: true });
++		if (modules.dropped || modules.overdue) return jiti.import(file, { default: true });
 +		const known = cache[file];
 +		if (known?.loaded) return defaultOf(known.exports);
 +		const before = new Set(Object.keys(cache));
-+		const held = setTimeout(() => letGoOfHeldModules(modules), TURN_HELD_MS);
++		const held = setTimeout(() => {
++			modules.overdue = true;
++			startWaiting(modules);
++		}, TURN_HELD_MS);
 +		held.unref();
 +		try {
 +			return defaultOf(
@@ -218,6 +221,7 @@ cache until a reload.
 +			throw error;
 +		} finally {
 +			clearTimeout(held);
++			modules.overdue = false;
 +		}
 +	});
 +	modules.turn = imported.then(
@@ -231,7 +235,7 @@ cache until a reload.
 +
  function cachedFactoryOf(extensionPath: string, cacheToken: ExtensionCacheToken): ExtensionFactory | undefined {
  	const shared = sharedFileOf(extensionPath);
-@@ -257,6 +436,18 @@
+@@ -257,6 +438,18 @@
  }
  
 -function cacheFactory(extensionPath: string, cacheToken: ExtensionCacheToken, factory: ExtensionFactory): void {
@@ -251,7 +255,7 @@ cache until a reload.
 +	if (through !== undefined && packageModules.get(through.root) !== through) return;
  	if (shared !== undefined) sharedFactories.set(shared, factory);
  	else cacheToken.cache.set(extensionPath, new WeakRef(factory));
-@@ -265,4 +456,7 @@
+@@ -265,4 +458,7 @@
  export function clearExtensionCache(): void {
  	extensionCaches.length = 0;
 +	for (const modules of packageModules.values()) dropModules(modules);
@@ -259,7 +263,7 @@ cache until a reload.
 +	keyedRoots.clear();
  	sharedFactories.clear();
  	sharedFiles.clear();
-@@ -700,4 +894,7 @@
+@@ -700,4 +896,7 @@
  	}
  
 +	// pi-host: a shared extension loads through its package's modules.
@@ -267,7 +271,7 @@ cache until a reload.
 +	const modules = shared === undefined ? undefined : packageModulesOf(shared);
  	const createJitiImpl = await getCreateJiti();
  	// Compiled binaries and the bundled Node distribution use embedded modules.
-@@ -714,5 +911,9 @@
+@@ -714,5 +913,9 @@
  	});
  
 -	const module = await jiti.import(canonicalizePath(extensionPath), { default: true });
@@ -278,7 +282,7 @@ cache until a reload.
 +			: await jiti.import(canonicalizePath(extensionPath), { default: true });
  	const factory = module as ExtensionFactory;
  	if (typeof factory !== "function") {
-@@ -720,5 +921,5 @@
+@@ -720,5 +923,5 @@
  	}
  	if (isCurrentCacheToken(cacheToken)) {
 -		cacheFactory(extensionPath, cacheToken, factory);
