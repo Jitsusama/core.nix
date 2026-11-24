@@ -838,14 +838,11 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
-    // What the foot names a session by (SessionRow.footName): its row's
+    // What the foot names a session by (SessionRow.footNameOf): its row's
     // name, else its quest's title, its address only when neither is known.
-    // One with no record yet, as a start in pi's host is, says its quest's
-    // name as `name`.
     function footName(session) {
-        return SessionRow.footName(provider.standingOf(session.address)?.name,
-            session.presence ? Sessions.named(session.presence).title : session.name,
-            session.address);
+        return SessionRow.footNameOf(provider.standingOf(session.address)?.name, session,
+            presence => Sessions.named(presence).title);
     }
 
     // A session elsewhere that couldn't be joined, a hosted one with no

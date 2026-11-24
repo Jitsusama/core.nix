@@ -190,6 +190,15 @@ function footName(served, title, address) {
         .find(one => one !== "") ?? "";
 }
 
+// footName of a session as the shell hands it over. One with no record
+// yet, as a start in pi's host is, has no presence to title it by, so its
+// quest's name, as the launcher gave it, stands as `name`; `titleOf` is
+// the title a presence names (Sessions.named).
+function footNameOf(served, session, titleOf) {
+    return footName(served, session.presence ? titleOf(session.presence) : session.name,
+        session.address);
+}
+
 // What an address is made of, the only kind reasonOf looks for in a reason.
 const ADDRESS = /^[A-Z0-9]+$/u;
 
