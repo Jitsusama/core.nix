@@ -631,6 +631,19 @@ fn a_closed_mark_cleared_by_hand_is_no_mark() {
         cleared,
         "and the same while a window is listed"
     );
+    let gone = Windowless {
+        closed: HashSet::from(["s-null".to_owned()]),
+        unsure: HashSet::from(["s-false".to_owned()]),
+        ..Windowless::default()
+    };
+    assert_eq!(
+        kept.kept("this", "", Map::new(), Vec::new(), &gone, at)
+            .boots["this"],
+        json!({"s-null": {"column": 4, "closed": at},
+            "s-false": {"column": 5, "orphaned": true}}),
+        "one closed by hand since is marked afresh, and one whose terminal went is \
+         orphaned, neither held by the mark cleared"
+    );
 }
 
 #[test]

@@ -378,6 +378,7 @@ impl Inputs {
 mod tests {
     use std::fs;
     use std::sync::mpsc;
+    use std::time::Duration;
 
     use serde_json::json;
 
@@ -609,15 +610,8 @@ mod tests {
             inputs.kept_places, said,
             "memory ahead of the file isn't thrown back to it"
         );
+        // Written by the next try, as the loop's case has it.
         inputs.keep_kept_places(&paths.kept_places);
-        assert_eq!(
-            (
-                inputs.kept_places_unwritten.clone(),
-                KeptPlaces::read(&paths.kept_places)
-            ),
-            (None, Some(said)),
-            "the next try writes them, though the shell says nothing more"
-        );
         let by_hand = KeptPlaces::said(&json!({"01-b": {"workspace": 4, "column": 1, "at": 8}}))
             .expect("places");
         by_hand.write(&paths.kept_places).expect("written");
@@ -625,6 +619,43 @@ mod tests {
         assert_eq!(
             inputs.kept_places, by_hand,
             "and once they're written, a file another hand writes is read as it lands"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn kept_places_whose_write_failed_are_written_again_though_nothing_moves() {
+        let folder = std::env::temp_dir().join(format!("agents-kept-again-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        // A file where the places' folder would be, so their write fails.
+        fs::write(folder.join("agents"), "").expect("a file in the folder's way");
+        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
+            .expect("places");
+        let mut inputs = Inputs::default();
+        let mut still = Still::default();
+        let start = Instant::now();
+        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        inputs.keep_when_still(&mut still, &paths, start);
+        let wait = still.wait(start);
+        assert!(
+            wait.is_some_and(
+                |wait| wait > Duration::from_secs(9) && wait <= Duration::from_secs(10)
+            ),
+            "a failed write asks to be woken in 10 s, though no window moved: {wait:?}"
+        );
+        fs::remove_file(folder.join("agents")).expect("the way cleared");
+        let woken = start + wait.unwrap_or_default();
+        inputs.keep_when_still(&mut still, &paths, woken);
+        assert_eq!(
+            (
+                inputs.kept_places_unwritten.clone(),
+                KeptPlaces::read(&paths.kept_places),
+                still.wait(woken)
+            ),
+            (None, Some(said), None),
+            "woken then, it writes them though the shell said nothing more, and waits no more"
         );
         let _ = fs::remove_dir_all(&folder);
     }

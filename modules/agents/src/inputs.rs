@@ -1670,7 +1670,7 @@ mod tests {
     }
 
     #[test]
-    fn kept_places_whose_write_failed_are_held_as_first_said_and_written_again() {
+    fn kept_places_whose_write_failed_are_held_as_first_said() {
         let mut inputs = inputs();
         let folder =
             std::env::temp_dir().join(format!("agents-inputs-kept-again-{}", std::process::id()));
@@ -1687,31 +1687,11 @@ mod tests {
             .kept_places_unwritten
             .clone()
             .expect("the write failed");
-        inputs.kept_places_written(said.clone(), &path, 2_000);
+        inputs.kept_places_written(said, &path, 2_000);
         assert_eq!(
             inputs.kept_places_unwritten,
             Some(first),
             "failing the same way again, it's held as first said, so not said again"
-        );
-        assert_eq!(
-            inputs.kept_places_again_at(2_000),
-            Some(2_000 + WRITE_AGAIN_MS),
-            "and it's tried again in WRITE_AGAIN_MS"
-        );
-        std::fs::remove_file(&blocked).expect("the way cleared");
-        inputs.keep_kept_places(&path);
-        assert_eq!(
-            (
-                inputs.kept_places_unwritten.clone(),
-                KeptPlaces::read(&path)
-            ),
-            (None, Some(said)),
-            "the next try writes them, though the shell said nothing more"
-        );
-        assert_eq!(
-            inputs.kept_places_again_at(3_000),
-            None,
-            "written, nothing's tried again"
         );
         // Only this case's own folder, which the next run makes afresh.
         let _ = std::fs::remove_dir_all(&folder);
