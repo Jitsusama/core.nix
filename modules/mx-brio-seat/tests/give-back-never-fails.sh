@@ -230,6 +230,16 @@ give_back "a Brio whose path udev can't give"
 expect warned "Failed to get device path"
 expect warned "udev couldn't say how the cameras at $work/root/dev/video0 stand"
 refuse said "No MX Brio is held"
+refuse said "Gave the seat back"
+replayed $'remove video1\nadd video1'
+
+# One unplugged as its path is read is skipped like one gone before.
+machine "$held" "$given"
+mkdir "$work/root/paths-vanish"
+touch "$work/root/paths-vanish/video0"
+give_back "a Brio node unplugged as its path is read"
+refuse warned "udev couldn't say"
+expect said "Gave the seat back the MX Brio."
 replayed $'remove video1\nadd video1'
 
 # A Brio node unplugged as the scan reads it is skipped, not called unread.

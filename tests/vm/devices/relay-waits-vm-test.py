@@ -37,6 +37,9 @@ AGAIN = 2
 # How late the relay may see a wait has run out: it looks every two seconds, and counts in
 # whole seconds, so a wait it says can run past its bound by as much.
 LOOKING = 3
+# How far short of a wait the journal's clock may read it: the relay counts whole seconds from
+# a moment between two of the journal's, so a wait it counts as 90 s can read as 89.997.
+ROUNDING = 1
 # How long a test gives the relay to say what it says, beyond the wait it's saying it after:
 # the loopback's client takes a moment to be counted on a busy builder.
 SAYING = timedelta(seconds=30)
@@ -149,7 +152,7 @@ def test_a_camera_that_never_frames_is_waited_on_90_s_then_ended(never: Relay) -
     # made again gets the whole first wait over, since its camera's setup starts over too.
     again = never.when("starting it again")
     ended = never.when(ENDING)
-    assert STALL <= ended - again <= STALL + LOOKING, (
+    assert STALL - ROUNDING <= ended - again <= STALL + LOOKING, (
         f"The relay ended {ended - again:.1f} s after making its camera again, not {STALL}"
     )
     assert UNMADE not in said, f"The relay never made its camera's pipeline:\n{said}"

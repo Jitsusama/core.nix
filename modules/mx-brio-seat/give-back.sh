@@ -48,6 +48,7 @@ nodes=()
 paths=()
 unread=()
 unrecorded=()
+kept=no
 # Sorts a camera by what udev holds of it: a Brio held for a relay is to be
 # replayed, one udev can't say of may be the Brio held, and so may one it
 # holds no record of, which is either an add still queued, as at boot, or a
@@ -68,9 +69,12 @@ consider() {
   fi
   the_brio "$facts" || return 0
   grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || return 0
+  # A node udev holds for a relay but can't give the path of can't be
+  # replayed, so it stays kept, and the run can't say it gave the Brio back.
   if ! path=$(udevadm info --query=path "$node"); then
     if [ -e "$node" ]; then
       unread+=("$node")
+      kept=yes
     fi
     return 0
   fi
@@ -172,6 +176,9 @@ fi
 # udev's record of each node as the add left it, so a replay read under the
 # old rules says so rather than passing for one that worked.
 given=yes
+if [ "$kept" = yes ]; then
+  given=no
+fi
 for node in "${nodes[@]}"; do
   if [ ! -e "$node" ]; then
     given=no
