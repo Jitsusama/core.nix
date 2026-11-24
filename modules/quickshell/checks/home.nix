@@ -63,9 +63,10 @@
 
   # A look's Talk and Go To reach the session that left it, the agents
   # daemon's answer for its cell, or a session on its quest, and another
-  # quest's only as the one that left a look naming no cell, a Go whose
-  # session works on another quest now says it moved on, a file's lent mark
-  # is never read, and a served look settles only once it opened, as
+  # quest's only as the one that left a look on no quest, an old look naming
+  # no cell is led by the one its session goes by, a Go whose session works
+  # on another quest now says it moved on, and a served look settles only
+  # once it opened, as
   # modules/quickshell/tests/look-cells.qml holds Looks.js to it in Qt's own
   # engine.
   a-look-leads-to-its-cell =
