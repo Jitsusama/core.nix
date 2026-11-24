@@ -184,9 +184,9 @@ pub struct Inputs {
     /// than its file does, so the next keep writes it though nothing
     /// moved, and the journal hears a failure once until it changes.
     pub unwritten: Option<Unwritten>,
-    /// Why the last write of `kept_places` failed, while it holds more
+    /// The last write of `kept_places` that failed, while it holds more
     /// than its file does, so the file isn't read back over it.
-    pub kept_places_unwritten: Option<String>,
+    pub kept_places_unwritten: Option<Unwritten>,
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
     pub kept_places: KeptPlaces,
@@ -419,6 +419,27 @@ impl Inputs {
         }
         self.unwritten = unwritten;
         self.arrangement = kept;
+    }
+
+    /// Writes `kept`, the places the shell said last, to `path`, keeping
+    /// them in memory either way.
+    pub fn write_kept_places(&mut self, kept: KeptPlaces, path: &Path) {
+        let at = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        self.kept_places_written(kept, path, at);
+    }
+
+    /// [`Inputs::write_kept_places`] at `at`.
+    fn kept_places_written(&mut self, kept: KeptPlaces, path: &Path, at: u64) {
+        let why = kept.write(path).err().map(|why| why.to_string());
+        if let Some(why) = &why {
+            eprintln!("agents: can't keep {}: {why}", path.display());
+        }
+        self.kept_places_unwritten = why.map(|why| Unwritten {
+            why,
+            since: at,
+            said: at,
+        });
+        self.kept_places = kept;
     }
 
     /// When the places are to be kept again from `at`: the first let-go

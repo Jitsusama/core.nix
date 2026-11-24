@@ -287,13 +287,7 @@ impl Inputs {
                     eprintln!("agents: can't say {} was read: {why}", answer.talk);
                 }
             }
-            Heard::KeepPlaces(kept) => {
-                self.kept_places_unwritten = kept.write(&paths.kept_places).err().map(|why| {
-                    eprintln!("agents: can't keep {}: {why}", paths.kept_places.display());
-                    why.to_string()
-                });
-                self.kept_places = kept;
-            }
+            Heard::KeepPlaces(kept) => self.write_kept_places(kept, &paths.kept_places),
             Heard::FedBack(line) => self.fed_back.push(line),
             Heard::Inboxes(waiting) => self.unsent = waiting,
             Heard::Starts(stood) => self.stood = Some(stood),
