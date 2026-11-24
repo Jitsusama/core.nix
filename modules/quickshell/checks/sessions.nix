@@ -80,7 +80,7 @@ in
     pkgs.runCommandLocal "the-sessions-kitty-is-asked-only-its-own-way" { } ''
       ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
         ${../tests/opens-in-sessions-doors.sh} ${pkgs.bash}/bin/sh ${linked} \
-        ${lib.getExe pkgs.python3}
+        ${lib.getExe pkgs.python3} ${../Sessions.qml}
       touch $out
     '';
 

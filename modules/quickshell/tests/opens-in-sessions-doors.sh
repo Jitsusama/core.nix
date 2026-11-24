@@ -3,15 +3,18 @@
 # take, over stand-ins for kitty's kitten, systemd-run, systemctl and
 # sleep, and the shell's qs: its socket, a socket that comes while it
 # waits, the unit's old kitty, and neither, which opens nothing and tells
-# the shell so. The old kitty is a real
-# process with that kitty's words on its command line, since the script
-# reads /proc, which no stand-in can be.
-# usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3>
+# the shell so, as it does when the kitty it asks opens nothing. The old
+# kitty is a real process with that kitty's words on its command line,
+# since the script reads /proc, which no stand-in can be. What the script
+# tells the shell is held to what Sessions.qml's handler takes, so the two
+# can't drift apart while both stand-ins pass.
+# usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3> <Sessions.qml>
 set -euo pipefail
 
 sh=$1
 script=$2
 python=$3
+sessions=$4
 real_sleep=$(type -P sleep)
 work=$(mktemp -d)
 stand_ins=$work/bin
@@ -22,6 +25,10 @@ failed=0
 for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" > "$stand_ins/$program"
 done
+# A kitten that opens nothing, as a kitty hung with its socket still there.
+printf '[ ! -f "%s/kitten-fails" ]\n' "$work" >> "$stand_ins/kitten"
+# The time the script was started at, as the shell's own clock gives it.
+printf '#!%s\necho 1700000000000\n' "$BASH" > "$stand_ins/date"
 # The unit's main process, as main-pid names it.
 printf '#!%s\ncat "%s/main-pid"\n' "$BASH" "$work" > "$stand_ins/systemctl"
 # Each wait counted, and the socket made at the wait came-at names.
@@ -38,7 +45,7 @@ old=""
 trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 
 fresh() {
-  rm -f "$work/came-at" "$work/kitty.sock"
+  rm -f "$work/came-at" "$work/kitty.sock" "$work/kitten-fails"
   : > "$work/asked"
   : > "$work/waits"
   echo 0 > "$work/main-pid"
@@ -126,8 +133,49 @@ if [ "$status" -ne 1 ]; then
   failed=1
 fi
 expect "with neither, no kitty is asked, and the shell is told none took it" \
-  "qs ipc call sessions untaken pi-session.11" asked
+  "qs ipc call sessions untaken pi-session.11 1700000000000" asked
 waited "it gave up after 20 s of waits" 99
 expect "the journal says why" "sessions: no sessions kitty to open pi-session.11 in" said
+kill "$old"
+old=""
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+touch "$work/kitten-fails"
+opens pi-session.12 pi
+if [ "$status" -ne 1 ]; then
+  echo "FAIL with a kitty that opens nothing, it ended $status, not 1"
+  failed=1
+fi
+expect "a kitty that opens nothing is asked once, and the shell is told none took it" \
+  "kitten @ --to unix:$work/kitty.sock launch --type=os-window --os-window-class pi-session.12 \
+--cwd /home/joel --env MYCELIUM_APP_ID=pi-session.12 pi
+qs ipc call sessions untaken pi-session.12 1700000000000" asked
+expect "the journal says it opened nothing" "sessions: the sessions kitty opened no pi-session.12" \
+  said
+
+# The shell's handler takes what the script tells it: its target, the
+# function's name, and an argument for each word after it.
+if ! "$python" - "$sessions" << 'EOF'
+import re
+import sys
+
+source = open(sys.argv[1], encoding="utf-8").read()
+for handler in re.finditer(r"\bIpcHandler\s*\{", source):
+    depth, at = 1, handler.end()
+    while depth and at < len(source):
+        depth += {"{": 1, "}": -1}.get(source[at], 0)
+        at += 1
+    block = source[handler.end():at]
+    if re.search(r'^\s*target:\s*"sessions"\s*$', block, re.M) and re.search(
+        r"function untaken\(\w+: string, \w+: string\)", block
+    ):
+        sys.exit(0)
+sys.exit(1)
+EOF
+then
+  echo "FAIL the shell's sessions handler takes no untaken of an app id and a time"
+  failed=1
+fi
 
 exit "$failed"

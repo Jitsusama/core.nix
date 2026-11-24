@@ -479,12 +479,19 @@ ShellRoot {
             presence: Object.assign({}, hosted.presence, { session: "s-untaken" }) });
         const untakenFrom = Niri.spawns.length;
         Sessions.goTo(untaken);
-        Sessions.untaken("pi-hosted.s-untaken");
+        Sessions.untaken("pi-hosted.s-untaken", String(Date.now()));
         Sessions.goTo(untaken);
         expect("one no kitty took is asked for again, not said as opening",
             Niri.spawns.length === untakenFrom + 2
             && Niri.spawns.slice(untakenFrom).every(one => one.includes("pi-hosted.s-untaken")),
             `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(untakenFrom).join("\n")}`);
+        // A script that gave up late, started before the press that asked
+        // again, leaves that newer ask coming, so a third press opens no
+        // second viewer beside it.
+        Sessions.untaken("pi-hosted.s-untaken", String(Date.now() - 60000));
+        expect("a give-up older than the ask leaves it coming",
+            Sessions.viewerComing("pi-hosted.s-untaken"),
+            JSON.stringify(Sessions.attaching));
         // One asked for by itself into a kept place, unfocused, as
         // viewKept asks, then pressed for while it comes: the press is
         // said opening, and the viewer takes the focus once it's listed,
