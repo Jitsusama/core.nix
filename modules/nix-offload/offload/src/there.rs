@@ -460,18 +460,27 @@ impl Asked {
 /// tarball with its links followed. A link that points outside the output
 /// and the store, or at nothing there, would bring back a file of the
 /// builder's own or fail the tarball, so each is left out and the first
-/// three are named on the error. Links inside a followed folder are
-/// followed as they are, since `find` doesn't go through the folder's link.
+/// three are named on the error, those inside a linked folder too, as
+/// `tar -h` follows them as well. A link whose path holds a newline can't
+/// be named on the list of those left out, so an output holding one
+/// doesn't come back. It runs in a shell of its own, so the trap that
+/// takes away its list leaves alone the caller's, which takes away the
+/// tree sent up for the build. Going by name makes the same output the
+/// same tarball, whatever order the builder's disk lists it in.
 const OUT_TARRED: &str = concat!(
-    "skip=$(mktemp) && trap 'rm -f \"$skip\"' EXIT && (cd \"$out\" && top=$(pwd -P) ",
-    "&& find . -type l | while IFS= read -r link; do ",
+    "(skip=$(mktemp) && trap 'rm -f \"$skip\"' EXIT && cd \"$out\" && top=$(pwd -P) ",
+    "&& nl=$(printf '\\n.') && nl=${nl%.} ",
+    "&& if [ -n \"$(find -L . -xtype l -path \"*$nl*\")\" ]; then ",
+    "echo \"nix-offload: a link in $out has a newline in its path, which the list of links ",
+    "left out can't name, so it doesn't come back\" >&2; exit 1; fi ",
+    "&& find -L . -xtype l | while IFS= read -r link; do ",
     "case $(realpath -m -- \"$link\") in \"$top\"/*|/nix/store/*) ",
     "[ -e \"$link\" ] || printf '%s\\n' \"$link\" ;; ",
-    "*) printf '%s\\n' \"$link\" ;; esac; done) > \"$skip\" ",
+    "*) printf '%s\\n' \"$link\" ;; esac; done > \"$skip\" ",
     "&& if [ -s \"$skip\" ]; then echo \"nix-offload: $(wc -l < \"$skip\") links in $out ",
     "point outside it and the store, or at nothing, so they stay out of what comes ",
     "back: $(head -n 3 \"$skip\" | tr '\\n' ' ')\" >&2; fi ",
-    "&& tar -czhf - -C \"$out\" --no-wildcards --anchored -X \"$skip\" .",
+    "&& tar -czhf - --sort=name --no-wildcards --anchored -X \"$skip\" .)",
 );
 
 /// A string as Nix reads one, quoted.
@@ -7390,14 +7399,23 @@ mod tests {
         let folder = tempfile::tempdir().expect("a folder");
         let first = Ticket::take(folder.path()).expect("a place in line");
         let at = folder.path().to_owned();
+        let (heard, hearing) = std::sync::mpsc::channel();
         let waiting = std::thread::spawn(move || {
             let mut said = Vec::new();
-            let had = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |line| said.push(line));
+            let had = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |line| {
+                heard.send(line.clone()).ok();
+                said.push(line);
+            });
             (had.is_some(), said)
         });
-        // Past the second a waiter behind another keeps quiet, for it to
-        // pass every free turn by and say why.
-        std::thread::sleep(TURN_SAID_AFTER + Duration::from_millis(300));
+        // A waiter behind another keeps quiet for a second, then says why
+        // it passes every free turn by: waiting for that, not for a fixed
+        // time, holds on a machine slow to start the thread.
+        let why = hearing.recv_timeout(TURN_SAID_AFTER + Duration::from_secs(10));
+        assert!(
+            why.is_ok(),
+            "a waiter behind another never said why it waited"
+        );
         assert!(
             !waiting.is_finished(),
             "a copy took a free turn while one that came first still waited"
@@ -9356,22 +9374,83 @@ mod tests {
             .expect("a link outside");
         std::os::unix::fs::symlink("/nix/store/0000-gone", out.join("gone"))
             .expect("a dangling link");
-        let sent = Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "out={} && {OUT_TARRED}",
-                quoted(&out.to_string_lossy())
-            ))
-            .output()
-            .expect("the shell");
+        let sent = tarred(&out);
         let said = String::from_utf8_lossy(&sent.stderr);
         assert!(sent.status.success(), "the output didn't go: {said}");
         assert!(
             said.contains("2 links in") && said.contains("./outside") && said.contains("./gone"),
             "the links left out weren't named: {said}"
         );
+        // The link inside comes back as the file it points at, followed,
+        // which tar, going by name, keeps as the file and the file itself
+        // as a hard link to it.
+        assert_eq!(
+            members(&sent.stdout),
+            ["- ./inside", "d ./", "h ./kept"],
+            "the tarball held other than the output's own, followed"
+        );
+    }
+
+    // tar -h follows a linked folder, and every link in it, so one inside
+    // that points out of the output is left out as one beside it is.
+    #[test]
+    fn a_link_out_of_the_output_inside_a_linked_folder_stays_behind() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let out = folder.path().join("out");
+        fs::create_dir_all(out.join("real")).expect("an output");
+        fs::write(folder.path().join("builders"), "theirs").expect("a builder's file");
+        std::os::unix::fs::symlink(folder.path().join("builders"), out.join("real/outside"))
+            .expect("a link outside");
+        std::os::unix::fs::symlink("real", out.join("linked")).expect("a linked folder");
+        let sent = tarred(&out);
+        let said = String::from_utf8_lossy(&sent.stderr);
+        assert!(sent.status.success(), "the output didn't go: {said}");
+        assert!(
+            said.contains("2 links in") && said.contains("./linked/outside"),
+            "the links left out weren't counted: {said}"
+        );
+        assert_eq!(
+            members(&sent.stdout),
+            ["d ./", "d ./linked/", "d ./real/"],
+            "a link out of the output came back through a linked folder"
+        );
+    }
+
+    #[test]
+    fn an_output_with_a_link_whose_path_holds_a_newline_doesnt_come_back() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let out = folder.path().join("out");
+        fs::create_dir(&out).expect("an output");
+        fs::write(folder.path().join("builders"), "theirs").expect("a builder's file");
+        std::os::unix::fs::symlink(folder.path().join("builders"), out.join("two\nlines"))
+            .expect("a link outside");
+        let sent = tarred(&out);
+        let said = String::from_utf8_lossy(&sent.stderr);
+        assert!(!sent.status.success(), "the output went: {said}");
+        assert!(sent.stdout.is_empty(), "a tarball came back");
+        assert!(
+            said.contains("has a newline in its path"),
+            "why it didn't go wasn't said: {said}"
+        );
+    }
+
+    /// What [`OUT_TARRED`] gives for the output `out`.
+    fn tarred(out: &Path) -> std::process::Output {
+        Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "out={} && {OUT_TARRED}",
+                quoted(&out.to_string_lossy())
+            ))
+            .output()
+            .expect("the shell")
+    }
+
+    /// The members of `tarball`, each as its type, as `tar -tv` gives it,
+    /// and its name, sorted. A link's name is its own, not what it names.
+    fn members(tarball: &[u8]) -> Vec<String> {
         let mut listing = Command::new("tar")
-            .args(["-tzf", "-"])
+            .args(["-tvzf", "-"])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .spawn()
@@ -9380,19 +9459,20 @@ mod tests {
             .stdin
             .take()
             .expect("tar's input")
-            .write_all(&sent.stdout)
+            .write_all(tarball)
             .expect("the tarball");
         let listed = listing.wait_with_output().expect("the listing");
-        let mut names: Vec<_> = String::from_utf8_lossy(&listed.stdout)
+        let mut members: Vec<_> = String::from_utf8_lossy(&listed.stdout)
             .lines()
-            .map(str::to_owned)
+            .filter_map(|line| {
+                let kind = line.chars().next()?;
+                let own = line.split(" link to ").next()?.split(" -> ").next()?;
+                let name = own.split_whitespace().last()?;
+                Some(format!("{kind} {name}"))
+            })
             .collect();
-        names.sort();
-        assert_eq!(
-            names,
-            ["./", "./inside", "./kept"],
-            "the tarball held other than the output's own"
-        );
+        members.sort();
+        members
     }
 
     const QUICK: Waiting = Waiting {
