@@ -292,6 +292,15 @@ QtObject {
                 "#Y=a1 a1 #C=c1 c1", "a1 c1"],
             ["kept, a row of no heading comes in, for the list shown to withhold",
                 "#A=a1 a1", "#A=a1 a1 look", "#A a1 look?"],
+            // What follows the cells comes under Joel's own heading, so it
+            // comes in at once (ForYouCells.js's laidOut; Y2YBTS, 2026-11-24).
+            ["what follows, new, comes in under his own heading said after the cells'",
+                "#A=a1 a1", "#A=a1 a1 #Yafter=look look", "#A a1 #Yafter+ look"],
+            ["what follows, new, comes in under his own heading where it's last",
+                "#A=a1 a1 #Y=y1 y1", "#A=a1 a1 #Y=y1,look y1 look", "#A a1 #Y y1 look"],
+            ["what follows, new behind more of it, under the heading already over it",
+                "#A=a1 a1 #Yafter=look look", "#A=a1 a1 #Yafter=look,history look history",
+                "#A a1 #Yafter look history"],
             ["a fold new to Repositories gets its heading past Projects", "#R r1 #P p1",
                 "#R r1 r:more #P p1", "#R r1 #P p1 #R+ r:more"],
             ["with no heading, a new row comes in", "a1", "a1 x", "a1 x"],
