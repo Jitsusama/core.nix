@@ -397,7 +397,7 @@ mod tests {
         );
         assert_eq!(
             made[1]["held"]["by"], "person",
-            "kept on the row, so the shell knows his own carry from one made in his stead"
+            "kept on the row as the node judged it, though no shell reads it now"
         );
     }
 
@@ -463,16 +463,17 @@ mod tests {
         }
     }
 
-    /// One of the carries the node kept on 2026-11-23, as it served it:
-    /// 48UZ44's session went to equilibrius and runs there under another
-    /// id, so no row the tree serves is its.
+    /// One of the carries the node kept on 2026-11-23, as it served it but
+    /// for its machines, named as `record`'s are: 48UZ44's session went to
+    /// tern and runs there under another id, so no row the tree serves is
+    /// its.
     fn tonights() -> Value {
         json!({
             "key": "carry:01a1f76d-2cf5-76c4-8c06-586103bb54df:2026-11-23T22:23:55.92938461Z",
             "kind": "carry", "at": "2026-11-23T22:23:55.92938461Z", "by": "M6HZ8T",
             "session": "01a1f76d-2cf5-76c4-8c06-586103bb54df", "address": "48UZ44",
-            "quest": "QEST-20261120-48UZ44", "from": "optimus", "to": "equilibrius",
-            "why": "spreading load off optimus", "state": "carrying",
+            "quest": "QEST-20261120-48UZ44", "from": "skiff", "to": "tern",
+            "why": "spreading load off skiff", "state": "carrying",
         })
     }
 
@@ -485,8 +486,7 @@ mod tests {
         let made = rows(&[&carried], &top(), &titles, &words());
         assert_eq!(made[1]["name"], "Spikes 6 and 7", "its quest's title");
         assert_eq!(
-            made[1]["note"],
-            "carried to equilibrius by an orchestrator \u{b7} spreading load off optimus",
+            made[1]["note"], "carried to tern by an orchestrator \u{b7} spreading load off skiff",
             "where it went, and why"
         );
         let live = record("HARBOR", "2026-11-16T01:00:00Z", "arrived");
@@ -542,7 +542,7 @@ mod tests {
         stuck["state"] = json!("stuck");
         let made = listed(&[&stuck]);
         assert_eq!(
-            made[1]["note"], "carried to equilibrius by an orchestrator",
+            made[1]["note"], "carried to tern by an orchestrator",
             "the orchestrator's why is not the node's reason"
         );
         let refused = record("HARBOR", "2026-11-16T01:00:00Z", "refused");
@@ -558,14 +558,14 @@ mod tests {
     fn a_stuck_carry_says_so_in_alert_with_the_nodes_reason() {
         let mut stuck = tonights();
         stuck["state"] = json!("stuck");
-        stuck["stuck"] = json!("not seen running on equilibrius 30 minutes after it was ordered");
+        stuck["stuck"] = json!("not seen running on tern 30 minutes after it was ordered");
         let made = listed(&[&stuck]);
         assert_eq!(said(&made[1]), ["stuck"]);
         assert_eq!(made[1]["side"][0]["hue"], "alert");
         assert_eq!(
             made[1]["note"],
-            "carried to equilibrius by an orchestrator \u{b7} not seen running on equilibrius \
-             30 minutes after it was ordered"
+            "carried to tern by an orchestrator \u{b7} not seen running on tern 30 minutes \
+             after it was ordered"
         );
         assert_eq!(said(&made[0]), ["1 stuck"], "the group counts it apart");
         assert_eq!(made[0]["side"][0]["hue"], "alert");

@@ -772,7 +772,8 @@ impl Inputs {
         let kept: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
         // A carried session runs elsewhere under another id, so its carry
         // goes by its quest's title, as a landing's ended session does;
-        // walked only while a carry stands, as most makes have none.
+        // walked only on a day the node keeps a carry, which on a machine
+        // that carries is nearly every make.
         let titles = if kept.is_empty() {
             HashMap::new()
         } else {
