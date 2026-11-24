@@ -5,6 +5,7 @@
 # Joel's or within ten minutes of a meeting. `call-under-load` says the
 # last hour's figures.
 {
+  config,
   lib,
   pkgs,
   # The machine's own settings, which Home Manager gives when it's part of
@@ -14,7 +15,9 @@
 }:
 let
   package = pkgs.callPackage ./package.nix { };
-  device = osConfig.jitsusama.camera.device or null;
+  # The camera the camera program takes (modules/camera/home.nix), where
+  # it's imported, and otherwise the machine's.
+  device = config.jitsusama.camera.device or osConfig.jitsusama.camera.device or null;
 in
 {
   home.packages = [ package ];
@@ -63,10 +66,11 @@ in
   };
 
   # The camera before each of Joel's meetings: three to six minutes out, with
-  # no call on, it's read for five frames, none kept, and a camera giving no
-  # picture is told to him then rather than seen by those he meets. The
-  # built-in's first frame can take 40 s under memory pressure, so the read
-  # is given two minutes.
+  # no call on, a loopback is read for five frames, none kept, and any other
+  # camera only asked, so Meet always gets it; a camera giving no picture is
+  # told to him then rather than seen by those he meets. The built-in's
+  # first frame can take 40 s under memory pressure, so the read is given
+  # two minutes.
   systemd.user.services.call-under-load-camera = {
     Unit.Description = "Checks Joel's camera gives a picture before each meeting";
     Service = {

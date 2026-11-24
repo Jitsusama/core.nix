@@ -191,51 +191,72 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
                 .try_this("systemctl --user status google")
         })?;
     let now = seconds_now() * 1000;
+    // A calendar not read for an hour may hold meetings since moved.
+    if now.saturating_sub(calendar.read) > gate::STALE_MS {
+        return said("the camera waits: the calendar wasn't read this past hour".to_string());
+    }
     let file = folder().join("camera-checked.json");
     let starts = camera::checked(&file, now);
     let Some(meeting) = camera::due(&calendar, now, &starts) else {
         return Ok(());
     };
-    if gate::a_call() != gate::Call::Off {
+    // Asked up to three times, as the hourly run does, since one slow
+    // answer under the heaviest load would leave the minute unchecked.
+    let mut asked = gate::a_call();
+    for _ in 1..call::UNSURE {
+        if !matches!(asked, gate::Call::Unknown(_)) {
+            break;
+        }
+        asked = gate::a_call();
+    }
+    if !camera::clear(&asked) {
         return said(format!(
-            "the camera waits: a call may be on before {}",
+            "the camera waits: a call may be on before {} ({asked:?})",
             meeting.title
         ));
     }
-    let Some((node, plugged)) = camera::which(Path::new("/"), device) else {
+    let Some(node) = camera::which(Path::new("/"), device) else {
         return said("no camera to check".to_string());
     };
-    let gave = camera::gives(&node, plugged);
-    camera::remember(&file, starts, meeting.start).map_err(|error| {
+    let read = camera::loopback(Path::new("/"), &node);
+    let gave = camera::gives(&node, read);
+    // He's told before the check is kept, so a state file that can't be
+    // written never keeps the notice from him.
+    let noticed = match &gave {
+        Ok(()) => Ok(()),
+        Err(fault) => notice(&camera::told(meeting, seconds_now() * 1000, read, fault)),
+    };
+    let kept = camera::remember(&file, starts, meeting.start).map_err(|error| {
         Failure::new(Exit::Failed, "the check couldn't be kept")
             .because(format!("{}: {error}", file.display()))
-    })?;
-    let Err(why) = gave else {
-        return said(format!(
+    });
+    said(match &gave {
+        Ok(()) => format!(
             "{} gives a picture before {}",
             node.display(),
             meeting.title
-        ));
-    };
-    let (summary, body) = camera::told(meeting, seconds_now() * 1000, plugged);
-    said(format!(
-        "{} gives no picture before {}: {why}",
-        node.display(),
-        meeting.title
-    ))?;
-    camera::within(
-        "notify-send",
-        &[
-            "--app-name=Camera",
-            "--urgency=critical",
-            summary.as_str(),
-            body.as_str(),
-        ],
-        std::time::Duration::from_secs(10),
-    )
-    .map_err(|why| {
+        ),
+        Err(fault) => format!(
+            "{} gives no picture before {}: {fault}",
+            node.display(),
+            meeting.title
+        ),
+    })?;
+    noticed.and(kept)
+}
+
+/// Tells Joel his camera gives no picture, in a notice from Camera that
+/// waits for him until he reads it.
+fn notice((summary, body): &(String, String)) -> Result<(), Failure> {
+    let words = [
+        "--app-name=Camera".to_string(),
+        "--urgency=critical".to_string(),
+        summary.clone(),
+        body.clone(),
+    ];
+    camera::within("notify-send", &words, std::time::Duration::from_secs(10)).map_err(|fault| {
         Failure::new(Exit::Failed, "the notice couldn't be sent")
-            .because(why)
+            .because(fault.to_string())
             .try_this("systemctl --user status notices")
     })
 }
