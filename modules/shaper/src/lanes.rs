@@ -1956,10 +1956,10 @@ mod tests {
         ] {
             let free = Lanes::default().split(&seen(joel, agents), 1.0);
             assert_eq!(free.agents_most, None, "agents not held were capped");
-            // Four fifths lands over the floor where agents straight have
-            // 4,000 free (carry lane round 2's F8), and where they wait
-            // alone, with 4,400 and nothing given up: 3,520. The others
-            // land on it.
+            // Each share keeps agents straight under what they'd have free,
+            // or on their floor, never under it; where four fifths lands
+            // over the floor, a_held_share_over_the_floor_is_what_agents_keep
+            // pins it (carry lane round 2's F8).
             for share in [0.8, 0.5, 0.1] {
                 let held = Lanes::default().split(
                     &Seen {

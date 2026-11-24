@@ -119,8 +119,6 @@ fn ended(tuning: Tuning, age: Result<Duration, std::time::SystemTimeError>) -> T
 /// network to remember.
 const UNKNOWN: &str = "unknown";
 
-/// What the recorder's lines have said: the link it records, and the
-/// controller stepped on each second they finished.
 /// What the last second said of a link's download (`Follow::carried`): the
 /// link and the stay's network it was read on, what it carried in kbit/s,
 /// and whether the controller's hold of it said the line was full then
@@ -133,6 +131,8 @@ pub struct Carried<'a> {
     pub cut: bool,
 }
 
+/// What the recorder's lines have said: the link it records, and the
+/// controller stepped on each second they finished.
 pub struct Follow {
     link: Option<String>,
     reading: Reading,

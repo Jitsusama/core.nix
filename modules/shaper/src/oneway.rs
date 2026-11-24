@@ -476,6 +476,9 @@ pub struct Way {
     /// stay, and when; None until it first does.
     ceiling: Option<(f64, f64)>,
     last_cut: f64,
+    /// When it was last cut under what it carried, rather than halved
+    /// over a sliver: a queue this machine fed.
+    last_fed_cut: f64,
     last_at: Option<f64>,
     under_half_since: Option<f64>,
     /// How long the download has passed over seconds since it was last
@@ -541,6 +544,7 @@ impl Way {
             late_since: None,
             ceiling: None,
             last_cut: f64::NEG_INFINITY,
+            last_fed_cut: f64::NEG_INFINITY,
             last_at: None,
             under_half_since: None,
             passed_s: 0.0,
@@ -996,12 +1000,16 @@ impl Way {
     }
 
     /// Whether this direction's hold says its line is full at `at`,
-    /// carrying `carried` in kbit/s: held, and cut within `CUT_LATELY_S`
-    /// or carrying `FULL` of the rate it's held to. A hold kept on over
-    /// a line gone quiet, as one with no base is for `CEILING_S`, or one
-    /// climbing back over little, says nothing of the line now.
+    /// carrying `carried` in kbit/s: held, and cut under what it carried
+    /// within `CUT_LATELY_S`, or carrying `FULL` of the rate it's held to.
+    /// A hold kept on over a line gone quiet, as one with no base is for
+    /// `CEILING_S`, one climbing back over little, or one halved over a
+    /// sliver, where the queue is mostly another machine's or the air's,
+    /// says nothing of this machine filling the line (shaper holds round
+    /// 1's F3 and F18): halved, it carries under half its hold.
     pub fn judged_full(&self, at: f64, carried: f64) -> bool {
-        self.rate.is_finite() && (at - self.last_cut <= CUT_LATELY_S || carried >= self.rate * FULL)
+        self.rate.is_finite()
+            && (at - self.last_fed_cut <= CUT_LATELY_S || carried >= self.rate * FULL)
     }
 
     /// What a trial's ceiling holds the upload to while the controller
@@ -1258,6 +1266,7 @@ impl Way {
         let drain = 1.0 - (delay_ms / 1_000.0).min(0.5);
         self.rate = (carried.min(self.rate) * 0.9 * drain).max(LEAST_KBIT);
         self.last_cut = at;
+        self.last_fed_cut = at;
         self.ceiling = Some((carried, at));
     }
 
@@ -2522,9 +2531,18 @@ mod tests {
             .and_then(|rest| rest.strip_suffix(" s ago."))
             .and_then(|secs| secs.parse().ok())
             .unwrap_or_else(|| panic!("no let-go time in: {why}"));
+        // The hold stood from the first cut, after 1 s, until CEILING_S
+        // past the last, by 3.2 s, and was let go by `end`: its last held
+        // second, not its first, dates the let-go (shaper holds round 1's
+        // F11), and within a minute the sentence says it in seconds.
+        let last_held = c.held_at.expect("a hold was never dated");
         assert!(
-            ago >= 20.0,
-            "a hold let go before a silent spell was said let go {ago} s ago"
+            (1.0 + CEILING_S - 1.0..=end).contains(&last_held),
+            "the hold's last held second was {last_held}"
+        );
+        assert!(
+            (end + 22.0 - ago - last_held).abs() < 1.5,
+            "a hold last held at {last_held} was said let go {ago} s ago"
         );
     }
 
@@ -2913,6 +2931,51 @@ mod tests {
         );
         let limits = run(&mut c, 30.0, 32.0, quiet(300.0, 1_000.0));
         assert_eq!(limits.down, None, "unlimited until a queue stands");
+    }
+
+    // Each way a hold says its line is full, and where each stops
+    // (shaper holds round 1's F8, F3 and F18).
+    #[test]
+    fn a_hold_says_its_line_is_full_only_while_filled_or_lately_cut_under_what_it_carried() {
+        let mut way = Way::new(Some(100_000.0));
+        assert!(
+            !way.judged_full(0.0, 74_000.0),
+            "a hold carrying under FULL was full"
+        );
+        assert!(
+            way.judged_full(0.0, 75_000.0),
+            "a hold carrying FULL wasn't full"
+        );
+        way.cut(10.0, 40.0, 60_000.0, true);
+        let full = way.rate * FULL;
+        let after = 10.0 + CUT_LATELY_S;
+        assert!(
+            way.judged_full(after, 0.0),
+            "a cut CUT_LATELY_S ago wasn't full"
+        );
+        assert!(
+            !way.judged_full(after + 0.1, full - 1.0),
+            "a cut past CUT_LATELY_S, under FULL of its hold, was full"
+        );
+        assert!(
+            way.judged_full(after + 0.1, full),
+            "a download filling its hold past the cut's few seconds wasn't full"
+        );
+        let mut sliver = Way::new(Some(100_000.0));
+        sliver.cut(10.0, 40.0, 1_000.0, true);
+        assert!(sliver.rate < 100_000.0, "a cut over a sliver didn't halve");
+        assert!(
+            !sliver.judged_full(10.0, 1_000.0),
+            "a hold halved over a sliver, the queue another's, was full"
+        );
+        let free = Way {
+            last_fed_cut: 10.0,
+            ..Way::new(None)
+        };
+        assert!(
+            !free.judged_full(10.0, 1e6),
+            "a way held to nothing was full"
+        );
     }
 
     #[test]

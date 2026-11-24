@@ -330,8 +330,11 @@ class Rig:
                 and (sent[name] > heard[name] or replied[name] > came[name])
             ]
             failed = [name for name in held if "error" in results[name] and name not in lost]
+            said = {
+                name: handshake(sent[name], heard[name], replied[name], came[name]) for name in held
+            }
             # iperf3 connects a call's streams one after another and stops at the first left
-            # unanswered, so a reply came for every connect heard only when the failing one
+            # unanswered, so every reply the server sent came only when the failing connect
             # never reached the server: lost going up, judged only where a subtest counts the
             # shaper's upload drops over every try.
             down = [name for name in lost if replied[name] > came[name]]
@@ -340,18 +343,20 @@ class Rig:
             if not lost or failed or over or (down and dropped) or made == HANDSHAKES:
                 break
             print(
-                f"the {', '.join(lost)} call's handshake went unanswered, its server hearing"
-                f" {[heard[name] for name in lost]} connects and the client getting"
-                f" {[came[name] for name in lost]} replies, with the IFB dropping {dropped}"
+                f"the {', '.join(lost)} call's handshake went unanswered,"
+                f" {'; '.join(said[name] for name in lost)}, with the IFB dropping {dropped}"
                 " in the calls' tins, so the calls are made again"
             )
         for name in lost:
             results[name]["error"] += (
-                f" (made {made} of {HANDSHAKES} times, its server hearing {heard[name]} connects"
-                f" and the client getting {came[name]} replies, with the IFB dropping {dropped}"
-                " in the calls' tins,"
-                f" {stopped(made, failed, over, down)})"
+                f" (made {made} of {HANDSHAKES} times, {said[name]}, with the IFB dropping"
+                f" {dropped} in the calls' tins, {stopped(made, failed, over, down)})"
             )
+        # A server that heard a connect and never answered fails its call as iperf3's own
+        # error, so the counts say whose failing it was.
+        for name in failed:
+            if unanswered(results[name]):
+                results[name]["error"] += f" ({said[name]}, so no reply was lost)"
         return results
 
     def handshakes(self, machine: BaseMachine, way: str = "heard") -> dict[str, int]:
@@ -733,6 +738,14 @@ def held_for_a_call(turned: bool, kbit: int | None, room: int | None) -> bool:
 def unanswered(result: Json) -> bool:
     """Give whether iperf3 gave up on a call's handshake, before it sent a second of it."""
     return not result.get("intervals") and str(result.get("error", "")).startswith(UNANSWERED)
+
+
+def handshake(sent: int, heard: int, replied: int, came: int) -> str:
+    """Say what each machine sent and heard of a call's handshake in one try."""
+    return (
+        f"the client sending {sent} connects, its server hearing {heard} and sending"
+        f" {replied} replies, and the client getting {came}"
+    )
 
 
 def over_the_bar(results: dict[str, Json], ran: list[str]) -> dict[str, int]:

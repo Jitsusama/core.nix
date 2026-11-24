@@ -176,18 +176,13 @@ mod tests {
             (Some(81_000), None),
             "the controller letting go let the call's hold go too"
         );
-        let (held, said) = room.step("eth1", HOME, true, (None, true), Some(LINE));
+        // A second the recorder missed says nothing carried and no cut
+        // (main's room_heard), which keeps the hold.
+        let (held, said) = room.step("eth1", HOME, true, UNKNOWN, Some(LINE));
         assert_eq!(
             (held, said),
             (Some(81_000), None),
             "a second the recorder missed under the cut"
-        );
-        assert_eq!(
-            Room::default()
-                .step("eth1", HOME, true, (None, true), Some(LINE))
-                .0,
-            Some(81_000),
-            "a cut with nothing known carried starts a hold too"
         );
     }
 
