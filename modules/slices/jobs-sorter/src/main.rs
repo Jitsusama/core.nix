@@ -1450,14 +1450,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             writeback: own.writeback,
         });
     }
-    ranks.fitting.held.clone_from(ranks.holding.scopes());
-    fit_floors(
-        &mut ranked,
-        windows.prefixes,
-        &ranks.hosts,
-        &mut ranks.fitting,
-        now,
-    );
+    fit_ranked(&mut ranked, windows.prefixes, ranks, now);
     let control =
         kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
     give_ranks(ranked, &mut ranks.hosts, control.as_deref());
@@ -1830,8 +1823,37 @@ struct Fitting {
     overrun: HashSet<String>,
     /// Each window's claim at its peak within the minute.
     peaks: budget::Peaks,
-    /// The windows the sorter holds, as of the last look.
+    /// The scopes the sorter floors itself, as of this look.
+    floored: Floored,
+}
+
+/// The scopes the sorter floors itself: the windows it holds, each with its
+/// pi, and those keep.rs keeps. Each floor is one the sorter set and
+/// bounds, so these claim the room first and outside the windows' joint
+/// cap ([`claims`]).
+#[derive(Debug, Default)]
+struct Floored {
     held: HashSet<PathBuf>,
+    /// Those keep.rs keeps, by unit.
+    kept: HashSet<String>,
+}
+
+impl Floored {
+    /// Takes this look's floors from what `holding` holds and `keeping`
+    /// keeps.
+    fn take(&mut self, holding: &holds::Holding, keeping: &keep::Keeping) {
+        self.held.clone_from(holding.scopes());
+        self.kept = keeping.units().map(str::to_owned).collect();
+    }
+
+    /// Whether the sorter floors `scope` itself.
+    fn floors(&self, scope: &Path) -> bool {
+        self.held.contains(scope)
+            || scope
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| self.kept.contains(name))
+    }
 }
 
 impl Fitting {
@@ -1886,7 +1908,7 @@ fn claims(
     low: u64,
     prefixes: &[String],
     mine: &[&Path],
-    held: &HashSet<PathBuf>,
+    floored: &Floored,
     peaks: &mut budget::Peaks,
     now: std::time::Instant,
 ) -> (u64, Vec<(String, u64)>) {
@@ -1906,16 +1928,17 @@ fn claims(
         let name = path.file_name()?.to_string_lossy().into_owned();
         Some((name, holds::current(path)?, memory_low(path)?))
     };
-    // A scope counts as a window by its name alone, and the sorter holds no more than
-    // focus::MOST windows at focus::FLOOR each, so what the windows claim past that is claimed
-    // as a stray's is, after the units Joel is at, and isn't held: an agent naming scopes as
-    // windows and asking for max would otherwise take their floors. Each window claims what it
-    // held at its peak within the minute, so a window paging out doesn't hand the units room it
-    // takes back a look later, but never past its floor now: one the sorter has let go claims
-    // its new floor at once. The windows the sorter holds take the room first, so scopes only
-    // named as windows can't push them out of it, then the rest by name, so a look's order is
-    // the next one's.
-    windows.sort_by_key(|path| (!held.contains(path), path.clone()));
+    // The scopes the sorter floors itself, the windows it holds with their pis and those
+    // keep.rs keeps, claim what they hold up to that floor, since the sorter set each and
+    // bounds them. Any other scope counts as a window by its name alone, so together those
+    // claim no more than focus::MOST windows at focus::FLOOR, by name so a look's order is the
+    // next one's; past that they claim as strays do, after the units Joel is at, and aren't
+    // held: an agent naming scopes as windows and asking for max would otherwise take the
+    // units' floors, or push the sorter's own floors out. Each window claims what it held at
+    // its peak within the minute, so a window paging out doesn't hand the units room it takes
+    // back a look later, but never past its floor now: one the sorter has let go claims its
+    // new floor at once.
+    windows.sort_by_cached_key(|path| (!floored.floors(path), path.clone()));
     let mut left = focus::FLOOR.saturating_mul(u64::try_from(focus::MOST).unwrap_or(u64::MAX));
     let mut kept = Vec::new();
     let mut strays: Vec<(String, u64)> = Vec::new();
@@ -1924,11 +1947,16 @@ fn claims(
             continue;
         };
         let claims = current.min(floor);
-        let held = peaks
+        let peak = peaks
             .hold(&path.display().to_string(), claims.min(focus::FLOOR), now)
-            .min(floor)
-            .min(left);
-        left -= held;
+            .min(floor);
+        let held = if floored.floors(path) {
+            peak
+        } else {
+            let held = peak.min(left);
+            left -= held;
+            held
+        };
         kept.push(held);
         strays.push((name, claims.saturating_sub(held)));
     }
@@ -1941,6 +1969,18 @@ fn claims(
             .map(|(name, current, floor)| (name, current.min(floor))),
     );
     (room, strays)
+}
+
+/// Fits the `ranked` units' floors ([`fit_floors`]) beside the scopes the
+/// sorter floors itself as `ranks` holds and keeps them this look.
+fn fit_ranked(
+    ranked: &mut [Ranked],
+    prefixes: &[String],
+    ranks: &mut Ranks,
+    now: std::time::Instant,
+) {
+    ranks.fitting.floored.take(&ranks.holding, &ranks.keeping);
+    fit_floors(ranked, prefixes, &ranks.hosts, &mut ranks.fitting, now);
 }
 
 /// Fits the floors the `ranked` units would be given into what each one's
@@ -1991,7 +2031,7 @@ fn fit_floors(
             low,
             prefixes,
             &paths,
-            &fitting.held,
+            &fitting.floored,
             &mut fitting.peaks,
             now,
         );
@@ -5229,25 +5269,39 @@ mod tests {
     }
 
     #[test]
-    fn the_windows_the_sorter_holds_are_held_first_and_scopes_named_as_windows_after() {
+    fn the_floors_the_sorter_sets_claim_first_and_only_scopes_named_as_windows_share_the_cap() {
         const MIB: u64 = 1 << 20;
-        let slice = slice_with(
-            "fit-held-first",
-            8192 * MIB,
-            &[
-                ("kitty-1-1.scope", 2048 * MIB, "max"),
-                ("kitty-1-2.scope", 2048 * MIB, "max"),
-                ("kitty-1-3.scope", 2048 * MIB, "max"),
-                ("kitty-1-4.scope", 2048 * MIB, "max"),
-            ],
-        );
-        let held: HashSet<PathBuf> = [slice.join("kitty-1-4.scope")].into();
+        let held = [
+            "kitty-1-1.scope",
+            "mycelium-pi-1.scope",
+            "kitty-1-2.scope",
+            "mycelium-pi-2.scope",
+            "kitty-1-3.scope",
+            "mycelium-pi-3.scope",
+        ];
+        let named = [
+            "kitty-0-1.scope",
+            "kitty-0-2.scope",
+            "kitty-0-3.scope",
+            "kitty-0-4.scope",
+        ];
+        let children: Vec<(&str, u64, &str)> = held
+            .iter()
+            .chain(&named)
+            .map(|&name| (name, 2048 * MIB, "max"))
+            .chain([("kitty-1-9.scope", 512 * MIB, "536870912")])
+            .collect();
+        let slice = slice_with("fit-floored-first", 32768 * MIB, &children);
+        let floored = Floored {
+            held: held.iter().map(|name| slice.join(name)).collect(),
+            kept: ["kitty-1-9.scope".to_owned()].into(),
+        };
         let (_, strays) = claims(
             &slice,
-            8192 * MIB,
-            &["kitty-".to_owned()],
+            32768 * MIB,
+            &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
             &[],
-            &held,
+            &floored,
             &mut budget::Peaks::default(),
             std::time::Instant::now(),
         );
@@ -5259,8 +5313,28 @@ mod tests {
             .collect();
         assert_eq!(
             past,
-            ["kitty-1-3.scope"],
-            "a window the sorter holds was left past the cap, or the rest weren't taken by name"
+            ["kitty-0-4.scope"],
+            "a floor the sorter set, a held window's, its pi's or one keep.rs keeps, was left past \
+             the cap, or scopes only named as windows weren't capped by name"
+        );
+    }
+
+    #[test]
+    fn a_look_fits_the_floors_beside_what_the_sorter_holds_and_keeps_now() {
+        let mut ranks = Ranks::default();
+        let held = Path::new("/sys/fs/cgroup/agents.slice/mycelium-pi-1.scope");
+        let kept = Path::new("/sys/fs/cgroup/agents.slice/kitty-1-9.scope");
+        let other = Path::new("/sys/fs/cgroup/agents.slice/kitty-0-1.scope");
+        ranks.holding.done(held, Some(0));
+        ranks.keeping.done("kitty-1-9.scope", keep::Floor::Pi);
+        fit_ranked(&mut [], &[], &mut ranks, std::time::Instant::now());
+        assert!(
+            ranks.fitting.floored.floors(held) && ranks.fitting.floored.floors(kept),
+            "a look fitted the floors without the scopes the sorter holds and keeps"
+        );
+        assert!(
+            !ranks.fitting.floored.floors(other),
+            "a scope the sorter neither holds nor keeps was taken as one it floors"
         );
     }
 
