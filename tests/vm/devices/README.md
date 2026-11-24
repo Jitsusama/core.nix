@@ -18,6 +18,7 @@ test's opening comment says what stands in for the device a VM lacks.
 | `ir-camera.nix`, `-vm-test.py`           | a stand-in IR camera relayed only to the programs reading   |
 | `loopback-holders.nix`, `-vm-test.py`    | which programs hold a loopback camera open                  |
 | `mx-brio-at-switch.nix`, `-vm-test.py`   | a switch taking hold of an MX Brio already plugged in       |
+| `relay-waits.nix`, `-vm-test.py`         | the cameras' relay waiting 90 s for a frame, 10 s for more  |
 
 Two stand-ins sit in the tests folder's `stand-ins/`, since the desktop's
 tests take them too: both lid tests take their lid from

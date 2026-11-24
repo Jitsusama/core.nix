@@ -6711,6 +6711,11 @@
     in a sleep leaves its boot said asleep, and a machine killed as a reset
     kills it leaves its boot said cut short, its last second read kept
   '';
+  vm-the-relay-waits-out-a-slow-camera = ''
+    the shared cameras' relay, read by a client, makes a camera that never frames again after
+    90 s and ends 90 s later, saying so each time, and makes one whose frames stop again after
+    10 s, each time it stops, never ending it
+  '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the
     lender's account leaves them, and give root the lent builder's line the cloud vouches for and

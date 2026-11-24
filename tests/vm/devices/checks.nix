@@ -29,6 +29,10 @@ onLinux {
   vm-a-switch-takes-a-plugged-in-brio = import ./mx-brio-at-switch.nix {
     inherit self pkgs;
   };
+  # How long the shared cameras' relay waits for a frame before it makes
+  # its camera's pipeline again, and when it ends, shows only with a
+  # loopback there and a program reading it.
+  vm-the-relay-waits-out-a-slow-camera = import ./relay-waits.nix { inherit self pkgs; };
   # Whether logind and the compositor hear the lid's own switch or
   # lid-hinge's shows only with udev, uinput and logind there.
   vm-lid-shuts-with-the-hinge = import ./lid-hinge.nix { inherit self pkgs; };
