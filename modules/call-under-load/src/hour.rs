@@ -22,6 +22,10 @@ const HEARD: &str = "call sound heard and counted";
 /// reads it as the p99 of every wakeup.
 const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// Each app's figure for the time a drawing thread was blocked in the
+/// kernel: the p99 across the hour's 10 s windows of the most any one was.
+const CHROME_BLOCKED: &str = "Chrome most blocked per 10 s p99 ms";
+const SLACK_BLOCKED: &str = "Slack most blocked per 10 s p99 ms";
 /// Joel's own calls' figure, in ms of waiting per second.
 const REAL: &str = "real call sending wait p99 ms per s";
 /// How many of them the watch couldn't read.
@@ -107,6 +111,21 @@ fn left_out(app: &str, waits: &Waits) -> Vec<String> {
         ));
     }
     said
+}
+
+/// What an app's time blocked stands for, or why it's unread.
+fn kept_blocked(app: &str, waits: &Waits) -> Vec<String> {
+    if waits.blocked_windows == 0 {
+        return vec![format!(
+            "Joel's {app}: unread, since the kernel keeps no time blocked without \
+             kernel.sched_schedstats"
+        )];
+    }
+    vec![format!(
+        "Joel's {app}: each 10 s window's most any drawing thread was blocked in the kernel, \
+         on a lock, a page read back or reclaim, from lag-watch, {} windows",
+        waits.blocked_windows
+    )]
 }
 
 /// The call's sound as four figures, each saying what stood in for Joel's
@@ -247,6 +266,22 @@ pub fn measures(
             2.0,
             true,
             left_out("Slack", slack),
+        ),
+        // Past 50 ms blocked in ten seconds, the click's own target, a
+        // window could have missed several frames running.
+        measure(
+            CHROME_BLOCKED,
+            chrome.blocked_p99,
+            50.0,
+            true,
+            kept_blocked("Chrome", chrome),
+        ),
+        measure(
+            SLACK_BLOCKED,
+            slack.blocked_p99,
+            50.0,
+            true,
+            kept_blocked("Slack", slack),
         ),
         launcher,
     ]);
@@ -573,6 +608,8 @@ mod tests {
             windows: 360,
             lowered: 12,
             unwatched: 0,
+            blocked_p99: Some(120.04),
+            blocked_windows: 300,
         };
         let all = measures(
             &call(),
@@ -582,7 +619,7 @@ mod tests {
             &[20.0, 31.0],
             Some("journalctl ended with code 1: no"),
         );
-        assert_eq!(all.len(), 12);
+        assert_eq!(all.len(), 14);
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         for (name, now, target) in [
             (HEARD, 1.0, 1.0),
@@ -622,6 +659,27 @@ mod tests {
             "Chrome's wait doesn't say how many windows it read: {behind:?}"
         );
         assert_eq!(named(SLACK_WAIT).now, None);
+        let blocked = named(CHROME_BLOCKED);
+        assert_eq!(
+            (blocked.now, blocked.target, blocked.lower_is_better),
+            (Some(120.1), 50.0, true),
+            "Chrome's time blocked reads the wrong figure or target"
+        );
+        assert!(
+            blocked.behind[0].contains("300 windows"),
+            "Chrome's time blocked doesn't say how many windows kept it: {:?}",
+            blocked.behind
+        );
+        let unkept = named(SLACK_BLOCKED);
+        assert_eq!(
+            unkept.now, None,
+            "Slack's time blocked, never kept, was read"
+        );
+        assert!(
+            unkept.behind[0].contains("kernel.sched_schedstats"),
+            "a time blocked never kept doesn't say why: {:?}",
+            unkept.behind
+        );
         assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
         assert_eq!(named("launcher open ms p99").now, Some(31.0));
         assert_eq!(

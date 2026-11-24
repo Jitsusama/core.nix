@@ -404,6 +404,7 @@
         keyboard = ./modules/keyboard/nixos.nix;
         keyd = ./modules/keyd/nixos.nix;
         kmscon = ./modules/kmscon/nixos.nix;
+        lag-watch = ./modules/lag-watch/nixos.nix;
         lanzaboote = moduleFrom ./modules/lanzaboote/nixos.nix { inherit lanzaboote; };
         last-seconds = ./modules/last-seconds/nixos.nix;
         libvirt = ./modules/libvirt/nixos.nix;

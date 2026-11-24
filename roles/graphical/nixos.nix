@@ -48,6 +48,7 @@
     nixosModules.gnome-keyring
     nixosModules.greetd
     nixosModules.kmscon
+    nixosModules.lag-watch
     nixosModules.litra
     nixosModules.memory-modules
     nixosModules.mpv
