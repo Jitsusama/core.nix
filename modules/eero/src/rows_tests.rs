@@ -558,10 +558,10 @@ fn a_vocabulary_without_a_word_says_which() {
 }
 
 /// The rows the desktop's tests serve as the daemon would
-/// (tests/desktop/stand-in-eero.py), held to the records the daemon serves
-/// of the contract's network, each ordered as Kept orders it and the
-/// place's own drawer and each profile's beside them, so the stand-in
-/// never says what the daemon wouldn't.
+/// (tests/desktop/stand-ins/stand-in-eero.py), held to the records the
+/// daemon serves of the contract's network, each ordered as Kept orders
+/// it and the place's own drawer and each profile's beside them, so the
+/// stand-in never says what the daemon wouldn't.
 /// They offer the map, with net's golden record's worst concern
 /// (modules/net/tests/network.json), as Joel's machine does, so the
 /// desktop's tests and shots see the map warn and each device open on it.
