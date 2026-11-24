@@ -2163,9 +2163,11 @@
     leaving, past the ten seconds a relay leaving idle takes them, gives those a few seconds once
     its answers end, even one pi says nothing on, cuts its answers when its drain time runs out,
     not when those few seconds do, or at a second stop, ends what it sends direct when stopped as
-    it leaves idle, at once if stopped again, says what it waited on and its counts, its cuts
-    apart from pi's cancels, refuses a
-    drain of none and the flags it no longer takes, keeps its socket to its account, from a second
+    it leaves idle, at once if stopped again, says what it waited on and its counts once more, last,
+    once what it cut has ended, even with its counts moved meanwhile, its cuts apart from pi's
+    cancels, counts a request still waiting on its first connection as cut when stopped and as
+    pi's cancel when pi leaves it, refuses a drain of none and each flag it no longer takes, telling
+    them by their words, keeps its socket to its account, from a second
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
