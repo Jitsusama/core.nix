@@ -197,6 +197,14 @@ impl Inputs {
         Some(said.to_owned())
     }
 
+    /// Each quest's title as the node's quest records give it, by its id.
+    fn quest_titles(&self) -> HashMap<&str, &str> {
+        self.quests
+            .records()
+            .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
+            .collect()
+    }
+
     /// What a quest and those under it spent today, in all.
     fn family(&self, quest: &str) -> Option<String> {
         let all = self
@@ -459,11 +467,7 @@ impl Inputs {
             now,
         );
         landed::waiting_for_switch(&mut records, &self.carried);
-        let titles: HashMap<&str, &str> = self
-            .quests
-            .records()
-            .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
-            .collect();
+        let titles = self.quest_titles();
         landed::drawn(&mut records, &self.words, &titles, &self.carried);
         if !self.fed_back.is_empty() {
             let talks: HashMap<String, Talk> = self
@@ -766,7 +770,16 @@ impl Inputs {
         let networks: Vec<&Value> = self.networks.records().map(|(_, one)| one).collect();
         let after = networks::rows(&networks, &made, &self.words);
         let kept: Vec<&Value> = self.carries.records().map(|(_, one)| one).collect();
-        let carried = carries::rows(&kept, &made, &self.words);
+        // A carried session runs elsewhere under another id, so its carry
+        // goes by its quest's title, as a landing's ended session does;
+        // walked only on a day the node keeps a carry, which on a machine
+        // that carries is nearly every make.
+        let titles = if kept.is_empty() {
+            HashMap::new()
+        } else {
+            self.quest_titles()
+        };
+        let carried = carries::rows(&kept, &made, &titles, &self.words);
         made.extend(after);
         made.extend(carried);
         made
@@ -1436,6 +1449,26 @@ mod tests {
             "named as its session's row is"
         );
         assert_eq!(row("row:agents-top:carried")["name"], "Carried");
+    }
+
+    #[test]
+    fn a_carry_whose_session_runs_elsewhere_goes_by_its_quests_title() {
+        let mut inputs = inputs();
+        inputs.quests.took(&json!({"records": [
+            {"key": "quest:QEST-AWAY", "id": "QEST-AWAY", "title": "Spikes 6 and 7"}]}));
+        inputs.carries.took(&json!({"records": [
+            {"key": "carry:s-away:2026-11-23T22:23:55Z", "kind": "carry",
+             "at": "2026-11-23T22:23:55Z", "by": "O", "session": "s-away",
+             "address": "AWAY01", "quest": "QEST-AWAY", "from": "skiff", "to": "tern",
+             "why": "spreading load", "state": "carrying"}]}));
+        let shown = served(&inputs);
+        let carry = &shown
+            .get("row:agents-top:carried:s-away:2026-11-23T22:23:55Z")
+            .expect("its row")["row"];
+        assert_eq!(
+            carry["name"], "Spikes 6 and 7",
+            "no row of the tree's names a session gone elsewhere; the node's quest record does"
+        );
     }
 
     #[test]
