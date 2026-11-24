@@ -1,7 +1,7 @@
 //! The definition of good, from `good.md` beside cadence: what each
 //! measure the hour card judges is held to, the line of Joel's it comes
-//! from, and what being over it costs him. The hour reads the page each
-//! run and counts each measure it names in no section or holds to another
+//! from, and what being over it costs him. The page is built in, and each
+//! hour counts each measure it names in no section or holds to another
 //! target, and each section saying less than all four, so a figure can't
 //! push or pass work with no line of his behind it.
 
@@ -23,7 +23,8 @@ enum Target {
     Most(f64),
     /// Shown and never judged.
     Unjudged,
-    /// Set where the measure is read, which the page doesn't repeat.
+    /// Set where the measure is read, which the page doesn't repeat; only
+    /// where it says so, so a number it can't read isn't taken for one.
     Elsewhere,
 }
 
@@ -65,7 +66,7 @@ fn section(text: &str) -> Section {
     Section {
         title: title.trim().to_owned(),
         keys: field("Measures:").map(spans).unwrap_or_default(),
-        target: field("Target:").map(target),
+        target: field("Target:").and_then(target),
         joel: items.iter().find(|i| i.starts_with("Joel, ")).cloned(),
         cost: field("Over costs him:").map(str::to_owned),
     }
@@ -81,13 +82,17 @@ fn spans(text: &str) -> Vec<String> {
 }
 
 /// What a target's words hold a measure to: the number they open with,
-/// none where they open with "none", and otherwise what is set elsewhere.
-fn target(words: &str) -> Target {
+/// unjudged where they open with "none", the source's own where they
+/// say it's set where it's read, and none for any other words.
+fn target(words: &str) -> Option<Target> {
     if words.starts_with("none") {
-        return Target::Unjudged;
+        return Some(Target::Unjudged);
+    }
+    if words.starts_with("set where it's read") {
+        return Some(Target::Elsewhere);
     }
     let number = words.split([' ', ',']).next().unwrap_or_default();
-    number.parse().map_or(Target::Elsewhere, Target::Most)
+    number.parse().ok().map(Target::Most)
 }
 
 /// Whether `pattern` names `key`: the key itself, or, ending in `*`,
@@ -106,7 +111,8 @@ fn quoted(joel: &str) -> bool {
     when.chars().any(|c| c.is_ascii_digit()) && said.len() > 1 && said.ends_with('"')
 }
 
-/// What each section fails to say, and each key two sections name.
+/// What each section fails to say, and each key two sections name, a key
+/// a family names in another section counted as named twice too.
 fn unsaid(page: &[Section]) -> Vec<String> {
     let mut faults = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
@@ -130,7 +136,7 @@ fn unsaid(page: &[Section]) -> Vec<String> {
             faults.push(format!("{}: {}", s.title, lacks.join(", ")));
         }
         for key in &s.keys {
-            if seen.contains(&key.as_str()) {
+            if seen.iter().any(|named| names(named, key) || names(key, named)) {
                 faults.push(format!("{key}: named twice"));
             }
             seen.push(key);

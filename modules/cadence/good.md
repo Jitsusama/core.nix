@@ -7,19 +7,19 @@ functionally, and by maintaining clean zones", and on 11 November that "nothing 
 spec for this". A target with no reason behind it can push work he doesn't want or pass what he
 does, so each one says why.
 
-The hour reads this page every time it runs. A measure on the card that no section names, or
-whose target differs from the one written here, is counted in `measures-undefined`, and its
-keeper is asked to write its line. Every target is a most: lower is better for each.
+The page is built into cadence, and every hour holds the card to it. A measure on the card
+that no section names, or whose target differs from the one written here, is counted in
+`measures-undefined`, and its keeper is asked to write its line. Every target is a most: lower is better for each.
 
 Each section names its measures' keys, a key ending in `*` naming every key that opens the
 same way. A target that opens with a number is the one the hour must hold the measure to; one
-that opens with "none" means the measure is shown and never judged; any other target is set
-where the measure is read, and the hour takes it from there.
+that opens with "none" means the measure is shown and never judged; one that opens with "set
+where it's read" is taken from the measure's own source. Any other target is counted as none.
 
 ## Apps Under Load
 
 - Measures: `apps:*`
-- Target: each figure's own, as apps-under-load writes it in its hour.
+- Target: set where it's read: each figure's own, as apps-under-load writes it in its hour.
 - Joel, 19 Nov: "have everything be very quick to respond ... run insanely high quality video
   and audio while the machine is totally under all the pressures"
 - Over costs him: a call that freezes, or a Slack, Chrome or launcher that lags under his
@@ -69,14 +69,14 @@ where the measure is read, and the hour takes it from there.
 ## Merge to On
 
 - Measures: `merge-to-on`
-- Target: the median the tick's card names for it.
+- Target: set where it's read: the median the tick's card names for it.
 - Joel, 14 Nov: "ship more and faster"
 - Over costs him: a fix merged but not yet on his machine, so what hurt still hurts.
 
 ## Commit to Merge
 
 - Measures: `commit-to-merge`
-- Target: the median the tick's card names for it.
+- Target: set where it's read: the median the tick's card names for it.
 - Joel, 14 Nov: "ship more and faster"
 - Over costs him: finished work sits waiting on its gate instead of reaching him.
 
@@ -273,7 +273,7 @@ where the measure is read, and the hour takes it from there.
 ## Clean Zones
 
 - Measures: `clean:*`
-- Target: each measure's own, as code-health writes it in its hour.
+- Target: set where it's read: each measure's own, as code-health writes it in its hour.
 - Joel, 14 Nov: "delivering insane quality, both functionally, and by maintaining clean zones"
 - Over costs him: code that gets harder to change, so every later fix is slower to land.
 
@@ -281,6 +281,7 @@ where the measure is read, and the hour takes it from there.
 
 - Measures: `measures-undefined`
 - Target: 0 measures on the card with no section here, or a target here they aren't held to.
-- Joel, 11 Nov 18:4x: "nothing can be out of spec for this."
+- Joel, 11 Nov 18:4x: "we need to learn from all pain points with all the things and be in a
+  constant improvement loop. nothing can be out of spec for this."
 - Over costs him: a figure with no reason behind it, pushing work he doesn't want or passing
   what he does.

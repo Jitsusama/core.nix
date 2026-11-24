@@ -70,7 +70,6 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         ("commit-to-merge", 20.0),
         ("apps:launcher-open", 50.0),
         ("clean:core:long-files", 0.0),
-        (KEY, 0.0),
     ];
     shown.extend(at_most.map(|(key, most)| held(key, Some(most))));
     let unjudged = ["landed", "balance", measures::spent::KEY];
@@ -89,7 +88,8 @@ fn a_measure_with_no_section_or_another_target_is_counted() {
                 - Joel, 1 Nov: \"good\"\n- Over costs him: much.\n\n## Shown\n\n\
                 - Measures: `shown`\n- Target: none.\n- Joel, 1 Nov: \"good\"\n\
                 - Over costs him: nothing.\n\n## Read\n\n- Measures: `read`\n\
-                - Target: the source's own.\n- Joel, 1 Nov: \"good\"\n- Over costs him: much.\n";
+                - Target: set where it's read: the source's own.\n\
+                - Joel, 1 Nov: \"good\"\n- Over costs him: much.\n";
     let cases = [
         (held("held", Some(2.0)), None),
         (held("held", None), None),
@@ -130,7 +130,12 @@ fn a_section_saying_less_than_all_four_or_a_key_twice_is_counted() {
     let page = "# Good\n\n## Bare\n\n- Measures: `bare`\n\n## Unquoted\n\n\
                 - Measures: `bare`, `other`\n- Target: 0.\n- Joel, 1 Nov: good\n\
                 - Over costs him: much.\n\n## Undated\n\n- Measures: `third`\n- Target: 0.\n\
-                - Joel, sometime: \"good\"\n- Over costs him:\n  much, once wrapped.\n";
+                - Joel, sometime: \"good\"\n- Over costs him:\n  much, once wrapped.\n\n\
+                ## Worded\n\n- Measures: `family:*`\n- Target: six.\n\
+                - Joel, 1 Nov: \"good\"\n- Over costs him: much.\n\n## Keyless\n\n\
+                - Target: 0.\n- Joel, 1 Nov: \"good\"\n- Over costs him: much.\n\n\
+                ## Overlap\n\n- Measures: `family:one`\n- Target: 0.\n\
+                - Joel, 1 Nov: \"good\"\n- Over costs him: much.\n";
     assert_eq!(
         judged(page, &[]).behind,
         [
@@ -138,6 +143,9 @@ fn a_section_saying_less_than_all_four_or_a_key_twice_is_counted() {
             "Unquoted: no dated line of Joel's",
             "bare: named twice",
             "Undated: no dated line of Joel's",
+            "Worded: no target",
+            "Keyless: no measure",
+            "family:one: named twice",
         ],
         "a section's faults were misread"
     );
