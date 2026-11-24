@@ -30,7 +30,7 @@ holds = "`needs-you,stuck`"
 [act.session.owed]
 by = "85PKB2"
 due = "2026-11-24 18:30"
-why = "mesh_read gives the mesh's questions, not the cells' wants of him"
+why = "person_needs reads them, and /needs lists and picks, still unmerged"
 
 [act.map.has]
 file = "modules/mycelium/site/keys.ts"
@@ -123,7 +123,7 @@ holds = "goes into the steer inbox"
 [act.session.owed]
 by = "85PKB2"
 due = "2026-11-25 12:00"
-why = "mesh_send can't pick a want's choice or answer an approval as he would"
+why = "/needs goes to the cell by its go link, answered in the launcher until typing speaks as him"
 
 [act.map.owed]
 by = "KP0L6A"
@@ -239,7 +239,7 @@ why = "no command reads the look list"
 [act.session.owed]
 by = "85PKB2"
 due = "2026-11-24 18:30"
-why = "show_person adds to the list, and nothing reads it back"
+why = "/needs opens a look, marks it opened, and clears it as cleared by him, still unmerged"
 
 [act.map.owed]
 by = "KP0L6A"
