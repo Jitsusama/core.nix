@@ -1272,15 +1272,19 @@ fn sent_up(
     };
     // Unsized: asking the store their sizes would cost every send a walk.
     // A copy sent again for a scope refused counts with it, as one.
-    let (went, heard) = uplink::sent(None, || {
-        scoped_or_again(
-            upload_scope(),
-            sending,
-            |went| *went,
-            "nix-offload: the send couldn't be given a scope of its own, since the user \
-             manager's bus refused it, so it goes again outside one",
-        )
-    })?;
+    let (went, heard) = uplink::sent(
+        None,
+        || {
+            scoped_or_again(
+                upload_scope(),
+                sending,
+                |went| *went,
+                "nix-offload: the send couldn't be given a scope of its own, since the user \
+                 manager's bus refused it, so it goes again outside one",
+            )
+        },
+        |sent| matches!(sent, Ok((true, _))),
+    )?;
     if went {
         return Ok(());
     }
@@ -1547,9 +1551,11 @@ fn derivations_up(
     };
     let turn = uplink::waited(|| uplink_turn(rank, &about));
     let within = turn_within(size);
-    let (ended, heard) = uplink::sent(size, || {
-        copied_up([nix, alive], upload_scope(), &copying, turn, within, &about)
-    })
+    let (ended, heard) = uplink::sent(
+        size,
+        || copied_up([nix, alive], upload_scope(), &copying, turn, within, &about),
+        |copied| matches!(copied, Ok((Ok(status), _)) if status.success()),
+    )
     .map_err(Uncopied::failed)?;
     match ended {
         Ok(status) if status.success() => Ok(()),
@@ -2555,17 +2561,22 @@ fn sent_held(
         let ended = finished_within(&mut copying.child, within);
         Ok::<_, std::io::Error>((ended, copying.heard()))
     };
-    let ended = uplink::sent(Some(size), || {
-        scoped_or_again(
-            upload_scope(),
-            send,
-            |ended| ended.is_some_and(|status| status.success()),
-            &format!(
-                "nix-offload: the send {about} couldn't be given a scope of its own, since the \
-                 user manager's bus refused it, so it goes again outside one, keeping its turn"
-            ),
-        )
-    })
+    let ended = uplink::sent(
+        Some(size),
+        || {
+            scoped_or_again(
+                upload_scope(),
+                send,
+                |ended| ended.is_some_and(|status| status.success()),
+                &format!(
+                    "nix-offload: the send {about} couldn't be given a scope of its own, since \
+                     the user manager's bus refused it, so it goes again outside one, keeping \
+                     its turn"
+                ),
+            )
+        },
+        |sent| matches!(sent, Ok((Some(status), _)) if status.success()),
+    )
     .map(|(ended, _)| ended);
     match ended {
         Ok(Some(status)) if status.success() => return true,
@@ -6360,8 +6371,10 @@ mod tests {
         };
         let none = ran(uplink::Spent::default());
         note(&journal, 10, 5, None, &asked, &none);
+        // The run's own wait, for a builder and a turn, differs from its
+        // uplink's, so a line saying one for the other is caught.
         let up = uplink::Spent {
-            waited: Duration::from_secs(146),
+            waited: Duration::from_secs(97),
             sending: Duration::from_millis(3_900),
             bytes: 2_048,
             copies: 2,
@@ -6380,8 +6393,42 @@ mod tests {
         );
         assert_eq!(
             lines[1]["up"],
-            serde_json::json!({"waited": 146, "seconds": 3, "bytes": 2_048, "copies": 2}),
+            serde_json::json!({"waited": 97, "seconds": 3, "bytes": 2_048, "copies": 2}),
             "a run's uplink spend wasn't said as it was counted"
+        );
+        assert_eq!(
+            lines[1]["waited"], 146,
+            "the run's own wait wasn't said apart from its uplink's"
+        );
+    }
+
+    #[test]
+    fn a_copy_sent_again_for_a_scope_refused_counts_once_with_its_bytes() {
+        uplink::begun();
+        let mut tries = 0;
+        let copy = |scope: Option<&str>| {
+            tries += 1;
+            let heard = Heard {
+                unscoped: scope.is_some(),
+                ..Heard::default()
+            };
+            Ok::<_, String>((scope.is_none(), heard))
+        };
+        let copied = uplink::sent(
+            Some(512),
+            || scoped_or_again(Some("systemd-run"), copy, |went| *went, "again"),
+            |copied| matches!(copied, Ok((true, _))),
+        );
+        let spent = uplink::taken();
+        assert!(
+            matches!(copied, Ok((true, _))),
+            "the copy sent again didn't go up"
+        );
+        assert_eq!(tries, 2, "the copy wasn't sent again outside a scope");
+        assert_eq!(
+            (spent.copies, spent.bytes),
+            (1, 512),
+            "a copy and the one sent again for it didn't count as one, with its bytes"
         );
     }
 

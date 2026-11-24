@@ -18,10 +18,13 @@ pub struct Spent {
     pub waited: Duration,
     /// How long its copies up ran.
     pub sending: Duration,
-    /// The bytes they carried, as sized before each went: one this
-    /// machine couldn't size adds none.
+    /// The bytes they carried, as sized before each went, of the copies
+    /// that went up whole: one that failed or was stopped may have sent
+    /// any part of its size, so it adds none, nor does one this machine
+    /// couldn't size.
     pub bytes: u64,
-    /// How many copies went up, whether they ended well or not.
+    /// How many copies went up, whether they ended well or not, one sent
+    /// again for a scope refused counting with it, as one.
     pub copies: u32,
 }
 
@@ -76,15 +79,17 @@ pub fn waited<T>(wait: impl FnOnce() -> T) -> T {
     turn
 }
 
-/// Runs `copy`, a copy up of `bytes` where they're known, counting it.
-pub fn sent<T>(bytes: Option<u64>, copy: impl FnOnce() -> T) -> T {
+/// Runs `copy`, a copy up of `bytes` where they're known, counting it,
+/// and its bytes only where `went` says it went up whole.
+pub fn sent<T>(bytes: Option<u64>, copy: impl FnOnce() -> T, went: impl FnOnce(&T) -> bool) -> T {
     let began = Instant::now();
     let ended = copy();
     let took = began.elapsed();
+    let carried = if went(&ended) { bytes.unwrap_or(0) } else { 0 };
     SO_FAR.with(|so_far| {
         let mut spent = so_far.get();
         spent.sending += took;
-        spent.bytes += bytes.unwrap_or(0);
+        spent.bytes += carried;
         spent.copies += 1;
         so_far.set(spent);
     });
@@ -99,8 +104,8 @@ mod tests {
     fn a_run_counts_its_waits_and_copies_and_is_taken_whole() {
         begun();
         waited(|| std::thread::sleep(Duration::from_millis(20)));
-        let ended = sent(Some(300), || 7);
-        sent(None, || ());
+        let ended = sent(Some(300), || 7, |_| true);
+        sent(None, || (), |()| true);
         let spent = taken();
         assert_eq!(ended, 7, "a copy's own answer comes back");
         assert!(
@@ -114,7 +119,7 @@ mod tests {
 
     #[test]
     fn a_run_begun_drops_what_came_before_on_its_thread() {
-        sent(Some(5), || ());
+        sent(Some(5), || (), |()| true);
         begun();
         assert!(!taken().any(), "nothing was spent since it began");
     }
@@ -122,16 +127,40 @@ mod tests {
     #[test]
     fn runs_on_threads_of_their_own_count_apart() {
         begun();
-        sent(Some(1), || ());
+        sent(Some(1), || (), |()| true);
         let other = std::thread::spawn(|| {
             begun();
-            sent(Some(40), || ());
+            sent(Some(40), || (), |()| true);
             taken()
         })
         .join()
         .expect("the other run ended");
         assert_eq!(other.bytes, 40, "the other thread's run counts its own");
         assert_eq!(taken().bytes, 1, "this thread's run counts its own");
+    }
+
+    #[test]
+    fn a_copy_that_failed_counts_its_time_but_none_of_its_bytes() {
+        begun();
+        let ended = sent(
+            Some(900),
+            || {
+                std::thread::sleep(Duration::from_millis(10));
+                false
+            },
+            |went| *went,
+        );
+        let spent = taken();
+        assert!(!ended, "a copy's own answer comes back");
+        assert_eq!(
+            (spent.bytes, spent.copies),
+            (0, 1),
+            "a failed copy's bytes counted, or the copy didn't"
+        );
+        assert!(
+            spent.sending >= Duration::from_millis(10),
+            "a failed copy's time didn't count: {spent:?}"
+        );
     }
 
     #[test]
