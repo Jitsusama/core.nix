@@ -74,7 +74,7 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
         to: None,
         ..sent("u", "sent to no one yet")
     };
-    // Carried by the keeper's own line here, so that line is its miss.
+    // Carried by the keeper's own line here: said again, the miss came back.
     let mut quoted = sent("q", "fuck.");
     quoted.carried = true;
     let colour = sent("e1", "the bar is the wrong colour");
@@ -82,7 +82,7 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
     write(&ledger, &kept, OFFSET, 0).expect("written");
     write(&ledger, &kept, OFFSET, 0).expect("written again");
     let lines = read(&ledger);
-    assert_eq!(lines.len(), 3, "the keeper's and the two sent: {lines:?}");
+    assert_eq!(lines.len(), 4, "the keeper's and the three sent: {lines:?}");
     assert_eq!(
         lines[0]["words"], "fuck.",
         "the keeper's line is kept as it was"
@@ -99,6 +99,11 @@ fn a_pain_sent_is_written_once_beside_the_keepers_lines() {
         (&lines[2]["pain"], &lines[2]["owner"], &lines[2]["carried"]),
         (&json!("s/c"), &json!("ABC123"), &json!(true)),
         "a pain carried before it was written wasn't written as carried, to its owner"
+    );
+    assert_eq!(
+        (&lines[3]["pain"], &lines[3]["carried"]),
+        (&json!("s/q"), &json!(true)),
+        "a miss come back, said as the keeper's line said it, wasn't written"
     );
     assert!(
         fs::read_to_string(&ledger)

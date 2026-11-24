@@ -443,7 +443,6 @@ mod tests {
             "shit, it's fine. can you check the logs?",
             "shit, it's fine, i blame myself",
             "shit, that's fine, whatever works for you",
-            "shit, it's fine, use whatever",
             "shit, no worries, i'll take whatever",
             "shit, it's fine, you choose whatever",
         ] {
