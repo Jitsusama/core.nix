@@ -111,16 +111,27 @@ onLinux {
           (account graphical)
         ];
       # And what holds the account's manager, whose hard limit would kill
-      # it as surely: the account's slices and the manager's own unit.
+      # it as surely: the account's slices and the manager's own unit, as
+      # a template or for any one uid, on either machine, since the
+      # workstation's memory module sets the manager's unit too.
       noHardLimitAbove =
-        let
-          inherit (graphical.config) systemd;
-        in
-        lib.all (unit: !(unit ? MemoryMax)) [
-          (systemd.slices.user.sliceConfig or { })
-          (systemd.slices."user-".sliceConfig or { })
-          (systemd.services."user@".serviceConfig or { })
-        ];
+        lib.all
+          (
+            machine:
+            let
+              inherit (machine.config) systemd;
+              named = p: all: lib.attrValues (lib.filterAttrs (n: _: lib.hasPrefix p n) all);
+              slices = map (one: one.sliceConfig or { }) (named "user-" systemd.slices);
+              managers = map (one: one.serviceConfig or { }) (named "user@" systemd.services);
+            in
+            lib.all (unit: !(unit ? MemoryMax)) (
+              [ (systemd.slices.user.sliceConfig or { }) ] ++ slices ++ managers
+            )
+          )
+          [
+            workstation
+            graphical
+          ];
       # A machine giving provider modules, a git of its own and a realm whose
       # host shows what a host's unit clears and whose folders the sweep's
       # PATH takes, written as systemd needs whatever they hold. Its builder

@@ -63,7 +63,9 @@ esac
 EOF
 
 # The day starts at a round epoch, and 06:00 falls the seconds in the
-# shift file after the hour the clock face says.
+# shift file after the hour the clock face says. The clock face's epoch
+# is taken as the hours before a change of clocks, which is all a case
+# starting at 01:30 needs.
 cat >"$work/bin/date" <<EOF
 #!$BASH
 day=864000000
@@ -181,6 +183,7 @@ expect_said "after chunks up to half full" "a night whose steps gave too little 
 disk 950 0 "0 fails" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
 give
 expect "0 5 10 20 30 40 50 " 1 "a night when every step fails fails"
+expect_said "no balance step finished" "a night when every step fails says none finished"
 
 disk 950 0
 touch "$work/garbled"
@@ -252,16 +255,23 @@ disk 950 0 "0 50"
 CLOCK=01:30:00 SHIFT=-3600 give
 expect_deadlines "12600 " "a night the clocks go forward gives a step only the time until 06:00"
 
-for last in fails killed-by-day; do
-  disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 $last"
-  give
-  expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step $last fails short"
-  expect_said "up to half full didn't finish" "a half-full step that $last says it didn't finish"
-  if grep -qF "needs files gone" "$work/out" "$work/err"; then
-    echo "a half-full step that $last said files must go, though it didn't finish"
-    exit 1
-  fi
-done
+disk 950 0 "0 50"
+CLOCK=01:30:00 SHIFT=3600 give
+expect_deadlines "19800 " "a night the clocks go back gives a step the hour it gains"
+
+disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed-by-day"
+give
+expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step is killed by day fails short"
+expect_said "up to half full didn't finish" "a half-full step killed by day says it didn't finish"
+if grep -qF "needs files gone" "$work/out" "$work/err"; then
+  echo "a half-full step killed by day said files must go, though it didn't finish"
+  exit 1
+fi
+
+disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails"
+give
+expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step fails fails short"
+expect_said "needs files gone" "a half-full step failing, as for want of room, says files must go"
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"
 CLOCK=05:30:00 give

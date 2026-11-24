@@ -109,7 +109,7 @@ fi
 echo "$((free / gib)) GiB of $mount is in no chunk, short of $((want / gib))," \
   "so data chunks are balanced"
 ran=0
-finished=0
+killed=0
 for full in 0 5 10 20 30 40 50; do
   read_clock
   if [ "$left" -eq 0 ]; then
@@ -119,11 +119,10 @@ for full in 0 5 10 20 30 40 50; do
   fi
   status=0
   ended=0
-  finished=0
+  killed=0
   timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" || status=$?
   if [ "$status" -eq 0 ]; then
     ran=$((ran + 1))
-    finished=1
   elif [ "$status" -eq 124 ]; then
     ended=1
     echo "balancing data chunks up to $full% full was ended at 06:00"
@@ -136,6 +135,7 @@ for full in 0 5 10 20 30 40 50; do
       ended=1
       echo "balancing data chunks up to $full% full was killed after 06:00"
     else
+      killed=1
       echo "balancing data chunks up to $full% full was killed, so the next step is tried"
     fi
   else
@@ -154,9 +154,10 @@ for full in 0 5 10 20 30 40 50; do
 done
 if [ "$ran" -eq 0 ]; then
   echo "no balance step finished, so $((free / gib)) GiB is still in no chunk" >&2
-elif [ "$finished" -eq 0 ]; then
+elif [ "$killed" -eq 1 ]; then
   # Files gone would be guessing: the half-full step that would have
-  # said so didn't finish.
+  # said so was killed part way. One that failed, as for want of room,
+  # did say so.
   echo "balancing chunks up to half full didn't finish, so $((free / gib)) GiB" \
     "is still in no chunk" >&2
 else
