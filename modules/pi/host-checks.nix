@@ -73,7 +73,8 @@ let
           proof = macProof;
           path = [ "/first/bin" ];
           environment = {
-            PROXY_ORIGIN = "https://proxy.example.com";
+            # A launchd start reads no specifier, so a % stays single.
+            PROXY_ORIGIN = "https://proxy.example.com/a%40b";
             GREETING = "it's $HOME, `here`";
             # The realm's own, which replaces the account's.
             LANG = "C.UTF-8";

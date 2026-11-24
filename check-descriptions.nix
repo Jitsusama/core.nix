@@ -3278,8 +3278,8 @@
     own processes start from, run by the host's program with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's
     environment, proof, node, frame flag and SSH agent, the browser its account names in
-    place of Chromium where the machine names one, but a plain pi's pools, its realm's
-    conversation heap, its inspector shut and the variables that load code cleared, glibc's
+    place of Chromium where the machine names one, each with its % as written, but a plain
+    pi's pools, its realm's conversation heap, its inspector shut and the variables that load code cleared, glibc's
     trim threshold fixed at 128 KiB beside its realm's own allocator tuning, unless the realm
     names its own threshold there or in glibc's older variable, whichever of the two neither
     the realm nor the trim sets dropped from the unit, the realm's tuning kept for its hosts too, in
@@ -3294,7 +3294,8 @@
     inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
     through env, with just the eight variables that load code into it, as
     pi-hosts-refuse-code-loading-variables names them, and the TPM agent's cleared, ready once it
-    says so, in agents.slice with its realm's environment and its folders first on its PATH, left
+    says so, in agents.slice with its realm's environment as written, a % and a quote in it
+    included, and its folders first on its PATH, left
     stopped after refusing what it was given and left running through a switch and through the
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations

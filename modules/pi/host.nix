@@ -118,11 +118,11 @@ let
   #   trim replaces each, and loginAllocator drops whichever neither sets.
   #   glibc's other MALLOC_ variables, such as MALLOC_ARENA_MAX,
   #   still come from the realm or the login.
-  # - Its commands and subagents inherit that environment without
-  #   GLIBC_TUNABLES, as a fixed trim would pin their mmap threshold too.
-  #   The harness keeps it from them from its pull request 2015 on, by
-  #   listing it in HOST_ONLY (host/service/program.ts), which no check
-  #   here reads; an older harness passes it on. So a trim threshold meant
+  # - Its commands and subagents inherit that environment. From the
+  #   harness's pull request 2015 on, they get it without GLIBC_TUNABLES,
+  #   as a fixed trim would pin their mmap threshold too: the harness
+  #   lists it in HOST_ONLY (host/service/program.ts), which no check here
+  #   reads, and an older harness passes it on. So a trim threshold meant
   #   for them goes in the realm as MALLOC_TRIM_THRESHOLD_, which also
   #   replaces the trim added above, or in the command, and any other
   #   tunable in the command.
@@ -173,17 +173,18 @@ let
       "MALLOC_TRIM_THRESHOLD_"
     ];
 
-  # A realm's environment with each % doubled, as systemd reads a % in an
-  # Environment= entry as a specifier: a proxy's URL may hold %40, which
-  # systemd would otherwise refuse or expand rather than pass on. What this
-  # module adds itself, such as SSH_AUTH_SOCK's %t, is a specifier on
-  # purpose and is left as it is.
+  # A value with each % doubled, as systemd reads a % in an Environment=
+  # entry as a specifier.
+  doubledPercent = lib.replaceStrings [ "%" ] [ "%%" ];
+
+  # A realm's environment taken as written: a proxy's URL may hold %40,
+  # which systemd would otherwise refuse or expand rather than pass on.
+  # What this module adds itself, such as SSH_AUTH_SOCK's %t, is a
+  # specifier on purpose and is left as it is. The account's CHROME_PATH,
+  # a path set for its shell rather than for systemd, is doubled where it
+  # is added.
   realmTakenAsWritten =
-    host:
-    let
-      doubled = lib.replaceStrings [ "%" ] [ "%%" ];
-    in
-    host // { environment = lib.mapAttrs (_: doubled) host.environment; };
+    host: host // { environment = lib.mapAttrs (_: doubledPercent) host.environment; };
 
   # The environment a host and a conversation's own process share, quoted,
   # as systemd splits an unquoted entry at its spaces; host-launch.nix says
@@ -212,7 +213,9 @@ let
           # in the account's CHROME_PATH (home.nix sets Chromium as its
           # default), and its hosts follow it; a realm's environment still
           # wins over both.
-          CHROME_PATH = config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium);
+          CHROME_PATH = doubledPercent (
+            config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium)
+          );
         }
       ) own
     );
@@ -552,7 +555,8 @@ in
               host's unit clears since each could make its node run code:
               evaluation refuses a realm giving one, and a command that needs
               one sets it itself. Each value is taken as written: a % in it
-              stays a %, never read as one of systemd's specifiers.
+              stays a %, never read as one of systemd's specifiers, so a
+              value meaning a folder such as %h or %t spells out its path.
 
               On Linux, each conversation in a unit of its own is given
               GLIBC_TUNABLES with glibc.malloc.trim_threshold=131072 added
@@ -567,10 +571,13 @@ in
               Such a conversation never reads the login's GLIBC_TUNABLES or
               MALLOC_TRIM_THRESHOLD_, where the login is the systemd user
               manager's environment: each is replaced by the realm's value or
-              the trim, or dropped, even when set on its unit elsewhere. This
-              loses every tunable the login's GLIBC_TUNABLES names, a
-              hardening one included. To keep one, name it in the realm's
-              GLIBC_TUNABLES, which also replaces the login's whole
+              the trim, or dropped. A dropped one stays dropped even when
+              another module sets it on the unit; a replaced one holds
+              only where no other module sets it there too. This loses every
+              tunable the login's GLIBC_TUNABLES names, a hardening one
+              included. To keep one, name it in the realm's GLIBC_TUNABLES.
+              That reaches the conversation's own process, never its
+              commands, and also replaces the login's whole
               GLIBC_TUNABLES in both of the realm's hosts, so a login tunable
               the hosts need is named there too. glibc's other MALLOC_
               variables, such as MALLOC_ARENA_MAX, still come from the realm
