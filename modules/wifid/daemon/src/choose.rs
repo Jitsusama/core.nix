@@ -44,10 +44,11 @@ use crate::measure::{Measured, SPAN};
 pub const SETTLE: Duration = Duration::from_secs(600);
 
 /// How long a move is on trial: worse by then, and the card goes back.
-/// One carrying badly two minutes running goes back on the second where
-/// it carries worse, as one failing does on its first: on 23 Nov 2026 a
-/// trial whose video echoes waited 0.75 to 2.8 s, its best effort quick,
-/// held the card for five minutes, held 10% or less till its last.
+/// One carrying badly at two choices running is judged on the second, and
+/// goes back where it would at its end, as one failing is on its first: on
+/// 23 Nov 2026 a trial whose video echoes waited 0.75 to 2.8 s at p95, its
+/// best effort quick, held the card for five minutes, as no more than 10%
+/// of its echoes went unanswered or past a second until its last minute.
 pub const TRIAL: Duration = Duration::from_secs(300);
 
 /// How long an access point found worse from here is left untried.
@@ -735,8 +736,9 @@ impl Chooser {
     /// `Stay` while it's on trial, `Back` where it carried worse than the
     /// point it left did or usually does, whichever is quicker, or nothing
     /// once it's over and choosing goes on. A trial failing, or carrying
-    /// badly two minutes running, is judged before it's over, and one that
-    /// doesn't go back for it stays on trial. A card not on the point it tried
+    /// badly at two choices running, is judged before it's over: one failing
+    /// that doesn't go back ends its trial, and one carrying badly that
+    /// doesn't stays on trial. A card not on the point it tried
     /// never reached it, and that point is kept off as one carrying worse is.
     /// A trial over while the card brings a download down waits for it to
     /// end, as its figures aren't the ones the move was made on, until a
@@ -839,9 +841,10 @@ impl Chooser {
         } else {
             worse(measured, &against).then_some(Against::Usually(against))
         };
-        // Judged early for carrying badly, a trial with no worse to go back
+        // Judged early for carrying badly, a trial with nothing to go back
         // for waits out its trial as before, lest a point that carried no
-        // better stand on two minutes.
+        // better stand on two minutes. A banded one goes back for carrying
+        // badly alone, as it would at its end.
         if !over && !failing && why.is_none() {
             self.trial = Some(trial);
             return Some(Choice::Stay);
@@ -3068,7 +3071,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_move_on_trial_waits_out_its_trial_to_be_judged() {
+    fn a_move_on_trial_is_not_judged_on_one_bad_minute() {
         let mut chooser = after_a_bad_minute(DESK);
         let start = Instant::now();
         let near = [hall(-53, Some(20), None)];
