@@ -32,8 +32,12 @@
 // first (2026-11-16), so the shell never asked; yet a shell four hours on
 // kept 131 to 136 MB of them (2026-11-23). Lent, the kernel takes them only
 // when memory runs short, and an opening writing one it hasn't taken
-// faults nothing. One it took comes back zeroed, which Qt's zeroing of
-// each item it makes already allows for.
+// keeps its frame: no fault where the CPU marks pages dirty itself, as
+// x86 does, and a fault that zeroes nothing where the kernel tracks it, as
+// on an Arm without hardware dirty bits. One it took comes back zeroed,
+// which Qt's zeroing of each item it makes already allows for. A page lent
+// and not yet taken still counts as resident, to mincore and to the
+// shell's weight, so lent() says what the kernel holds lent.
 //
 // Room is left because Qt starts a collection whenever its free lists miss
 // while what's held is over twice what the last full sweep left in use, and
@@ -111,6 +115,8 @@
 #include "heap.h"
 
 #include <QElapsedTimer>
+#include <QFile>
+#include <QtLogging>
 #include <QHash>
 #include <QJSEngine>
 #include <QMetaProperty>
@@ -121,6 +127,7 @@
 #include <QVariantList>
 #include <algorithm>
 #include <bit>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -145,6 +152,8 @@
 namespace {
 
 constexpr double BYTES_PER_MB = 1024.0 * 1024.0;
+// Bytes in a kilobyte, as /proc says sizes in kilobytes.
+constexpr std::size_t BYTES_PER_KB = 1024;
 
 // The most room a heap is left, in megabytes, since it's left after every
 // collection for the rest of the run: far past the shell's 32, and far
@@ -212,12 +221,22 @@ std::size_t freePages(const QV4::BlockAllocator &allocator) {
 // that maps it from a memfd keeps the pages there, and refuses MADV_FREE.
 // Spans with none resident are left alone, so the call costs nothing for
 // them; a page lent and not yet taken is still resident, so it's lent again.
+// The first span the kernel refuses is warned of, once a process, since a
+// refusal would otherwise read as a heap with nothing free.
 std::size_t givenBack(const QV4::BlockAllocator &allocator, int advice) {
+    static bool warned = false;
     std::size_t bytes = 0;
     eachFreeSpan(allocator,
                  [&bytes, advice](char *at, std::size_t length, std::size_t resident) {
-                     if (resident > 0 && madvise(at, length, advice) == 0)
+                     if (resident == 0)
+                         return;
+                     if (madvise(at, length, advice) == 0) {
                          bytes += resident;
+                     } else if (!warned) {
+                         warned = true;
+                         qWarning("heap: the kernel refused free pages back (advice %d): %s",
+                                  advice, std::strerror(errno));
+                     }
                  });
     return bytes;
 }
@@ -307,6 +326,16 @@ double Heap::lendBack() {
         return 0;
     return megabytes(givenBack(manager->blockAllocator, MADV_FREE) +
                      givenBack(manager->icAllocator, MADV_FREE));
+}
+
+double Heap::lent() const {
+    QFile rollup(QStringLiteral("/proc/self/smaps_rollup"));
+    if (!rollup.open(QIODevice::ReadOnly))
+        return -1;
+    static const QRegularExpression lazy(QStringLiteral("^LazyFree:\\s+(\\d+) kB$"),
+                                         QRegularExpression::MultilineOption);
+    const QRegularExpressionMatch match = lazy.match(QString::fromLatin1(rollup.readAll()));
+    return match.hasMatch() ? megabytes(match.captured(1).toULongLong() * BYTES_PER_KB) : -1;
 }
 
 namespace {

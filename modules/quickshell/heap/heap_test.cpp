@@ -12,8 +12,9 @@
 // each (qtdeclarative-room-after-every-sweep.patch). Giving the free pages
 // back leaves next to none resident, says about as much as was counted, and
 // what's kept, and what's made after in their place, reads as it was made;
-// and lending them back says as much, the kernel holds it lent (or took
-// it), and what's kept and made after reads as it was made too.
+// and lending them back says as much, the kernel holds that much lent while
+// they stay resident, and once it takes them, as under pressure, they're
+// gone and what's kept and made after reads as it was made too.
 // And a heap whose free lists lead with runs too small for what's made next,
 // held off collecting, makes it in the free runs that fit rather than in new
 // chunks, as the shell's Qt keeps its large runs by size
@@ -57,6 +58,7 @@
 #include <memory>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
+#include <sys/mman.h>
 
 namespace {
 
@@ -476,50 +478,54 @@ bool givesBack() {
     return taken && said && read.asMade();
 }
 
-// Kilobytes in a megabyte, as /proc says sizes in kilobytes.
-constexpr double KB_PER_MB = 1024;
-
-// How many megabytes of this process the kernel holds as lent back to it,
-// to take when memory runs short, from smaps_rollup's LazyFree; or -1 when
-// it doesn't say.
-double lentMB() {
-    QFile rollup(QStringLiteral("/proc/self/smaps_rollup"));
-    if (!rollup.open(QIODevice::ReadOnly))
-        return -1;
-    static const QRegularExpression lazy(QStringLiteral("^LazyFree:\\s+(\\d+) kB$"),
-                                         QRegularExpression::MultilineOption);
-    const QRegularExpressionMatch match = lazy.match(QString::fromLatin1(rollup.readAll()));
-    return match.hasMatch() ? match.captured(1).toDouble() / KB_PER_MB : -1;
+// Has the kernel take, now, what a heap's chunks hold lent, as it would
+// when memory ran short, and says whether it would: MADV_PAGEOUT discards
+// a clean lent page at once, and leaves a page Qt wrote where it is, or
+// swaps it out and back unchanged.
+bool takenAsUnderPressure(QJSEngine &engine) {
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    bool took = true;
+    for (const QV4::BlockAllocator *allocator :
+         {&manager->blockAllocator, &manager->icAllocator})
+        for (QV4::Chunk *chunk : allocator->chunks)
+            took = madvise(chunk, QV4::Chunk::ChunkSize, MADV_PAGEOUT) == 0 && took;
+    return took;
 }
 
 // Whether lending a thinned heap's free pages back says about as much as
-// was counted, and the kernel holds it lent, or took it; and leaves what's
-// kept, and what's made after, as it was made. Its free pages are read
-// without a collection, which would write the free runs' headers again.
+// was counted, and the kernel holds that much lent while the pages stay
+// resident, which giving them back would not; and whether, once the kernel
+// takes them as it would under pressure, they're no longer resident and
+// what's kept, and what's made after, still reads as it was made, so no
+// page lent held anything Qt reads. Its free pages are read without a
+// collection, which would write the free runs' headers again.
 bool lendsBack() {
     QJSEngine engine;
     Heap heap(&engine);
     const QJSValue few = thinnedToAFew(engine);
     const Weight thinned = weighed(engine, heap);
-    const double lentBefore = lentMB();
+    const double lentBefore = heap.lent();
     const double lent = heap.lendBack();
-    const double lentAfter = lentMB();
-    const double freeAfter = heap.weigh().value(QStringLiteral("free")).toDouble();
-    // What the kernel took under pressure is no longer resident, so it's
-    // counted with what it holds lent.
-    const double held = lentAfter - lentBefore + (thinned.free - freeAfter);
+    const double lentAfter = heap.lent();
+    const double freeLent = heap.weigh().value(QStringLiteral("free")).toDouble();
+    const bool took = takenAsUnderPressure(engine);
+    const double freeTaken = heap.weigh().value(QStringLiteral("free")).toDouble();
     const ReadBack read = readBack(engine, few);
     const bool said = lent > thinned.free / 2 && lent <= thinned.free + GIVEN_LEFT_MB;
-    const bool kernel = lentBefore >= 0 && held > thinned.free / 2;
-    if (!said || !kernel || !read.asMade())
+    const bool held = lentBefore >= 0 && lentAfter - lentBefore > thinned.free / 2;
+    const bool kept = freeLent > thinned.free / 2;
+    const bool taken = took && freeTaken < GIVEN_LEFT_MB;
+    if (!said || !held || !kept || !taken || !read.asMade())
         std::fprintf(stderr,
-                     "FAIL lending %.1f MB of free pages back says so and leaves what's kept: "
-                     "said %.1f MB; the kernel holds %.1f, then %.1f MB lent, %.1f MB free "
-                     "after; the few summed %.0f of %.0f, and what was made after %.0f of "
-                     "%.0f\n",
-                     thinned.free, lent, lentBefore, lentAfter, freeAfter, read.kept,
-                     read.keptMade, read.after, read.afterMade);
-    return said && kernel && read.asMade();
+                     "FAIL lending %.1f MB of free pages back says so, keeps them resident "
+                     "until the kernel takes them, and leaves what's kept: said %.1f MB; the "
+                     "kernel held %.1f, then %.1f MB lent; %.1f MB free once lent, and %.1f "
+                     "once taken (%s); the few summed %.0f of %.0f, and what was made after "
+                     "%.0f of %.0f\n",
+                     thinned.free, lent, lentBefore, lentAfter, freeLent, freeTaken,
+                     took ? "taken" : "the kernel refused", read.kept, read.keptMade,
+                     read.after, read.afterMade);
+    return said && held && kept && taken && read.asMade();
 }
 
 // How many runs too small for what's made after are freed, each a store

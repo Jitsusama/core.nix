@@ -12603,10 +12603,13 @@ Scope {
         const weighed = KeyTimes.now();
         // The free pages go to the kernel lent, to take only when memory
         // runs short, since a shell four hours on kept 131 to 136 MB of them
-        // (2026-11-23); an opening writing one it hasn't taken faults
-        // nothing, where giving them back made every opening fault them in
-        // (heap.h's lendBack).
+        // (2026-11-23); an opening writing one it hasn't taken keeps its
+        // frame, where giving them back made every opening fault them in
+        // zeroed (heap.h's lendBack). What's lent is counted again at each
+        // closing until the kernel takes it, so the line says too how much
+        // of the shell the kernel holds lent (heap.h's lent).
         const lent = Math.round(Heap.lendBack());
+        const lentAll = Math.round(Heap.lent());
         const lending = Math.round(KeyTimes.now() - weighed);
         const took = Math.round(collected - began);
         const weighing = Math.round(weighed - collected);
@@ -12624,7 +12627,8 @@ Scope {
             + ` held, ${free} MB of it in free pages, ${outside} MB outside, chunks`
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
-            + ` ${lent} MB lent back in ${lending} ms`
+            + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
+            + ` ${lentAll} MB of the shell lent`
             + (allocator.used === undefined ? ""
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`
