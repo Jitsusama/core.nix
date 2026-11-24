@@ -17,6 +17,9 @@
 //! What a read found is kept beside root's copy, so the rest of an update
 //! finds the folder, and whether main descends, for a commit the copy
 //! hasn't got.
+//!
+//! Long because the read, its checks against each id and the record it
+//! keeps change together, for one reason: what a hosted folder holds.
 
 use crate::config::{Config, Hosted};
 use crate::git::{self, Repo};
@@ -548,7 +551,7 @@ impl<'a> Host<'a> {
 
     /// The entries of each of the trees `ids` root's copy holds, in their
     /// order, read by one git for them all, each checked against its id.
-    /// A process each cost about 9 ms on optimus, so a folder of a hundred
+    /// A process each cost about 9 ms on a busy workstation, so a folder of a hundred
     /// trees took most of a second on every read.
     fn held_trees(&self, ids: &[String]) -> Result<Vec<Vec<Entry>>, Failure> {
         if ids.is_empty() {
