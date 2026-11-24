@@ -425,6 +425,7 @@ impl Default for Clocks {
 /// What a relay that has left says last: its counts, once its runtime
 /// has dropped the answers it cut, which count only then. Said earlier,
 /// they'd say none was cut just before a later line said some were.
+#[must_use = "a relay's last counts are said only when its last word is"]
 pub struct LastWord(Arc<Counts>);
 
 impl LastWord {
@@ -524,16 +525,17 @@ enum ForAgain {
     Closed,
 }
 
-/// A request waiting on a connection to go on, first or once more after a
+/// A request asked that nothing else counts yet: while its body is read,
+/// and while it waits on a connection to go on, first or once more after a
 /// reset. Should pi leave meanwhile, hyper drops the request with nothing
 /// said, so it's counted as pi's cancel, or as cut when a stop's cut drops
 /// it; otherwise it would be counted as asked and nothing else.
-struct WaitingOnAConnection<'a>(Option<&'a Counts>);
+struct Uncounted<'a>(Option<&'a Counts>);
 
-impl<'a> WaitingOnAConnection<'a> {
+impl<'a> Uncounted<'a> {
     /// A request starting to wait, for `counts`.
     fn new(counts: &'a Counts) -> Self {
-        WaitingOnAConnection(Some(counts))
+        Uncounted(Some(counts))
     }
 
     /// Its wait is over, with or without a connection.
@@ -542,7 +544,7 @@ impl<'a> WaitingOnAConnection<'a> {
     }
 }
 
-impl Drop for WaitingOnAConnection<'_> {
+impl Drop for Uncounted<'_> {
     fn drop(&mut self) {
         if let Some(counts) = self.0 {
             if counts.cutting.load(Ordering::SeqCst) {
@@ -1403,8 +1405,11 @@ impl Relay {
         // Its body read whole before any 421, so pi isn't writing one the
         // relay has stopped reading, failing on a broken pipe, when the
         // 421 would send it direct. A body too large still gets the 421, as
-        // it was never to go to the origin anyway.
+        // it was never to go to the origin anyway. A stop that cuts it
+        // midway counts it as cut; a read that ends counts itself below.
+        let reading = Uncounted::new(&self.counts);
         let read = read_whole(body).await;
+        reading.over();
         // A body pi left, or one still coming past its deadline, which pi
         // would have written at once, is a cancel whatever else, as nobody
         // waits on a 421 for it. The tests can't wait out the deadline, so
@@ -1643,9 +1648,10 @@ impl Relay {
 
     /// A connection for a request reset on slot `at`'s `number` to go once
     /// more on, or why there's none: `fresh`'s, refused when it has none.
-    /// It's counted as waiting again until it has its answer.
+    /// It's counted as waiting on a connection until it has one, or hears
+    /// why there's none.
     async fn another(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
-        let waiting = WaitingOnAConnection::new(&self.counts);
+        let waiting = Uncounted::new(&self.counts);
         let another = self.fresh(at, number).await.unwrap_or_else(|| {
             // Said, so a journal of these isn't read as an origin refusing
             // connections, when the relay chose to open none.
@@ -1800,7 +1806,7 @@ impl Relay {
     /// `sender`'s connection, with the request waiting on it counted should
     /// it be dropped meanwhile.
     async fn sender_waited_on(self: &Arc<Relay>) -> Result<(usize, Kept), Unreachable> {
-        let waiting = WaitingOnAConnection::new(&self.counts);
+        let waiting = Uncounted::new(&self.counts);
         let taken = self.sender().await;
         waiting.over();
         taken

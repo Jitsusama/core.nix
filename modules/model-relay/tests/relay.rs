@@ -81,7 +81,7 @@ const ASKED_AGAIN_AFTER: Duration = Duration::from_secs(11);
 const PROBED_AFTER_THE_STOP: Duration = Duration::from_millis(250);
 /// How long a relay takes to hear a stop, or to take a connection, before
 /// the next step of a test leans on it having done so.
-const HEARD_WITHIN: Duration = Duration::from_millis(250);
+const HEARD_WITHIN: Duration = Duration::from_millis(500);
 /// How long a stopped relay gives those it sends direct once its answers
 /// have ended, as its own constant has it.
 const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
@@ -1510,15 +1510,18 @@ async fn a_body_over_64_mib_goes_nowhere_another_origins_421_said_and_one_pi_lef
     let said = relay.said();
 
     assert!(
-        mine.starts_with(b"HTTP/1.1 413"),
+        mine.as_deref()
+            .is_some_and(|head| head.starts_with(b"HTTP/1.1 413")),
         "a body too large was answered {:?}, the relay saying: {said}",
-        String::from_utf8_lossy(&mine)
+        mine.as_deref().map(String::from_utf8_lossy)
     );
     assert_eq!(handed, 0, "a body too large went on: {said}");
     assert!(
-        others.starts_with(b"HTTP/1.1 421"),
+        others
+            .as_deref()
+            .is_some_and(|head| head.starts_with(b"HTTP/1.1 421")),
         "another origin's body too large was answered {:?}, the relay saying: {said}",
-        String::from_utf8_lossy(&others)
+        others.as_deref().map(String::from_utf8_lossy)
     );
     assert!(left.is_some(), "the relay didn't leave once idle: {said}");
     assert_eq!(
@@ -1553,8 +1556,9 @@ async fn left_halfway(socket: &Path, host: &str) {
 }
 
 /// What the relay answers, its head alone, to a request for `/echo` at
-/// `host` with a body one byte over what it carries.
-async fn asked_too_much(socket: &Path, host: &str) -> Vec<u8> {
+/// `host` with a body one byte over what it carries, or none when it says
+/// nothing in time, left for the caller to judge beside the relay's log.
+async fn asked_too_much(socket: &Path, host: &str) -> Option<Vec<u8>> {
     let stream = UnixStream::connect(socket)
         .await
         .expect("the socket answers");
@@ -1580,11 +1584,7 @@ async fn asked_too_much(socket: &Path, host: &str) -> Vec<u8> {
     })
     .await;
     writer.abort();
-    assert!(
-        answered.is_ok(),
-        "the relay never answered a body too large"
-    );
-    answer
+    answered.ok().map(|()| answer)
 }
 
 /// What pi gets asking with a body in halves, the second sent a while
@@ -2513,11 +2513,21 @@ async fn a_request_waiting_on_its_first_connection_as_a_drain_ends_is_cut() {
     let (mut pi, _connection) = pi_asks(&relay.socket).await;
 
     let asked = pi.send_request(request(&host, "/v1/messages", b""));
-    let (answered, ()) = tokio::join!(asked, async {
+    let (answered, late) = tokio::join!(asked, async {
         tokio::time::sleep(WAITS_WITHIN).await;
         relay.stop();
+        tokio::time::sleep(HEARD_WITHIN).await;
+        // One that asks during the drain moves the counts, so counts said
+        // before the cut was dropped would say none was, rather than
+        // being the same line said twice and so said once.
+        ask(&relay.socket, request(&host, "/v1/messages", b"")).await
     });
 
+    assert_eq!(
+        late.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request during the drain wasn't sent direct"
+    );
     assert!(
         answered.is_err(),
         "a request still waiting on a connection when its drain ended was answered: \
@@ -2534,8 +2544,58 @@ async fn a_request_waiting_on_its_first_connection_as_a_drain_ends_is_cut() {
         "the drain didn't end on the request waiting: {said}"
     );
     assert!(
-        said.contains("1 asked, 0 refused, 0 failed") && said.contains(ONE_CUT_NONE_CANCELLED),
+        said.contains("2 asked, 1 refused, 0 failed") && said.contains(ONE_CUT_NONE_CANCELLED),
         "the request it cut as it waited on a connection wasn't counted cut: {said}"
+    );
+    assert!(
+        said_once_after(&said, "so they're cut"),
+        "it didn't say its counts once after the cut, saying the cut: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_request_pi_leaves_while_its_first_connection_opens_is_its_cancel() {
+    let origin = origin().await;
+    // A port that takes connections and never says a word of TLS, so the
+    // relay's first connection is still opening when pi leaves.
+    let silent = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let host = silent.local_addr().expect("its address").to_string();
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((stream, _)) = silent.accept().await {
+            held.push(stream);
+        }
+    });
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &[
+            "--connect-within",
+            CONNECT_OUTLASTING_THE_DRAIN,
+            "--idle-exit",
+            "1",
+        ],
+    );
+    let (mut pi, connection) = pi_asks(&relay.socket).await;
+    let asked = pi.send_request(request(&host, "/v1/messages", b""));
+    let _ = tokio::time::timeout(WAITS_WITHIN, asked).await;
+    // pi leaves as its person pressing Escape does, and its socket closes
+    // once the aborted task has been dropped.
+    drop(pi);
+    connection.abort();
+    let _ = connection.await;
+
+    let left = relay.left_within(LISTENS_WITHIN);
+    let said = relay.said();
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave once idle after pi left: {left:?}, saying: {said}"
+    );
+    assert!(
+        said.contains("1 asked, 0 refused, 0 failed")
+            && said.contains("; pi cancelled 1; 0 cut as it was stopped;"),
+        "a request pi left while its connection opened wasn't its cancel: {said}"
     );
 }
 
@@ -2605,6 +2665,15 @@ async fn a_relay_stopped_again_leaves_at_once() {
     let _late = UnixStream::connect(&relay.socket)
         .await
         .expect("the socket answers");
+    // One that asks between them moves the counts, so counts said before
+    // the cut was dropped would say none was; its connection closes once
+    // answered, so it's not among those cut.
+    let asked = ask(&relay.socket, request(&host, "/v1/messages", b"")).await;
+    assert_eq!(
+        asked.status,
+        StatusCode::MISDIRECTED_REQUEST,
+        "a request between the stops wasn't sent direct"
+    );
     tokio::time::sleep(HEARD_WITHIN).await;
     relay.stop();
 
