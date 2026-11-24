@@ -52,8 +52,9 @@
 //! until what it holds has come in, so its backlog isn't let in together
 //! as it ends. A switch never waits its turn, and the turn is no more
 //! than a wait for room: those that have waited [`LONGEST`] come in,
-//! taking none of the pace's turns, all at once while there's room for
-//! each and memory doesn't stall, and otherwise [`SPACED`] apart, so a
+//! taking none of the pace's turns, each ranked and held to the growth
+//! the room counts it as, all at once while there's room for each and
+//! memory doesn't stall, and otherwise [`SPACED`] apart, so a
 //! stream faster than the pace never makes waits grow while memory
 //! allows. One held through a call counts that wait from the call's end,
 //! so a long call's backlog comes in at the pace rather than all at once
@@ -350,8 +351,7 @@ impl Door {
         // Short of the room, a start still runs at once, ranked behind the
         // rest, while there's its floor and no call is on; capped to keep
         // the floor, it slows rather than crowds what the person uses.
-        let floor = machine.floor();
-        let ranks = |room: u64| !machine.calling && room >= grows + floor;
+        let ranks = |room: u64| !machine.calling && room >= grows + machine.floor();
         // When each scope's oldest process started, so a run already going
         // is known by it.
         let oldest = oldest(coming);
@@ -363,13 +363,14 @@ impl Door {
             if !plain && !ranks(room) || !switch && !self.turn(machine, now) {
                 break;
             }
-            let ranked = (!plain).then(|| room - floor);
+            let ranked = (!plain).then(|| room - machine.floor());
             if let Some(came) = self.come_in(ranked, now, &mut act) {
                 done.push(came);
                 room -= grows;
                 self.took_turn(now, !switch);
             }
         }
+        self.settle_pace(now);
         for it in coming {
             if self.seen.contains(&(it.pid, it.start)) {
                 continue;
@@ -415,7 +416,7 @@ impl Door {
                 room = room.saturating_sub(grows);
                 self.took_turn(now, !midway && !it.first);
             } else if !ahead && ranks(room) && turn {
-                let high = room - floor;
+                let high = room - machine.floor();
                 if act(&it.scope, Act::Rank { high }) {
                     done.push(Done::Ranked(it.pid, high));
                 }
@@ -447,9 +448,10 @@ impl Door {
         done
     }
 
-    /// Lets in each held that has waited [`LONGEST`], oldest first, but
-    /// never into a call: all of them while `room` fits each and memory
-    /// doesn't stall, and otherwise one each [`SPACED`], whatever the room.
+    /// Lets in each held that has waited [`LONGEST`], oldest first, ranked
+    /// and held to the growth it's counted as, but never into a call: all
+    /// of them while `room` fits each and memory doesn't stall, and
+    /// otherwise one each [`SPACED`], whatever the room.
     fn let_in_longest(
         &mut self,
         machine: Machine,
@@ -475,22 +477,24 @@ impl Door {
             // Its turn isn't asked, nor does it take one: a start waits
             // LONGEST at most, paced or not, so with room for it and no
             // stall each comes in, or a stream faster than any spacing would
-            // make waits grow. Short of room or in a stall, main's one each
-            // SPACED, ranked and capped at its own growth, so what it takes
-            // past that it reclaims from itself.
-            let plain = room >= grows + need && machine.stalled <= STALLED;
+            // make waits grow. Each is ranked and capped at the growth the
+            // room counts it as, since an evaluation grows to 11 GB and the
+            // stall reading lags a rush, so what it takes past that it
+            // reclaims from itself. Short of room or in a stall, main's one
+            // each SPACED.
+            let together = room >= grows + need && machine.stalled <= STALLED;
             let spaced = self
                 .waited_in
                 .is_none_or(|at| now.saturating_duration_since(at) >= SPACED);
-            if !plain && !spaced {
+            if !together && !spaced {
                 break;
             }
-            let Some(came) = self.come_in((!plain).then_some(grows), now, act) else {
+            let Some(came) = self.come_in(Some(grows), now, act) else {
                 break;
             };
             done.push(came);
             room = room.saturating_sub(grows);
-            if !plain {
+            if !together {
                 self.waited_in = Some(now);
                 break;
             }
@@ -542,7 +546,9 @@ impl Door {
     }
 
     /// Ends a paced stretch `now` once [`PACED`] has passed and nothing it
-    /// held still waits, so a later hold for room alone isn't paced.
+    /// held still waits, so a later hold for room alone isn't paced. A look
+    /// settles it first, and again once the held have come in, since
+    /// letting in the pace's last held ends it before a new start's hold.
     fn settle_pace(&mut self, now: Instant) {
         if !self.pacing(now) {
             self.paced_from = None;
@@ -1433,6 +1439,77 @@ mod tests {
              ended, with room for them"
         );
         assert!(!door.pacing(last), "with nothing held the pace is over");
+    }
+
+    // Each start is counted to grow by GROWS, but an evaluation grows to
+    // 11 GB, so those that waited LONGEST come in together only held to
+    // what they're counted as, and only while there's room for each.
+    #[test]
+    fn a_backlog_past_longest_comes_in_ranked_and_only_while_there_s_room_for_each() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..6];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 6);
+        let short = free(1 << 30);
+        assert_eq!(door.look(work, short, at + MINUTE, 1001, |_, _| true), []);
+        let longest = at + MINUTE + LONGEST;
+        let came = door.look(work, free(ROOM + 3 * GROWS), longest, 1002, |_, _| true);
+        assert_eq!(
+            came,
+            [
+                Done::LetIn(100),
+                Done::LetIn(101),
+                Done::Ranked(102, GROWS),
+                Done::Ranked(103, GROWS),
+            ],
+            "the pace's two come in, then one ranked while there's room for it, then one \
+             SPACED, ranked"
+        );
+        assert_eq!(door.held.len(), 2, "the rest wait for room or SPACED");
+    }
+
+    #[test]
+    fn a_pace_kept_only_by_its_last_held_ends_on_the_look_that_lets_it_in() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let calling = Machine {
+            calling: true,
+            ..free(1 << 40)
+        };
+        assert_eq!(door.look(&[], calling, at, 1000, |_, _| true), []);
+        let roomy = free(1 << 40);
+        assert_eq!(door.look(&[], roomy, at + MINUTE, 1001, |_, _| true), []);
+        let late = at + MINUTE + Duration::from_mins(9);
+        let three = &thirteen()[..3];
+        assert_eq!(
+            door.look(three, roomy, late, 1002, |_, _| true),
+            [Done::Paced(102)],
+            "the pace lets two in and holds the third for its turn"
+        );
+        assert!(
+            door.pacing(at + MINUTE + PACED),
+            "the third keeps the pace past PACED"
+        );
+        // That look lets the third in and holds a new start for room alone.
+        // Past RAMP, so the two let in no longer count as growing, and
+        // short of LONGEST, so the third comes in by its turn.
+        let after = at + MINUTE + PACED + RAMP;
+        let mut new = three.to_vec();
+        new.push(coming(200, 1003, "nix build .#y", "/c/work-200-1.scope"));
+        let short = free(2 * GROWS + FLOOR - 1);
+        assert_eq!(
+            door.look(&new, short, after, 1003, |_, _| true),
+            [Done::Ranked(102, 2 * GROWS - 1), Done::Held(200)],
+            "the third comes in ranked, and the new start is held for room alone"
+        );
+        assert!(
+            !door.pacing(after),
+            "a hold for room alone, after the pace's last held came in, kept the pace on"
+        );
     }
 
     /// Looks every ten seconds for `minutes` from `from`, at what `work`
