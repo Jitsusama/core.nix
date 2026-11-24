@@ -1789,13 +1789,19 @@ in
     assert lib.assertMsg (pinned != null) "no link key line pins mycelium: ${line}";
     pkgs.runCommandLocal "mycelium-takes-its-link-key-s-words" { } ''
       mkdir -p home state/mycelium
-      if env -u SSH_ORIGINAL_COMMAND HOME="$PWD/home" XDG_STATE_HOME="$PWD/state" \
-        timeout 60 ${mycelium} ${lib.escapeShellArgs words} < /dev/null > said 2> told; then
-        echo "mycelium took a login on its link key's words:" ${lib.escapeShellArgs words}
-        exit 1
-      fi
+      ended=0
+      env -u SSH_ORIGINAL_COMMAND HOME="$PWD/home" XDG_STATE_HOME="$PWD/state" \
+        timeout 60 ${mycelium} ${lib.escapeShellArgs words} < /dev/null > said 2> told \
+        || ended=$?
+      # A refusal ends 1; clap's own refusal of the words ends 2.
+      case $ended in
+        1) ;;
+        0) echo "mycelium took a login on its link key's words"; exit 1 ;;
+        124) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
+        *) echo "mycelium ended $ended on a login on its link key's words"; cat told; exit 1 ;;
+      esac
       kept=state/mycelium/refused-keys.jsonl
-      grep -q '"asked":null' "$kept" 2> /dev/null && grep -q '"from":"one"' "$kept" || {
+      grep '"asked":null' "$kept" 2> /dev/null | grep -q '"from":"one"' || {
         echo "mycelium didn't take its link key's words:" ${lib.escapeShellArgs words}
         cat told
         exit 1
