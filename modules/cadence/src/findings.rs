@@ -510,7 +510,8 @@ pub(crate) mod tests {
         );
         assert!(
             asked.len() == 1
-                && asked[0].contains("its figure back since d3 but no fix said")
+                && asked[0]
+                    .contains("its figure back since d3 but no fix said")
                 && asked[0].contains("cadence owe --done <its key>"),
             "its owner wasn't asked again, once in the week, how to close it: {asked:?}"
         );
@@ -649,7 +650,9 @@ pub(crate) mod tests {
         );
         assert!(
             told[0].1.contains("2 things")
-                && told[0].1.contains("- crashes:biome: crashes:biome got worse."),
+                && told[0]
+                    .1
+                    .contains("- crashes:biome: crashes:biome got worse."),
             "an owner's message didn't hold both its findings: {}",
             told[0].1
         );

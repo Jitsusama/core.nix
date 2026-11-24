@@ -330,7 +330,11 @@ mod tests {
             "a finding of cadence's own was closed by hand"
         );
         let unsaid = done(&mut ledger, "crashes:tec", None).map_err(|f| f.exit);
-        assert_eq!(unsaid, Err(Exit::Usage), "a finding closed with no fix said");
+        assert_eq!(
+            unsaid,
+            Err(Exit::Usage),
+            "a finding closed with no fix said"
+        );
         let waits = "cadence: crashes:tec is fixed by core #6000, closing once its figure is back \
                      two days";
         let said = done(&mut ledger, "crashes:tec", Some("core #6000")).map_err(|f| f.exit);
