@@ -1304,6 +1304,50 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
     );
 }
 
+/// Every reader of the status file takes `full_at` as a moment still to
+/// come: the bar's Disks piece turned amber and said "full in 0 s" beside
+/// 104 GiB free once a long pass outlived its forecast.
+#[test]
+fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    let bands = Bands {
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Filling,
+        free: 200,
+        total: 1000,
+        size: 1000,
+        used: 800,
+        forecast: Some(60.0),
+        fill_per_hour: Some(36_000.0),
+        full_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    let space = Space {
+        total: 1000,
+        free: 200,
+        btrfs: None,
+    };
+    status.measured(&space, &bands, 1960.0, None);
+    assert_eq!(
+        status.full_at, None,
+        "a disk with room left at its forecast's moment hasn't filled"
+    );
+    assert!(
+        !status.says.contains("fills in"),
+        "said no fill once its moment passed: {}",
+        status.says
+    );
+}
+
 #[test]
 fn a_filesystem_is_named_by_where_it_is_mounted() {
     use disk_guard::pool::pool;
@@ -2193,6 +2237,43 @@ fn a_replaced_build_unopened_for_days_goes_once_filling_and_the_newest_stays() {
         "{:?}",
         home.journal()
     );
+}
+
+#[test]
+fn a_reach_that_only_kept_teaches_nothing_of_how_long_a_pass_takes() {
+    // A reach that judged its one build and kept it, as cargo held it,
+    // ends in moments; learned, it drew the forecast's lead to its floor.
+    let home = Home::new();
+    let (config, deps) = home.replaced_build("100%");
+    let lock_path = deps.parent().unwrap().join(".cargo-lock");
+    fs::write(&lock_path, "").unwrap();
+    let lock = fs::File::open(&lock_path).unwrap();
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::LockShared).unwrap();
+    let mut uses = Uses::default();
+    uses.watching(&deps, wall() - 3.0 * 86_400.0);
+    disk_guard::state::save(&home.root.join("state/uses.json"), &uses).unwrap();
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    let later = Tick {
+        wall: wall() + 301.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+    let journal = home.journal();
+    let actions: Vec<_> = journal
+        .iter()
+        .filter(|line| line["event"] == "action")
+        .collect();
+    assert!(
+        !actions.is_empty() && actions.iter().all(|line| line["outcome"] == "kept"),
+        "the reach didn't judge and keep alone, so this case tests nothing: {journal:?}"
+    );
+    assert_eq!(
+        home.memory()["pass_seconds"],
+        serde_json::Value::Null,
+        "learned from a reach that only kept: {journal:?}"
+    );
+    drop(lock);
 }
 
 #[test]

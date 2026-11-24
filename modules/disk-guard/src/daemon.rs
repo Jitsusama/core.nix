@@ -666,6 +666,11 @@ impl FilesystemStatus {
         self.total = space.total;
         self.size = space.total;
         self.used = space.total.saturating_sub(space.free);
+        // A forecast outlived by a long pass goes, rather than being told as
+        // "full in 0 s" by every reader of the status, the bar's included.
+        if self.full_at.is_some_and(|at| at <= now) {
+            self.full_at = None;
+        }
         let full_in = self.full_at.map(|at| at - now);
         self.says = crate::words::filesystem(&self.room(full_in), home);
     }
@@ -2772,7 +2777,7 @@ impl Guard {
         self.refused.extend(reclaim.inner.take_refused());
         let deletes = reclaim.inner.deletes();
         self.rest_deletes(tick, deletes);
-        if teaches_pass_length(goal, &report) {
+        if teaches_pass_length(goal, &why, &report) {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
@@ -3593,12 +3598,19 @@ fn stale(outcome: &Outcome) -> bool {
 
 /// Whether a pass says how long reaching for room takes. One that ends
 /// waiting or at a stop ends in moments, not when its work is done, and so
-/// does one that judged nothing, as on a disk with nothing to clear or a
-/// forecast's past its target: learned, each drew the forecast's lead
-/// toward its floor.
-fn teaches_pass_length(goal: Goal, report: &Report) -> bool {
+/// does one that reclaimed nothing, as on a disk with nothing to clear, a
+/// forecast's past its target, or one whose every find was kept: learned,
+/// each drew the forecast's lead toward its floor. A reach that deleted a
+/// batch and then waits is left out too, on purpose: it took real time,
+/// but not the time its work needs. An asked collection reaches only for
+/// generations and garbage, so it says nothing of a whole reach.
+fn teaches_pass_length(goal: Goal, why: &Why, report: &Report) -> bool {
     goal == Goal::Reach
-        && !report.actions.is_empty()
+        && !matches!(why, Why::Collect)
+        && report
+            .actions
+            .iter()
+            .any(|(_, outcome)| matches!(outcome, Outcome::Reclaimed))
         && !matches!(report.end, End::Waiting | End::Stopped)
 }
 

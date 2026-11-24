@@ -1796,8 +1796,8 @@ fn a_pass_with_nothing_to_judge_teaches_nothing_of_how_long_a_pass_takes() {
 }
 
 #[test]
-fn a_pass_that_judges_teaches_how_long_a_pass_takes() {
-    // Generations past the two kept are judged by the first reach.
+fn a_pass_that_reclaims_teaches_how_long_a_pass_takes() {
+    // Generations past the two kept are judged and taken by the first reach.
     let store = Store::new();
     generations(&store);
     let mut guard = store.guard(store.config("100%", "0%"));
@@ -1810,7 +1810,7 @@ fn a_pass_that_judges_teaches_how_long_a_pass_takes() {
     saved(&mut guard);
     assert!(
         learned_pass_seconds(&store).is_some(),
-        "learned nothing from a pass that judged: {:?}",
+        "learned nothing from a pass that reclaimed: {:?}",
         store.passes()
     );
 }
