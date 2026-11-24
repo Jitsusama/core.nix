@@ -921,8 +921,8 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     // lender runs to make one.
     let more_dir = more_dir();
     let first_dir = dir;
-    let lent = [&first_dir, &more_dir];
-    let (left_dir, spill) = left_to(left.is_some(), lent, &vm_dirs, &vm_parts, &scratch);
+    let general = [&first_dir, &more_dir];
+    let (left_dir, spill) = left_to(left.is_some(), general, &vm_dirs, &vm_parts, &scratch);
     let mut parts: Vec<(&PathBuf, Option<there::Asked>)> = vm_dirs.iter().zip(vm_parts).collect();
     parts.push((&left_dir, left));
     // A VM builder past the first that doesn't come leaves its tests to
