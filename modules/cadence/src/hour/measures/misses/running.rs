@@ -200,7 +200,7 @@ pub fn unrun(
         );
         // A walk left at its time says so, since its owner can't find a
         // merge that is there, only wait for a quieter hour.
-        let why = why.map(|why| if left && why == UNFOUND { LEFT } else { why });
+        let why = said_of_walk(why, left);
         keep_unseen(&firsts, &mut now_firsts, &key, why);
         if let Some(why) = why {
             unrun.insert(change.clone(), why);
@@ -238,8 +238,15 @@ fn keep_changed<T: serde::Serialize + PartialEq>(at: &Path, was: &T, now: &T, wh
 const UNFOUND: &str = "cadence can't find its merge";
 
 /// Why a change is held open when its walk for its merge was left at its
-/// time, as on a loaded machine.
-const LEFT: &str = "cadence ran out of time walking main for its merge";
+/// time, as on a loaded machine: the hour's own blindness, as `UNSEEN`
+/// begins it, so the change's owner isn't asked about it.
+const LEFT: &str = "cadence can't walk main to its merge in the time it has";
+
+/// `why`, said as the walk running out of time where it was `left` and
+/// found no merge.
+fn said_of_walk(why: Option<&'static str>, left: bool) -> Option<&'static str> {
+    why.map(|why| if left && why == UNFOUND { LEFT } else { why })
+}
 
 /// Why the harness installed doesn't hold a change, which ends the time
 /// kept for its first install.
@@ -598,6 +605,11 @@ fn merge_judged(
 fn merge_of(path: &str, number: u64) -> Result<Option<String>, Duration> {
     let first = *WALKS_FROM.get_or_init(Instant::now);
     let left = WALKS_FOR.saturating_sub(first.elapsed());
+    // Once the run's time is spent, no git is started only to be stopped.
+    if left.is_zero() {
+        eprintln!("cadence: no time left this run to walk {path} for #{number}'s merge");
+        return Err(left);
+    }
     merge_within(path, number, WALK_FOR.min(left))
 }
 
@@ -613,16 +625,20 @@ const WALKS_FOR: Duration = Duration::from_secs(300);
 /// How long a walk for a merge reads before it's left: a merge not yet on
 /// main is walked for to its root, which took 41 s on an idle machine and
 /// many minutes on a loaded one, every hour. A merge not found in time
-/// reads as one cadence can't find, which keeps its miss open, never
-/// closed.
+/// reads as one cadence ran out of time for, which keeps its miss open,
+/// never closed.
 const WALK_FOR: Duration = Duration::from_secs(60);
 
 /// `merge_of`, left once `within` has passed, which it then answers as
 /// its error. The log is read on a thread of its own, so a walk with
 /// nothing to say for a while can still be left at its time.
 fn merge_within(path: &str, number: u64, within: Duration) -> Result<Option<String>, Duration> {
-    let Ok(mut log) = walk(path, number).spawn() else {
-        return Ok(None);
+    let mut log = match walk(path, number).spawn() {
+        Ok(log) => log,
+        Err(e) => {
+            eprintln!("cadence: can't walk {path} for #{number}'s merge: {e}");
+            return Ok(None);
+        }
     };
     let (sent, found) = mpsc::channel();
     if let Some(out) = log.stdout.take() {
@@ -636,11 +652,19 @@ fn merge_within(path: &str, number: u64, within: Duration) -> Result<Option<Stri
             sent.send(merge).ok();
         });
     }
-    // Said, since a merge read unfound keeps its miss open on the card.
-    let merge = found.recv_timeout(within).map_err(|_| {
-        eprintln!("cadence: #{number}'s merge walk in {path} left at {within:?}, read as unfound");
-        within
-    });
+    // Said, since a merge read unfound keeps its miss open on the card. A
+    // reader that ended without a word read nothing, not out of time.
+    let merge = match found.recv_timeout(within) {
+        Ok(merge) => Ok(merge),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            eprintln!("cadence: #{number}'s merge walk in {path} left at {within:?}");
+            Err(within)
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            eprintln!("cadence: #{number}'s merge walk in {path} ended unread");
+            Ok(None)
+        }
+    };
     // A walk that already ended has nothing to stop, and one stopped here is
     // only reaped, so neither result says anything the merge found doesn't;
     // its end closes the pipe, which ends the reading thread too.

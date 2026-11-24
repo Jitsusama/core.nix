@@ -102,6 +102,36 @@ fn a_merge_not_on_main_is_left_at_its_time() {
 }
 
 #[test]
+fn a_walk_left_at_its_time_is_the_hours_blindness_not_its_owners() {
+    assert_eq!(
+        said_of_walk(Some(UNFOUND), true),
+        Some(LEFT),
+        "a walk left at its time with no merge found didn't say it ran out of time"
+    );
+    assert_eq!(
+        said_of_walk(Some(UNFOUND), false),
+        Some(UNFOUND),
+        "a walk that read to main's root said it ran out of time"
+    );
+    assert_eq!(
+        said_of_walk(Some(NOT_CARRIED), true),
+        Some(NOT_CARRIED),
+        "a left walk hid a reason that wasn't about the merge"
+    );
+    assert_eq!(
+        said_of_walk(None, true),
+        None,
+        "a change that runs was held for a walk left at its time"
+    );
+    // Read as the card and the owing read the hour's own blindness, so the
+    // change's owner is never asked about a loaded machine's clock.
+    assert!(
+        LEFT.starts_with(UNSEEN),
+        "a walk left at its time would be asked of the change's owner: {LEFT}"
+    );
+}
+
+#[test]
 fn the_walk_flushes_each_record_whatever_it_inherits() {
     // The walk above is run again in a test run of its own that hands git
     // GIT_FLUSH=0, which holds every record in git's buffer until the walk
