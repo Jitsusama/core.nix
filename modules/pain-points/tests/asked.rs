@@ -216,9 +216,8 @@ fn test_names_a_misses_test_in_the_missions_ledger_or_says_why_not() {
     std::fs::write(&kept, format!("{{\"at\":\"{at}\"}}\n")).expect("a ledger");
     let test = "core modules/cat/src/air.rs the_cat_never_waits";
     let folder = mission.to_str().expect("a folder named in UTF-8");
-    let asked = |at: &str, test: &str| {
-        ran(&["test", "--miss", at, "--test", test, "--ledgers", folder])
-    };
+    let asked =
+        |at: &str, test: &str| ran(&["test", "--miss", at, "--test", test, "--ledgers", folder]);
     let named = asked(at, test);
     let wrong = asked(at, "core the_cat");
     let missing = asked("2026-11-14T17:25:00-05:00", test);
