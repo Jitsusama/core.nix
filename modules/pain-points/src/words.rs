@@ -171,7 +171,8 @@ fn meaning(text: &str) -> std::collections::BTreeSet<String> {
 }
 
 /// Whether a user message came from somewhere other than his keys: the
-/// harness, a peer, the launcher's steering or a compaction's carry-on.
+/// harness, a peer, the launcher's steering, a compaction's carry-on or a
+/// sprouted session's brief, which quotes the ask it was sprouted from.
 pub fn automated(text: &str) -> bool {
     let text = text.trim_start();
     [
@@ -186,6 +187,7 @@ pub fn automated(text: &str) -> bool {
         "You are ",
         "Your ",
         "Woken by ",
+        "This session was sprouted",
     ]
     .iter()
     .any(|opening| text.starts_with(opening))
@@ -296,6 +298,18 @@ mod tests {
             "a peer's wake"
         );
         assert!(!automated("woken by the alarm again"), "his own words");
+    }
+
+    #[test]
+    fn a_sprouted_sessions_brief_is_automated() {
+        let brief = "This session was sprouted, and quest QEST-20261124-MBP857 is made \
+                     and loaded for it from the words it was asked with: \"Joel's ask \
+                     (18:12 Tue 24 Nov): 'let's have some agent cells do ...'";
+        assert!(automated(brief), "a sprout's brief was heard as his words");
+        assert!(
+            !automated("this session was sprouted wrong, fix it"),
+            "his own words about a sprout"
+        );
     }
 
     #[test]
