@@ -969,13 +969,16 @@ ShellRoot {
     // placed: every move of s-kelp's window names it by id, or focuses it
     // first to move its column, and its workspace stays on the screen
     // it's named on. No screen went, so no workspace waits to go home
-    // (comeHome), and Reopen Them All wasn't asked (putBackOpen), so the
-    // arranging tick has nothing it could move.
+    // (comeHome), and Reopen Them All wasn't asked, so nothing waits to
+    // be put back open (putBackOpen): the arranging tick the walk's end
+    // starts, which comes after this, has nothing it could move.
     function quiet() {
         if (Sessions.placingNow())
             return;
-        Expect.expect("no workspace waits to go home, so arranging moves none",
-            Object.keys(Sessions.awayFrom).length === 0, JSON.stringify(Sessions.awayFrom));
+        Expect.expect("no workspace waits to go home, nor any window to be put back open, "
+            + "so arranging moves none",
+            Object.keys(Sessions.awayFrom).length === 0 && Sessions.puttingBack === null,
+            `${JSON.stringify(Sessions.awayFrom)} ${JSON.stringify(Sessions.puttingBack)}`);
         Expect.expect("one sent by name to a workspace on another screen than kept "
             + "stays there once the walk settled",
             !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93
