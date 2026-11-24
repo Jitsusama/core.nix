@@ -42,7 +42,11 @@ fn a_line_written_any_other_way_is_refused() {
     }
     assert_eq!(
         cases_in("# a note\nis T\n\nnot\nnot T "),
-        [(true, "T".to_owned()), (false, String::new()), (false, "T ".to_owned())],
+        [
+            (true, "T".to_owned()),
+            (false, String::new()),
+            (false, "T ".to_owned())
+        ],
         "a note and an empty line are skipped, and `not` alone is the empty text"
     );
 }
