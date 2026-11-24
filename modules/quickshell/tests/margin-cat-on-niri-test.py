@@ -1275,11 +1275,19 @@ def test_the_way_back_sets_off_from_where_it_got_to_a_gap_below() -> None:
     def back(x: float, y: float, way: int = -1, carried: float = -1.6) -> Json:
         return {"x": x, "y": y, "move": {"way": way, "carried": carried}}
 
-    assert back_from_where_it_got_to(was, back(636, 849.38), 854), (
+    # Its ground taken off, 847.4 lies on the gap and 849.38, the builder's, 2 px off it.
+    assert back_from_where_it_got_to(was, back(636, 847.4), 854), (
         "a move back up that set off where it got to was refused"
     )
-    assert back_from_where_it_got_to(was, back(636, 847.4), 854), (
+    assert back_from_where_it_got_to(was, back(636, 849.38), 854), (
         "a move back up that set off a pixel or two off where it got to was refused"
+    )
+    # Two of its sizes is the reach: 15 px off the gap is within it, and 17 px past it.
+    assert back_from_where_it_got_to(was, back(636, 862.4), 854), (
+        "a move back up 15 px off where it got to, within two of its sizes, was refused"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 864.4), 854), (
+        "a move back up 17 px off where it got to, past two of its sizes, was taken"
     )
     # Said at 816 against a gap at about 849 (the net, 2026-11-22), its ground 33 px off:
     # only that ground taken off brings it within reach, so a helper that dropped `carried`,

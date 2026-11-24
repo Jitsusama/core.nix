@@ -87,7 +87,9 @@ fi
 # are Qt's own wording, which a Qt bump may change: a
 # render-thread line without the mark, or a new line from the GUI thread
 # between the two, marks real starts -other and fails the case, never
-# passes it.
+# passes it. A reworded broken vsync line goes the other way, taking that
+# timer line for the start's own, but it still can't pass the case, since
+# that line never says all three shown.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1

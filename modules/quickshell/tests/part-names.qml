@@ -581,8 +581,16 @@ ShellRoot {
             clock: Object.assign({}, keptReading.clock, { lastOffset: 0, lastSync: null }) });
         const neverNoted = clocks.answer("time").rows.find(each => each.key === "time:clock")
             .verbs().find(each => each.name === Words.name("time:clock:offset"))?.note;
+        // Its last update decides it, not the offset: one never updated
+        // whose offset isn't 0 notes none either.
+        Timekeeping.reading = Object.assign({}, keptReading, {
+            clock: Object.assign({}, keptReading.clock, { lastSync: null }) });
+        const unsyncedNoted = clocks.answer("time").rows.find(each => each.key === "time:clock")
+            .verbs().find(each => each.name === Words.name("time:clock:offset"))?.note;
         Timekeeping.reading = keptReading;
         expect("a clock never yet updated notes no offset", neverNoted === "", neverNoted);
+        expect("a clock never yet updated notes no offset, whatever its offset",
+            unsyncedNoted === "", unsyncedNoted);
         const servers = row("time:servers").verbs();
         // A server never heard from says so on its side, so its note
         // doesn't say it again.
