@@ -180,10 +180,7 @@ why = "a cell's drawer offers no pause or wake"
 
 [act.launcher.has]
 file = "modules/quickshell/launcher/words/agents.json"
-holds = [
-  '"id": "verb:agent:pause"',
-  '"id": "verb:agent:wake"',
-]
+holds = ['"id": "verb:agent:pause"', '"id": "verb:agent:wake"']
 
 [[act]]
 name = "looks"

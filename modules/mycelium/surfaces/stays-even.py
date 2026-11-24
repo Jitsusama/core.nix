@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -39,8 +40,31 @@ ADDRESS = re.compile(r"[0-9A-Z]{6}|[0-9A-F]{8}")
 DUE = "%Y-%m-%d %H:%M"
 
 
+@dataclass
+class Sources:
+    """Where a has is read: core.nix's files, and the locked mycelium's help."""
+
+    root: Path
+    mycelium: str
+    helps: dict[str, str] = field(default_factory=dict)
+
+    def help_of(self, command: str) -> str:
+        """Give what `mycelium COMMAND --help` says, asking once a command."""
+        if command not in self.helps:
+            # The program is the locked mycelium the check gives, and the
+            # command a word of the table's, so no shell reads either.
+            ran = subprocess.run(  # noqa: S603
+                [self.mycelium, *command.split(), "--help"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.helps[command] = ran.stdout if ran.returncode == 0 else ""
+        return self.helps[command]
+
+
 def words_of(has: dict[str, Any]) -> list[str]:
-    """The words a has says its place holds, one or several."""
+    """Give the words a has says its place holds, one or several."""
     holds = has.get("holds")
     if isinstance(holds, str):
         return [holds]
@@ -49,41 +73,23 @@ def words_of(has: dict[str, Any]) -> list[str]:
     return []
 
 
-def help_of(mycelium: str, command: str, helps: dict[str, str]) -> str:
-    """What `mycelium COMMAND --help` says, asked once for each command."""
-    if command not in helps:
-        # The program is the pinned mycelium the check gives, and the
-        # command a word of the table's, so no shell reads either.
-        ran = subprocess.run(  # noqa: S603
-            [mycelium, *command.split(), "--help"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        helps[command] = ran.stdout if ran.returncode == 0 else ""
-    return helps[command]
-
-
-def has_faults(
-    where: str, surface: str, has: dict[str, Any], root: Path, mycelium: str, helps: dict[str, str]
+def command_faults(
+    where: str, has: dict[str, Any], words: list[str], sources: Sources
 ) -> list[str]:
-    """What is wrong with where a surface says it has an act."""
-    if surface == "session":
-        tool = has.get("tool")
-        return [] if isinstance(tool, str) and tool != "" else [f"{where} names no pi tool"]
-    words = words_of(has)
-    if words == [] or "" in words:
-        return [f"{where} says no words it holds"]
-    if surface == "cli":
-        command = has.get("command")
-        if not isinstance(command, str) or command == "":
-            return [f"{where} names no mycelium command"]
-        said = help_of(mycelium, command, helps)
-        return [
-            f'{where}: mycelium {command} --help doesn\'t say "{one}"'
-            for one in words
-            if one not in said
-        ]
+    """Find what is wrong with a mycelium command said to have an act."""
+    command = has.get("command")
+    if not isinstance(command, str) or command == "":
+        return [f"{where} names no mycelium command"]
+    said = sources.help_of(command)
+    return [
+        f'{where}: mycelium {command} --help doesn\'t say "{one}"'
+        for one in words
+        if one not in said
+    ]
+
+
+def file_faults(where: str, has: dict[str, Any], words: list[str], root: Path) -> list[str]:
+    """Find what is wrong with a file of core.nix said to have an act."""
     file = has.get("file")
     if not isinstance(file, str) or file == "":
         return [f"{where} names no file"]
@@ -94,8 +100,21 @@ def has_faults(
     return [f'{where}: {file} doesn\'t hold "{one}"' for one in words if one not in text]
 
 
+def has_faults(where: str, surface: str, has: dict[str, Any], sources: Sources) -> list[str]:
+    """Find what is wrong with where a surface says it has an act."""
+    if surface == "session":
+        tool = has.get("tool")
+        return [] if isinstance(tool, str) and tool != "" else [f"{where} names no pi tool"]
+    words = words_of(has)
+    if words == [] or "" in words:
+        return [f"{where} says no words it holds"]
+    if surface == "cli":
+        return command_faults(where, has, words, sources)
+    return file_faults(where, has, words, sources.root)
+
+
 def owed_faults(where: str, owed: dict[str, Any]) -> list[str]:
-    """What is wrong with what a surface says it is owed."""
+    """Find what is wrong with what a surface says it is owed."""
     faults = []
     if not isinstance(owed.get("by"), str) or not ADDRESS.fullmatch(owed["by"]):
         faults.append(f"{where} is owed by no cell's address")
@@ -109,8 +128,8 @@ def owed_faults(where: str, owed: dict[str, Any]) -> list[str]:
     return faults
 
 
-def act_faults(act: dict[str, Any], root: Path, mycelium: str, helps: dict[str, str]) -> list[str]:
-    """What is wrong with one act's row."""
+def act_faults(act: dict[str, Any], sources: Sources) -> list[str]:
+    """Find what is wrong with one act's row."""
     name = str(act.get("name", "an act with no name"))
     faults = []
     if not isinstance(act.get("says"), str) or act["says"].strip() == "":
@@ -132,7 +151,7 @@ def act_faults(act: dict[str, Any], root: Path, mycelium: str, helps: dict[str, 
             continue
         value = stands[said[0]]
         if said[0] == "has" and isinstance(value, dict):
-            faults.extend(has_faults(where, surface, value, root, mycelium, helps))
+            faults.extend(has_faults(where, surface, value, sources))
         elif said[0] == "owed" and isinstance(value, dict):
             faults.extend(owed_faults(where, value))
         elif said[0] == "waived" and isinstance(value, str) and value.strip() != "":
@@ -143,7 +162,7 @@ def act_faults(act: dict[str, Any], root: Path, mycelium: str, helps: dict[str, 
 
 
 def owings(acts: list[dict[str, Any]]) -> list[str]:
-    """Each surface still owed an act, soonest due first."""
+    """List each surface still owed an act, soonest due first."""
     owed = [
         (stands["owed"]["due"], stands["owed"]["by"], act["name"], called, stands["owed"]["why"])
         for act in acts
@@ -158,7 +177,7 @@ def owings(acts: list[dict[str, Any]]) -> list[str]:
 def main(table: Path, root: Path, mycelium: str) -> int:
     """Check the table, printing each fault, or what is owed when none."""
     acts = tomllib.loads(table.read_text(encoding="utf-8")).get("act", [])
-    helps: dict[str, str] = {}
+    sources = Sources(root, mycelium)
     faults = []
     seen: set[str] = set()
     for act in acts:
@@ -166,7 +185,7 @@ def main(table: Path, root: Path, mycelium: str) -> int:
         if name in seen:
             faults.append(f"{name} is named twice")
         seen.add(name)
-        faults.extend(act_faults(act, root, mycelium, helps))
+        faults.extend(act_faults(act, sources))
     if faults:
         print(f"The surfaces aren't even, by {table.name}:")
         for fault in faults:
