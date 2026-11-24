@@ -249,10 +249,11 @@ function matchOther(kept, used, app, title) {
 // unknown, when none is. One below that sits on another screen than this
 // one's, as one that opened while every screen was gone sits on one
 // standing in for its own, isn't followed there: its number says nothing
-// of this screen's.
-function whereBack(at, beside) {
+// of this screen's. Nor is one kept on a twin's connector (`twins`, twinsOf's): another monitor's.
+function whereBack(at, beside, twins) {
     const screenOf = one => one.screen || one.output;
-    const there = beside.filter(one => screenOf(one.at) === screenOf(at));
+    const there = beside.filter(one => screenOf(one.at) === screenOf(at)
+        && !(twins ?? []).includes(one.at.output));
     const joined = there.find(one => one.at.workspace === at.workspace);
     if (joined !== undefined) {
         const into = joined.workspace;

@@ -19,10 +19,6 @@
   --open: minmax(20rem, 30rem);
 }
 
-code {
-  font-size: 0.92em;
-}
-
 /* ---- The first screen: the crest, the sentence, and where it stands. ---- */
 
 .hero {
@@ -31,12 +27,6 @@ code {
   gap: var(--items);
   padding: calc(var(--groups) * 2) var(--inset) var(--groups);
   text-align: center;
-}
-
-.crest {
-  inline-size: min(15rem, 70vw);
-  block-size: auto;
-  overflow: visible;
 }
 
 .eyebrow {
@@ -139,26 +129,37 @@ code {
 }
 
 /* ---- The floor cut through: the one drawing, leading the first screen.
-   Before the node speaks it holds the crest; then the cells themselves. ---- */
+   Before the node speaks it holds the crest, and again once every cell has
+   gone; otherwise the cells themselves. ---- */
 
 .floor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   gap: var(--mark);
   inline-size: 100%;
   margin: 0 0 var(--items);
+  container-type: inline-size;
 }
 
+/* The floor's room is as tall as a floor of every cell it draws and one gap
+   drawn across the page, 1512 by 178 of its units as draw.ts's WORDED sets
+   them, at most half again as large, and never under 6rem, so a floor of few
+   cells on a phone still reads. The crest holds the same room until the node speaks, and once every
+   cell has gone, so cells arriving or leaving move nothing under them; a floor
+   sits at the room's foot, a wider one, of more gaps, a little shorter. */
 .drawn {
-  display: grid;
-  justify-items: center;
+  position: relative;
   inline-size: 100%;
+  block-size: clamp(6rem, 100cqi * 178 / 1512, 267px);
+  container-type: inline-size;
 }
 
-.drawn svg:not(.crest) {
-  display: block;
-  inline-size: min(100%, var(--w, 30rem));
-  block-size: auto;
+.drawn > svg {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
   overflow: visible;
 }
 
@@ -247,16 +248,27 @@ rect.hollow {
   stroke: color-mix(in oklab, var(--strong) 70%, var(--background));
 }
 
+/* --grown is how much wider than 1512 units draw.ts drew the floor, so its
+   words are as large on screen as on a floor of 1512. */
 .drawn text {
   fill: var(--text);
-  font: italic 400 14px var(--serif);
+  font: italic 400 calc(14px * var(--grown, 1)) var(--serif);
 }
 
 .drawn .substrate {
   fill: var(--strong);
-  font: var(--label-weight) 13px var(--label-face);
+  font: var(--label-weight) calc(13px * var(--grown, 1)) var(--label-face);
   letter-spacing: 0.12em;
   text-transform: lowercase;
+}
+
+/* Narrower than this a 1512 floor's 13 px words, and so any floor's, would
+   be drawn under the kit's 12 px floor for text. The eyebrow names the machine, the
+   headline counts every cell and the list holds them all, so the words go. */
+@container (max-width: 1396px) {
+  .drawn text {
+    display: none;
+  }
 }
 
 /* The standing line's glyph: a cap, lit while the page is live and
@@ -397,9 +409,13 @@ rect.hollow {
   text-align: end;
 }
 
+/* Its one column is no wider than the row gives it, so a purpose holding
+   a long link wraps rather than pushing the page sideways. */
 .cells .line {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--tie);
+  overflow-wrap: anywhere;
 }
 
 .cells .purpose {

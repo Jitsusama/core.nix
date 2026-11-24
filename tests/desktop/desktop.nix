@@ -191,11 +191,11 @@ let
   '';
 
   # Lantern's front desk, as a hotel's: every page is sent there until
-  # someone signs in (stand-ins/front-desk.py).
+  # someone signs in (tests/desktop/stand-ins/front-desk.py).
   frontDesk = ./stand-ins/front-desk.py;
 
   # The VM's own time server, which its chrony keeps the clock by
-  # (stand-ins/stand-in-time.conf).
+  # (tests/desktop/stand-ins/stand-in-time.conf).
   timePort = 11123;
   # The hardware address of opens-and-sets' cable, which names it cable0.
   cableAddress = "52:54:00:0c:ab:1e";
@@ -225,7 +225,7 @@ let
   '';
 
   # Stands in for fwupd, which the VM doesn't run, on the system bus
-  # (stand-ins/stand-in-fwupd.py): each of its answers is what the test wrote
+  # (tests/desktop/stand-ins/stand-in-fwupd.py): each of its answers is what the test wrote
   # to the runtime folder's fwupd/<command>.json, as fwupdmgr's --json says
   # it, or else the laptop's two devices with nothing offered.
   fwupdDevices = pkgs.writeText "fwupd-devices.json" (
@@ -282,20 +282,20 @@ let
   '';
 
   # Stands in for dictation's service, on the socket systemd hands it
-  # (stand-ins/stand-in-dictation.py). ruff and mypy read each of these
+  # (tests/desktop/stand-ins/stand-in-dictation.py). ruff and mypy read each of these
   # stand-ins through `nix fmt`, so the writers' flake8 is off.
   standInDictation = pkgs.writers.writePython3 "stand-in-dictation" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-dictation.py);
 
   # Stands in for pi-ask, which would ask a model, speaking pi's RPC
-  # (stand-ins/stand-in-ask.py).
+  # (tests/desktop/stand-ins/stand-in-ask.py).
   standInAsk = pkgs.writers.writePython3 "stand-in-ask" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-ask.py);
 
   # Stands in for the collector, keeping each line the launcher sends it
-  # (stand-ins/stand-in-collector.py).
+  # (tests/desktop/stand-ins/stand-in-collector.py).
   standInCollector = pkgs.writers.writePython3 "stand-in-collector" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-collector.py);
@@ -323,13 +323,13 @@ let
   ];
 
   # Stands in for the google program, which would ask Google, on its socket
-  # (stand-ins/stand-in-google.py).
+  # (tests/desktop/stand-ins/stand-in-google.py).
   standInGoogle = pkgs.writers.writePython3 "stand-in-google" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-google.py);
 
   # Stands in for virsh, which would ask libvirt, giving the launcher one
-  # session machine to list and start (stand-ins/stand-in-virsh.sh), since
+  # session machine to list and start (tests/desktop/stand-ins/stand-in-virsh.sh), since
   # the VM runs no libvirt.
   standInVirsh =
     let
@@ -340,19 +340,19 @@ let
     '';
 
   # Stands in for Slack's daemon, which would ask Slack, on its socket
-  # (stand-ins/stand-in-slack.py).
+  # (tests/desktop/stand-ins/stand-in-slack.py).
   standInSlack = pkgs.writers.writePython3 "stand-in-slack" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-slack.py);
 
   # Stands in for the eero daemon, which would ask eero's cloud, on its
-  # socket (stand-ins/stand-in-eero.py).
+  # socket (tests/desktop/stand-ins/stand-in-eero.py).
   standInEero = pkgs.writers.writePython3 "stand-in-eero" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-eero.py);
 
   # Stands in for the noise-cancelled daemon's trial, which would record
-  # and clean the microphone, on its socket (stand-ins/stand-in-noise-cancelled.py).
+  # and clean the microphone, on its socket (tests/desktop/stand-ins/stand-in-noise-cancelled.py).
   standInNoiseCancelled = pkgs.writers.writePython3 "stand-in-noise-cancelled" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-noise-cancelled.py);
@@ -360,7 +360,7 @@ let
   # The areas that walk Passwords, looks-programs, which shoots it, and
   # keeps-pace, which steps into it under load, whose 1Password's manager
   # asks a stand-in for 1Password's command, op, since no 1Password account
-  # signs in here (stand-ins/op-stand-in.sh).
+  # signs in here (tests/desktop/stand-ins/op-stand-in.sh).
   walksPasswords = builtins.elem area [
     "launcher-goes-places"
     "looks-programs"
@@ -382,7 +382,7 @@ let
 
   # Stands in for the screen-text daemon, which would read screenshots with
   # its models, on its socket, saying what the runtime folder's
-  # screen-text-texts.json says each says (stand-ins/stand-in-screen-text.py).
+  # screen-text-texts.json says each says (tests/desktop/stand-ins/stand-in-screen-text.py).
   standInScreenText = pkgs.writers.writePython3 "stand-in-screen-text" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-screen-text.py);
@@ -390,7 +390,7 @@ let
   # Stands in for the meaning daemon, which would embed the launcher's
   # things with its model, on its socket, finding for each text what the
   # runtime folder's meaning-means.json says it means
-  # (stand-ins/stand-in-meaning.py).
+  # (tests/desktop/stand-ins/stand-in-meaning.py).
   standInMeaning = pkgs.writers.writePython3 "stand-in-meaning" {
     doCheck = false;
   } (builtins.readFile ./stand-ins/stand-in-meaning.py);
@@ -402,28 +402,28 @@ let
   '';
 
   # Asks the portal to open a file, always asking what with, and writes down
-  # its answer (stand-ins/ask-portal.py).
+  # its answer (tests/desktop/stand-ins/ask-portal.py).
   askPortal = pkgs.writers.writePython3 "ask-portal" {
     libraries = [ pkgs.python3Packages.jeepney ];
     doCheck = false;
   } (builtins.readFile ./stand-ins/ask-portal.py);
 
   # Asks the portal for a file to open or save in a folder, and writes down
-  # its answer (stand-ins/choose-a-file.py).
+  # its answer (tests/desktop/stand-ins/choose-a-file.py).
   chooseAFile = pkgs.writers.writePython3 "choose-a-file" {
     libraries = [ pkgs.python3Packages.jeepney ];
     doCheck = false;
   } (builtins.readFile ./stand-ins/choose-a-file.py);
 
   # A window through X11 named only as Tuple names its windows
-  # (stand-ins/tuple-window.py).
+  # (tests/desktop/stand-ins/tuple-window.py).
   tupleWindow = pkgs.writers.writePython3 "tuple-window" {
     libraries = [ pkgs.python3Packages.xlib ];
     doCheck = false;
   } (builtins.readFile ./stand-ins/tuple-window.py);
 
   # Windows through X11 retitled without rest, as a crowd of agents'
-  # windows is (stand-ins/window-storm.py).
+  # windows is (tests/desktop/stand-ins/window-storm.py).
   windowStorm = pkgs.writers.writePython3 "window-storm" {
     libraries = [ pkgs.python3Packages.xlib ];
     doCheck = false;
@@ -444,7 +444,7 @@ let
   };
 
   # A stand-in touchscreen, as wide as the screen, which swipes or taps as
-  # it's told through /run/touchscreen (stand-ins/touchscreen.py).
+  # it's told through /run/touchscreen (tests/desktop/stand-ins/touchscreen.py).
   touchscreen = pkgs.writers.writePython3 "touchscreen" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
@@ -452,7 +452,7 @@ let
 
   # A stand-in Copilot key, sending Super, Shift and F23 as the laptop's
   # does, each time it's told through /run/copilot-key
-  # (stand-ins/copilot-key.py).
+  # (tests/desktop/stand-ins/copilot-key.py).
   copilotKey = pkgs.writers.writePython3 "copilot-key" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
@@ -460,14 +460,14 @@ let
 
   # A stand-in keyboard, pressing one key each time it's told through
   # /run/keyboard and saying when, so a key is timed from the device
-  # (stand-ins/keyboard.py).
+  # (tests/desktop/stand-ins/keyboard.py).
   keyboard = pkgs.writers.writePython3 "keyboard" {
     libraries = [ pkgs.python3Packages.evdev ];
     doCheck = false;
   } (builtins.readFile ./stand-ins/keyboard.py);
 
   # A stand-in ErgoDox, plugged in for as long as it runs
-  # (stand-ins/ergodox.py), and the layout its module describes for the
+  # (tests/desktop/stand-ins/ergodox.py), and the layout its module describes for the
   # shell, from the firmware the board runs.
   ergodox = pkgs.writers.writePython3 "ergodox" {
     libraries = [ pkgs.python3Packages.evdev ];
@@ -525,7 +525,7 @@ let
   piStandIn = import ../stand-ins/pi-stand-in.nix { inherit pkgs; };
 
   # Stands in for Inkscape where keeps-copies opens a new drawing in it
-  # (stand-ins/inkscape-stand-in.sh), adding it to the list of files opened
+  # (tests/desktop/stand-ins/inkscape-stand-in.sh), adding it to the list of files opened
   # lately as Inkscape does, through the open-with module's recent-files.
   standInInkscape = pkgs.writeShellScript "inkscape" ''
     PATH=${pkgs.coreutils}/bin:${pkgs.callPackage ../../modules/open-with/recent-files.nix { }}/bin \
@@ -533,8 +533,8 @@ let
   '';
 
   # spotify-recent signed in, as the-launcher-plays-from-spotify stands it
-  # in (../stand-ins/spotify-recent-stand-in.sh), for looks-programs to shoot Spotify's page;
-  # with a show kept, so Podcasts holds one.
+  # in (tests/stand-ins/spotify-recent-stand-in.sh), for looks-programs to
+  # shoot Spotify's page; with a show kept, so Podcasts holds one.
   spotifyStandIn = pkgs.writeShellScript "spotify-recent" ''
     if [ "''${1:-}" = shows ]; then
       printf 'spotify:show:s1\tshow\tThe Show\tA Publisher\t\t1212\n'
@@ -1134,7 +1134,7 @@ import ../lib/pytest-vm-test.nix { inherit pkgs; } {
           ]
         );
         # tuple-call follows a stand-in for Tuple's command, whose stream
-        # says what the test writes (stand-ins/tuple-stand-in.sh), since no
+        # says what the test writes (tests/desktop/stand-ins/tuple-stand-in.sh), since no
         # call can be made in the VM.
         systemd.user.services.tuple-call.Service.ExecStart = lib.mkForce (
           lib.escapeShellArgs [
@@ -1306,7 +1306,7 @@ import ../lib/pytest-vm-test.nix { inherit pkgs; } {
         };
         # WARP's warp-cli isn't in the VM, so where WARP is shown a stand-in
         # answers with what the test writes, as the contract's files say it
-        # (../stand-ins/warp-cli-stand-in.sh), the real warp reading it.
+        # (tests/stand-ins/warp-cli-stand-in.sh), the real warp reading it.
         jitsusama.quickshell.launcher.providers.warp = lib.mkIf standsInForWarp {
           enable = lib.mkForce true;
           warpCli = lib.mkForce (
@@ -1532,10 +1532,10 @@ import ../lib/pytest-vm-test.nix { inherit pkgs; } {
             copilot_key = copilotKey;
             ergodox_layout = ergodoxLayout;
             # A stand-in Litra, plugged in for as long as it runs
-            # (../stand-ins/desk-light-stand-in.py).
+            # (tests/stand-ins/desk-light-stand-in.py).
             desk_light = "${pkgs.python3}/bin/python3 ${../stand-ins/desk-light-stand-in.py}";
             # A crowd of pi's sessions, a few changing each beat
-            # (stand-ins/stand-in-sessions.py).
+            # (tests/desktop/stand-ins/stand-in-sessions.py).
             stand_in_sessions = pkgs.lib.concatStringsSep " " [
               "${pkgs.python3}/bin/python3"
               "${./stand-ins/stand-in-sessions.py}"

@@ -411,8 +411,11 @@
     only inside another's scope, a call naming a slice and a call to the system manager as they
     were; and that the hold refuses, each by the step that says so, a table short of an option
     or reading one as valued that isn't, an option the table can't say, and a systemd-run that
-    can't list its options, while it holds a stand-in saying them unchanged, and the wrapper
-    isn't built without it
+    can't list its options, failing its build, while it holds a stand-in saying them unchanged;
+    that the wrapper isn't built without the hold, which is to the systemd it wraps, or for an
+    aarch64 machine built here to the builder's own systemd built alike; and that one with a
+    patched systemd, or one of no version, or cross-built from a Mac, is built unheld with no
+    hold to read and says so, and that a machine cross-built with a patched systemd warns of it
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
@@ -602,12 +605,19 @@
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
+  sound-services-are-what-runs-a-pipewire-or-sits-beside-it = ''
+    sound-services.nix counts a unit that runs a PipeWire of its own wherever it sits, and one
+    PipeWire wants in session.slice by a list or one name, but not one it wants in app.slice, a
+    program named like it, or a NixOS unit switched off, and a home's only for its account
+  '';
   sound-takes-real-time-before-the-seat = ''
     PipeWire's three units, each tuning chain and each service PipeWire wants in session.slice,
     by name in the account's session.slice or app.slice and nothing below them, are granted
-    rtkit's real time and high priority before the seat has a session, each grant logged with
-    what it runs, while an app's scope, the system's units, another service and a near name keep
-    rtkit's own answer with no grant logged, and agents' places are still refused
+    rtkit's real time and high priority before the seat has a session, a home's service for its
+    own account alone, PipeWire's grant logged with what it runs and one ps can't read as
+    unknown, while a watcher in app.slice, an app's scope, the system's units, another service
+    and a near name keep rtkit's own answer with no grant logged, and agents' places are still
+    refused
   '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
@@ -643,7 +653,10 @@
     refuses a stale calendar, takes Chrome's and Slack's waits from lag-watch's last hour, sets
     the launcher's openings during the run against the same span before it, writes the hour
     in the shape cadence reads, and sums Joel's own calls' sending threads' waits for a CPU
-    into a line the hour reads and no test run is taken for
+    into a line the hour reads and no test run is taken for, and checks the camera once
+    between three and six minutes before each meeting, reading only a loopback, its frames
+    to /dev/null, and asking any other camera only whether it answers, and tells plainly
+    when it gives nothing
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine
@@ -1926,6 +1939,13 @@
     at build, one set on an unchanged guest is warned of, and a guest given nothing keeps its
     own; it pins the address handed, not what vmnet makes of it
   '';
+  linux-builder-reuses-its-network = ''
+    a changed Linux builder guest's vzvm patches apply in the module's order, with no fuzz, to the
+    source the Mac builds, and the patched source keeps the network it makes and, past the macOS
+    26 guard, hands a kept one back before vmnet is asked for another, unless a guest lost its
+    attachment to it, which lets it go, and gives every guest of a process one hardware address;
+    it compiles nothing, and whether vmnet takes the network again is shown only on a Mac
+  '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
     in place of timesyncd, and one given nothing keeps the cached guest's clock
@@ -2143,9 +2163,11 @@
     leaving, past the ten seconds a relay leaving idle takes them, gives those a few seconds once
     its answers end, even one pi says nothing on, cuts its answers when its drain time runs out,
     not when those few seconds do, or at a second stop, ends what it sends direct when stopped as
-    it leaves idle, at once if stopped again, says what it waited on and its counts, its cuts
-    apart from pi's cancels, refuses a
-    drain of none and the flags it no longer takes, keeps its socket to its account, from a second
+    it leaves idle, at once if stopped again, says what it waited on and its counts once more, last,
+    once what it cut has ended, even with its counts moved meanwhile, its cuts apart from pi's
+    cancels, counts a request still waiting on its first connection as cut when stopped and as
+    pi's cancel when pi leaves it, refuses a drain of none and each flag it no longer takes, telling
+    them by their words, keeps its socket to its account, from a second
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
@@ -3377,7 +3399,8 @@
   '';
   polkits-prompt-says-what-runs = ''
     polkit's prompt names the command asking, its store paths without their hashes and a long one
-    cut at its middle, shown as written, and the account run0 or pkexec would run it as
+    cut at its middle, shown as written, and the account run0 or pkexec would run it as, and the
+    journal says each ask as it begins and how it ended, after how long and with what keys
   '';
   processor-telemetry-passes-clippy = ''
     clippy finds nothing in the processor telemetry reader or its tests
@@ -4031,7 +4054,8 @@
     cell's forage under the cell that started it, even in a ring, plans first with their steps
     added up, how many cells have no purpose written, what each quest waits on its person for, a
     record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
-    with the cells it started and every cell each grew from, kept on its cell through records
+    with the cells it started and every cell each grew from, kept on its cell through records,
+    and a floor wider for its gaps drawing its words no smaller than site.css's cut allows
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
@@ -4041,9 +4065,11 @@
     purpose written followed and drawn as words though it holds markup, a cell a purpose takes out
     of the view of cells without purpose taking the cursor with it, a wait answered no longer
     said, a cell going and the crest drawn again once every cell has, broken while the node is
-    away with its cells kept and live with them read
-    again once it's back, stale once the server goes with its cells kept, a first visit within its
-    budget and a second answered unchanged, the web-design skill's page checks passing at a phone's
+    away with its cells kept and live with them read again once it's back, stale once the server
+    goes with its cells kept, a first visit holding still at a phone's width and a desk's in a
+    room for its floor with no word under 12 px and a long link, open in its panel, never
+    widening the page, a first visit within its budget and a second answered unchanged, the
+    web-design skill's page checks passing at a phone's
     width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
     floor following the cursor to a booked start past the 48th, drawn solid, not drawn again on a
     step it holds, kept on its cells through a find, one matching nothing keeping the cursor and

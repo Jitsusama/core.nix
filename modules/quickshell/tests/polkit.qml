@@ -229,6 +229,74 @@ QtObject {
         if (tagged !== "run0 echo '&lt;b&gt;a&lt;/b&gt; &amp; b'")
             failures.push(`a tagged command said ${tagged}`);
 
+        // What the journal says of each ask, whatever the reports: as it
+        // begins, and how it ended, so an ask that failed is read, not guessed.
+        // Each is lived from polkit handing it over at 1000 ms, through what
+        // the prompt hears of it, each [what, at], to its end.
+        function lived(action, keys, heard, end) {
+            let ask = Polkit.begun(action, 1000, keys);
+            for (const [what, at] of heard)
+                ask = Polkit.heard(ask, what, at);
+            return Polkit.finished(ask, end);
+        }
+        const unitsSaid = "polkit: org.freedesktop.systemd1.manage-units";
+        const execSaid = "polkit: org.freedesktop.policykit.exec";
+        const journalled = [
+            ["a beginning", Polkit.began(units), `${unitsSaid} asked`],
+            ["an answer",
+                lived(units, false, [["keys", 1038.6], ["tried", 5400], ["answered", 5500]], 5512),
+                `${unitsSaid} answered after 4.5 s; it had the keys 39 ms in`],
+            ["an answer after a wrong password",
+                lived(exec, false, [["keys", 1012], ["tried", 4000], ["wrong", 6000],
+                    ["tried", 10000], ["answered", 10700]], 10700),
+                `${execSaid} answered after 9.7 s, after 1 wrong password;`
+                    + " it had the keys 12 ms in"],
+            ["an Escape, and the cancel it makes",
+                lived(exec, true, [["tried", 2000], ["wrong", 3000], ["tried", 7000],
+                    ["wrong", 8000], ["refused", 16000], ["withdrawn", 16001]], 16002),
+                `${execSaid} refused with Escape after 15.0 s, after 2 wrong passwords;`
+                    + " it had the keys 0 ms in"],
+            ["an answer polkit then calls cancelled",
+                lived(units, true, [["answered", 4000], ["withdrawn", 4001]], 4002),
+                `${unitsSaid} answered after 3.0 s; it had the keys 0 ms in`],
+            ["an ask left 25 s", lived(units, false, [["withdrawn", 26004]], 26004),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, unanswered;`
+                    + " it never had the keys"],
+            ["an ask withdrawn after a wrong password",
+                lived(units, false, [["keys", 1100], ["tried", 7000], ["wrong", 9000],
+                    ["withdrawn", 26000]], 26000),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, after 1 wrong password;`
+                    + " it had the keys 100 ms in"],
+            ["an ask withdrawn while a password was checked",
+                lived(units, false, [["keys", 1100], ["tried", 25500], ["withdrawn", 26000]],
+                    26000),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, while a password was checked;`
+                    + " it had the keys 100 ms in"],
+            ["an ask whose keys the lock took",
+                lived(units, false, [["keys", 1020], ["keys-gone", 3000], ["withdrawn", 26000]],
+                    26000),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, unanswered;`
+                    + " it had the keys 20 ms in and lost them 2000 ms in"],
+            ["keys lost and given back",
+                lived(units, false, [["keys", 1040], ["keys-gone", 1500], ["keys", 1900],
+                    ["answered", 3000]], 3000),
+                `${unitsSaid} answered after 2.0 s; it had the keys 40 ms in`],
+            ["keys going as the prompt is put away",
+                lived(exec, false, [["keys", 1010], ["tried", 3000], ["answered", 3500],
+                    ["keys-gone", 3501]], 3502),
+                `${execSaid} answered after 2.5 s; it had the keys 10 ms in`],
+            ["keys gone before it had them",
+                lived(units, false, [["keys-gone", 1200], ["withdrawn", 26000]], 26000),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, unanswered; it never had the keys`],
+            ["an end nothing said", lived(units, false, [], 1300),
+                `${unitsSaid} ended without saying how after 0.3 s; it never had the keys`]
+        ];
+        for (const [what, got, wanted] of journalled) {
+            asked++;
+            if (got !== wanted)
+                failures.push(`${what} journalled\n  ${got}\nnot\n  ${wanted}`);
+        }
+
         for (const failure of failures)
             console.log(failure);
         console.log(`${asked - failures.length} of ${asked} asks read as they should`);

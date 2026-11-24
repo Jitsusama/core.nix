@@ -378,8 +378,12 @@ comments-name-what-exists = core.lib.commentsNameWhatExists pkgs {
 ```
 
 It fails on a comment naming a path from one of the repository's top folders
-that names nothing, and on a waiting line listed more often than it's found,
-so the list only shrinks. It reads code comments and Python docstrings, not markdown.
+that names nothing while the folder under the top it names still stands, and
+on a waiting line listed more often than it's found, so the list only shrinks.
+It reads whole-line comments in the languages code-health's stale.rs knows:
+`//` lines in Rust, JavaScript, TypeScript, QML and C, `#` lines in Nix,
+shell, Python, TOML and YAML, Nix's block comments, and Python's
+docstrings, not markdown.
 
 Every folder says what it holds, as core's do, through another:
 

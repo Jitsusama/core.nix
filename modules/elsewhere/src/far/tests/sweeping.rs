@@ -431,12 +431,19 @@ fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
     // under C, since a locale a machine lacks is a warning of its own, and
     // its NUL warning comes under any.
     let utf8 = "export LC_ALL=en_US.UTF-8 2>/dev/null";
+    // On a Mac, its own tr, which refuses such bytes, rather than the GNU
+    // one a dev shell puts first, which never does.
+    let own_tr: &[(&str, &str)] = if cfg!(target_os = "macos") {
+        &[("tr", "exec /usr/bin/tr \"$@\"")]
+    } else {
+        &[]
+    };
     for (sh, locale) in [(far_sh(), utf8), ("bash".to_owned(), "")] {
         copy(&runs, "2", "");
         let mut run = format!("{} {}", gone(), here()).into_bytes();
         run.extend_from_slice(b"\0\n\xff\xfe\0\n");
         std::fs::write(runs.join(format!("2{RUN}")), run).unwrap();
-        let said = sweep_in(&sh, &runs.join("9"), &[], locale);
+        let said = sweep_in(&sh, &runs.join("9"), own_tr, locale);
         assert!(
             said.is_empty(),
             "the sweep in {sh} said something of the bytes: {said}"
@@ -446,6 +453,33 @@ fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
             "a gone run's copy was kept in {sh} for what followed its line"
         );
     }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn only_a_run_s_file_s_first_512_bytes_are_read() {
+    let root = scratch("far-swept-bound");
+    let runs = root.join("s");
+    let (here, gone) = (here(), gone());
+    // Spaces that bring what follows them to a run file's byte `at`.
+    let to = |before: &str, at: usize| " ".repeat(at - before.len());
+    // Gone runs here, each read only as far as its 512th byte: one with a
+    // word from its 513th, which is never heard, and one whose machine
+    // ends at its 512th, its last letter no space, which is heard whole.
+    // So both copies go, and a bound a byte either way keeps one.
+    let named = format!("{gone} {here}");
+    copy(&runs, "1", &format!("{named}{}more", to(&named, 512)));
+    let machine = here.trim_end();
+    let number = gone.to_string();
+    let past = to(&number, 512 - machine.len());
+    copy(&runs, "2", &format!("{number}{past}{machine}"));
+    let said = sweep(&runs.join("9"));
+    assert!(said.is_empty(), "the sweep said something: {said}");
+    assert!(
+        left_in(&runs).is_empty(),
+        "the sweep read a run's file to other than its 512th byte: {:?}",
+        left_in(&runs)
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 

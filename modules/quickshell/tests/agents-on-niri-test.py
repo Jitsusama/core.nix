@@ -4309,52 +4309,80 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
     shell.reported(f"not become {arrived['is']}: ", bool, since)
 
 
-def in_to_read(shell: Shell) -> None:
-    """Open For You and step into To Read, where what asks nothing of Joel waits."""
-    in_for_you(shell)
-    shell.launcher_until(lambda shown: "To Read" in shown["rows"])
-    shell.down_to("To Read")
-    shell.step_in()
-    shell.launcher_until(lambda shown: shown["held"] == ["now", "For You", "To Read"])
+# How long For You's rows must stand unchanged before they count as made, and how long they
+# may take to: For You is made again as Agents' rows are, which had drawn a carry within a
+# poll of Carried serving it, but a loaded builder can be slower than any one watch.
+FOR_YOU_STILL = 3
+FOR_YOU_MADE = 30
 
 
-def test_a_carry_under_way_waits_quietly_in_for_you_and_goes_as_it_arrives(
+def for_you_made(shell: Shell) -> list[str]:
+    """Wait until For You's rows have stood unchanged a while, and give them."""
+    deadline = time.monotonic() + FOR_YOU_MADE
+    rows, still_since = cast("list[str]", shell.showing()["rows"]), time.monotonic()
+    while time.monotonic() - still_since < FOR_YOU_STILL:
+        assert time.monotonic() < deadline, f"For You never stopped changing: {rows}"
+        time.sleep(0.2)
+        now = cast("list[str]", shell.showing()["rows"])
+        if now != rows:
+            rows, still_since = now, time.monotonic()
+    return rows
+
+
+def quest_listed(quest: Json) -> str:
+    """Add a quest to what the harness keeps of its quests, giving the file as it was before."""
+    listed = WORKFLOW / "quests.json"
+    before = listed.read_text()
+    quests = json.loads(before)
+    quests["quests"].append(quest)
+    laid = listed.with_suffix(".tmp")
+    laid.write_text(json.dumps(quests))
+    laid.rename(listed)
+    return before
+
+
+def test_a_carry_asks_nothing_so_it_stays_out_of_for_you_and_goes_by_its_quest(
     shell: Shell,
 ) -> None:
-    """A carry under way is a thing to read in For You, and goes from it once it arrives.
+    """A carry under way is in Agents' Carried by its quest's title, and never in For You.
 
-    Only one about to go or on its way is there, never one arrived (DCU5J4, item 3).
+    It asks nothing of Joel: five in To Read read "A Session on Its Way" hours after they went
+    (Joel, 2026-11-23 21:52: "how does it provide me with anything useful?"). A carried
+    session runs elsewhere under another id, so no row of the tree's names it; its quest does.
     """
-    kept(
-        ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
-        ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
-    )
+    before = quest_listed(
+        {"id": "QEST-20261107-AFLOAT", "address": "AFLOAT", "title": "Afloat Quest",
+         "status": "active"}
+    )  # fmt: skip
     try:
-        # Served first, so a For You without them is For You's own miss: these two, not the
+        kept(
+            ordered("AFLOAT", 90, **{"from": "tern", "to": here(), "why": "it needs the camera"}),
+            ordered("PAUSED", 60, **{"from": here(), "to": "tern", "why": "tern sits idle"}),
+        )
+        # Served first, so a For You holding them is For You's own miss: these two, not the
         # case before's, which the node may not yet have read gone.
         in_agents(shell)
         shell.launcher_until(lambda shown: "Carried" in shown["rows"])
         shell.down_to("Carried")
         shell.launcher_until(lambda shown: shown["selected"]["side"] == "2 on their way")
+        shell.step_in()
+        # Afloat Quest's session runs nowhere yet, so only its quest names its carry.
+        shell.launcher_until(lambda shown: shown["rows"][:2] == ["Paused Quest", "Afloat Quest"])
         shell.close_launcher()
-        in_to_read(shell)
-        # Afloat Quest's session runs nowhere yet, so its carry is on its way.
-        shell.launcher_until(
-            lambda shown: {"Paused Quest", "A Session on Its Way"} <= set(shown["rows"])
-        )
-        shell.close_launcher()
-        lay("AFLOAT", "Afloat Quest", {"orchestratedBy": "BOSSES", "state": "listening"})
-        in_to_read(shell)
-        shell.launcher_until(
-            lambda shown: (
-                "Paused Quest" in shown["rows"]
-                and "A Session on Its Way" not in shown["rows"]
-                and "Afloat Quest" not in shown["rows"]
-            )
-        )
+        in_for_you(shell)
+        rows = for_you_made(shell)
+        # To Read holds the looks that ask nothing too, so only a carry's name in it fails.
+        if "To Read" in rows:
+            shell.down_to("To Read")
+            shell.step_in()
+            rows = for_you_made(shell)
+        carries = {"Afloat Quest", "A Session on Its Way"} & set(rows)
+        assert not carries, f"a carry stood in For You: {rows}"
     finally:
         CARRIES.unlink(missing_ok=True)
-        lay("AFLOAT", "Afloat Quest", {"state": "idle"}, closed=True)
+        laid = (WORKFLOW / "quests.json").with_suffix(".tmp")
+        laid.write_text(before)
+        laid.rename(WORKFLOW / "quests.json")
         touched("LISTEN")
 
 

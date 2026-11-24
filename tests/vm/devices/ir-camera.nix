@@ -21,10 +21,10 @@ let
       builtins.replaceStrings [ "@values@" ] [ "${values}" ] (builtins.readFile ./ir-camera/${name}.py)
     );
   # Sends the pattern to a loopback over and over, as the camera would
-  # (ir-camera/stand-in-camera.py).
+  # (tests/vm/devices/ir-camera/stand-in-camera.py).
   camera = program "stand-in-camera";
   # Names each frame in a file: the pattern in grey, blank, or something
-  # else (ir-camera/frames.py).
+  # else (tests/vm/devices/ir-camera/frames.py).
   frames = program "frames";
 
   # Links the relay's source to the stand-in, found by its name, as a
