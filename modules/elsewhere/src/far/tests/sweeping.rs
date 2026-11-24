@@ -2,6 +2,7 @@
 //! clears, which it leaves, and that it never reaches through a link, nor
 //! writes through one a job left among the copies or in its handover.
 
+use super::crossing::refusing;
 use super::{Left, far_line, far_line_in, handover, kind, scratch, work};
 use crate::far::steps::{RUN, sweeping};
 use crate::far::{BACK, BROUGHT, HANDOVER, TREE};
@@ -69,7 +70,11 @@ fn sweep_in(sh: &str, work: &Path, programs: &[(&str, &str)], before: &str) -> S
         bin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
+    // Under no locale of the runner's, so each test asks for its own.
     let swept = std::process::Command::new(sh)
+        .env_remove("LC_ALL")
+        .env_remove("LC_CTYPE")
+        .env_remove("LANG")
         .args([
             "-c",
             &format!("{before}\nwork='{}'\n{}", work.display(), sweeping()),
@@ -507,22 +512,23 @@ fn kept_beyond(home: &Path) -> bool {
 fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
-    // The folder holding the link closed, so the link can't be cleared,
-    // and a code of its own, which the far line ends with all the same.
+    // A link that can't be cleared, as where its folder's closed to the
+    // far line, and a code of its own, which the far line ends with all
+    // the same.
     let job = format!(
-        "mkdir out && printf a > out/a && {} && chmod a-w ../../{HANDOVER} && exit 3",
+        "mkdir out && printf a > out/a && {} && exit 3",
         linking_its_handover()
     );
-    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
-    let closed = handover(&home).parent().unwrap().to_owned();
-    let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
+    let (rm, refused) = pinning();
+    let programs = [(rm, refused.as_str())];
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &programs);
     assert!(
         kept_beyond(&home),
         "the far line wrote or cleared through a link it couldn't clear ({code:?}): {err}"
     );
     assert!(
         code == Some(3)
-            && err.contains("nothing is brought back")
+            && err.contains("a link it left at its handover couldn't be cleared, so nothing")
             && !work(&home).join("1").exists()
             && !work(&home).join("1.run").exists(),
         "the far line didn't say it brought nothing back, kept its copy, or ended with \
@@ -535,20 +541,18 @@ fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
 fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
-    // A folder in the copies' place that can't be cleared, as on a disk
-    // gone wrong, and a list the job wrote itself, claiming all came.
-    let at = format!("../../{HANDOVER}/1");
+    // A folder for copies that can't be made, as on a disk gone wrong, and
+    // a list the job wrote itself, claiming all came.
     let job = format!(
-        "mkdir out && printf a > out/a && mkdir -p {at}/{BACK}/d && touch {at}/{BACK}/d/f &&
-         chmod a-w {at}/{BACK}/d && printf '1\tout/a\nend\n' > {at}/{BROUGHT}"
+        "mkdir out && printf a > out/a && printf '1\tout/a\nend\n' > ../../{HANDOVER}/1/{BROUGHT}"
     );
-    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
-    let closed = handover(&home).join(BACK).join("d");
-    let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
+    let (mkdir, refused) = refusing("mkdir", &format!("*\"/{BACK} \"*"), "exit 1");
+    let programs = [(mkdir, refused.as_str())];
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &programs);
     let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
     assert!(
         code == Some(0)
-            && err.contains("nothing is brought back")
+            && err.contains("its folder for copies couldn't be made new, so nothing is brought")
             && listed == "\ncut\n"
             && !handover(&home).join(TREE).exists()
             && !work(&home).join("1").exists(),
@@ -558,12 +562,72 @@ fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// A stand-in for `rm` that never clears the job's handover folder, as
+/// where a link stands at it in a folder closed to the far line.
+fn pinning() -> (&'static str, String) {
+    refusing("rm", &format!("*\"/{HANDOVER}/1 \"*"), "exit 1")
+}
+
+#[test]
+fn a_job_that_closes_its_handover_still_has_only_what_it_made_brought_back() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // Its own list, claiming another size, left in a handover closed to
+    // all, with a folder closed under the copies' folder; or in one whose
+    // folder above, or the one above that, is closed, so nothing in it
+    // can be seen.
+    let at = format!("../../{HANDOVER}/1");
+    for closed in [
+        format!("{at}/{BACK}/d {at}"),
+        format!("../../{HANDOVER}"),
+        "../../handover".to_owned(),
+    ] {
+        let job = format!(
+            "mkdir out && printf a > out/a && mkdir -p {at}/{BACK}/d && touch {at}/{BACK}/d/f &&
+             printf '9\tout/a\nend\n' > {at}/{BROUGHT} && chmod 0 {closed}"
+        );
+        let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
+        let job = handover(&home);
+        for folder in [
+            job.parent().unwrap().parent().unwrap(),
+            job.parent().unwrap(),
+            &job,
+        ] {
+            let _ = std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o755));
+        }
+        let listed = std::fs::read_to_string(job.join(BROUGHT)).unwrap_or_default();
+        let copied = std::fs::read_to_string(job.join(BACK).join("0"));
+        assert!(
+            code == Some(0)
+                && listed == "1\tout/a\nend\n"
+                && copied.is_ok_and(|copied| copied == "a")
+                && !job.join(BACK).join("d").exists(),
+            "a handover closed at {closed} kept the job's own list or lost what it made \
+             ({code:?}): {listed:?} {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
 #[test]
 fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it() {
-    // The link left as it is, and pinned in a folder closed to it.
-    for pinned in ["", "&& chmod a-w ../../handover/elsewhere"] {
-        let job = format!("{} {pinned} && kill -TERM $PPID", linking_its_handover());
-        let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, &[]);
+    // The link left as it is, in a folder the job closed, or where it
+    // can't be cleared.
+    let (rm, refused) = pinning();
+    let cases: [(String, &[(&str, &str)]); 3] = [
+        (String::new(), &[]),
+        (format!("&& chmod a-w ../../{HANDOVER}"), &[]),
+        ("pinned".to_owned(), &[(rm, refused.as_str())]),
+    ];
+    for (pinned, programs) in cases {
+        let closing = if programs.is_empty() {
+            pinned.as_str()
+        } else {
+            ""
+        };
+        let job = format!("{} {closing} && kill -TERM $PPID", linking_its_handover());
+        let (code, err, home) =
+            far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, programs);
         let closed = handover(&home).parent().unwrap().to_owned();
         let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
         assert!(
@@ -586,18 +650,17 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
 fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
     let root = scratch("far-swept-bytes");
     let runs = root.join("s");
-    // Bash too, a far machine's sh on NixOS, the one sh that warns of a
-    // NUL it reads.
-    // Bash with no locale asked for, since one a machine lacks is a
-    // warning of its own; its NUL warning comes under any.
+    // The far machine's sh under a locale that reads text as UTF-8, as a
+    // Mac's own does, where its tr refuses what isn't. And bash, a far
+    // machine's sh on NixOS and the one sh that warns of a NUL it reads,
+    // under no locale at all, since one a machine lacks is a warning of
+    // its own, and its NUL warning comes under any.
     let utf8 = "export LC_ALL=en_US.UTF-8 2>/dev/null";
     for (sh, locale) in [(far_sh(), utf8), ("bash".to_owned(), "")] {
         copy(&runs, "2", "");
         let mut run = format!("{} {}", gone(), here()).into_bytes();
         run.extend_from_slice(b"\0\n\xff\xfe\0\n");
         std::fs::write(runs.join(format!("2{RUN}")), run).unwrap();
-        // A locale that reads text as UTF-8, as a Mac's own does, where
-        // its tr refuses what isn't.
         let said = sweep_in(&sh, &runs.join("9"), &[], locale);
         assert!(
             said.is_empty(),
