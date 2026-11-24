@@ -1682,6 +1682,67 @@ fn a_pass_ending_waiting_teaches_nothing_of_how_long_a_pass_takes() {
     );
 }
 
+/// What the guard has learned a pass takes, as its memory file holds it.
+fn learned_pass_seconds(store: &Store) -> Option<f64> {
+    disk_guard::state::load::<disk_guard::state::Memory>(&store.root.join("state/memory.json"))
+        .unwrap()
+        .unwrap_or_default()
+        .pass_seconds
+}
+
+/// Steps `guard` past its five minutes between saves, so its memory file
+/// says what the passes before taught it.
+fn saved(guard: &mut Guard) {
+    let later = Tick {
+        wall: now() + 301.0,
+        ..tick()
+    };
+    guard.step(&later, &CALM).unwrap();
+}
+
+#[test]
+fn a_pass_with_nothing_to_judge_teaches_nothing_of_how_long_a_pass_takes() {
+    // A filling disk with nothing on it to clear ends its pass exhausted
+    // in moments, and so does a forecast's on a disk past its target,
+    // reached; learned, either drew the forecast's lead to its floor.
+    let store = Store::new();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    saved(&mut guard);
+    let passes = store.passes();
+    assert!(
+        passes
+            .iter()
+            .any(|pass| pass["why"] == "reach" && pass["judged"] == 0),
+        "a reach with nothing to judge: {passes:?}"
+    );
+    assert_eq!(
+        learned_pass_seconds(&store),
+        None,
+        "learned from a pass that judged nothing: {passes:?}"
+    );
+}
+
+#[test]
+fn a_pass_that_judges_teaches_how_long_a_pass_takes() {
+    // Generations past the two kept are judged by the first reach.
+    let store = Store::new();
+    generations(&store);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    store.step_until(&mut guard, |store| {
+        store
+            .passes()
+            .iter()
+            .any(|pass| pass["why"] == "reach" && pass["judged"] != 0)
+    });
+    saved(&mut guard);
+    assert!(
+        learned_pass_seconds(&store).is_some(),
+        "learned nothing from a pass that judged: {:?}",
+        store.passes()
+    );
+}
+
 #[test]
 fn garbage_waits_while_another_process_writes_nix_s_database() {
     // A delete holds the database's write lock for seconds at a time, and

@@ -273,6 +273,13 @@ give
 expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step fails fails short"
 expect_said "needs files gone" "a half-full step failing, as for want of room, says files must go"
 
+# Only the last step's kill is told: an earlier one's, passed for the
+# next, leaves a half-full step that fails saying files must go.
+disk 950 0 "0 killed-by-day" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails"
+give
+expect "0 5 10 20 30 40 50 " 1 "a night whose first step is killed and last fails fails short"
+expect_said "needs files gone" "an early kill leaves a failing half-full step saying files must go"
+
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"
 CLOCK=05:30:00 give
 expect "0 5 10 20 30 40 50 " 1 "a half-full step killed past 06:00 fails short"

@@ -6302,7 +6302,8 @@
     in no chunk, each step ended at 06:00 by the epoch as the clocks go forward or back, stopping
     at the first step that frees enough, going past a step that fails, stopping at half-full
     chunks, saying files must go only when the last finished or failed rather than was killed,
-    and failing when the disk stays short or its usage can't be read
+    whatever an earlier step met, and failing when the disk stays short or its usage can't be
+    read
   '';
   swap-file-grows-only-when-it-may = ''
     a swap file smaller than asked for grows as the machine starts, and one in use, holding a
