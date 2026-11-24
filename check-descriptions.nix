@@ -5133,9 +5133,9 @@
     only that one's row again; and Now, stepped into For You since it last said what it shows,
     says it changed only where For You's rows differ from those the launcher shows; and the
     notices moving, by their rows or their history, each heard outright with nothing held, aren't
-    said outright as they move with For You held, so a session's notice updated just after Return
-    into For You isn't said as Return's act then, while with Desktop, Slack's notices or what's on
-    screen held right under Now they are said outright
+    said outright as they move with For You held, though not that a say put off a turn is none,
+    while with Desktop, Slack's notices or what's on screen held right under Now, Now's own
+    noticesMoved says them outright
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
