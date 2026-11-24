@@ -6,7 +6,7 @@ use crate::anchor::Dir;
 use crate::band::{Band, Space, Thresholds};
 use crate::clock::Tick;
 use crate::config::{Config, Source};
-use crate::decide::{Decision, Fill, Situation, calm, decide, overloaded, powered, spare};
+use crate::decide::{Decision, Fill, Situation, calm, decide, overloaded, powered, roomy, spare};
 use crate::dedupe::{self, Deduped};
 use crate::discover;
 use crate::finished::{self, Answers, Predicate};
@@ -1372,7 +1372,7 @@ impl Guard {
         // October.
         self.measure_holders(tick.wall);
         self.watch_roots();
-        self.list_garbage(tick.wall, spare_moment, overload);
+        self.list_garbage(tick.wall, spare_moment, overload, roomy(senses.pressure));
         self.collect_garbage(tick.wall, &mut due);
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
@@ -1915,10 +1915,10 @@ impl Guard {
     /// process holding paths ends on a filling disk, six hours on at a spare
     /// moment, or a day on whenever there's power, at idle priority; and
     /// when the store's filesystem is filling and the listing is an hour
-    /// old. While the machine is overloaded only a filling store's listing
-    /// begins, at idle priority short of nearly full;
-    /// one asked for meanwhile waits.
-    fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool) {
+    /// old. Short of nearly full, a listing begins only while the machine
+    /// is `roomy`, at idle priority, and while it's overloaded only a
+    /// filling store's does; one asked for meanwhile waits.
+    fn list_garbage(&mut self, now: f64, spare: bool, overloaded: bool, roomy: bool) {
         if self.listing_out.is_some() {
             return;
         }
@@ -1933,11 +1933,15 @@ impl Guard {
         if overloaded && !pressed {
             return;
         }
-        // On an overloaded machine a filling store's listing takes only
-        // what the rest leaves: on 8 November it took half a processor at
-        // load 74. Near full it can't wait on that, since idle priority on
-        // a busy machine may never finish.
-        let idle = !pressed || overloaded && band < Band::NearlyFull;
+        // Short of nearly full a listing takes only what the rest leaves:
+        // on 8 November one took half a processor at load 74, and on 23
+        // November a filling store's ran 10 to 15 minutes at io full 17 to
+        // 36 over the minute. Near full it can't wait on that, since idle
+        // priority on a busy machine may never finish.
+        let idle = band < Band::NearlyFull;
+        if idle && !roomy {
+            return;
+        }
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
         let listed = age(self.listing.as_ref().map(|listing| listing.listed_at));
         let retry = if pressed {

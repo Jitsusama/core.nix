@@ -37,14 +37,17 @@ const CALM: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         memory: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         cpu: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
     },
 };
@@ -504,6 +507,7 @@ fn busy() -> Senses {
     let stalling = disk_guard::moments::Stall {
         some: 50.0,
         full: 5.0,
+        full_minute: 5.0,
     };
     Senses {
         pressure: Pressure {

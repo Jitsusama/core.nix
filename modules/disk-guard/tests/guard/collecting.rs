@@ -36,14 +36,17 @@ const CALM: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         memory: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         cpu: disk_guard::moments::Stall {
             some: 0.0,
             full: 0.0,
+            full_minute: 0.0,
         },
     },
 };
@@ -798,6 +801,7 @@ const BUSY: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 50.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         ..CALM.pressure
     },
@@ -841,6 +845,7 @@ const OVERLOADED: Senses = Senses {
         io: disk_guard::moments::Stall {
             some: 98.0,
             full: 2.6,
+            full_minute: 2.6,
         },
         ..CALM.pressure
     },
@@ -908,6 +913,73 @@ fn a_nearly_full_store_is_listed_at_full_priority_however_overloaded_the_machine
         Some(format!("list {}", own_policy())),
         "at full priority, as the guard's own"
     );
+}
+
+/// A machine whose memory stalled every task at once for a tenth of the
+/// last minute, as optimus's did beside long listings on 23 November.
+const MEMORY_STRAINED: Senses = Senses {
+    pressure: Pressure {
+        memory: disk_guard::moments::Stall {
+            some: 40.0,
+            full: 4.0,
+            full_minute: 10.0,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+/// A machine whose disk stalled every task at once for a fifth of the last
+/// minute.
+const DISK_STRAINED: Senses = Senses {
+    pressure: Pressure {
+        io: disk_guard::moments::Stall {
+            some: 40.0,
+            full: 8.0,
+            full_minute: 20.0,
+        },
+        ..CALM.pressure
+    },
+    ..CALM
+};
+
+#[test]
+fn a_filling_store_is_listed_only_once_memory_and_the_disk_have_room() {
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later(&mut guard, 0.0, &MEMORY_STRAINED);
+    assert_eq!(
+        lists(&store),
+        0,
+        "listed while memory stalled: {:?}",
+        store.log()
+    );
+    step_later(&mut guard, 0.0, &DISK_STRAINED);
+    assert_eq!(
+        lists(&store),
+        0,
+        "listed while the disk stalled: {:?}",
+        store.log()
+    );
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    let listed = store
+        .log()
+        .into_iter()
+        .find(|line| line.starts_with("list "));
+    assert_eq!(listed.as_deref(), Some("list 5"), "at idle priority");
+}
+
+#[test]
+fn a_nearly_full_store_is_listed_however_memory_stalls() {
+    // Near full, what the listing finds is what keeps the disk from
+    // filling, so it can't wait for room.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &MEMORY_STRAINED, |store, _| {
+        lists(store) == 1
+    });
 }
 
 /// This process's scheduling policy, as /proc gives it, which what the

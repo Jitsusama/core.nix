@@ -38,7 +38,11 @@ or launchd, and [`home.nix`][2] the account's.
   be tidied. Only an overloaded one, its tasks stalled on the disk, memory
   or the processors 75% of the time, holds upkeep and the store's routine
   listing until it recovers; a disk past healthy is answered all the
-  same, its listing at idle priority until the disk is nearly full. It comes
+  same. Short of nearly full, the store's listing runs at idle priority,
+  and begins only while, over the last minute, all tasks stalled at once
+  no more than 5% on memory and 10% on the disk (`roomy`): on 23 November
+  a filling store's listings ran 10 to 15 minutes at 17 to 36 on the
+  disk. Nearly full, it can't wait for room. It comes
   at once, too, when an owner ends: the guard looks each minute, and a
   tree newly spent, a new boot, a guard with new
   rules or a path a producer watches saying something new since it last
