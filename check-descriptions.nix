@@ -1160,7 +1160,7 @@
     take, and holds nothing on a processor with no efficient cores
   '';
   elsewhere-passes-clippy = ''
-    clippy finds nothing in elsewhere or its tests
+    clippy finds nothing in elsewhere or its tests, on a Mac as on Linux
   '';
   elsewhere-reads-what-a-machine-declares = ''
     the machines and kinds of job a machine repository declares reach elsewhere's settings in the
