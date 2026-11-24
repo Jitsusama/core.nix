@@ -59,7 +59,10 @@ in a few words, as "21 devices", or null when it wasn't read), `things`
 (the machines, worst first, each with
 `kind`, `name`, `health`, `says`, `address`, its home on the local
 sites as the site home to it gives it, or null while none is, and
-`ties`, what ties it to the other parts: `cells` (busy, idle and ended,
+`ties`, what ties it to the other parts: `reached` (false when the
+mycelium can't reach it, so a page can set those apart without reading
+its words), `heard_at` (when the node last heard from one out of reach,
+or null while it is reached or was never heard), `cells` (busy, idle and ended,
 all 0 where the health lists none on it, or null when the mycelium's
 health wasn't read), `network` (a place for each device the network
 names for it, whatever the name's case: `by` its band or `wired`, the
