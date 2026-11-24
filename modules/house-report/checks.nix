@@ -80,15 +80,21 @@ let
   chained = lib.concatStringsSep "\n" [
     "if [ -n \"$houseReportWhy\" ]; then"
     "  :"
-    "elif [ -L \"$houseReportKey\" ]; then"
+    "elif [ -L \"$houseReportRead\" ]; then"
     "  houseReportWhy=\"is a link\""
-    "elif [ ! -f \"$houseReportKey\" ]; then"
+    "elif [ ! -f \"$houseReportRead\" ]; then"
     "  houseReportWhy=\"isn't there as a file\""
     (
-      "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportKey\" "
-      + "\"$houseReportCopy.new\" \\"
+      "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportRead\" "
+      + "\"$houseReportNew\" \\"
     )
   ];
+  # The key is read in the real folder the walk tests, not by its
+  # spelling.
+  readInRealFolder =
+    "houseReportRead=\"$houseReportFolder/" + "$(/usr/bin/basename \"$houseReportKey\")\"";
+  # How many times `words` come in `text`.
+  times = words: text: lib.length (lib.splitString words text) - 1;
   # Where a Mac's daemon reads activation's copy of its key.
   copied = "/var/db/house-report/house.key";
   watching = keyedMac.launchd.daemons.house-report-key.serviceConfig or { };
@@ -154,11 +160,12 @@ in
         && lib.hasInfix "chown nobody:nobody /var/log/house-report.log" prepared
       );
 
-  # A Mac given a key reads activation's copy of it, nobody's alone, by
-  # its path ahead of the address. Activation copies the key only once
-  # every folder above it is root's and written by no other account and
-  # the key is a plain file, the copy the last branch of the chain that
-  # refuses, and never makes the key itself another account's. The build
+  # A Mac given a key reads activation's copy of it, nobody's, by its
+  # path ahead of the address. Activation copies the key only once every
+  # folder above it is root's and written by no other account, by mode
+  # or access list, reading it in its real folder as a plain file, the
+  # copy the last branch of the chain that refuses, through a name of
+  # the run's own, and changes no file's owner or mode. The build
   # refuses a key outside root's own trees, or spelled through dots.
   house-report-hands-a-mac-its-key-safely =
     holds "house-report-hands-a-mac-its-key-safely"
@@ -169,7 +176,8 @@ in
           "A Mac given /etc/house.key doesn't run house-report --key "
           + "/var/db/house-report/house.key 192.0.2.3:47110, or its activation copies the key "
           + "outside the chain that refuses a link and a folder another account may write, "
-          + "or hands the key itself over."
+          + "reads it by its spelling rather than its real folder, or hands a file over "
+          + "otherwise than by one install into a name of its own."
       )
       (
         macMisread == [ ]
@@ -180,8 +188,19 @@ in
         && lib.hasInfix "&& pwd -P)" keyedPrepared
         && lib.hasInfix "/usr/bin/stat -f %u \"$houseReportFolder\"" keyedPrepared
         && lib.hasInfix "/usr/bin/find \"$houseReportFolder\" -maxdepth 0 -perm +022" keyedPrepared
-        && !lib.hasInfix "chown -h" keyedPrepared
-        && !lib.hasInfix "chmod -h" keyedPrepared
+        && lib.hasInfix "/bin/ls -lde \"$houseReportFolder\"" keyedPrepared
+        && lib.hasInfix readInRealFolder keyedPrepared
+        && walked > placed "houseReportRead="
+        && lib.hasInfix "/usr/bin/install -d -o root -g wheel -m 0755 /var/db/house-report " watched
+        # Nothing in the copy's text hands a file over but the one install
+        # into this run's own name, moved onto the copy (round 4's F6).
+        && times "chown" watched == 0
+        && times "chmod" watched == 0
+        && times "/usr/bin/install " watched == 2
+        && times "/bin/mv " watched == 1
+        && lib.hasInfix "/bin/mv -f \"$houseReportNew\" \"$houseReportCopy\"" watched
+        && lib.hasInfix "houseReportNew=\"$houseReportCopy.$$\"" watched
+        && lib.hasInfix "2>/dev/null || :" watched
       );
 
   # A Mac given a key copies it again, as root, whenever the key or its
@@ -251,15 +270,17 @@ in
     holds "house-report-takes-up-a-swapped-key"
       (
         "A Linux machine given /etc/house.key doesn't hand it over as a credential read by --key, "
-        + "or doesn't try-restart house-report when the file changes."
+        + "doesn't try-restart house-report when the file changes, or limits their starts."
       )
       (
         keyedStart.LoadCredential or null == "house.key:/etc/house.key"
-        && lib.hasInfix "--key %d/house.key " keyedStart.ExecStart
+        && lib.hasInfix "--key %d/house.key " (keyedStart.ExecStart or "")
         && keyedLinux.paths.house-report-key.pathConfig.PathChanged or null == "/etc/house.key"
-        && builtins.elem "multi-user.target" keyedLinux.paths.house-report-key.wantedBy
+        && builtins.elem "multi-user.target" (keyedLinux.paths.house-report-key.wantedBy or [ ])
         && lib.hasSuffix "/bin/systemctl try-restart house-report.service" (
           keyedLinux.services.house-report-key.serviceConfig.ExecStart or ""
         )
+        && keyedLinux.services.house-report.startLimitIntervalSec or null == 0
+        && keyedLinux.services.house-report-key.startLimitIntervalSec or null == 0
       );
 }

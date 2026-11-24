@@ -21,8 +21,14 @@ in
     pathConfig.PathChanged = keyFile;
   };
 
+  # A key written in several steps fires the path unit several times, and
+  # each start counts toward systemd's start limit, past which neither
+  # unit starts again and the reporter stays down; RestartSec already
+  # spaces the reporter's own starts, so neither has a limit (house
+  # signing round 4's F4, F10, F15 and F25).
   systemd.services.house-report-key = lib.mkIf (keyFile != null) {
     description = "Restarts house-report on the house's key as it stands";
+    startLimitIntervalSec = 0;
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${config.systemd.package}/bin/systemctl try-restart house-report.service";
@@ -33,6 +39,7 @@ in
     description = "Tells the shaped machine on this line what this one sends up";
     wantedBy = [ "multi-user.target" ];
     after = [ "network.target" ];
+    startLimitIntervalSec = 0;
     serviceConfig = {
       ExecStart = lib.escapeShellArgs config.jitsusama.house-report.arguments;
       LoadCredential = lib.mkIf (keyFile != null) "house.key:${keyFile}";

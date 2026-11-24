@@ -1681,11 +1681,12 @@
     to anything, and reads a shortened name's tail as no mention
   '';
   house-report-hands-a-mac-its-key-safely = ''
-    a Mac given a key runs house-report signing with activation's copy of it, made nobody's alone
-    in a folder of root's, ahead of the address; activation copies the key only once every folder
-    on its real path is root's and written by no other account and the key is a plain file, never
-    handing the key itself over; and the build refuses a Mac's key outside /etc, /private/etc or
-    /var/root, or spelled through dots
+    a Mac given a key runs house-report signing with activation's copy of it, readable by nobody's
+    account alone in a folder of root's, ahead of the address; activation copies the key only once
+    every folder on its real path is root's and written by no other account, by its mode or an
+    access list, reading it in that real folder as a plain file, through a name of each run's own,
+    and changes no file's owner or mode nor installs any other; and the build refuses a Mac's key
+    outside /etc, /private/etc or /var/root, or spelled through dots
   '';
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started
@@ -1715,7 +1716,8 @@
   '';
   house-report-takes-up-a-swapped-key = ''
     a Linux machine given a key hands it to house-report as a credential read by --key, and
-    restarts it whenever the key file changes, leaving one someone stopped stopped
+    restarts it whenever the key file changes, leaving one someone stopped stopped, with no start
+    limit on either unit, so a key written in several steps never leaves the reporter down
   '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi

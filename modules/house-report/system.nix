@@ -80,13 +80,15 @@ in
         journal lines each time, so put the key in place before naming
         it; one empty or short at start ends the service, which starts
         again on a fresh copy. On a Mac the service runs as nobody, so
-        activation copies the key, nobody's alone, where the service
-        reads it each second: a key put there or swapped is taken at the
-        next switch, and until then the log says the copy can't be read
-        or signs with the last. There it must be under /etc, /private/etc
-        or /var/root, every folder above it root's and written by no
-        other account, as the build and activation check. Never a link,
-        a Nix path or a value in the store.
+        root copies the key for nobody's account, where the service reads
+        it each second, at each switch and within seconds of the key or
+        its folder changing; a copy refused or failed is taken away, so
+        the service sends nothing until the key is right, and
+        /var/log/house-report.log says why. There the build takes it only
+        under /etc, /private/etc or /var/root, spelled plainly, and the
+        copy only once every folder above it, every link resolved, is
+        root's and written by no other account. Never a link, a Nix path
+        or a value in the store.
       '';
     };
     keyPath = lib.mkOption {

@@ -248,16 +248,24 @@ fn copied_at_start(path: &Path, credentials: Option<&OsStr>) -> bool {
     credentials.is_some_and(|folder| !folder.is_empty() && path.starts_with(folder))
 }
 
+/// Why it ends at once with the key at `key`, under the credentials
+/// folder `credentials` names: a copy made as it started that can't be
+/// used, missing, empty or short, ends it as failed, so its service
+/// starts it again on a fresh copy; a key read in place is read again
+/// each second instead.
+fn refused_at_start(key: Option<&Path>, credentials: Option<&OsStr>) -> Option<Failure> {
+    let path = key.filter(|path| copied_at_start(path, credentials))?;
+    let error = signed::key(path).err()?;
+    Some(Failure::new(
+        Exit::Failed,
+        format!("the key copied at start can't be used, so it ends for a fresh copy: {error}"),
+    ))
+}
+
 /// Sends a report each second, for as long as it runs.
 fn reports(to: SocketAddr, interface: Option<&str>, key: Option<&Path>) -> Result<(), Failure> {
-    if let Some(path) = key
-        && copied_at_start(path, env::var_os("CREDENTIALS_DIRECTORY").as_deref())
-        && let Err(error) = signed::key(path)
-    {
-        return Err(Failure::new(
-            Exit::Failed,
-            format!("the key copied at start can't be used, so it ends for a fresh copy: {error}"),
-        ));
+    if let Some(failure) = refused_at_start(key, env::var_os("CREDENTIALS_DIRECTORY").as_deref()) {
+        return Err(failure);
     }
     let any: SocketAddr = if to.is_ipv4() {
         ([0, 0, 0, 0], 0).into()
@@ -350,6 +358,48 @@ mod tests {
         assert!(
             !copied_at_start(Path::new("/etc/house.key"), Some(OsStr::new(""))),
             "an empty credentials folder named every key a copy"
+        );
+        assert!(
+            !copied_at_start(
+                Path::new("/run/credentials/house-report.service2/house.key"),
+                Some(folder)
+            ),
+            "a neighbouring service's credential was a copy"
+        );
+    }
+
+    #[test]
+    fn a_copy_made_at_start_that_can_t_be_used_ends_it_as_failed_and_a_good_one_doesn_t() {
+        let folder =
+            std::env::temp_dir().join(format!("house-report-start-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let at = |name: &str| folder.join(name);
+        std::fs::write(at("short"), [7_u8; 15]).expect("a short key");
+        std::fs::write(at("empty"), b"").expect("an empty key");
+        std::fs::write(at("whole"), [7_u8; 32]).expect("a whole key");
+        let credentials = Some(folder.as_os_str());
+        let ended = |name: &str| refused_at_start(Some(&at(name)), credentials).map(|f| f.code());
+        let short = ended("short");
+        let empty = ended("empty");
+        let missing = ended("missing");
+        let whole = ended("whole");
+        let in_place = refused_at_start(Some(&at("short")), None);
+        let _ = std::fs::remove_dir_all(&folder);
+        let failed = Some(Exit::Failed.code());
+        assert_eq!(
+            (short, empty, missing),
+            (failed, failed, failed),
+            "a short, empty or missing copy didn't end it as failed, to start on a fresh one"
+        );
+        assert_eq!(whole, None, "a whole copy ended it");
+        assert!(
+            in_place.is_none(),
+            "a short key read in place, which is read again each second, ended it"
+        );
+        assert!(
+            refused_at_start(None, credentials).is_none(),
+            "no key ended it"
         );
     }
 

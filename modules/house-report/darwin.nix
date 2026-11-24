@@ -29,20 +29,31 @@ let
       "/./"
       "/../"
     ];
-  # Copies the key, nobody's alone, where the daemon reads it each
-  # second, or takes the copy away and says why; activation runs it, and
+  # Copies the key, readable by nobody's account alone, where the daemon
+  # reads it each second, or takes the copy away and says why; activation runs it, and
   # so does house-report-key whenever the key or its folder changes, so
   # a key put in place or swapped is taken within seconds, as Linux's
   # path unit takes one there. Copied, the key itself stays root's, and
   # no second name for it, whoever made one, can keep it from the daemon
   # or hand another file over. The folders tested are the key's real
   # ones, every link resolved, each up to / root's and written by no
-  # other account, so none but root may rename one between the test and
-  # the copy, nor swap the key for a link after it's refused one (house
-  # signing round 3's F1, F8, F12 and F13). A copy that fails leaves the
-  # daemon no key, said, and ends nothing, a switch included (F10). The
-  # Mac's own tools are named, since GNU's stat, which a PATH may name
-  # first, reads -f otherwise.
+  # other account, by its mode or an access list; the key is then read
+  # in the real folder tested, not by its spelling, whose links may sit
+  # in folders never tested, so none but root may rename one between the
+  # test and the copy, nor swap the key for a link after it's refused one
+  # (house signing round 3's F1, F8, F12 and F13; round 4's F1, F8, F16,
+  # F20 and F24). A copy that fails leaves the daemon no key, said, and
+  # ends nothing, a switch included, its cleanup too (round 3's F10,
+  # round 4's F14). Each run copies through a name of its own, so
+  # activation and the watch job running at once can't take away the
+  # copy the other made (round 4's F21). The Mac's own tools are named,
+  # since GNU's stat, which a PATH may name first, reads -f otherwise.
+  # nobody is an account other daemons may share, so any of them could
+  # read the copy (round 4's F26).
+  #
+  # Kept as text here rather than a script of its own, which a sandboxed
+  # check could walk over a tree of folders, until that follows (round
+  # 4's F7).
   copying = ''
     houseReportKey=${lib.escapeShellArg keyFile}
     houseReportCopy=${copy}
@@ -51,26 +62,31 @@ let
       || houseReportWhy="has nowhere to be copied to"
     houseReportFolder=$(cd -P "$(/usr/bin/dirname "$houseReportKey")" 2>/dev/null && pwd -P) \
       || houseReportWhy="is in a folder that isn't there"
+    houseReportRead="$houseReportFolder/$(/usr/bin/basename "$houseReportKey")"
+    houseReportNew="$houseReportCopy.$$"
     while [ -z "$houseReportWhy" ] && [ "$houseReportFolder" != / ]; do
       if [ "$(/usr/bin/stat -f %u "$houseReportFolder")" != 0 ]; then
         houseReportWhy="is under $houseReportFolder, which isn't root's"
       elif [ -n "$(/usr/bin/find "$houseReportFolder" -maxdepth 0 -perm +022)" ]; then
         houseReportWhy="is under $houseReportFolder, which another account may write"
+      elif /bin/ls -lde "$houseReportFolder" \
+        | /usr/bin/grep -qE 'allow.*(add_file|add_subdirectory|delete_child|write)'; then
+        houseReportWhy="is under $houseReportFolder, whose access list lets an account write"
       fi
       houseReportFolder=$(/usr/bin/dirname "$houseReportFolder")
     done
     if [ -n "$houseReportWhy" ]; then
       :
-    elif [ -L "$houseReportKey" ]; then
+    elif [ -L "$houseReportRead" ]; then
       houseReportWhy="is a link"
-    elif [ ! -f "$houseReportKey" ]; then
+    elif [ ! -f "$houseReportRead" ]; then
       houseReportWhy="isn't there as a file"
-    elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportKey" "$houseReportCopy.new" \
-      || ! /bin/mv -f "$houseReportCopy.new" "$houseReportCopy"; then
+    elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportRead" "$houseReportNew" \
+      || ! /bin/mv -f "$houseReportNew" "$houseReportCopy"; then
       houseReportWhy="couldn't be copied for nobody"
     fi
     if [ -n "$houseReportWhy" ]; then
-      /bin/rm -f "$houseReportCopy" "$houseReportCopy.new"
+      /bin/rm -f "$houseReportCopy" "$houseReportNew" 2>/dev/null || :
       echo "house-report: $houseReportKey $houseReportWhy, so the daemon has no key" >&2
     fi
   '';
