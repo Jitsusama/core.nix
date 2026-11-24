@@ -56,16 +56,20 @@ QtObject {
     // first frame synced after it sat, never one a walk began, and never
     // by asking for frame after frame (2026-11-24, #6382's rounds).
     function rests(expect) {
-        // It sat at 1000 ms.
-        const rest = (synchronizing, asked) => MarginCat.restFrom({ synchronizing, asked }, 1000);
+        // It sat at 1000 ms with 40 frames begun.
+        const rest = (frame, synchronizing, asked) =>
+            MarginCat.restFrom(frame, { synchronizing, asked }, 40, 1000);
         expect("a frame synced as it sat or after begins it, ask or none",
-            [rest(1000, true), rest(1016.5, false)], ["begins", "begins"]);
-        expect("one that took the ask but synced before it sat asks again",
-            [rest(999.9, true), rest(0, true)], ["asks", "asks"]);
-        expect("a walk's frame synced before it sat is only heard, however late",
-            [rest(990, false), rest(0, false)], ["waits", "waits"]);
-        expect("one nothing was kept of begins it rather than asking on",
-            MarginCat.restFrom({}, 1000), "begins");
+            [rest(41, 1000, true), rest(42, 1016.5, false)], ["begins", "begins"]);
+        expect("one that took the ask but synced before it sat asks again, the 40th too",
+            [rest(41, 999.9, true), rest(40, 0, true)], ["asks", "asks"]);
+        expect("a walk's frame synced before it sat is only heard, the 40th too",
+            [rest(40, 990, false), rest(39, 0, false)], ["waits", "waits"]);
+        expect("a walk's frame begun before the 40th, its times overwritten, is only heard",
+            MarginCat.restFrom(39, {}, 40, 1000), "waits");
+        expect("a later one nothing was kept of begins it rather than asking on",
+            [MarginCat.restFrom(40, {}, 40, 1000), MarginCat.restFrom(41, {}, 40, 1000)],
+            ["begins", "begins"]);
     }
 
     // Its lean toward the hand (VKCF3Z, 10bacc58): only its head moves, so

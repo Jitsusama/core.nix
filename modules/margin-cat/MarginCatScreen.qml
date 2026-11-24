@@ -188,6 +188,7 @@ PanelWindow {
     // coming: a glance still draws two. Which frame took the ask, the
     // frame alone can say (MarginCat.restFrom).
     property real satAt: -1
+    property int satFrom: 0
     function rests(): void {
         stillSince = -1;
         if (!window.FramePresentation.available) {
@@ -195,13 +196,17 @@ PanelWindow {
             return;
         }
         satAt = KeyTimes.now();
+        // Counted before it asks, so a frame begun before the count
+        // can't have taken this ask.
+        satFrom = window.FramePresentation.framesBegun;
         window.FramePresentation.ask();
     }
     // A frame niri showed or let go, `frame`, as MarginCat.restFrom says.
     function restSeen(frame: int): void {
         if (satAt < 0)
             return;
-        const seen = MarginCat.restFrom(window.FramePresentation.timesOf(frame), satAt);
+        const seen = MarginCat.restFrom(frame, window.FramePresentation.timesOf(frame), satFrom,
+            satAt);
         if (seen === "begins") {
             satAt = -1;
             stillSince = KeyTimes.now();
