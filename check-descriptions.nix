@@ -5483,7 +5483,10 @@
     and a cap's open the drawer served with it, and a period's its days and what its cuts went
     to most; acts are asked of the socket, spawning nothing; told by the socket, a change remakes
     only the rows it changed, and a watch never answered is drawn from what's held while still
-    reading
+    reading; and a row shown elsewhere reads as served, as none once the place has answered
+    without it or while the screen is shared, before the quiet place's first answer too, and as
+    can't say only before the first answer on a screen said unshared, reading no more of how
+    Spend stands than it needs
   '';
   the-deep-rest-hold-starts-unless-turned-off = ''
     the XPS 14's hold keeping the cores from their deepest rest starts with the machine, and with

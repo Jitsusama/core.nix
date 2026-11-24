@@ -38,6 +38,7 @@ import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "SpendNow.js" as SpendNow
 
 Provider {
     id: provider
@@ -217,26 +218,40 @@ Provider {
 
     // A row as it reads now, for those who show it while these rows aren't
     // wanted: Now's Spend and Tokens borrowing its drawer, and Agents'
-    // Budgets, made then as it was served. While they're wanted, when
-    // `all` is as it reads now, it's looked for where it's shown. While
-    // spend-watch isn't answering, Spend lists only its down row, so that
-    // reads as it is, held while Start runs, and every other as none. None
-    // too for a record the place doesn't hold once it has answered, even
-    // with no rows at all, and while the screen is shared, when the quiet
-    // place holds no Budgets. Said as can't say, these were looked for
-    // among the rows last made while wanted, and Agents' Budgets said the
-    // amounts those held, on a shared screen too (core.nix#6073). It can't
-    // say only before the place's first answer on this connection.
+    // Budgets, made then as it was served: null for none, undefined when
+    // it can't say, as SpendNow.js decides, and Spend's down row, held
+    // while Start runs, as it is. A reading neither served, down nor can't
+    // say is none, so one not known holds no amount.
     function rowNow(key) {
-        if (provider.wanted || !key.startsWith("spend:"))
-            return undefined;
-        if (down)
-            return key === "spend:start" ? downRow() : null;
-        const record = `row:${place.place}:${key.slice("spend:".length)}`;
-        if (place.served(record))
-            return place.rowAt(record);
-        const answered = place.keys.length > 0 || place.link?.answeredThisWatch === true;
-        return sharing || answered ? null : undefined;
+        const now = SpendNow.standing(key, standingNow());
+        if (now === "down")
+            return downRow();
+        if (now === "served")
+            return place.rowAt(SpendNow.recordOf(place.place, key));
+        return now === "unsure" ? undefined : null;
+    }
+
+    // How Spend stands, as SpendNow.js reads it: whether its rows are
+    // wanted at once, and each of the rest only once it's asked, so a
+    // binding asking rowNow while they're wanted waits on nothing more.
+    function standingNow() {
+        return {
+            wanted: provider.wanted,
+            get down() {
+                return provider.down;
+            },
+            get sharing() {
+                return provider.sharing;
+            },
+            get place() {
+                return provider.place.place;
+            },
+            serves: record => !!provider.place.served(record),
+            get answered() {
+                return provider.place.keys.length > 0
+                    || provider.place.link?.answeredThisWatch === true;
+            }
+        };
     }
 
     function everything() {
