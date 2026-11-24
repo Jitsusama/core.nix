@@ -119,9 +119,9 @@ done"#
 /// removal cut short or failed leaves the file that lets the next run
 /// here clear it. The copy, what lies beside it and its run's file go
 /// only once this line wrote that file, `mine`: before then, any there
-/// are another run's of the job. What lies in the handover is cleared
-/// only once no link the job left stands at it or above it, as
-/// `unlinked` makes sure.
+/// are another run's, of this job or of another job of the quest. What
+/// lies in the handover is cleared only once no link the job left stands
+/// at it or above it, as `unlinked` makes sure.
 pub(super) fn stopping() -> String {
     format!(
         r#"# True once neither the job's handover folder nor either folder above

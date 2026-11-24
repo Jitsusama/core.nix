@@ -530,14 +530,20 @@ fn a_tree_left_in_several_archives_is_unpacked_from_each() {
 #[test]
 fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
     // Another run of the job has written its run's file, its copy and its
-    // names by the time this one sweeps, a run the sweep keeps, so this
-    // line's noclobber write loses whenever the other's came.
+    // names by the time this one sweeps, so this line's noclobber write
+    // loses whenever the other's came. Its file names this machine and
+    // process space and a process still running, the test's own, so the
+    // sweep keeps it as a live run's rather than for naming none.
+    let theirs = std::process::id();
     let (step, winning) = refusing(
         "uname",
         "*",
-        "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
-         if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
-         echo theirs > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\"; fi",
+        &format!(
+            "runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+             if mkdir \"$HOME/planting\" 2>/dev/null; then mkdir -p \"$runs/1\" && \
+             echo {theirs} \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" \
+             > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\"; fi"
+        ),
     );
     let (code, err, home) = far_line(
         Left::Whole,
@@ -553,10 +559,10 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
         "a run that lost its run's file read as {heard:?}, ending {code:?}: {err}"
     );
     let runs = work(&home);
-    assert_eq!(
-        std::fs::read_to_string(runs.join("1.run")).ok().as_deref(),
-        Some("theirs\n"),
-        "the winner's run's file was cleared or written over: {err}"
+    let file = std::fs::read_to_string(runs.join("1.run")).unwrap_or_default();
+    assert!(
+        file.starts_with(&format!("{theirs} ")),
+        "the winner's run's file was cleared or written over, reading {file:?}: {err}"
     );
     assert!(
         runs.join("1/theirs").exists() && runs.join("1.names").exists(),

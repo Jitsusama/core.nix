@@ -42,7 +42,8 @@ fn a_link_a_job_leaves_at_what_it_brings_back_is_never_written_through() {
 #[test]
 fn a_file_put_at_the_list_s_name_after_the_handover_s_clear_still_gives_way_to_its_end() {
     // As one of the job's own processes could, once the handover is made
-    // new, for a kind that brings nothing back.
+    // new, for a kind that brings nothing back and for one that does,
+    // whose list is written in a step of its own.
     let when = format!("*\" -rf \"*/{BROUGHT}\" \"*");
     let (step, staling) = refusing(
         "rm",
@@ -50,20 +51,27 @@ fn a_file_put_at_the_list_s_name_after_the_handover_s_clear_still_gives_way_to_i
         "[ -e \"$HOME/staled\" ] || { rm \"$@\" && for last; do :; done && \
          echo stale > \"$last\" && : > \"$HOME/staled\"; exit 0; }",
     );
-    let (code, err, home) = far_line(
-        Left::Whole,
-        &[("x", "x")],
-        "true",
-        &kind(""),
-        None,
-        &[(step, &staling)],
-    );
-    let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
-    assert!(
-        code == Some(0) && home.join("staled").exists() && listed == "end\n",
-        "a file at the list's name was kept over its end ({code:?}): {listed:?} {err}"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    let mut bringing = kind("");
+    bringing.brings_back = vec!["out".into()];
+    for (kind, run, whole) in [
+        (kind(""), "true", "end\n"),
+        (bringing, "mkdir out && printf a > out/a", "1\tout/a\nend\n"),
+    ] {
+        let (code, err, home) = far_line(
+            Left::Whole,
+            &[("x", "x")],
+            run,
+            &kind,
+            None,
+            &[(step, &staling)],
+        );
+        let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+        assert!(
+            code == Some(0) && home.join("staled").exists() && listed == whole,
+            "a file at the list's name was kept over its end ({code:?}): {listed:?} {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 #[test]
