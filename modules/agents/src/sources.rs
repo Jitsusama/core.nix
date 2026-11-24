@@ -552,6 +552,44 @@ mod tests {
     }
 
     #[test]
+    fn kept_places_heard_written_while_their_write_has_failed_leave_memory_as_it_is() {
+        let folder = std::env::temp_dir().join(format!("agents-kept-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        // A file where the places' folder would be, so their write fails.
+        fs::write(folder.join("agents"), "").expect("a file in the folder's way");
+        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
+            .expect("places");
+        let mut inputs = Inputs::default();
+        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        assert!(
+            inputs.kept_places_unwritten.is_some(),
+            "the failed write is held, so the file isn't read back over memory"
+        );
+        // The file as it stood before, landing as the folder comes back.
+        fs::remove_file(folder.join("agents")).expect("the way cleared");
+        KeptPlaces::default()
+            .write(&paths.kept_places)
+            .expect("written");
+        inputs.hear(Heard::Files(vec![paths.kept_places.clone()]), &paths);
+        assert_eq!(
+            inputs.kept_places, said,
+            "memory ahead of the file isn't thrown back to it"
+        );
+        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        assert_eq!(
+            (
+                inputs.kept_places_unwritten,
+                KeptPlaces::read(&paths.kept_places)
+            ),
+            (None, Some(said)),
+            "once the shell says them again, they're written and read as they land"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn the_files_are_handed_over_once_as_they_stand_at_the_start() {
         let folder = std::env::temp_dir().join(format!("agents-start-{}", std::process::id()));
         fs::create_dir_all(&folder).expect("a folder");

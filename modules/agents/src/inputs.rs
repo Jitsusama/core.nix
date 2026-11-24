@@ -125,6 +125,9 @@ pub struct Inputs {
     /// than its file does, so the next keep writes it though nothing
     /// moved, and the journal hears a failure once until it changes.
     pub unwritten: Option<String>,
+    /// Why the last write of `kept_places` failed, while it holds more
+    /// than its file does, so the file isn't read back over it.
+    pub kept_places_unwritten: Option<String>,
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
     pub kept_places: KeptPlaces,
