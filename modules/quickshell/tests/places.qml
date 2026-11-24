@@ -1013,6 +1013,18 @@ QtObject {
         expect("its viewer open, it is let go however Joel is", Viewers.viewersDue(alone,
             [hosted("moved", laid(4, 3))], 10, gone(screens, { away: false })),
             { open: [], kept: {} });
+        // A window the windows daemon's index still names, which niri, its
+        // list trusted, no longer lists, as in a gap of the daemon's, is no
+        // viewer open (Sessions.qml's listedNow): its viewer opens.
+        const unlisted = gone(screens, { listed: () => false });
+        expect("its window named by the index alone, it opens", Viewers.viewersDue(alone,
+            [hosted("moved", laid(4, 3))], 10, unlisted).open.map(one => one.into),
+            [{ workspace: 4, column: 3 }]);
+        const slept = { moved: { workspace: 4, column: 3, at: 0, slept: true, asleep: true,
+            asked: true } };
+        expect("a sleeper woken, its window named by the index alone, opens",
+            Viewers.viewersDue(slept, [hosted("moved", laid(4, 3))], 5, unlisted).open
+                .map(one => one.into), [{ workspace: 4, column: 3 }]);
 
         // One Reopen Them All kept while Joel was on its workspace, with
         // words to wait for its host by, opens by them once he isn't
