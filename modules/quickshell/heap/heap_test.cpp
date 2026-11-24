@@ -11,7 +11,9 @@
 // collections that run once it is, as the shell's Qt leaves the room after
 // each (qtdeclarative-room-after-every-sweep.patch). Giving the free pages
 // back leaves next to none resident, says about as much as was counted, and
-// what's kept, and what's made after in their place, reads as it was made.
+// what's kept, and what's made after in their place, reads as it was made;
+// and lending them back says as much, the kernel holds it lent (or took
+// it), and what's kept and made after reads as it was made too.
 // And a heap whose free lists lead with runs too small for what's made next,
 // held off collecting, makes it in the free runs that fit rather than in new
 // chunks, as the shell's Qt keeps its large runs by size
@@ -412,45 +414,112 @@ bool allocatorFollows(const Heap &heap) {
 // may hold one again.
 constexpr double GIVEN_LEFT_MB = 1;
 
-// Whether giving a thinned heap's free pages back takes them, says so, and
-// leaves what's kept, and what's made after, as it was made.
-bool givesBack() {
-    QJSEngine engine;
-    Heap heap(&engine);
-    const QJSValue few = engine.evaluate(
+// A heap kept thinned to a scattered few: every SCATTERED-th of KEPT
+// objects, the rest let go, so most of its pages hold nothing.
+QJSValue thinnedToAFew(QJSEngine &engine) {
+    return engine.evaluate(
         QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
                        "s: 'row ' + i }); return made.filter((_, i) => i % %2 === 0); })()")
             .arg(KEPT)
             .arg(SCATTERED));
-    const Weight thinned = weighed(engine, heap);
-    const double given = heap.giveBack();
-    const Weight after = weighed(engine, heap);
+}
+
+// What the few kept read as, and what as many made after them read as,
+// each beside what it reads as when made as it was made.
+struct ReadBack {
+    double kept;
+    double keptMade;
+    double after;
+    double afterMade;
+
+    [[nodiscard]] bool asMade() const { return kept == keptMade && after == afterMade; }
+};
+
+ReadBack readBack(QJSEngine &engine, const QJSValue &few) {
     // The few are every SCATTERED-th of 0 to KEPT - 1, so their numbers sum
     // to SCATTERED times the sum of 0 to KEPT / SCATTERED - 1.
-    const double sum = SCATTERED * (KEPT / SCATTERED) * (KEPT / SCATTERED - 1) / 2.0;
+    const double keptMade = SCATTERED * (KEPT / SCATTERED) * (KEPT / SCATTERED - 1) / 2.0;
     const QJSValue kept =
         engine
             .evaluate(QStringLiteral("(few) => few.reduce((sum, each, i) => each.s === 'row ' + "
                                      "i * %1 ? sum + each.n : NaN, 0)")
                           .arg(SCATTERED))
             .call({few});
-    const QJSValue made = engine.evaluate(
+    const QJSValue after = engine.evaluate(
         QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: "
                        "i, s: 'row ' + i }); return made.reduce((sum, each, i) => each.s === "
                        "'row ' + i ? sum + each.n : NaN, 0); })()")
             .arg(KEPT));
-    const double madeSum = static_cast<double>(KEPT) * (KEPT - 1) / 2.0;
+    return {kept.toNumber(), keptMade, after.toNumber(),
+            static_cast<double>(KEPT) * (KEPT - 1) / 2.0};
+}
+
+// Whether giving a thinned heap's free pages back takes them, says so, and
+// leaves what's kept, and what's made after, as it was made.
+bool givesBack() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = thinnedToAFew(engine);
+    const Weight thinned = weighed(engine, heap);
+    const double given = heap.giveBack();
+    const Weight after = weighed(engine, heap);
+    const ReadBack read = readBack(engine, few);
     const bool taken = after.free < GIVEN_LEFT_MB;
     const bool said = given > thinned.free / 2 && given <= thinned.free + GIVEN_LEFT_MB;
-    const bool intact = kept.toNumber() == sum && made.toNumber() == madeSum;
-    if (!taken || !said || !intact)
+    if (!taken || !said || !read.asMade())
         std::fprintf(stderr,
                      "FAIL giving %.1f MB of free pages back takes them and leaves what's "
                      "kept: said %.1f MB, %.1f MB free after; the few summed %.0f of %.0f, "
                      "and what was made after %.0f of %.0f\n",
-                     thinned.free, given, after.free, kept.toNumber(), sum, made.toNumber(),
-                     madeSum);
-    return taken && said && intact;
+                     thinned.free, given, after.free, read.kept, read.keptMade, read.after,
+                     read.afterMade);
+    return taken && said && read.asMade();
+}
+
+// Kilobytes in a megabyte, as /proc says sizes in kilobytes.
+constexpr double KB_PER_MB = 1024;
+
+// How many megabytes of this process the kernel holds as lent back to it,
+// to take when memory runs short, from smaps_rollup's LazyFree; or -1 when
+// it doesn't say.
+double lentMB() {
+    QFile rollup(QStringLiteral("/proc/self/smaps_rollup"));
+    if (!rollup.open(QIODevice::ReadOnly))
+        return -1;
+    static const QRegularExpression lazy(QStringLiteral("^LazyFree:\\s+(\\d+) kB$"),
+                                         QRegularExpression::MultilineOption);
+    const QRegularExpressionMatch match = lazy.match(QString::fromLatin1(rollup.readAll()));
+    return match.hasMatch() ? match.captured(1).toDouble() / KB_PER_MB : -1;
+}
+
+// Whether lending a thinned heap's free pages back says about as much as
+// was counted, and the kernel holds it lent, or took it; and leaves what's
+// kept, and what's made after, as it was made. Its free pages are read
+// without a collection, which would write the free runs' headers again.
+bool lendsBack() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue few = thinnedToAFew(engine);
+    const Weight thinned = weighed(engine, heap);
+    const double lentBefore = lentMB();
+    const double lent = heap.lendBack();
+    const double lentAfter = lentMB();
+    const double freeAfter = heap.weigh().value(QStringLiteral("free")).toDouble();
+    // What the kernel took under pressure is no longer resident, so it's
+    // counted with what it holds lent.
+    const double held = lentAfter - lentBefore + (thinned.free - freeAfter);
+    const ReadBack read = readBack(engine, few);
+    const bool said = lent > thinned.free / 2 && lent <= thinned.free + GIVEN_LEFT_MB;
+    const bool kernel = lentBefore >= 0 && held > thinned.free / 2;
+    if (!said || !kernel || !read.asMade())
+        std::fprintf(stderr,
+                     "FAIL lending %.1f MB of free pages back says so and leaves what's kept: "
+                     "said %.1f MB; the kernel holds %.1f, then %.1f MB lent, %.1f MB free "
+                     "after; the few summed %.0f of %.0f, and what was made after %.0f of "
+                     "%.0f\n",
+                     thinned.free, lent, lentBefore, lentAfter, freeAfter, read.kept,
+                     read.keptMade, read.after, read.afterMade);
+    return said && kernel && read.asMade();
 }
 
 // How many runs too small for what's made after are freed, each a store
@@ -1511,6 +1580,7 @@ int main(int argc, char **argv) {
     const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
+    const bool lent = lendsBack();
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
     const bool census = namesWhatsKept();
@@ -1525,7 +1595,7 @@ int main(int argc, char **argv) {
     const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
-                   reckoned && ownLimits && follows && given && fits && whole && census &&
+                   reckoned && ownLimits && follows && given && lent && fits && whole && census &&
                    placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
                    swept && chained
                ? 0

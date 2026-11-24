@@ -12600,8 +12600,16 @@ Scope {
         const collected = KeyTimes.now();
         const weight = Heap.weigh();
         const allocator = Heap.allocator();
+        const weighed = KeyTimes.now();
+        // The free pages go to the kernel lent, to take only when memory
+        // runs short, since a shell four hours on kept 131 to 136 MB of them
+        // (2026-11-23); an opening writing one it hasn't taken faults
+        // nothing, where giving them back made every opening fault them in
+        // (heap.h's lendBack).
+        const lent = Math.round(Heap.lendBack());
+        const lending = Math.round(KeyTimes.now() - weighed);
         const took = Math.round(collected - began);
-        const weighing = Math.round(KeyTimes.now() - collected);
+        const weighing = Math.round(weighed - collected);
         const live = Math.round(weight.live);
         const held = Math.round(weight.held);
         const outside = Math.round(weight.outside);
@@ -12615,7 +12623,8 @@ Scope {
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
             + ` held, ${free} MB of it in free pages, ${outside} MB outside, chunks`
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
-            + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms`
+            + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
+            + ` ${lent} MB lent back in ${lending} ms`
             + (allocator.used === undefined ? ""
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`

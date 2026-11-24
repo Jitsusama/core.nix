@@ -26,6 +26,15 @@
 // them until it makes an item there, so only a collection under way, which
 // may still be sweeping them, rules it out.
 //
+// lendBack() lends them instead, with MADV_FREE, and the launcher asks it
+// after each closing's collection. Giving them back made the next opening
+// fault each page in again, 145.5 against 105 ms for the clipboard's
+// first (2026-11-16), so the shell never asked; yet a shell four hours on
+// kept 131 to 136 MB of them (2026-11-23). Lent, the kernel takes them only
+// when memory runs short, and an opening writing one it hasn't taken
+// faults nothing. One it took comes back zeroed, which Qt's zeroing of
+// each item it makes already allows for.
+//
 // Room is left because Qt starts a collection whenever its free lists miss
 // while what's held is over twice what the last full sweep left in use, and
 // after the closing's collection it always is: three times, in Joel's shell
@@ -195,18 +204,21 @@ std::size_t freePages(const QV4::BlockAllocator &allocator) {
     return bytes;
 }
 
-// Gives an allocator's free pages back to the kernel, as the shell's Qt
-// gives back a chunk it decommits, and says how many of their bytes were
-// resident. The shell's Qt reserves the heap as anonymous memory, which
-// this lets go of; a Qt that maps it from a memfd keeps the pages there.
+// Gives an allocator's free pages back to the kernel with `advice`, and
+// says how many of their bytes were resident: MADV_DONTNEED lets them go
+// now, as the shell's Qt gives back a chunk it decommits, and MADV_FREE
+// lends them, for the kernel to take only when memory runs short. The
+// shell's Qt reserves the heap as anonymous memory, which both act on; a Qt
+// that maps it from a memfd keeps the pages there, and refuses MADV_FREE.
 // Spans with none resident are left alone, so the call costs nothing for
-// them.
-std::size_t givenBack(const QV4::BlockAllocator &allocator) {
+// them; a page lent and not yet taken is still resident, so it's lent again.
+std::size_t givenBack(const QV4::BlockAllocator &allocator, int advice) {
     std::size_t bytes = 0;
-    eachFreeSpan(allocator, [&bytes](char *at, std::size_t length, std::size_t resident) {
-        if (resident > 0 && madvise(at, length, MADV_DONTNEED) == 0)
-            bytes += resident;
-    });
+    eachFreeSpan(allocator,
+                 [&bytes, advice](char *at, std::size_t length, std::size_t resident) {
+                     if (resident > 0 && madvise(at, length, advice) == 0)
+                         bytes += resident;
+                 });
     return bytes;
 }
 
@@ -285,7 +297,16 @@ double Heap::giveBack() {
     QV4::MemoryManager *manager = engine->handle()->memoryManager;
     if (manager->gcStateMachine->inProgress())
         return 0;
-    return megabytes(givenBack(manager->blockAllocator) + givenBack(manager->icAllocator));
+    return megabytes(givenBack(manager->blockAllocator, MADV_DONTNEED) +
+                     givenBack(manager->icAllocator, MADV_DONTNEED));
+}
+
+double Heap::lendBack() {
+    QV4::MemoryManager *manager = engine->handle()->memoryManager;
+    if (manager->gcStateMachine->inProgress())
+        return 0;
+    return megabytes(givenBack(manager->blockAllocator, MADV_FREE) +
+                     givenBack(manager->icAllocator, MADV_FREE));
 }
 
 namespace {

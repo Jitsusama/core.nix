@@ -75,6 +75,14 @@ public:
     // still be reading them; it gives nothing back while one is.
     Q_INVOKABLE double giveBack();
 
+    // Lends the same free pages back to the kernel, which takes them only
+    // when memory runs short, and says how many megabytes of them were
+    // resident. Until it takes one, a page Qt writes again stays as it was,
+    // with no fault, where one given back faults in zeroed; one it took
+    // comes back zeroed, as Qt zeroes what it makes anyway. Asked after the
+    // closing's collection, and, as giveBack(), never during one.
+    Q_INVOKABLE double lendBack();
+
     // What's live, by what each item is: `classes`, the `top` largest of
     // Qt's classes, each a list of its name, megabytes and count; and
     // `shapes`, the `top` largest shapes, each its class, its first six
