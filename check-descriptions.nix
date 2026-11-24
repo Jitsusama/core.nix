@@ -3538,7 +3538,8 @@
     its per-session state keyed reaches once for all of its extensions, while another keyed package
     and each extension of an unkeyed one evaluate their own, and puts none in Node's module cache;
     a reload or a moved link reads the files afresh, a load begun before a reload hands a later
-    load nothing, loads take turns, and a failed load's retry evaluates what it left unfinished
+    load nothing, loads take turns, a reload or a moved link lets go of loads queued behind one
+    that never ends, and a failed load's retry evaluates every module it added
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and

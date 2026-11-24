@@ -4,11 +4,15 @@ A keyed package's extensions already share one factory each across
 folders, but jiti gives each extension's import a module cache of its
 own, so a library two of its extensions import is evaluated once for
 each. A keyed package's loads now share one module cache, the package's
-own, so each file they reach is evaluated once for the host. Node's module
-cache is neither read nor written, and every other package's loads keep
-their modules their own. A reload, and a link moving off a copy, give the
-package's next load a new cache, and its loads take turns, so none is
-given a module another is still evaluating.
+own, so each file they reach is evaluated once for the package. Node's
+module cache is neither read nor written, and every other package's loads
+keep their modules their own. A reload, and a link moving off a copy, give
+the package's next load a new cache. Its loads take turns, so none is
+given a module another is still evaluating, and a reload lets go of the
+loads waiting behind one that never ends. A failed load forgets every
+module it added. An import an extension makes as it runs takes no turn, as
+within one extension today, so one that throws stays unfinished in the
+package's cache until a reload.
 
 --- a/packages/coding-agent/src/core/extensions/loader.ts
 +++ b/packages/coding-agent/src/core/extensions/loader.ts
@@ -18,7 +22,7 @@ given a module another is still evaluating.
 +		if (keyed) keyedRoots.add(folder);
  	} else {
  		const parent = path.dirname(folder);
-@@ -246,9 +247,108 @@
+@@ -246,9 +247,132 @@
  	if (!packageKeepsStateKeyed(path.dirname(file))) return undefined;
  	const before = sharedFiles.get(extensionPath);
 -	if (before !== undefined && before !== file) sharedFactories.delete(before);
@@ -36,23 +40,37 @@ given a module another is still evaluating.
 +// importing it. A keyed package's loads share one cache instead, which
 +// jiti's evalModule takes and hands to every module it evaluates, so each
 +// file they reach, inside the package or not, is evaluated once for the
-+// host. The cache is the package's own and never Node's, so no other
++// package. The cache is the package's own and never Node's, so no other
 +// package's load reads what it holds, and its loads read nothing the host
-+// put in Node's. An import an extension makes later, as it runs, goes in the
-+// same cache. A reload, or the package's last shared extension resolving
++// put in Node's. A reload, or the package's last shared extension resolving
 +// elsewhere, gives its next load a new cache. A load keeps the cache it
 +// began with, so its own modules stay one graph, and nothing it reads
 +// reaches a load begun after. The package's loads take turns, so none is
-+// given a module another is still evaluating; a load that never ends holds
-+// up its package's loads until a reload. A failed load forgets the modules
-+// it left unfinished, so the next load evaluates them again, and keeps those
-+// it finished, as Node's require does.
++// given a module another is still evaluating. A load that never ends holds
++// up the loads behind it until the package's modules are let go, and those
++// then import as an unkeyed package's do. A failed load forgets every module
++// it added, so none it finished keeps what one that threw left behind. An
++// import an extension makes as it runs goes in the same cache but takes no
++// turn, as jiti has it within one extension: it can be given a module still
++// being evaluated, and one that throws stays unfinished in the cache, now
++// for the package's other extensions too, until a reload.
 +type Jiti = ReturnType<typeof createJiti>;
 +type ModuleCache = NonNullable<NonNullable<Parameters<Jiti["evalModule"]>[1]>["cache"]>;
 +interface PackageModules {
 +	cache: ModuleCache;
 +	// Settles once the package's latest load has.
 +	turn: Promise<void>;
++	// Settles once these modules are let go.
++	dropped: Promise<void>;
++	drop: () => void;
+ }
+ 
++function newPackageModules(): PackageModules {
++	let drop = (): void => undefined;
++	const dropped = new Promise<void>((resolve) => {
++		drop = resolve;
++	});
++	return { cache: {}, turn: Promise.resolve(), dropped, drop };
 +}
 +// Each keyed package's modules, by its folder.
 +const packageModules = new Map<string, PackageModules>();
@@ -75,6 +93,7 @@ given a module another is still evaluating.
 +function forgetModulesOfUnusedRoot(root: string | undefined): void {
 +	if (root === undefined) return;
 +	for (const file of sharedFiles.values()) if (isUnder(file, root)) return;
++	packageModules.get(root)?.drop();
 +	packageModules.delete(root);
 +}
 +
@@ -84,12 +103,12 @@ given a module another is still evaluating.
 +	if (root === undefined) return undefined;
 +	let modules = packageModules.get(root);
 +	if (modules === undefined) {
-+		modules = { cache: {}, turn: Promise.resolve() };
++		modules = newPackageModules();
 +		packageModules.set(root, modules);
 +	}
 +	return modules;
- }
- 
++}
++
 +// Whether jiti's import of `file` would evaluate it itself: a file of a kind
 +// it compiles, with no native import tried first. Any other file is imported
 +// as pi imports it.
@@ -104,16 +123,25 @@ given a module another is still evaluating.
 +}
 +
 +// Imports the shared extension at `file` through its package's modules, in
-+// the package's turn.
++// the package's turn, or as an unkeyed package's is once they are let go
++// before its turn comes.
 +async function importShared(jiti: Jiti, file: string, modules: PackageModules): Promise<unknown> {
 +	const { cache } = modules;
-+	const imported = modules.turn.then(async () => {
++	let letGo = false;
++	const dropped = modules.dropped.then(() => {
++		letGo = true;
++	});
++	const imported = Promise.race([modules.turn, dropped]).then(async () => {
++		if (letGo) return jiti.import(file, { default: true });
 +		const known = cache[file];
-+		if (known?.loaded) return known.exports;
++		if (known?.loaded) return defaultOf(known.exports);
++		const before = new Set(Object.keys(cache));
 +		try {
-+			return await jiti.evalModule(fs.readFileSync(file, "utf-8"), { filename: file, async: true, cache });
++			return defaultOf(
++				await jiti.evalModule(fs.readFileSync(file, "utf-8"), { filename: file, async: true, cache }),
++			);
 +		} catch (error) {
-+			for (const [name, module] of Object.entries(cache)) if (!module.loaded) delete cache[name];
++			for (const name of Object.keys(cache)) if (!before.has(name)) delete cache[name];
 +			throw error;
 +		}
 +	});
@@ -123,19 +151,20 @@ given a module another is still evaluating.
 +			// The load that failed says why; the next takes its turn regardless.
 +		},
 +	);
-+	return defaultOf(await imported);
++	return imported;
 +}
 +
  function cachedFactoryOf(extensionPath: string, cacheToken: ExtensionCacheToken): ExtensionFactory | undefined {
  	const shared = sharedFileOf(extensionPath);
-@@ -265,4 +365,6 @@
+@@ -265,4 +389,7 @@
  export function clearExtensionCache(): void {
  	extensionCaches.length = 0;
++	for (const modules of packageModules.values()) modules.drop();
 +	packageModules.clear();
 +	keyedRoots.clear();
  	sharedFactories.clear();
  	sharedFiles.clear();
-@@ -700,4 +802,7 @@
+@@ -700,4 +827,7 @@
  	}
  
 +	// pi-host: a shared extension loads through its package's modules.
@@ -143,7 +172,7 @@ given a module another is still evaluating.
 +	const modules = shared === undefined ? undefined : packageModulesOf(shared);
  	const createJitiImpl = await getCreateJiti();
  	// Compiled binaries and the bundled Node distribution use embedded modules.
-@@ -714,5 +819,8 @@
+@@ -714,5 +844,8 @@
  	});
  
 -	const module = await jiti.import(canonicalizePath(extensionPath), { default: true });
