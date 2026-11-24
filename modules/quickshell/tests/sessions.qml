@@ -478,8 +478,14 @@ ShellRoot {
             attach: hosted.attach.slice(0, -1).concat(["s-untaken"]),
             presence: Object.assign({}, hosted.presence, { session: "s-untaken" }) });
         const untakenFrom = Niri.spawns.length;
+        root.unhosted = "";
+        root.unhostedWhy = "";
         Sessions.goTo(untaken);
         Sessions.untaken("pi-hosted.s-untaken", String(Date.now()));
+        // The press that asked saw no window, so the give-up is said.
+        const untakenSaid = `${root.unhosted} ${root.unhostedWhy}`;
+        expect("one no kitty took is said so, its press having opened nothing",
+            untakenSaid === "UNTAKEN untaken", untakenSaid);
         Sessions.goTo(untaken);
         expect("one no kitty took is asked for again, not said as opening",
             Niri.spawns.length === untakenFrom + 2
@@ -1166,6 +1172,18 @@ ShellRoot {
         expect("while its own comes, Go To says it's opening, opening no other",
             Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "opening",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // The window that comes for it is refused too, as a pid read wrong
+        // refuses its own: Go To asks for none again, now or once its
+        // patience runs out, and says why, rather than opening another
+        // viewer of the same session with every press.
+        const cameRefused = { id: 93, pid: 880, opened: named };
+        Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
+        Niri.windowOpenedOrChanged(cameRefused);
+        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
+            here: true });
+        expect("one whose own came refused is asked for no more, said so",
+            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned",
+            `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
         const startedNamed = "pi-session.3";
@@ -1230,6 +1248,15 @@ ShellRoot {
         expect("while it says none, another program's is still no viewer",
             Sessions.viewerComing(named) && Sessions.sessionsKittyPid === "7171",
             `${Sessions.sessionsKittyPid} ${JSON.stringify(Sessions.attaching)}`);
+        // A window refused once isn't read for again as it changes, as a
+        // stray one retitling would read the file with every title.
+        kittyPidFile.setText("880\n");
+        Niri.windows = Object.assign({}, unforged, { "91": between });
+        Niri.windowOpenedOrChanged(between);
+        Niri.windows = unforged;
+        expect("a window refused once reads no file as it changes",
+            Sessions.sessionsKittyPid === "7171", Sessions.sessionsKittyPid);
+        kittyPidFile.setText("");
         Sessions.kittyPidRead = "";
         if (failed.length > 0)
             throw new Error(failed.join("; "));

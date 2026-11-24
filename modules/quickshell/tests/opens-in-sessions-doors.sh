@@ -24,14 +24,26 @@ mkdir -p "$stand_ins"
 failed=0
 
 # Each stand-in says what it was asked, one line, into asked.
-# Each fails while a file of its name and -fails is there.
+# Each fails while a file of its name and -fails is there. A kitty's
+# launch failing counts as a wait, as the real one's answer can take a
+# minute, so the clock tells a time read as the script started from one
+# read once it has failed.
 for program in kitten systemd-run qs; do
-  printf '#!%s\necho "%s $*" >> "%s/asked"\n[ ! -f "%s/%s-fails" ]\n' \
+  printf '#!%s\necho "%s $*" >> "%s/asked"\n[ ! -f "%s/%s-fails" ] && exit\n' \
     "$BASH" "$program" "$work" "$work" "$program" > "$stand_ins/$program"
+  if [ "$program" != qs ]; then
+    printf 'echo . >> "%s/waits"\n' "$work" >> "$stand_ins/$program"
+  fi
+  echo "exit 1" >> "$stand_ins/$program"
 done
+# The journal, as the script's own output when niri gave it none: says
+# what it was asked and runs the rest, its output into said.
+printf '#!%s\necho "systemd-cat $*" >> "%s/asked"\nshift\nexec "$@" 2>> "%s/said"\n' \
+  "$BASH" "$work" "$work" > "$stand_ins/systemd-cat"
 # The shell's own clock, only when asked in ms, as the shell's handler
 # takes it: asked any other way, it answers what it was asked, which no
-# case wants. Its clock moves 200 ms with each wait the script makes, so
+# case wants. Its clock moves 200 ms with each wait, the script's or a
+# launch's, so
 # the time the shell is told is 1700000000000 only if the script read it
 # as it started, never as it gave up, which would clear a press made
 # meanwhile.
@@ -185,6 +197,23 @@ qs ipc call sessions untaken pi-hosted.s-12 1700000000000" asked
 expect "the journal says it opened nothing, and that the shell didn't hear" \
   "sessions: the sessions kitty opened no pi-hosted.s-12
 sessions: the shell didn't hear that no kitty took pi-hosted.s-12" said
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+# As niri starts it, with no output (its spawning.rs gives a child none):
+# it runs again once with its output in the journal, telling the shell
+# when it was first started.
+touch "$work/kitten-fails"
+: > "$work/said"
+HOME=/home/joel PATH="$stand_ins:$PATH" "$sh" "$script" "$work/kitty.sock" pi-hosted.s-13 pi \
+  2> /dev/null || true
+expect "one started with no output says why in the journal, told its first start" \
+  "systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-13 pi
+kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
+--os-window-class pi-hosted.s-13 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-13 pi
+qs ipc call sessions untaken pi-hosted.s-13 1700000000000" asked
+expect "the journal hears it opened nothing" \
+  "sessions: the sessions kitty opened no pi-hosted.s-13" said
 
 # The shell's handler takes what the script tells it: its target, the
 # function's name, and an argument for each word after it.
