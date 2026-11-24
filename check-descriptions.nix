@@ -256,7 +256,8 @@
     pi's sessions are those whose records name a process running on this boot since when they
     say, never found by a window's title, each with its window found by the app id it opened with,
     or else through the kitty it runs in, and gone once its record or its process is; and those to reopen are the last boot's until
-    put off, then those another machine carried here, newest first, never put off
+    put off, then those another machine carried here, newest first, never put off; and Reopen
+    Them All's lists given before niri says its screens count what they find gone as one walk
   '';
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
@@ -3702,7 +3703,11 @@
     the one kept above it in its column, and a window already where it goes left there; and those
     that orchestrate are begun first, the next session only while the machine queue says the
     memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
-    holding nothing back
+    holding nothing back; and a Reopen Them All list counts what it finds gone in the walk's tally
+    while the walk may still find one of that tally's folders gone, else in one of its own, as
+    once only a window given up on or the harness's sessions keep the walk, each session once by
+    the id it was asked by, whichever list queued it, and told again as a list joins a tally
+    already told of one gone
   '';
   repos-is-told-every-realms-owners = ''
     the refresh's unit gives repos every realm's declared owners as one word that systemd passes
@@ -4882,7 +4887,8 @@
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
-    to watch their drawers ahead, and what it landed is kept past its end
+    to watch their drawers ahead, what it landed is kept past its end, and what a Reopen Them
+    All walk found gone is said as one folder gone or many, then how many reopened
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
