@@ -249,6 +249,7 @@
         model-relay = ./modules/model-relay/home.nix;
         mpv = ./modules/mpv/home.nix;
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
+        name-lookups = ./modules/name-lookups/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         net = ./modules/net/home.nix;
         network-revive = ./modules/network-revive/home.nix;

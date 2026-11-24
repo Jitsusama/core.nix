@@ -2032,6 +2032,13 @@
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
     64, asking nothing of the shell, niri or swayidle
   '';
+  lookups-say-a-failed-or-slow-name = ''
+    a Mac's account times its names each minute through the system's resolver and each server
+    named, github.com among them, and a round over stand-ins says a failed lookup or a server
+    giving no address at once, a slow lookup from its second round running and a busy
+    mDNSResponder from its fifth, as errors, each well again once, and nothing while all is well;
+    Linux's account runs no such agent
+  '';
   looks-probe-finds-what-a-deploy-lost = ''
     the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a
     page's stylesheet, face, type, colours, masthead, mark, drawings, images and scripts as drawn,

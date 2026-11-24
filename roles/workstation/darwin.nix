@@ -18,6 +18,7 @@
   home-manager.sharedModules = [
     homeModules.workstation
     homeModules.disk-guard
+    homeModules.name-lookups
     homeModules.secure-enclave-signing
     homeModules.sessions-come-back
   ];
