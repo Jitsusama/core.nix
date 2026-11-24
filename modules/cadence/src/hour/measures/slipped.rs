@@ -46,6 +46,35 @@ fn a_date_passed_without_landing_is_a_slip_and_each_move_counts() {
         m.now
     );
     assert_eq!(m.owner, "Y2YBTS", "the oldest slip's owner");
+    assert_eq!(
+        m.behind.first().map(String::as_str),
+        Some("fix that, due 2 days ago · Y2YBTS"),
+        "the oldest slip's line didn't say how long ago it was due"
+    );
+}
+
+#[test]
+fn an_old_slips_line_says_how_long_ago_it_was_due_in_whole_days() {
+    let hour = 3600;
+    let text = list(&[
+        json!({"words": "two days and an hour", "owner": "A",
+            "expected": at(NOW - 2 * DAY - hour)}),
+        json!({"words": "an hour short of two days", "owner": "B",
+            "expected": at(NOW - 2 * DAY + hour)}),
+        json!({"words": "a day and an hour", "owner": "C",
+            "expected": at(NOW - DAY - hour)}),
+        json!({"words": "an hour", "owner": "D", "expected": at(NOW - hour)}),
+    ]);
+    assert_eq!(
+        slips(&text, NOW, Tracking::His).behind,
+        [
+            "two days and an hour, due 2 days ago · A",
+            "an hour short of two days, due a day ago · B",
+            "a day and an hour, due a day ago · C",
+            "an hour · D"
+        ],
+        "a part day didn't round down to whole days, or a slip within the day said an age"
+    );
 }
 
 #[test]
