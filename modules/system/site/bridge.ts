@@ -16,7 +16,7 @@
 
 import { escaped, MACHINES_DRAWN } from "./draw.ts";
 import { placeWords, standing } from "./machine.ts";
-import type { Thing } from "./model.ts";
+import { capital, numbered, type Thing } from "./model.ts";
 
 /** One way of drawing the bridge: how wide, how many piers, how many dots. */
 interface Variant {
@@ -193,19 +193,25 @@ const counted = new Intl.NumberFormat("en-CA");
 
 /**
  * What lies past the piers: the machines the sections below draw, up to
- * their eight, and the rest the map shows.
+ * their eight, the rest the map shows, and the `away` machines out of
+ * reach, which stand no pier and are named below.
  */
-function moreOf(total: number, piers: number): string {
+function moreOf(total: number, piers: number, away: number): string {
   const below = Math.max(0, Math.min(total, MACHINES_DRAWN) - piers);
   const beyond = total - Math.max(piers, MACHINES_DRAWN);
-  if (below === 0 && beyond <= 0) {
-    return "";
+  const said: string[] = [];
+  if (beyond > 0) {
+    said.push(
+      `And ${counted.format(below)} more below, and ${counted.format(beyond)} more on the map.`,
+    );
+  } else if (below > 0) {
+    said.push(`And ${counted.format(below)} more ${below === 1 ? "machine" : "machines"}, below.`);
   }
-  const said =
-    beyond > 0
-      ? `And ${counted.format(below)} more below, and ${counted.format(beyond)} more on the map.`
-      : `And ${counted.format(below)} more ${below === 1 ? "machine" : "machines"}, below.`;
-  return `<p class="more">${said}</p>`;
+  if (away > 0) {
+    const machines = away === 1 ? "One machine" : `${capital(numbered(away))} machines`;
+    said.push(`${machines} out of reach, named below.`);
+  }
+  return said.length === 0 ? "" : `<p class="more">${said.join(" ")}</p>`;
 }
 
 /**
@@ -214,7 +220,7 @@ function moreOf(total: number, piers: number): string {
  * there only its name and health mark stand over it, and its standing goes
  * under the bridge with its places, a machine to a line.
  */
-function variantOf(things: readonly Thing[], variant: Variant): string {
+function variantOf(things: readonly Thing[], variant: Variant, away: number): string {
   const shown = things.slice(0, variant.piers);
   const count = shown.length;
   const xs = shown.map((_, at) => centre(at, count, variant.width));
@@ -238,17 +244,21 @@ function variantOf(things: readonly Thing[], variant: Variant): string {
         : `<li>${wherePlaces(thing)}</li>`,
     )
     .join("");
-  const moreLine = moreOf(things.length, count);
+  const moreLine = moreOf(things.length, count, away);
   const scaled = each > 1 ? ` Past what a pier holds, each dot is ${each} cells.` : "";
   return `<div class="variant ${variant.name}" style="--piers: ${count}"><ol class="over">${captions}</ol>${svg}<ol class="under">${places}</ol>${moreLine}<p class="key">A filled dot for each busy cell, a hollow one for each idle; each pier filled as far as its disk is.${scaled}</p></div>`;
 }
 
-/** The bridge over `things`, worst first as the machines part lists them, or nothing for none. */
-function bridgeOf(things: readonly Thing[]): string {
+/**
+ * The bridge over `things`, the machines in reach, worst first as the
+ * machines part lists them, with how many more are `away`, out of reach; or
+ * nothing for none in reach, since a machine out of reach stands no pier.
+ */
+function bridgeOf(things: readonly Thing[], away = 0): string {
   if (things.length === 0) {
     return "";
   }
-  return [WIDE, NARROW].map((variant) => variantOf(things, variant)).join("");
+  return [WIDE, NARROW].map((variant) => variantOf(things, variant, away)).join("");
 }
 
 export { bridgeOf };
