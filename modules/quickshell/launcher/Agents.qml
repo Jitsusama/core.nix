@@ -2281,7 +2281,8 @@ Provider {
         const text = where ? Sprouting.toldWhere(how, sproutWords())
             : Sprouting.told(Openings.promised(how, sproutGiven), sproutWords());
         sproutSays(key, text, how.started ? how.held !== "" ? "running" : "done" : "failed");
-        // Told Joel before the daemon is told it's told, so it's kept until he is.
+        // Told Joel, in the foot or a notice sent once this turn is done
+        // (sproutNoticed), then the daemon is told it's told.
         sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`

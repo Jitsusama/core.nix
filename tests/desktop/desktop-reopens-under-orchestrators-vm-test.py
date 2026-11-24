@@ -1320,12 +1320,16 @@ def test_a_start_with_no_node_to_take_it_says_what_gets_past_it(desktop: Desktop
         assert UNREACHED.match(end), f"a start with no node wasn't told the node's words: {end!r}"
         assert end.endswith(f"; {NODE_ACT}"), f"nor what gets past it: {end!r}"
     finally:
-        desktop.as_account("systemctl --user start mycelium")
-        machine.wait_until_succeeds(
-            desktop.in_session("mycelium --realm harbour sessions > /dev/null"),
-            timeout=dt.timedelta(seconds=60),
-        )
-        desktop.launcher_left_closed()
+        # The launcher is left closed whether or not the node comes back, so a
+        # node that doesn't fails here and leaves the next subtest a closed launcher.
+        try:
+            desktop.as_account("systemctl --user start mycelium")
+            machine.wait_until_succeeds(
+                desktop.in_session("mycelium --realm harbour sessions > /dev/null"),
+                timeout=dt.timedelta(seconds=60),
+            )
+        finally:
+            desktop.launcher_left_closed()
 
 
 def asked_from_a_link(desktop: Desktop, link: str) -> None:

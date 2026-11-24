@@ -597,6 +597,8 @@ QtObject {
         Expect.same("a notice's body is each end, a line each, as plain text",
             Sprouting.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
             "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
+        Expect.same("its backslashes are doubled, as notify-send reads one as an escape",
+            Sprouting.noticeBody(["a\\b", "\\n"]), "a\\\\b\n\\\\n");
 
         // A start's notice is led by what an unread one of Agents' own still open under its
         // summary says, since the notices daemon folds that one into it, marked read.
@@ -657,6 +659,9 @@ QtObject {
         Expect.same("an earlier send arriving, saying less, isn't the one sent",
             Sprouting.unheard(sent, [Object.assign({}, arrived, { body: "cut" }), earlier]),
             ["cut", "busy"]);
+        Expect.same("an older notice saying just the same isn't the one sent",
+            Sprouting.unheard(Sprouting.sentOf(["cut"], "Start New Work", [earlier]), [earlier]),
+            ["cut"]);
         Expect.same("never heard, its ends reached no card, so they lead on",
             Sprouting.unheard(sent, [earlier]), ["cut", "busy"]);
         Expect.same("with nothing sent, nothing leads",
@@ -666,7 +671,7 @@ QtObject {
         // notice leads with all the last one said, as an earlier send arriving says less.
         const notices = { history: [earlier], live: { 7: {} } };
         const first = Sprouting.sproutNotice(["a", "b"], null, "Start New Work", notices);
-        Expect.same("a turn's ends are one notice, led by the unread one still open",
+        Expect.same("a notice of several ends is led by the unread one still open",
             first.ends, ["cut", "a", "b"]);
         const second = Sprouting.sproutNotice(["c"], first.sent, "Start New Work", notices);
         Expect.same("the next, before the first is heard, leads with all it said",

@@ -490,11 +490,12 @@ function noticedAtShut(footed, keysTaken, now) {
 }
 
 // A notice's body for the ends told, `ends`, one to a line and as plain
-// text, since a notice's body is markup and the node writes the why: one
-// notice, so the notices daemon folds none of them away unseen.
+// text, since a notice's body is markup and the node writes the why, and
+// each backslash doubled, as notify-send reads escapes (g_strcompress), so
+// the history keeps the ends' words: one notice, which no fold hides.
 function noticeBody(ends) {
-    return ends.map(text => String(text).replace(/&/gu, "&amp;").replace(/</gu, "&lt;")
-        .replace(/>/gu, "&gt;")).join("\n");
+    return ends.map(text => String(text).replace(/\\/gu, "\\\\").replace(/&/gu, "&amp;")
+        .replace(/</gu, "&lt;").replace(/>/gu, "&gt;")).join("\n");
 }
 
 // The ends a notice of `ends` under `summary` says, given the notices
@@ -523,11 +524,10 @@ function sentOf(ends, summary, history) {
 // history doesn't yet hold it: no notice of Agents' under its summary, new
 // since, says just its ends, as the history keeps a body plain. Until the
 // daemon's answer comes back, the history can't say the sent one is open,
-// though the daemon will fold it into the next all the same; an earlier
-// send still on its way says less, so it never stands for this one. One
-// never heard, as when notify-send failed, leads on, since its ends reached
-// no card, until one leading with them is heard; then null, when `noticed`
-// says what leads.
+// though the daemon folds it into the next all the same; an earlier send
+// on its way says less, so never stands for this one. One never heard, as
+// when notify-send failed, leads on until one leading with its ends is
+// heard; then null, when `noticed` says what leads.
 function unheard(sent, history) {
     if (sent === null || sent === undefined) {
         return null;
