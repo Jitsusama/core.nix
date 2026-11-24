@@ -2799,11 +2799,13 @@ Singleton {
     // changes while the ask stands (heardWindow).
     property var listedAtAsk: ({})
     // Whether the window that came for viewer `named` was refused, as a
-    // pid read wrong refuses its own, while one of another program still
-    // holds its name (heldByAnother): asked again, each ask would open
-    // another window of the same session.
+    // pid read wrong refuses its own, and is still listed: asked again,
+    // each ask would open another window of the same session. Once it
+    // closes, a stray listed before the ask is no reason to ask none, so
+    // Go To opens its own beside it, saying unowned.
     function refusedOwn(named) {
-        return refusedAsks[named] === true && heldByAnother(named);
+        return named in refusedAsks && listedAs(named)
+            .some(window => String(window.id) === refusedAsks[named] && !drawnHere(window));
     }
     // A press of a viewer refusedOwn holds is said "disowned", opening
     // none, since a press is never met with nothing.
@@ -2814,7 +2816,8 @@ Singleton {
         return true;
     }
     // Each viewer whose window came while it was asked for and was
-    // refused (heardWindow), by its app id, so Go To asks for it no more.
+    // refused (heardWindow), by its app id, to that window's niri id, so
+    // Go To asks for it no more while that window stays.
     property var refusedAsks: ({})
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
@@ -3065,7 +3068,7 @@ Singleton {
         const named = String(window.opened);
         const own = viewerComing(named) && !(listedAtAsk[named] ?? []).includes(id);
         if (own)
-            refusedAsks = Object.assign({}, refusedAsks, { [named]: true });
+            refusedAsks = Object.assign({}, refusedAsks, { [named]: id });
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
         // The press waiting on it is told, as one no kitty took is
