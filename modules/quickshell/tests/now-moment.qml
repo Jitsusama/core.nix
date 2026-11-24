@@ -2302,16 +2302,24 @@ ShellRoot {
         // Due, Joel's own group leads, so the session's stands last and his
         // heading closes it before To Look At: that heading is new too.
         const closing = due.find(row => row.key === "on:heading:kinds");
+        const yoursAt = due.findIndex(row => row.key === "on:heading:cell:yours");
         expect("one to-do now due makes only its row again, and the heading closing the cells",
             now.tally.rows - forYouBefore === 2 && dueRow !== undefined && closing !== undefined
                 && due.indexOf(closing) + 1
                     === due.findIndex(row => row.key === "on:waitingOnYou:kind:look")
-                && due.findIndex(row => row.key === "on:heading:cell:yours")
-                    < due.findIndex(row => row.key === "on:waiting:want:WANTB")
+                && yoursAt >= 0
+                && yoursAt < due.findIndex(row => row.key === "on:waiting:want:WANTB")
                 && heldFirst.indexOf(dueRow) === -1
                 && due.filter(row => row !== dueRow && row !== closing)
-                    .every(row => heldFirst.includes(row)),
+                    .every(row => heldFirst.includes(row))
+                && heldFirst.filter(row => row.key !== dueRow.key)
+                    .every(row => due.includes(row)),
             JSON.stringify([now.tally.rows - forYouBefore, due.map(row => row.key)]));
+        forYouBefore = now.tally.rows;
+        const dueAgain = forYou();
+        expect("asked again, the heading closing the cells is kept with every row",
+            same(dueAgain, due) && now.tally.rows === forYouBefore,
+            now.tally.rows - forYouBefore);
         // A session's window moving keeps its row, which reads none of it,
         // but Go To goes to the session as it is now, not as it was.
         const movedB = Object.assign({}, Sessions.wanting[0], { window: 7 });
