@@ -273,7 +273,7 @@ Provider {
             Sessions.wake(resting);
         } else {
             starting(quest, "start");
-            Sessions.start(quest.id, quest.folder);
+            Sessions.start(quest.id, quest.folder, false, quest.title);
         }
     }
 
@@ -377,7 +377,7 @@ Provider {
                 later: true,
                 run: () => {
                     provider.starting(quest, "start");
-                    Sessions.start(quest.id, quest.folder, true);
+                    Sessions.start(quest.id, quest.folder, true, quest.title);
                 }
             }) : null;
         return [thing({

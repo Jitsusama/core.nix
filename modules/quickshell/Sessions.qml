@@ -166,10 +166,13 @@ Singleton {
     // 2026-10-28).
     // Where the harness's config says sessions Joel starts run in one of
     // pi's hosts (5KBYD7's start hosted, harness #1434), its decider is
-    // asked first, and one it hosts opens only a viewer (startAsked).
-    function start(quest, folder, orchestrates) {
+    // asked first, and one it hosts opens only a viewer (startAsked),
+    // titled by the quest's name, `title`, where the launcher knows it,
+    // since Joel never sees its id.
+    function start(quest, folder, orchestrates, title) {
         if (startsHosted) {
-            startAsked.createObject(root, { quest, folder, orchestrates });
+            startAsked.createObject(root, { quest, folder, orchestrates,
+                title: String(title ?? "") });
             return;
         }
         startWindow(quest, folder, orchestrates);
@@ -619,7 +622,9 @@ Singleton {
             Niri.act({ FocusWindow: { id: listed.id } });
             return;
         }
-        const said = { address: String(reopenRows[lost.id]?.name ?? lost.id), machine: "" };
+        // An empty name, as a row the daemon words without one has, is
+        // no name to say it by.
+        const said = { address: String(reopenRows[lost.id]?.name || lost.id), machine: "" };
         if (named === "") {
             console.info(`sessions: ${lost.id} not viewed, since no app id could carry its id`);
             unhosted(said, "unnamed");
@@ -1760,6 +1765,10 @@ Singleton {
             id: begun
 
             required property string quest
+            // The quest's name, "" where the launcher didn't say it, and
+            // what the foot says the start by, as its name.
+            property string title: ""
+            readonly property var said: ({ address: quest, machine: "", name: title })
             required property string folder
             required property bool orchestrates
             property bool opening: false
@@ -1784,7 +1793,7 @@ Singleton {
                         + `as ${id ?? "no id"}, but it can't be viewed by that host and id`);
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
                         + " in pi's host");
-                    root.unhosted({ address: quest, machine: "" }, "unviewable");
+                    root.unhosted(said, "unviewable");
                     return;
                 }
                 if (started) {
@@ -1796,10 +1805,10 @@ Singleton {
                     const listed = root.listedNamed(viewer);
                     if (listed)
                         Niri.act({ FocusWindow: { id: listed.id } });
-                    else if (!root.heldBack(id, viewer, { address: quest, machine: "" }))
+                    else if (!root.heldBack(id, viewer, said))
                         root.viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""),
                             "attach", "--host", host, "--session", id],
-                            viewer, null, Viewers.viewerTitle("", quest, folder));
+                            viewer, null, Viewers.viewerTitle("", title || quest, folder));
                     console.info(`sessions: started ${quest} in pi's host ${host}, as ${id}`
                         + (listed ? ", its viewer already open" : ""));
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
