@@ -4,7 +4,9 @@ The page is the one Nix builds, served by the real local-sites server beside a
 stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding a small
 realm under test names, node.json, through the node feed exactly as home.nix
 declares it for a machine in a realm (NODE_KINDS). It must say it's live with
-the realm drawn, follow a change within its pace, say broken when the node
+the realm drawn, its networks and the lines joining them and their cells
+in one window that opens a cell clicked, follow a change within its pace,
+two cells sharing a title moving among them, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say stale
 when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
@@ -473,12 +475,74 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
     the_map_counts(page, COUNTED, "the map miscounted the realm")
 
 
+# The fewest networks node.json's realm is drawn with, of the several it holds.
+FEWEST_NETWORKS = 2
+
+
+# On 14 November 2026 the first live map went on Joel's look list checked
+# for its layout alone, and he said of it: "it shows no network at all ...
+# no mind map like structure of how things connect ... i click on a thing
+# and nothing changes in front of me ... i have to scroll so much." Each of
+# those asks is held here at a desk's size, on the realm fitted to its
+# window; the talk between cells is held where talk is (the talk test), and
+# text too small or too faint by the page checks.
+def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    settled(page, "0 didn't fit the whole map")
+    hubs = page.locator("#world .hub")
+    expect(hubs.first, "the map drew no network").to_be_visible()
+    drawn = hubs.count()
+    assert drawn >= FEWEST_NETWORKS, f"the map drew {drawn} networks of the realm's several"
+    expect(page.locator("#world circle.cell"), "the map left cells out").to_have_count(CELLS)
+    lines = page.evaluate("document.getElementById('map-ground').lines().length")
+    assert lines >= drawn, f"the map drew {lines} lines joining its networks and cells"
+    window = page.evaluate(
+        "[innerHeight, document.scrollingElement.scrollHeight,"
+        " document.getElementById('map-view').getBoundingClientRect().bottom]"
+    )
+    assert window[1] <= window[0], f"the map's page scrolls: {window[1]} px in {window[0]}"
+    assert window[2] <= window[0], f"the map runs {window[2]} px down a {window[0]} px window"
+    box = page.locator('#world circle.cell[data-key="c:TERN03"]').bounding_box()
+    assert box, "the map drew no TERN03 to click"
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
+    expect(
+        page.locator('#panel-body a[href^="mycelium:cell/TERN03"]'),
+        "a click on a cell left its drawer shut",
+    ).to_have_count(1)
+
+
 def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_node: StandIn) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
+
+
+# On 15 November 2026 the live map froze on "reading": two cells sharing a
+# title moved, a reading left one's waits unset, working out how long they
+# had waited threw, and a bare catch swallowed it, so the page kept its old
+# counts and logged nothing. TERN01 and TERN02 share "Mend the Sails" in
+# node.json, and TERN02 needs Joel. A reading that throws now logs, which
+# fails the tab, and one that's dropped leaves the counts stale.
+def test_cells_sharing_a_title_that_move_are_drawn_moving(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN02", "standing": "moving"}])
+    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map froze as a twin moved")
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN01", "standing": "quiet"}])
+    the_map_counts(page, COUNTED, "the map froze as the other twin went quiet")
+    the_map_stands(page, "live")
 
 
 # The builders node.json's machine sends its builds to, by name as the map
