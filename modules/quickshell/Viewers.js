@@ -239,3 +239,11 @@ function waitingWords(one) {
         && words.every(word => typeof word === "string") ? words.slice() : null;
 }
 
+// What the launcher's foot says a row asked for by itself by, as the
+// shell tells it (Sessions.qml's unhosted): the row's name as the daemon
+// words it, else the session's id, since an empty name, as a row the
+// daemon words without one has, is no name to say it by.
+function rowSaid(id, row) {
+    return { address: String(row?.name || id), machine: "" };
+}
+

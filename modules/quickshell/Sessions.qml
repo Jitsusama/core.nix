@@ -622,9 +622,7 @@ Singleton {
             Niri.act({ FocusWindow: { id: listed.id } });
             return;
         }
-        // An empty name, as a row the daemon words without one has, is
-        // no name to say it by.
-        const said = { address: String(reopenRows[lost.id]?.name || lost.id), machine: "" };
+        const said = Viewers.rowSaid(lost.id, reopenRows[lost.id]);
         if (named === "") {
             console.info(`sessions: ${lost.id} not viewed, since no app id could carry its id`);
             unhosted(said, "unnamed");
