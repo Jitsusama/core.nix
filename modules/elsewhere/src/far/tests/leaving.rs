@@ -1,8 +1,29 @@
-//! The near side leaving a job's files in the handover: its archives, the
-//! list of them, and the bytes it says they take.
+//! The near side leaving a job's files in the handover: which tracked
+//! names it takes, its archives, the list of them, and the bytes it says
+//! they take.
 
 use super::scratch;
-use crate::far::{LARGEST_FILE, LEFT, TREE, archive, leave, left};
+use crate::far::{LARGEST_FILE, LEFT, TREE, archive, leave, left, tracked};
+
+#[test]
+fn a_tracked_name_outside_the_tree_is_refused_though_it_reads_as_hidden() {
+    for path in ["../x", "a/../b", "./a", "a/.", "/etc/passwd", "a\tb"] {
+        assert!(
+            tracked(path, &[]).is_err(),
+            "{path:?} was passed over, not refused"
+        );
+    }
+    // A hidden name within the tree stays home without a word, even one
+    // no list could carry.
+    for path in [".env", "a/.git/config", ".a\tb"] {
+        assert_eq!(tracked(path, &[]), Ok(false), "{path:?} wasn't kept home");
+    }
+    assert_eq!(
+        tracked("src/lib.rs", &[]),
+        Ok(true),
+        "a source file didn't travel"
+    );
+}
 
 #[test]
 fn what_is_left_is_its_archives_each_listed_at_its_size() {
