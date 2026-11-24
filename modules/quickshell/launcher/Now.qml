@@ -947,7 +947,11 @@ Provider {
         };
         const row = member({
             thing: true,
-            key: `on:waiting:${WaitingOnYou.identity(each)}`,
+            // Under `item:`, since its identity is its quest and id as its
+            // session wrote them, and a quest named want, done, came, try or
+            // screen would otherwise take the key of a want's row, or
+            // another's of For You's own.
+            key: `on:waiting:item:${WaitingOnYou.identity(each)}`,
             // What it is and where it's from, which For You filters by; not
             // `kind`, which a row says beside its side (Choice.qml).
             forYou: { kind: "do", source: "needs-you" },
