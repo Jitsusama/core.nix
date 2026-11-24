@@ -70,21 +70,32 @@ pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>>
 
 /// Marks `unit`'s folder in `control` as holding settings the sorter set,
 /// once they've landed there; a folder not there, or reached through a
-/// link, is left unmarked, so its settings are never taken back.
+/// link, is left unmarked, so its settings are never taken back. The mark
+/// is made anew and never opened through a link, so whatever is already
+/// in its place, the sorter's own or another's, is left as it is.
 pub fn mark(control: &Path, unit: &str) -> io::Result<()> {
+    use std::io::Write;
     let folder = control.join(format!("{unit}.d"));
-    if !fs::symlink_metadata(&folder)?.is_dir() {
-        return Ok(());
+    match fs::symlink_metadata(&folder) {
+        Ok(folder) if folder.is_dir() => {}
+        Ok(_) => return Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
     }
-    let mark = folder.join(MARK);
-    if mark.exists() {
-        return Ok(());
+    // Made anew, as O_CREAT and O_EXCL do, which refuses any link in its place, even one to
+    // nothing, so the mark is never written through to where a link points.
+    let opened = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(folder.join(MARK));
+    match opened {
+        Ok(mut mark) => mark.write_all(
+            b"The jobs sorter set this unit's 50-*.conf settings here, and takes them back once \
+              it stops.\n",
+        ),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(error),
     }
-    fs::write(
-        mark,
-        "The jobs sorter set this unit's 50-*.conf settings here, and takes them back once it \
-         stops.\n",
-    )
 }
 
 /// What `systemctl is-active` says of a unit, as far as taking back its
@@ -341,6 +352,30 @@ MemoryLow=10%
             "a percentage is of memory"
         );
         assert_eq!(size("lots", 0), None, "words aren't a size");
+    }
+
+    #[test]
+    fn a_mark_is_never_written_where_no_folder_is_or_through_a_link() {
+        let control = std::env::temp_dir().join(format!("own-mark-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&control);
+        fs::create_dir_all(&control).unwrap();
+        let missing = mark(&control, "pi-host-work-never.service");
+        // A mark already there as a link, which writing through would send anywhere.
+        let folder = control.join("pi-host-work-linked.service.d");
+        fs::create_dir_all(&folder).unwrap();
+        let target = control.join("elsewhere");
+        std::os::unix::fs::symlink(&target, folder.join(MARK)).unwrap();
+        let linked = mark(&control, "pi-host-work-linked.service");
+        let written = target.exists();
+        let _ = fs::remove_dir_all(&control);
+        assert!(
+            missing.is_ok(),
+            "a unit with no folder is left unmarked, not an error: {missing:?}"
+        );
+        assert!(
+            !written,
+            "a mark that's a link is never written through: {linked:?}"
+        );
     }
 
     #[test]
