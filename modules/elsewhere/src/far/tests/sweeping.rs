@@ -75,7 +75,11 @@ fn sweep_in(sh: &str, work: &Path, programs: &[(&str, &str)], before: &str) -> S
         .env("LC_ALL", "C")
         .args([
             "-c",
-            &format!("{before}\nwork='{}'\n{CLEARING}\n{}", work.display(), sweeping()),
+            &format!(
+                "{before}\nwork='{}'\n{CLEARING}\n{}",
+                work.display(),
+                sweeping()
+            ),
         ])
         .env("PATH", path)
         .output()

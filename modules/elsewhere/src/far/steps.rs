@@ -252,8 +252,14 @@ cleared() {
 /// made empty.
 ///
 /// The near side writes only plain ustar archives, so one whose first
-/// header says otherwise is refused before tar reads it: tar unpacks a
-/// compressed one too, to far more than a share carries. It writes only
+/// header's magic isn't ustar's, byte for byte, is refused before tar
+/// reads it, as a compressed one is: tar unpacks those too, to far more
+/// than a share carries. That catches an archive no near side of ours
+/// wrote, not one built to pass: a compressed archive can carry those
+/// bytes where a header's magic sits and still unpack. Such a near side
+/// gains nothing by it, since the job it sends runs here anyway. Each
+/// pass runs in a subshell of its own, so its `exit` ends the pass alone
+/// even in a shell that runs a pipe's last part itself. It writes only
 /// files and folders, each named within the tree, so an archive naming
 /// a member from the root or through `..` came from no near side and is
 /// refused before it's unpacked. So is a tree holding anything else, a
@@ -275,21 +281,20 @@ pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
   left=$(cat "$job/{LEFT}") || return 2
-  # Each pass runs in the pipe's own shell, so it ends by exit, and its
+  # Each pass runs in a subshell of its own, so it ends by exit, and its
   # answer is the pipe's.
-  printf '%s\n' "$left" | while IFS="$tab" read -r size part; do
+  printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
     case $number in
       ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; exit 1 ;;
     esac
-  done || return
-  printf '%s\n' "$left" | while IFS="$tab" read -r size part; do
+  done) || return
+  printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
-    magic=$(dd if="$job/{TREE}/$part" bs=1 skip=257 count=8 2>/dev/null |
-      LC_ALL=C tr -d '\000')
-    [ "$magic" = ustar00 ] || {{
-      [ -r "$job/{TREE}/$part" ] || exit 2
+    # ustar's magic, "ustar" and a NUL, then its version, "00".
+    magic=$(od -An -v -tx1 -j257 -N8 "$job/{TREE}/$part") || exit 2
+    [ "$(echo $magic)" = '75 73 74 61 72 00 30 30' ] || {{
       printf "elsewhere: the job's archive %s isn't a plain one, as the near side writes\n" "$part" >&2
       exit 1
     }}
@@ -312,7 +317,7 @@ pub(super) fn copying() -> String {
 *}}" >&2
       exit 1
     }}
-  done
+  done)
 }}"#
     )
 }

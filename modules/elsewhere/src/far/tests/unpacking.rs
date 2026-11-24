@@ -183,27 +183,34 @@ fn an_archive_that_isn_t_plain_ustar_is_refused_before_it_is_read() {
         .unwrap();
     assert!(archive.status.success(), "tar made no archive");
     let _ = std::fs::remove_dir_all(&made);
-    let mut bytes = archive.stdout;
+    assert_eq!(
+        &archive.stdout[257..265],
+        b"ustar\x0000",
+        "tar wrote no ustar header"
+    );
     // GNU's magic in place of ustar's, which every tar still unpacks, as
-    // it does a compressed archive; the sum is made again over the header
-    // with the sum's own field as spaces.
-    assert_eq!(&bytes[257..265], b"ustar\x0000", "tar wrote no ustar header");
-    bytes[257..265].copy_from_slice(b"ustar  \0");
-    bytes[148..156].copy_from_slice(b"        ");
-    let sum: u32 = bytes[..512].iter().map(|&byte| u32::from(byte)).sum();
-    bytes[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
-    let text = String::from_utf8(bytes).unwrap();
-    let list = format!("{}\t0.tar\nend\n", text.len());
-    let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
-    assert!(
-        code == Some(77) && err.contains("0.tar isn't a plain one"),
-        "an archive with GNU's header wasn't refused ({code:?}): {err}"
-    );
-    assert!(
-        !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
-        "a job ran over an archive that isn't plain, or its copy was left"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    // it does a compressed archive, and ustar's with its NUL moved, which
+    // only a byte-for-byte reading refuses; the sum is made again over
+    // the header with the sum's own field as spaces.
+    for magic in [b"ustar  \0", b"ustar00\0"] {
+        let mut bytes = archive.stdout.clone();
+        bytes[257..265].copy_from_slice(magic);
+        bytes[148..156].copy_from_slice(b"        ");
+        let sum: u32 = bytes[..512].iter().map(|&byte| u32::from(byte)).sum();
+        bytes[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
+        let text = String::from_utf8(bytes).unwrap();
+        let list = format!("{}\t0.tar\nend\n", text.len());
+        let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
+        assert!(
+            code == Some(77) && err.contains("0.tar isn't a plain one"),
+            "an archive with the magic {magic:?} wasn't refused ({code:?}): {err}"
+        );
+        assert!(
+            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
+            "a job ran over an archive that isn't plain, or its copy was left"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 #[test]
