@@ -432,6 +432,12 @@ struct Came {
 }
 
 fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
+    hearing_in(answer, until, |_| {})
+}
+
+/// What a reader over a fake gateway came to, as [`hearing`] says, from
+/// its own folder as `before` leaves it.
+fn hearing_in(answer: fn(&str, &Value, u64) -> String, until: &Until, before: fn(&Path)) -> Came {
     let (origin, _) = stand_in();
     let (url, called) = serving(answer);
     let home = home();
@@ -450,6 +456,7 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
             json!({ "since": format!("{}.000000", now - 600), "keys": [], "read_at": read_at });
         std::fs::write(own.join("judged.json"), kept.to_string()).expect("what it judged");
     }
+    before(&own);
     let searches = || {
         called
             .lock()

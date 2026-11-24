@@ -241,10 +241,18 @@ impl Through {
             asked = given;
             answer = self.newest(query, asked, before)?;
         }
+        // Still cut once it's asked again as often as it may, it's said so,
+        // as a gateway that keeps cutting is no answer short by chance.
+        let still = if cuts.len() == CUTS && gateway::cut_to(&answer).is_some() {
+            format!("still cut after asking again {CUTS} times, ")
+        } else {
+            String::new()
+        };
         // Each count it was cut to, so a journal shows every cut.
         let cuts = cuts.join(", then ");
         let cut_to = |why: String| cut_to(&cuts, asked, why);
-        let found = gateway::found(&answer).map_err(|why| unread(cut_to(why)))?;
+        let found =
+            gateway::found(&answer).map_err(|why| unread(cut_to(format!("{still}{why}"))))?;
         if let Some(fewer) = found.len().checked_sub(1).filter(|fewer| *fewer > 0) {
             let again = self.newest(query, fewer, before)?;
             let again = gateway::found(&again)

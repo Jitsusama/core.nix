@@ -414,11 +414,13 @@ fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
             eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
             deaf.failed(&change);
         }
-        // Said, so what was read on after it can be seen to follow it.
+        // Said, so what was read on after it can be seen to follow it, with
+        // the file it went to, as only the live reader's is For You's.
         Ok(()) => {
             if let Change::Tell(waits) = &change {
                 eprintln!(
-                    "<5>told Joel in For You: {}",
+                    "<5>wrote Joel's row in {}: {}",
+                    waiting.file.display(),
                     waits["items"][0]["why"].as_str().unwrap_or_default()
                 );
             }
