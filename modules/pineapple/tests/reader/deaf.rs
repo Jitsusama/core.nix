@@ -262,15 +262,18 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
     let named = blocked.join("pineapple.json");
     let mut reader = reading(&home, &origin, &[], Some(&named));
     let began = Instant::now();
-    while !journal(&home).contains("couldn't tell Joel in For You") && began.elapsed() < PATIENCE {
+    while !journal(&home).contains("couldn't write Joel's row in ") && began.elapsed() < PATIENCE {
         thread::sleep(Duration::from_millis(20));
     }
     // Checked before the way is cleared, so a write that never fails fails
     // this case at once rather than after a second patience. The guard stops
     // the reader and prints its journal.
     assert!(
-        journal(&home).contains("<3>couldn't tell Joel in For You whether Slack is heard"),
-        "a tell that can't land is said"
+        journal(&home).contains(&format!(
+            "<3>couldn't write Joel's row in {} whether Slack is heard",
+            named.display()
+        )),
+        "a tell that can't land is said, with the file it was for"
     );
     std::fs::remove_file(&blocked).expect("out of the way");
     let told = until(&named, true);

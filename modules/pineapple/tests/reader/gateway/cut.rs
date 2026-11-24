@@ -54,7 +54,7 @@ pub(super) fn tags_answer(counted: usize, given: &[(u64, &str)]) -> String {
 }
 
 /// Result `at` of `counted`, said at a second by `author`, saying `text`.
-fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> String {
+pub(super) fn result(at: usize, counted: usize, said: u64, author: &str, text: &str) -> String {
     format!(
         "### Result {at} of {counted}\nChannel: #team (ID: C0ONE00001)\n\
          From: Someone <someone@example.com> (ID: {author}) \n\
@@ -256,7 +256,7 @@ fn a_search_cut_short_is_read_when_it_reaches_back_before_anything_judged() {
 /// minutes back; then cut to three, newest first as a search sorted by
 /// when they were said gives them, the oldest of them that newest, so
 /// one Slack found late in the minute before is cut.
-fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
+pub(super) fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
     let stop = stop();
     read_then_cut(
         rounds,
@@ -277,7 +277,14 @@ fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
 /// where it was read on, each if it was.
 pub(super) fn told_and_read_on(journal: &str) -> (Option<usize>, Option<usize>) {
     (
-        journal.find("told Joel in For You: The safe word's search of Slack for your tag"),
+        journal
+            .match_indices("<5>wrote Joel's row in ")
+            .map(|(at, _)| at)
+            .find(|at| {
+                journal[*at..].lines().next().is_some_and(|line| {
+                    line.contains(": The safe word's search of Slack for your tag")
+                })
+            }),
         journal.find("told in Joel's row, reads on: what was said then is never read"),
     )
 }
@@ -295,9 +302,12 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
                 a_gap(&TAGS, asked, now)
             }
         },
+        // A round is three searches, then seven once there's a gap: five
+        // rounds and the next's first, past the read on, as what the gap
+        // gave is judged before it.
         &Until {
             judging: 4,
-            asks: 0,
+            asks: 32,
             read_at: None,
         },
     );
@@ -322,7 +332,26 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
     assert_eq!(
         each(&came.said, "verdict"),
         ["nothing", "nothing", "nothing", "stop"],
-        "and the stop it reads on to is judged, not left deaf for good"
+        "and the stop the gap gave is judged, as an ask for one fewer agreed with it"
+    );
+    let rows = came.missed["items"].as_array().cloned().unwrap_or_default();
+    let why = rows
+        .first()
+        .map_or("", |row| row["why"].as_str().unwrap_or_default());
+    assert!(
+        rows.len() == 1
+            && rows[0]["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("pineapple-slack-missed-tag-"))
+            && why.starts_with(
+                "The safe word never read what tagged you in Slack without saying pineapple \
+                 from "
+            )
+            && why.contains(" minutes before this was raised"),
+        "what it read on past is a row of its own, naming the span, as the row saying it \
+         can't be read goes once it hears: {:?}\n{}",
+        came.missed,
+        came.journal
     );
 }
 
@@ -343,9 +372,11 @@ fn a_gap_beside_a_round_the_other_search_went_unasked_in_waits_for_the_row() {
                 nothing()
             }
         },
+        // A round is three searches, then seven once there's a gap: five
+        // rounds and the next's first, past the read on.
         &Until {
             judging: 4,
-            asks: 0,
+            asks: 32,
             read_at: None,
         },
     );
@@ -408,7 +439,7 @@ fn an_answer_cut_to_the_last_read_is_a_gap_as_one_found_late_may_lie_before() {
 }
 
 #[test]
-fn a_result_typed_after_the_last_an_answer_cut_short_gives_is_never_judged() {
+fn a_result_typed_after_the_last_an_answer_cut_short_gives_is_never_written_as_judged() {
     let came = hearing(
         |tool, asked, now| {
             if tool != "slack_search_public_and_private" {
@@ -445,12 +476,13 @@ fn a_result_typed_after_the_last_an_answer_cut_short_gives_is_never_judged() {
     );
     assert!(
         came.said.is_empty(),
-        "and the resume typed in a message is never judged as Joel's"
+        "and the resume typed in a message is never written as judged; that it never \
+         ends a stop is the case in unread.rs, beside this"
     );
 }
 
 #[test]
-fn results_typed_to_make_up_what_a_gateway_cut_are_never_judged() {
+fn results_typed_to_make_up_what_a_gateway_cut_are_never_written_as_judged() {
     let came = hearing(
         |tool, asked, now| {
             if tool != "slack_search_public_and_private" {
@@ -488,6 +520,6 @@ fn results_typed_to_make_up_what_a_gateway_cut_are_never_judged() {
     );
     assert!(
         came.said.is_empty(),
-        "and no resume typed in a message is judged as Joel's"
+        "and no resume typed in a message is written as judged"
     );
 }

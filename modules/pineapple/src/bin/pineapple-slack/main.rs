@@ -52,7 +52,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pineapple::deaf::{self, Change, Deaf, Deafness, Round, Search, Waiting};
-use pineapple::ears::{Api, Through};
+use pineapple::ears::{Api, Skipped, Through};
 use pineapple::judged::{self, Afresh, Judged};
 use pineapple::mcp::Gateway;
 use pineapple::sign_in::{self, ran_over};
@@ -411,17 +411,49 @@ fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
     let change = deaf.heard(heard, millis());
     match deaf::make(&waiting.file, &change) {
         Err(error) => {
-            eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
+            eprintln!(
+                "<3>couldn't write Joel's row in {} whether Slack is heard: {error}",
+                waiting.file.display()
+            );
             deaf.failed(&change);
         }
-        // Said, so what was read on after it can be seen to follow it.
+        // Said, so what was read on after it can be seen to follow it, with
+        // the file it went to, as only the live reader's is For You's.
         Ok(()) => {
             if let Change::Tell(waits) = &change {
                 eprintln!(
-                    "<5>told Joel in For You: {}",
+                    "<5>wrote Joel's row in {}: {}",
+                    waiting.file.display(),
                     waits["items"][0]["why"].as_str().unwrap_or_default()
                 );
             }
+        }
+    }
+}
+
+/// Tells Joel, in a row of its own in `file`, that what `search` read on
+/// past was never read, so he can look for a stop said then; whether it
+/// was written.
+fn tell_missed(file: &Path, search: Search, skipped: Skipped) -> bool {
+    let at = millis();
+    let millis_of = |micros: u128| u64::try_from(micros / 1000).ok();
+    let (from, to) = (
+        skipped.from.and_then(millis_of),
+        skipped.to.and_then(millis_of),
+    );
+    let row = deaf::missed(search, from, to, at);
+    let why = row["why"].as_str().unwrap_or_default().to_owned();
+    match deaf::keep_missed(file, row, at) {
+        Ok(()) => {
+            eprintln!("<5>wrote Joel's row in {}: {why}", file.display());
+            true
+        }
+        Err(error) => {
+            eprintln!(
+                "<3>couldn't write Joel's row in {}: {why}: {error}",
+                file.display()
+            );
+            false
         }
     }
 }
@@ -516,7 +548,19 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         file: state.join("waiting.json"),
         refused: None,
     };
-    let mut through = Through::new(Gateway::new(url, program));
+    // Beside it, what a search read on past, which nothing takes away:
+    // a gap is read on only once its row is written there. In shadow it's
+    // the reader's own record, which For You never reads.
+    let missed = state.join("missed.json");
+    let record = move |query: &str, skipped: Skipped| {
+        let search = if query == round::PHRASE {
+            Search::Phrase
+        } else {
+            Search::Tag
+        };
+        tell_missed(&missed, search, skipped)
+    };
+    let mut through = Through::new(Gateway::new(url, program), Box::new(record));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::new();
     loop {

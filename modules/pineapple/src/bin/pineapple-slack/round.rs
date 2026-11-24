@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use pineapple::deaf::{Deafness, Round, Search};
-use pineapple::ears::Ears;
+use pineapple::ears::{Ears, Unread};
 use pineapple::gate::{Asked, gate};
 use pineapple::judged::{self, Judged};
 use pineapple::phone;
@@ -41,10 +41,12 @@ pub(super) struct Reader {
 /// `me` is Joel's Slack id, and his sign-in, where a reply could be said
 /// with it.
 ///
-/// A search whose answer can't be read is never partly trusted, and
-/// nothing of it is judged; the other's messages are, and the round says
-/// which search is deaf. Both deaf reads nothing. Either way the next
-/// round asks both again, with no rest a poster could stretch.
+/// A search whose answer can't be read is never read as far as it reaches,
+/// and the round says which search is deaf; the other's messages are
+/// judged. What it gave is judged as its ears say it may be: messages a
+/// second ask agreed with in full, any other only for a stop, which may
+/// come from anyone, never for a resume a writer could type. Either way
+/// the next round asks both again, with no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -75,12 +77,39 @@ pub(super) fn round(
         phrase => (phrase, ears.search(&tag, &judged.back_to(&tag, now))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
+    // What a deaf search gave, or a page a search read on past: only a
+    // stop is taken from what no second ask agreed with, and it's judged
+    // again once read; what one agreed with in a deaf search is judged
+    // with the rest, in the order it was said.
+    let mut partly = Vec::new();
+    for (query, answer) in [(PHRASE, &phrase), (tag.as_str(), &tagged)] {
+        let deaf = answer.as_ref().err() == Some(&unread);
+        if deaf || answer.is_ok() {
+            let Unread { agreed, unagreed } = ears.unread(query);
+            for message in &unagreed {
+                if judged.is_new(message) && !alert(&joel, message) {
+                    judge(ears, reader, account, state, &joel, message, false);
+                }
+            }
+            if deaf {
+                partly.extend(agreed);
+            }
+        }
+    }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
         (Ok(phrase), Err(tagged)) if tagged == unread => (phrase, Vec::new(), Some(Search::Tag)),
         (Err(phrase), Ok(tagged)) if phrase == unread => (Vec::new(), tagged, Some(Search::Phrase)),
         (phrase, tagged) => {
             let failed = [phrase.err(), tagged.err()];
+            // What was judged of an answer it couldn't read is kept, and
+            // how far each was read and when Slack was read whole aren't.
+            if !partly.is_empty() {
+                judge_each(ears, reader, account, state, &joel, judged, partly.iter());
+                if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
+                    eprintln!("<3>couldn't keep what it judged: {error}");
+                }
+            }
             // A refusal is said first, then a sign-in none could give.
             // One search unasked, its network blinking, says nothing new
             // of the other, so only both unread are told as both.
@@ -94,22 +123,8 @@ pub(super) fn round(
             .unwrap_or(unread);
         }
     };
-    let mut seen = HashSet::new();
-    let mut heard: Vec<&Message> = phrase
-        .iter()
-        .chain(&tagged)
-        .filter(|message| judged.is_new(message) && seen.insert(message.key()))
-        .collect();
-    heard.sort_by_key(|message| micros(&message.ts));
-    for message in heard {
-        // The reader's own alert quotes others as Joel, so it's no saying.
-        if message.author == me && phone::is_alert(&message.text) {
-            judged.judged(message);
-            continue;
-        }
-        judge(ears, reader, account, state, &joel, message);
-        judged.judged(message);
-    }
+    let heard = phrase.iter().chain(&tagged).chain(&partly);
+    judge_each(ears, reader, account, state, &joel, judged, heard);
     // Only a search whose messages were all judged has read as far as
     // they reach; one deaf gave none, so stays where it was.
     judged.reached(PHRASE, phrase.last());
@@ -129,7 +144,50 @@ pub(super) fn round(
     deaf.map_or(Round::Heard, |search| Round::Deaf(Deafness::Unread(search)))
 }
 
-/// One message judged where it was said, and written down.
+/// Each new message `heard` judged once, in the order they were said, and
+/// kept as judged.
+fn judge_each<'a>(
+    ears: &mut dyn Ears,
+    reader: &Reader,
+    account: Option<&Account>,
+    state: &Path,
+    joel: &Joel,
+    judged: &mut Judged,
+    heard: impl Iterator<Item = &'a Message>,
+) {
+    let mut seen = HashSet::new();
+    let mut heard: Vec<&Message> = heard
+        .filter(|message| judged.is_new(message) && seen.insert(message.key()))
+        .collect();
+    heard.sort_by_key(|message| micros(&message.ts));
+    for message in heard {
+        if !alert(joel, message) {
+            judge(ears, reader, account, state, joel, message, true);
+        }
+        judged.judged(message);
+    }
+}
+
+/// Whether `message` is the reader's own alert, which quotes others as
+/// Joel, so is no saying.
+fn alert(joel: &Joel, message: &Message) -> bool {
+    joel.slack_ids.contains(&message.author) && phone::is_alert(&message.text)
+}
+
+/// One message judged where it was said, and written down; not `agreed`
+/// with by a second ask, it could be typed, so only a stop it says is
+/// kept, with nothing written, answered or resumed. Its writer is taken as
+/// it says, so Joel's own stop isn't waved for want of his tag, as a stop
+/// may come from anyone, yet its record never says Joel said it and calls
+/// its writer unconfirmed; it links nowhere, as its link could point
+/// anywhere, and was said no later than it was heard, so Joel's resume
+/// ends it whatever time it types. It's kept under a key of its own
+/// ([`unconfirmed`]), so a typed copy of a stop's channel and time never
+/// takes the stop's record; once read agreed, the stop is kept whole under
+/// its own key and its unconfirmed copy is taken away. Nor is
+/// the thread it names read, as that could be any, each round it's deaf:
+/// with no thread, a stop reaches what its words name, else its channel's
+/// lanes, else everything.
 fn judge(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -137,13 +195,25 @@ fn judge(
     state: &Path,
     joel: &Joel,
     message: &Message,
+    agreed: bool,
 ) {
     let context = message
         .thread
         .as_deref()
+        .filter(|_| agreed)
         .and_then(|thread| ears.root(&message.channel, thread))
         .map(|root| Context::of_thread(&root))
         .unwrap_or_default();
+    let now = millis();
+    let read_at = now / MILLIS;
+    let heard_at = format!("{read_at}.000000");
+    let (link, said_at) = if agreed {
+        (message.link.as_str(), message.ts.as_str())
+    } else if micros(&message.ts).is_some_and(|said| Some(said) < micros(&heard_at)) {
+        ("", message.ts.as_str())
+    } else {
+        ("", heard_at.as_str())
+    };
     let decision = decide(
         &Heard {
             platform: Platform::Slack,
@@ -157,20 +227,21 @@ fn judge(
         },
         joel,
     );
-    let key = message.key();
+    let key = if agreed {
+        message.key()
+    } else {
+        unconfirmed(message)
+    };
     let thread = message.thread_key();
     let source = Source {
         key: &key,
         thread: &thread,
-        link: &message.link,
+        link,
         author: &message.author,
         text: &message.text,
-        said_at: &message.ts,
+        said_at,
     };
-    let now = millis();
-    let read_at = now / MILLIS;
-    let said_at =
-        micros(&message.ts).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
+    let said_at = micros(said_at).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
     let went_out = state.join("replies.jsonl");
     // A stop Joel resumed no longer holds its thread's reply back.
     let sent = record::ledger(&resume::cleared(
@@ -186,11 +257,11 @@ fn judge(
         age: read_at.saturating_sub(said_at),
     };
     let gated = gate(&asked, &sent, read_at, replies_off(state));
-    let line = record::line(&source, &decision, gated, now, reader.shadow);
-    if let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
+    let entry = record::line(&source, &decision, gated, now, reader.shadow);
+    if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
     }
-    if gated.goes() {
+    if agreed && gated.goes() {
         let named: Vec<String> = decision.reaches.iter().map(ToString::to_string).collect();
         let post = reply::post(message, decision.reply, &named, &reader.words);
         if answer(reader, account, message, post.as_ref()) {
@@ -207,15 +278,17 @@ fn judge(
         }
     }
     if decision.stops() {
-        let stop = record::stop(&source, &decision, now, reader.shadow);
-        match record::keep(&state.join("stops"), &key, &stop) {
-            Ok(true) if reader.shadow => eprintln!("<5>a stop, in shadow: {}", message.link),
-            Ok(true) => eprintln!("<5>a stop: {}", message.link),
-            Ok(false) => {}
-            Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
-        }
+        let mut stop = record::stop(&source, &decision, now, reader.shadow);
+        keep_stop(
+            &state.join("stops"),
+            &mut stop,
+            message,
+            &key,
+            agreed,
+            reader.shadow,
+        );
     }
-    if decision.verdict == Verdict::Resume && decision.by_joel {
+    if agreed && decision.verdict == Verdict::Resume && decision.by_joel {
         let said = micros(&message.ts).unwrap_or(0);
         resume_as_joel(
             &state.join("stops"),
@@ -225,6 +298,60 @@ fn judge(
             reader.shadow,
         );
     }
+}
+
+/// Keeps a stop's record, `stop`, under `key` in `records`, and says so.
+/// Not `agreed`, it never says Joel said it and calls its writer
+/// unconfirmed; agreed, its unconfirmed copy is taken away.
+fn keep_stop(
+    records: &Path,
+    stop: &mut serde_json::Value,
+    message: &Message,
+    key: &str,
+    agreed: bool,
+    shadow: bool,
+) {
+    if !agreed {
+        stop["by_joel"] = false.into();
+        stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
+    }
+    let shadow = if shadow { ", in shadow" } else { "" };
+    let unagreed = if agreed {
+        ""
+    } else {
+        ", in an answer no second ask agreed with"
+    };
+    let kept = record::keep(records, key, stop);
+    match &kept {
+        // An unagreed stop is named by the key it's kept under, as its
+        // link could point anywhere.
+        Ok(true) => eprintln!(
+            "<5>a stop{shadow}{unagreed}: {}",
+            if agreed { message.link.as_str() } else { key }
+        ),
+        Ok(false) => {}
+        Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
+    }
+    if agreed
+        && kept.is_ok()
+        && let Err(error) = record::forget(records, &unconfirmed(message))
+    {
+        eprintln!("<3>couldn't take away a stop's unconfirmed copy: {error}");
+    }
+}
+
+/// The key a stop from an answer no second ask agreed with is kept under:
+/// its message's own, which could be typed, beside a hash of the writer it
+/// names and its words. A typed copy saying other words of the same
+/// channel and time is kept beside it rather than in its place, and the
+/// same words read again are the same stop.
+fn unconfirmed(message: &Message) -> String {
+    let said = format!("{}\0{}", message.author, message.text)
+        .bytes()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
+    format!("{}:unconfirmed:{said:016x}", message.key())
 }
 
 /// Ends the stops Joel's own "pineapple resume" names (src/resume.rs):
