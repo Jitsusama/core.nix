@@ -80,6 +80,9 @@ with open(os.environ["STAND_IN_ASKED"], "w") as asked:
 out = sys.argv[sys.argv.index("--out") + 1]
 if os.environ.get("STAND_IN_OFFLOAD_SAYS"):
     print(os.environ["STAND_IN_OFFLOAD_SAYS"], file=sys.stderr)
+if os.environ.get("STAND_IN_OFFLOAD_UNREADABLE"):
+    sys.stderr.buffer.write(b"a byte no text reads: \\xff\\n")
+    sys.stderr.buffer.flush()
 if not os.environ.get("STAND_IN_NO_PICTURES"):
     open(os.path.join(out, "desktop.png"), "w").close()
 if os.environ.get("STAND_IN_OFFLOAD_LISTS"):
@@ -194,9 +197,11 @@ def a_stand_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Stan
 
 
 def test_a_script_handing_its_tests_to_pytest_is_known_by_its_call(tool: Tool) -> None:
-    assert tool.pytest_driven(PYTEST_SCRIPT)
-    assert not tool.pytest_driven(SCRIPT)
-    assert not tool.pytest_driven('# vm_pytest.run(globals(), "x")\nprint("vm_pytest.run")\n')
+    assert tool.pytest_driven(PYTEST_SCRIPT), "a script calling vm_pytest.run wasn't known"
+    assert not tool.pytest_driven(SCRIPT), "a script of its own subtests was taken for pytest's"
+    assert not tool.pytest_driven('# vm_pytest.run(globals(), "x")\nprint("vm_pytest.run")\n'), (
+        "a call only in a comment or a string was taken for a real one"
+    )
 
 
 def test_words_pick_the_tests_whose_names_hold_them(tool: Tool) -> None:
@@ -210,6 +215,11 @@ def test_words_pick_the_tests_whose_names_hold_them(tool: Tool) -> None:
 def test_a_word_pytest_would_read_as_more_than_a_name_is_refused(tool: Tool, word: str) -> None:
     with pytest.raises(ValueError, match="can't be matched against a test's name"):
         tool.selecting([word])
+
+
+def test_a_word_starting_with_a_dash_is_refused_after_others_too(tool: Tool) -> None:
+    with pytest.raises(ValueError, match="'-x' can't be matched against a test's name"):
+        tool.selecting(["terminal", "-x"])
 
 
 def test_a_script_not_handed_to_pytest_is_refused_before_anything_runs(
@@ -281,27 +291,210 @@ def test_a_listing_built_elsewhere_gives_the_names_the_build_kept(
     assert "pictures" not in said.err, f"a listing spoke of pictures: {said.err!r}"
 
 
-@pytest.mark.parametrize("status", [0, 1])
+def test_a_listing_built_elsewhere_that_brings_back_no_names_fails(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The build keeps a listing's names or fails, so a pass with none is
+    # never one the person can read from.
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+
+    assert tool.main(["--there", "vm-desktop-x"]) == 1
+
+    assert stand_in.asked() is not None, "a listing elsewhere never asked nix-offload"
+    said = capsys.readouterr()
+    assert said.out == "", f"a listing bringing back none printed {said.out!r}"
+    assert "brought back no names" in said.err, f"it said {said.err!r}"
+    assert "build the whole test with nix-offload there" in said.err, f"it said {said.err!r}"
+    assert "ran none" not in said.err, f"a listing with no names read as one: {said.err!r}"
+
+
+def test_a_listing_built_elsewhere_that_brings_back_an_empty_list_fails(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_LISTS", "\n")
+
+    assert tool.main(["--there", "vm-desktop-x"]) == 1
+
+    assert stand_in.asked() is not None, "a listing elsewhere never asked nix-offload"
+    said = capsys.readouterr().err
+    assert "brought back no names" in said, f"it said {said!r}"
+
+
+def test_a_listing_elsewhere_failing_with_no_names_is_never_excused_by_a_quarantine(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+
+    assert tool.main(["--there", "vm-desktop-x"]) == 1
+    assert stand_in.asked() is not None, "a listing elsewhere never asked nix-offload"
+
+
+def served(kept: Path) -> str:
+    """Say what nix-offload says of subtests it kept in `kept` from a pass before."""
+    return (
+        "nix-offload: these subtests passed at 0123456789ab already, so they aren't run "
+        f"again; their pictures are copied from {kept}, and `nix-offload passed forget "
+        "0123456789abcdef` has them run again"
+    )
+
+
+def test_a_listing_served_from_the_folder_it_was_kept_in_keeps_its_names(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # nix-offload copies nothing when the pass it kept is in the folder
+    # asked for, so the list there is that pass's own.
+    out = stand_in.folder / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_kept\n")
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_SAYS", served(out))
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 0
+
+    assert capsys.readouterr().out == "test_kept\n", "a kept pass's names weren't shown"
+    assert (out / "subtests").read_text() == "test_kept\n", "the kept pass lost its names"
+
+
+def test_a_listing_served_into_a_folder_named_from_here_keeps_its_names(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # nix-offload names the folder it kept whole, as asked from here.
+    monkeypatch.chdir(stand_in.folder)
+    (stand_in.folder / "out").mkdir()
+    (stand_in.folder / "out" / "subtests").write_text("test_kept\n")
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_SAYS", served(stand_in.folder / "out"))
+
+    assert tool.main(["--there", "--out", "out", "vm-desktop-x"]) == 0
+
+    assert capsys.readouterr().out == "test_kept\n", "a kept pass's names weren't shown"
+
+
+def test_a_listing_served_from_a_kept_folder_that_lost_its_names_says_how_to_list_again(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = stand_in.folder / "out"
+    out.mkdir()
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_SAYS", served(out))
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 1
+
+    said = capsys.readouterr().err
+    assert (
+        f"vm-desktop-x's listing was served from a pass kept in {out}, which holds no names; "
+        "`nix-offload passed forget 0123456789abcdef` has it listed again"
+    ) in said, said
+
+
+def test_a_listing_served_from_another_folder_never_takes_the_old_list_for_its_own(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Kept elsewhere, the pass's own list comes with its copy, so one left
+    # in the folder asked for is from some other run.
+    out = stand_in.folder / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_SAYS", served(stand_in.folder / "kept"))
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 1
+
+    assert "test_stale" not in capsys.readouterr().out, "an old list was shown as the kept one"
+    assert not (out / "subtests").exists(), "an old list was put back"
+
+
+# Each is nix-offload's status and the listing's own.
+@pytest.mark.parametrize("statuses", [(0, 1), (1, 1), (75, 75)])
 def test_a_listing_built_elsewhere_never_prints_a_list_left_from_before(
     tool: Tool,
     stand_in: StandIn,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    status: int,
+    statuses: tuple[int, int],
 ) -> None:
-    # A build that brings back no list, passing or not, would leave the
-    # folder's earlier list where the run reads it.
+    status, code = statuses
+    # A build that brings back no list, passing, failing or taken by no
+    # builder, would leave the folder's earlier list where the run reads it;
+    # nor does it lose that list.
     out = stand_in.folder / "out"
     out.mkdir()
     (out / "subtests").write_text("test_stale\n")
     monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
     monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", str(status))
 
-    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == status
+    # A build bringing back no list fails the listing, with nix-offload's
+    # status when it failed.
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == code
 
     assert stand_in.asked() is not None, "a listing elsewhere never asked nix-offload"
     said = capsys.readouterr().out
     assert "test_stale" not in said, f"a build bringing back none printed an old list: {said!r}"
+    assert (out / "subtests").read_text() == "test_stale\n", "a build writing none lost the list"
+
+
+@pytest.mark.parametrize("unreadable", ["", "1"])
+def test_a_listing_built_elsewhere_keeps_its_new_names_over_the_old(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    unreadable: str,
+) -> None:
+    # A VM's log can carry any bytes, and they mustn't end the run or put
+    # an old list over the new one.
+    out = stand_in.folder / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_UNREADABLE", unreadable)
+    monkeypatch.setenv("STAND_IN_OFFLOAD_LISTS", "test_new\n")
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 0
+
+    assert capsys.readouterr().out == "test_new\n", "the new list's names weren't shown"
+    assert (out / "subtests").read_text() == "test_new\n", "an old list went over the new one"
+
+
+def test_a_listing_stopped_partway_keeps_the_list_from_before(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Ctrl-C while nix-offload runs ends the run before it says anything.
+    out = stand_in.folder / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_kept\n")
+
+    def stopped(_command: list[str]) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(tool, "offloaded", stopped)
+
+    with pytest.raises(KeyboardInterrupt):
+        tool.main(["--there", "--out", str(out), "vm-desktop-x"])
+
+    assert (out / "subtests").read_text() == "test_kept\n", "a stopped run lost the list"
 
 
 def test_a_pytest_check_that_fails_fails_the_run(
@@ -340,8 +533,8 @@ def test_a_word_pytest_cant_take_is_refused_before_anything_is_built_elsewhere(
 def test_a_word_read_as_an_option_is_refused_before_anything_is_built_elsewhere(
     tool: Tool, stand_in: StandIn, capsys: pytest.CaptureFixture[str], word: str
 ) -> None:
-    # The build hands the words on to run-subtests, which would read one
-    # starting with a dash as an option: a run, or a listing, not asked for.
+    # pytest would read one starting with a dash as an option of its own, so
+    # it's refused before a build is asked for, as any word pytest can't take.
     assert tool.main(["--there", "vm-desktop-x", "--", word]) == tool.USAGE
 
     assert stand_in.asked() is None, f"{word!r} was sent to be built"
@@ -365,7 +558,7 @@ def test_there_has_the_subtests_built_elsewhere_and_runs_nothing_here(
         str(Path.cwd()),
         "legacyPackages.x86_64-linux.subtests",
     ]
-    assert (out / "desktop.png").exists()
+    assert (out / "desktop.png").exists(), "the run's picture never reached the folder given"
     assert stand_in.ran() is None
 
 
@@ -380,7 +573,9 @@ def test_a_run_that_brought_back_no_pictures_says_so_and_where_a_gallery_takes_t
     assert tool.main(["--there", "vm-desktop-x", "launcher"]) == 0
 
     said = capsys.readouterr().err
-    assert not any(line.startswith("pictures:") for line in said.splitlines())
+    assert not any(line.startswith("pictures:") for line in said.splitlines()), (
+        f"a run with no pictures said where its pictures are: {said}"
+    )
     assert "no pictures: the subtests run took none" in said
     assert "vm-desktop-x.gallery" in said
 
@@ -660,6 +855,7 @@ def test_inside_a_build_a_listing_naming_none_fails_and_keeps_none(
     assert not (out / "subtests").exists(), "a listing naming none kept a list"
     said = capsys.readouterr().err
     assert "named no test" in said, f"a listing naming none passed unsaid: {said!r}"
+    assert "build the whole test with nix-offload there" in said, said
 
 
 def test_an_interactive_listing_keeps_its_output_the_persons(

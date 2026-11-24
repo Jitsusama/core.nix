@@ -4105,6 +4105,10 @@
   stands-alone = ''
     nothing here names a machine, its repository or employer
   '';
+  subtests-read-no-word-as-an-option = ''
+    the build of a VM test's subtests hands run-subtests the check and its words past --, in
+    order, so neither is read as an option
+  '';
   sun-passes-clippy = ''
     clippy finds nothing in sun, the sun's reckoning the calendars and night light share, or its
     tests
