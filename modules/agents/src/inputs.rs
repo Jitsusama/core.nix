@@ -52,6 +52,21 @@ use crate::windows;
 /// a full disk isn't asked every moment.
 const WRITE_AGAIN_MS: u64 = 10_000;
 
+/// How long a failed write of the places that lasts goes before the
+/// journal hears it again, in ms, so a disk full for a day isn't one
+/// line lost among the day's.
+const SAY_AGAIN_MS: u64 = 3_600_000;
+
+/// How long `ms` lasted, in words: seconds under two minutes, else
+/// whole minutes.
+fn lasted(ms: u64) -> String {
+    if ms < 120_000 {
+        format!("{} s", ms / 1_000)
+    } else {
+        format!("{} min", ms / 60_000)
+    }
+}
+
 /// A write of the places that failed, while memory holds more than
 /// their file does.
 #[derive(Clone, Debug, PartialEq)]
@@ -68,7 +83,8 @@ pub struct Unwritten {
 /// that failed with `why`, or succeeded with none, after the writes
 /// before it left `was` unwritten, and what's left unwritten after it:
 /// a failure once until its error changes, so a full disk isn't
-/// journalled at every try, and once more on success.
+/// journalled at every try, and again each [`SAY_AGAIN_MS`] it lasts;
+/// then once more on success, saying how long the file was behind.
 fn write_heard(
     path: &Path,
     why: Option<&str>,
@@ -76,7 +92,10 @@ fn write_heard(
     at: u64,
 ) -> (Option<String>, Option<Unwritten>) {
     let Some(why) = why else {
-        let heard = was.map(|_| format!("agents: kept {} again", path.display()));
+        let heard = was.map(|was| {
+            let behind = lasted(at.saturating_sub(was.since));
+            format!("agents: kept {} again, {behind} behind", path.display())
+        });
         return (heard, None);
     };
     let since = was.map_or(at, |was| was.since);
@@ -88,7 +107,17 @@ fn write_heard(
         })
     };
     match was {
-        Some(was) if was.why == why => (None, left(was.said)),
+        Some(was) if was.why == why && at.saturating_sub(was.said) < SAY_AGAIN_MS => {
+            (None, left(was.said))
+        }
+        Some(was) if was.why == why => {
+            let behind = lasted(at.saturating_sub(since));
+            let heard = format!(
+                "agents: still can't keep {}, {behind} behind: {why}",
+                path.display()
+            );
+            (Some(heard), left(at))
+        }
         _ => (
             Some(format!("agents: can't keep {}: {why}", path.display())),
             left(at),
