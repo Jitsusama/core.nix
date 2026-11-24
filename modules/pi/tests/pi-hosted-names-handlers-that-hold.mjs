@@ -102,8 +102,17 @@ const run = async (extensions, emitting) => {
       ],
     ],
     async (runner) => {
-      await runner.emit({ type: "message_update", message, assistantMessageEvent: { type: "text_delta" } });
-      await runner.emit({ type: "tool_execution_update", toolCallId: "one", toolName: "bash", args: {} });
+      await runner.emit({
+        type: "message_update",
+        message,
+        assistantMessageEvent: { type: "text_delta" },
+      });
+      await runner.emit({
+        type: "tool_execution_update",
+        toolCallId: "one",
+        toolName: "bash",
+        args: {},
+      });
     },
   );
   assert.deepEqual(lines, [], "said a turn's streamed event");
