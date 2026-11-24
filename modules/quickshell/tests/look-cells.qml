@@ -7,7 +7,7 @@
 // session that left it, the agents daemon's answer for its cell, and the
 // sessions on its quest, and another quest's only as the one that left a
 // look on no quest; an old look naming no cell led by the one its
-// session went by (cellNamed); when a Go says its session moved on
+// session goes by (cellNamed); when a Go says its session moved on
 // (movedOn); and when a served look is settled once it opened. How For
 // You weighs a look is for-you.qml's.
 import QtQuick
@@ -71,7 +71,7 @@ QtObject {
         // to the live session it is now, running or parked; ended with none
         // to go to, or to one not listed yet, itself, else one on its quest
         // only; not served yet, or the daemon away, the same; naming no cell,
-        // the one its session went by, else cellOf's search on its quest.
+        // the one its session goes by, else cellOf's search on its quest.
         const cells = {
             "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
             "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
@@ -156,23 +156,25 @@ QtObject {
         expect("naming no cell, the session that left it on its quest",
             Looks.cellFor(lookLeft, {}, [listing, leaver], []).address, "AAAAAA");
         // A look left before looks named their cell is led by the one its
-        // session went by, made from pi's id for it as the harness makes it
-        // (lib/mesh/address.ts's sessionAddress): its last eight hex digits.
-        const lookOld = { session: "01a1dd5c-1372-7422-ab6f-f984e1921aab", quest: "Q-1" };
+        // session goes by now, made from pi's id for it as the harness makes
+        // it (lib/mesh/address.ts's sessionAddress): its last eight hex
+        // digits. The look names the six-letter address it went by then.
+        const lookOld = { session: "01a1dd5c-1372-7422-ab6f-f984e1921aab", quest: "Q-1",
+            address: "87KI6A" };
         const derived = { address: "E1921AAB", presence: { session: "s-8", quest: "Q-1" } };
-        expect("an old look naming no cell, the cell its session went by",
+        expect("an old look naming no cell, the cell its session goes by",
             Looks.cellFor(lookOld, {}, [heir, derived], []).address, "E1921AAB");
         expect("and Joel's answer goes to that cell too, where Talk goes",
             (Looks.answer(lookOld, { value: "yes" }, derived, now) ?? {}).address, "E1921AAB");
         expect("and that cell is the one that left it", Looks.leftIt(lookOld, derived), true);
-        expect("a look's own cell, not the one its session went by",
+        expect("a look's own cell, not the one its session goes by",
             Looks.cellFor(Object.assign({ cell: "AAAAAA" }, lookOld), {}, [derived, leaver], [])
                 .address, "AAAAAA");
         expect("and where the daemon says that cell goes now",
             Looks.cellFor(lookOld, { "agent-cell:agents:E1921AAB": { cell: "E1921AAB",
                 goes: "BBBBBB" } }, [resting, heir], []).address, "BBBBBB");
         expect("an old look naming no cell, never one on another quest listing it",
-            Looks.cellFor(Object.assign({ address: "E1921AAB" }, lookOld), {},
+            Looks.cellFor(Object.assign({}, lookOld, { address: "E1921AAB" }), {},
                 [{ address: "TTTTTT", presence: { session: "s-9", quest: "Q-2",
                     addresses: ["TTTTTT", "E1921AAB"] } }], []), null);
         expect("a session id of another shape names no cell",

@@ -231,10 +231,11 @@ const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 const ADDRESS_DIGITS = 8;
 
 // The cell a look names: its own `cell`, else, for one left before looks
-// named their cell, the address the session that left it went by, which
-// the harness makes from pi's id for it as it makes a look's `cell` now
+// named their cell, the address the session that left it goes by now,
+// which the harness makes from pi's id for it as it makes a look's `cell`
 // (lib/mesh/address.ts's sessionAddress: its last eight hex digits, in
-// capitals), so a look still waiting from then is led as a new one is;
+// capitals), though it went by another as it left the look, so a look
+// still waiting from then is led as a new one is;
 // else "", for one naming no session of pi's.
 function cellNamed(one) {
     if (typeof one.cell === "string" && one.cell !== "") {
@@ -278,7 +279,7 @@ function cellGoes(one, cells) {
 // merely lists the cell's address is never found. The daemon and the
 // lists each read the node and either can be a beat behind, so a cell
 // back again wins over an older answer. A look left before looks named
-// their cell is led by the one its session went by (cellNamed), so no
+// their cell is led by the one its session goes by (cellNamed), so no
 // look searches every quest's sessions.
 function cellFor(one, cells, running, parked) {
     const cell = cellNamed(one);

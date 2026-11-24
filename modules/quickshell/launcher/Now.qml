@@ -1843,7 +1843,7 @@ Provider {
     // Talk, Go To and Explain It on the cell behind it (cellActs), as a
     // waiting look's do, so a look done with still leads to the cell that
     // sent it, as it is now; one naming no cell, by the one its session
-    // went by (Looks.js's cellNamed).
+    // goes by (Looks.js's cellNamed).
     function lookServed(row, key) {
         const held = row.held ?? {};
         // Open and Return lead where Talk does, a terminal look's Open being
