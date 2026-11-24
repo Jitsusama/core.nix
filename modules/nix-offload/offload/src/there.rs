@@ -449,12 +449,30 @@ impl Asked {
             .collect::<Vec<_>>()
             .join(" ");
         if self.out.is_some() {
-            format!("out=$({build}) && tar -czhf - -C \"$out\" .")
+            format!("out=$({build}) && {OUT_TARRED}")
         } else {
             build
         }
     }
 }
+
+/// What a builder's shell runs once `$out` is built, to send it back as a
+/// tarball with its links followed. A link that points outside the output
+/// and the store, or at nothing there, would bring back a file of the
+/// builder's own or fail the tarball, so each is left out and the first
+/// three are named on the error. Links inside a followed folder are
+/// followed as they are, since `find` doesn't go through the folder's link.
+const OUT_TARRED: &str = concat!(
+    "skip=$(mktemp) && trap 'rm -f \"$skip\"' EXIT && (cd \"$out\" && top=$(pwd -P) ",
+    "&& find . -type l | while IFS= read -r link; do ",
+    "case $(realpath -m -- \"$link\") in \"$top\"/*|/nix/store/*) ",
+    "[ -e \"$link\" ] || printf '%s\\n' \"$link\" ;; ",
+    "*) printf '%s\\n' \"$link\" ;; esac; done) > \"$skip\" ",
+    "&& if [ -s \"$skip\" ]; then echo \"nix-offload: $(wc -l < \"$skip\") links in $out ",
+    "point outside it and the store, or at nothing, so they stay out of what comes ",
+    "back: $(head -n 3 \"$skip\" | tr '\\n' ' ')\" >&2; fi ",
+    "&& tar -czhf - -C \"$out\" --no-wildcards --anchored -X \"$skip\" .",
+);
 
 /// A string as Nix reads one, quoted.
 fn nix_string(text: &str) -> String {
@@ -965,8 +983,16 @@ const REFUSED_SAID: &str = "Host key verification failed";
 /// connect to user scope bus via local transport: Connection refused`.
 /// The bus refuses while a switch reloads it: at 23:53 on 23 November
 /// copies that had waited 58 to 146 minutes for a turn failed so in a
-/// second, and their runs gave the builds up.
-const UNSCOPED_SAID: [&str; 2] = ["Failed to connect to", "bus"];
+/// second, and their runs gave the builds up. Only a line that opens with
+/// the first words counts ([`says_unscoped`]), since a copy's own error,
+/// which the same pipe carries, may name a bus further along, and a copy
+/// that ran must never be sent again.
+const UNSCOPED_SAID: (&str, &str) = ("Failed to connect to", "bus");
+
+/// Whether systemd-run said with `line` that it couldn't make the scope.
+fn says_unscoped(line: &str) -> bool {
+    line.starts_with(UNSCOPED_SAID.0) && line.contains(UNSCOPED_SAID.1)
+}
 
 /// Why a copy up failed, whether ssh lost the builder under it, which a
 /// builder standing again, or the one beside, may take instead, and
@@ -1117,7 +1143,7 @@ impl Copying {
                     heard.ssh.lost |= LOST_SAID.iter().any(|said| line.contains(said));
                     heard.ssh.cut |= line.contains(CUT_SAID);
                     heard.ssh.refused |= line.contains(REFUSED_SAID);
-                    heard.unscoped |= UNSCOPED_SAID.iter().all(|said| line.contains(said));
+                    heard.unscoped |= says_unscoped(&line);
                     eprintln!("{line}");
                 }
                 let _ = said.send(heard);
@@ -1199,17 +1225,13 @@ fn sent_up(
             copying.heard(),
         ))
     };
-    let scope = upload_scope();
-    let (mut went, mut heard) = sending(scope)?;
-    // A scope the bus refused never ran the copy, so it goes again
-    // outside one ([`copied_up`]).
-    if !went && scope.is_some() && heard.unscoped {
-        eprintln!(
-            "nix-offload: the send couldn't be given a scope of its own, since the user \
-             manager's bus refused it, so it goes again outside one"
-        );
-        (went, heard) = sending(None)?;
-    }
+    let (went, heard) = scoped_or_again(
+        upload_scope(),
+        sending,
+        |went| *went,
+        "nix-offload: the send couldn't be given a scope of its own, since the user manager's \
+         bus refused it, so it goes again outside one",
+    )?;
     if went {
         return Ok(());
     }
@@ -1502,23 +1524,46 @@ fn copied_up(
     about: &str,
 ) -> Result<(std::io::Result<std::process::ExitStatus>, Heard), String> {
     let mut say = |line: String| eprintln!("{line}");
-    let mut run = |command: &mut Command, turn: &mut Option<Turn>| {
+    let run = |scope: Option<&str>| {
         // ssh's control socket goes in TMPDIR, as when what's built comes back.
-        let mut copied = Copying::start(command.args(args).env("TMPDIR", "/tmp"))
-            .map_err(|error| format!("couldn't run {nix}: {error}"))?;
-        let ended = waited_giving_back(&mut copied.child, turn, within, about, &mut say);
+        let mut copied = Copying::start(
+            uploading(nix, scope, alive)
+                .args(args)
+                .env("TMPDIR", "/tmp"),
+        )
+        .map_err(|error| format!("couldn't run {nix}: {error}"))?;
+        let ended = waited_giving_back(&mut copied.child, &mut turn, within, about, &mut say);
         Ok::<_, String>((ended, copied.heard()))
     };
-    let (ended, heard) = run(&mut uploading(nix, systemd_run, alive), &mut turn)?;
-    let ran = matches!(&ended, Ok(status) if status.success());
-    if ran || systemd_run.is_none() || !heard.unscoped {
+    scoped_or_again(
+        systemd_run,
+        run,
+        |ended| matches!(ended, Ok(status) if status.success()),
+        &format!(
+            "nix-offload: the copy up {about} couldn't be given a scope of its own, since the \
+             user manager's bus refused it, so it goes again outside one, keeping its turn"
+        ),
+    )
+}
+
+/// What `copy` gave and heard, run in a scope of `systemd_run`'s where one
+/// is named, and once more outside one when its scope couldn't be made
+/// ([`UNSCOPED_SAID`]), since the copy never ran then; `went` says whether
+/// a try went up, and `again` is said before the second. Every copy up
+/// that a scope holds goes through it, so a copy and the one sent again
+/// for it are told apart, and counted, in one place.
+fn scoped_or_again<T, E>(
+    systemd_run: Option<&str>,
+    mut copy: impl FnMut(Option<&str>) -> Result<(T, Heard), E>,
+    went: impl Fn(&T) -> bool,
+    again: &str,
+) -> Result<(T, Heard), E> {
+    let (ended, heard) = copy(systemd_run)?;
+    if went(&ended) || systemd_run.is_none() || !heard.unscoped {
         return Ok((ended, heard));
     }
-    eprintln!(
-        "nix-offload: the copy up {about} couldn't be given a scope of its own, since the user \
-         manager's bus refused it, so it goes again outside one, keeping its turn"
-    );
-    run(&mut uploading(nix, None, alive), &mut turn)
+    eprintln!("{again}");
+    copy(None)
 }
 
 /// How many bytes the store paths `nix path-info --json` prints from
@@ -2029,7 +2074,10 @@ fn turn_in(
         if turns.is_empty() {
             return None;
         }
-        if said.is_none_or(|at| at.elapsed() >= every) {
+        // Behind a waiter that came first, which mostly takes a turn
+        // within a look or two, it says it waits only once it has.
+        let passing = said.is_none() && ahead > 0 && began.elapsed() < TURN_SAID_AFTER;
+        if !passing && said.is_none_or(|at| at.elapsed() >= every) {
             let first = match ahead {
                 0 => String::new(),
                 ahead => format!(", and {} waiting that came first", copies(ahead)),
@@ -2043,8 +2091,8 @@ fn turn_in(
                 ));
             } else if said.is_none() {
                 say(format!(
-                    "nix-offload: {} waiting came first, behind those sending ({}), so this \
-                     waits its turn to send",
+                    "nix-offload: {} waiting came first, so this waits its turn to send after \
+                     them (sending now: {})",
                     copies(ahead),
                     holders(folder, "uplink")
                 ));
@@ -2066,8 +2114,15 @@ fn turn_in(
 /// quiet.
 const TURN_SAID_EVERY: std::time::Duration = std::time::Duration::from_mins(5);
 
+/// How long a copy behind another waiter waits before it says so, since
+/// the one before it mostly takes a freed turn at once.
+const TURN_SAID_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// How a waiter's ticket's name begins, before when it came and its pid.
 const TICKET: &str = "wait-uplink-";
+
+/// How many tickets this run has taken ([`Ticket::take`]).
+static TICKETS_TAKEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// How long a waiter's ticket may go untouched and still hold its place.
 /// A waiter touches it each second, so only one stopped or starved this
@@ -2097,11 +2152,14 @@ impl Ticket {
             .map_err(|error| error.to_string())?
             .as_nanos();
         let pid = std::process::id();
-        let making = folder.join(format!(".making-{pid}-{nanos}"));
+        // Two threads of one run may read the same time, where the clock
+        // is coarse, so each ticket a run takes is numbered too.
+        let taken = TICKETS_TAKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let making = folder.join(format!(".making-{pid}-{nanos}-{taken:010}"));
         let file = open_turn(&making, true)?;
         let named = match file.try_lock() {
             Ok(()) => {
-                let name = format!("{TICKET}{nanos:020}-{pid}");
+                let name = format!("{TICKET}{nanos:020}-{pid}-{taken:010}");
                 let path = folder.join(&name);
                 match fs::rename(&making, &path) {
                     Ok(()) => Ok((name, path)),
@@ -2435,13 +2493,26 @@ fn sent_held(
     let within = send_within(size);
     let about = format!("of {} of held outputs to {}", sized(size), lent.host);
     let _turn = uplink_turn(rank, &about);
-    let mut copying = upload(nix, COPY_ALIVE);
-    let ended = dies_with_run(&mut copying)
-        .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
-        .args(&sending)
-        .env("TMPDIR", "/tmp")
-        .spawn()
-        .map(|mut copy| finished_within(&mut copy, within));
+    let send = |scope: Option<&str>| {
+        let mut copying = Copying::start(
+            uploading(nix, scope, COPY_ALIVE)
+                .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
+                .args(&sending)
+                .env("TMPDIR", "/tmp"),
+        )?;
+        let ended = finished_within(&mut copying.child, within);
+        Ok::<_, std::io::Error>((ended, copying.heard()))
+    };
+    let ended = scoped_or_again(
+        upload_scope(),
+        send,
+        |ended| ended.is_some_and(|status| status.success()),
+        &format!(
+            "nix-offload: the send {about} couldn't be given a scope of its own, since the user \
+             manager's bus refused it, so it goes again outside one, keeping its turn"
+        ),
+    )
+    .map(|(ended, _)| ended);
     match ended {
         Ok(Some(status)) if status.success() => return true,
         Ok(None) => eprintln!(
@@ -6704,6 +6775,20 @@ mod tests {
     }
 
     #[test]
+    fn only_systemd_runs_own_line_says_a_scope_wasnt_made() {
+        assert!(
+            says_unscoped(
+                "Failed to connect to user scope bus via local transport: Connection refused"
+            ),
+            "systemd-run's line didn't read as a scope not made"
+        );
+        assert!(
+            !says_unscoped("error: copying path: Failed to connect to the system bus"),
+            "a copy's own error read as a scope not made, so it would be sent again"
+        );
+    }
+
+    #[test]
     fn a_copy_whose_scope_failed_otherwise_isnt_sent_again() {
         let folder = tempfile::tempdir().expect("a folder");
         let systemd_run = a_scope_refused(folder.path(), "Unknown assignment: MemoryHigh=1G");
@@ -7310,8 +7395,9 @@ mod tests {
             let had = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |line| said.push(line));
             (had.is_some(), said)
         });
-        // Three looks' worth, for the waiter to pass every free turn by.
-        std::thread::sleep(Duration::from_millis(300));
+        // Past the second a waiter behind another keeps quiet, for it to
+        // pass every free turn by and say why.
+        std::thread::sleep(TURN_SAID_AFTER + Duration::from_millis(300));
         assert!(
             !waiting.is_finished(),
             "a copy took a free turn while one that came first still waited"
@@ -7331,6 +7417,60 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().starts_with(TICKET))
             .collect();
         assert!(left.is_empty(), "a ticket outlived its wait: {left:?}");
+    }
+
+    #[test]
+    fn only_waiters_that_came_first_are_ahead() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let first = Ticket::take(folder.path()).expect("a first place in line");
+        let second = Ticket::take(folder.path()).expect("a second place in line");
+        assert_eq!(
+            (first.ahead(folder.path()), second.ahead(folder.path())),
+            (0, 1),
+            "a waiter counted one that came after it, or missed one before"
+        );
+    }
+
+    #[test]
+    fn a_waiter_that_touches_its_ticket_keeps_its_place_past_the_stale_time() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut first = Ticket::take(folder.path()).expect("a first place in line");
+        let second = Ticket::take(folder.path()).expect("a second place in line");
+        let old = std::time::SystemTime::now()
+            .checked_sub(TICKET_STALE * 2)
+            .expect("a time before the stale time");
+        first.file.set_modified(old).expect("an old touch");
+        assert_eq!(
+            second.ahead(folder.path()),
+            0,
+            "a waiter untouched past the stale time kept its place"
+        );
+        std::thread::sleep(Duration::from_millis(1100));
+        first.touch();
+        assert_eq!(
+            second.ahead(folder.path()),
+            1,
+            "a waiter that touched its ticket again didn't take its place back"
+        );
+    }
+
+    #[test]
+    fn a_waiter_behind_one_that_goes_at_once_says_nothing() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let first = Ticket::take(folder.path()).expect("a place in line");
+        let at = folder.path().to_owned();
+        let waiting = std::thread::spawn(move || {
+            let mut said = Vec::new();
+            let had = turn_in(&at, "to b", TURN_SAID_EVERY, &mut |line| said.push(line));
+            (had.is_some(), said)
+        });
+        std::thread::sleep(Duration::from_millis(300));
+        drop(first);
+        let (had, said) = waiting.join().expect("the waiter");
+        assert!(
+            had && said.is_empty(),
+            "a waiter behind one that went within the second spoke: {said:?}"
+        );
     }
 
     // Neither a waiter that died, its ticket left unlocked, nor one stopped,
@@ -9195,8 +9335,63 @@ mod tests {
         let asked = asked(&words("--out /o github:o/r/abc checks.x.a")).unwrap();
         assert_eq!(
             asked.command(),
-            "out=$(nix build --no-link --print-out-paths 'github:o/r/abc#checks.x.a') \
-             && tar -czhf - -C \"$out\" ."
+            format!(
+                "out=$(nix build --no-link --print-out-paths 'github:o/r/abc#checks.x.a') \
+                 && {OUT_TARRED}"
+            )
+        );
+    }
+
+    // On 24 November a link out of the store would have brought back the
+    // builder's own file, and a dangling one failed the whole tarball.
+    #[test]
+    fn an_outputs_links_out_of_it_and_the_store_or_to_nothing_stay_behind() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let out = folder.path().join("out");
+        fs::create_dir(&out).expect("an output");
+        fs::write(out.join("kept"), "here").expect("a file");
+        std::os::unix::fs::symlink("kept", out.join("inside")).expect("a link inside");
+        fs::write(folder.path().join("builders"), "theirs").expect("a builder's file");
+        std::os::unix::fs::symlink(folder.path().join("builders"), out.join("outside"))
+            .expect("a link outside");
+        std::os::unix::fs::symlink("/nix/store/0000-gone", out.join("gone"))
+            .expect("a dangling link");
+        let sent = Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "out={} && {OUT_TARRED}",
+                quoted(&out.to_string_lossy())
+            ))
+            .output()
+            .expect("the shell");
+        let said = String::from_utf8_lossy(&sent.stderr);
+        assert!(sent.status.success(), "the output didn't go: {said}");
+        assert!(
+            said.contains("2 links in") && said.contains("./outside") && said.contains("./gone"),
+            "the links left out weren't named: {said}"
+        );
+        let mut listing = Command::new("tar")
+            .args(["-tzf", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("tar");
+        listing
+            .stdin
+            .take()
+            .expect("tar's input")
+            .write_all(&sent.stdout)
+            .expect("the tarball");
+        let listed = listing.wait_with_output().expect("the listing");
+        let mut names: Vec<_> = String::from_utf8_lossy(&listed.stdout)
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["./", "./inside", "./kept"],
+            "the tarball held other than the output's own"
         );
     }
 
