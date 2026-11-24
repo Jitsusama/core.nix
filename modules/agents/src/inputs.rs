@@ -52,6 +52,20 @@ use crate::windows;
 /// a full disk isn't asked every moment.
 const WRITE_AGAIN_MS: u64 = 10_000;
 
+/// What the journal hears of a write of the places to `path` that
+/// failed with `why`, or succeeded with none, after the write before it
+/// left `was` unwritten: a failure once until its error changes, so a
+/// full disk isn't journalled at every try, and once more on success.
+fn write_heard(path: &Path, why: Option<&str>, was: Option<&str>) -> Option<String> {
+    match (why, was) {
+        (Some(why), was) if was != Some(why) => {
+            Some(format!("agents: can't keep {}: {why}", path.display()))
+        }
+        (None, Some(_)) => Some(format!("agents: kept {} again", path.display())),
+        _ => None,
+    }
+}
+
 /// What each source last said.
 #[derive(Default)]
 pub struct Inputs {
@@ -323,14 +337,8 @@ impl Inputs {
     /// while the disk stays full.
     fn write_places(&mut self, kept: Arrangement, path: &Path) {
         let why = kept.write(path).err().map(|why| why.to_string());
-        if why.is_some() && why != self.unwritten {
-            eprintln!(
-                "agents: can't keep {}: {}",
-                path.display(),
-                why.as_deref().unwrap_or("")
-            );
-        } else if why.is_none() && self.unwritten.is_some() {
-            eprintln!("agents: kept {} again", path.display());
+        if let Some(heard) = write_heard(path, why.as_deref(), self.unwritten.as_deref()) {
+            eprintln!("{heard}");
         }
         self.unwritten = why;
         self.arrangement = kept;
@@ -1364,6 +1372,89 @@ mod tests {
     }
 
     #[test]
+    fn with_no_window_listed_a_place_closed_by_hand_still_goes_when_due() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        let folder = std::env::temp_dir().join(format!("agents-inputs-due-{}", std::process::id()));
+        // Only this case's own folder, left by a run that failed.
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let path = folder.join("arrangement.json");
+        let now = || u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        let grace = u64::try_from(arrangement::CLOSED_FOR.as_millis()).unwrap_or(u64::MAX);
+        let places = |closed: u64| json!({"s-shut": {"closed": closed}, "s-left": {"column": 2}});
+        // Closed while another window still showed, and due since.
+        inputs
+            .arrangement
+            .boots
+            .insert("this-one".into(), places(now() - grace - 1_000));
+        assert_eq!(inputs.keep_places(&path), None, "nothing more is due");
+        let kept = &inputs.arrangement.boots["this-one"];
+        assert!(
+            kept.get("s-shut").is_none() && kept.get("s-left").is_some(),
+            "the one closed goes, the one left stays: {kept}"
+        );
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("the file written"))
+                .expect("the file reads");
+        assert_eq!(
+            Arrangement::of(&written).boots,
+            inputs.arrangement.boots,
+            "so the next boot doesn't reopen it"
+        );
+        // Due as a write fails: it goes, and the retry waits its time
+        // rather than coming as often as the daemon wakes.
+        let blocked = folder.join("blocked");
+        std::fs::write(&blocked, "").expect("a file where its folder would be");
+        inputs
+            .arrangement
+            .boots
+            .insert("this-one".into(), places(now() - grace - 1_000));
+        let from = now();
+        let again = inputs
+            .keep_places(&blocked.join("arrangement.json"))
+            .expect("a failed write is tried again");
+        assert!(
+            (from + WRITE_AGAIN_MS..=now() + WRITE_AGAIN_MS).contains(&again),
+            "in WRITE_AGAIN_MS, not at a let-go gone by: {again} from {from}"
+        );
+        assert!(
+            inputs.arrangement.boots["this-one"].get("s-shut").is_none(),
+            "it went though the write failed"
+        );
+        // Only this case's own folder, which the next run makes afresh.
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_failed_places_write_is_journalled_once_until_its_error_changes() {
+        let path = Path::new("/k/arrangement.json");
+        let full = "No space left on device";
+        assert_eq!(
+            write_heard(path, Some(full), None).as_deref(),
+            Some("agents: can't keep /k/arrangement.json: No space left on device")
+        );
+        assert_eq!(
+            write_heard(path, Some(full), Some(full)),
+            None,
+            "the same failure again isn't journalled again"
+        );
+        assert!(
+            write_heard(path, Some("Not a directory"), Some(full)).is_some(),
+            "a failure of another kind is"
+        );
+        assert_eq!(
+            write_heard(path, None, Some(full)).as_deref(),
+            Some("agents: kept /k/arrangement.json again")
+        );
+        assert_eq!(
+            write_heard(path, None, None),
+            None,
+            "a write that never failed says nothing"
+        );
+    }
+
+    #[test]
     fn places_whose_write_failed_are_written_again_soon_though_nothing_moves() {
         let mut inputs = inputs();
         inputs.boot = "this-one".into();
@@ -1378,13 +1469,16 @@ mod tests {
         let blocked = folder.join("blocked");
         std::fs::write(&blocked, "").expect("a file where its folder would be");
         let path = blocked.join("arrangement.json");
-        let before = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        let now = || u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        let before = now();
         let again = inputs
             .keep_places(&path)
             .expect("a failed write is tried again");
+        let after = now();
         assert!(
-            (before..=before + WRITE_AGAIN_MS + 1_000).contains(&again),
-            "soon, though no place is closed: {again} from {before}"
+            (before + WRITE_AGAIN_MS..=after + WRITE_AGAIN_MS).contains(&again),
+            "in WRITE_AGAIN_MS, neither sooner nor later, though no place is closed: \
+             {again} from {before}"
         );
         // A place closed by hand due before the retry comes first: the
         // retry never puts off its let-go.
@@ -1406,22 +1500,31 @@ mod tests {
             .arrangement
             .boots
             .insert("this-one".into(), closed(late));
+        let from = now();
         let again = inputs.keep_places(&path).expect("tried again");
         assert!(
-            again < late,
+            (from + WRITE_AGAIN_MS..=now() + WRITE_AGAIN_MS).contains(&again),
             "a let-go due later doesn't put off the retry: {again}"
         );
         inputs.windows.took(&json!({"records": []}));
+        let from = now();
+        let again = inputs.keep_places(&path).expect("tried again");
         assert!(
-            inputs.keep_places(&path).is_some_and(|again| again < late),
-            "with no window listed, what's unwritten is still tried again soon"
+            (from + WRITE_AGAIN_MS..=now() + WRITE_AGAIN_MS).contains(&again),
+            "with no window listed, what's unwritten is still tried again soon: {again}"
         );
+        // The window shows again where it was, so nothing moved, and the
+        // write is tried for being behind alone.
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
+        ]}));
         std::fs::remove_file(&blocked).expect("the way cleared");
         assert_eq!(
             inputs.keep_places(&path),
             Some(late),
             "once it can, it's written though nothing moved, and only the let-go waits"
         );
+        assert_eq!(inputs.unwritten, None, "nothing's left unwritten");
         let written: Value =
             serde_json::from_str(&std::fs::read_to_string(&path).expect("the file written"))
                 .expect("the file reads");

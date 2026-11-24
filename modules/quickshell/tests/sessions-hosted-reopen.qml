@@ -829,6 +829,9 @@ ShellRoot {
                 Expect.fail("no workspace is focused for s-unarranged's window to open on");
                 return;
             }
+            Expect.expect("one with no boot's places known is asked to open nowhere",
+                !Niri.acts.some(act => act.OpenNextWindowOn?.app_id === waiting.classed),
+                JSON.stringify(Niri.acts));
             opensOnly(91, waiting.classed, joels.id);
             return;
         }
@@ -926,10 +929,16 @@ ShellRoot {
             place?.workspace === cornerOn && place?.there === true
             && viewerSpawns("s-cornered").length === 0,
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
-        // Looked at last, once the walk that placed it has settled too.
+        // Looked at last, once the walk that placed it has settled too. A
+        // move of its window starts with focusing it, and its workspace
+        // would go back to the screen kept by moving to that monitor.
         Expect.expect("one sent by name to a workspace on another screen than kept stays there",
             !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93
-                || act.MoveWorkspaceToIndex?.reference?.Id === 44),
+                || act.MoveWindowToMonitor?.id === 93
+                || act.FocusWindow?.id === 93
+                || act.ConsumeOrExpelWindowLeft?.id === 93
+                || act.MoveWorkspaceToIndex?.reference?.Id === 44
+                || act.MoveWorkspaceToMonitor?.reference?.Id === 44),
             JSON.stringify(Niri.acts));
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
