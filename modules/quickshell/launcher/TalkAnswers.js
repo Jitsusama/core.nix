@@ -68,15 +68,18 @@ function sideOf(at, dayOf) {
     return day === "" ? Said.clockOf(since) : `${day} ${Said.clockOf(since)}`;
 }
 
-// The blank lines before a whole question, and the spaces after it.
-const BLANK_BEFORE = /^\s*\n/u;
+// The spaces after a whole question.
 const SPACE_AFTER = /\s+$/u;
 
 // What a want asks in full, as the agents daemon passes on the harness's whole question
 // (wants.rs's `whole`: its paragraphs, list lines and indentation kept), its blank lines
-// before and its spaces after let go; "" where it says no more than its short line.
+// before and its spaces after let go; "" where it says no more than its short line. Its
+// blank lines are let go line by line, not by a pattern: an anchored /^\s*\n/u kept a
+// leading newline in one engine the checks run.
 function whole(want) {
-    return String(want?.whole ?? "").replace(BLANK_BEFORE, "").replace(SPACE_AFTER, "");
+    const lines = String(want?.whole ?? "").split("\n");
+    const first = lines.findIndex(line => line.trim() !== "");
+    return first < 0 ? "" : lines.slice(first).join("\n").replace(SPACE_AFTER, "");
 }
 
 // What the session asks, in TalkLine.js's exchange shape, as the talk's first: who asks,
