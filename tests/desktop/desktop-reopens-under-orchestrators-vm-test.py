@@ -1285,9 +1285,7 @@ def asked_from_a_link(desktop: Desktop, link: str) -> None:
 
 def noticed(desktop: Desktop, body: str | None, before: int, within: dt.timedelta) -> None:
     """Wait `within` for Start New Work to notice `body`, or any, once more than `before`."""
-    which = STARTS_NOTICED
-    if body is not None:
-        which = f"{STARTS_NOTICED} | select(.body == {json.dumps(body)})"
+    which = starts_of(body)
     told = f"[{which}] | length > {before}"
     desktop.machine.wait_until_succeeds(
         desktop.in_session(f"jq -e {shlex.quote(told)} {desktop.NOTICES_KEPT}"),
@@ -1328,11 +1326,20 @@ CUT_OFF = (
 )
 
 
+def starts_of(body: str | None) -> str:
+    """Give jq for Start New Work's notices, those raised for `body` if named.
+
+    A notice's last line is the end it was raised for: an unread one still open leads it,
+    since the notices daemon folds the older into it (Sprouting.js's noticed).
+    """
+    if body is None:
+        return STARTS_NOTICED
+    return f'{STARTS_NOTICED} | select(.body | split("\\n") | last == {json.dumps(body)})'
+
+
 def starts_noticed(desktop: Desktop, body: str | None = None) -> int:
     """Give how many notices Start New Work has raised, of `body` if named, none at first."""
-    which = STARTS_NOTICED
-    if body is not None:
-        which = f"{STARTS_NOTICED} | select(.body == {json.dumps(body)})"
+    which = starts_of(body)
     program = shlex.quote(f"[{which}] | length")
     return int(
         desktop.as_account(f"jq {program} {desktop.NOTICES_KEPT} 2>/dev/null || echo 0").strip()
