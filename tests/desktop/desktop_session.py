@@ -166,7 +166,8 @@ NOTICES = "qs ipc call notices shows | grep -q ."
 # writes, and which the daemon rewrites as it starts.
 TUPLE_LOG = "~/.local/share/tuple/0/log.txt"
 # Tuple's stream as tuple-call follows it in the VM, through the stand-in
-# for Tuple's command (stand-ins/tuple-stand-in.sh), and what it was asked.
+# for Tuple's command (tests/desktop/stand-ins/tuple-stand-in.sh), and
+# what it was asked.
 TUPLE_STREAM = "$XDG_RUNTIME_DIR/tuple-stream"
 TUPLE_ASKED = "$XDG_RUNTIME_DIR/tuple-asked"
 
