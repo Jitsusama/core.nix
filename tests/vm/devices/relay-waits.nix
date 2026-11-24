@@ -20,14 +20,17 @@ let
     pkgs.gst_all_1.gst-plugins-good
   ];
   caps = "video/x-raw,format=NV12,width=320,height=240,framerate=30/1";
-  # Each input's frames, before anything is done to them.
+  # Each input's frames, before anything is done to them, and the picture
+  # they end as. GStreamer's parser takes bare caps only between two
+  # elements, so an input that ends in them is a capsfilter's.
   frames = "videotestsrc is-live=true";
+  picture = "capsfilter caps=${caps}";
   inputs = {
     # A valve shut for good passes no frame, as a camera still setting up.
-    never = "${frames} ! valve drop=true ! ${caps}";
+    never = "${frames} ! valve drop=true ! ${picture}";
     # Sixty frames at thirty a second, then nothing, though the pipeline
     # stays up, as a camera that stops mid call.
-    stops = "${frames} num-buffers=60 ! ${caps}";
+    stops = "${frames} num-buffers=60 ! ${picture}";
   };
   # A relay of each input, into a loopback of its own, as the shared cameras'
   # services run theirs, though left stopped until a test starts it, and

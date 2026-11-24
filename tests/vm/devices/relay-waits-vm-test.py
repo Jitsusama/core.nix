@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 REMADE = re.compile(r"a client waited (\d+) s with no frame from the camera; starting it again")
 # What it says as it ends, the pipeline made again having given no frame either.
 ENDING = "the camera still gives no frames; ending so it starts afresh"
+# What GStreamer says as the relay fails to make a pipeline, which would leave a client waiting
+# for a pipeline that was never there rather than one that gives no frame.
+UNMADE = "backend_pipeline_create"
 # How long a client waits for a first frame, and for the next once frames have stopped, before
 # the pipeline is made again: the patch's STALL_SECONDS and FLOWING_SECONDS.
 STALL = 90
@@ -128,6 +131,7 @@ def test_a_camera_that_never_frames_is_waited_on_90_s_then_ended(never: Relay) -
     )
     said = never.said()
     assert ENDING in said, f"The relay ended without saying why:\n{said}"
+    assert UNMADE not in said, f"The relay never made its camera's pipeline:\n{said}"
     result = never.machine.succeed(f"systemctl show -P Result {never.unit}").strip()
     assert result == "exit-code", f"The relay ended as {result}, not with its failure"
 
@@ -142,4 +146,5 @@ def test_a_camera_that_stops_is_waited_on_10_s_each_time(stops: Relay) -> None:
     for waited in waits:
         assert FLOWING <= waited <= FLOWING + LOOKING, f"The relay waited {waited} s, not {FLOWING}"
     assert ENDING not in stops.said(), "The relay ended a camera that framed again"
+    assert UNMADE not in stops.said(), "The relay failed to make its camera's pipeline"
     stops.machine.succeed(f"systemctl is-active --quiet {stops.unit}")
