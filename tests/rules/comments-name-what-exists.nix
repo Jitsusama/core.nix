@@ -1,8 +1,11 @@
 # The check that every comment naming a path from one of a repository's top
-# folders names what's there, but those its waiting list names: code-health's
+# folders, while the folder under the top it names stands, names what's
+# there, but those its waiting list names, for core and for any repository
+# built on it, as `core.lib.commentsNameWhatExists pkgs`: code-health's
 # stale-paths measure (modules/code-health/src/stale.rs) says which, the same
 # rule that counts them each hour, held here at each change, once
-# comments-name-what-exists.sh, beside this, has seen it refuse a planted tree.
+# comments-name-what-exists.sh, beside this, has seen it refuse a planted
+# tree.
 {
   bash,
   callPackage,
@@ -15,8 +18,8 @@
   src,
   # The comments naming a path that's gone and waiting on their owner,
   # each `file path`, listed once for each mention, while each is pointed
-  # at where the thing is now. The check fails on a mention not listed, and on a line listed
-  # more often than it's found.
+  # at where the thing is now. The check fails on a mention not listed,
+  # and on a line listed more often than it's found.
   waiting ? [ ],
   name ? "comments-name-what-exists",
 }:

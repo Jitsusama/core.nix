@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Runs the disk guard's GitHub predicate (modules/disk-guard/merged-on-github.sh)
-# over a stand-in gh (stand-in-gh.sh). A checkout is finished only when a
+# over a stand-in gh (modules/disk-guard/tests/stand-in-gh.sh). A checkout is finished only when a
 # merged pull request's head is exactly its own, whichever form of remote
 # GitHub gave it. One with more work on top isn't, nor one on no branch,
 # which gh is never asked about, and a gh that fails gives no answer.

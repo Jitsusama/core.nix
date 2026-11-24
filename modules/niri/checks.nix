@@ -342,7 +342,7 @@ onLinux {
   # account's configuration, nested in a headless sway in the sandbox
   # (tests/lib/nested-niri.sh), counts its refreshes in its log while a
   # stand-in commits a thousand times a second
-  # (tests/refreshes-once-a-frame.py). niri's own tests say what it puts
+  # (modules/niri/tests/refreshes-once-a-frame.py). niri's own tests say what it puts
   # off and what it doesn't; this shows the count falls on a running niri.
   niri-refreshes-once-a-frame =
     let

@@ -350,10 +350,10 @@ def test_the_launchers_sound_opens_an_outputs_and_a_microphones_parts(  # noqa: 
 def test_the_launchers_sound_chooses_noise_cancelling_by_ear(desktop: Desktop) -> None:
     """A microphone's Choose by Ear records, plays a clip and picks another, by its daemon.
 
-    The noise-cancelled daemon stands in (stand-in-noise-cancelled.py), its clips in a known
-    order, so B is DeepFilterNet gentle. One path through the connection: the record held from
-    its socket, each act asked over it, and the record's change drawn; every case of each step
-    is modules/quickshell/tests/by-ear.qml's.
+    The noise-cancelled daemon stands in (tests/desktop/stand-ins/stand-in-noise-cancelled.py), its
+    clips in a known order, so B is DeepFilterNet gentle. One path through the connection: the
+    record held from its socket, each act asked over it, and the record's change drawn; every case
+    of each step is modules/quickshell/tests/by-ear.qml's.
     """
     desktop.as_account("systemctl --user start noise-cancelled-stand-in.service")
     sound_device(desktop, "microphone", "stand-in microphone")
