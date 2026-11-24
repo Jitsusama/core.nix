@@ -86,7 +86,9 @@ pub struct Unwritten {
 /// journalled at every try, and again each [`SAY_AGAIN_MS`] it lasts,
 /// or at once if the wall clock stepped back past when it was said, which
 /// would otherwise hush it for as long as the clock stepped; then once
-/// more on success, saying how long the file was behind.
+/// more on success, saying how long the file was behind. It's never
+/// behind since a time still to come, as after such a step, so how long
+/// reads no shorter than the step makes it.
 fn write_heard(
     path: &Path,
     why: Option<&str>,
@@ -95,12 +97,12 @@ fn write_heard(
 ) -> (Option<String>, Option<Unwritten>) {
     let Some(why) = why else {
         let heard = was.map(|was| {
-            let behind = lasted(at.saturating_sub(was.since));
+            let behind = lasted(at.saturating_sub(was.since.min(at)));
             format!("agents: kept {} again, {behind} behind", path.display())
         });
         return (heard, None);
     };
-    let since = was.map_or(at, |was| was.since);
+    let since = was.map_or(at, |was| was.since.min(at));
     let left = |said| {
         Some(Unwritten {
             why: why.to_owned(),
@@ -109,17 +111,12 @@ fn write_heard(
         })
     };
     match was {
-        // Counted from here, as how long it was behind can't be said.
         Some(was) if was.why == why && at < was.said => (
             Some(format!(
                 "agents: still can't keep {}, the clock stepped back: {why}",
                 path.display()
             )),
-            Some(Unwritten {
-                why: why.to_owned(),
-                since: at,
-                said: at,
-            }),
+            left(at),
         ),
         Some(was) if was.why == why && at.saturating_sub(was.said) < SAY_AGAIN_MS => {
             (None, left(was.said))
