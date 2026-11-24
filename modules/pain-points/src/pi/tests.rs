@@ -294,15 +294,24 @@ fn only_an_abort_is_cut_and_any_call_spends_the_ask() {
     assert_eq!(stops, [Stop::Tool, Stop::Tool], "a tool call isn't a cut");
     assert!(log.open, "a tool call keeps his turn going");
     assert_eq!(log.compacting, None, "the tool call spent the ask");
-    let log = read(
-        &(asked() + &reply(AT + 2100, 500, "toolUse") + &reply(AT + 3000, 1000, "aborted")),
-    );
+    let log =
+        read(&(asked() + &reply(AT + 2100, 500, "toolUse") + &reply(AT + 3000, 1000, "aborted")));
     let stops: Vec<Stop> = log.turns[0].calls.iter().map(|c| c.stop).collect();
     assert_eq!(
         stops,
         [Stop::Tool, Stop::Tool, Stop::Aborted],
         "an abort after the ask was spent is his"
     );
+    // A call that answers or errors is no cut either, and spends the ask.
+    for (stop, read_as) in [("stop", Stop::Done), ("error", Stop::Error)] {
+        let log = read(&(asked() + &reply(AT + 2100, 500, stop)));
+        let last = log.turns[0].calls.last().map(|c| c.stop);
+        assert_eq!(last, Some(read_as), "a call that ended {stop} isn't a cut");
+        assert_eq!(
+            log.compacting, None,
+            "a call that ended {stop} spent the ask"
+        );
+    }
 }
 
 #[test]
@@ -441,24 +450,44 @@ fn a_read_picks_up_where_the_last_one_stopped() {
 fn an_error_or_an_ask_is_carried_across_reads_and_kept_state() {
     // pain-points keeps each log's state between reads as JSON, so a read
     // may stop on any line, the error's, the peer's or the ask's
-    // included, and the next pick up from what was kept.
+    // included, and the next pick up from what was kept. The last cut
+    // reads again with nothing new, as a timer's next read does.
     let failed = reply(AT + 100, 1000, "error").replacen(r#""id":"c""#, r#""id":"f""#, 1);
-    let retry = r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned() + "\n";
+    let edit = |target: &str| {
+        format!(r#"{{"type":"context_edit","targetId":"{target}","replacement":null}}"#) + "\n"
+    };
     let answered = reply(AT + 5100, 2000, "stop");
     for (lines, what) in [
         (
-            vec![typed(AT, AT, "hello"), failed.clone(), mesh(AT + 5000), answered.clone()],
+            vec![
+                typed(AT, AT, "hello"),
+                failed.clone(),
+                mesh(AT + 5000),
+                answered.clone(),
+            ],
             "a peer's turn after an error",
         ),
         (
             vec![
                 typed(AT, AT, "hello"),
-                failed,
+                failed.clone(),
                 mesh(AT + 5000),
-                retry,
-                answered,
+                edit("f"),
+                answered.clone(),
             ],
             "a peer's message before pi's retry",
+        ),
+        // Only the errored entry's id, kept, tells this edit from pi's
+        // retry: with it lost, any edit would count as one.
+        (
+            vec![
+                typed(AT, AT, "hello"),
+                failed,
+                mesh(AT + 5000),
+                edit("c"),
+                answered,
+            ],
+            "a peer's turn after another entry's edit",
         ),
         (
             vec![
@@ -472,7 +501,7 @@ fn an_error_or_an_ask_is_carried_across_reads_and_kept_state() {
     ] {
         let text = lines.concat();
         let whole = read(&text);
-        for cut in 1..lines.len() {
+        for cut in 1..=lines.len() {
             let mut log = read(&lines[..cut].concat());
             let kept = serde_json::to_string(&log).expect("a log serializes");
             log = serde_json::from_str(&kept).expect("a kept log reads back");
