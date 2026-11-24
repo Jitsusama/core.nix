@@ -23,6 +23,10 @@
 //! process started in scopes named for it ([`of_the_app`]). A window is
 //! read back at most every [`EVERY`]. It only hints: nothing is changed
 //! but what memory is resident.
+//!
+//! Long because a third of it is its tests, which build the process trees
+//! and scopes a read-back must tell apart: a window's own, an app's
+//! renderers, a terminal's sessions and strangers beside them.
 
 use std::ffi::{c_long, c_void};
 use std::fs::{self, File};
