@@ -3429,10 +3429,12 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
     assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
     # Desktop's Emoji says how many emoji it holds, counted from the history's records, though
-    # it lists only Unicode's groups and has made none of the emoji inside them.
+    # it lists only Unicode's groups and has made none of the emoji inside them. A place's
+    # figure is its side, as "1,914"; its count is what needs Joel.
     emoji = next(row for row in shown("desktop")["rows"] if row["name"] == "Emoji")
-    figure = "".join(letter for letter in str(emoji.get("count", "")) if letter.isdigit())
-    assert int(figure or 0) >= EMOJI_LISTED_LEAST, f"Desktop's Emoji said its count so: {emoji}"
+    figure = re.match(r"[\d,]+", str(emoji.get("side", "")))
+    held = int(figure.group().replace(",", "")) if figure else 0
+    assert held >= EMOJI_LISTED_LEAST, f"Desktop's Emoji said how many it holds so: {emoji}"
     assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
     # A miss says where, the names it was nearest, and that nothing it was looked among is
     # still being read, so the terminal says it at once rather than asking again.
