@@ -102,28 +102,29 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
     let mut docstring: Option<&str> = None;
     let mut string: Option<&str> = None;
     let mut block = false;
-    // The last line of code, past which a docstring stands only where a
-    // statement starts: at a module's top, or after a line ending with a
-    // colon, as a def or a class does.
-    let mut last: Option<&str> = None;
+    // Whether a statement starts on the next line of code, where alone a
+    // docstring stands: at a module's top, or past a line of code ending
+    // with a colon outside any string, as a def or a class does.
+    let mut starts = true;
     let mut lines = Vec::new();
     for (number, line) in file.text.lines().enumerate() {
         let trimmed = line.trim_start();
-        let starts = extension == "py"
-            && last.is_none_or(|code| scan(code, None).0.trim_end().ends_with(':'));
         let comment = if let Some(quotes) = docstring {
-            docstring = scan(line, Some(quotes)).1;
+            (docstring, string) = docstring_line(line, quotes);
+            starts = false;
             true
         } else if let Some(quotes) = string {
-            string = scan(line, Some(quotes)).1;
+            let scanned = scan(line, Some(quotes));
+            string = scanned.open;
+            starts = string.is_none() && scanned.code.trim_end().ends_with(':');
             false
         } else if block {
             block = !line.contains("*/");
             true
-        } else if starts && opens(trimmed).is_some() {
-            // Opened and closed on one line, or open until its quotes
-            // come again, unescaped.
-            docstring = scan(line, None).1;
+        } else if let Some((quotes, past)) = opens(trimmed).filter(|_| extension == "py" && starts)
+        {
+            (docstring, string) = docstring_line(&trimmed[past..], quotes);
+            starts = false;
             true
         } else if blocks && trimmed.starts_with("/*") {
             block = !trimmed[2..].contains("*/");
@@ -131,14 +132,15 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         } else {
             let comment = (trimmed.starts_with(mark) && !trimmed.starts_with("#!"))
                 || (extension == "nix" && trimmed.starts_with('*'));
-            if extension == "py" && !comment {
-                string = scan(line, None).1;
+            // A blank line, a comment or a shebang leaves where a statement
+            // starts as it was.
+            if extension == "py" && !comment && !trimmed.is_empty() && !trimmed.starts_with('#') {
+                let scanned = scan(line, None);
+                string = scanned.open;
+                starts = string.is_none() && scanned.code.trim_end().ends_with(':');
             }
             comment
         };
-        if !trimmed.is_empty() && !trimmed.starts_with('#') {
-            last = Some(trimmed);
-        }
         if comment {
             lines.push((number + 1, line));
         }
@@ -146,11 +148,37 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
     lines
 }
 
-/// A line of Python code read past its strings and their escapes: the
-/// code before a `#` outside them, and the triple quotes that close a
-/// string it leaves open. `open` holds the quotes of a string the line
-/// starts inside, as one the line before left open.
-fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> (&'a str, Option<&'static str>) {
+/// What [`scan`] makes of a line of Python.
+struct Scanned<'a> {
+    /// The code before a `#` outside any string.
+    code: &'a str,
+    /// The quotes of a string the line leaves open.
+    open: Option<&'static str>,
+    /// Whether the string the line starts inside closes on it.
+    closed: bool,
+}
+
+/// The docstring and the code string left open by a line read from inside
+/// a docstring opened with `quotes`: the docstring still, until its own
+/// quotes close it unescaped, and then any string the code past them opens.
+fn docstring_line(
+    line: &str,
+    quotes: &'static str,
+) -> (Option<&'static str>, Option<&'static str>) {
+    let scanned = scan(line, Some(quotes));
+    if scanned.closed {
+        (None, scanned.open)
+    } else {
+        (Some(quotes), None)
+    }
+}
+
+/// A line of Python code read past its strings and their escapes. `open`
+/// holds the quotes of a string the line starts inside, as one the line
+/// before left open.
+fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> Scanned<'a> {
+    let started = open.is_some();
+    let mut closed = false;
     let mut at = 0;
     while let Some(c) = line[at..].chars().next() {
         let rest = &line[at..];
@@ -162,10 +190,15 @@ fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> (&'a str, Option<&
             if rest.starts_with(quotes) {
                 at += quotes.len();
                 open = None;
+                closed = started;
                 continue;
             }
         } else if c == '#' {
-            return (&line[..at], None);
+            return Scanned {
+                code: &line[..at],
+                open: None,
+                closed,
+            };
         } else if let Some(quotes) = ["\"\"\"", "'''", "\"", "'"]
             .into_iter()
             .find(|quotes| rest.starts_with(quotes))
@@ -176,20 +209,28 @@ fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> (&'a str, Option<&
         }
         at += c.len_utf8();
     }
-    // A one-quote string can't run on past its line.
-    (line, open.filter(|quotes| quotes.len() == 3))
+    Scanned {
+        code: line,
+        // A one-quote string runs on past its line only where a backslash
+        // ends it.
+        open: open.filter(|quotes| quotes.len() == 3 || line.ends_with('\\')),
+        closed,
+    }
 }
 
 /// The quotes a Python docstring opens with at the start of `trimmed`,
-/// past any of the letters that make a string raw, bytes or formatted.
-fn opens(trimmed: &str) -> Option<&'static str> {
+/// past any of the letters that make a string raw, bytes or formatted, and
+/// where in `trimmed` its text begins.
+fn opens(trimmed: &str) -> Option<(&'static str, usize)> {
     let unprefixed = trimmed.trim_start_matches(|c: char| "rRbBfFuU".contains(c));
-    if trimmed.len() - unprefixed.len() > 2 {
+    let prefix = trimmed.len() - unprefixed.len();
+    if prefix > 2 {
         return None;
     }
     ["\"\"\"", "'''"]
         .into_iter()
         .find(|quotes| unprefixed.starts_with(quotes))
+        .map(|quotes| (quotes, prefix + quotes.len()))
 }
 
 /// The paths `text` names that start at one of `tops`, each from the start
@@ -417,6 +458,72 @@ mod tests {
             ],
             "a comment past a def's colon hid its docstring, an escaped quote closed one, or \
              a string opened past another's close was missed"
+        );
+    }
+
+    #[test]
+    fn a_blank_line_a_comment_or_a_shebang_leaves_a_docstring_its_place() {
+        let files = [
+            file(
+                "tests/n.py",
+                "#!/usr/bin/env python3\n\
+                 \n\
+                 # A comment before the module's docstring.\n\
+                 \"\"\"Naming tests/kept/module.nix.\"\"\"\n\
+                 def f():\n\
+                 \x20   # A comment before its docstring.\n\
+                 \n\
+                 \x20   \"\"\"Naming tests/kept/def.nix.\"\"\"\n",
+            ),
+            file("tests/kept/x.nix", "{ }\n"),
+        ];
+        assert_eq!(
+            stale(&paths(&files), &files),
+            [
+                "tests/n.py:4: tests/kept/module.nix",
+                "tests/n.py:8: tests/kept/def.nix"
+            ],
+            "a blank line, a comment or a shebang moved where a docstring may stand"
+        );
+    }
+
+    #[test]
+    fn strings_are_followed_from_where_each_line_truly_starts() {
+        let files = [
+            file(
+                "tests/m.py",
+                "def g():\n\
+                 \x20   \"\"\"Opened,\n\
+                 \x20   an escaped \\\"\"\" inside, then tests/kept/inner.nix,\n\
+                 \x20   and tests/kept/later.nix.\"\"\"\n\
+                 def h():\n\
+                 \x20   r\"\"\"A raw \\\"\"\" stays in, as tests/kept/raw.nix says,\n\
+                 \x20   and tests/kept/rawafter.nix.\"\"\"\n\
+                 def i():\n\
+                 \x20   \"\"\"Doc.\"\"\" if True else \"\"\"open\n\
+                 # tests/kept/inside.nix, in a string\n\
+                 \"\"\"\n\
+                 s = \"\"\"open\n\
+                 x\"\"\" + y  # a note:\n\
+                 \"\"\"Not a docstring, naming tests/kept/notdoc.nix.\"\"\"\n\
+                 t = 'one quote, \\\n\
+                 # tests/kept/cont.nix'\n\
+                 # tests/kept/out.nix, past them all\n",
+            ),
+            file("tests/kept/x.nix", "{ }\n"),
+        ];
+        assert_eq!(
+            stale(&paths(&files), &files),
+            [
+                "tests/m.py:3: tests/kept/inner.nix",
+                "tests/m.py:4: tests/kept/later.nix",
+                "tests/m.py:6: tests/kept/raw.nix",
+                "tests/m.py:7: tests/kept/rawafter.nix",
+                "tests/m.py:17: tests/kept/out.nix"
+            ],
+            "an escape closed a docstring, a string opened past one's close was read as it, \
+             a line past a string was read as if it began outside one, or a backslash's \
+             one-quote string was dropped"
         );
     }
 
