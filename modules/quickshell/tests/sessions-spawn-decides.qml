@@ -25,8 +25,10 @@ ShellRoot {
     property string stage: "handing"
     property real handedAt: 0
     property var opened: ({})
-    // Why Sessions said each start by its quest wasn't viewed.
+    // Why Sessions said each start by its quest wasn't viewed, and the
+    // name it gave each, which the launcher's foot says it by.
     property var unhosted: ({})
+    property var unhostedNames: ({})
     property real startedAt: 0
     // When QEST-HOSTED's session was started again, once its viewer was
     // listed, or 0 before.
@@ -124,10 +126,10 @@ ShellRoot {
         Expect.expect("a saved one is never asked", !lines.some(line => line.includes("s-saved")),
             lines.join("\n"));
         Expect.expect("the config says sessions start in pi's host", Sessions.startsHosted, "");
-        Sessions.start("QEST-HOSTED", root.folder, true);
+        Sessions.start("QEST-HOSTED", root.folder, true, "Kelp Harbour");
         Sessions.start("QEST-AWAY", root.folder, false);
         Sessions.start("QEST-PLAIN", root.folder, false);
-        Sessions.start("QEST-DOTTED", root.folder, false);
+        Sessions.start("QEST-DOTTED", root.folder, false, "Dotted Reef");
         Sessions.start("QEST-BADHOST", root.folder, false);
         Sessions.start("QEST-DASHID", root.folder, false);
         Sessions.start("QEST-DASHHOST", root.folder, false);
@@ -167,6 +169,10 @@ ShellRoot {
         Expect.expect("and each is said started, though it can't be viewed",
             unviewed.every(quest => root.unhosted[quest] === "unviewable"),
             JSON.stringify(root.unhosted));
+        // By its quest's name where the launcher gave one, never its id.
+        Expect.expect("one started by its quest's name is said by that name",
+            root.unhostedNames["QEST-DOTTED"] === "Dotted Reef",
+            JSON.stringify(root.unhostedNames));
         // The host answers both with one session: the first's viewer opens
         // and, while niri is slow to list it, the second is said opening.
         Expect.expect("of two started on one session, one viewer opens and the second says so",
@@ -182,10 +188,11 @@ ShellRoot {
         // its window is named by.
         Expect.expect("its viewer is named for it",
             viewer[0].includes("/kitty.sock pi-hosted.s-begun "), viewer[0]);
-        // Titled for its quest before its words run, not "mycelium".
-        Expect.expect("and titled for its quest before its words run",
+        // Titled for its quest's name before its words run, not "mycelium"
+        // nor its id.
+        Expect.expect("and titled for its quest's name before its words run",
             viewer[0].includes('sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" '
-                + `\u03c0 - QEST-HOSTED - ${root.folder.slice(root.folder.lastIndexOf("/") + 1)}`
+                + `\u03c0 - Kelp Harbour - ${root.folder.slice(root.folder.lastIndexOf("/") + 1)}`
                 + " mycelium "), viewer[0]);
         decided.reload();
         const lines = decided.text().split("\n");
@@ -244,6 +251,8 @@ ShellRoot {
 
         function onUnhosted(session, why) {
             root.unhosted = Object.assign({}, root.unhosted, { [session.address]: why });
+            root.unhostedNames = Object.assign({}, root.unhostedNames,
+                { [session.address]: session.name ?? "" });
         }
     }
 
