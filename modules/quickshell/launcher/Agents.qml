@@ -2444,10 +2444,13 @@ Provider {
         }
     }
     property var sproutFooted: null
+    // One notice of `told`, led by an earlier one still unread, which it
+    // folds away (Sprouting.noticed).
     function sproutNoticed(told) {
         const name = Words.name("agents:start-new-work");
+        const ends = Sprouting.noticed(told, name, Notices.history, Notices.live);
         Niri.spawn(["notify-send", "--app-name=Agents", "--", name,
-            Sprouting.noticeBody(told)]);
+            Sprouting.noticeBody(ends)]);
     }
     // The launcher shut, or its opening was let go: what the foot said of
     // a start, unread by Sprouting.noticedAtShut, is noticed, and the foot

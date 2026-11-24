@@ -496,3 +496,16 @@ function noticeBody(ends) {
     return ends.map(text => String(text).replace(/&/gu, "&amp;").replace(/</gu, "&lt;")
         .replace(/>/gu, "&gt;")).join("\n");
 }
+
+// The ends a notice of `ends` under `summary` says, given the notices
+// (Notices' history, `{ id, app, summary, body, read }`, `body` its words
+// plain) and those still open (`live`, by id): led by what an unread one
+// of Agents' own still open under that summary says, since the notices
+// daemon folds a newer notice from one program under one summary into
+// the older, which it marks read, so the newer stands for both.
+function noticed(ends, summary, history, live) {
+    const open = (history ?? []).find(notice => notice.app === "Agents"
+        && notice.summary === summary && !notice.read && notice.id in (live ?? {})
+        && notice.body !== "");
+    return open === undefined ? ends : [open.body].concat(ends);
+}

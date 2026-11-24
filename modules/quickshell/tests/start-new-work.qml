@@ -598,6 +598,27 @@ QtObject {
             Sprouting.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
             "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
 
+        // A start's notice is led by what an unread one of Agents' own still open under its
+        // summary says, since the notices daemon folds that one into it, marked read.
+        const earlier = { id: 7, app: "Agents", summary: "Start New Work", body: "cut",
+            read: false };
+        const open = { 7: {} };
+        Expect.same("an earlier end unread and open leads the next notice",
+            Sprouting.noticed(["busy"], "Start New Work", [earlier], open), ["cut", "busy"]);
+        Expect.same("one read is folded away with nothing lost, so it's not said again",
+            Sprouting.noticed(["busy"], "Start New Work",
+                [Object.assign({}, earlier, { read: true })], open), ["busy"]);
+        Expect.same("one closed folds into nothing, so it's not said again",
+            Sprouting.noticed(["busy"], "Start New Work", [earlier], {}), ["busy"]);
+        Expect.same("another program's never leads it",
+            Sprouting.noticed(["busy"], "Start New Work",
+                [Object.assign({}, earlier, { app: "Slack" })], open), ["busy"]);
+        Expect.same("nor one under another summary",
+            Sprouting.noticed(["busy"], "Start New Work",
+                [Object.assign({}, earlier, { summary: "Start a Session" })], open), ["busy"]);
+        Expect.same("with no notices heard, it's the ends alone",
+            Sprouting.noticed(["busy"], "Start New Work", undefined, undefined), ["busy"]);
+
         // The starts the agents daemon keeps ended and untold: one this shell never heard
         // the end of is told once it has stood kept a moment, first seen at `seen`, and each
         // but one it's still asking or waiting out is said told.
