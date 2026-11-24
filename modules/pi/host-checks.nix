@@ -178,9 +178,9 @@ in
 
   # jobs-sorter finds each host's unit and each conversation's by the name
   # it's given in slices/nixos.nix (`--hosts`, `--conversations`), and ranks
-  # and sorts nothing whose name doesn't start with it, saying nothing: so
-  # each name host.nix renders for a realm's hosts and conversations, on a
-  # machine with both, starts with what the sorter is told for it alone.
+  # and sorts nothing it can't join by name, saying nothing: so each name
+  # host.nix renders for a realm's hosts and conversations, on a machine
+  # with both, is what the sorter is told for that kind, then the key.
   jobs-sorter-knows-pi-units-by-their-names =
     let
       runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}";
@@ -205,7 +205,7 @@ in
         let
           at = lib.lists.findFirstIndex (word: word == flag) null words;
         in
-        if at == null then null else lib.elemAt words (at + 1);
+        if at == null || at + 1 >= lib.length words then null else lib.elemAt words (at + 1);
       hosts = after "--hosts";
       conversations = after "--conversations";
       # Each unit known by what it says it holds, not by its name, so a
@@ -224,15 +224,28 @@ in
         );
       conversationUnits = said "Holds one of ";
       hostUnits = lib.subtractLists conversationUnits (said "Holds ");
-      starts = prefix: name: prefix != null && lib.hasPrefix prefix name;
+      # The sorter joins a host's unit as its prefix and the host's key,
+      # the realm and kind, and a conversation's as its prefix, the same
+      # key and its slot after an @, so the whole name is what it must
+      # find, not its start alone.
+      keys = lib.sort lib.lessThan (
+        map (kind: "one-${kind}") (lib.attrNames (import ./host-launch.nix { inherit lib; }).kinds)
+      );
+      named = prefix: end: lib.sort lib.lessThan (map (key: "${toString prefix}${key}${end}") keys);
     in
     holds "jobs-sorter-knows-pi-units-by-their-names"
-      "A pi host's or a conversation's unit is named otherwise than jobs-sorter is told to find it."
       (
-        lib.length hostUnits == 2
-        && lib.length conversationUnits == 2
-        && lib.all (name: starts hosts name && !(starts conversations name)) hostUnits
-        && lib.all (name: starts conversations name && !(starts hosts name)) conversationUnits
+        "A pi host's or a conversation's unit is named otherwise than jobs-sorter is told to "
+        + "find it: told ${toString hosts} and ${toString conversations}, it found hosts "
+        + "${lib.concatStringsSep ", " hostUnits} and conversations "
+        + "${lib.concatStringsSep ", " conversationUnits}."
+      )
+      (
+        hosts != null
+        && conversations != null
+        && lib.length keys == 2
+        && lib.sort lib.lessThan hostUnits == named hosts ""
+        && lib.sort lib.lessThan conversationUnits == named conversations "@"
       );
 
   # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
