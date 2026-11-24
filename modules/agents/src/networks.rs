@@ -178,8 +178,8 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
 /// that one is a cell here, counted already, when it too stands as it
 /// would wanting nothing. The machines' network names machines, not
 /// cells, but the node counts every session in it (mycelium's
-/// networks/made.rs `machines_network`), so every cell the tree holds is
-/// its cells here, by address. A network so holding a marked cell sorts
+/// `machines_network`), so every cell the tree holds is its cells here,
+/// by address. A network so holding a marked cell sorts
 /// first, says it needs him and never folds away, as the cell does inside
 /// it. A network counts cells, not wants, so a lead marked for two
 /// outside it counts once, and a cell the record names twice counts once.
