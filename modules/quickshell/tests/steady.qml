@@ -240,8 +240,9 @@ QtObject {
         // again over it, as it reads above, and nowhere else (Y2YBTS,
         // 2026-11-22 [228cdeb9] and [4c5e154a]). A heading is "#" and its
         // name, with "=" and the rows it holds, by key, where it names them
-        // as For You's do, one said again "+" after it, a pressing row "!",
-        // and one gone "-".
+        // as For You's do (none after a bare "=", as the heading closing the
+        // cells holds), one said again "+" after it, a pressing row "!", and
+        // one gone "-".
         const underHeadings = said => said.split(" ").filter(one => one !== "").map(one => {
             const gone = one.endsWith("-");
             const bare = gone ? one.slice(0, -1) : one;
@@ -251,7 +252,7 @@ QtObject {
             const [key, holding] = (presses ? named.slice(0, -1) : named).split("=");
             return Object.assign({ key: key, side: "" },
                 key.startsWith("#") ? { heading: true } : {},
-                holding === undefined ? {} : { holding: holding.split(",") },
+                holding === undefined ? {} : { holding: holding === "" ? [] : holding.split(",") },
                 presses ? { pressing: true } : {},
                 again ? { repeated: true } : {}, gone ? { gone: true, went: true } : {});
         });
