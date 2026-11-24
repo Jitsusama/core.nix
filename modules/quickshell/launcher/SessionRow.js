@@ -56,13 +56,19 @@ function acts(standing, windowed, here) {
     return ids;
 }
 
-// Whether a session has a window to go to until its row is served: its
-// own, or its kitty's; one Go To attaches here to its holder, as for one
-// held whose window Joel closed (Sessions.goTo); or, for one elsewhere,
-// one its machine's node attaches.
+// Whether a session has a window to go to: its own, or its kitty's; one
+// Go To attaches here to its holder, as for one held whose window Joel
+// closed (Sessions.goTo); or, for one elsewhere, one its machine's node
+// attaches, given the words to (none, as the daemon reads an empty list).
+// Agents' own row takes it only until the row is served (acts), but a
+// landing's Go To and Return, and a look's Go To, take it for good, as
+// no served row stands behind them. It's stricter here than the daemon's
+// rule, offering Go To only where a window is known or a hold attaches,
+// since the shell knows of no window opened with no app id.
 function hasWindow(session) {
     const holder = session?.here ? session.held : session?.attach;
-    return Boolean(session?.window || session?.kitty || holder);
+    const attaches = Array.isArray(holder) ? holder.length > 0 : Boolean(holder);
+    return Boolean(session?.window || session?.kitty || attaches);
 }
 
 // The acts a session offers from a row it's behind but isn't its own, as
