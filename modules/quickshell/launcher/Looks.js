@@ -164,9 +164,9 @@ function cellOf(one, running, parked) {
 // The quest a session works on: the first quest it owns, else its
 // questInfo's, else its `quest`, in the agents daemon's order
 // (modules/agents/src/cells.rs `quest_of`). Only whether it is "" is read
-// here yet, and onQuest decides which quests a session is on; the order is
-// kept for Holders.js and Sessions.qml, which still read questInfo first
-// and move onto this by Mon 23 Nov 2026.
+// here yet, and onQuest decides which quests a session is on. Sessions.qml
+// reads the quest a session has loaded, never this, since it reopens a
+// session onto that one.
 // Read as cells.rs reads them, a questInfo id or quest that isn't a
 // string is passed over, and a `quest` that isn't one is "".
 function questOf(session) {

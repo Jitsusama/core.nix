@@ -11,17 +11,20 @@ const WORKTREE_PREFIX = /^worktree-/;
 // The sessions a holder belongs to, from sessions as Sessions lists them,
 // each with `changed`, when its record last changed, and the guard's
 // holder, { path, owner: { kind, name } }: those at work on the quest a
-// quest's workspace is for, or else those whose record's cwd is the holder
+// quest's workspace is for, owning it or having it loaded, as Looks.js's
+// onQuest reads them, or else those whose record's cwd is the holder
 // or inside it, as a tree a session works in, since a session's `folder`
 // is only its last part; the one that worked last first (VKCF3Z,
 // 2026-11-08). None where none is.
 function owners(sessions, holder) {
     const owner = holder.owner ?? {};
     const path = holder.path ?? "";
-    const questOf = one => one.presence?.questInfo?.id ?? one.presence?.quest ?? null;
+    const loaded = one => one.presence?.questInfo?.id ?? one.presence?.quest ?? null;
+    const onQuest = one => (Array.isArray(one.presence?.owns) ? one.presence.owns : [])
+        .includes(owner.name) || loaded(one) === owner.name;
     const inside = folder => typeof folder === "string" && path !== ""
         && (folder === path || folder.startsWith(`${path}/`));
-    const owns = owner.kind === "quest" ? one => questOf(one) === owner.name
+    const owns = owner.kind === "quest" ? onQuest
         : one => inside(String(one.presence?.cwd ?? "").replace(TRAILING_SLASHES, ""));
     return sessions.filter(owns).sort((one, other) => (other.changed ?? 0) - (one.changed ?? 0));
 }
