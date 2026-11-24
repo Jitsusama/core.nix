@@ -2414,6 +2414,28 @@ impl Guard {
     }
 
     /// Surveys once and runs each filesystem's pass over what lies on it.
+    /// Keeps what a reach on `device` judged, by how it `end`ed, for the
+    /// next to skip. A reach its length cut short takes up from where it
+    /// stopped, as does one that waited, stalled or was stopped before
+    /// getting through; one that got through what it was offered, or ran
+    /// at a band no length cuts, starts afresh, and a disk due for anything
+    /// but a reach is past the spell a cut reach belonged to.
+    fn note_reached_short(&mut self, device: u64, decision: Decision, end: &End) {
+        let cuttable = matches!(decision, Decision::Reach(band) if band <= Band::Filling);
+        match end {
+            End::Unfinished if cuttable => {
+                self.reached_short
+                    .entry(device)
+                    .or_default()
+                    .extend(self.tried.iter().cloned());
+            }
+            End::Waiting | End::Stalled | End::Stopped if cuttable => {}
+            _ => {
+                self.reached_short.remove(&device);
+            }
+        }
+    }
+
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
@@ -2454,19 +2476,20 @@ impl Guard {
             // cargo build disk held 28 GiB of the system disk, and its own
             // passes came only once the image itself filled.
             let reaching = matches!(decision, Decision::Reach(_));
+            // Only a reach that its length can cut skips what a cut one
+            // judged: one at a worse band runs on, sees every offer, and so
+            // never calls a disk exhausted over offers it wasn't shown.
+            let judged = match decision {
+                Decision::Reach(band) if band <= Band::Filling => self.reached_short.get(&device),
+                _ => None,
+            };
             let here: Vec<Offer> = offers
                 .iter()
                 .filter(|offer| {
                     offer.device == device || reaching && self.backs(device, offer.device)
                 })
                 .filter(|offer| !self.taken(offer))
-                .filter(|offer| {
-                    !reaching
-                        || self
-                            .reached_short
-                            .get(&device)
-                            .is_none_or(|judged| !judged.contains(&offer.candidate.path))
-                })
+                .filter(|offer| judged.is_none_or(|judged| !judged.contains(&offer.candidate.path)))
                 .cloned()
                 .collect();
             let offered = if decision == Decision::Collect {
@@ -2479,19 +2502,10 @@ impl Guard {
             if decision == Decision::Collect {
                 self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
             }
+            self.note_reached_short(device, decision, &end);
             let Decision::Reach(band) = decision else {
                 continue;
             };
-            // A reach its length cut short takes up from where it stopped;
-            // one that got through what it was offered starts afresh.
-            if matches!(end, End::Unfinished) {
-                self.reached_short
-                    .entry(device)
-                    .or_default()
-                    .extend(self.tried.iter().cloned());
-            } else {
-                self.reached_short.remove(&device);
-            }
             let unheard = scan.went_unheard();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
