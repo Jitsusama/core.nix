@@ -105,50 +105,69 @@ let
   # nix-darwin makes it.
   written = namedMac.environment.launchDaemons.${label} or { };
   fromText = namedSystem.pkgs.writeText label written.text or "";
+  # A plist forced from another source, or none at all, is told apart from
+  # one that opens a socket, so the failure says which it is.
+  fromItsText = written ? text && "${written.source or ""}" == "${fromText}";
   opensSocket =
     job.Sockets or null != null
     || lib.hasInfix "Sockets" written.text or ""
-    || lib.hasInfix "Bonjour" written.text or ""
-    || "${written.source or ""}" != "${fromText}";
-  namesDnsSd = lib.hasInfix "dns-sd" (builtins.readFile ./keep.sh);
+    || lib.hasInfix "Bonjour" written.text or "";
+  # Every setting the job is given, its label aside, which names it alone:
+  # held whole, so a Program, an environment variable such as BASH_ENV, a
+  # user or any key launchd reads beside these shows, not only those the
+  # check thought of.
+  held = removeAttrs (lib.filterAttrs (_: value: value != null) job) [ "Label" ];
+  jobHolds =
+    lib.hasSuffix "/bin/bash" (lib.head (held.ProgramArguments or [ "" ]))
+    &&
+      held == {
+        ProgramArguments = [
+          (lib.head held.ProgramArguments)
+          "${./keep.sh}"
+          "its-own-name"
+          "/var/db/local-name.last"
+        ];
+        EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
+        WatchPaths = [ "/Library/Preferences/SystemConfiguration/preferences.plist" ];
+        StartInterval = 60;
+        RunAtLoad = true;
+        StandardErrorPath = "/var/log/local-name.log";
+      };
+  # keep.sh, the one script the job runs, read for the ways a script could
+  # advertise the host: dns-sd, or turning Remote Login on.
+  keepSh = builtins.readFile ./keep.sh;
+  advertising = lib.filter (word: lib.hasInfix word keepSh) [
+    "dns-sd"
+    "setremotelogin"
+    "com.openssh.sshd"
+  ];
   yesNo = holding: if holding then "yes" else "no";
   # Only local-name's own plist, on a Mac with a local name, and nothing on
-  # one without; that plist opens no socket, so launchd's Bonjour key can't
-  # ride on it, while its arguments are held below and keep.sh, the one
-  # script it runs, is read for dns-sd.
-  mayAdvertise = changedNamed != [ label ] || changedUnnamed != [ ] || opensSocket || namesDnsSd;
+  # one without; that plist is written from its own text and opens no
+  # socket, so launchd's Bonjour key can't ride on it.
+  mayAdvertise =
+    changedNamed != [ label ]
+    || changedUnnamed != [ ]
+    || !fromItsText
+    || opensSocket
+    || advertising != [ ];
 in
 {
   # A Mac with a local name runs, as root, keep.sh with that name and its
   # stamp, from its start, whenever macOS writes its network settings and
   # once a minute, under bash, finding scutil only in macOS's own folders
-  # and saying what it does in its log; a Mac with a host name but no local
-  # name runs nothing; and the module adds or changes no other launchd job,
-  # nix-darwin's or the account's, nor Remote Login or an activation script,
-  # the plist that job writes opens no socket, and keep.sh names no dns-sd.
-  # It doesn't see another module's jobs, a deliberately disguised spelling
-  # in keep.sh, or a line added to nix-darwin's own launchd activation or to
-  # home-manager's.
+  # and saying what it does in its log, and given nothing else; a Mac with a
+  # host name but no local name runs nothing; and the module adds or changes
+  # no other launchd job, nix-darwin's or the account's, nor Remote Login or
+  # an activation script, the plist that job writes is its own text and
+  # opens no socket, and keep.sh names neither dns-sd nor Remote Login's
+  # switches. It doesn't see another module's jobs, a deliberately disguised
+  # spelling in keep.sh, or a line added to nix-darwin's own launchd
+  # activation or to home-manager's.
   local-name-is-kept-by-a-job =
     holds "local-name-is-kept-by-a-job"
-      "A Mac's local name isn't kept by a root job running keep.sh under bash with its local name from its start, watching its network settings, finding its tools only in macOS's own folders and saying what it does in its log, or a Mac with no local name runs one, or the module adds or changes another launchd job, Remote Login or an activation script, opens a socket on its own or names dns-sd in keep.sh, any of which could advertise for the host. What it adds or changes with a local name: ${lib.concatStringsSep ", " changedNamed}; without one: ${lib.concatStringsSep ", " changedUnnamed}. Its plist opens a socket: ${yesNo opensSocket}. keep.sh names dns-sd: ${yesNo namesDnsSd}."
-      (
-        !mayAdvertise
-        && lib.hasSuffix "/bin/bash" (lib.head (job.ProgramArguments or [ "" ]))
-        &&
-          lib.drop 1 (job.ProgramArguments or [ ]) == [
-            "${./keep.sh}"
-            "its-own-name"
-            "/var/db/local-name.last"
-          ]
-        && job.UserName or null == null
-        && job.WatchPaths or [ ] == [ "/Library/Preferences/SystemConfiguration/preferences.plist" ]
-        && job.StartInterval or null == 60
-        && job.RunAtLoad or null == true
-        && job.Disabled or null != true
-        && job.EnvironmentVariables.PATH or null == "/usr/sbin:/usr/bin:/bin"
-        && job.StandardErrorPath or null == "/var/log/local-name.log"
-      );
+      "A Mac's local name isn't kept by a root job running keep.sh under bash with its local name from its start, watching its network settings, finding its tools only in macOS's own folders, saying what it does in its log and given nothing else, or a Mac with no local name runs one, or the module adds or changes another launchd job, Remote Login or an activation script, writes its plist from elsewhere, opens a socket or names dns-sd or Remote Login in keep.sh, any of which could advertise for the host. What it adds or changes with a local name: ${lib.concatStringsSep ", " changedNamed}; without one: ${lib.concatStringsSep ", " changedUnnamed}. Its job is as held: ${yesNo jobHolds}, given ${builtins.toJSON held}. Its plist is its own text: ${yesNo fromItsText}. It opens a socket: ${yesNo opensSocket}. keep.sh names: ${lib.concatStringsSep ", " advertising}."
+      (!mayAdvertise && jobHolds);
 }
 # What follows runs the job's script under Linux's bash, with a stand-in
 # scutil, since a Mac's sandbox can't set its own name.
