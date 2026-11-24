@@ -2834,9 +2834,27 @@ Singleton {
             return;
         const said = pressedFor[named] ?? null;
         forgetAsk(named);
-        console.info(`sessions: no sessions kitty took ${named}, so it's asked for afresh`);
+        console.info(`sessions: no sessions kitty took ${named}, so `
+            + (said !== null ? "its press is told, and the next asks afresh"
+                : "nothing asks again until a press does, the shell having asked by itself"));
         if (said !== null)
             unhosted(said, "untaken");
+        waitedOnNoMore(named, "no sessions kitty took it");
+    }
+    // Reopen Them All's walk waits on viewer `named` no more once its
+    // window came refused (heardWindow) or no kitty took it (untaken),
+    // since none can come for that ask: it goes on as its patience would,
+    // the viewer kept late should one come yet, rather than 30 s later,
+    // viewer after viewer.
+    function waitedOnNoMore(named, why) {
+        const waiting = reopening?.waiting;
+        if (!waiting || waiting.opened !== null || waiting.classed !== named)
+            return;
+        console.info(`sessions: ${waiting.id}'s viewer waited on no more, as ${why}`);
+        reopening.late.push(waiting);
+        reopening.waiting = null;
+        reopenPatience.stop();
+        reopenNext();
     }
 
     // Where the windows of sessions moving onto pi's host were, by pi's
@@ -3014,10 +3032,13 @@ Singleton {
         // a stray come after, or one niri listed as the ask was made
         // (listedAtAsk), leaves the ask as it was.
         const named = String(window.opened);
-        if (viewerComing(named) && !(listedAtAsk[named] ?? []).includes(id))
+        const own = viewerComing(named) && !(listedAtAsk[named] ?? []).includes(id);
+        if (own)
             refusedAsks = Object.assign({}, refusedAsks, { [named]: true });
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
+        if (own)
+            waitedOnNoMore(named, "its window wasn't the sessions kitty's");
     }
     // Each window heardWindow refused, by niri's id, journalled once, so a
     // stray window or a pid read wrong is seen rather than a viewer that
