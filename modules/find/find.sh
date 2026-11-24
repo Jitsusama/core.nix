@@ -7,16 +7,18 @@
 # A folder left out is still tested and listed, as find lists it from its
 # parent without opening it, unless the expression would open it (-empty, or
 # an -exec, -execdir, -ok or -okdir given it), when it isn't listed at all.
-# Either way find says on stderr that it left folders unsearched, so an empty
-# answer never reads as nothing there.
+# Either way find says on stderr that it left folders unsearched, or left them
+# out, so an empty answer never reads as nothing there. A folder listed can
+# still be opened by what its answer is piped to.
 # A search naming a guarded folder, or starting inside one, still searches it,
 # as with ripgrep and fd. A search find can't prune runs as given: one going
 # depth first (-d or -depth alone, or -delete), one whose -mindepth lies past a
 # guarded folder, and one with -f joined to another option or to its path
 # (-xf, -f/path). Nor does it reach /usr/bin/find run by its path, or another
 # find ahead of it on PATH, as a dev shell's is. One following links (-L)
-# leaves out only the folders it reaches by their own names, and a search of /
-# guards only the home folder's, not what /Volumes mounts.
+# leaves out only the folders it reaches by their own names, a search of /
+# guards only the home folder's, not what /Volumes mounts, and a session with
+# HOME moved guards the folders of the home it names.
 # usage: find.sh <find> <ignore file> <data volume> [find's arguments...]
 set -euo pipefail
 
@@ -52,6 +54,7 @@ args=("$@")
 # What find says when it left a folder unsearched, so an answer missing what's
 # in one isn't read as whole.
 note='find: left the folders macOS asks about unsearched'
+unlisted='find: left out the folders macOS asks about, unsearched and unlisted'
 
 # find's options come first, then the paths, then the expression. Only the
 # options macOS's find takes are read, each apart: -f takes a path of its own,
@@ -145,7 +148,8 @@ literal() {
 # CDPATH names instead.
 home=$(CDPATH='' cd -P -- "${HOME}" 2>/dev/null && pwd -P) || home=""
 targets=()
-while IFS= read -r line; do
+# A last line with no newline is read too, as ripgrep reads it.
+while IFS= read -r line || [ -n "${line}" ]; do
   [[ ${line} =~ ^/[^*?![]+/$ ]] || continue
   [ -n "${home}" ] || continue
   line=${line#/}
@@ -154,12 +158,15 @@ while IFS= read -r line; do
     targets+=("${data}${home}/${line%/}")
   fi
 done <"${ignore}"
+# A Mac's disk takes a name in any case, and cd keeps the case typed, so
+# paths are matched whatever their case.
 reals=()
 declare -A starting=()
 for path in ${starts[@]+"${starts[@]}"}; do
   real=$(CDPATH='' cd -P -- "${path}" 2>/dev/null && pwd -P) || real=""
   reals+=("${real}")
-  starting[${real:-.}]=yes
+  lowered=${real,,}
+  starting[${lowered:-.}]=yes
 done
 
 # Each guarded folder under a start path, named as find names it from there:
@@ -177,9 +184,14 @@ for ((at = 0; at < ${#starts[@]}; at++)); do
   real=${reals[at]}
   [ -n "${real}" ] || continue
   for target in ${targets[@]+"${targets[@]}"}; do
-    [ "${real}" = / ] && rest=${target#/} || rest=${target#"${real}"/}
-    [ "${rest}" = "${target}" ] && continue
-    [ -n "${starting[${target}]-}" ] && continue
+    if [ "${real}" = / ]; then
+      rest=${target#/}
+    elif [[ ${target,,} == "${real,,}"/* ]]; then
+      rest=${target:${#real}+1}
+    else
+      continue
+    fi
+    [ -n "${starting[${target,,}]-}" ] && continue
     slashes=${rest//[^\/]/}
     if [ $((${#slashes} + 1)) -lt "${mindepth}" ]; then
       pruned=false
@@ -195,7 +207,11 @@ done
 if [ ${#prunes[@]} -eq 0 ] || [ "${pruned}" = false ]; then
   exec "${find}" "$@"
 fi
-echo "${note}" >&2
+if [ "${opens}" = true ]; then
+  echo "${unlisted}" >&2
+else
+  echo "${note}" >&2
+fi
 # What the search printed by itself, it still prints: an expression with no
 # action of its own is given -print, as find gives it. A pruned folder is
 # still tested and listed, once, without find opening it, unless testing it

@@ -30,6 +30,7 @@ said=${work}/said
 stand=$(mktemp -d)
 trap 'chmod -R u+rwx "${work}"; rm -rf "${work}" "${stand}"' EXIT
 note='find: left the folders macOS asks about unsearched'
+unlisted='find: left out the folders macOS asks about, unsearched and unlisted'
 
 # The folders the ignore file guards, each with a needle in it, in the home
 # folder and under the data volume's name for it.
@@ -166,7 +167,7 @@ done
 how=inside
 named "${home}"
 found=$(search "${home}" -name needle -exec printf 'seen %s\n' '{}' ';')
-if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF 'seen ./Library/Logs/needle' <<<"${found}" \
+if [[ $(<"${said}") != "${unlisted}" ]] || ! grep -qxF 'seen ./Library/Logs/needle' <<<"${found}" \
   || grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
   echo "${who} with -exec lost its action or printed more: ${found} $(<"${said}")" >&2
   exit 1
@@ -174,14 +175,22 @@ fi
 # An -exec's own -d is its command's, never find's, and neither it nor
 # -empty is run on a guarded folder, which either would open.
 found=$(search "${home}" -type d -exec ls -d '{}' +)
-if [[ $(<"${said}") != "${note}" ]] || grep -qxF "${home}/Desktop" <<<"${found}" \
+if [[ $(<"${said}") != "${unlisted}" ]] || grep -qxF "${home}/Desktop" <<<"${found}" \
   || ! grep -qxF "${home}/Library/Logs" <<<"${found}"; then
   echo "${who} gave a guarded folder to -exec ls -d: ${found} $(<"${said}")" >&2
   exit 1
 fi
 found=$(search "${home}" -type d -empty)
-if [[ $(<"${said}") != "${note}" ]] || grep -qxF "${home}/Desktop" <<<"${found}"; then
+if [[ $(<"${said}") != "${unlisted}" ]] || grep -qxF "${home}/Desktop" <<<"${found}"; then
   echo "${who} tested a guarded folder with -empty: ${found} $(<"${said}")" >&2
+  exit 1
+fi
+# An action of its own that opens nothing lists each guarded folder it
+# matches once, as it prints, with nothing added: NUL-ended, as -print0 asks.
+found=$(wrapped "${home}" . -type d -print0 2>"${said}" | tr '\n\0' '!\n')
+desktops=$(grep -cxF ./Desktop <<<"${found}") || desktops=0
+if [[ $(<"${said}") != "${note}" ]] || [[ ${found} == *'!'* ]] || [ "${desktops}" != 1 ]; then
+  echo "${who} with -print0 printed more, or a guarded folder twice: ${found} $(<"${said}")" >&2
   exit 1
 fi
 found=$(search "${home}" -type f -o -name nothing)
@@ -223,6 +232,11 @@ for how in "${hows[@]}"; do
     for folder in "${locked[@]}"; do
       if grep -qF "${folder}/" <<<"${found}"; then
         echo "${who} listed what's in ${folder}: ${found}" >&2
+        exit 1
+      fi
+      # Nor is a guarded folder printed when the expression doesn't match it.
+      if grep -qxF "${folder}" <<<"${found}"; then
+        echo "${who} printed ${folder}, which -name needle doesn't match: ${found}" >&2
         exit 1
       fi
     done
@@ -303,6 +317,16 @@ for args in depth-primary depth-option deep; do
     exit 1
   fi
 done
+# The ignore file's last line is guarded with no newline after it, as
+# ripgrep reads it.
+printf '%s' "$(<"${ignore}")" >"${work}/unended"
+said=$( (cd "${stand}" && HOME=${home} bash "${wrapper}" "${real}" "${work}/unended" "${data}" \
+  "${home}" -name x) 2>/dev/null)
+final=${guarded[${#guarded[@]} - 1]}
+if ! grep -qE "/${final}\$" <<<"${said}"; then
+  echo "the ignore file's last line, ${final}, isn't guarded without a newline: ${said}" >&2
+  exit 1
+fi
 given "${home}" "${home}/Documents" -name x
 # A prune names the home folder with its wildcards escaped; a start doesn't.
 if grep -qF '\[home]\*/Documents' <<<"${said}"; then
