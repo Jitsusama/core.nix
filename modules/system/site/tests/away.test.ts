@@ -41,8 +41,8 @@ const GONE = ["cloud-1", "cloud-2", "cloud-3", "cloud-4", "cloud-5", "cloud-6"];
 /** The fourteen, worst first as the machines part lists them. */
 const FOURTEEN: readonly Thing[] = [
   ...GONE.map((name) => away(name, "2026-11-23T19:02:00Z")),
-  reached("equilibrius", "bad", ["nearly full disk, 87 GB free"]),
-  ...["heron", "kestrel", "optimus", "osprey", "penelope", "tern", "wren"].map((name) =>
+  reached("plover", "bad", ["nearly full disk, 87 GB free"]),
+  ...["heron", "ibis", "kestrel", "osprey", "petrel", "tern", "wren"].map((name) =>
     reached(name, "good"),
   ),
 ];
@@ -60,7 +60,7 @@ function system(things: readonly Thing[]): System {
     deeper,
   };
   return {
-    machine: "equilibrius",
+    machine: "plover",
     readAt: "2026-11-23T22:45:00Z",
     health: "bad",
     parts: [machines],
@@ -98,7 +98,7 @@ it("only machines in reach are drawn whole, those out of reach named together af
     );
   }
   const first = drawn.indexOf('id="machine-1"');
-  assert.ok(drawn.slice(first, first + 600).includes("equilibrius"), "the one in trouble leads");
+  assert.ok(drawn.slice(first, first + 600).includes("plover"), "the one in trouble leads");
   const awaySection = drawn.slice(drawn.indexOf('id="away"'));
   assert.ok(awaySection.includes("Bad: six machines the mycelium can&#39;t reach"), awaySection);
   for (const name of GONE) {
@@ -117,7 +117,7 @@ it("only machines in reach are drawn whole, those out of reach named together af
 });
 
 it("one never heard says so, and many past what the list names are counted", () => {
-  const unheard = partsOf(system([reached("optimus", "good"), away("cloud-1")]), when);
+  const unheard = partsOf(system([reached("ibis", "good"), away("cloud-1")]), when);
   assert.ok(unheard.includes("Not heard here yet"), unheard);
   const fleet = Array.from({ length: 30 }, (_, at) => away(`cloud-${at + 1}`));
   const drawn = partsOf(system(fleet), when);
@@ -146,7 +146,7 @@ it("the bridge stands a pier only for a machine in reach, and says the rest", ()
   for (const name of GONE) {
     assert.ok(!drawn.includes(`>${name}<`), `${name} stands no pier`);
   }
-  assert.ok(drawn.includes(">equilibrius<"), "the first in reach leads the bridge");
+  assert.ok(drawn.includes(">plover<"), "the first in reach leads the bridge");
   assert.ok(drawn.includes("Six machines out of reach, named below."), drawn);
 });
 
@@ -155,7 +155,7 @@ it("those out of reach are one look, so the few that need Joel lead", () => {
   assert.deepEqual(
     list.looks.map((look) => [look.whose, look.words, look.href]),
     [
-      ["equilibrius", "Nearly full disk, 87 GB free", "#machine-1"],
+      ["plover", "Nearly full disk, 87 GB free", "#machine-1"],
       ["Six machines", "Out of reach: cloud-1, cloud-2, cloud-3 and 3 more", "#away"],
     ],
   );
@@ -163,7 +163,7 @@ it("those out of reach are one look, so the few that need Joel lead", () => {
   const renamed = [...GONE.map((name) => away(`z-${name}`)), reached("aardvark", "bad", ["hot"])];
   assert.equal(looksOf(system(renamed), MACHINES_DRAWN).looks[0]?.whose, "aardvark");
   assert.equal(list.more, 0);
-  const one = looksOf(system([reached("optimus", "good"), away("cloud-1")]), MACHINES_DRAWN);
+  const one = looksOf(system([reached("ibis", "good"), away("cloud-1")]), MACHINES_DRAWN);
   assert.deepEqual(
     one.looks.map((look) => [look.whose, look.words, look.href]),
     [["cloud-1", "Out of reach", "#away"]],
@@ -194,7 +194,7 @@ it("the places go to the machines in reach, then those out of reach, then across
     "away",
     "across",
   ]);
-  assert.ok(!placesOf(system([reached("optimus", "good")])).includes("away"), "none, no place");
+  assert.ok(!placesOf(system([reached("ibis", "good")])).includes("away"), "none, no place");
 });
 
 it("an address for one out of reach lands on its row there", () => {

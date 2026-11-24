@@ -376,7 +376,11 @@ mod tests {
             None,
         );
         assert_eq!(never["reached"], json!(false));
-        assert_eq!(never["heard_at"], Value::Null, "one never heard has no time to say");
+        assert_eq!(
+            never["heard_at"],
+            Value::Null,
+            "one never heard has no time to say"
+        );
     }
 
     #[test]

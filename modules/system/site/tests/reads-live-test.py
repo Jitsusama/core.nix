@@ -37,8 +37,9 @@ RETRY_MS = 35000
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
-# and since no comment is sent, its styles' included.
-BUDGET = Budget(files=25, kilobytes=442, elements=400)
+# and since no comment is sent, its styles' included; about 445 KB since machines
+# out of reach are named apart, a cost worth the page reading well with many down.
+BUDGET = Budget(files=25, kilobytes=450, elements=400)
 
 
 @pytest.fixture
@@ -478,6 +479,10 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
         },
     }
     system_daemon.tell("machine", changed=[gone])
+    # The part names wren too, as the daemon's would once wren is a machine of it.
+    things = ["machine:kestrel", "machine:osprey", "machine:wren"]
+    named = {"key": "part:machines", "things": things}
+    system_daemon.tell("part", changed=[named])
     counted(system_page, "Three machines, two worth a look and one out of reach.")
     row = system_page.locator("#away a[data-row='machine:wren']")
     expect(row, "wren wasn't named out of reach").to_be_visible(timeout=PACE_MS)
