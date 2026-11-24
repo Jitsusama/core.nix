@@ -2505,7 +2505,7 @@ Provider {
         const key = `on:heading:cell:${cell === null ? "yours"
             : String(cell.address).toUpperCase()}`;
         const holding = held.map(row => row.key);
-        return keptAlike(cellsKept, key, [name, holding.slice().sort().join("\n")],
+        return keptAlike(cellsKept, key, [name, JSON.stringify(holding.slice().sort())],
             () => member({ key, name, heading: true, holding }));
     }
     readonly property var cellsKept: keeper()
