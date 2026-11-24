@@ -65,9 +65,10 @@ in
       }:/usr/bin:/bin:/usr/sbin";
       StartInterval = 60;
       RunAtLoad = true;
-      # Not Background, which keeps a job to the efficiency cores at low
-      # priority, so a Mac busy building would time its own wait for a core
-      # as a slow lookup. A round is a few lookups a minute.
+      # Standard, not Background, which keeps a job to the efficiency cores
+      # at low priority, so a Mac busy building would time its own wait for
+      # a core as a slow lookup. A round is a few lookups a minute.
+      ProcessType = "Standard";
       # Only what's wrong, and what's well again, a line each.
       StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/name-lookups.log";
     };

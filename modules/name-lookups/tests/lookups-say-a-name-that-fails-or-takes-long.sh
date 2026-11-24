@@ -1,9 +1,11 @@
 # shellcheck shell=bash
 # Checks that a round of the Mac's name lookups says nothing while every name
 # answers quickly, says a failed or slow lookup only from its second round
-# running, each kind counted apart, a busy mDNSResponder only from its fifth,
-# and a check well again once; a server answering only a CNAME, or printing
-# dig's own failure lines, gave no address. dscacheutil, dig, ps and logger
+# running, each kind counted apart, and one that fails and lags by turns
+# from its third, a busy mDNSResponder only from its fifth, by its path or
+# its name, and a check well again once; a server answering only a CNAME,
+# or failing, gave no address, and a state file with a blank line or a count
+# that isn't a number is read past. dscacheutil, dig, ps and logger
 # are stand-ins answering as the test sets, and the slow mark is set to 0 ms
 # rather than a lookup made to wait, so no round sleeps.
 # usage: lookups-say-a-name-that-fails-or-takes-long.sh <lookups.sh>
@@ -40,8 +42,9 @@ esac
 EOF
 cat >"${stand}/ps" <<EOF
 #!${BASH}
-printf '  %s /usr/sbin/mDNSResponder\n  3.0 /usr/libexec/other\n' \
-  "\$(cat "${work}/answers/mDNSResponder" 2>/dev/null || echo 0.1)"
+printf '  %s %s\n  3.0 /usr/libexec/other\n' \
+  "\$(cat "${work}/answers/mDNSResponder" 2>/dev/null || echo 0.1)" \
+  "\$(cat "${work}/answers/mDNSResponder-name" 2>/dev/null || echo /usr/sbin/mDNSResponder)"
 EOF
 cat >"${stand}/logger" <<EOF
 #!${BASH}
@@ -123,7 +126,38 @@ if grep -qF example.org "${said}"; then
   echo "a failure then one slow round was said: $(<"${said}")" >&2
   exit 1
 fi
+# A third wrong round, failing again, is a storm that fails and lags by
+# turns.
+echo fails >"${work}/answers/example.org"
 round 5000
+says "a lookup failing and lagging by turns" "-p user.err" \
+  "couldn't look up example.org" "wrong 3 rounds running"
+rm "${work}/answers/example.org"
+round 5000
+says "a lookup well after failing and lagging by turns" "-p user.notice" \
+  "system:example.org is well again"
+round 5000
+
+# One slow round, then one failing, is two wrong rounds, still quiet.
+round 0
+echo fails >"${work}/answers/example.org"
+round 5000
+quiet "a slow round then a failing one said something"
+rm "${work}/answers/example.org"
+round 5000
+
+# A blank line, or a count that isn't a number, in the state is read past:
+# the round still runs and keeps its state, and counts the check failing
+# again afresh rather than running what the count holds.
+printf "\nsystem:example.net x[\$(:>%s/ran)] yes failed\n" "${work}" >"${state}/running"
+echo fails >"${work}/answers/example.net"
+round 5000
+rm "${work}/answers/example.net"
+if [[ -e ${work}/ran ]] || ! grep -q '^system:example.net 1 no failed 1$' "${state}/running"; then
+  echo "a state file with a blank line or a word for a count wasn't read past:" \
+    "$(<"${state}/running")" >&2
+  exit 1
+fi
 
 round 0
 quiet "a lookup slow for one round said something"
@@ -146,3 +180,12 @@ says "mDNSResponder busy five rounds running" "-p user.err" \
 echo 20.0 >"${work}/answers/mDNSResponder"
 round 5000
 says "mDNSResponder quiet again" "mDNSResponder is well again"
+
+# ps may give another account's process by its name alone.
+echo '(mDNSResponder)' >"${work}/answers/mDNSResponder-name"
+echo 80.0 >"${work}/answers/mDNSResponder"
+for count in 1 2 3 4 5; do
+  round 5000
+done
+says "mDNSResponder busy five rounds running, named alone" "-p user.err" \
+  "mDNSResponder uses 80% of a core, past 50% 5 rounds running"

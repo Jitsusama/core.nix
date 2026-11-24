@@ -2,11 +2,12 @@
 # One round of a Mac's name lookups, run each minute: each name is looked up
 # through the system's resolver, as every program's lookup goes, and through
 # each server named, and mDNSResponder's share of a core is read. A lookup
-# that fails or is over the slow mark two rounds running, or mDNSResponder
-# past half a core five rounds running, is said as an error, which the
-# unified log keeps and health counts, every round it holds; one well again
-# is said once as a notice. A Mac waking or changing networks fails a round
-# or answers one cold, so one round of either is never said. Each line opens
+# that fails or is over the slow mark two rounds running, or is either three
+# rounds running, or mDNSResponder past half a core five rounds running, is
+# said as an error, which the unified log keeps and health counts, every
+# round it holds; one well again is said once as a notice. A Mac waking or
+# changing networks fails a round and answers the next cold, so that pair
+# is never said, while a storm that fails and lags by turns is. Each line opens
 # with name-lookups, since health names a Mac's line by the program that
 # wrote it, which is logger. Each round's times are kept in the state
 # folder's last file.
@@ -27,17 +28,23 @@ busy=50
 rounds=5
 mkdir -p "${state}"
 
-# What each check was last round: how many rounds running it was failed,
-# slow or busy, which of them, and whether it was red, kept as
-# "<check> <rounds> <red> <outcome>". A count that isn't a number is read as
-# none, since bash's arithmetic would run what it holds.
-declare -A running=() red=() kind=()
+# What each check was last round: how many rounds running it was its kind
+# of wrong, whether it was red, which kind it was, and how many rounds
+# running it was wrong of any kind, kept as
+# "<check> <rounds> <red> <outcome> <wrong rounds>". A count that isn't a
+# number is read as none, since bash's arithmetic would run what it holds,
+# and a line naming no check is passed over, since bash refuses an empty
+# key and the round would end before it kept anything.
+declare -A running=() red=() kind=() bad=()
 if [[ -r "${state}/running" ]]; then
-  while read -r check count was outcome; do
+  while read -r check count was outcome any; do
+    [[ -n ${check} ]] || continue
     [[ ${count} =~ ^[0-9]+$ ]] || count=0
+    [[ ${any-} =~ ^[0-9]+$ ]] || any=${count}
     running[${check}]=${count}
-    red[${check}]=${was}
-    kind[${check}]=${outcome}
+    red[${check}]=${was-no}
+    kind[${check}]=${outcome-}
+    bad[${check}]=${any}
   done <"${state}/running"
 fi
 declare -A now=()
@@ -46,16 +53,18 @@ last=()
 # Keep a check's round, failed, slow, busy or well, as its words say it; and
 # say what's wrong, every round it holds, or that it's well again, once. Each
 # kind keeps its own count, so a failure then one slow round reads as one
-# slow round, not two.
+# slow round, not two; wrong rounds of any kind are counted too, so a storm
+# that fails and lags by turns is said from its third.
 judge() {
   local check=$1 outcome=$2 words=$3
-  local count=0
+  local count=0 any=0
   case ${outcome} in
     failed | slow | busy)
       count=1
       if [[ ${kind[${check}]-} = "${outcome}" ]]; then
         count=$((${running[${check}]-0} + 1))
       fi
+      any=$((${bad[${check}]-0} + 1))
       ;;
     *) ;;
   esac
@@ -63,11 +72,11 @@ judge() {
   case ${outcome} in
     failed)
       words="${words}, ${count} rounds running"
-      [[ ${count} -ge 2 ]] && wrong=yes
+      [[ ${count} -ge 2 || ${any} -ge 3 ]] && wrong=yes
       ;;
     slow)
       words="${words}, past ${slow} ms ${count} rounds running"
-      [[ ${count} -ge 2 ]] && wrong=yes
+      [[ ${count} -ge 2 || ${any} -ge 3 ]] && wrong=yes
       ;;
     busy)
       words="${words}, past ${busy}% ${count} rounds running"
@@ -77,6 +86,9 @@ judge() {
   esac
   local at
   at=$(date '+%F %T')
+  if [[ ${wrong} = yes && ${count} -lt ${any} ]]; then
+    words="${words}, wrong ${any} rounds running"
+  fi
   if [[ ${wrong} = yes ]]; then
     logger -p user.err -t name-lookups "name-lookups: ${words}"
     echo "${at} ${words}" >&2
@@ -84,12 +96,7 @@ judge() {
     logger -p user.notice -t name-lookups "name-lookups: ${check} is well again: ${words}"
     echo "${at} ${check} is well again: ${words}" >&2
   fi
-  # A check still red keeps it while it's another kind of wrong, so its
-  # well again is still said.
-  if [[ ${red[${check}]-no} = yes && ${count} -gt 0 && ${wrong} = no ]]; then
-    wrong=yes
-  fi
-  now[${check}]="${count} ${wrong} ${outcome}"
+  now[${check}]="${count} ${wrong} ${outcome} ${any}"
 }
 
 # Milliseconds since $1, a moment as EPOCHREALTIME gives it.
@@ -138,10 +145,13 @@ for name in ${names[@]+"${names[@]}"}; do
   done
 done
 
-# mDNSResponder's share of a core, as ps reads it, by its path alone; a ps
-# that fails reads as none rather than ending the round before it's kept.
+# mDNSResponder's share of a core, as ps reads it, by its path, or by its
+# own name alone, as ps may give another account's process; a ps that fails
+# reads as none rather than ending the round before it's kept.
 share=$(ps -A -o %cpu= -o comm= \
-  | awk '$2 == "/usr/sbin/mDNSResponder" { share += $1 } END { print int(share) }') \
+  | awk '$2 == "/usr/sbin/mDNSResponder" || $2 == "mDNSResponder" || $2 == "(mDNSResponder)" {
+      share += $1
+    } END { print int(share) }') \
   || share=0
 if [[ ${share} -gt ${busy} ]]; then
   judge mDNSResponder busy "mDNSResponder uses ${share}% of a core"
