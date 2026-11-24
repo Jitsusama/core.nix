@@ -67,6 +67,7 @@ class Sources:
             # The program is the locked mycelium the check gives, and the
             # command a word of the table's, so no shell reads either.
             try:
+                # S603: the program is the locked mycelium, its words the table's.
                 ran = subprocess.run(  # noqa: S603
                     [self.mycelium, *command.split(), "--help"],
                     capture_output=True,
@@ -158,6 +159,7 @@ def due_of(owed: dict[str, Any]) -> datetime | None:
     if not isinstance(due, str) or not DUE_SHAPE.fullmatch(due):
         return None
     try:
+        # DTZ007: a due date is on the person's clock, as the table writes it.
         return datetime.strptime(due, DUE)  # noqa: DTZ007
     except ValueError:
         return None
@@ -278,7 +280,7 @@ def main(table: Path, root: Path, mycelium: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:  # noqa: PLR2004
+    if len(sys.argv) != 4:  # noqa: PLR2004 - the program, the table, the root and mycelium
         print(__doc__)
         sys.exit(2)
     sys.exit(main(Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]))

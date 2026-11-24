@@ -1150,6 +1150,8 @@ in
         }
       ];
     in
+    # Kept in Nix because each line runs the check on a table Nix wrote, or
+    # loops over the strays Nix lists, so the script is only their glue.
     pkgs.runCommandLocal "mycelium-surfaces-stay-even" { } ''
       strays() {
         if ${check} "$1" ${root} ${lib.getExe untested} > said; then
