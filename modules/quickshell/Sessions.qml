@@ -2750,6 +2750,11 @@ Singleton {
     // asker (refusedOwn), as each ask would open another window of the
     // same session beside it.
     readonly property int viewPatience: 30000
+    // How long opens-in-sessions.sh can still answer for an ask: up to 20 s
+    // for a kitty starting again, kitten's 60 s, then its 5 s telling the
+    // shell, so a refused window the walk's viewer brings within it is
+    // taken for that ask's own (heardWindow).
+    readonly property int answerPatience: 90000
     function viewWith(words, named, into, title, said) {
         if (root.openNamed(named) || viewerComing(named))
             return false;
@@ -3081,16 +3086,18 @@ Singleton {
         if (drawnHere(window))
             return;
         refusedViewers[id] = true;
-        // Come while its viewer was asked for, within viewPatience, or for
-        // one the walk still holds late, as a kitty slow to draw at a cold
-        // boot brings it past both patiences, it's taken for that one
-        // refused, so nothing asks for more beside it; a stray come after,
-        // or one niri listed as the ask was made (listedAtAsk), leaves the
-        // ask as it was.
+        // Come while its viewer was asked for, within viewPatience, or, for
+        // one the walk still waits on or holds late, while the script could
+        // still answer for its ask (answerPatience), as a kitty slow to draw
+        // at a cold boot brings it past both 30 s patiences, it's taken for
+        // that one refused, so nothing asks for more beside it. A stray come
+        // inside that is taken for it too; one come after, or one niri
+        // listed as the ask was made (listedAtAsk), leaves the ask as it was.
         const named = String(window.opened);
-        const late = reopening?.late.some(one => one.classed === named && one.opened === null)
-            ?? false;
-        const own = (viewerComing(named) || late)
+        const walked = [reopening?.waiting ?? null].concat(reopening?.late ?? [])
+            .some(one => one?.classed === named && one.opened === null);
+        const asked = Date.now() - (attaching[named] ?? 0);
+        const own = asked < (walked ? answerPatience : viewPatience)
             && !(listedAtAsk[named] ?? []).includes(id);
         // Nor is it still coming, so a press once that window closes asks
         // afresh rather than saying opening; refusedOwn holds off a second
