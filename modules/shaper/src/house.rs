@@ -349,7 +349,7 @@ type Refusal = (Option<Source>, Unheard);
 
 /// What the ear made of a datagram: whom its report was taken for, or
 /// its refusal.
-type Heard = Result<Source, Refusal>;
+type Verdict = Result<Source, Refusal>;
 
 /// How much `why` says of a report the houses naming no address all
 /// refused: a key that can't be read says more than a mac no key made.
@@ -414,7 +414,7 @@ impl Said {
     /// from many addresses writes no more, and never hide a house's own;
     /// their end is never said, since no report is theirs (house any round
     /// 1's F4, F12, F17 and F22).
-    fn of(&mut self, address: IpAddr, heard: &Heard, now: Instant) -> Vec<String> {
+    fn of(&mut self, address: IpAddr, heard: &Verdict, now: Instant) -> Vec<String> {
         let kin = match heard {
             Ok(source) => Some(source.clone()),
             Err((kin, _)) => kin.clone(),
@@ -604,7 +604,7 @@ impl Ear {
         datagram: &[u8],
         at: Instant,
         now_ms: u64,
-    ) -> Heard {
+    ) -> Verdict {
         let address = canonical(peer);
         let source = Source::Address(address);
         let Ok(text) = std::str::from_utf8(datagram) else {
@@ -616,10 +616,13 @@ impl Ear {
         let found = match reporters.named.get(&address) {
             None => self.unnamed(&reporters.unnamed, text, at, now_ms),
             Some(None) => match self.unnamed(&reporters.unnamed, text, at, now_ms) {
-                Err((None, _)) => match unkeyed(text) {
-                    Some(report) => Ok((source, report)),
-                    None => Err((Some(source), Unheard::Ignored)),
-                },
+                Err((None, _)) => {
+                    if let Some(report) = unkeyed(text) {
+                        Ok((source, report))
+                    } else {
+                        Err((Some(source), Unheard::Ignored))
+                    }
+                }
                 found => found,
             },
             Some(Some(path)) => match self.signed(text, &source, path, at, now_ms) {
@@ -1318,11 +1321,11 @@ mod tests {
         let other: IpAddr = "192.0.2.8".parse().expect("an address");
         let at = Instant::now();
         let secs = |s: u64| at + Duration::from_secs(s);
-        let taken: Heard = Ok(mac.into());
+        let taken: Verdict = Ok(mac.into());
         let forged = refused(mac.into(), Refused::Forged);
         let unsigned = refused(mac.into(), Refused::Unsigned);
         let other_unsigned = refused(other.into(), Refused::Unsigned);
-        let stray: Heard = Err((Some(mac.into()), Unheard::Ignored));
+        let stray: Verdict = Err((Some(mac.into()), Unheard::Ignored));
         assert_eq!(
             said.of(mac, &taken, at).len(),
             1,
@@ -1372,7 +1375,7 @@ mod tests {
     }
 
     /// A datagram refused for `why`, as `whose` refusal.
-    fn refused(whose: Source, why: Refused) -> Heard {
+    fn refused(whose: Source, why: Refused) -> Verdict {
         Err((Some(whose), Unheard::Refused(why)))
     }
 
@@ -1493,7 +1496,7 @@ mod tests {
         let house = Source::House("00:00:5e:00:53:01".to_owned());
         let at = Instant::now();
         let secs = |s: u64| at + Duration::from_secs(s);
-        let forged: Heard = Err((None, Unheard::Refused(Refused::Forged)));
+        let forged: Verdict = Err((None, Unheard::Refused(Refused::Forged)));
         let again = |lines: Vec<String>| lines.iter().any(|line| line.contains("taken again"));
         assert_eq!(
             said.of(one, &forged, at).len(),
