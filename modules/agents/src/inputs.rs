@@ -1685,6 +1685,15 @@ mod tests {
             "a step back to after it fell behind keeps when it fell behind, so how long \
              reads no shorter than the step makes it"
         );
+        assert_eq!(
+            write_heard(path, None, Some(&first), 1_000),
+            (
+                Some("agents: kept /k/arrangement.json again, the clock stepped back".into()),
+                None
+            ),
+            "a write that goes through past the step says so, never 0 s behind, as how \
+             long it lagged can't be told"
+        );
     }
 
     #[test]
