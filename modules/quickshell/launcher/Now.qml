@@ -2751,7 +2751,7 @@ Provider {
     // nothing below it, it's asked with For You's own, after the change
     // (forYouMoved): said outright there, a session's notice updated as its
     // work turned just after Return into For You was drawn as Return's act,
-    // though no row For You showed had moved (the niri case, 2026-11-18:
+    // though no row For You showed had moved (seen on niri, 2026-11-18:
     // "the notices' history, then the notices' rows"). What such a step
     // shows is rows of places or a thing's acts, whose every drawn line
     // changedTo compares. Where the notices themselves are shown, in

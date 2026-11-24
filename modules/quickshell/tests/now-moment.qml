@@ -3291,7 +3291,11 @@ ShellRoot {
     // The notices moving, with For You held, are asked with For You's own
     // after the change rather than said outright: a session's notice updated
     // as its work turned just after Return into For You was drawn as
-    // Return's act (the niri case, 2026-11-18). Deeper, where the notices
+    // Return's act (seen on niri, 2026-11-18). This is where that's proven:
+    // a case on niri laying a session's turn beside Return couldn't land
+    // one within the launcher's 50 ms on a loaded builder, its turns heard
+    // 150 to 520 ms after Return's work with the node itself held, so it
+    // never reached the race (2026-11-24). Deeper, where the notices
     // themselves are shown, and with nothing held, they're said outright;
     // so too with Desktop or what's on screen held right under Now, where
     // Super+N leads with no critical notice waiting (round 7, F77), though

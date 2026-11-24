@@ -4507,9 +4507,7 @@
     its record says over the folder it works in; a paused one's glyph is never drawn in a
     listening one's colour; and an orchestration's waiting sessions fold into one row after its
     own, which Return steps into and typing still finds each in; and a look's choice in For You
-    steers its answer to the session that left it and, once taken, moves to History saying it;
-    and a session's work turning just after Return into For You, moving none of it, is drawn
-    as no act of Return's
+    steers its answer to the session that left it and, once taken, moves to History saying it
   '';
   the-launcher-answers-whats-typed-on-niri = ''
     on the account's whole shell on niri, typed into, the launcher answers units, zones and
