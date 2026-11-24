@@ -21,6 +21,10 @@
 //! moves them, even one undone between two looks. The project's own
 //! metadata, which every instance takes where it sets nothing itself, may
 //! hold only what each builder's own overrides.
+//!
+//! A builder made before the machine named a new startup script may run
+//! the one named before, as [`Earlier`] says, so a switch drains the
+//! builders standing rather than cutting every run on them.
 
 use serde_json::Value;
 
@@ -52,6 +56,25 @@ pub struct Pinned {
     pub hook_key: String,
     /// What a boot disk's source image may start with.
     pub images: Vec<String>,
+    /// The scripts the machine named before `script`, which a builder
+    /// made while each was named may still run.
+    pub earlier: Vec<Earlier>,
+}
+
+/// A startup script the machine named before the one it names now. A
+/// switch that changes the script would otherwise refuse every builder
+/// standing, as on 23 November at 20:53, when all sixteen were refused
+/// and every run on them was cut. A builder made before the change is
+/// trusted on under the script it was made with, as it would have been
+/// before the change, vetted in every other way as before; one made after
+/// the change must run the new script.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Earlier {
+    /// The script, whole.
+    pub script: String,
+    /// When root first named the script after it, in seconds since 1970:
+    /// a builder made from then on runs that one.
+    pub made_before: i64,
 }
 
 /// When the instance `described`, as the cloud describes it in JSON, last
@@ -88,8 +111,36 @@ pub fn vetted(described: &Value, pinned: &Pinned) -> Result<String, String> {
     if !value("offload-hook-key").is_some_and(|said| same_key(said, &pinned.hook_key)) {
         return Err("names another key than root's for its hook".to_owned());
     }
-    if value("startup-script") != Some(pinned.script.as_str()) {
-        return Err("runs another startup script than this machine's".to_owned());
+    let script = value("startup-script");
+    if script != Some(pinned.script.as_str()) {
+        let made = described["creationTimestamp"].as_str().and_then(seconds);
+        // A script named more than once has a window for each naming, and
+        // a builder made in any of them runs it as it was made to, so the
+        // latest window judges it, not the first one found.
+        let closed = pinned
+            .earlier
+            .iter()
+            .filter(|one| script == Some(one.script.as_str()))
+            .map(|one| one.made_before)
+            .max();
+        match closed {
+            Some(closed) if made.is_some_and(|made| made < closed) => {}
+            Some(_) if made.is_none() => {
+                return Err(
+                    "runs the startup script this machine named before, and says nothing of \
+                     when it was made"
+                        .to_owned(),
+                );
+            }
+            Some(_) => {
+                return Err(
+                    "runs the startup script this machine named before, though it was made \
+                     after the change"
+                        .to_owned(),
+                );
+            }
+            None => return Err("runs another startup script than this machine's".to_owned()),
+        }
     }
     described["lastStartTimestamp"]
         .as_str()
@@ -267,6 +318,7 @@ mod tests {
             script: SCRIPT.to_owned(),
             hook_key: ROOT.to_owned(),
             images: vec![format!("{IMAGE}debian-12-")],
+            earlier: Vec::new(),
         }
     }
 
@@ -348,6 +400,76 @@ mod tests {
                 "an instance with {what} passed"
             );
         }
+    }
+
+    #[test]
+    fn an_instance_made_before_its_script_changed_passes_on_it() {
+        const BEFORE: &str = "#!/bin/bash\necho the builder as it was\n";
+        const AFTER: &str = "runs the startup script this machine named before, though it was \
+                             made after the change";
+        // 2026-11-10T05:14:00-08:00, when the new script was first named.
+        let changed = 1_794_316_440;
+        let once = Pinned {
+            earlier: vec![Earlier {
+                script: BEFORE.to_owned(),
+                made_before: changed,
+            }],
+            ..pinned()
+        };
+        let made = |at: &str| {
+            let mut described = described(&[("startup-script", json!(BEFORE))]);
+            described["creationTimestamp"] = json!(at);
+            described
+        };
+        assert!(
+            vetted(&made("2026-11-10T05:13:59.100-08:00"), &once).is_ok(),
+            "a builder made before the change was refused its earlier script"
+        );
+        assert_eq!(
+            vetted(&made("2026-11-10T05:14:00.000-08:00"), &once),
+            Err(AFTER.to_owned()),
+            "a builder made after the change passed on the earlier script"
+        );
+        assert!(
+            vetted(&described(&[("startup-script", json!(BEFORE))]), &once).is_err(),
+            "a builder saying nothing of when it was made passed on the earlier script"
+        );
+        // Named, changed, named again and changed again: a builder made in
+        // its second window runs it as it was made to.
+        let twice = Pinned {
+            earlier: vec![
+                Earlier {
+                    script: BEFORE.to_owned(),
+                    made_before: changed - 7200,
+                },
+                Earlier {
+                    script: "#!/bin/bash\necho the one between\n".to_owned(),
+                    made_before: changed - 3600,
+                },
+                Earlier {
+                    script: BEFORE.to_owned(),
+                    made_before: changed,
+                },
+            ],
+            ..pinned()
+        };
+        assert!(
+            vetted(&made("2026-11-10T05:13:59.100-08:00"), &twice).is_ok(),
+            "a builder made in a script's second window was judged by its first"
+        );
+        assert_eq!(
+            vetted(&made("2026-11-10T05:14:00.000-08:00"), &twice),
+            Err(AFTER.to_owned()),
+            "a builder made after a script's last window passed on it"
+        );
+        let mut other = made("2026-11-10T05:13:59.100-08:00");
+        let mine = described(&[("startup-script", json!("#!/bin/sh\nmine\n"))]);
+        other["metadata"]["items"] = mine["metadata"]["items"].clone();
+        assert_eq!(
+            vetted(&other, &once),
+            Err("runs another startup script than this machine's".to_owned()),
+            "a script the machine never named passed"
+        );
     }
 
     #[test]

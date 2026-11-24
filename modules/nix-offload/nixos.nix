@@ -78,6 +78,9 @@ let
       images
       ;
     startupScript = if lines.startupScript == null then null else "${lines.startupScript}";
+    # The service's own StateDirectory, where the scripts named before are
+    # kept, so a switch that changes the script doesn't cut every builder.
+    state = "/var/lib/nix-offload-lines";
     hookKey = "/etc/nix/offload_ed25519.pub";
     standing = map (builder: {
       inherit (builder)
@@ -140,8 +143,13 @@ in
               running any other, started again or changed since root first
               trusted it, whose audit log holds more than its making, or in a
               project setting metadata its own doesn't override, lends
-              nothing. Each lent token must read the project's Admin Activity
-              audit log. Unset, a lent builder is trusted on its host key
+              nothing. The one exception is a script named here before: each
+              is still trusted for a day after the change that replaced it,
+              on an instance made before that change, so a change drains
+              rather than cutting every run. To refuse them at once, remove
+              /var/lib/nix-offload-lines/scripts.json and restart
+              nix-offload-lines. Each lent token must read the project's
+              Admin Activity audit log. Unset, a lent builder is trusted on its host key
               alone, which anything able to change the instance can get
               round, and the machine warns so.
             '';

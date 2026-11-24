@@ -19,7 +19,7 @@
 //! cloud itself. The lender names the instance behind each lent builder in
 //! a file of its own; this checks the name and zone against its settings,
 //! asks the cloud whether the instance is still the one its maker made
-//! (`src/vet.rs`), every [`ASK_AGAIN`], and asks the instance's guest
+//! (`src/lines/vet.rs`), every [`ASK_AGAIN`], and asks the instance's guest
 //! attributes for its host key, which only the instance can write. Its
 //! other fields pass as written, since none of them changes who root
 //! trusts, but only in plain characters: Nix reads `;` as the start of
@@ -33,14 +33,17 @@
 //! pieces they prove: the clock each instance is asked again by, and what
 //! is kept of what the cloud last said.
 
-use crate::vet::{self, Pinned};
+mod scripts;
+mod vet;
+
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use vet::Pinned;
 
 /// How often the lender's files are read again. A builder named a few
 /// seconds late only builds a few seconds less; this is the same pace the
@@ -135,25 +138,46 @@ pub struct Settings {
     /// The startup script every lent builder runs, whole; with none, a
     /// lent builder is trusted on its host key alone.
     pub startup_script: Option<PathBuf>,
+    /// Where the scripts named before are kept, which only this service
+    /// reads; with none, a builder must run the script named now.
+    pub state: Option<PathBuf>,
     /// Root's public key, the one a lent builder's hook takes.
     pub hook_key: PathBuf,
     /// What a lent builder's boot image may start with.
     pub images: Vec<String>,
 }
 
+/// Now, in seconds since 1970, as the cloud's timestamps count.
+fn now_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+/// The scripts' record's file in the service's state, and what its
+/// troubles are said of, so each is journalled once.
+const RECORD: &str = "scripts.json";
+
 /// What `settings` hold a lent builder to, read from the files they name,
-/// when they pin a startup script.
-fn pinned(settings: &Settings) -> Result<Option<Pinned>, String> {
+/// when they pin a startup script; `record` keeps the scripts named before.
+fn pinned(settings: &Settings, record: &mut scripts::Record) -> Result<Option<Pinned>, String> {
     let read = |path: &Path| {
         fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))
     };
     let Some(script) = &settings.startup_script else {
         return Ok(None);
     };
+    let script = read(script)?;
+    let earlier = settings.state.as_ref().map_or_else(Vec::new, |state| {
+        record.earlier(&state.join(RECORD), &script, now_seconds())
+    });
     Ok(Some(Pinned {
-        script: read(script)?,
+        script,
         hook_key: read(&settings.hook_key)?,
         images: settings.images.clone(),
+        earlier,
     }))
 }
 
@@ -234,6 +258,7 @@ pub fn settings(text: &str) -> Result<Settings, String> {
         zones: texts("zones")?,
         gcloud: text("gcloud")?,
         startup_script: value["startupScript"].as_str().map(PathBuf::from),
+        state: value["state"].as_str().map(PathBuf::from),
         hook_key: PathBuf::from(text("hookKey")?),
         images: texts("images")?,
     })
@@ -518,6 +543,8 @@ pub struct HostKeys {
     said: HashMap<String, String>,
     /// Whether the project's metadata holds, and when that was asked.
     project: Option<(Instant, Result<(), String>)>,
+    /// The startup scripts named before the one named now.
+    scripts: scripts::Record,
 }
 
 impl HostKeys {
@@ -528,7 +555,19 @@ impl HostKeys {
             config,
             said: HashMap::new(),
             project: None,
+            scripts: scripts::Record::default(),
         }
+    }
+
+    /// Names the startup script `settings` pin as this service starts, so
+    /// its time is the switch's that named it rather than the first vet's
+    /// after, which could be hours later with nothing lent.
+    fn name_script(&mut self, settings: &Settings) {
+        if let Err(why) = pinned(settings, &mut self.scripts) {
+            eprintln!("nix-offload: the startup script couldn't be named as it started: {why}");
+        }
+        let trouble = self.scripts.trouble.clone();
+        self.say(RECORD, trouble);
     }
 
     /// Says `what` of `about` when it isn't what was last said of it, so a
@@ -619,7 +658,7 @@ impl HostKeys {
             .copied(token)
             .map_err(Unvouched::Unanswered)
             .and_then(|token| {
-                let verdict = match pinned(settings) {
+                let verdict = match pinned(settings, &mut self.scripts) {
                     Ok(None) => Ok(None),
                     Ok(Some(pinned)) => {
                         let first = (before.started.as_deref().zip(before.marks.as_deref()))
@@ -631,6 +670,8 @@ impl HostKeys {
                 };
                 verdict.map(|vouched| (token, vouched))
             });
+        let trouble = self.scripts.trouble.clone();
+        self.say(RECORD, trouble);
         let (token, (started, marks)) = match verdict {
             Ok((token, vouched)) => (token, vouched.unzip()),
             Err(Unvouched::Silent) => {
@@ -1076,11 +1117,19 @@ pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
 
 /// Copies what passes for as long as it runs, at [`PACE`].
 pub fn serve(settings: &Settings, config: PathBuf) -> ! {
-    let mut keys = HostKeys::new(config);
+    let mut keys = started(settings, config);
     loop {
         copy_once(settings, &mut keys);
         std::thread::sleep(PACE);
     }
+}
+
+/// What `serve` keeps as it starts, the startup script already named, so
+/// its time is this start's.
+fn started(settings: &Settings, config: PathBuf) -> HostKeys {
+    let mut keys = HostKeys::new(config);
+    keys.name_script(settings);
+    keys
 }
 
 #[cfg(test)]
@@ -1343,6 +1392,7 @@ mod tests {
             zones: vec!["us-east1-b".to_owned()],
             gcloud: gcloud.display().to_string(),
             startup_script: Some(dir.join("startup-script")),
+            state: None,
             hook_key: dir.join("offload_ed25519.pub"),
             images: vec![format!("{IMAGES}debian-12-")],
         }
@@ -1751,6 +1801,54 @@ mod tests {
     }
 
     #[test]
+    fn a_switch_that_changes_the_script_keeps_the_builders_made_before() {
+        let (dir, mut settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        settings.state = Some(dir.path().to_path_buf());
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        // The switch names a new script and starts this service again.
+        fs::write(
+            dir.path().join("startup-script"),
+            "#!/bin/bash\necho the builder, changed\n",
+        )
+        .expect("the new startup script");
+        copy_once(&settings, &mut HostKeys::new(dir.path().join("config")));
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "a builder made before its script changed was cut"
+        );
+        settings.state = None;
+        copy_once(&settings, &mut HostKeys::new(dir.path().join("config")));
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "with no record kept, the script before was trusted"
+        );
+    }
+
+    #[test]
+    fn the_service_names_its_script_as_it_starts() {
+        let (dir, mut settings, _) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        settings.state = Some(dir.path().to_path_buf());
+        let before = now_seconds();
+        started(&settings, dir.path().join("config"));
+        let record = fs::read_to_string(dir.path().join(RECORD)).expect("no record kept");
+        let named: Value = serde_json::from_str(&record).expect("the record isn't JSON");
+        let since = named[0]["since"].as_i64().unwrap_or_default();
+        assert!(
+            (before..=now_seconds()).contains(&since),
+            "the script wasn't named, in seconds, as the service started: {record}"
+        );
+        // 1 January 2026 and 2100, so seconds can't pass for milliseconds.
+        assert!(
+            (1_767_225_600..4_102_444_800).contains(&since),
+            "now isn't counted in seconds since 1970: {since}"
+        );
+    }
+
+    #[test]
     fn a_machine_pinning_no_script_trusts_the_host_key_alone() {
         let (dir, mut settings, mut keys) = lender("");
         settings.startup_script = None;
@@ -2113,8 +2211,13 @@ mod tests {
             "lent":[{"uri":"l","instance":"/run/nix-offload/instance","token":"/run/nix-offload/token"}],
             "project":"p","prefix":"offload-","zones":["z"],"gcloud":"/bin/gcloud",
             "startupScript":"/etc/startup","hookKey":"/etc/nix/offload_ed25519.pub",
-            "images":["i"]}"#;
+            "images":["i"],"state":"/var/lib/nix-offload-lines"}"#;
         let read = settings(text).expect("the settings");
+        assert_eq!(
+            read.state,
+            Some(PathBuf::from("/var/lib/nix-offload-lines")),
+            "where the scripts are kept was misread"
+        );
         assert_eq!(
             read.lent[0].token,
             PathBuf::from("/run/nix-offload/token"),
