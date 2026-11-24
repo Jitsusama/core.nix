@@ -1175,7 +1175,8 @@ fn paused(state: &Path) -> Option<holds::Held> {
 
 impl World for Real {
     fn held(&self) -> Option<holds::Held> {
-        paused(&self.state).or_else(|| holds::standing(&holds::messages(), self.booted))
+        paused(&self.state)
+            .or_else(|| holds::standing(&holds::messages(), self.booted, now() * 1000))
     }
 
     fn head(&self) -> Result<String, String> {
