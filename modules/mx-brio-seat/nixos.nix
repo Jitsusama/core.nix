@@ -20,7 +20,7 @@
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      # A switch waits on it. give-back.sh bounds each of its two waits on
+      # A switch waits on it. give-back.sh bounds each of its three waits on
       # udev at 25 s, so it ends well inside this, and a timeout, which
       # would fail the switch, means the script itself hung.
       TimeoutStartSec = "2min";

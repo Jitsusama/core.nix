@@ -52,12 +52,15 @@ unrecorded=()
 # replayed, one udev can't say of may be the Brio held, and so may one it
 # holds no record of, which is either an add still queued, as at boot, or a
 # removal it never added again. udevadm says why it couldn't read a node,
-# into the unit's journal.
+# into the unit's journal. A node can go as it's read, the Brio unplugged
+# mid-scan, and is skipped, since plugged in again it's the seat's.
 consider() {
   local node=$1 facts path
   if ! facts=$(udevadm info --query=property "$node"); then
-    unread+=("$node")
-    return
+    if [ -e "$node" ]; then
+      unread+=("$node")
+    fi
+    return 0
   fi
   if ! recorded "$facts"; then
     unrecorded+=("$node")
@@ -65,7 +68,12 @@ consider() {
   fi
   the_brio "$facts" || return 0
   grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || return 0
-  path=$(udevadm info --query=path "$node" 2>/dev/null) || return 0
+  if ! path=$(udevadm info --query=path "$node"); then
+    if [ -e "$node" ]; then
+      unread+=("$node")
+    fi
+    return 0
+  fi
   nodes+=("$node")
   paths+=("$root/sys$path")
 }
@@ -96,7 +104,7 @@ if [ "${#unrecorded[@]}" -gt 0 ]; then
     unrecorded=()
     echo "<4>udev hasn't finished adding the cameras at ${pending[*]} in ${settling} s," \
       "so whether an MX Brio among them is kept from the seat isn't known yet;" \
-      "udevadm info ${pending[*]} says once udev has." >&2
+      "once udev has, systemctl restart mx-brio-seat looks again." >&2
   fi
 fi
 if [ "${#unread[@]}" -gt 0 ]; then
@@ -152,10 +160,12 @@ fi
 trap - EXIT
 
 # udev handles a node's events in order, so an arrival it hasn't finished
-# may still give the seat the Brio, and its record now says nothing yet.
+# may still give the seat the Brio, and its record now says nothing yet;
+# nothing runs the give-back again by itself, so the way to is named.
 if [ "$arrived" = no ]; then
   echo "<4>udev didn't finish the MX Brio's arrival in ${settling} s, so whether the" \
-    "seat has it isn't known yet; udevadm info ${nodes[*]} says once udev has." >&2
+    "seat has it isn't known yet; udevadm info ${nodes[*]} says once udev has," \
+    "and systemctl restart mx-brio-seat replays it if it's still kept." >&2
   exit 0
 fi
 

@@ -5298,16 +5298,17 @@
   the-mx-brio-give-back-never-fails = ''
     the MX Brio's give-back, run under set -e against a stand-in udevadm, replays both of the
     Brio's nodes and never another camera a relay holds, even of its maker or model number, never
-    triggers with no device, bounds each wait on udev to a second or more and to fit twice, and
-    every wait together once, within its unit's limit, ends well when udev refuses a replay, never
-    settles, hasn't handled the arrival yet, loses the Brio's record or can't be read, adds the
-    Brio back when its unit's timeout ends the run, says a Brio unplugged midway is the seat's once
-    plugged in, says it gave the Brio back only when udev's record of every node shows it tagged
-    for the seat and unmarked, and that the seat has it only when udev recorded every camera,
-    warning with the way out, named for its nodes, otherwise, waits out adds the boot still has
-    queued rather than calling them lost, points at udevadm's own words for an add it refused,
-    and warns nothing, udevadm included, on a machine with no camera, a boot whose adds came late
-    or a run that went right
+    triggers with no device, bounds each wait on udev to a second or more and to fit three times,
+    and every wait together once, within its unit's limit, ends well when udev refuses a replay,
+    queues part of a refused add, never settles, hasn't handled the arrival yet, loses the Brio's
+    record or can't be read, naming the restart that looks again, adds the Brio back when its
+    unit's timeout ends the run, says a Brio unplugged midway is the seat's once plugged in, skips
+    a node unplugged as it's read, says it gave the Brio back only when udev's record of every node
+    shows it tagged for the seat and unmarked, and that the seat has it only when udev recorded
+    every camera, warning with the way out, named for its nodes, otherwise, waits out adds the boot
+    still has queued rather than calling them lost, points at udevadm's own words, which it keeps,
+    for an add it refused, and warns nothing, udevadm included, on a machine with no camera, a boot
+    whose adds came late or a run that went right
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
