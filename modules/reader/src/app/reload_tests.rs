@@ -1,6 +1,9 @@
 //! What the reloader takes from the asks that came while it set, and when
 //! a page set again comes of an edit, which lets the marks kept from the
-//! last time land again from what was kept only when it doesn't.
+//! last time land again from what was kept only when it doesn't. The
+//! sequences below call `Shown` as `App::saved` and `shows` do, in their
+//! order, since an `App` needs a window to make; that wiring itself is
+//! read, not run.
 
 use super::{Reload, Shown, newest};
 use crate::page::Width;

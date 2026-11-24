@@ -63,13 +63,37 @@ fn said(starts: &[(usize, f64)], lines: &[Line]) -> Vec<(usize, String)> {
     blocks
 }
 
+/// How much of `one` another block's words `other` say alike: as many
+/// characters as they open with and end with in common, up to the shorter,
+/// since an edit into a paragraph keeps its start or its end.
+fn alike(one: &str, other: &str) -> usize {
+    let opening = one
+        .chars()
+        .zip(other.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let ending = one
+        .chars()
+        .rev()
+        .zip(other.chars().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    (opening + ending).min(one.chars().count().min(other.chars().count()))
+}
+
+/// What each block of the page set before and of the page set now says,
+/// as `said` reads them.
+type BlocksSaid = (Vec<(usize, String)>, Vec<(usize, String)>);
+
 /// A page set again, as a mark, the cursor's line and a jump's place are
 /// moved across it: whether the file was `edited`, where its blocks started
-/// `before` when it was set at another width (none at the same one) and
-/// start `after`, the lines it was set from (`was`) and is set from now
+/// `before` when it was set at another width or edited (none otherwise)
+/// and start `after`, the lines it was set from (`was`) and is set from now
 /// (`now`, and their tops and baselines, `ends`), and the most a point goes:
 /// the new page's height, past which no line stands. A jump's place, a
 /// view's top, may land past the most the view goes, which `leap` holds.
+/// What its blocks say is read once, at the first point that asks (`said`,
+/// empty to start), however many marks and jumps move.
 pub struct Moving<'a> {
     pub edited: bool,
     pub before: Option<&'a [(usize, f64)]>,
@@ -78,6 +102,7 @@ pub struct Moving<'a> {
     pub now: &'a [Line],
     pub ends: &'a [(f64, f64)],
     pub most_pt: f64,
+    pub said: std::cell::OnceCell<BlocksSaid>,
 }
 
 impl Moving<'_> {
@@ -118,11 +143,15 @@ impl Moving<'_> {
     /// The block on the edited page that `block` on the page set `before`
     /// is: the one saying what it said, the same how-many-th of as many.
     /// Where the edit changed its words, its number moved as the nearest
-    /// block's saying the same moved, above it first, since an edit there
-    /// is what renumbers it. None where no block says what it did.
+    /// blocks' saying the same, above and below it, moved. Where those two
+    /// disagree, the edit added or took a block between them, so it's the
+    /// block between them saying most of what it said, opening or ending
+    /// alike; the one above's count where none does, and the one there is
+    /// where only one is. None where no block says what it did.
     fn block_now(&self, before: &[(usize, f64)], block: usize) -> Option<usize> {
-        let was = said(before, self.was);
-        let now = said(self.after, self.now);
+        let (was, now) = self
+            .said
+            .get_or_init(|| (said(before, self.was), said(self.after, self.now)));
         let at = was.iter().position(|(b, _)| *b == block)?;
         let found = |at: usize| -> Option<usize> {
             let words = &was[at].1;
@@ -138,14 +167,32 @@ impl Moving<'_> {
                 .collect();
             same.get(nth).filter(|_| same.len() == many).copied()
         };
-        found(at).or_else(|| {
-            let renumbered =
-                |near: usize| found(near).and_then(|into| (block + into).checked_sub(was[near].0));
-            (0..at)
-                .rev()
-                .find_map(renumbered)
-                .or_else(|| (at + 1..was.len()).find_map(renumbered))
-        })
+        if let Some(into) = found(at) {
+            return Some(into);
+        }
+        // A block saying the same, and the number that puts the mark's at.
+        let renumbered = |near: usize| {
+            let into = found(near)?;
+            Some((into, (block + into).checked_sub(was[near].0)?))
+        };
+        let above = (0..at).rev().find_map(renumbered);
+        let below = (at + 1..was.len()).find_map(renumbered);
+        match (above, below) {
+            (Some((up, by_up)), Some((down, by_down))) if by_up != by_down => {
+                let words = &was[at].1;
+                Some(
+                    now.iter()
+                        .filter(|(b, _)| *b > up && *b < down)
+                        .map(|(b, w)| (*b, alike(words, w)))
+                        .filter(|(_, much)| *much > 0)
+                        .rev()
+                        .max_by_key(|(_, much)| *much)
+                        .map_or(by_up, |(b, _)| b),
+                )
+            }
+            (Some((_, by)), _) | (None, Some((_, by))) => Some(by),
+            (None, None) => None,
+        }
     }
 }
 
@@ -193,8 +240,8 @@ mod tests {
     }
 
     #[test]
-    fn a_mark_on_a_page_an_edit_renumbered_goes_with_its_words() {
-        // A paragraph saved in above it: a mark on "two" goes with "two",
+    fn the_view_on_a_page_an_edit_renumbered_goes_with_its_words() {
+        // A paragraph saved in above it: a view on "two" goes with "two",
         // where its block's number would now name the paragraph before.
         let old = [line(20.0, "one"), line(40.0, "two")];
         let new = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
@@ -220,8 +267,43 @@ mod tests {
             now,
             ends: &ends,
             most_pt: 500.0,
+            said: std::cell::OnceCell::new(),
         }
         .moved(pt)
+    }
+
+    #[test]
+    fn a_point_kept_alone_takes_a_line_only_where_as_many_say_it() {
+        // The first of two "it." lines cut: the one left was the second.
+        let old = [line(20.0, "it."), line(40.0, "x"), line(60.0, "it.")];
+        let new = [line(20.0, "x"), line(40.0, "it.")];
+        assert_eq!(matched(&old, &new, 10.0, 500.0, true), None);
+        assert_eq!(
+            matched(&old, &new, 10.0, 500.0, false),
+            Some(30.0),
+            "the view reads on"
+        );
+        // One "}" become two: the mark's may be either.
+        let old = [line(20.0, "}"), line(40.0, "x")];
+        let new = [line(20.0, "}"), line(40.0, "}"), line(60.0, "x")];
+        assert_eq!(matched(&old, &new, 10.0, 500.0, true), None);
+    }
+
+    #[test]
+    fn a_blocks_words_run_together_as_any_width_wraps_them() {
+        // A line over the first block is the first block's; a hyphen or a
+        // soft hyphen a wrap puts in is no word of the paragraph's.
+        let starts = [(0, 30.0), (1, 60.0)];
+        let lines = [
+            line(20.0, "over"),
+            line(40.0, "hy-"),
+            line(50.0, "phen soft\u{ad}"),
+            line(70.0, "ly"),
+        ];
+        assert_eq!(
+            said(&starts, &lines),
+            vec![(0, "overhyphensoft".to_string()), (1, "ly".to_string())]
+        );
     }
 
     #[test]
@@ -243,9 +325,10 @@ mod tests {
     fn a_mark_on_a_page_set_wider_unedited_goes_as_far_through_its_block() {
         // A paragraph of two lines, 40 pt tall, set in one 20 pt tall: a
         // mark on its second line, 25 pt into it, goes 12.5 pt in, onto
-        // the one line it has now.
+        // the one line it has now, not to a line saying "c d" in another
+        // block, since nothing was edited.
         let old = [line(40.0, "a b"), line(60.0, "c d")];
-        let new = [line(40.0, "a b c d")];
+        let new = [line(40.0, "a b c d"), line(90.0, "c d")];
         let before = [(0, 0.0), (1, 25.0), (2, 65.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
         assert_eq!(moving(false, Some(&before), &after, &old, &new, 50.0), 30.0);
@@ -292,11 +375,12 @@ mod tests {
     #[test]
     fn a_mark_on_a_short_line_fewer_say_now_takes_none_of_them() {
         // Two lines said "it." and one does now: the mark on the second
-        // is on neither for sure, so at its width it stays where it was.
+        // is on neither for sure, and its block is gone, so it stays.
         let old = [line(20.0, "it."), line(40.0, "x"), line(60.0, "it.")];
         let new = [line(20.0, "it."), line(40.0, "x y")];
-        let starts = [(0, 0.0)];
-        assert_eq!(moving(true, None, &starts, &old, &new, 50.0), 50.0);
+        let before = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        let after = [(0, 0.0), (1, 25.0)];
+        assert_eq!(moving(true, Some(&before), &after, &old, &new, 50.0), 50.0);
         // The view, reading on, goes to the one there is.
         assert_eq!(anchored(&old, &new, 50.0, false, 500.0), 10.0);
     }
@@ -319,11 +403,56 @@ mod tests {
             80.0,
             "it lands on \"gamma delta\", not where \"delta\" stood"
         );
-        assert_eq!(
-            moving(true, None, &after, &old, &new, 60.0),
-            60.0,
-            "at the same width with its words gone, it stays"
-        );
+    }
+
+    #[test]
+    fn an_edit_that_adds_a_block_just_above_a_marks_edited_one_leaves_it_its_own() {
+        // "new para" saved in between "aaa" and the marked "bee one", which
+        // gains a word: "aaa" says the mark's block stays first after it,
+        // "cee" that it moved down one. Of the two between them, "bee one
+        // two" opens as it did, so the mark goes there.
+        let old = [line(20.0, "aaa"), line(40.0, "bee one"), line(60.0, "cee")];
+        let new = [
+            line(20.0, "aaa"),
+            line(40.0, "new para"),
+            line(60.0, "bee one two"),
+            line(80.0, "cee"),
+        ];
+        let before = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0), (3, 65.0)];
+        assert_eq!(moving(true, Some(&before), &after, &old, &new, 30.0), 50.0);
+    }
+
+    #[test]
+    fn an_edit_to_a_marks_first_block_numbers_it_as_the_one_below() {
+        // A paragraph saved in at the top, and a word into the marked first
+        // one: nothing above it, "cee" below says it moved down one.
+        let old = [line(20.0, "aaa bbb"), line(40.0, "cee")];
+        let new = [
+            line(20.0, "new"),
+            line(40.0, "aaa bbb more"),
+            line(60.0, "cee"),
+        ];
+        let before = [(0, 0.0), (1, 25.0)];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        assert_eq!(moving(true, Some(&before), &after, &old, &new, 10.0), 30.0);
+    }
+
+    #[test]
+    fn a_block_saying_what_more_blocks_say_now_numbers_nothing() {
+        // A line of stars saved in at the top, and the marked block edited:
+        // "***" above it now says what two blocks do, so it can't say where
+        // the mark's went, and "p" further up does.
+        let old = [line(20.0, "p"), line(40.0, "***"), line(60.0, "aa")];
+        let new = [
+            line(20.0, "***"),
+            line(40.0, "p"),
+            line(60.0, "***"),
+            line(80.0, "aa c"),
+        ];
+        let before = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0), (3, 65.0)];
+        assert_eq!(moving(true, Some(&before), &after, &old, &new, 50.0), 70.0);
     }
 
     #[test]

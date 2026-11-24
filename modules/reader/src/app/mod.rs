@@ -121,7 +121,7 @@ pub(crate) struct Incoming {
     /// it shows.
     words: u64,
     /// Whether it comes of an edit to the page shown, which may renumber
-    /// its blocks, as `taken` judged it when it was set.
+    /// its blocks, as `Shown::takes` judged it when it was set.
     edited: bool,
 }
 
@@ -162,7 +162,8 @@ pub(crate) enum Reload {
 /// What asks that came while one set are taken as: the newest file asked
 /// for and the newest width, each if any asked. Setting again needs no
 /// more than the set itself, since whether the file was edited is judged
-/// by its words against the page shown (`taken`), not by what was heard.
+/// by its words against the page shown (`Shown::takes`), not by what was
+/// heard.
 pub(crate) fn newest(
     asks: impl IntoIterator<Item = Reload>,
 ) -> (Option<String>, Option<page::Width>) {

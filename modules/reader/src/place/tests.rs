@@ -250,9 +250,9 @@ fn a_place_kept_before_it_said_where_still_reads() {
         "at_end": false,
         "marks": [
             {"letter": "a", "block": 1, "into_pt": 0.0},
-            {"letter": "b", "block": 1, "into_pt": 0.0, "block_pt": 0.5},
-            {"letter": "c", "block": 1, "into_pt": 0.0, "block_pt": -3},
-            {"letter": "d", "block": 1, "into_pt": 0.0, "block_pt": "tall"},
+            {"letter": "b", "block": 1, "into_pt": 0.0, "block_pt": 0.5, "width_pt": 0},
+            {"letter": "c", "block": 1, "into_pt": 0.0, "block_pt": -3, "width_pt": -3},
+            {"letter": "d", "block": 1, "into_pt": 0.0, "block_pt": "tall", "width_pt": "wide"},
         ],
     });
     std::fs::write(&kept, old.to_string()).expect("kept");
@@ -268,6 +268,10 @@ fn a_place_kept_before_it_said_where_still_reads() {
         assert_eq!(
             mark.block_pt, None,
             "a height no block stands is a file gone wrong, read as none: {mark:?}"
+        );
+        assert_eq!(
+            mark.width_pt, None,
+            "a width no page is set at is a file gone wrong, read as none: {mark:?}"
         );
     }
     let listed = listed_in(&state, 9);

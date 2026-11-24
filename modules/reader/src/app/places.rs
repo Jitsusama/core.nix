@@ -233,13 +233,14 @@ impl App {
         // the line it's on. Set again at the same width with its pictures
         // come, they stay where they were. An edit may have renumbered the
         // blocks and moved the words, so then each goes with its line's
-        // words, at either width, as the view does. A kept mark where it
+        // words, at either width, as the view does, and where no line says
+        // them, by its block, as at another width. A kept mark where it
         // landed lands again from what was kept, unless the file was edited.
         let reflowed = incoming.opens.is_none()
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
-        let before = reflowed.then(|| place::starts(&self.painter.page().frame));
-        self.painter.take(incoming.page, incoming.version);
         let edited = incoming.edited && incoming.opens.is_none();
+        let before = (reflowed || edited).then(|| place::starts(&self.painter.page().frame));
+        self.painter.take(incoming.page, incoming.version);
         if incoming.opens.is_none() && (reflowed || edited || !self.landed.is_empty()) {
             let after = place::starts(&self.painter.page().frame);
             let ends: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
@@ -251,6 +252,7 @@ impl App {
                 now: &incoming.lines,
                 ends: &ends,
                 most_pt: self.painter.height_pt(),
+                said: std::cell::OnceCell::new(),
             };
             place::set_again(&mut self.landed, &mut self.marks, &after, edited, |pt| {
                 moving.moved(pt)
@@ -570,6 +572,7 @@ mod tests {
             now: &now,
             ends: &ends,
             most_pt: 500.0,
+            said: std::cell::OnceCell::new(),
         };
         let spot = |file: &str, pt, aim| Spot {
             file: file.into(),
