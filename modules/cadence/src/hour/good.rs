@@ -136,7 +136,10 @@ fn unsaid(page: &[Section]) -> Vec<String> {
             faults.push(format!("{}: {}", s.title, lacks.join(", ")));
         }
         for key in &s.keys {
-            if seen.iter().any(|named| names(named, key) || names(key, named)) {
+            if seen
+                .iter()
+                .any(|named| names(named, key) || names(key, named))
+            {
                 faults.push(format!("{key}: named twice"));
             }
             seen.push(key);
