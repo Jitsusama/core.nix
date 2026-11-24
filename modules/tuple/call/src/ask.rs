@@ -118,7 +118,7 @@ mod tests {
             asked(r#"{"id": 1, "ask": "camera", "on": true}"#),
             Some(Act::Camera { on: true })
         );
-        for unclear in [r#""#, r#", "on": "true""#, r#", "on": null"#] {
+        for unclear in ["", r#", "on": "true""#, r#", "on": null"#] {
             assert_eq!(
                 asked(&format!(r#"{{"id": 1, "ask": "camera"{unclear}}}"#)),
                 Some(Act::Camera { on: false }),
