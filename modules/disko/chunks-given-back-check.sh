@@ -276,6 +276,10 @@ if grep -qF "needs files gone" "$work/out" "$work/err"; then
   echo "a half-full step killed by day said files must go, though it didn't finish"
   exit 1
 fi
+if grep -qF "next step is tried" "$work/out" "$work/err"; then
+  echo "the half-full step killed by day said a next step is tried, though it is the last"
+  exit 1
+fi
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails-full"
 give
@@ -293,6 +297,10 @@ expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step fails but not for r
 expect_said "up to half full failed" "a half-full step failing but not for room says so"
 if grep -qF "needs files gone" "$work/out" "$work/err"; then
   echo "a half-full step failing but not for room said files must go"
+  exit 1
+fi
+if grep -qF "up to 50% full failed, so the next step" "$work/out" "$work/err"; then
+  echo "the half-full step failing said a next step is tried, though it is the last"
   exit 1
 fi
 

@@ -6294,8 +6294,8 @@
   '';
   chunks-are-given-back-each-night = ''
     the root's empty data chunks are given back from a oneshot unit on a 03:00 timer that starts
-    with the machine and isn't caught up on, bounded past its longest night from 01:00 to 06:00
-    and weighted behind other work in the background slice
+    with the machine and isn't caught up on, bounded past its longest night, six hours from 01:00
+    as the clocks go back, and weighted behind other work in the background slice
   '';
   chunks-are-given-back-only-while-short = ''
     Btrfs's data chunks are balanced only from 01:00 to 06:00 and while too little of the disk is

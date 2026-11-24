@@ -134,9 +134,10 @@ for full in 0 5 10 20 30 40 50; do
     onward=""
   fi
   # What btrfs says is kept to tell a step that failed for want of room,
-  # the one failure that shows the chunks are full, and said after it.
-  said=$(timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" 2>&1) ||
-    status=$?
+  # the one failure that shows the chunks are full, and said after it. In
+  # the C locale, so the error reads the same whatever the machine's.
+  said=$(LC_ALL=C timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" \
+    "$mount" 2>&1) || status=$?
   if [ -n "$said" ]; then
     printf '%s\n' "$said"
   fi
