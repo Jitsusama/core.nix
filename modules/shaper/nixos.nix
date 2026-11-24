@@ -250,10 +250,11 @@ in
                   taken by its address alone. The path is read by the
                   shaper, which runs as root, so make it root's alone:
                   `head -c 32 /dev/urandom`, the same bytes on both
-                  machines. The shaper's service sees no /root, /home or
-                  /tmp, so keep it elsewhere, as under /var/lib; houses
-                  naming one address name one key. Never a Nix path or a
-                  value in the store.
+                  machines. The shaper's service sees no /root, /home,
+                  /tmp or /var/tmp, so keep it elsewhere, as under
+                  /var/lib, spelled plainly and not through a link;
+                  houses naming one address name one key. Never a Nix
+                  path or a value in the store.
                 '';
               };
             }
@@ -338,11 +339,12 @@ in
     } saddr ${address} udp dport ${toString housePort} accept
   '') (lib.unique (lib.concatMap (house: house.from) houses));
 
-  # The shaper makes the IFBs it needs, one per link; the module's own two
-  # would only sit there.
-  # The shaper's service sees an empty /root, /home and /tmp, so a key kept
-  # there would read as missing; and the ear holds each address to one
-  # key, so two houses naming one address must name the same key.
+  # The shaper's service sees an empty /root, /home, /tmp and /var/tmp, so
+  # a key kept there would read as missing, as would one spelled through
+  # those by `//`, `/./` or `/../`; and the ear holds each address to one
+  # key, so two houses naming one address, spelled alike, must name the
+  # same key. A link into those folders still passes, for the journal to
+  # say.
   config.assertions =
     let
       keyed = lib.filter (house: house.keyFile != null) houses;
@@ -350,10 +352,20 @@ in
         "/root/"
         "/home/"
         "/tmp/"
+        "/var/tmp/"
       ];
-      hidden = map (house: toString house.keyFile) (
-        lib.filter (house: lib.any (dir: lib.hasPrefix dir (toString house.keyFile)) unseen) keyed
-      );
+      unplain = [
+        "//"
+        "/./"
+        "/../"
+      ];
+      hides =
+        path:
+        lib.any (dir: lib.hasPrefix dir path) unseen
+        || lib.any (part: lib.hasInfix part path) unplain
+        || lib.hasSuffix "/." path
+        || lib.hasSuffix "/.." path;
+      hidden = lib.filter hides (map (house: toString house.keyFile) keyed);
       naming = address: lib.filter (house: lib.elem address house.from) keyed;
       keysOf = address: lib.unique (map (house: house.keyFile) (naming address));
       shared = lib.filter (address: lib.length (keysOf address) > 1) (
@@ -364,8 +376,9 @@ in
       {
         assertion = hidden == [ ];
         message =
-          "jitsusama.shaper.networks: a house's keyFile can't be under /root, /home "
-          + "or /tmp, which the shaper's service can't see: "
+          "jitsusama.shaper.networks: a house's keyFile can't be under /root, /home, "
+          + "/tmp or /var/tmp, which the shaper's service can't see, nor spelled with "
+          + "//, /./ or /../: "
           + lib.concatStringsSep ", " hidden;
       }
       {
@@ -377,6 +390,8 @@ in
       }
     ];
 
+  # The shaper makes the IFBs it needs, one per link; the module's own two
+  # would only sit there.
   config.boot.extraModprobeConfig = "options ifb numifbs=0";
 
   # udev gives every new link systemd's default .link, whose name, address

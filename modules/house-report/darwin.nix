@@ -24,15 +24,34 @@ in
     ''
     # The daemon reads its key as nobody, so a key in place as the machine
     # switches is made nobody's alone; until one is there, it reports
-    # nothing and says so. A link is left as it is, said, so a key file
-    # made a link to another of root's files never hands that one over.
+    # nothing and says so. A key that is a link, by name or a second name
+    # for another file, is left as it is, said, so a key file made one to
+    # another of root's files never hands that one over; and so is one in
+    # a folder not root's alone, where another account could swap it for
+    # one between the test and the change. Its folder is read through a
+    # link, as a Mac's /etc is one. The Mac's own tools are named, since
+    # GNU's stat, which a PATH may name first, reads -f otherwise.
     + lib.optionalString (keyFile != null) ''
-      if [ -L ${lib.escapeShellArg keyFile} ]; then
-        echo "house-report: "${lib.escapeShellArg keyFile}" is a link, so it isn't made" \
-          "nobody's" >&2
-      elif [ -f ${lib.escapeShellArg keyFile} ]; then
-        chown -h nobody:nobody ${lib.escapeShellArg keyFile}
-        chmod 0400 ${lib.escapeShellArg keyFile}
+      houseReportKey=${lib.escapeShellArg keyFile}
+      houseReportFolder=$(/usr/bin/dirname "$houseReportKey")
+      houseReportWhy=
+      if [ -L "$houseReportKey" ]; then
+        houseReportWhy="is a link"
+      elif [ -f "$houseReportKey" ] \
+        && [ "$(/usr/bin/stat -f %l "$houseReportKey")" != 1 ]; then
+        houseReportWhy="has another name, a link to another file"
+      elif [ -f "$houseReportKey" ] \
+        && [ "$(/usr/bin/stat -L -f %u "$houseReportFolder")" != 0 ]; then
+        houseReportWhy="is in a folder that isn't root's"
+      elif [ -f "$houseReportKey" ] \
+        && [ -n "$(/usr/bin/find -H "$houseReportFolder" -maxdepth 0 -perm +022)" ]; then
+        houseReportWhy="is in a folder another account may write"
+      elif [ -f "$houseReportKey" ]; then
+        /usr/sbin/chown -h nobody:nobody "$houseReportKey"
+        /bin/chmod -h 0400 "$houseReportKey"
+      fi
+      if [ -n "$houseReportWhy" ]; then
+        echo "house-report: $houseReportKey $houseReportWhy, so it isn't made nobody's" >&2
       fi
     ''
   );

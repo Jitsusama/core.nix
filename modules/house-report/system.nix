@@ -76,13 +76,15 @@ in
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,
-        systemd saying why, and tries again every 5 s. On a Mac the
-        service runs as nobody and reads the file each second, so a key
-        swapped is taken without a restart, but the file must be
-        nobody's, 0400, as activation makes one already there: one put
-        there after, root's, can't be read until it's made nobody's or
-        the machine switches, and the log says it can't be read. Never a
-        symbolic link, a Nix path or a value in the store.
+        systemd saying why, and tries again every 5 s, writing a few
+        journal lines each time, so put the key in place before naming
+        it. On a Mac the service runs as nobody and reads the file each
+        second, so a key swapped is taken without a restart, but the
+        file must be nobody's, 0400, as activation makes one already
+        there in a folder root's alone: one put there after, root's,
+        can't be read until it's made nobody's or the machine switches,
+        and the log says it can't be read. Never a link, of either kind,
+        a Nix path or a value in the store.
       '';
     };
     keyPath = lib.mkOption {

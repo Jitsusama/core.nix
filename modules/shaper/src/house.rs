@@ -19,8 +19,8 @@
 //! virtual machine's bridge among them, and the firewall's rule names no
 //! interface.
 //!
-//! A house naming a key takes only reports signed with it, which closes
-//! that: `"<bytes> <ms> <unix_ms> <mac>"`, `unix_ms` the reporter's wall
+//! A house naming a key takes only reports signed with it, so no forger
+//! can say what the house sends: `"<bytes> <ms> <unix_ms> <mac>"`, `unix_ms` the reporter's wall
 //! clock and `mac` the first 16 bytes of HMAC-SHA256 over the text before
 //! it, in hex. One stamped more than `FRESH` from this machine's clock,
 //! either way, or no later than the last taken from its address, is
@@ -33,7 +33,11 @@
 //! hold. An unsigned report is refused there too,
 //! so a forger can't fall back to the old shape. A house with no key
 //! takes a signed report's first two words, so a reporter given the key
-//! before this machine is heard as before.
+//! before this machine is heard as before. Signing guards what a report
+//! says, not that one comes: anything that keeps the true reports from
+//! arriving, on a line where addresses aren't proven, lets the hold go
+//! once they're `FRESH` gone, as it was before a house was named (house
+//! signing round 2's F20).
 //!
 //! A report is one datagram a second to `PORT`: the bytes the machine's
 //! uplink has sent since it started, and its own clock in milliseconds,
@@ -103,6 +107,12 @@ const STEP_KBIT: u64 = 250;
 /// The fewest bytes a house's key may hold: a shorter one can be guessed.
 /// The key is made as 32 random bytes; house-report refuses the same.
 const KEY_LEAST: usize = 16;
+
+/// How long a key read stands before the ear reads its file again, so a
+/// flood of well-shaped forgeries costs an HMAC each, not a read of the
+/// file on the thread the true reports wait behind (house signing round
+/// 2's F19), while a key put in place or swapped is taken within it.
+const KEY_READ_APART: Duration = Duration::from_secs(1);
 
 /// The bytes of the mac a signed report carries, half of SHA-256's. One
 /// carrying fewer is refused, since a mac of a byte or two is guessed.
@@ -430,7 +440,12 @@ pub struct Ear {
     heard: Arc<Mutex<BTreeMap<IpAddr, Heard>>>,
     /// The stamp of the last signed report taken from each address.
     stamps: Arc<Mutex<BTreeMap<IpAddr, u64>>>,
+    /// Each key file as last read, and when, or why it couldn't be.
+    keys: Arc<Mutex<BTreeMap<PathBuf, KeyRead>>>,
 }
+
+/// When a key file was read, and the key it held or why it couldn't be.
+type KeyRead = (Instant, Result<Vec<u8>, String>);
 
 #[derive(Clone, Copy)]
 struct Heard {
@@ -493,8 +508,9 @@ impl Ear {
     /// Takes a datagram from `peer`, heard `at` and at `now_ms` on this
     /// machine's wall clock, when it comes from an address `reporters`
     /// names and reads as a report under its house's key, if any, giving
-    /// that address. The key is read each time, so one put in place or
-    /// swapped is taken without a restart.
+    /// that address. The key is read again once `KEY_READ_APART` has
+    /// passed, so one put in place or swapped is taken without a restart,
+    /// and a report not shaped as a signed one reads no key.
     fn take(
         &self,
         reporters: &Reporters,
@@ -510,7 +526,7 @@ impl Ear {
             None => unkeyed(text).ok_or(Unheard::Ignored)?,
             Some(path) => {
                 let parts = Signed::of(text).map_err(Unheard::Refused)?;
-                let key = key_in(path).map_err(Unheard::Unkeyed)?;
+                let key = self.key(path, at).map_err(Unheard::Unkeyed)?;
                 let mut stamps = self.stamps.lock().unwrap_or_else(PoisonError::into_inner);
                 let last = stamps.get(&address).copied();
                 let (report, stamp) =
@@ -521,6 +537,20 @@ impl Ear {
         };
         self.hear(address, report, at);
         Ok(address)
+    }
+
+    /// The key in `path` at `at`, as read within `KEY_READ_APART`, or read
+    /// now.
+    fn key(&self, path: &Path, at: Instant) -> Result<Vec<u8>, String> {
+        let mut keys = self.keys.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((read, key)) = keys.get(path)
+            && at.saturating_duration_since(*read) < KEY_READ_APART
+        {
+            return key.clone();
+        }
+        let key = key_in(path);
+        keys.insert(path.to_path_buf(), (at, key.clone()));
+        key
     }
 
     /// Takes a report from `address`, heard `at`. Within `FRESH` of the
@@ -1008,29 +1038,59 @@ mod tests {
         let keyed = Reporters::from([(mac, Some(path.clone()))]);
         let ear = Ear::default();
         let at = Instant::now();
-        let unread = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        // Each read of the key a KEY_READ_APART after the last.
+        let read = |n: u32| at + KEY_READ_APART * n;
+        // Misshapen, a report is refused before any key is read, so with
+        // none there it's said unsigned, not unkeyed (house signing round
+        // 2's F4 and F7).
+        let junk = ear.take(&keyed, mac, b"1500 2000", read(0), STAMP);
+        let short_mac = ear.take(&keyed, mac, b"1500 2000 1763920000000 zz", read(0), STAMP);
+        let unread = ear.take(&keyed, mac, VECTOR.as_bytes(), read(0), STAMP);
         fs::write(&path, [7_u8; KEY_LEAST - 1]).expect("a short key");
-        let short = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        let short = ear.take(&keyed, mac, VECTOR.as_bytes(), read(1), STAMP);
         fs::write(&path, vector_key()).expect("a key");
-        let unsigned = ear.take(&keyed, mac, b"1500 2000", at, STAMP);
+        let unsigned = ear.take(&keyed, mac, b"1500 2000", read(2), STAMP);
         // A forgery stamped ahead of the true report, and one stamped long
         // ago, are refused as forged, and their stamps never become the
         // last the true one is read against (house signing round 1's F7).
-        let ahead = format!(
+        let ahead_text = format!(
             "1500 2000 {} ad712c900326603c04326ac069041fe5",
             STAMP + 2_000
         );
-        let ahead = ear.take(&keyed, mac, ahead.as_bytes(), at, STAMP);
+        let ahead = ear.take(&keyed, mac, ahead_text.as_bytes(), read(2), STAMP);
         let long_ago = ear.take(
             &keyed,
             mac,
             b"1500 2000 1 ad712c900326603c04326ac069041fe5",
-            at,
+            read(2),
             STAMP,
         );
-        let taken = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
-        let again = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        let taken = ear.take(&keyed, mac, VECTOR.as_bytes(), read(2), STAMP);
+        let again = ear.take(&keyed, mac, VECTOR.as_bytes(), read(2), STAMP);
+        // A key read stands for KEY_READ_APART, then is read again.
+        fs::remove_file(&path).expect("the key removed");
+        let held = ear.take(&keyed, mac, ahead_text.as_bytes(), read(2), STAMP);
+        let gone = ear.take(&keyed, mac, ahead_text.as_bytes(), read(3), STAMP);
         let _ = fs::remove_dir_all(&folder);
+        assert_eq!(
+            junk,
+            Err(Unheard::Refused(Refused::Unsigned)),
+            "a misshapen report read the key first"
+        );
+        assert_eq!(
+            short_mac,
+            Err(Unheard::Refused(Refused::Forged)),
+            "a report with a misshapen mac read the key first"
+        );
+        assert_eq!(
+            held,
+            Err(Unheard::Refused(Refused::Forged)),
+            "a forgery within a second of the key's read read it again"
+        );
+        assert!(
+            matches!(&gone, Err(Unheard::Unkeyed(_))),
+            "a key removed wasn't read again past KEY_READ_APART: {gone:?}"
+        );
         assert!(
             matches!(&unread, Err(Unheard::Unkeyed(why)) if why.contains("house.key")),
             "a missing key wasn't said to be unread: {unread:?}"
