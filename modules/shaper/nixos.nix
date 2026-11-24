@@ -248,9 +248,11 @@ in
                   clock; while the file can't be read, the house holds
                   nothing and the journal says why. Unset, a report is
                   taken by its address alone. The path is read by the
-                  shaper, which runs as root, so make it root's alone:
-                  `head -c 32 /dev/urandom`, the same bytes on both
-                  machines. The shaper's service sees no /root, /home,
+                  shaper, which runs as root, so make it root's alone,
+                  as `(umask 077; head -c 32 /dev/urandom > FILE)`
+                  does, since a plain redirect leaves every account
+                  able to read it and sign a report, the same bytes on
+                  both machines. The shaper's service sees no /root, /home,
                   /tmp or /var/tmp, so keep it elsewhere, as under
                   /var/lib, spelled plainly and not through a link;
                   houses naming one address name one key. Never a Nix

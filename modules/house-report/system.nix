@@ -72,7 +72,10 @@ in
         A file holding the house's key, the same bytes as the shaped
         machine's house names in its `keyFile`, at least 16, which each
         report is signed with, so a device on the line can't forge one
-        from this machine's address. On Linux the service reads it
+        from this machine's address. Make it root's alone, as
+        `(umask 077; head -c 32 /dev/urandom > /etc/house-report/house.key)`
+        does, since a plain redirect leaves every account able to read
+        it, and any that can may sign a report. On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,
@@ -82,13 +85,15 @@ in
         again on a fresh copy. On a Mac the service runs as nobody, so
         root copies the key for nobody's account, where the service reads
         it each second, at each switch and within seconds of the key or
-        its folder changing; a copy refused or failed is taken away, so
-        the service sends nothing until the key is right, and
-        /var/log/house-report.log says why. There the build takes it only
-        under /etc, /private/etc or /var/root, spelled plainly, and the
-        copy only once every folder above it, every link resolved, is
-        root's and written by no other account. Never a link, a Nix path
-        or a value in the store.
+        its folder changing, a minute at most; a copy refused or failed
+        is taken away, so the service sends nothing until the key is
+        right, and /var/log/house-report.log says why, once until the
+        reason changes. There the build takes it only under /etc,
+        /private/etc or /var/root, spelled plainly, and the copy only
+        once every folder above it, every link resolved, is root's and
+        written or taken by no other account, and the key itself is
+        root's and read by no other. Never a link, a Nix path or a value
+        in the store.
       '';
     };
     keyPath = lib.mkOption {
