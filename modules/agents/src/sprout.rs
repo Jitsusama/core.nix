@@ -67,7 +67,7 @@ fn named<'a>(said: &'a Value, field: &str) -> Result<Option<&'a str>, String> {
 
 /// The answer to a sprout: `sprouted` with where the node started it,
 /// or an error in the node's words, with the code it refused by where it
-/// gave one (`refusal`, as needs_folder), or why it wasn't asked: `asker` says
+/// gave one (`refusal`, as `needs_folder`), or why it wasn't asked: `asker` says
 /// whether the shell asked, and `node` is the realm's, none where this
 /// machine runs no node.
 pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> Value {
