@@ -1374,7 +1374,7 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
       (
         let
           # The machine whole, for its own pkgs, and its account.
@@ -1596,33 +1596,42 @@ in
             !typeRefuses lend
             && lib.all (check: check.assertion) (linux (both // { inherit lend; })).assertions;
           vm = lib.head lending.vms;
-          # The words serde takes for the lender's enum Kind and the one it
-          # takes where none is written, read from its source: each
-          # variant lowercased, under the one rename it may carry, and the
-          # variant marked default. Any other layout throws rather than
-          # passing what the scan didn't read.
-          kinds =
+          # The words serde takes for enum Kind in LINES and the one it
+          # takes where none is written: each variant lowercased and the
+          # variant marked default. serde reads them so only while the enum
+          # derives Deserialize with nothing but one lowercase rename over
+          # it, and its body holds only plain variants. So, as the struct
+          # scan does, it reads every attribute and doc line above the enum,
+          # back to a blank line or another item's end, and throws on any
+          # other line there or in the body, rather than passing what it
+          # didn't read.
+          kindScan =
+            lines:
             let
               from = lib.lists.findFirstIndex (line: line == "enum Kind {") null lines;
               rest = lib.drop (from + 1) lines;
               to = lib.lists.findFirstIndex (line: line == "}") null rest;
               body = lib.filter (line: !lib.hasPrefix "    ///" line) (lib.take to rest);
+              marked = line: lib.hasPrefix "#[" line || lib.hasPrefix "///" line;
               before = lib.reverseList (lib.take from lines);
-              above = lib.take (lib.lists.findFirstIndex (
-                line: !lib.hasPrefix "#[" line
-              ) (lib.length before) before) before;
+              reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
+              above = lib.take reach before;
+              derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
+              deriving = line: builtins.match derive line != null;
               renaming = "#[serde(rename_all = \"lowercase\")]";
+              told = line: lib.hasPrefix "///" line || deriving line || line == renaming;
+              count = wanted: lib.length (lib.filter wanted above);
               variant = builtins.match "    ([A-Z][A-Za-z]*),";
-              marked = "    #[default]";
-              at = lib.lists.findFirstIndex (line: line == marked) null body;
+              defaulted = "    #[default]";
+              at = lib.lists.findFirstIndex (line: line == defaulted) null body;
               fail = why: throw "mycelium's enum Kind ${why}, which this check can't read";
             in
             if from == null || to == null then
               throw "mycelium's lender has no lines 'enum Kind {' to '}'"
-            else if lib.filter (line: lib.hasPrefix "#[serde" line) above != [ renaming ] then
-              fail "has other than one lowercase rename over it"
-            else if !lib.all (line: line == marked || variant line != null) body then
-              fail "has a line in its body other than a doc line, a variant or #[default]"
+            else if !lib.all told above || count deriving != 1 || count (l: l == renaming) != 1 then
+              fail "has over it other than doc lines, a Deserialize derive and a lowercase rename"
+            else if !lib.all (line: line == defaulted || variant line != null) body then
+              fail "has a line in its body other than a doc line, a plain variant or #[default]"
             else if at == null || variant (lib.elemAt body (at + 1)) == null then
               fail "has no variant marked default"
             else
@@ -1632,6 +1641,45 @@ in
                 );
                 unwritten = lib.toLower (lib.head (variant (lib.elemAt body (at + 1))));
               };
+          kinds = kindScan lines;
+          # An enum laid out as the lender's Kind is, which the scan reads,
+          # and with each change that has serde read it otherwise, or that
+          # the scan can't read, in place of its line AT.
+          plainKind = [
+            "/// What a budget's upstream is."
+            "#[derive(Debug, Default, Deserialize)]"
+            "#[serde(rename_all = \"lowercase\")]"
+            "enum Kind {"
+            "    /// A model relay."
+            "    #[default]"
+            "    Models,"
+            "    Forge,"
+            "}"
+          ];
+          plainKinds = {
+            words = [
+              "models"
+              "forge"
+            ];
+            unwritten = "models";
+          };
+          changedKind = at: lines: lib.take at plainKind ++ lines ++ lib.drop (at + 1) plainKind;
+          unreadKinds = [
+            (changedKind 1 [ "#[derive(Debug, Default, DeserializeFromStr)]" ])
+            (changedKind 2 [ "#[serde(rename_all = \"UPPERCASE\")]" ])
+            (changedKind 2 [ ])
+            (changedKind 2 [
+              "#[serde(rename_all = \"lowercase\")]"
+              "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
+            ])
+            (changedKind 3 [ "pub enum Kind {" ])
+            (changedKind 5 [ ])
+            (changedKind 7 [ "    Forge(String)," ])
+            (changedKind 7 [
+              "    #[serde(rename = \"git\")]"
+              "    Forge,"
+            ])
+          ];
           # lend.nix's budget kind option, as the module takes it.
           kindOption =
             let
@@ -1697,8 +1745,10 @@ in
         && sorted kindOption.type.functor.payload.values == sorted kinds.words
         && kindOption.default == kinds.unwritten
         && writes unsaid filled
+        && kindScan plainKind == plainKinds
+        && lib.all (lines: throws (kindScan lines)) unreadKinds
         && typeRefuses (withModels {
-          kind = "relay";
+          kind = "Forge";
         })
         && takes (
           lending
