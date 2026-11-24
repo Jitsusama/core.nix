@@ -441,6 +441,39 @@ mod tests {
     }
 
     #[test]
+    fn the_end_of_a_start_let_go_keeps_nothing() {
+        let mut starts = Starts::default();
+        for one in 0..=KEPT_AT_MOST {
+            starts.begun(&format!("a-{one}"), NOW);
+        }
+        // The oldest was let go as the last was asked, and its end comes after.
+        let refused = json!({"error": {"code": "refused", "message": "no folder there"}});
+        starts.ended("a-0", &refused);
+        assert_eq!(starts.0.len(), KEPT_AT_MOST, "an end let go was kept again");
+        assert_eq!(
+            starts.records(),
+            Vec::<Value>::new(),
+            "an end let go was served"
+        );
+    }
+
+    #[test]
+    fn a_start_begun_twice_is_kept_once_as_asked_last() {
+        let mut starts = Starts::default();
+        starts.begun("a-1", NOW);
+        let begun = json!({"sprouted": {"machine": "heron", "held": "h1"}});
+        starts.ended("a-1", &begun);
+        starts.begun("a-1", NOW + 1000);
+        assert_eq!(starts.0.len(), 1, "a token begun twice is kept twice");
+        assert_eq!(starts.0[0].at, NOW + 1000, "the first ask was kept");
+        assert_eq!(
+            starts.records(),
+            Vec::<Value>::new(),
+            "the first ask's end was served for the second"
+        );
+    }
+
+    #[test]
     fn a_refusal_keeps_its_code_and_words() {
         let mut starts = Starts::default();
         starts.begun("a-1", NOW);
