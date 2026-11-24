@@ -2425,9 +2425,10 @@ ShellRoot {
         Sessions.wanting = [acted];
         agents.rows.ACTED = { key: "agent:ACTED", name: "Session E", side: "",
             doing: "listening" };
+        // Written in ACTED's own waiting file, as mesh_wait writes it.
         const form = { v: 2, title: "Sign The Form", quest: "QEST-E", ready: false,
-            raisedAt: Date.now() };
-        WaitingOnYou.sessionOf = { "Sign The Form": acted };
+            raisedAt: Date.now(), from: "acted" };
+        WaitingOnYou.sessionOf = { ACTED: acted };
         WaitingOnYou.now = [form];
         now.lookTexts = { "e.json": JSON.stringify({ v: 1, id: "e", kind: "page",
             at: new Date(Date.now() - 7 * 3600000).toISOString(),
@@ -2468,7 +2469,7 @@ ShellRoot {
             { wants: { kind: "question", said: "Which?" } }) });
         Sessions.running = [asked];
         Sessions.wanting = [asked];
-        WaitingOnYou.sessionOf = { "Sign The Form": asked };
+        WaitingOnYou.sessionOf = { ACTED: asked };
         // Its want, asked of Agents Asking, stands as a row of its own.
         const talksAll = () => [talksOf("on:waiting:item:Sign The Form"), talksOf("on:look:e"),
             talksOf("on:waiting:want:ACTED")];
@@ -2477,7 +2478,7 @@ ShellRoot {
             acted.presence, { wants: { kind: "approval", said: "May I?" } }) });
         Sessions.running = [approved];
         Sessions.wanting = [approved];
-        WaitingOnYou.sessionOf = { "Sign The Form": approved };
+        WaitingOnYou.sessionOf = { ACTED: approved };
         const talksYes = talksAll();
         // Parked, it runs no ask: woken, it reads its inbox as it starts,
         // so Talk reaches it, waking it as Agents' own row does.
@@ -2496,7 +2497,7 @@ ShellRoot {
             acted.presence, { wants: { kind: "blocked", said: "Stuck" } }) });
         Sessions.running = [blocked];
         Sessions.wanting = [blocked];
-        WaitingOnYou.sessionOf = { "Sign The Form": blocked };
+        WaitingOnYou.sessionOf = { ACTED: blocked };
         const withAgents = talksAll();
         const sources = theLauncher.sources;
         theLauncher.sources = sources.filter(one => one !== agents);
@@ -2678,7 +2679,7 @@ ShellRoot {
             JSON.stringify(endedActs));
         Sessions.running = [acted];
         Sessions.wanting = [acted];
-        WaitingOnYou.sessionOf = { "Sign The Form": acted };
+        WaitingOnYou.sessionOf = { ACTED: acted };
         const heardBefore = root.forYouHeardTimes;
         agents.rows.ACTED.doing = "working";
         agents.remade += 1;
