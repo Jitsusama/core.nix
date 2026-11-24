@@ -495,6 +495,20 @@ fn a_pass_that_stalled_waited_or_failed_says_so_plainly() {
          the guard takes once Nix's database is free and its last delete has rested; nothing \
          is needed from you yet."
     );
+    // A filling disk raises no notice of its own, but what stands is
+    // kept in the status for whoever reads it.
+    let unfinished = status(
+        &[("/", Band::Filling, 60)],
+        Some(pass(1.0, Band::Filling, "unfinished", 0)),
+    );
+    assert_eq!(
+        standing(&unfinished)
+            .map(|notice| notice.body)
+            .unwrap_or_default(),
+        "Nothing cleared, and only 60.0 GiB is free. The guard ran as long as one pass may \
+         and takes up the rest at its next look; nothing is needed from you yet.",
+        "a pass its length cut short, told as a word for a failure"
+    );
     let failed = status(
         &[("/", Band::NearlyFull, 60)],
         Some(pass(

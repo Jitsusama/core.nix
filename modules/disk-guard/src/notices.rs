@@ -259,6 +259,10 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
             "{cleared}. Nix's store holds more to delete, which the guard takes once Nix's \
              database is free and its last delete has rested; nothing is needed from you yet."
         ),
+        "unfinished" => format!(
+            "{cleared}. The guard ran as long as one pass may and takes up the rest at its \
+             next look; nothing is needed from you yet."
+        ),
         failed => format!("{cleared}. The guard {failed}. disk-guard journal says more."),
     };
     // Left short, whoever is filling it is worth knowing.

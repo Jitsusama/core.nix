@@ -970,6 +970,82 @@ fn a_restarted_guard_beats_on_the_last_status_before_its_first_step() {
     assert_eq!(status["says"], "left by the last guard");
 }
 
+/// A guard only starting has no pass at work, so its first beats never
+/// carry on telling the pass the guard before it left mid-way.
+#[test]
+fn a_restarted_guard_beats_without_the_pass_the_last_one_left() {
+    let home = Home::new();
+    fs::write(
+        home.root.join("status.json"),
+        r#"{ "version": 2, "heartbeat": 1, "says": "left by the last guard",
+              "passing": { "since": 1, "path": "/", "band": "filling", "why": "reach" } }"#,
+    )
+    .unwrap();
+    let guard = home.guard(home.config("0%", "0%"));
+    guard.beating()();
+    let status = home.status();
+    assert_eq!(
+        status["says"], "left by the last guard",
+        "the rest of what the last guard said is kept"
+    );
+    assert!(
+        status["passing"].is_null(),
+        "beat on as at work: {}",
+        status["passing"]
+    );
+}
+
+/// A pass says it's at work in the status for as long as it judges, so
+/// the desktop and the notice it withholds read it, and says so no longer
+/// once it's done.
+#[test]
+fn a_pass_is_told_at_work_while_it_runs_and_not_after() {
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let seen = home.root.join("seen.json");
+    let mut config = home.config("100%", "100%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!(
+                    "cp {} {}",
+                    home.root.join("status.json").display(),
+                    seen.display()
+                ),
+            ],
+            path: home.root.clone(),
+            every: None,
+            from: Some(Band::Filling),
+            watch: Vec::new(),
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let mut guard = home.guard(config);
+    guard.step(&tick_at(3600.0), &CALM).unwrap();
+    let during: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&seen).expect("the producer never ran")).unwrap();
+    assert_eq!(
+        during["passing"]["why"], "reach",
+        "not told at work mid-pass: {}",
+        during["passing"]
+    );
+    assert!(
+        home.status()["passing"].is_null(),
+        "still told at work once the pass ended: {}",
+        home.status()["passing"]
+    );
+    guard.beating()();
+    assert!(
+        home.status()["passing"].is_null(),
+        "a beat told the ended pass again: {}",
+        home.status()["passing"]
+    );
+}
+
 /// A restarted guard's first measure of home takes minutes, in which its
 /// status named no holders: on 13 November a switch left the user guard's
 /// list empty while the system guard's came back. It says what the ledger

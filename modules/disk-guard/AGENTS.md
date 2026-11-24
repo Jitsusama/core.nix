@@ -42,7 +42,9 @@ or launchd, and [`home.nix`][2] the account's.
   and begins only while, over the last minute, all tasks stalled at once
   no more than 5% on memory and 10% on the disk (`roomy`): on 23 November
   a filling store's listings ran 10 to 15 minutes at 17 to 36 on the
-  disk. Nearly full, it can't wait for room. It comes
+  disk. A filling store's waits six hours for room at most, then begins
+  at idle priority anyway, so a machine that never quiets still lists it
+  before it's nearly full. Nearly full, it can't wait for room. It comes
   at once, too, when an owner ends: the guard looks each minute, and a
   tree newly spent, a new boot, a guard with new
   rules or a path a producer watches saying something new since it last
@@ -210,7 +212,11 @@ or launchd, and [`home.nix`][2] the account's.
   long as what it was handed. Upkeep ends `unfinished` after 20 minutes,
   and a pass reaching for room in a band no worse than filling after two
   hours, the rest due at the next step, which surveys again and doesn't
-  rest. On 12 November a laptop's upkeep held a day and a half of
+  rest. The next reach on that disk is offered nothing the cut one
+  judged, so each takes up where the last stopped, and a reach that gets
+  through its offers starts afresh. One cut short teaches nothing of how
+  long a pass takes, and its notice says it ran as long as a pass may.
+  On 12 November a laptop's upkeep held a day and a half of
   entries, and on 23 November an account's reach judged 88,000 offers for
   15 hours, never offered what came after its survey. A pass for a nearly
   or critically full disk goes on to its target or its last offer, since
@@ -409,9 +415,12 @@ or launchd, and [`home.nix`][2] the account's.
   either way by tens of gigabytes an hour. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. A pass is
-  `passing` from its start, with its disk, band and why, since one
-  reaching for room runs up to two hours, and on a fuller disk to its
-  last offer. While one is at work on a disk, that
+  `passing` from its start, the survey before it included, with its
+  disk, band and why, since one reaching for room runs up to two hours,
+  and on a fuller disk to its last offer; it's cleared in what the beats
+  write too, and a restarted guard's first beats drop the last one's.
+  A band's forecast counts down beat by beat through a long pass. While
+  one is at work on a disk, that
   disk isn't `exhausted`, and the pass before it gives no notice. While a disk
   is below healthy, or holds more than the config's `budget` (a size or a
   share used, which takes nothing more), `holders` says what holds the

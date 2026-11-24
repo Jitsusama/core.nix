@@ -971,6 +971,35 @@ fn a_filling_store_is_listed_only_once_memory_and_the_disk_have_room() {
 }
 
 #[test]
+fn a_filling_store_waits_for_room_no_longer_than_six_hours() {
+    // A machine whose memory never quiets would otherwise list a filling
+    // store only once it's nearly full, and then at full priority.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later(&mut guard, 0.0, &MEMORY_STRAINED);
+    step_later(&mut guard, 5.0 * 3600.0, &MEMORY_STRAINED);
+    assert_eq!(
+        lists(&store),
+        0,
+        "listed while memory stalled, before six hours: {:?}",
+        store.log()
+    );
+    step_later_until(
+        &store,
+        &mut guard,
+        6.0 * 3600.0 + 60.0,
+        &MEMORY_STRAINED,
+        |store, _| lists(store) == 1,
+    );
+    let listed = store
+        .log()
+        .into_iter()
+        .find(|line| line.starts_with("list "));
+    assert_eq!(listed.as_deref(), Some("list 5"), "at idle priority");
+}
+
+#[test]
 fn a_nearly_full_store_is_listed_however_memory_stalls() {
     // Near full, what the listing finds is what keeps the disk from
     // filling, so it can't wait for room.
