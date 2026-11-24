@@ -297,12 +297,8 @@ fn entries(listing: &Value, id: &str) -> Result<Vec<Entry>, Failure> {
         .collect()
 }
 
-/// The entries of the tree `id`, from its object as git stores it, each
-/// `<mode> <name>\0<id's bytes>`, checked as the host's are. A tree's
-/// mode says what each entry is, as git's own listing reads it.
 /// The bytes of a raw object id as git writes it, two hex digits each.
 fn hex_of(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
     bytes
         .iter()
         .fold(String::with_capacity(bytes.len() * 2), |mut out, b| {
@@ -311,6 +307,22 @@ fn hex_of(bytes: &[u8]) -> String {
         })
 }
 
+/// What an entry of mode `mode` is, read as git reads it: as an octal
+/// number whose type bits say, so a zero-padded `040000` an old tool wrote
+/// is a tree still, not a file.
+fn kind_of(mode: &str) -> Option<&'static str> {
+    const TYPE: u32 = 0o170_000;
+    let mode = u32::from_str_radix(mode, 8).ok()?;
+    Some(match mode & TYPE {
+        0o040_000 => "tree",
+        0o160_000 => "commit",
+        _ => "blob",
+    })
+}
+
+/// The entries of the tree `id`, from its object as git stores it, each
+/// `<mode> <name>\0<id's bytes>`, checked as the host's are. A tree's
+/// mode says what each entry is, as git's own listing reads it.
 fn held_entries(object: &[u8], id: &str) -> Result<Vec<Entry>, Failure> {
     let bad = || {
         Failure::new(format!(
@@ -328,11 +340,7 @@ fn held_entries(object: &[u8], id: &str) -> Result<Vec<Entry>, Failure> {
             return Err(bad());
         }
         let mode = String::from_utf8_lossy(&rest[..space]).into_owned();
-        let kind = match mode.as_str() {
-            "40000" => "tree",
-            "160000" => "commit",
-            _ => "blob",
-        };
+        let kind = kind_of(&mode).ok_or_else(bad)?;
         let entry = Entry {
             name: String::from_utf8_lossy(&rest[space + 1..end]).into_owned(),
             kind: kind.to_owned(),
@@ -569,10 +577,20 @@ impl<'a> Host<'a> {
         )?;
         let objects = held_objects(&said, ids)?;
         let owned: Vec<Vec<u8>> = objects.iter().map(|o| o.to_vec()).collect();
-        if self.ids(&owned, "tree", false)? != ids {
-            return Err(Failure::new(
-                "root's copy holds a tree whose contents aren't the ones its id names",
-            ));
+        let hashed = self.ids(&owned, "tree", false)?;
+        if hashed.len() != ids.len() {
+            return Err(Failure::new("git didn't hash every tree of root's copy"));
+        }
+        if let Some(id) = ids
+            .iter()
+            .zip(&hashed)
+            .find(|(id, h)| id != h)
+            .map(|(id, _)| id)
+        {
+            return Err(Failure::new(format!(
+                "root's copy holds tree {} with contents its id doesn't name",
+                git::short(id)
+            )));
         }
         objects
             .iter()
@@ -755,7 +773,15 @@ mod tests {
             }
             object
         };
-        let object = held(&[("100644", "README.md", &blob), ("40000", "src", &tree)]);
+        // Bytes below 0x10 too, which are written with their leading zero.
+        let module = "0a".repeat(20);
+        let padded = "00".repeat(20);
+        let object = held(&[
+            ("100644", "README.md", &blob),
+            ("40000", "src", &tree),
+            ("160000", "vendor", &module),
+            ("040000", "zz", &padded),
+        ]);
         let entries = held_entries(&object, &"11".repeat(20)).unwrap();
         let read: Vec<_> = entries
             .iter()
@@ -765,7 +791,9 @@ mod tests {
             read,
             [
                 ("README.md", "blob", blob.as_str()),
-                ("src", "tree", tree.as_str())
+                ("src", "tree", tree.as_str()),
+                ("vendor", "commit", module.as_str()),
+                ("zz", "tree", padded.as_str()),
             ],
             "a held tree's entries were misread, so what it holds goes unchecked"
         );
@@ -774,6 +802,7 @@ mod tests {
             ("100644", "."),
             ("", "file"),
             ("1x0", "file"),
+            ("100694", "file"),
         ] {
             assert!(
                 held_entries(&held(&[(mode, name, &blob)]), &tree).is_err(),
@@ -789,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_trees_asked_for_are_taken_from_root_s_copy() {
+    fn git_s_batch_gives_each_tree_asked_for_in_turn() {
         let one = "11".repeat(20);
         let two = "22".repeat(20);
         let ids = [one.clone(), two.clone()];

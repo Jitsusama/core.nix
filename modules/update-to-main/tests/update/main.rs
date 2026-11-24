@@ -2430,6 +2430,63 @@ fn a_folder_the_checkout_holds_without_its_files_is_read_whole() {
     assert!(!world.checkout_has(&head), "the checkout was fetched");
 }
 
+/// A folder the checkout holds under its id but with other contents is
+/// never built from: its contents are hashed before they're gone down,
+/// so the read stops and nothing is built from what that tree claims.
+#[test]
+fn a_folder_the_checkout_holds_with_other_contents_is_never_built() {
+    let world = with_api();
+    let head = world.hosted_commit("one", None);
+    world.answer();
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let real = git(&world.origin, &["rev-parse", &format!("{head}:machine")]);
+    let real = real.trim();
+    let file = git(
+        &world.origin,
+        &["rev-parse", &format!("{head}:machine/file")],
+    );
+    let mut mktree = Command::new(program("git"))
+        .arg("-C")
+        .arg(&checkout)
+        .args(["mktree", "--missing"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::io::Write::write_all(
+        mktree.stdin.as_mut().unwrap(),
+        format!("100644 blob {}\tother\n", file.trim()).as_bytes(),
+    )
+    .unwrap();
+    let other = String::from_utf8(mktree.wait_with_output().unwrap().stdout).unwrap();
+    let loose = |id: &str| {
+        let path = git(
+            &checkout,
+            &[
+                "rev-parse",
+                "--git-path",
+                &format!("objects/{}/{}", &id[..2], &id[2..]),
+            ],
+        );
+        checkout.join(path.trim())
+    };
+    let held = loose(real);
+    fs::create_dir_all(held.parent().unwrap()).unwrap();
+    fs::copy(loose(other.trim()), &held).unwrap();
+    assert!(
+        git(&checkout, &["cat-file", "-p", real]).contains("other"),
+        "the checkout doesn't hold machine's id with other contents, so the test proves nothing"
+    );
+    fs::remove_file(world.root.join("api/git/trees").join(real)).unwrap();
+    world.system(&head);
+    assert_ne!(world.update().1, done(&head));
+    assert_eq!(
+        world.builds(),
+        0,
+        "a folder was built from a tree its id doesn't name"
+    );
+}
+
 /// A folder read from the host where it was needs no word on how main
 /// moved, since the machine stays where it is: on 12 November the host
 /// refused that ask with 429 and 422, and each time main was fetched for
