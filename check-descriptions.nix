@@ -2441,7 +2441,7 @@
     and the lender joins a relative upstream onto its runtime folder; the budget kinds the lend
     takes, and the one it writes where none is said, are the lowercased variants of the lender's
     Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
-    rename over it and plain variants, by a scan shown to refuse eight other layouts; a lend
+    rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
     leaving a machine's also and a budget's kind unsaid is written with them filled in as the
     lender takes them, beside a forge budget a machine names; a budget with no key is written with
     none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is

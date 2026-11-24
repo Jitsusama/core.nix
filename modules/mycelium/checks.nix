@@ -1616,6 +1616,9 @@ in
               before = lib.reverseList (lib.take from lines);
               reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
               above = lib.take reach before;
+              bounded = reach < lib.length before;
+              bound = lib.elemAt before reach;
+              across = reach + 1 < lib.length before && marked (lib.elemAt before (reach + 1));
               derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
               deriving = line: builtins.match derive line != null;
               renaming = "#[serde(rename_all = \"lowercase\")]";
@@ -1628,6 +1631,10 @@ in
             in
             if from == null || to == null then
               throw "mycelium's lender has no lines 'enum Kind {' to '}'"
+            else if bounded && bound != "" && bound != "}" then
+              fail "has a line over its attributes that is neither blank nor an item's end"
+            else if bounded && bound == "" && across then
+              fail "has attributes across the blank line over it"
             else if !lib.all told above || count deriving != 1 || count (l: l == renaming) != 1 then
               fail "has over it other than doc lines, a Deserialize derive and a lowercase rename"
             else if !lib.all (line: line == defaulted || variant line != null) body then
@@ -1665,6 +1672,16 @@ in
           };
           changedKind = at: lines: lib.take at plainKind ++ lines ++ lib.drop (at + 1) plainKind;
           unreadKinds = [
+            (changedKind 0 [
+              "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
+              ""
+              "/// What a budget's upstream is."
+            ])
+            (changedKind 2 [
+              "#[serde("
+              "    rename_all = \"lowercase\","
+              ")]"
+            ])
             (changedKind 1 [ "#[derive(Debug, Default, DeserializeFromStr)]" ])
             (changedKind 2 [ "#[serde(rename_all = \"UPPERCASE\")]" ])
             (changedKind 2 [ ])
