@@ -3067,8 +3067,15 @@ Singleton {
         // (listedAtAsk), leaves the ask as it was.
         const named = String(window.opened);
         const own = viewerComing(named) && !(listedAtAsk[named] ?? []).includes(id);
-        if (own)
+        // Nor is it still coming, so a press once that window closes asks
+        // afresh rather than saying opening; refusedOwn holds off a second
+        // ask while it's listed.
+        if (own) {
             refusedAsks = Object.assign({}, refusedAsks, { [named]: id });
+            const still = Object.assign({}, attaching);
+            delete still[named];
+            attaching = still;
+        }
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
         // The press waiting on it is told, as one no kitty took is
@@ -3795,6 +3802,7 @@ Singleton {
     // or a restart's, opens none.
     function wake(session) {
         if (wokenByViewing(session)) {
+            readKittyPid();
             const id = String(session.presence?.session ?? "");
             const into = sleptPlace(id);
             if (keptPlaces[id] !== undefined) {
@@ -3802,7 +3810,12 @@ Singleton {
                 delete kept[id];
                 keepPlaces(kept);
             }
-            view(session, into);
+            // Joel's press, said as Go To's is: refused (disowned), held
+            // back while its viewer comes (heldBack), or told if no kitty
+            // takes it (untaken).
+            const named = viewerOf(session.presence);
+            if (!disowned(named, session) && !heldBack(session.address, named, session))
+                view(session, into, true);
             return;
         }
         const id = String(session?.presence?.session ?? "");
