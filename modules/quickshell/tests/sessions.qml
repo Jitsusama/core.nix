@@ -885,10 +885,14 @@ ShellRoot {
         // is told, so the node's record of what it holds names it as niri
         // lists it; a hosted one's viewer, a sleeper's, a waiting row's and
         // one whose viewer niri no longer lists too, by its session's id.
+        // One no kitty took is asked for again, by the id it was first.
         const asks = Niri.spawns.map(command => asked(command)).filter(one => one !== null);
-        const named = asks.map(one => [one.classed]);
+        const named = asks.filter((one, at) => one.classed !== "pi-hosted.s-untaken"
+            || asks.findIndex(first => first.classed === one.classed) === at)
+            .map(one => [one.classed]);
         const socket = `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`;
-        const viewed = "hosted|sleeper|dreamer|stale|row-waiting|row-listed|row-stale";
+        const viewed = "hosted|sleeper|dreamer|stale|row-waiting|row-listed|row-stale|untaken"
+            + "|pressed|forged|row-led";
         const own = new RegExp(`^pi-((session|spawned)\\.\\d+|hosted\\.s-(${viewed}))$`);
         expect("each window is asked of the sessions' socket with an app id of its own",
             asks.every(one => one.socket === socket && own.test(one.classed))
