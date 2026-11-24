@@ -63,10 +63,13 @@ let
   # nobody is an account other daemons may share, so any of them could
   # read the copy (round 4's F26). A switch, which sets
   # houseReportAtSwitch, says a refusal on its own terminal each time and
-  # leaves `said` alone; only the watch job, whose words go to the log,
-  # says it once until it changes, so a refusal first met at a switch
-  # still reaches the log within a minute (house keys round 1's F1, F6,
-  # F13 and F17).
+  # forgets `said`; only the watch job, whose words go to the log, says it
+  # once until it changes, so a refusal met at a switch reaches the log
+  # within a minute, even one the log was cleared of since (house keys
+  # round 1's F1, F6, F13 and F17; round 2's F9). `said` sits beside the
+  # copy's folder, not in it, so a folder that can't be made is said once
+  # too (round 2's F2), and the one once kept in it goes, so a rollback
+  # reads no stale refusal there (made anew round 1's F3 and F8).
   #
   # Kept as text here rather than a script of its own, which a sandboxed
   # check could walk over a tree of folders, until that follows (round
@@ -108,12 +111,14 @@ let
       || ! /bin/mv -f "$houseReportNew" "$houseReportCopy"; then
       houseReportWhy="couldn't be copied for nobody"
     fi
-    houseReportSaid=${copied}/said
+    houseReportSaid=${copied}.said
+    /bin/rm -f ${copied}/said 2>/dev/null || :
     if [ -n "$houseReportWhy" ]; then
       /bin/rm -f "$houseReportCopy" "$houseReportCopy".* 2>/dev/null || :
       houseReportWhy="house-report: $houseReportKey $houseReportWhy, so the daemon has no key"
       if [ -n "''${houseReportAtSwitch:-}" ]; then
         echo "$houseReportWhy" >&2
+        /bin/rm -f "$houseReportSaid" 2>/dev/null || :
       elif [ "$(/bin/cat "$houseReportSaid" 2>/dev/null)" != "$houseReportWhy" ]; then
         echo "$houseReportWhy" >&2
         echo "$houseReportWhy" 2>/dev/null >"$houseReportSaid" || :

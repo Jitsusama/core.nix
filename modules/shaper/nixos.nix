@@ -250,11 +250,18 @@ in
                   taken by its address alone. The path is read by the
                   shaper, which runs as root, so make it root's alone,
                   as a root shell does with `install -m 0400 /dev/null
-                  FILE` and then `head -c 32 /dev/urandom > FILE`, the
-                  same bytes on both machines: any account that can
-                  read it may sign a report, and a redirect alone keeps
-                  an existing file's mode, so `chmod 0400` a key
-                  already in place. The shaper's service sees no /root, /home,
+                  FILE`, then writes the reporter's key into it, or
+                  makes the key with `head -c 32 /dev/urandom > FILE`
+                  and writes the same bytes into the reporter's, through
+                  a pipe rather than a file another account could read:
+                  any account that can read it may sign a report. A key
+                  either machine ever let another account read is
+                  replaced on both by new bytes, made once that way,
+                  rather than given a new mode or copied back in, since
+                  a copy taken of it stays good. Each machine's file is
+                  made anew by that `install` before the bytes go in,
+                  since a write into a file already there keeps its
+                  mode. The shaper's service sees no /root, /home,
                   /tmp or /var/tmp, so keep it elsewhere, as under
                   /var/lib, spelled plainly and not through a link;
                   houses naming one address name one key. Never a Nix
