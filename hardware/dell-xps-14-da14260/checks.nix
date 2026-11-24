@@ -195,10 +195,7 @@ in
   # it.
   the-camera-gives-limited-range =
     let
-      xps = bareNixos [
-        self.nixosModules.dell-xps-14-da14260
-        { nixpkgs.config.allowUnfree = true; }
-      ];
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
       halves = builtins.match ''.* -i "([^"]*)" -o "([^"]*)".*'' xps.config.systemd.services.camera.script;
       input = builtins.elemAt halves 0;
       output = builtins.elemAt halves 1;
@@ -247,10 +244,9 @@ in
   # every colour out.
   chromium-leaves-the-panel-to-niri =
     let
-      xps = bareNixos [
-        self.nixosModules.dell-xps-14-da14260
-        { nixpkgs.config.allowUnfree = true; }
-      ];
+      # Reading a package's postFixup forces none of its derivation, so the
+      # unfree packages read here needn't be allowed.
+      xps = bareNixos [ self.nixosModules.dell-xps-14-da14260 ];
       told = package: lib.hasInfix "force-color-profile" (package.postFixup or "");
       mapped = lib.elem "srgb-gamut" ((account graphical).jitsusama.niri.outputs."eDP-1" or [ ]);
     in

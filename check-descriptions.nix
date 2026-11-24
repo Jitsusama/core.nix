@@ -147,6 +147,14 @@
   a-mac-sudo-takes-touch-id = ''
     every Mac's sudo lets Touch ID answer it, in the file macOS updates keep
   '';
+  a-machines-unfree-names-join-cores-on-darwin = ''
+    an unfree package a Mac names for itself is allowed beside those core names, and the Mac
+    workstation, with every module core gives a Mac, still refuses one nobody names
+  '';
+  a-machines-unfree-names-join-cores-on-nixos = ''
+    an unfree package a NixOS machine names for itself is allowed beside those core names, and
+    the NixOS workstation, with every module its role brings, still refuses one nobody names
+  '';
   a-macs-sessions-come-back-in-each-realm = ''
     a Mac whose account joins realms runs sessions-come-back as its login starts and each
     minute, on mycelium and every realm it joins, and a Mac in no realm runs none

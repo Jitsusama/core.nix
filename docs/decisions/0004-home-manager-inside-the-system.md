@@ -27,6 +27,8 @@ standalone home-manager configurations.
 
 - One `nixos-rebuild switch` or `darwin-rebuild switch` applies the machine
   and the account together, and rolls back together.
-- home-manager uses the system's nixpkgs and its settings, such as allowing
-  unfree packages, so they are set once, by the `nixpkgs` module.
+- home-manager uses the system's nixpkgs and its settings, such as which
+  unfree packages are allowed, so they are set once, at the system level. A
+  home module can't allow an unfree package itself: the `nixpkgs` module
+  names those home modules install.
 - Applying the account needs `sudo`, as applying the system already did.
