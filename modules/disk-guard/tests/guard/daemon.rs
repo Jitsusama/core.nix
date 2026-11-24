@@ -1484,7 +1484,7 @@ fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
     assert_eq!(
         status.says,
         "The disk has 490 B free. At this rate it reaches the 100 B Nix keeps free in 1 m, \
-         when Nix starts collecting its own garbage.",
+         where Nix collects its own garbage as it builds.",
         "above the floor, when it reaches it"
     );
     status.measured(&space(300), &bands, 1900.0, None);

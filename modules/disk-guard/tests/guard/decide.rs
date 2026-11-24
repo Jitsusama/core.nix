@@ -1,6 +1,9 @@
 use disk_guard::band::{Band, Thresholds};
 use disk_guard::clock::{Awake, Tick};
-use disk_guard::decide::{Decision, Fill, Situation, calm, decide, overloaded, roomy, spare};
+use disk_guard::decide::{
+    Ahead, COLLECTING_UNDER, Decision, Fill, Forecast, Situation, calm, decide, overloaded, roomy,
+    spare,
+};
 use disk_guard::moments::{Power, Pressure, Stall};
 use disk_guard::units::{float, whole};
 
@@ -138,23 +141,73 @@ fn a_disk_above_nixs_floor_counts_to_the_floor_not_to_full() {
         (until - expected).abs() < expected * 0.05,
         "{until} against {expected}"
     );
-    let at = fill.ahead(free, Some(free));
     assert_eq!(
-        (at.floor_in, at.full_in),
-        (None, fill.steady_until(free, 0)),
-        "at the floor, it's reached, so when it fills"
+        fill.ahead(free, Some(free)),
+        Ahead::default(),
+        "at the floor, Nix collects, so neither"
     );
-    let under = fill.ahead(free, Some(free + GIB));
-    assert_eq!(under.floor_in, None, "under the floor, it's reached");
+    assert_eq!(
+        fill.ahead(free, Some(free + COLLECTING_UNDER)),
+        Ahead::default(),
+        "as far under the floor as a collection dips, neither"
+    );
+    let under = fill.ahead(free, Some(free + COLLECTING_UNDER + GIB));
+    assert_eq!(
+        under.floor_in, None,
+        "further under the floor, it's reached"
+    );
     assert_eq!(
         under.full_in,
         fill.steady_until(free, 0),
-        "under the floor, when it fills"
+        "further under the floor, Nix hasn't kept up, so when it fills"
     );
     assert_eq!(
         fill.ahead(free, None).full_in,
         fill.steady_until(free, 0),
         "with no floor, when it fills"
+    );
+}
+
+/// A status carries no time to full for the store's disk above Nix's
+/// floor, which is what keeps the desktop's full-in warning quiet, while
+/// another disk keeps its own; at a trend of nothing, nothing is told.
+#[test]
+fn only_the_stores_disk_forecasts_to_nixs_floor() {
+    let (fill, free) = filling(500 * GIB, 10e6, 1800);
+    let store = 7;
+    let floor = Some((store, 50 * GIB));
+    let on_store = fill.forecast(free, store, floor, 1000.0);
+    assert_eq!(
+        on_store.full_at, None,
+        "the store's disk above the floor isn't told it fills"
+    );
+    assert_eq!(on_store.nix_floor, Some(50 * GIB));
+    assert_eq!(
+        on_store.floor_at,
+        fill.steady_until(free, 50 * GIB)
+            .map(|seconds| 1000.0 + seconds)
+    );
+    let elsewhere = fill.forecast(free, 8, floor, 1000.0);
+    assert_eq!(
+        elsewhere,
+        Forecast {
+            full_at: fill.steady_until(free, 0).map(|seconds| 1000.0 + seconds),
+            nix_floor: None,
+            floor_at: None,
+        },
+        "another disk is told when it fills"
+    );
+    assert!(
+        elsewhere.full_at.is_some(),
+        "a filling disk has a time to full"
+    );
+    assert_eq!(
+        Fill::default().forecast(free, store, floor, 1000.0),
+        Forecast {
+            nix_floor: Some(50 * GIB),
+            ..Forecast::default()
+        },
+        "with no trend, no time"
     );
 }
 

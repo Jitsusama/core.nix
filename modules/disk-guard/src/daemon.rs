@@ -190,6 +190,8 @@ const GARBAGE: &str = "garbage";
 /// How often Nix's own `min-free` is read again, since a person changes
 /// their `nix.conf` seldom and asking costs a process.
 const MIN_FREE_EVERY: f64 = 3600.0;
+/// How soon a `min-free` that couldn't be read is asked again.
+const MIN_FREE_AGAIN: f64 = 300.0;
 /// What linking the store's identical files is journaled and run as.
 const DEDUPE: &str = "dedupe";
 /// How long after a failed run linking the store's files the next waits.
@@ -2239,7 +2241,10 @@ impl Guard {
             .collect()
     }
 
-    /// Reads Nix's own `min-free` once an hour.
+    /// Reads Nix's own `min-free` once an hour. A read that fails keeps
+    /// the last one that didn't and is asked again in five minutes, since
+    /// the floor decides what a person is told: one slow `nix config show`
+    /// on a loaded Mac would otherwise tell its disk fills for an hour.
     fn read_min_free(&mut self, now: f64) {
         if self
             .min_free
@@ -2247,7 +2252,13 @@ impl Guard {
         {
             return;
         }
-        self.min_free = Some((now, garbage::min_free(&self.config.nix.bin)));
+        self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
+            Some(read) => (now, Some(read)),
+            None => (
+                now - MIN_FREE_EVERY + MIN_FREE_AGAIN,
+                self.min_free.and_then(|(_, kept)| kept),
+            ),
+        });
     }
 
     /// The filesystem Nix's store is on and the free space Nix keeps there,
@@ -3154,10 +3165,7 @@ impl Guard {
                 // Nix's store's disk counts to the floor Nix keeps while
                 // above it: a straight line to empty told a Mac's builds
                 // filled it in a day while Nix collected at 50 GiB.
-                let floor = nix_floor
-                    .filter(|&(on, _)| on == device)
-                    .map(|(_, floor)| floor);
-                let ahead = watched.fill.ahead(space.free, floor);
+                let ahead = watched.fill.forecast(space.free, device, nix_floor, now);
                 let mut status = FilesystemStatus {
                     path: watched.path.clone(),
                     band: watched.band,
@@ -3167,9 +3175,9 @@ impl Guard {
                     used: space.total.saturating_sub(space.free),
                     forecast: next.and_then(|start| watched.fill.steady_until(space.free, start)),
                     fill_per_hour: watched.fill.trend().map(|trend| trend * 3600.0),
-                    full_at: ahead.full_in.map(|seconds| now + seconds),
-                    nix_floor: floor,
-                    floor_at: ahead.floor_in.map(|seconds| now + seconds),
+                    full_at: ahead.full_at,
+                    nix_floor: ahead.nix_floor,
+                    floor_at: ahead.floor_at,
                     says: String::new(),
                     exhausted: self.last.as_ref().is_some_and(|last| {
                         last.path == watched.path

@@ -64,7 +64,23 @@ fn a_disk_above_nixs_floor_says_when_it_reaches_it_not_when_it_fills() {
             None
         ),
         "The disk has 170.0 GiB free. At this rate it reaches the 50.0 GiB Nix keeps free \
-         in 22 h, when Nix starts collecting its own garbage."
+         in 22 h, where Nix collects its own garbage as it builds."
+    );
+}
+
+/// Reaching Nix's floor is routine, Nix collecting there, so a machine whose
+/// store reaches it sooner than another disk fills names the disk that
+/// fills.
+#[test]
+fn a_machine_names_a_disk_filling_before_one_reaching_nixs_floor() {
+    let store = Room {
+        nix_floor: Some(50 * GIB),
+        ..room("/", Band::Healthy, 170 * GIB, Some(5.0 * 3600.0))
+    };
+    let builds = room("/var/builds", Band::Healthy, 100 * GIB, Some(10.0 * 3600.0));
+    assert_eq!(
+        machine(&[store, builds], None),
+        "/var/builds has 100.0 GiB free. At this rate it fills in 10 h."
     );
 }
 

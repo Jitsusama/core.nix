@@ -69,7 +69,7 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
             Some(floor) => write!(
                 said,
                 " At this rate it reaches the {} Nix keeps free in {}, \
-                 when Nix starts collecting its own garbage.",
+                 where Nix collects its own garbage as it builds.",
                 shown(floor),
                 span(full_in)
             ),
@@ -87,7 +87,9 @@ fn telling(full_in: f64) -> bool {
 /// The one sentence the machine's row shows: its worst disk's, or when
 /// every disk has room and none is filling fast, how much the system disk
 /// has, or without it the tightest watched: a small build disk with room
-/// leading would read as a machine nearly full.
+/// leading would read as a machine nearly full. A disk that fills is told
+/// before one that only reaches Nix's floor, where Nix collects, however
+/// soon that is.
 pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     let Some(worst) = rooms.iter().max_by_key(|room| room.band) else {
         return "Not watching any disk yet.".to_owned();
@@ -99,7 +101,12 @@ pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
         .iter()
         .filter_map(|room| room.full_in.map(|full_in| (room, full_in)))
         .filter(|(_, full_in)| telling(*full_in))
-        .min_by(|(_, one), (_, other)| one.total_cmp(other));
+        .min_by(|(one, one_in), (other, other_in)| {
+            one.nix_floor
+                .is_some()
+                .cmp(&other.nix_floor.is_some())
+                .then(one_in.total_cmp(other_in))
+        });
     if let Some((room, _)) = filling {
         return filesystem(room, home);
     }
