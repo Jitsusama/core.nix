@@ -574,6 +574,40 @@ fn a_closed_mark_stamped_ahead_of_now_counts_from_now() {
 }
 
 #[test]
+fn a_closed_mark_that_isnt_a_time_counts_from_now() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-shut": {"column": 4, "closed": "soon"},
+                "s-parked": {"column": 5, "closed": -3},
+                "s-idle": {"column": 6, "closed": 1.5}}}}));
+    let shut = Windowless {
+        closed: HashSet::from(["s-shut".to_owned()]),
+        heard: HashSet::from(["s-parked".to_owned()]),
+        ..Windowless::default()
+    };
+    let marked = kept.kept("this", "", Map::new(), Vec::new(), &shut, at);
+    assert_eq!(
+        marked.boots["this"],
+        json!({"s-shut": {"column": 4, "closed": at},
+            "s-parked": {"column": 5, "closed": at},
+            "s-idle": {"column": 6, "closed": at}}),
+        "a mark that isn't a time in ms, as a hand edit may leave, is stamped now, \
+         rather than holding its place for good"
+    );
+    assert_eq!(
+        marked.let_go("this", at + grace).boots["this"],
+        json!({}),
+        "so each goes a boot's end from now"
+    );
+    assert_eq!(
+        kept.let_go("this", at).boots["this"],
+        marked.boots["this"],
+        "and with no window listed it's stamped now the same"
+    );
+}
+
+#[test]
 fn let_go_takes_only_this_boots_places_due_and_counts_a_mark_ahead_from_now() {
     let at = 1_000_000;
     let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
