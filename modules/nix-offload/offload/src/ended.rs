@@ -14,6 +14,7 @@ pub mod marked {
     //! the same log carries.
 
     use std::env;
+    use std::process::Command;
     use std::sync::OnceLock;
 
     /// The variable a caller names its run's mark in. merge-net's train gives
@@ -30,7 +31,9 @@ pub mod marked {
     static TAKEN: OnceLock<Option<String>> = OnceLock::new();
 
     /// Take the run's mark out of the environment, so nothing this run starts,
-    /// a rider's evaluation least of all, can read it.
+    /// a rider's evaluation least of all, inherits it. The process's own
+    /// /proc environ still shows it, to its own user alone, which no rider's
+    /// pure evaluation or sandboxed build can read.
     ///
     /// # Safety
     ///
@@ -55,6 +58,23 @@ pub mod marked {
         signed_by(line, TAKEN.get().and_then(Option::as_deref))
     }
 
+    /// `run`, a start of this program again, handed the run's mark when its
+    /// caller gave one: `there --lent-only` starts itself again marked, and a
+    /// mark taken here and not handed on left every line it then printed
+    /// unsigned (round 7's F1, 23 November). The start takes it out again
+    /// before anything of its own starts.
+    pub fn handed_on(run: &mut Command) -> &mut Command {
+        handed_on_by(run, TAKEN.get().and_then(Option::as_deref))
+    }
+
+    /// `run`, handed `mark` when there is one.
+    fn handed_on_by<'a>(run: &'a mut Command, mark: Option<&str>) -> &'a mut Command {
+        match mark {
+            Some(mark) => run.env(MARK, mark),
+            None => run,
+        }
+    }
+
     /// `line`, signed with `mark` when there is one.
     fn signed_by(line: &str, mark: Option<&str>) -> String {
         mark.map_or_else(|| line.to_owned(), |mark| format!("{line} [{mark}]"))
@@ -77,6 +97,26 @@ pub mod marked {
                 "nix-offload: x",
                 "an unmarked run signed its line"
             );
+        }
+
+        #[test]
+        fn a_start_again_is_handed_the_mark_only_when_there_is_one() {
+            let named = |run: &Command| {
+                run.get_envs()
+                    .find(|(name, _)| *name == MARK)
+                    .and_then(|(_, value)| value)
+                    .map(|value| value.to_string_lossy().into_owned())
+            };
+            let mut marked = Command::new("true");
+            handed_on_by(&mut marked, Some("0123456789abcdef"));
+            assert_eq!(
+                named(&marked).as_deref(),
+                Some("0123456789abcdef"),
+                "a start again wasn't handed the run's mark"
+            );
+            let mut unmarked = Command::new("true");
+            handed_on_by(&mut unmarked, None);
+            assert_eq!(named(&unmarked), None, "an unmarked run handed on a mark");
         }
 
         #[test]
@@ -159,6 +199,23 @@ pub fn status(status: i32, what: impl FnOnce() -> String) -> Result<(), Failure>
     coded(u8::try_from(status).unwrap_or(1), what)
 }
 
+/// What a run cut short ends with: terminal-kit's bug, as changed-checks'
+/// `CUT_SHORT` (tools/changed-checks/src/ending.rs).
+pub const CUT_SHORT: i32 = 70;
+
+/// The status a `there` run ends with, `status` being its first part's
+/// that failed: a failure not every part of which ran to its end ends as a
+/// cut run does, never 1, since its callers read 1 as a whole red. The
+/// watch's landing reads only the code, and excused a run whose VM tests a
+/// signal ended as a red main has too (round 7's F2 and F17, 23 November).
+pub fn of_a_run(status: i32, whole: bool) -> i32 {
+    if status == 1 && !whole {
+        CUT_SHORT
+    } else {
+        status
+    }
+}
+
 /// Asked wrongly: an unknown word, or a value it can't take.
 pub fn usage(what: impl Into<String>) -> Failure {
     Failure::new(Exit::Usage, what)
@@ -173,6 +230,19 @@ pub fn asked_wrongly(what: impl Into<String>, sub: &str) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_run_ends_1_only_when_every_part_ran_to_its_end() {
+        assert_eq!(of_a_run(1, true), 1, "a whole red didn't end 1");
+        assert_eq!(
+            of_a_run(1, false),
+            CUT_SHORT,
+            "a cut red ended as a whole one"
+        );
+        assert_eq!(of_a_run(0, false), 0, "a pass ended as a failure");
+        assert_eq!(of_a_run(100, false), 100, "nix's own code wasn't kept");
+        assert_eq!(of_a_run(75, false), 75, "an untaken run's code wasn't kept");
+    }
 
     #[test]
     fn a_stand_in_that_ended_done_ends_done() {

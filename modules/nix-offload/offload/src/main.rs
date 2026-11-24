@@ -698,7 +698,7 @@ fn marked(arguments: &[String]) -> Option<Failure> {
     if asked_lent {
         again.env(there::LENT_ONLY.0, there::LENT_ONLY.1);
     }
-    let again = again.exec();
+    let again = ended::marked::handed_on(&mut again).exec();
     Some(Failure::new(Exit::Bug, "couldn't start there again marked").because(again.to_string()))
 }
 
@@ -1865,8 +1865,12 @@ fn changed_there(
     if finished.whole {
         eprintln!("{}", ended::marked::signed(RAN_WHOLE));
     }
-    ended::status(finished.status, || {
-        "the changed checks didn't pass, as the lines above say".to_owned()
+    ended::status(ended::of_a_run(finished.status, finished.whole), || {
+        if finished.whole {
+            "the changed checks didn't pass, as the lines above say".to_owned()
+        } else {
+            "the changed checks didn't pass, and not every part ran to its end".to_owned()
+        }
     })
 }
 
