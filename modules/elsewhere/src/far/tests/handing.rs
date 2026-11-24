@@ -421,15 +421,15 @@ fn a_link_to_a_file_put_at_the_list_s_name_after_its_clear_is_never_written_thro
         "rm \"$@\"; for last; do :; done && echo kept > \"$HOME/beyond\" && \
          ln -s \"$HOME/beyond\" \"$last\" && : > \"$HOME/linked\"; exit 0",
     );
-    let mut bringing = kind("");
-    bringing.brings_back = vec!["out".into()];
-    for (kind, run, said) in [
-        (kind(""), "true", None),
-        (
-            bringing,
-            "mkdir out && printf a > out/a",
-            Some("couldn't write down all it brings back"),
-        ),
+    // The helper's kind brings back out, so the one bringing nothing is
+    // made so here. Only the one bringing back says it couldn't write
+    // what it brings, so each row is known to have taken its own step.
+    let mut nothing = kind("");
+    nothing.brings_back = Vec::new();
+    let unwritten = "couldn't write down all it brings back";
+    for (kind, run, says) in [
+        (nothing, "true", false),
+        (kind(""), "mkdir out && printf a > out/a", true),
     ] {
         let (code, err, home) = far_line(
             Left::Whole,
@@ -449,8 +449,13 @@ fn a_link_to_a_file_put_at_the_list_s_name_after_its_clear_is_never_written_thro
              wasn't left there ({code:?}): {beyond:?} {err}"
         );
         assert!(
-            said.is_none_or(|said| err.contains(said)),
-            "the far line didn't say it couldn't write its list ({code:?}): {err}"
+            err.contains(unwritten) == says,
+            "the far line {} it couldn't write what it brings back ({code:?}): {err}",
+            if says {
+                "never said"
+            } else {
+                "bringing nothing said"
+            }
         );
         let _ = std::fs::remove_dir_all(&home);
     }
