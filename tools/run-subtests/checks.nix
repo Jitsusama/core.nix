@@ -6,9 +6,9 @@
   ...
 }:
 {
-  # run-subtests keeps a test script's boot and helpers and only the subtests
-  # named, and runs a pytest one whole with its tests picked, so what it runs
-  # is what was asked for (tools/run-subtests/run-subtests-test.py, against
+  # run-subtests runs a VM test whole with pytest picking the tests named, and
+  # refuses a script that doesn't hand its tests to pytest, so what it runs is
+  # what was asked for (tools/run-subtests/run-subtests-test.py, against
   # stand-ins for nix and a check's driver).
   run-subtests-keeps-what-is-named =
     let

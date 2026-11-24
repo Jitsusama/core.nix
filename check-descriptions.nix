@@ -3752,9 +3752,9 @@
     clippy finds nothing in rhythm or its tests
   '';
   run-subtests-keeps-what-is-named = ''
-    run-subtests keeps a script's boot and helpers and only the subtests named, and runs a pytest
-    test whole with pytest picking the tests named, refusing a word pytest would read as more,
-    refuses a check that isn't a VM test rather than letting the quarantine call it a pass, and
+    run-subtests runs a VM test whole with pytest picking the tests named, refusing a word pytest
+    would read as more and a script that doesn't hand its tests to pytest, refuses a check that
+    isn't a VM test rather than letting the quarantine call it a pass, and
     lets a test's entries naming subtests excuse only a run whose every failed test they name
     between them, saying each one's owner
   '';
