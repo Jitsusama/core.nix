@@ -75,9 +75,9 @@
 
   # A comment saying where something lives is a guide, and one left behind
   # when that thing moved sends its reader looking for nothing, as a doc
-  # does; docs-name-what-exists holds the markdown. Those stale before the
-  # rule wait in tests/rules/comments-name-what-exists-waiting.nix, and the
-  # check fails once one is fixed, so the list only shrinks.
+  # does; docs-name-what-exists holds the markdown. One that must wait on
+  # its owner is listed in tests/rules/comments-name-what-exists-waiting.nix,
+  # empty now, and the check fails once it's fixed, so the list only shrinks.
   comments-name-what-exists = pkgs.callPackage ./comments-name-what-exists.nix { } {
     src = ../..;
     waiting = import ./comments-name-what-exists-waiting.nix;
