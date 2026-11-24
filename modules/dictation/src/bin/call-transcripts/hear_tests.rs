@@ -630,8 +630,8 @@ fn joels_take_is_kept_as_spelled_with_no_words() {
 
 #[test]
 fn a_take_that_isnt_heard_says_why() {
-    // The daemon logs why and leaves the take out; the `transcribe`
-    // subcommand stops on it, so a check can't pass on a failing model.
+    // The `transcribe` subcommand stops on why, so a check can't pass on
+    // a failing model; the daemon leaves the take out (the next case).
     let mut failing = Scripted {
         words: None,
         text: None,
@@ -646,6 +646,23 @@ fn a_take_that_isnt_heard_says_why() {
         transcribe_take(&mut failing, Side::Mine, 40 * SECOND, &[]),
         why,
         "a take of Joel's that wasn't heard didn't say why"
+    );
+}
+
+#[test]
+fn the_daemon_leaves_out_a_take_that_isnt_heard() {
+    // One take not heard mustn't end the call or stop its thread: the
+    // daemon goes on with no line and no words, as for a take of silence.
+    assert_eq!(
+        heard_or_left_out(Err("the encoder failed".to_owned())),
+        (None, Vec::new()),
+        "a take that wasn't heard wasn't left out"
+    );
+    let heard = || (Some("Not yet.".to_owned()), vec![word("Not", 40 * SECOND)]);
+    assert_eq!(
+        heard_or_left_out(Ok(heard())),
+        heard(),
+        "what was heard of a take wasn't kept"
     );
 }
 

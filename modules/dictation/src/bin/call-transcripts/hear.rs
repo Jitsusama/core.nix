@@ -215,15 +215,8 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = match transcribe_take(parakeet, side, start, &samples) {
-                    Ok(heard) => heard,
-                    // One take not heard mustn't end the call: it's left
-                    // out, and the next is heard as ever.
-                    Err(why) => {
-                        eprintln!("call-transcripts: a take wasn't heard: {why}");
-                        (None, Vec::new())
-                    }
-                };
+                let (text, words) =
+                    heard_or_left_out(transcribe_take(parakeet, side, start, &samples));
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
@@ -322,6 +315,16 @@ pub fn transcribe_take(
     let (text, words, took) = transcribed?;
     eprintln!("call-transcripts: {}", took.describe(hears.device()));
     Ok((said::spoken(text.trim()), words))
+}
+
+/// What the daemon goes on with from a take `heard`: what was heard, or,
+/// when it wasn't, no text and no words, logged once. One take not heard
+/// mustn't end the call: it's left out, a take of theirs still helps tell
+/// the voices apart, and the next is heard as ever.
+fn heard_or_left_out(
+    heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
+) -> (Option<String>, Vec<Word>) {
+    heard.expect("a take wasn't heard")
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,
