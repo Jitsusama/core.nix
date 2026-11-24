@@ -172,11 +172,28 @@ const LOOKS: Record<string, object> = {
   "a look of the second form": LOOK,
   "one of the first form": { ...LOOK, happened: "", act: "" },
   "one saying only spaces happened": { ...LOOK, happened: "  " },
+  // Each way a part ends, or says nothing, that LookForm's ENDED, its trim
+  // and its filter of empty parts decide.
+  "one ending a quoted question, mattering nothing": {
+    ...LOOK,
+    happened: 'It asked "why?"',
+    matters: "",
+  },
+  "one ending in a bang and an ellipsis": { ...LOOK, happened: "Done!", matters: "Now\u2026" },
+  "one whose stop sits in its brackets": { ...LOOK, happened: "It ended (as planned.)" },
+  "one mattering only spaces": { ...LOOK, matters: "  " },
+  "one with no word of why it matters": { ...LOOK, matters: undefined },
+  "one padded with spaces": { ...LOOK, happened: " Ready! ", matters: " It's said. " },
   ...Object.fromEntries(
     KINDS.map((kind) => [
       `one of kind ${kind}`,
       { ...LOOK, kind, target: TARGETS[kind] ?? LOOK.target },
     ]),
+  ),
+  // A kind the drawer names no target for links nowhere, even at a web
+  // address, so either side's linked kinds widening shows.
+  ...Object.fromEntries(
+    Object.keys(TARGETS).map((kind) => [`one of kind ${kind} at a web address`, { ...LOOK, kind }]),
   ),
   ...Object.fromEntries(STATES.map((state) => [`one in state ${state}`, { ...LOOK, state }])),
   "five plain choices": {

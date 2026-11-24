@@ -59,8 +59,10 @@ in
 # They evaluate the graphical machine, whose launcher has the words.
 // onLinux {
   # The home module refuses a machine whose launcher renames one of its acts
-  # on a look, in place or by an entry after core's, naming the act's old
-  # and new word, and takes core's own words.
+  # on a look, in place or by an entry after core's (its id a list of one,
+  # as the shell's Words.qml keys it all the same), naming only the act's
+  # old and new word, and takes core's own words. Each case's machine is
+  # evaluated once, since an evaluation is most of what this costs.
   local-sites-refuses-renamed-look-acts =
     let
       clear = "verb:on:look:clear";
@@ -85,7 +87,8 @@ in
         lib.findFirst (
           check: !check.assertion && lib.hasInfix "renames the launcher's acts" check.message
         ) null (sites said).assertions;
-      says = said: refusal: refused said != null && lib.hasInfix refusal (refused said).message;
+      # A word core has that's no act on a look, renamed beside one.
+      other = (lib.findFirst (thing: !(lib.elem thing.id lookActs)) null coreWords.things).id;
       inPlace = coreWords // {
         things = map (
           thing: if (thing.id or null) == clear then thing // { name = "Drop It"; } else thing
@@ -94,17 +97,27 @@ in
       appended = coreWords // {
         things = coreWords.things ++ [
           {
-            id = clear;
+            id = [ clear ];
             name = "Dismiss";
+          }
+          {
+            id = other;
+            name = "Something Else";
           }
         ];
       };
+      refusals = lib.mapAttrs (_: refused) {
+        core = coreWords;
+        inherit inPlace appended;
+      };
+      says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
+      lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry, refuses core's own words, or doesn't name the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look, in place or by a later entry keyed by a list of one, refuses core's own words, or doesn't name only the act's old and new word."
       (
-        refused coreWords == null
-        && says inPlace "${clear} from Clear It to Drop It"
-        && says appended "${clear} from Clear It to Dismiss"
+        refusals.core == null
+        && says "inPlace" "acts on a look (${clear} from Clear It to Drop It),"
+        && says "appended" "acts on a look (${clear} from Clear It to Dismiss),"
       );
 }

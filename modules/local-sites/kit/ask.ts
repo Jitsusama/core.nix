@@ -146,8 +146,9 @@ interface Ask {
    * neither is known. A page sets its row asking no more then, since
    * nothing else tells it, and checks again at the press. An expiry may
    * stand further off than a browser's timer waits (2^31 - 1 ms, about 25
-   * days, past which it fires at once), so a page waits at most that long
-   * and asks `asked` again when its timer fires.
+   * days, past which it fires at once), so a page sets its timer for
+   * `waitFor`, which waits at most that long, and asks `asked` again when
+   * it fires.
    */
   readonly lapses: number | null;
   /**
@@ -433,6 +434,19 @@ function answering(look: unknown, choice: string, now: number): Answer | null {
   return { act: "answer", look: ask.id, value: choice };
 }
 
+/** The longest a browser's timer waits, past which it fires at once. */
+const LONGEST_WAIT = 2_147_483_647;
+
+/**
+ * How long from `now` a page's timer waits before it asks `asked` again
+ * for `ask`: until it lapses, but never longer than a browser's timer
+ * waits nor less than nothing, so a far expiry can't fire it at once and
+ * again; null where it never lapses.
+ */
+function waitFor(ask: Ask, now: number): number | null {
+  return ask.lapses === null ? null : Math.min(Math.max(ask.lapses - now, 0), LONGEST_WAIT);
+}
+
 export {
   actOf,
   LAUNCHER_ACTS,
@@ -445,6 +459,8 @@ export {
   asked,
   type Choice,
   type Kind,
+  LONGEST_WAIT,
   OFFERED,
   QUIET_AFTER,
+  waitFor,
 };

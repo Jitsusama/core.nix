@@ -23,8 +23,9 @@ const HEX = 16;
  * Whether `c` reads and is judged alike by both, within a name, leading
  * one and ending one, alone and twice over (so a pattern taking only one,
  * or only the first, shows), beside a space and after a stop (so steps run
- * in another order show), and against a name it could pass for or by a
- * turn pose as.
+ * in another order show), in a run after the first that ends nothing (so
+ * a pattern rewriting only the first run shows), and against a name it
+ * could pass for or by a turn pose as.
  */
 function alike(form: Script, c: string): boolean {
   return [
@@ -36,6 +37,7 @@ function alike(form: Script, c: string): boolean {
     `Keep It${c}${c}`,
     `Keep ${c} It`,
     `Keep It.${c}`,
+    `Keep It${c}Now`,
   ].every(
     (name) =>
       readAs(name) === form.readAs(name as never) &&

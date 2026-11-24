@@ -169,11 +169,21 @@ let
   coreWords = (import ../quickshell/launcher/words.nix).value;
   machineWords = config.jitsusama.quickshell.launcher.words or coreWords;
   # A word's name as the shell's Words.qml names it: by the last thing of
-  # its id, so a rename appended after core's own still counts.
+  # its id, so a rename appended after core's own still counts. Words.qml
+  # keys a thing by its id made a string, so a list of one id is that id;
+  # no act's id holds a comma or is empty, so no other id can be one.
+  keyOf =
+    id:
+    if builtins.isString id then
+      id
+    else if builtins.isList id && builtins.length id == 1 then
+      keyOf (builtins.head id)
+    else
+      null;
   nameIn =
     words: id:
-    (lib.findFirst (thing: (thing.id or null) == id) { } (lib.reverseList (words.things or [ ]))).name
-      or id;
+    (lib.findFirst (thing: keyOf (thing.id or null) == id) { } (lib.reverseList (words.things or [ ])))
+    .name or id;
   renamedActs = lib.filter (id: nameIn machineWords id != nameIn coreWords id) lookActs;
   # Rows whose path isn't plain steps, which the home's builder refuses
   # (home/home.py's ours), named here so the switch never gets that far.

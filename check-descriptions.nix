@@ -2001,7 +2001,8 @@
   '';
   local-sites-refuses-renamed-look-acts = ''
     local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
-    in place or by a later entry, naming the act's old and new word, and takes core's own words
+    in place or by a later entry keyed by a list of one, naming only the act's old and new word
+    though another word is renamed beside it, and takes core's own words
   '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,
@@ -4130,15 +4131,17 @@
     the live sites' ask row reads a look as the launcher's For You does, against the launcher's own
     scripts run in Node: over looks either side of each rule and of every kind and state, which it
     reads, which wait, what each offers and what follows each, and when it lapses as Looks.js and
-    Now.qml's lookOffers and followsOf give them, what the second form leads with and its act as
-    LookForm.js gives them, and what it links as Now.qml's drawer names its kinds; the launcher's
+    Now.qml's lookOffers and followsOf give them, what the second form leads with (its parts
+    ended by a stop, a bang, an ellipsis or a quote, empty, padded or missing) and its act as
+    LookForm.js gives them, and what it links as Now.qml's drawer names its kinds, each kind at a
+    web address; the launcher's
     act names as Now.qml and core's joined words give them, the last of an id's winning; and the
     ids local-sites' home module guards as Now.qml lists them
   '';
   the-ask-row-reads-each-character-as-for-you = ''
     the live sites' ask row reads every character, and judges it as posing as one of the
-    launcher's acts, as LookForm.js does: within, leading and ending a name, once and twice, and
-    beside a space and after a stop
+    launcher's acts, as LookForm.js does: within, leading and ending a name, once and twice,
+    beside a space and after a stop, and in a run after the first
   '';
   the-arrival-line-shows-what-still-waits = ''
     the arrival line shows the notice the notices daemon serves as in front, only its critical one

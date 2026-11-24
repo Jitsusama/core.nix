@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { answering, asked, OFFERED, OPEN, QUIET_AFTER } from "../ask.ts";
+import { answering, asked, LONGEST_WAIT, OFFERED, OPEN, QUIET_AFTER, waitFor } from "../ask.ts";
 
 /** When the tests read each look: an hour after it came. */
 const NOW = Date.parse("2026-11-23T15:00:00Z");
@@ -331,6 +331,21 @@ it("a waiting look lapses at its expiresAt or its three days' quiet, whichever i
     assert.equal(asked(look, lapses - 1)?.asks, true, "it stopped asking before it lapsed");
     assert.equal(asked(look, lapses)?.asks, false, "it still asked once it lapsed");
   }
+});
+
+it("a page's timer waits until a look lapses, but never past a browser timer's longest", () => {
+  const soon = asked({ ...second, at: undefined, expiresAt: NOW + 5 }, NOW);
+  assert.ok(soon !== null);
+  assert.equal(waitFor(soon, NOW), 5);
+  assert.equal(waitFor(soon, NOW + 9), 0, "a lapse already past waited");
+  const month = 2_592_000_000;
+  const far = asked({ ...second, at: undefined, expiresAt: NOW + month }, NOW);
+  assert.ok(far !== null);
+  assert.equal(far.lapses, NOW + month);
+  assert.equal(waitFor(far, NOW), LONGEST_WAIT, "a month's wait would fire at once");
+  const never = asked({ ...second, at: undefined }, NOW);
+  assert.ok(never !== null);
+  assert.equal(waitFor(never, NOW), null);
 });
 
 it("a time written in milliseconds lapses and quiets a look as an ISO time does", () => {
