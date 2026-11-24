@@ -5896,8 +5896,8 @@
     with no disk named, the system's user.slice holds a 1 ms latency on the drive behind /home,
     through the kernel, and no slice inside the account, machine or system does; every slice's
     io.weight follows its CPU weight;
-    app.slice holds a hard and a soft 13% of memory and session.slice a hard and a soft 4.5 GiB,
-    agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 31%,
+    app.slice holds a hard 13% of memory and a soft 20%, session.slice a hard and a soft 4.5 GiB,
+    agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 38%,
     and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
     itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in
     jobs-work.slice; a scope it starts through systemd's own systemd-run goes back to the scope of
