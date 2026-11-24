@@ -99,7 +99,8 @@ every such test shares lives once in `tests/`: the stand-in
 (`stand_in_daemon.py`) and the server, the browser, a tab and the
 web-design skill's page checks (`live_page.py`, loaded as a pytest plugin
 for its `browser`). The system page's is `system-site-reads-live`, and the
-map's `mycelium-site-reads-live`.
+map's `mycelium-site-reads-live`. `heads.py` there reads every page's
+markup alone, with no browser, holding each to the kit's head.
 
 [browsers]: ./headless-browsers.nix
 [code]: ../repos/site

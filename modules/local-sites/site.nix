@@ -54,11 +54,20 @@ in
   */
   shared =
     webKit:
-    pkgs.runCommandLocal "local-sites-shared" { } ''
-      mkdir $out
-      ln -s ${kit}/kit $out/kit
-      ln -s ${webKit} $out/web
-    '';
+    # It serves no page, and says so as a localSite says its pages, so the
+    # heads gate holds it to that rather than to its name.
+    pkgs.runCommandLocal "local-sites-shared"
+      {
+        passthru = {
+          localSitePages = [ ];
+          sharedBySites = true;
+        };
+      }
+      ''
+        mkdir $out
+        ln -s ${kit}/kit $out/kit
+        ln -s ${webKit} $out/web
+      '';
 
   /**
     The site `name`, from its source `src` (modules/<name>/site), its page
@@ -77,28 +86,46 @@ in
       looks ? webKit.looks,
     }:
     # The site carries the web kit it was built on, so a folder laid out
-    # from it copies the same one in.
-    pkgs.runCommandLocal "${name}-site" { passthru = { inherit webKit; }; } ''
-      ${lib.getExe pkgs.bash} ${./site.sh} ${
-        lib.escapeShellArgs [
-          tsc
-          node
-          esbuild
-          "${bareSheet}"
-          "${keptComments}"
-          "${./kit}"
-          "${src}"
-          name
-        ]
-      } "$out" ${
-        lib.escapeShellArgs [
-          looks.dark.background
-          looks.light.background
-          looks.dark.${tint}
-          looks.light.${tint}
-        ]
+    # from it copies the same one in, and every page it serves, each at the
+    # top of its source as site.sh copies them, so the heads gate can see
+    # every page a machine mounts. The pages' name is localSite's own, as a
+    # src any derivation may carry is not. Only a src that's a path in the
+    # tree names its pages as heads.nix's pages does, so any other carries
+    # none, and the gate refuses it rather than naming a store path.
+    pkgs.runCommandLocal "${name}-site"
+      {
+        passthru = {
+          inherit webKit;
+        }
+        // lib.optionalAttrs (builtins.isPath src) {
+          localSitePages = map (page: src + "/${page}") (
+            lib.filter (lib.hasSuffix ".html") (
+              lib.attrNames (lib.filterAttrs (_: kind: kind != "directory") (builtins.readDir src))
+            )
+          );
+        };
       }
-    '';
+      ''
+        ${lib.getExe pkgs.bash} ${./site.sh} ${
+          lib.escapeShellArgs [
+            tsc
+            node
+            esbuild
+            "${bareSheet}"
+            "${keptComments}"
+            "${./kit}"
+            "${src}"
+            name
+          ]
+        } "$out" ${
+          lib.escapeShellArgs [
+            looks.dark.background
+            looks.light.background
+            looks.dark.${tint}
+            looks.light.${tint}
+          ]
+        }
+      '';
 
   /**
     The live site `site`, built by localSite as `name`, as one folder that

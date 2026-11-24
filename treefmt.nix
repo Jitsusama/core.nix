@@ -145,6 +145,8 @@ in
       python.pillow
       # The local sites' page tests drive Chromium with it.
       python.playwright
+      # The live pages' heads gate parses each page as a browser does with it.
+      python.selectolax
       # The desktop test's window named as Tuple's.
       python.xlib
     ]
