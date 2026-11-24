@@ -71,7 +71,8 @@ pub struct Seat {
 /// encoders' queues, which lag-watch saw in Joel's Tuple call at 10:00 on
 /// 24 Nov, when the watch, knowing only Chromium's names, read nothing of
 /// Tuple's and took it for a clean 0. Every thread of a capture process
-/// counts too, since it makes the frames the encoder takes.
+/// but its watchdog counts too, since it makes the frames the encoder
+/// takes.
 const SENDING: [&str; 5] = [
     "CodecWorker",
     "WebRTC_W_and_N",
@@ -109,9 +110,15 @@ pub fn role(cmdline: &str) -> String {
     clean(kind)
 }
 
+/// A capture process's thread that makes no frames: Chromium's watchdog,
+/// which only looks for hung threads. Joel's call at 16:35 on 24 Nov read
+/// as 2000 ms a second at its p99, all of it this thread's, while
+/// lag-watch saw his call's threads waiting far less.
+const WATCHING: &str = "HangWatcher";
+
 /// Whether a thread's wait holds up what Joel sends.
 pub fn sending(role: &str, comm: &str) -> bool {
-    SENDING.contains(&comm) || role == "video_capture"
+    SENDING.contains(&comm) || (role == "video_capture" && comm != WATCHING)
 }
 
 /// How long a thread has waited for a CPU in all, in ns: schedstat's
@@ -739,6 +746,10 @@ mod tests {
         assert!(
             sending("video_capture", "Chrome_ChildIOT"),
             "a capture process counts whole"
+        );
+        assert!(
+            !sending("video_capture", "HangWatcher"),
+            "a capture process's watchdog, which makes no frames, was judged as sending"
         );
         assert!(!sending("renderer", "Compositor"), "drawing isn't sending");
         // Tuple's encoders, as the kernel cuts their queues' names, and
