@@ -25,7 +25,10 @@ pragma ComponentBehavior: Bound
 // shut making no row, the daemon telling only the rows that moved, so a
 // list written again with only when each was heard moved tells none and
 // every other row is kept. It exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// otherwise 1, saying which didn't. Long because each case follows the
+// last on one daemon, its stand-in node and the launcher's held steps, so
+// a row made ahead is told by the same records the list was first made
+// from, which a split would have to serve again in each half.
 import qs
 import Quickshell
 import Quickshell.Io
