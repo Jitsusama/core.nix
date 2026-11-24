@@ -217,8 +217,12 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
             meeting.title
         ));
     };
-    let (summary, body) = camera::told(meeting, seconds_now() * 1000, plugged, &why);
-    said(format!("{}: {body}", node.display()))?;
+    let (summary, body) = camera::told(meeting, seconds_now() * 1000, plugged);
+    said(format!(
+        "{} gives no picture before {}: {why}",
+        node.display(),
+        meeting.title
+    ))?;
     camera::within(
         "notify-send",
         &[

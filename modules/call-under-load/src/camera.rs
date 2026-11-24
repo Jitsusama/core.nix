@@ -117,8 +117,9 @@ pub fn which(root: &Path, device: Option<&str>) -> Option<(PathBuf, bool)> {
 }
 
 /// What a camera that gave no picture is told as: a notice's summary and
-/// its body, saying which meeting, how soon, and what the camera did.
-pub fn told(meeting: &Meeting, now: u64, plugged: bool, why: &str) -> (String, String) {
+/// its body, saying which meeting, how soon, and what the camera did, in
+/// Joel's words rather than the program's, which the journal keeps.
+pub fn told(meeting: &Meeting, now: u64, plugged: bool) -> (String, String) {
     let minutes = meeting.start.saturating_sub(now).div_ceil(MIN_MS);
     let camera = if plugged {
         "The camera plugged in didn't answer"
@@ -128,7 +129,7 @@ pub fn told(meeting: &Meeting, now: u64, plugged: bool, why: &str) -> (String, S
     (
         "Your camera gives no picture".to_string(),
         format!(
-            "{camera} ({why}), and {} starts in {minutes} min. Choose another camera \
+            "{camera}, and {} starts in {minutes} min. Choose another camera \
              in the call, or join with video off.",
             meeting.title
         ),
@@ -302,17 +303,17 @@ mod tests {
             end: 40 * MIN_MS,
         };
         assert_eq!(
-            told(&meeting, 5 * MIN_MS - 1, false, "nothing came"),
+            told(&meeting, 5 * MIN_MS - 1, false),
             (
                 "Your camera gives no picture".to_string(),
-                "The camera gave no picture in 2 minutes (nothing came), and Joel:Steve \
-                 starts in 6 min. Choose another camera in the call, or join with video off."
+                "The camera gave no picture in 2 minutes, and Joel:Steve starts in 6 min. \
+                 Choose another camera in the call, or join with video off."
                     .to_string()
             ),
             "a camera giving nothing wasn't told plainly"
         );
         assert!(
-            told(&meeting, 6 * MIN_MS, true, "it ended exit status: 1")
+            told(&meeting, 6 * MIN_MS, true)
                 .1
                 .starts_with("The camera plugged in didn't answer"),
             "a camera plugged in was said to have been read"
