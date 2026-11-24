@@ -3,9 +3,12 @@
 # on disk, one at a time, waiting while other work waits on the disk.
 # btrfs compresses as it writes, but a log written in small appends is
 # mostly stored as it came; rewriting it compressed changes nothing a
-# reader sees, as the file's bytes and modification time stay the same,
-# which it checks of each log it rewrites. On anything but btrfs there is
-# nothing to do. Its help takes the shape every command of ours does
+# reader sees, as the file's bytes and modification time stay the same.
+# It checks that of each log it rewrites by reading it back once the kernel
+# has dropped the copy it held in memory, so the read comes from the
+# compressed extents on disk. A log a session writes to during its rewrite
+# is passed over, as one reopened before it is. On anything but btrfs there
+# is nothing to do. Its help takes the shape every command of ours does
 # (docs/commands.md), by hand.
 
 say_help() {
@@ -14,17 +17,18 @@ pi-compress-logs  keep closed pi session logs compressed
 
   Rewrites each log in the sessions folder untouched for
   two days and past 64 KiB compressed on disk, one at a
-  time, waiting while other work waits on the disk. What
-  a reader sees stays the same, which it checks of each
-  log. Off btrfs it does nothing. A timer runs it each
-  night.
+  time, waiting while other work waits on the disk. It
+  reads each log back from disk after its rewrite and
+  checks it reads the same; one a session writes to
+  meanwhile is left for a night it's closed. Off btrfs
+  it does nothing. A timer runs it each night.
 
 EXAMPLES
   pi-compress-logs ~/.pi/agent/sessions
 
 EXIT
   0   rewritten, or nothing to do
-  1   a log couldn't be rewritten, or changed in the rewrite
+  1   a log couldn't be rewritten, or read otherwise after
   64  asked wrongly
   66  no such sessions folder
 EOF
@@ -66,6 +70,9 @@ compressed_enough=90
 # While I/O pressure's full share over ten seconds is at or past this,
 # other work is waiting on the disk, and the run waits for it.
 busy_disk=12
+# Where the kernel says how long work waits on the disk. A check names a
+# file of its own here, to stand in for the kernel.
+pressure=${PI_COMPRESS_LOGS_PRESSURE:-/proc/pressure/io}
 
 file_system=$(stat -f -c %T -- "$sessions")
 if [ "$file_system" != btrfs ]; then
@@ -84,8 +91,8 @@ used() {
 # Whether other work waits on the disk. A kernel that doesn't say, with no
 # pressure file to read, is taken as never waiting.
 disk_waits() {
-  [ -r /proc/pressure/io ] || return 1
-  awk -v busy="$busy_disk" '/^full/ { split($2, avg, "="); exit !(avg[2] + 0 >= busy) }' /proc/pressure/io
+  [ -r "$pressure" ] || return 1
+  awk -v busy="$busy_disk" '/^full/ { split($2, avg, "="); exit !(avg[2] + 0 >= busy) }' "$pressure"
 }
 
 # Whether the log at $1 is still untouched long enough to be closed.
@@ -103,6 +110,16 @@ seen() {
   said=$(stat -c '%s %Y' -- "$1") || return 1
   sum=$(cksum < "$1") || return 1
   echo "$said $sum"
+}
+
+# Whether a session wrote to the log between the two readings $1 and $2 of
+# it, as seen gives them: it grew and its modification time moved on, since
+# pi only appends. Anything else that differs is the rewrite's doing.
+written_since() {
+  local was_length was_time now_length now_time
+  read -r was_length was_time _ <<< "$1"
+  read -r now_length now_time _ <<< "$2"
+  [ -n "${now_length:-}" ] && [ "$now_length" -gt "$was_length" ] && [ "$now_time" -gt "$was_time" ]
 }
 
 # The logs to look at, found once before any is rewritten, so the walk
@@ -125,9 +142,14 @@ while IFS= read -r -d '' log; do
   if [ "$all" -gt 0 ] && [ $((100 * packed / all)) -ge "$compressed_enough" ]; then
     continue
   fi
-  while disk_waits; do
-    sleep 5
-  done
+  # Said once a log, so a run the clock ends while it waits reads as
+  # waiting in the journal, not wedged.
+  if disk_waits; then
+    echo "waiting while other work waits on the disk, before $log"
+    while disk_waits; do
+      sleep 5
+    done
+  fi
   # A session reopened while the run waited writes to its log again, so
   # it is left for a night it's closed.
   still_closed "$log" || continue
@@ -137,9 +159,18 @@ while IFS= read -r -d '' log; do
     failed=$((failed + 1))
     continue
   fi
-  # Written out now, a log at a time, rather than all at once later.
-  sync -- "$log"
+  # Written out now, a log at a time, rather than all at once later. A log
+  # gone since its rewrite is passed over.
+  sync -- "$log" || continue
+  # The written pages stay in memory, where a read would find them; asked
+  # to drop them, the kernel reads the log back from disk. One that won't
+  # leaves the read to memory, which still sees a write meanwhile.
+  dd if="$log" iflag=nocache count=0 status=none || :
   now=$(seen "$log") || now=
+  if written_since "$was" "$now"; then
+    echo "$log was written to during its rewrite; it's left for a night it's closed"
+    continue
+  fi
   if [ "$now" != "$was" ]; then
     echo "$log read $was before its rewrite and ${now:-nothing} after" >&2
     failed=$((failed + 1))
@@ -150,6 +181,6 @@ done < "$logs"
 after=$(used)
 echo "rewrote $rewritten logs compressed; $sessions's file system went from $before to $after bytes used"
 if [ "$failed" -gt 0 ]; then
-  echo "$failed logs couldn't be rewritten, or changed in the rewrite" >&2
+  echo "$failed logs couldn't be rewritten, or read otherwise after" >&2
   exit 1
 fi

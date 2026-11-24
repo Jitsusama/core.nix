@@ -3131,9 +3131,9 @@
     every key already there, is left alone where none are declared, and a bad file doesn't stop it
   '';
   pi-keeps-closed-logs-compressed = ''
-    pi's closed session logs are rewritten compressed each night in background.slice, catching up a
-    night missed while off, over pi's sessions folder only where there is one, with no I/O class
-    of their own and three hours before their clock ends them, and never on a Mac
+    the nightly rewrite of pi's closed session logs is scheduled in background.slice, catching up
+    a night missed while off, over pi's sessions folder only where there is one, with no I/O class
+    of its own and three hours before its clock ends it, and never on a Mac
   '';
   pi-keeps-its-own-settings = ''
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
@@ -3176,6 +3176,11 @@
   pi-loads-its-packages = ''
     pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
     after them rather than in their place, and pi is given each git package as its current link
+  '';
+  pi-log-compression-keeps-its-rules = ''
+    the nightly rewrite of pi's logs, run with stand-ins for btrfs, never rewrites a young, small,
+    compressed or reopened log, passes over one written to during its rewrite, and ends 1 when a
+    rewrite fails or leaves the log reading otherwise
   '';
   pi-log-compression-passes-over-other-file-systems = ''
     the nightly rewrite of pi's logs ends at once off btrfs, saying there's nothing to compress,

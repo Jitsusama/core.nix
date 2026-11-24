@@ -44,9 +44,7 @@ onLinux {
   # Off btrfs the rewrite ends at once with 0, nothing done and saying so,
   # rather than failing every night on a machine whose file system doesn't
   # compress; and asked wrongly, or for a folder that isn't there, it
-  # refuses with the status its help names. A build's sandbox has no btrfs
-  # to rewrite on, so the rewrite itself, and its check that each log
-  # reads the same after, aren't proven here.
+  # refuses with the status its help names.
   pi-log-compression-passes-over-other-file-systems =
     let
       home = account workstation;
@@ -55,6 +53,17 @@ onLinux {
     in
     pkgs.runCommandLocal "pi-log-compression-passes-over-other-file-systems" { } ''
       ${lib.getExe pkgs.bash} ${./compress-logs-passes-over-other-file-systems.sh} ${program}
+      touch $out
+    '';
+
+  # The rewrite's own rules, which decide what it touches and what it
+  # reports, run over a folder of logs with stand-ins for btrfs, since a
+  # build's sandbox has none. The script runs bare, as the built program
+  # puts its own tools ahead of the stand-ins. What btrfs itself writes to
+  # disk isn't proven here; its own checksums guard that.
+  pi-log-compression-keeps-its-rules =
+    pkgs.runCommandLocal "pi-log-compression-keeps-its-rules" { } ''
+      ${lib.getExe pkgs.bash} ${./compress-logs-keeps-its-rules.sh} ${./compress-logs.sh}
       touch $out
     '';
 }
