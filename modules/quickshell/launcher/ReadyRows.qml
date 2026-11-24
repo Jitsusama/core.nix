@@ -261,9 +261,14 @@ Scope {
             return;
         }
         aheadWaiting = true;
+        // Felt as "<its name> ahead", so a frame its rows stall says who held it, as Agents'
+        // wraps do.
         maker.launcher.afterFrame(() => {
             aheadWaiting = false;
-            makeAhead();
+            if (typeof maker.felt === "function")
+                maker.felt("ahead", makeAhead);
+            else
+                makeAhead();
         });
     }
     property bool aheadWaiting: false
@@ -274,8 +279,10 @@ Scope {
         onTriggered: ready.makeAhead()
     }
 
+    // A close runs what waits on a frame in its own turn, which can come before `drawn` has
+    // followed the launcher's open, so its open is read here too.
     function makeAhead() {
-        if (!makingAhead)
+        if (!makingAhead || maker?.launcher?.open === false)
             return;
         let count = 0;
         for (const key of Object.keys(owedAhead)) {
