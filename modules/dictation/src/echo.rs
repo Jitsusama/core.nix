@@ -254,28 +254,7 @@ fn spelled(word: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::transcript::{markdown, read};
-
-    fn line(side: Side, second: usize, text: &str) -> Line {
-        Line {
-            side,
-            start: second * RATE,
-            end: (second + 2) * RATE,
-            text: text.to_owned(),
-            voice: None,
-            name: None,
-        }
-    }
-
-    /// Joel's lines that `markdown` keeps, among `lines`.
-    fn kept(lines: &[Line]) -> Vec<String> {
-        let written = markdown(lines, "Joel", None, None);
-        read(&written, "Joel")
-            .into_iter()
-            .filter(|line| line.side == Side::Mine)
-            .map(|line| line.text)
-            .collect()
-    }
+    use crate::transcript::tests::{kept, line};
 
     #[test]
     fn joels_short_answer_to_a_longer_line_of_theirs_is_his_own() {

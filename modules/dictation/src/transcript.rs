@@ -203,11 +203,13 @@ pub fn clock(sample: usize) -> String {
     }
 }
 
+/// The transcript's cases, whose `line` and `kept` echo.rs's cases share.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn line(side: Side, second: usize, text: &str) -> Line {
+    /// A line of `side`'s two seconds long, `second` seconds into the call.
+    pub(crate) fn line(side: Side, second: usize, text: &str) -> Line {
         Line {
             side,
             start: second * RATE,
@@ -479,7 +481,7 @@ mod tests {
     }
 
     /// Joel's lines that `markdown` keeps, among `lines`.
-    fn kept(lines: &[Line]) -> Vec<String> {
+    pub(crate) fn kept(lines: &[Line]) -> Vec<String> {
         let written = markdown(lines, "Joel", None, None);
         read(&written, "Joel")
             .into_iter()
