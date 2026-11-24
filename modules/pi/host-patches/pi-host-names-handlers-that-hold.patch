@@ -50,7 +50,7 @@ unchanged.
 +	try {
 +		process.stderr.write(`pi-host: ${JSON.stringify(ext.path)} ${event} took ${Math.round(took)} ms\n`);
 +	} catch {
-+		// A line that can't be written is lost, never the emit it reports on.
++		// A write that throws is lost, never the emit it reports on.
 +	}
 +}
 +

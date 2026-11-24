@@ -22,11 +22,19 @@ assert.ok(runnerModule, `no extension runner under ${root}`);
 const { ExtensionRunner } = await import(pathToFileURL(runnerModule).href);
 
 const SLOW = /^pi-host: (".*") (\S+) took (\d+) ms$/u;
-const waiting = (ms) => () => new Promise((done) => setTimeout(done, ms));
+// The clock the patch reads, moved by the handlers rather than by waiting,
+// so the bar is pinned to the millisecond and no case leans on a builder's
+// load. A handler taking ms awaits once, as a slow one would.
+let now = 0;
+const taking = (ms) => async () => {
+  await Promise.resolve();
+  now += ms;
+};
 
 // A runner of these extensions, each a path and its handlers by event,
-// standing in for the parts emit reaches, and what it wrote to stderr.
-const run = async (extensions, emitting) => {
+// standing in for the parts emit reaches, and what it wrote to stderr; a
+// write given in its place stands for a stderr that can't be written.
+const run = async (extensions, emitting, write) => {
   const errors = [];
   const runner = Object.create(ExtensionRunner.prototype);
   Object.assign(runner, {
@@ -35,16 +43,21 @@ const run = async (extensions, emitting) => {
     emitError: (error) => errors.push(error.error),
   });
   const written = [];
-  const write = process.stderr.write;
-  process.stderr.write = (chunk) => {
-    written.push(String(chunk));
-    return true;
-  };
+  const stderrWrite = process.stderr.write;
+  const clock = performance.now;
+  process.stderr.write =
+    write ??
+    ((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+  performance.now = () => now;
   let result;
   try {
     result = await emitting(runner);
   } finally {
-    process.stderr.write = write;
+    process.stderr.write = stderrWrite;
+    performance.now = clock;
   }
   const lines = written.join("").split("\n").filter(Boolean);
   return { errors, lines, result };
@@ -52,21 +65,18 @@ const run = async (extensions, emitting) => {
 
 // Only the slow extension is said, its two handlers summed, though each
 // alone is under the bar. Each extension is timed from its own start, so
-// the fast one after it isn't said, nor one under the bar.
+// the fast one after it isn't said, nor one a millisecond under the bar.
 {
-  const { lines } = await run(
+  const { errors, lines } = await run(
     [
-      ["slow", [["session_start", [waiting(150), waiting(150)]]]],
+      ["slow", [["session_start", [taking(125), taking(125)]]]],
       ["fast", [["session_start", [() => undefined]]]],
-      ["under", [["session_start", [waiting(50)]]]],
+      ["under", [["session_start", [taking(249)]]]],
     ],
     (runner) => runner.emit({ type: "session_start", reason: "startup" }),
   );
-  assert.equal(lines.length, 1, `said other than the slow one: ${JSON.stringify(lines)}`);
-  const [, path, event, took] = lines[0].match(SLOW) ?? [];
-  assert.equal(path, '"slow"');
-  assert.equal(event, "session_start");
-  assert.ok(Number(took) >= 250, `said ${took} ms for 300 ms of handlers`);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(lines, ['pi-host: "slow" session_start took 250 ms']);
 }
 
 // Two slow extensions are each said on a line of their own, in the order
@@ -74,30 +84,35 @@ const run = async (extensions, emitting) => {
 {
   const { lines } = await run(
     [
-      ["first", [["session_start", [waiting(300)]]]],
+      ["first", [["session_start", [taking(300)]]]],
       ["between", [["session_start", [() => undefined]]]],
-      ["second", [["session_start", [waiting(300)]]]],
+      ["second", [["session_start", [taking(400)]]]],
     ],
     (runner) => runner.emit({ type: "session_start", reason: "startup" }),
   );
-  assert.deepEqual(
-    lines.map((line) => line.match(SLOW)?.[1]),
-    ['"first"', '"second"'],
-    `said other than the two slow ones: ${JSON.stringify(lines)}`,
-  );
+  assert.deepEqual(lines, [
+    'pi-host: "first" session_start took 300 ms',
+    'pi-host: "second" session_start took 400 ms',
+  ]);
 }
 
 // A turn's streamed events, which emit sends too, are never said, however
 // long their handlers take: a slow one would otherwise say a line a token.
+// Their handlers are shown to run, so the silence is the patch's.
 {
+  const ran = [];
+  const slowly = (name) => async () => {
+    await taking(300)();
+    ran.push(name);
+  };
   const message = { role: "assistant", content: [] };
-  const { lines } = await run(
+  const { errors, lines } = await run(
     [
       [
         "streaming",
         [
-          ["message_update", [waiting(300)]],
-          ["tool_execution_update", [waiting(300)]],
+          ["message_update", [slowly("message_update")]],
+          ["tool_execution_update", [slowly("tool_execution_update")]],
         ],
       ],
     ],
@@ -115,52 +130,65 @@ const run = async (extensions, emitting) => {
       });
     },
   );
+  assert.deepEqual(ran, ["message_update", "tool_execution_update"], "a streamed handler never ran");
+  assert.deepEqual(errors, []);
   assert.deepEqual(lines, [], "said a turn's streamed event");
 }
 
 // A slow handler that throws is said too, and its error still reaches pi.
 {
   const failing = async () => {
-    await waiting(300)();
+    await taking(300)();
     throw new Error("broke");
   };
   const { errors, lines } = await run([["failing", [["session_start", [failing]]]]], (runner) =>
     runner.emit({ type: "session_start", reason: "startup" }),
   );
   assert.deepEqual(errors, ["broke"]);
-  assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
-  assert.match(lines[0], /^pi-host: "failing" session_start took \d+ ms$/u);
+  assert.deepEqual(lines, ['pi-host: "failing" session_start took 300 ms']);
 }
 
 // A slow handler that cancels is said once, before emit returns its result
 // at once: neither its extension's next handler nor the next extension runs.
-{
+// Where stderr's write throws, the cancel still comes back, unsaid.
+const cancellingRun = (write) => {
   const ran = [];
   const cancelling = async () => {
-    await waiting(300)();
+    await taking(300)();
     return { cancel: true };
   };
   const after = (name) => () => {
     ran.push(name);
   };
-  const { lines, result } = await run(
+  return run(
     [
       ["cancelling", [["session_before_switch", [cancelling, after("its next")]]]],
       ["later", [["session_before_switch", [after("the next extension")]]]],
     ],
     (runner) => runner.emit({ type: "session_before_switch", reason: "new" }),
-  );
+    write,
+  ).then((seen) => ({ ...seen, ran }));
+};
+{
+  const { lines, ran, result } = await cancellingRun();
   assert.deepEqual(result, { cancel: true });
   assert.deepEqual(ran, [], "a handler ran after the cancel");
-  assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
-  assert.match(lines[0], /^pi-host: "cancelling" session_before_switch took \d+ ms$/u);
+  assert.deepEqual(lines, ['pi-host: "cancelling" session_before_switch took 300 ms']);
+}
+{
+  const { lines, ran, result } = await cancellingRun(() => {
+    throw new Error("stderr is gone");
+  });
+  assert.deepEqual(result, { cancel: true }, "a write that threw took the cancel's place");
+  assert.deepEqual(ran, [], "a handler ran after the cancel");
+  assert.deepEqual(lines, []);
 }
 
 // resources_discover, which pi emits on its own path, is said the same way,
 // and what the slow extension found still reaches pi.
 {
   const finding = async () => {
-    await waiting(300)();
+    await taking(300)();
     return { skillPaths: ["/skills/one"] };
   };
   const { lines, result } = await run(
@@ -168,15 +196,15 @@ const run = async (extensions, emitting) => {
     (runner) => runner.emitResourcesDiscover("/work", "startup"),
   );
   assert.deepEqual(result.skillPaths, [{ path: "/skills/one", extensionPath: "finding" }]);
-  assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
-  assert.match(lines[0], /^pi-host: "finding" resources_discover took \d+ ms$/u);
+  assert.deepEqual(lines, ['pi-host: "finding" resources_discover took 300 ms']);
 }
 
 // A path holding a newline is said on one line, quoted as JSON.
 {
-  const { lines } = await run([["odd\nname", [["session_start", [waiting(300)]]]]], (runner) =>
+  const { lines } = await run([["odd\nname", [["session_start", [taking(300)]]]]], (runner) =>
     runner.emit({ type: "session_start", reason: "startup" }),
   );
   assert.equal(lines.length, 1);
-  assert.match(lines[0], /^pi-host: "odd\\nname" session_start took \d+ ms$/u);
+  assert.match(lines[0], SLOW);
+  assert.equal(lines[0], 'pi-host: "odd\\nname" session_start took 300 ms');
 }
