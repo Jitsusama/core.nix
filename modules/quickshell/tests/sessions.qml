@@ -694,6 +694,12 @@ ShellRoot {
             opened.length === 1 && asked(opened[0])?.classed === "pi-hosted.s-dreamer"
             && !JSON.stringify(Niri.acted).includes('"reference":{"Id":5}'),
             `${opened.join(" | ")} ${JSON.stringify(Niri.acted)}`);
+        // Its closed window still named by the windows daemon's index alone,
+        // which niri, its list trusted, no longer lists, it's as windowless.
+        const unlisted = Object.assign({}, dreamer, { window: { id: 4040, pid: 500 } });
+        expect("one whose window only the index names is still woken by viewing alone",
+            Sessions.trustsNiri() && !("4040" in Niri.windows)
+            && Sessions.wokenByViewing(unlisted), JSON.stringify(Object.keys(Niri.windows)));
         Sessions.keepPlaces({});
     }
 
@@ -876,19 +882,19 @@ ShellRoot {
         // is told, so the node's record of what it holds names it as niri
         // lists it; a hosted one's viewer, a sleeper's, a waiting row's and
         // one whose viewer niri no longer lists too, by its session's id.
-        // One no kitty took is asked for again, by the id it was first.
+        // One no kitty took is asked for again once, by the id it was first.
         const asks = Niri.spawns.map(command => asked(command)).filter(one => one !== null);
-        const named = asks.filter((one, at) => one.classed !== "pi-hosted.s-untaken"
-            || asks.findIndex(first => first.classed === one.classed) === at)
+        const untaken = asks.filter(one => one.classed === "pi-hosted.s-untaken").length;
+        const named = asks.filter(one => one.classed !== "pi-hosted.s-untaken")
             .map(one => [one.classed]);
         const socket = `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`;
         const viewed = "hosted|sleeper|dreamer|stale|row-waiting|row-listed|row-stale|untaken"
-            + "|pressed|forged|row-led";
+            + "|pressed|row-led";
         const own = new RegExp(`^pi-((session|spawned)\\.\\d+|hosted\\.s-(${viewed}))$`);
         expect("each window is asked of the sessions' socket with an app id of its own",
             asks.every(one => one.socket === socket && own.test(one.classed))
-            && new Set(named.map(([told]) => told)).size === named.length,
-            JSON.stringify(asks.map(one => [one.socket, one.classed])));
+            && new Set(named.map(([told]) => told)).size === named.length && untaken === 2,
+            `${untaken} ${JSON.stringify(asks.map(one => [one.socket, one.classed]))}`);
         // What the script does with them is its own case's
         // (the-sessions-kitty-is-asked-only-its-own-way).
         expect("each is opened by the script beside the shell's files",
@@ -1092,9 +1098,9 @@ ShellRoot {
     // Any program can give its window a viewer's app id, so once the
     // sessions' kitty's pid is known, as its unit writes it, a window it
     // didn't draw is never taken for a viewer: not raised or focused, not
-    // let go of as one come, nor a running session's window. Last of the
-    // walk, as the pid read is kept through a restart, so would outlast
-    // every case after.
+    // let go of as one come, nor a running session's window. The pid read
+    // is kept through a restart, so the case lets it go as it ends, leaving
+    // any case after it the app id alone.
     function drawn() {
         const view = ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
             "--session", "s-forged"];
@@ -1140,16 +1146,26 @@ ShellRoot {
         const window = Sessions.windowOf({ presence: hosting }, {}, { [named]: [forged] });
         Niri.windows = Object.assign({}, unforged, { "88": forged });
         Niri.acted = null;
+        const goneFrom = Niri.spawns.length;
         Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
             here: true });
+        const goneFor = Niri.spawns.slice(goneFrom);
         expect("nor is it a running session's window, nor raised by Go To",
             window === null && !focused(88), `${JSON.stringify(window)} `
                 + JSON.stringify(Niri.acted));
-        // Whose window holds the viewer's name is said, so a pid read
-        // wrong, with every viewer refused, is seen at the press.
-        expect("and Go To says another program's window holds its name",
-            root.unhosted === "FORGED" && root.unhostedWhy === "unowned",
-            `${root.unhosted} ${root.unhostedWhy}`);
+        // Its own viewer is asked for, and whose window holds its name is
+        // said, so a pid read wrong, with every viewer refused, is seen at
+        // the press.
+        expect("Go To opens its own, saying another program's window holds its name",
+            goneFor.length === 1 && asked(goneFor[0])?.classed === named
+            && root.unhosted === "FORGED" && root.unhostedWhy === "unowned",
+            `${root.unhosted} ${root.unhostedWhy} ${goneFor.join(" | ")}`);
+        // Pressed again while that one comes, it's held back, said opening.
+        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
+            here: true });
+        expect("while its own comes, Go To says it's opening, opening no other",
+            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "opening",
+            `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
         const startedNamed = "pi-session.3";
@@ -1186,8 +1202,24 @@ ShellRoot {
         Niri.windowOpenedOrChanged(anew);
         expect("one drawn by the kitty started again is taken as come",
             !Sessions.viewerComing(named), JSON.stringify(Sessions.attaching));
-        // While its unit starts again, the file is gone: the pid read last
-        // still says which windows are its, rather than any.
+        // Go To reads it again first, its viewer drawn by a kitty since
+        // started again, though niri told the shell nothing of it.
+        kittyPidFile.setText("6161\n");
+        const since = { id: 92, pid: 6161, opened: named };
+        Niri.windows = Object.assign({}, unforged, { "92": since });
+        Niri.acted = null;
+        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, here: true });
+        expect("Go To raises a viewer drawn by a kitty started again since",
+            focused(92), JSON.stringify(Niri.acted));
+        // And so does Reopen Them All, before its walk judges any viewer.
+        kittyPidFile.setText("7171\n");
+        Sessions.reopenAll([], () => {}, () => null);
+        expect("Reopen Them All reads it before its walk",
+            Sessions.sessionsKittyPid === "7171", Sessions.sessionsKittyPid);
+        // While its unit starts again, the file is gone, which reads as one
+        // saying nothing (Quickshell's FileViewReader::read gives a missing
+        // file no text): the pid read last still says which windows are
+        // its, rather than any.
         kittyPidFile.setText("");
         Sessions.readKittyPid();
         Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
@@ -1196,8 +1228,9 @@ ShellRoot {
         Niri.windowOpenedOrChanged(between);
         Niri.windows = unforged;
         expect("while it says none, another program's is still no viewer",
-            Sessions.viewerComing(named) && Sessions.sessionsKittyPid === "5151",
+            Sessions.viewerComing(named) && Sessions.sessionsKittyPid === "7171",
             `${Sessions.sessionsKittyPid} ${JSON.stringify(Sessions.attaching)}`);
+        Sessions.kittyPidRead = "";
         if (failed.length > 0)
             throw new Error(failed.join("; "));
     }

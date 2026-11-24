@@ -1023,9 +1023,9 @@ QtObject {
         // A window the windows daemon's index still names, which niri, its
         // list trusted, no longer lists, as in a gap of the daemon's, is no
         // viewer open (Sessions.qml's listedNow): its viewer opens.
-        // Niri lists every window but the session's own (7, as laid), so a
-        // listed asked of anything else, its session or nothing, says open.
-        const unlisted = gone(screens, { listed: window => window?.id !== 7 });
+        // Niri lists every window but the session's own (7, as laid), and
+        // no window is never listed, as listedNow says.
+        const unlisted = gone(screens, { listed: window => Boolean(window) && window.id !== 7 });
         expect("its window named by the index alone, it opens", Viewers.viewersDue(alone,
             [hosted("moved", laid(4, 3))], 10, unlisted).open.map(one => one.into),
             [{ workspace: 4, column: 3 }]);

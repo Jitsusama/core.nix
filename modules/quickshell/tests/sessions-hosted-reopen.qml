@@ -398,7 +398,9 @@ ShellRoot {
             return;
         stage = "asked";
         // NAPLED's workspace, with a window of its own, is there to be
-        // sent to, so one led by it waking where it was kept says so.
+        // sent to, so a walk that sent a sleeper it leads there, or named
+        // one for it, is caught. The walk only steers a sleeper, so this
+        // guards a change rather than pinning what decides where it wakes.
         Niri.workspaces = Object.assign({}, Niri.workspaces, { "46": { id: 46, idx: 1,
             name: "NAPLED", output: "eDP-1", is_focused: false, active_window_id: 86 } });
         Niri.windows = Object.assign({}, Niri.windows, { "86": { id: 86, pid: 860,

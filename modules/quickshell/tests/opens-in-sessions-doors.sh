@@ -3,10 +3,11 @@
 # take, over stand-ins for kitty's kitten, systemd-run, systemctl, sleep
 # and date, and the shell's qs: its socket, a socket that comes while it
 # waits, the unit's old kitty, and neither, which opens nothing and tells
-# the shell so, as it does when the kitty it asks can't be reached or the
-# old one opens nothing, and says so when the shell doesn't hear it. The old
-# kitty is a real process with that kitty's words on its command line,
-# since the script reads /proc, which no stand-in can be. What the script
+# the shell so, as it does when the kitty it asks turns the launch down or
+# can't be reached, or the old one opens nothing, and says so when the
+# shell doesn't hear it. The old kitty is a real process with that kitty's
+# words on its command line, since the script reads /proc, which no
+# stand-in can be. What the script
 # tells the shell is held to what Sessions.qml's handler takes, so the two
 # can't drift apart while both stand-ins pass.
 # usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3> <Sessions.qml>
@@ -28,11 +29,22 @@ for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n[ ! -f "%s/%s-fails" ]\n' \
     "$BASH" "$program" "$work" "$work" "$program" > "$stand_ins/$program"
 done
-# The time the script was started at, as the shell's own clock gives it,
-# but only when asked in ms, as the shell's handler takes it: asked any
-# other way, it answers what it was asked, which no case wants.
-printf '#!%s\nif [ "$*" = +%%s%%3N ]; then echo 1700000000000; else echo "date $*"; fi\n' \
-  "$BASH" > "$stand_ins/date"
+# The shell's own clock, only when asked in ms, as the shell's handler
+# takes it: asked any other way, it answers what it was asked, which no
+# case wants. It gives 1700000000000 when first asked and later times
+# after, so the time the shell is told is the one the script started at,
+# never when it gave up, which would clear a press made meanwhile.
+cat > "$stand_ins/date" << EOF
+#!$BASH
+if [ "\$*" != +%s%3N ]; then
+  echo "date \$*"
+elif [ -s "$work/dates" ]; then
+  echo 1700000099999
+else
+  echo . > "$work/dates"
+  echo 1700000000000
+fi
+EOF
 # The unit's main process, as main-pid names it.
 printf '#!%s\ncat "%s/main-pid"\n' "$BASH" "$work" > "$stand_ins/systemctl"
 # Each wait counted, and the socket made at the wait came-at names.
@@ -49,7 +61,7 @@ old=""
 trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 
 fresh() {
-  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails
+  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails "$work/dates"
   : > "$work/asked"
   : > "$work/waits"
   echo 0 > "$work/main-pid"
@@ -88,10 +100,10 @@ waited() {
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 opens pi-session.7 --directory /src/reef zsh -lic 'mycelium attach'
-# Asked for no answer, so a kitty slow to draw it, which kitten would give
-# up on after its 10 s, is never taken as one that opened nothing.
-expect "a kitty listening is asked over its socket, in the folder named, for no answer" \
-  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+# Its answer waited for a minute, so a launch kitty turns down is said,
+# while one slow to draw is waited on past the shell's own patience.
+expect "a kitty listening is asked over its socket, in the folder named, waiting its answer" \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-session.7 --cwd /src/reef --env MYCELIUM_APP_ID=pi-session.7 \
 zsh -lic mycelium attach" asked
 
@@ -99,14 +111,14 @@ fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 opens pi-spawned.8 pi
 expect "one naming no folder opens at home" \
-  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-spawned.8 --cwd /home/joel --env MYCELIUM_APP_ID=pi-spawned.8 pi" asked
 
 fresh
 echo 3 > "$work/came-at"
 opens pi-session.9 pi
 expect "a kitty starting again is waited on until its socket comes" \
-  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-session.9 --cwd /home/joel --env MYCELIUM_APP_ID=pi-session.9 pi" asked
 waited "it waits only until then" 3
 
@@ -159,16 +171,17 @@ old=""
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
-# A socket kitty no longer listens on, as after a crash, which the ask never
-# reaches; and a shell that doesn't hear the give-up, which is said too.
+# A kitty that turns the launch down, or a socket it no longer listens on,
+# as after a crash; and a shell that doesn't hear the give-up, which is
+# said too. The shell is told when the script started, not when it gave up.
 touch "$work/kitten-fails" "$work/qs-fails"
 opens pi-hosted.s-12 pi
 if [ "$status" -ne 1 ]; then
-  echo "FAIL with a kitty its ask can't reach, it ended $status, not 1"
+  echo "FAIL with a kitty that opens nothing, it ended $status, not 1"
   failed=1
 fi
-expect "a kitty its ask can't reach is asked once, and the shell is told none took it" \
-  "kitten @ --to unix:$work/kitty.sock launch --no-response --type=os-window \
+expect "a kitty that opens nothing is asked once, and the shell is told none took it" \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-12 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-12 pi
 qs ipc call sessions untaken pi-hosted.s-12 1700000000000" asked
 expect "the journal says it opened nothing, and that the shell didn't hear" \
