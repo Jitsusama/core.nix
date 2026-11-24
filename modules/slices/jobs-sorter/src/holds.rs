@@ -208,6 +208,11 @@ impl Holding {
         self.held.len()
     }
 
+    /// The scopes held, taken up or not.
+    pub fn scopes(&self) -> &HashSet<PathBuf> {
+        &self.held
+    }
+
     /// The scopes a sorter before this one set as `set` says, to give
     /// back those not wanted, and set again once those that are.
     pub fn taken_up(
