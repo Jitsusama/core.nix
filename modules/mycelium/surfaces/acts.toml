@@ -1,0 +1,335 @@
+# What Joel can do with his cells, and where. Every act is one he can take on
+# each of four surfaces: the mycelium command (cli), a pi session (session),
+# the mycelium map (map) and the launcher (launcher). Joel, 2026-11-24: "any
+# interface i'm in should be directly engagable to a meaningful level".
+#
+# Each surface of each act says one of three things:
+#
+# - has: where it is, as a file of core.nix and the words it holds, or a
+#   mycelium command and the words its --help says, or a pi tool by name;
+# - owed: who brings it (a cell's address), by when (local time), and why
+#   it isn't there yet;
+# - waived: why the surface never will, in a sentence.
+#
+# An act's through names the one way to it every surface takes, so each
+# surface that brings an act calls what the others call.
+#
+# A surface left out fails (stays-even.py), so an act one surface gains is
+# owed by every other until it's there or waived. Where a surface lists its
+# acts in a file of its own, an offered entry at the end reads that list, and
+# an act in it the table doesn't name fails, so a gained act can't go unseen.
+# Only the launcher's session row is read so far, its verb:agent: ids; the
+# map's drawer lists its words in a file once core.nix#6389 lands, and is
+# read from then.
+# The pi tools aren't read, since the harness that holds them isn't an input
+# of core.nix; each session has says where its tool does the act.
+#
+# A has proves its words are where it says, not that the surface's code
+# offers the act, which the surfaces' own tests prove, nor that an act is
+# worded the same on each surface. An owing's due time is read by people and
+# J7XHQN, not by the check, which has no clock.
+
+[[act]]
+name = "needs"
+says = "see what needs him"
+through = "the cells standing needs-you, as mycelium cells --standing needs-you -o json gives them"
+
+[act.cli.has]
+command = "cells"
+holds = "`needs-you,stuck`"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 18:30"
+why = "person_needs reads them, and /needs lists and picks, still unmerged"
+
+[act.map.has]
+file = "modules/mycelium/site/keys.ts"
+holds = 'a: "needs-you"'
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/on.json"
+holds = '"name": "For You"'
+
+[[act]]
+name = "go"
+says = "go to a cell: its window raised, or one opened"
+through = "the launcher's go, as mycelium-link mycelium:cell/ADDRESS@MACHINE/go asks it"
+
+[act.cli.owed]
+by = "KP0L6A"
+due = "2026-11-25 18:00"
+why = "mycelium go, which joins a held cell's window"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 20:00"
+why = "show_person only points at a terminal"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-24 18:30"
+why = "Go to It on a cell's drawer lands with core.nix#6389"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/agents.json"
+holds = '"id": "verb:agent:switch"'
+
+[[act]]
+name = "talk"
+says = "talk to a cell, seeing it sent, worked on and replied to"
+through = "mycelium steer ADDRESS, the words as its text, and mycelium said for how each stands"
+
+[act.cli.has]
+command = "said"
+holds = "when each was taken up and answered"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-25 12:00"
+why = "mesh_send and mesh_read show sent and replied, not working"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "it hands talk to the launcher, and shows nothing back"
+
+[act.launcher.owed]
+by = "42P0R4"
+due = "2026-11-24 20:00"
+why = "talk to an asking cell goes to an inbox it doesn't read"
+
+[[act]]
+name = "asked"
+says = "read what a cell asks him, whole, its choices included"
+through = "a cell's asked, its wants where a node sends none (mycelium#426)"
+
+[act.cli.owed]
+by = "KP0L6A"
+due = "2026-11-26 12:00"
+why = "unanswered says how a question opens, not all of it"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-25 12:00"
+why = "mesh_read gives a peer's question, not a want's whole text and choices"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-24 18:30"
+why = "a cell's drawer says its question whole, with core.nix#6389"
+
+[act.launcher.owed]
+by = "42P0R4"
+due = "2026-11-24 20:30"
+why = "For You shows a question's last line"
+
+[[act]]
+name = "answer"
+says = "answer what a cell asks"
+through = "mycelium steer ADDRESS, the answer as its text"
+
+[act.cli.has]
+command = "steer"
+holds = "goes into the steer inbox"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-25 12:00"
+why = "/needs goes to the cell by its go link, answered in the launcher until typing speaks as him"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "it hands an answer to the launcher's talk"
+
+[act.launcher.owed]
+by = "42P0R4"
+due = "2026-11-24 20:00"
+why = "an answer goes to an inbox an asking cell doesn't read"
+
+[[act]]
+name = "sprout"
+says = "start new work from a link or words, in a folder or a World zone"
+through = "mycelium sprout, its folder or a zone by name"
+
+[act.cli.owed]
+by = "KP0L6A"
+due = "2026-11-25 12:00"
+why = "sprout takes a folder; a zone by name waits on mycelium#425 and its pin"
+
+# mesh_sprout starts new work as a cell of its own, from words or a link.
+[act.session.has]
+tool = "mesh_sprout"
+
+[act.map.has]
+file = "modules/mycelium/site/sprout.ts"
+holds = "mycelium:sprout?words="
+
+[act.launcher.owed]
+by = "42P0R4"
+due = "2026-11-25 12:00"
+why = "a link with no folder, and a zone by name, wait on core.nix#6373 and #6378"
+
+[[act]]
+name = "forage"
+says = "see what a cell is for, and its plans"
+through = "mycelium forage -o json"
+
+[act.cli.has]
+command = "forage"
+holds = "what each cell is for"
+
+# quest show reads any quest's README and plans by id, loaded or not, and
+# mesh_groups says which quest each cell is on.
+[act.session.has]
+tool = "quest"
+
+[act.map.has]
+file = "modules/mycelium/site/view.js"
+holds = "See What It Is For, and Its Plans"
+
+[act.launcher.owed]
+by = "42P0R4"
+due = "2026-11-25 12:00"
+why = "its drawer says what a cell is for, and none of its plans"
+
+[[act]]
+name = "hold"
+says = "pause a cell, or resume it"
+through = "mycelium steer ADDRESS with act pause or resume, and holds ID again for one parked"
+
+[act.cli.has]
+command = "steer"
+holds = "pauses, resumes"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 20:00"
+why = "a session steers by running mycelium steer, with no tool of its own"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-25 18:00"
+why = "a cell's drawer offers no pause or resume"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/agents.json"
+holds = ['"id": "verb:agent:pause"', '"id": "verb:agent:resume"']
+
+[[act]]
+name = "stop"
+says = "stop what a cell is doing, its turn ended and the cell kept"
+through = "mycelium steer ADDRESS with act stop"
+
+[act.cli.has]
+command = "steer"
+holds = "stops, closes"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 20:00"
+why = "a session steers by running mycelium steer, with no tool of its own"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "a cell's drawer offers no stop"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/agents.json"
+holds = '"id": "verb:agent:stop"'
+
+[[act]]
+name = "close"
+says = "close a cell, its session ended for good"
+through = "mycelium steer ADDRESS with act close"
+
+[act.cli.has]
+command = "steer"
+holds = "stops, closes"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 20:00"
+why = "a session steers by running mycelium steer, with no tool of its own"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "a cell's drawer offers no close"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/agents.json"
+holds = '"id": "verb:agent:close"'
+
+[[act]]
+name = "park"
+says = "park a cell, its program ended, to wake when it's spoken to"
+through = "the harness's parking steer, which 5HJZ8Z is bringing"
+
+[act.cli.owed]
+by = "KP0L6A"
+due = "2026-11-24 21:00"
+why = "mycelium steer takes act park on mycelium's train 53, then core's pin of it"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-26 12:00"
+why = "no tool parks a cell until the harness's steer does"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "a cell's drawer offers no park"
+
+[act.launcher.owed]
+by = "42P0R4"
+due = "2026-11-26 12:00"
+why = "it wakes a parked cell, and parks none until the harness can"
+
+[[act]]
+name = "looks"
+says = "see his look list"
+through = "the looks folder the harness writes, as the to-do daemon reads it"
+
+[act.cli.owed]
+by = "KP0L6A"
+due = "2026-11-26 12:00"
+why = "no command reads the look list"
+
+[act.session.owed]
+by = "85PKB2"
+due = "2026-11-24 18:30"
+why = "/needs opens a look, marks it opened, and clears it as cleared by him, still unmerged"
+
+[act.map.owed]
+by = "KP0L6A"
+due = "2026-11-26 18:00"
+why = "the map draws cells, and none of his looks"
+
+[act.launcher.has]
+file = "modules/quickshell/launcher/words/on.json"
+holds = '"id": "for-you:kind:look"'
+
+# The acts a surface lists in a file of its own, each its word there and
+# the act of the table it is, or set apart with why it is no act on a cell.
+# The launcher's are its session row's verbs, verb:agent:; its verbs under
+# other ids, such as Carry Back and Pause All Agents, aren't read yet.
+
+[[offered]]
+surface = "launcher"
+file = "modules/quickshell/launcher/words/agents.json"
+pattern = '"id": "verb:agent:([a-z-]+)"'
+
+[offered.acts]
+switch = "go"
+talk = "talk"
+pause = "hold"
+resume = "hold"
+wake = "park"
+stop = "stop"
+close = "close"
+
+[offered.apart]
+take-back = "it undoes what the talk line's void did, an act on his own words, not on a cell"

@@ -2298,6 +2298,15 @@
     value where its line gives one and none where it doesn't, so a flag can't reach the node's
     service before the mycelium that reads it
   '';
+  mycelium-surfaces-stay-even = ''
+    every act Joel takes on his cells is on the mycelium command, a pi session, the map and the
+    launcher, or owed by a cell by a time, or waived with a reason: a file said to have it holds
+    its words and the locked mycelium's help says a command's, and an act the launcher's session
+    row lists is one of the table's; a clean act passing, and a surface left out, two standings, a
+    missing file or word, a help that fails, an owing with no cell, time or why, a waiver with no
+    reason, an act naming no way to it, an act a surface lists that the table doesn't, no longer
+    lists or maps to no act, and a list read as holding none, each failing first
+  '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
     team after an act, an act after a team, and nothing for the words said to one
