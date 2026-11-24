@@ -87,10 +87,12 @@ pub struct Unwritten {
 /// journalled at every try, and again each [`SAY_AGAIN_MS`] it lasts,
 /// or at once if the wall clock stepped back past when it was said, which
 /// would otherwise hush it for as long as the clock stepped; then once
-/// more on success, saying how long the file was behind. A failure
-/// lasting is never behind since a time still to come (its `since` is no
-/// later than now), as after such a step, so how long reads no shorter
-/// than the step makes it.
+/// more on success, saying how long the file was behind, or that the
+/// clock stepped back when it fell behind at a time still to come, as
+/// how long it lagged can't be told. A failure lasting is never behind
+/// since a time still to come (its `since` is no later than now), as
+/// after such a step, so how long reads no shorter than the step makes
+/// it.
 fn write_heard(
     path: &Path,
     why: Option<&str>,
@@ -99,7 +101,13 @@ fn write_heard(
 ) -> (Option<String>, Option<Unwritten>) {
     let Some(why) = why else {
         let heard = was.map(|was| {
-            let behind = lasted(at.saturating_sub(was.since));
+            if at < was.since {
+                return format!(
+                    "agents: kept {} again, the clock stepped back",
+                    path.display()
+                );
+            }
+            let behind = lasted(at - was.since);
             format!("agents: kept {} again, {behind} behind", path.display())
         });
         return (heard, None);
@@ -376,7 +384,9 @@ impl Inputs {
     /// though, and a keep once any window shows may take it as orphaned,
     /// as after a crash of niri: with no other window shown, nothing here
     /// tells a window closed by hand from a viewer gone with its host, so
-    /// it errs toward opening it again. It answers when, in ms since the
+    /// it errs toward opening it again, until the harness leaves a viewer
+    /// closed by hand out of restore.json, which reopen.rs then never
+    /// offers (OSPHT4, 24 November). It answers when, in ms since the
     /// epoch, a place closed by hand is to be let go, so it's kept again
     /// then, or soon after a write that failed, so the file catches up
     /// though no window moves.
