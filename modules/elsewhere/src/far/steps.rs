@@ -283,7 +283,10 @@ pub(super) fn copying() -> String {
 /// one can't be cleared, nothing is written or cleared in the handover:
 /// only the copy goes. Otherwise the handover, the folders above it and
 /// those under its copies' folder are opened, so a job that closed them
-/// changes nothing.
+/// changes nothing, and whatever lies at its list's name goes, a folder
+/// the job made there included, so the list's own write never fails on it.
+/// `find` takes a link it meets as itself alone, as `-P` says, so
+/// nothing past the handover is opened.
 /// Where the folder still can't be made new, as on a disk gone wrong, the
 /// tree goes too, to free its room, and the list is only its cut, so the
 /// near side says at once that nothing came back, whatever list the job
@@ -295,9 +298,10 @@ pub(super) fn handing() -> String {
 # stands, so nothing past the handover is opened.
 stuck="a link it left at its handover couldn't be cleared"
 if unlinked; then
-  find "$job/{BACK}" -type d ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
-  stuck="its folder for copies couldn't be made new"
-  rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}" && stuck=
+  find -P "$job/{BACK}" "$job/{BROUGHT}" -type d ! -perm -700 -exec chmod u+rwx {{}} \; \
+    2>/dev/null
+  stuck="its folder for copies or its list couldn't be made new"
+  rm -rf "$job/{BACK}" "$job/{BROUGHT}" && mkdir -p "$job/{BACK}" && stuck=
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2

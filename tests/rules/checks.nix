@@ -77,8 +77,8 @@
   # when that thing moved sends its reader looking for nothing, as a doc
   # does; docs-name-what-exists holds the markdown. One that must wait on
   # its owner is listed in tests/rules/comments-name-what-exists-waiting.nix,
-  # empty now, and the check fails once it's fixed, so the list only shrinks.
-  comments-name-what-exists = pkgs.callPackage ./comments-name-what-exists.nix { } {
+  # and the check fails once it's fixed, so the list only shrinks.
+  comments-name-what-exists = self.lib.commentsNameWhatExists pkgs {
     src = ../..;
     waiting = import ./comments-name-what-exists-waiting.nix;
   };

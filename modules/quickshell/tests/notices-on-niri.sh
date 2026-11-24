@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Starts the shell's notices (notices.qml, in the account's shell folder) on
-# the niri tests/nested-niri.sh runs, sends a notice as a program does, and
+# the niri tests/lib/nested-niri.sh runs, sends a notice as a program does, and
 # checks the shell showed it on the arrival line, niri's notices layer, an
 # overlay that takes no keys and stays mapped, off the screen, while it's
 # quiet. A second, sent while the first shows, waits its turn and then has its

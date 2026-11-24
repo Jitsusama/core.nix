@@ -60,7 +60,8 @@ ShellRoot {
         asker: ask
         patience: 4000
         said: ({
-            asks: "Say what this is.\n\n{facts}",
+            asks: "Say what this is{acts}.\n\n{facts}",
+            acts: ", ending with what answers it",
             reading: "finding what it is",
             asking: "asking",
             answered: "explained just now",
@@ -183,13 +184,36 @@ ShellRoot {
         explainer.explain("f", "HANG");
         until("a node that never answers is given up on",
             () => explainer.shown("f")?.name === "couldn't be explained", () => {
-                explainer.explain("h", "HARBOR");
+                explainer.explain("h", "HARBOR", ["Talk", "Go To"]);
                 until("a row asked after one given up on is read all the same",
-                    () => explainer.shown("h")?.note === "asking", () => {
+                    () => explainer.shown("h", ["Talk", "Go To"])?.note === "asking", () => {
                         expect("the node was never asked of an address that isn't one",
                             !asked().some(line => line.includes("-all")), asked());
-                        Qt.exit(0);
+                        expect("one asking nothing names no act to press",
+                            !ask.posed.includes("The person can press"), ask.posed);
+                        expect("nor is its answer asked to end with one",
+                            !ask.posed.includes("ending with"), ask.posed);
+                        same("its row with other acts now is the act again",
+                            explainer.shown("h", ["Go To"]), null);
+                        wanting();
                     });
+            });
+    }
+
+    // A session waiting on Joel is asked of with its want and its row's acts: a
+    // look's Open and Go To, a session asking having no Talk (Now.qml's cellActs).
+    function wanting() {
+        explainer.explain("w", "WANTS", ["Open", "Go To"]);
+        until("a session waiting on Joel is asked of its pi",
+            () => explainer.shown("w", ["Open", "Go To"])?.note === "asking", () => {
+                expect("its pi is told what it asks, quoted",
+                    ask.posed.includes("It asks the person: \"Which tide?"), ask.posed);
+                expect("and what the row offers to answer it",
+                    ask.posed.includes("The person can press: \"Open\", \"Go To\""), ask.posed);
+                expect("and to end with the one that answers",
+                    ask.posed.startsWith("Say what this is, ending with what answers it."),
+                    ask.posed);
+                Qt.exit(0);
             });
     }
 }

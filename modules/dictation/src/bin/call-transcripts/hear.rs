@@ -14,12 +14,15 @@
 //!
 //! Each take of theirs, once Parakeet has heard it, is also given to the
 //! speaker model, loaded and let go with Parakeet and kept compiled where
-//! it is, for an embedding of how it sounds; once the call is written
-//! down whole the takes are grouped by voice (voices.rs), unless the
-//! record already names their side, and each voice is named where who
-//! was in the Meet as it spoke says so (presence.rs). Only the
-//! embeddings are kept, never the sound, and only in memory: the last
-//! few calls' stay once they end, so a call rejoined is told apart whole.
+//! it is, for an embedding of how each 3 s piece of it sounds
+//! (`dictation::pieces`); once the call is written down whole the pieces
+//! are grouped by voice (voices.rs), unless the record already names
+//! their side, a line is split where its pieces' voice changes
+//! (split.rs), and each voice is named where who was in the Meet as it
+//! spoke says so (presence.rs). Only the embeddings and the words, with
+//! when each was said, are kept, never the sound, and only in memory: the
+//! last few calls' stay once they end, so a call rejoined is told apart
+//! whole.
 //!
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
@@ -31,14 +34,16 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
 use dictation::mel::RATE;
-use dictation::parakeet::Parakeet;
-use dictation::transcript::{self, Line, Side, markdown_naming};
+use dictation::parakeet::{Parakeet, Timings, Word};
+use dictation::pieces;
+use dictation::transcript::{self, Line, Side, markdown_unechoed};
 use dictation::voices::{self, Heard, Voices};
 
 use crate::Settings;
 use crate::book::{self, Attendance, Record, Shared, TRANSCRIPT, write_whole};
 use crate::filed;
 use crate::presence::{self, Present, Spoke, Who};
+use crate::split::{self, Piece};
 use crate::{notices, said};
 
 /// How long Parakeet is kept once the last call is written, so a call
@@ -65,33 +70,61 @@ pub enum Job {
     SumUp { key: String },
 }
 
-/// A call being written, with each take of theirs that was embedded and
-/// which of the lines it is, if Parakeet heard words in it: one it heard
-/// none in still helps tell the others apart, as it does where the voices
-/// check measures them (apart.rs). It's `whole` when its embeddings cover
+/// A call being written, with each piece of a take of theirs that was
+/// embedded and which of the lines it's of, if Parakeet heard words in
+/// its take: one it heard none in still helps tell the others apart, as
+/// it does where the voices check measures them (apart.rs). Each line of
+/// theirs heard in this run keeps its words, timed from the call's start,
+/// so it can be split where its voice changes. It's `whole` when its embeddings cover
 /// the whole call, as they do for one heard from its start in this run,
 /// and not for one taken up from its file after a restart. Its `guesses`
 /// say who the voices left numbered may be, once it's told apart; they
-/// aren't in its lines, so a restart loses them.
+/// aren't in its lines, so a restart loses them. Its first `read` lines
+/// were read back from its file, their echoes already left out.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
+    read: usize,
     done: HashSet<Side>,
     heard: Vec<Heard>,
-    heard_lines: Vec<Option<usize>>,
+    pieces: Vec<Piece>,
+    words: HashMap<usize, Vec<Word>>,
+    takes: usize,
     whole: bool,
     guesses: Option<String>,
 }
 
+/// A piece of a take of theirs as the speaker model heard it: its
+/// embedding, the sample of the call it starts at, and how many it holds.
+type Embedded = (Vec<f32>, usize, usize);
+
 impl Writing {
-    /// Keeps a take's embedding, and which line it is, if it has one.
-    fn heard(&mut self, embedding: Vec<f32>, samples: usize, line: Option<usize>) {
-        self.heard.push(Heard {
-            embedding,
-            samples,
-            worded: line.is_some(),
-        });
-        self.heard_lines.push(line);
+    /// Keeps the embedding of each piece of a take of theirs embedded,
+    /// with the sample of the call it starts at and how many it holds,
+    /// and which line the take is, if it has one; a piece is worded when
+    /// the line's `words` that start in it say more than hesitation, as a
+    /// run must to be split into a line of its own. The voices check has
+    /// one worded when the reference has any speech in it, so a piece
+    /// holding only the end of a word is worded there and not here.
+    fn heard(&mut self, line: Option<usize>, words: &[Word], embedded: Vec<Embedded>) {
+        for (embedding, start, samples) in embedded {
+            let in_it: Vec<&str> = words
+                .iter()
+                .filter(|word| (start..start + samples).contains(&word.at))
+                .map(|word| word.text.as_str())
+                .collect();
+            self.heard.push(Heard {
+                embedding,
+                samples,
+                worded: line.is_some() && said::spoken(&in_it.join(" ")).is_some(),
+            });
+            self.pieces.push(Piece {
+                take: self.takes,
+                start,
+                line,
+            });
+        }
+        self.takes += 1;
     }
 }
 
@@ -178,27 +211,20 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let text = match parakeet.transcribe(&samples) {
-                    Ok((text, took)) => {
-                        eprintln!("call-transcripts: {}", took.describe(&parakeet.device));
-                        said::spoken(text.trim())
-                    }
-                    Err(why) => {
-                        eprintln!("call-transcripts: a take wasn't heard: {why}");
-                        None
-                    }
-                };
+                let (text, words) = transcribe_take(parakeet, side, start, &samples);
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
-                if side == Side::Theirs
-                    && let Some(embedding) = embed(settings, &mut speakers, &samples)
-                {
+                if side == Side::Theirs {
+                    let embedded = embed_theirs(settings, &mut speakers, start, &samples);
                     let line = text.is_some().then_some(writing.lines.len());
-                    writing.heard(embedding, samples.len(), line);
+                    writing.heard(line, &words, embedded);
                 }
                 let Some(text) = text else {
                     continue;
                 };
+                if side == Side::Theirs {
+                    writing.words.insert(writing.lines.len(), words);
+                }
                 writing.lines.push(Line {
                     side,
                     start,
@@ -231,6 +257,77 @@ pub fn hear(
             }
         }
     }
+}
+
+/// What hears a take: Parakeet, or a script in the cases, so what's
+/// kept of a take is pinned without a model.
+pub trait Hears {
+    /// The words said in a take, each timed from its start.
+    fn words(&mut self, samples: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)>;
+    /// What's said in a take.
+    fn text(&mut self, samples: &[f32]) -> dictation::openvino::Result<(String, Timings)>;
+    /// Where it runs, for the journal.
+    fn device(&self) -> &str;
+}
+
+impl Hears for Parakeet {
+    fn words(&mut self, samples: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)> {
+        self.transcribe_words(samples)
+    }
+
+    fn text(&mut self, samples: &[f32]) -> dictation::openvino::Result<(String, Timings)> {
+        self.transcribe(samples)
+    }
+
+    fn device(&self) -> &str {
+        &self.device
+    }
+}
+
+/// What's heard in a take of `side`'s, `start` samples into the call, as
+/// the call keeps it: its text tidied, none when it holds no words or
+/// isn't heard, which is logged. Only their words are kept, spelling
+/// their text a space between each, as `transcribe` would, and timed
+/// from the call's start, which is where its pieces are, so each word
+/// finds the piece it was said in.
+pub fn transcribe_take(
+    hears: &mut impl Hears,
+    side: Side,
+    start: usize,
+    samples: &[f32],
+) -> (Option<String>, Vec<Word>) {
+    let transcribed = if side == Side::Theirs {
+        hears.words(samples).map(|(words, took)| {
+            let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+            (spelled.join(" "), from_call_start(start, words), took)
+        })
+    } else {
+        hears
+            .text(samples)
+            .map(|(text, took)| (text, Vec::new(), took))
+    };
+    match transcribed {
+        Ok((text, words, took)) => {
+            eprintln!("call-transcripts: {}", took.describe(hears.device()));
+            (said::spoken(text.trim()), words)
+        }
+        Err(why) => {
+            eprintln!("call-transcripts: a take wasn't heard: {why}");
+            (None, Vec::new())
+        }
+    }
+}
+
+/// A take's `words`, timed from its start, timed from the call's instead,
+/// the take starting `start` samples into it.
+fn from_call_start(start: usize, words: Vec<Word>) -> Vec<Word> {
+    words
+        .into_iter()
+        .map(|word| Word {
+            at: start + word.at,
+            ..word
+        })
+        .collect()
 }
 
 /// Compiles Parakeet and lets it go, when it's for the NPU and nothing is
@@ -272,19 +369,69 @@ fn loaded<'a>(
     speech.as_mut()
 }
 
-/// How a take of theirs sounds, from the speaker model, loaded first if
-/// it isn't; none when there's no model, it won't load, which is logged
-/// once, or it fails, which is logged, and the take is under Others.
-fn embed(settings: &Settings, speakers: &mut Speakers, samples: &[f32]) -> Option<Vec<f32>> {
-    let model = settings.voices.as_deref()?;
-    let voices = speakers.get(|| Voices::load(model, settings.cache.as_deref()))?;
-    match voices.embed(samples) {
-        Ok(embedding) => embedding,
-        Err(why) => {
-            eprintln!("call-transcripts: a take's voice wasn't heard: {why}");
-            None
+/// A take of theirs embedded in pieces by the speaker model, as
+/// `embed_take` says, its failures logged.
+fn embed_theirs(
+    settings: &Settings,
+    speakers: &mut Speakers,
+    start: usize,
+    samples: &[f32],
+) -> Vec<Embedded> {
+    let (embedded, failed) = embed_take(start, samples, |piece| embed(settings, speakers, piece));
+    if let Some(failed) = failed {
+        eprintln!("call-transcripts: {failed}");
+    }
+    embedded
+}
+
+/// Each piece of a take of theirs that starts `start` samples into the
+/// call, as `embed` hears it, with the sample of the call it starts at
+/// and how many it holds. A piece `embed` fails on is left out, and the
+/// failures are told in one line a take, so a model failing on every
+/// piece doesn't bury the journal. The line gives the first failure's
+/// reason, since it's most often the cause and later ones repeat it.
+fn embed_take(
+    start: usize,
+    samples: &[f32],
+    mut embed: impl FnMut(&[f32]) -> Result<Option<Vec<f32>>, String>,
+) -> (Vec<Embedded>, Option<String>) {
+    let cut = pieces::pieces(samples.len());
+    let mut embedded = Vec::new();
+    let mut failed = (0, None);
+    for &(from, to) in &cut {
+        let piece = &samples[from..to];
+        match embed(piece) {
+            Ok(Some(embedding)) => embedded.push((embedding, start + from, piece.len())),
+            Ok(None) => {}
+            Err(why) => {
+                failed.0 += 1;
+                failed.1.get_or_insert(why);
+            }
         }
     }
+    let of = cut.len();
+    let failed = match failed {
+        (over, Some(why)) => Some(format!("{over} of {of} pieces' voice not heard: {why}")),
+        _ => None,
+    };
+    (embedded, failed)
+}
+
+/// How a piece of a take of theirs sounds, from the speaker model, loaded
+/// first if it isn't; none when there's no model or it won't load, which
+/// is logged once, or the piece is too short, and why when it fails.
+fn embed(
+    settings: &Settings,
+    speakers: &mut Speakers,
+    samples: &[f32],
+) -> Result<Option<Vec<f32>>, String> {
+    let Some(model) = settings.voices.as_deref() else {
+        return Ok(None);
+    };
+    let Some(voices) = speakers.get(|| Voices::load(model, settings.cache.as_deref())) else {
+        return Ok(None);
+    };
+    voices.embed(samples)
 }
 
 /// Gives each of their lines the voice its take was grouped into, unless
@@ -408,8 +555,10 @@ fn keep(ended: &mut Vec<(String, Writing)>, key: &str, mut writing: Writing) {
     }
 }
 
-/// Gives each line of theirs the voice its take was grouped into, at most
-/// `people` of them. A call heard whole in this run, rejoins and all, is
+/// Gives each line of theirs the voice its pieces were grouped into, at
+/// most `people` of them, a piece grouped into none taking the nearest
+/// voice of its take's pieces, and splits a line where its pieces' voice
+/// changes (split.rs). A call heard whole in this run, rejoins and all, is
 /// grouped whole again. Embeddings are kept only in memory, so a call
 /// taken up again after a restart has none for what it said before: when
 /// that part was told apart its voices stay, and this part's lines stay
@@ -430,11 +579,29 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
     {
         return false;
     }
+    if writing.heard.len() > voices::MOST_TAKES {
+        // Past the cap the shortest pieces go ungrouped and take their
+        // take's nearest voice; a take with none left stays under Others,
+        // so a transcript whose end does says why here.
+        let over = writing.heard.len() - voices::MOST_TAKES;
+        let of = writing.heard.len();
+        eprintln!("call-transcripts: {over} of {of} pieces left out of telling voices apart");
+    }
     let grouped = voices::group(&writing.heard, people);
-    for (line, voice) in writing.heard_lines.iter().zip(grouped) {
-        if let Some(&index) = line.as_ref() {
-            writing.lines[index].voice = voice;
-        }
+    let takes: Vec<usize> = writing.pieces.iter().map(|piece| piece.take).collect();
+    let voiced = pieces::within_takes(&takes, &grouped);
+    let mut call = split::Call {
+        lines: &mut writing.lines,
+        pieces: &mut writing.pieces,
+        words: &mut writing.words,
+    };
+    let split::Splits {
+        of,
+        split: cut,
+        into,
+    } = split::by_voice(&mut call, &voiced);
+    if of > 0 {
+        eprintln!("call-transcripts: {cut} of {of} takes of theirs split by voice, into {into}");
     }
     true
 }
@@ -483,6 +650,7 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
     }
     Writing {
         whole: lines.is_empty(),
+        read: lines.len(),
         lines,
         ..Writing::default()
     }
@@ -501,12 +669,10 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
     };
     let file = record.folder.join(TRANSCRIPT);
     let mut opening = record.opening.clone();
-    let lines = &writing.lines;
-    if !lines.is_empty() {
+    if !writing.lines.is_empty() {
         let them = record.them(me);
         let note = record.note(me);
-        let guesses = writing.guesses.as_deref();
-        let said = markdown_naming(lines, me, them.as_deref(), note.as_deref(), guesses);
+        let said = transcript_of(writing, me, them.as_deref(), note.as_deref());
         let written = filed::whole(&record.title, record.summary.as_deref(), &said);
         if let Err(why) = write_whole(&file, &written) {
             eprintln!("call-transcripts: writing {}: {why}", file.display());
@@ -526,6 +692,18 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
             ..record
         });
     }
+}
+
+/// The transcript `writing` holds, under their side's name `them` where
+/// it's known and the voices' `note`. Joel's echoes are left out against
+/// each take of theirs whole, never its parts, so a take split by voice
+/// neither brings back an echo of it nor takes away his answer to it.
+/// Lines read back from the file were told when first written, and are
+/// kept, since a split take's parts read back can't be joined again.
+fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
+    let heard = split::unechoed(&writing.lines, &writing.pieces, writing.read);
+    let guesses = writing.guesses.as_deref();
+    markdown_unechoed(&heard, me, them, note, guesses)
 }
 
 #[cfg(test)]

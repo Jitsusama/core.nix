@@ -1,6 +1,6 @@
 """Pause All Agents asks the safe word's daemon to stop every agent, from the launcher's top.
 
-modules/quickshell/checks/agents.nix runs this through pytest in tests/nested-niri.sh, with the
+modules/quickshell/checks/agents.nix runs this through pytest in tests/lib/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run and pineapple's provider (modules/pineapple/
 SafeWord.qml) among its own. A stand-in here answers on the daemon's socket as `pineapple serve`
 does (modules/pineapple/src/serve.rs): hello, a watch of nothing, and each `pause` asked as a

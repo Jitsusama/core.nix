@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Starts the shell's notices (notices.qml, in the account's shell folder) on
-# the niri tests/nested-niri.sh runs, with Joel counted away after a second
+# the niri tests/lib/nested-niri.sh runs, with Joel counted away after a second
 # of nothing typed or moved. Nothing types here, so he's away before a notice
 # comes; the notice must then stay past the time its sender gave it. Nothing
 # here can bring him back (docs/testing.md, The Desktop on niri), so a notice

@@ -198,12 +198,21 @@ let
   # 5.9 GiB with 1.1 more in swap and had reached 13.8, most of it Chrome's
   # and the editor's files read in, and the shell held 2.5 GiB with 1.7 in
   # swap and had reached 5.3. The floors held less than either used, so what
-  # Joel reached for next came back from swap. app.slice's floor is 13%,
-  # 8.1 GiB, and soft as well as hard, so the kernel keeps what it holds
-  # past the floor while it finds anything else. The sessions held 19.9 GiB
+  # Joel reached for next came back from swap. app.slice's floor was 13%,
+  # 8.1 GiB, soft as well as hard, so the kernel kept what it held past
+  # the floor while it found anything else. The sessions held 19.9 GiB
   # with 16.5 in swap, and their floor is 10%, 6.2 GiB, enough to back the
   # floors of the windows Joel is at (jobs-sorter's focus.rs), which a
   # child keeps only as far as its slice has one.
+  # On 23 November at 22:35 a call froze 13 times in ten minutes while
+  # app.slice read back up to 32,246 pages a ten seconds that reclaim had
+  # just taken, its refaults, against under 20 before it. At 23:05 the
+  # slice held 7.9 GiB, its floor's worth, with 4.7 GiB more in swap,
+  # Slack three quarters of its own there. So
+  # app.slice's soft floor is 20%, 12.4 GiB, what it held in all, and its
+  # hard floor stays 13%: the kernel keeps the rest while it finds anything
+  # outside to take, and gives it back before it ends anything, where a
+  # hard one would end work as from 4 to 6 November.
   # Every slice above claims both kinds of floor, since the kernel protects a
   # slice only as far as each slice above it is protected. Hard, 24% covers
   # app.slice's 8.1 GiB, session.slice's 4.5 and agents.slice's 2 on a
@@ -211,11 +220,12 @@ let
   # children don't claim is
   # shared among them by use, which would hand it to agents' sessions, and
   # hard floors kept for idle sessions are what ended work from 4 to 6
-  # November. Soft, 31% covers those and agents.slice's 10%. What the floors
-  # below leave unused the kernel shares among the account's other slices.
+  # November. Soft, 38% covers app.slice's 20%, session.slice's 4.5 GiB
+  # and agents.slice's 10%. What the floors below leave unused the kernel shares among the account's other slices.
   # Work in jobs, background and containers has the rest of memory, and when
   # that runs out, it's what swaps.
   apps = "13%";
+  appsSoft = "20%";
   agents = "10%";
   # agents.slice's hard floor backs the kitty drawing every session's window
   # (512M, below) and the 512M hard floor jobs-sorter gives the pi or the
@@ -252,13 +262,13 @@ let
   # 7.1, each slice under its own ceiling, while 2 GiB was free and 26 in
   # swap. kswapd gave up, and every program that needed a page reclaimed
   # one itself, the shell among them, which froze. The sessions' 42%, 26
-  # GiB, jobs' 26% and shared's 10% sum with Joel's floors, app.slice's 13%
-  # and session.slice's 7%, to 98% of memory, agents.slice's own 2 GiB hard
+  # GiB, jobs' 26% and shared's 10% sum with Joel's hard floors, app.slice's
+  # 13% and session.slice's 7%, to 98% of memory, agents.slice's own 2 GiB hard
   # floor inside its 42%, so a burst in any of them reclaims its own pages
   # first.
   agentsHigh = "42%";
   account = "24%";
-  above = "31%";
+  above = "38%";
 
   # The system's own services a call or the desktop waits on keep a soft
   # floor each, about twice what each held: the journal every program
@@ -347,6 +357,7 @@ let
   ++ lib.attrNames systemFloors
   ++ map (disk: "disk-order-${disk}") (lib.attrNames disks)
   ++ map (disk: "disk-writeback-${disk}") (lib.attrNames throttled);
+  systemdRun = pkgs.callPackage ./systemd-run.nix { systemd = config.systemd.package; };
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -468,6 +479,10 @@ in
   };
 
   config = {
+    # A wrapper whose table nothing could hold is said where evaluation
+    # reports, not only traced, so core.lib.evaluates refuses such a machine.
+    warnings = lib.optional (!systemdRun.held) systemdRun.unheld;
+
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.
@@ -520,10 +535,9 @@ in
     # A unit an agent starts with systemd-run stays in the agent's slice,
     # rather than landing among Joel's apps, as systemd-run.sh says. It reads
     # calls by the options of the systemd the machine runs, held to them as
-    # it's built.
-    environment.systemPackages = [
-      (pkgs.callPackage ./systemd-run.nix { systemd = config.systemd.package; })
-    ];
+    # it's built where the builder can run that systemd or has one built as
+    # it is, and warned of where it can't.
+    environment.systemPackages = [ systemdRun ];
 
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
@@ -542,7 +556,7 @@ in
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
       MemoryMin = apps;
-      MemoryLow = apps;
+      MemoryLow = appsSoft;
     };
 
     # Agents' sessions, pi in a window of kitty's each, beside the apps

@@ -578,6 +578,13 @@
       # path from one of its top folders that names nothing.
       lib.docsNameWhatExists = pkgs: pkgs.callPackage ./tests/repository/docs-name-what-exists.nix { };
 
+      # How a repository built on core holds its code comments to naming only
+      # what exists, as core does: `core.lib.commentsNameWhatExists pkgs { src
+      # = ./.; waiting = [ ... ]; }` is a check that fails on a comment naming
+      # a path from one of its top folders that names nothing, but those it
+      # waits with, each `file path`, and on a line listed more often than found.
+      lib.commentsNameWhatExists = pkgs: pkgs.callPackage ./tests/rules/comments-name-what-exists.nix { };
+
       # How a repository built on core holds every folder to saying what it
       # holds, as core does: `core.lib.everyFolderSaysWhatItHolds pkgs { src =
       # ./.; waiting = [ ... ]; }` is a check that fails on a folder with no

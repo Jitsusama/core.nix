@@ -411,8 +411,11 @@
     only inside another's scope, a call naming a slice and a call to the system manager as they
     were; and that the hold refuses, each by the step that says so, a table short of an option
     or reading one as valued that isn't, an option the table can't say, and a systemd-run that
-    can't list its options, while it holds a stand-in saying them unchanged, and the wrapper
-    isn't built without it
+    can't list its options, failing its build, while it holds a stand-in saying them unchanged;
+    that the wrapper isn't built without the hold, which is to the systemd it wraps, or for an
+    aarch64 machine built here to the builder's own systemd built alike; and that one with a
+    patched systemd, or one of no version, or cross-built from a Mac, is built unheld with no
+    hold to read and says so, and that a machine cross-built with a patched systemd warns of it
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
@@ -643,7 +646,10 @@
     refuses a stale calendar, takes Chrome's and Slack's waits from lag-watch's last hour, sets
     the launcher's openings during the run against the same span before it, writes the hour
     in the shape cadence reads, and sums Joel's own calls' sending threads' waits for a CPU
-    into a line the hour reads and no test run is taken for
+    into a line the hour reads and no test run is taken for, and checks the camera once
+    between three and six minutes before each meeting, reading only a loopback, its frames
+    to /dev/null, and asking any other camera only whether it answers, and tells plainly
+    when it gives nothing
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine
@@ -4023,7 +4029,8 @@
     cell's forage under the cell that started it, even in a ring, plans first with their steps
     added up, how many cells have no purpose written, what each quest waits on its person for, a
     record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
-    with the cells it started and every cell each grew from, kept on its cell through records
+    with the cells it started and every cell each grew from, kept on its cell through records,
+    and a floor wider for its gaps drawing its words no smaller than site.css's cut allows
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
@@ -4033,9 +4040,11 @@
     purpose written followed and drawn as words though it holds markup, a cell a purpose takes out
     of the view of cells without purpose taking the cursor with it, a wait answered no longer
     said, a cell going and the crest drawn again once every cell has, broken while the node is
-    away with its cells kept and live with them read
-    again once it's back, stale once the server goes with its cells kept, a first visit within its
-    budget and a second answered unchanged, the web-design skill's page checks passing at a phone's
+    away with its cells kept and live with them read again once it's back, stale once the server
+    goes with its cells kept, a first visit holding still at a phone's width and a desk's in a
+    room for its floor with no word under 12 px and a long link, open in its panel, never
+    widening the page, a first visit within its budget and a second answered unchanged, the
+    web-design skill's page checks passing at a phone's
     width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
     floor following the cursor to a booked start past the 48th, drawn solid, not drawn again on a
     step it holds, kept on its cells through a find, one matching nothing keeping the cursor and
@@ -5902,8 +5911,8 @@
     with no disk named, the system's user.slice holds a 1 ms latency on the drive behind /home,
     through the kernel, and no slice inside the account, machine or system does; every slice's
     io.weight follows its CPU weight;
-    app.slice holds a hard and a soft 13% of memory and session.slice a hard and a soft 4.5 GiB,
-    agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 31%,
+    app.slice holds a hard 13% of memory and a soft 20%, session.slice a hard and a soft 4.5 GiB,
+    agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 38%,
     and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
     itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in
     jobs-work.slice; a scope it starts through systemd's own systemd-run goes back to the scope of

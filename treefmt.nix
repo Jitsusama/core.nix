@@ -156,7 +156,7 @@ in
   # by name, as their checks put the folder on Python's path.
   # niri's stand-in client too, which the windows daemon's prompt check
   # imports beside niri's own checks. And the nested niri's driver, which
-  # the two shell cases still in tests/ import from outside its folder, and
+  # the shell's niri cases import, and
   # the tests folder's glossary reader and its replaced names, which the
   # shell's cases import as their checks copy them in beside them. And what
   # the sites' VM tests share, which each imports as its driver's plugin,

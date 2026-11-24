@@ -506,6 +506,81 @@ def test_a_sites_server_that_goes_is_said_stale(
     says_it_stands(forage_page, "stale")
 
 
+# The most a first visit's layout may shift, the web vitals' line for good.
+STILL = 0.1
+# Every shift of the page since it began loading that the reader didn't cause, read from the
+# browser's buffer, with what moved from where to where so a failure names its cause, or
+# none once it has kept none for a moment.
+SHIFTED = """() => new Promise((done) => {
+  const box = (rect) => `${Math.round(rect.y)}+${Math.round(rect.height)}`;
+  const named = (node) =>
+    node?.id || node?.getAttribute?.("class") || node?.nodeName || "a node since gone";
+  new PerformanceObserver((list, observer) => {
+    observer.disconnect();
+    const shifts = list.getEntries().filter((each) => !each.hadRecentInput);
+    done({
+      total: shifts.reduce((sum, each) => sum + each.value, 0),
+      moved: shifts.flatMap((each) => each.sources.map((source) =>
+        `${named(source.node)} ${box(source.previousRect)} to ${box(source.currentRect)}`)),
+    });
+  }).observe({ type: "layout-shift", buffered: true });
+  setTimeout(() => done({ total: 0, moved: [] }), 500);
+})"""
+# A purpose holding a link whose last run of letters, with nowhere to break, not even a hyphen,
+# is wider than a phone.
+LONG_LINK = (
+    "OSPREY reads https://example.org/tides/"
+    "hourlyreadingsfortheouterbuoyandtheinnerbuoythewholeseasonlongfromfirstfrosttolastthaw"
+)
+# The floor's room and the size its words are drawn at, those shown, in pixels.
+DRAWN = """() => ({
+  room: document.querySelector(".drawn").getBoundingClientRect().height,
+  rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+  words: [...document.querySelectorAll(".drawn text")]
+    .filter((each) => each.getClientRects().length > 0)
+    .map((each) => parseFloat(getComputedStyle(each).fontSize) * each.getScreenCTM().a),
+})"""
+# The least a word may be drawn at, the kit's floor for text.
+LEAST_WORD_PX = 12
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
+    browser: Browser, forage_served: Served, mycelium_node: StandIn, size: tuple[int, int]
+) -> None:
+    root, _ = forage_served
+    opened = Opened(browser, f"{root}forage/", size, "light")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_cell_drawn(page)
+        page.wait_for_timeout(REDRAWN_MS)
+        shifted = page.evaluate(SHIFTED)
+        assert shifted["total"] < STILL, (
+            f"a first visit at {size} shifted {shifted['total']}: {shifted['moved']}"
+        )
+        drawn = page.evaluate(DRAWN)
+        # A floor of a few cells on a phone still reads, in a room no shorter than 6rem.
+        assert drawn["room"] >= 6 * drawn["rem"] - 1, f"at {size} the floor's room was {drawn}"
+        small = [each for each in drawn["words"] if each < LEAST_WORD_PX - 0.05]
+        assert not small, f"at {size} the floor drew words at {small} px"
+        mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])
+        expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text(
+            "https://", timeout=PACE_MS
+        )
+        # Open, so the panel draws the link as well as the row.
+        cell(page, "OSPREY").click()
+        selected(page, "OSPREY", "a click didn't open the long link's cell")
+        expect(page.locator("#panel"), "the opened cell's panel wasn't shown").to_be_visible()
+        expect(page.locator("#panel-body .lead"), "the panel lost the link").to_contain_text(
+            "https://"
+        )
+        wider = page.evaluate("() => document.documentElement.scrollWidth - innerWidth")
+        assert wider <= 0, f"a long link made the page {wider} px wider than {size}"
+    finally:
+        opened.close()
+
+
 def test_the_forage_page_keeps_to_its_budget(forage_opened: Opened) -> None:
     says_it_stands(forage_opened.page, "live")
     # Counted once every cell the feed holds is drawn, so the count is the page's whole and not

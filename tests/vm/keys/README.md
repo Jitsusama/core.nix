@@ -9,7 +9,7 @@ stands in for a browser, a prompt, a key or Joel.
 One check here, `vm-desktop-answers-secret-asks`, is an area of the
 desktop's one machine, so its files are
 `../../desktop/desktop-answers-secret-asks-vm-test.py` and
-`../../desktop.nix`: a password an agent asks for reaching its one command
+`../../desktop/desktop.nix`: a password an agent asks for reaching its one command
 only on Joel's own keys.
 
 | File                               | Holds                                                              |

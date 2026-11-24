@@ -8,8 +8,8 @@ since each has caught something the other didn't). It's an area of its own, rath
 looks, since the pyramid keeps a VM test to twenty subtests and about two minutes a subtest
 (docs/testing.md), and on its own it runs beside looks rather than after it.
 
-tests/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and its
-opening comment says what the test proves. Every test asks for the desktop, started once a run
+tests/desktop/desktop.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+its opening comment says what the test proves. Every test asks for the desktop, started once a run
 (desktop_session.py), and leaves it as it found it; Passwords' goes last, since its copy stays on
 the clipboard until it clears.
 
@@ -72,7 +72,7 @@ PAGE_TITLE = "A Page"
 LINES = 120
 MARK = "Read From Mark a"
 
-# How many pages the book has (tests/desktop.nix), and the names it's open under in zathura,
+# How many pages the book has (tests/desktop/desktop.nix), and the names it's open under in zathura,
 # each with the page it's on.
 BOOK_PAGES = 12
 OPEN_ON = (("almanac.pdf", 5), ("logbook.pdf", 11))
@@ -203,7 +203,7 @@ def test_spotify_and_its_podcasts_are_shot_at_each_scale(
         desktop.launcher_until(lambda shown: shown["rows"][:1] == ["The Show"])
         desktop.shoot(f"launcher-spotify-podcasts-at-{at}")
         desktop.close_launcher()
-    # The stand-in spotify-recent notes each run it's asked (tests/desktop.nix).
+    # The stand-in spotify-recent notes each run it's asked (tests/desktop/desktop.nix).
     desktop.as_account("rm -f ~/asked")
 
 
@@ -755,7 +755,7 @@ def test_the_vms_are_shot_at_each_scale(desktop: Desktop, at_each_scale: list[st
         desktop.launcher_until(partial(figures_on, "web"))
         desktop.shoot(f"launcher-vms-at-{at}")
         desktop.close_launcher()
-    # The stand-in virsh notes each run it's asked (tests/desktop.nix).
+    # The stand-in virsh notes each run it's asked (tests/desktop/desktop.nix).
     desktop.as_account("rm -f $XDG_RUNTIME_DIR/virsh-asked")
 
 
@@ -863,8 +863,8 @@ def test_passwords_and_a_copy_are_shot_at_each_scale(
 ) -> None:
     """Shoot Passwords, an entry read in full, the margin's mark once copied, and 1Password.
 
-    1Password is asked through the stand-in op (tests/desktop.nix) as Joel steps in, by keys,
-    since a place opened over qs ipc asks as nobody; until it answers the place leads with
+    1Password is asked through the stand-in op (tests/desktop/desktop.nix) as Joel steps in, by
+    keys, since a place opened over qs ipc asks as nobody; until it answers the place leads with
     1Password locked, so it's opened again once it has.
     """
     favourite = "Lighthouse Console"

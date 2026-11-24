@@ -5,6 +5,7 @@
 // list still draws solid; and when a step draws the floor again.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { floorAfter, floorFor, floorOf, floorStepped, stepsOff, UNDRAWN } from "../draw.ts";
 import type { Forage } from "../model.ts";
@@ -77,6 +78,14 @@ const runs = (floor: string): number => (floor.match(MAIN)?.[1] ?? "").split("M"
 /** A ringed compartment, naming its cell. */
 const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
 
+/** A floor's width and height in its own units. */
+const VIEWED = /viewBox="0 0 (\d+) (\d+)"/u;
+/** How much larger a floor wider than site.css's draws its words. */
+const GROWN_BY = /--grown:([\d.]+)"/u;
+// The floor's smallest words in its own units, and the least the kit draws text at.
+const WORD_PX = 13;
+const LEAST_PX = 12;
+
 /** The cell whose compartment `floor` rings. */
 const ringed = (floor: string): string | undefined => floor.match(RINGED)?.[1];
 
@@ -111,12 +120,16 @@ it("marks each gap where the floor skips cells of its list, before, between and 
   // C00 to C09 come before C10, and C11 and C12 between it and C13.
   const around = floorAt(LONG, "C55");
   assert.deepEqual(along(around), [cut, "C10", cut, ...span(13, 59)]);
-  assert.equal(runs(around), 3);
+  // The line breaks for a gap of 24 centred on each mark, at 36 and 90, and
+  // runs on to the middle of each margin, a dash before the first saying
+  // the list goes on before it.
+  assert.equal(around.match(MAIN)?.[1], "M12 78H24M48 78H78M102 78H1524");
   assert.ok(around.includes("and 12 more in the list"), around);
   // The list's first 48 leave its last 12 after them.
   const first = floorAt(LONG, null);
   assert.deepEqual(along(first), [...span(0, 47), cut]);
-  assert.equal(runs(first), 2);
+  // Its 48 rooms end at 1464, the gap's mark at 1476, and a dash after it.
+  assert.equal(first.match(MAIN)?.[1], "M12 78H1464M1488 78H1500");
   // Its 48 rooms and a gap's 24 between the margins.
   assert.ok(first.startsWith('<svg viewBox="0 0 1512 '), first);
 });
@@ -141,6 +154,10 @@ it("draws the cells a cursor started, however far down the list", () => {
   const floor = floorAt(LONG, "C10");
   assert.deepEqual(compartments(floor), [...span(0, 46), "C55"]);
   assert.ok(floor.includes('<path class="hypha" data-cell="C55"'), floor);
+  // One it only claims to have started comes after the booked one, ahead
+  // of the nearest cells.
+  const claimed = floorAt(startedOn(LONG, "C58", "C10"), "C10");
+  assert.deepEqual(compartments(claimed), [...span(0, 45), "C55", "C58"]);
 });
 
 it("draws a cell near the cursor only with every cell it grew from", () => {
@@ -223,9 +240,9 @@ it("cuts a line deeper than the floor at its top, keeping the 48 nearest the cur
   // C12's starter isn't drawn, so no branch leads to it; C13's is.
   assert.ok(!floor.includes('data-cell="C12" d='), floor);
   assert.ok(floor.includes('data-cell="C13" d='), floor);
-  // Its line leaves room for the cell C50 started, so it's cut a cell higher
-  // and C51 is drawn with it, and a step to C50 keeps the floor around it.
-  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(4, 51));
+  // C51 only claims C50 as its starter, so C50's line keeps the whole floor
+  // and C51 is left off, and a step to C50 keeps the floor around it.
+  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(3, 50));
   assert.equal(stepsOff(floorFor(CHAIN, "C50"), "C50"), false);
 });
 
@@ -238,9 +255,24 @@ const BROOD: readonly Forage[] = Array.from({ length: 80 }, (_, at) => {
   return forage(named(at), { startedBy: by, booked: true, depth: Math.min(at, 3) });
 });
 
-it("keeps half the floor for a deep line however many cells grew from its cell", () => {
-  // C39's line takes 24 places, and the first 24 of the 40 cells it started the rest.
+it("cuts a line shallower than the floor to leave its cell's booked brood up to half", () => {
+  // C39's line of 40 would fit whole, but the 40 cells booked as started by
+  // C39 take 24 places, so it's cut to the other 24.
   assert.deepEqual(compartments(floorAt(BROOD, "C39")), span(16, 63));
+});
+
+it("keeps a line whole beside a brood that only claims its cell", () => {
+  const claimed = BROOD.map((each, at) => (at >= 40 ? { ...each, booked: false } : each));
+  // None of C39's children is booked, so its line of 40 keeps the whole
+  // floor, and 8 claimed cells fill the rest.
+  assert.deepEqual(compartments(floorAt(claimed, "C39")), span(0, 47));
+});
+
+it("cuts a line only for the booked part of a mixed brood", () => {
+  const mixed = BROOD.map((each, at) => (at >= 50 ? { ...each, booked: false } : each));
+  // C40 to C49 are booked, so C39's line of 40 is cut to 38 beside them,
+  // and the 30 claimed cells after them get no room.
+  assert.deepEqual(compartments(floorAt(mixed, "C39")), span(2, 49));
 });
 
 /** A top cell, C00, then a ring of 59 claimed starts: C01 started by C59, each other by the one before. */
@@ -408,6 +440,44 @@ it("keeps the floor where it is while it holds the cursor, else draws it around 
   // A record grows a cell from the cursor that the kept floor leaves off.
   const grown = startedOn(LONG, "C05", "C20");
   assert.equal(floorAfter(grown, floorFor(LONG, "C55"), "C20").around, "C20");
+});
+
+it("fits its room to a floor of the most cells and a gap, growing a wider one's words", () => {
+  const startedAt = (depth: number) =>
+    LONG.map((each, at) => (at === 1 ? { ...each, startedBy: named(0), depth } : each));
+  const drawnAt = (depth: number) =>
+    floorOf(floorFor(startedAt(depth), named(0)), named(0), "kestrel");
+  const floor = drawnAt(9);
+  // A floor draws no deeper than its steps, and is as tall however deep it goes.
+  assert.equal(floor, drawnAt(3), "a floor drew deeper than its steps");
+  assert.equal(
+    floor.match(VIEWED)?.[2],
+    floorOf(floorFor(LONG, named(0)), named(0), "kestrel").match(VIEWED)?.[2],
+    "a flat floor and a deep one were drawn at different heights",
+  );
+  const [, width = "", height = ""] = floor.match(VIEWED) ?? [];
+  const sheet = readFileSync(new URL("../site.css", import.meta.url), "utf8");
+  // The room is this floor's shape, at most half again as large and never under 6rem.
+  const room = `clamp(6rem, 100cqi * ${height} / ${width}, ${(Number(height) * 3) / 2}px)`;
+  assert.ok(sheet.includes(room), `site.css holds no room of ${room}`);
+  // The words go where this floor would draw its smallest under the kit's floor for text.
+  const cut = Math.ceil((Number(width) * LEAST_PX) / WORD_PX);
+  const words = `@container (max-width: ${cut}px)`;
+  assert.ok(sheet.includes(words), `site.css holds no ${words}`);
+  // A floor skipping cells in more places is wider, and grows its words to match.
+  const floors = [
+    ...[null, "C10", "C55"].map((cursor) => floorAt(LONG, cursor)),
+    ...GROWN.map(({ cell }) => floorAt(GROWN, cell)),
+  ];
+  const widths = floors.map((other) => Number(other.match(VIEWED)?.[1]));
+  const wider = widths.some((each) => each > Number(width));
+  assert.ok(wider, "none drew wider than this");
+  // Where words first show, meet fits a floor to the room's height or, if wider, its width.
+  for (const [at, other] of floors.entries()) {
+    const wide = Math.max(widths[at] ?? 0, Number(width));
+    const shown = (WORD_PX * Number(other.match(GROWN_BY)?.[1] ?? 1) * cut) / wide;
+    assert.ok(shown >= LEAST_PX - 1e-9, `a floor ${wide} wide drew its words at ${shown} px`);
+  }
 });
 
 it("draws the cursor after a redraw around any kept cell, keeping it there while it can", () => {

@@ -20,7 +20,7 @@
   # there are, as the windows daemon counts them.
   the-screens-go-off-on-niri = launcherOnNiri {
     name = "the-screens-go-off-on-niri";
-    tests = ../../../tests/screens-off-on-niri-test.py;
+    tests = ../tests/screens-off-on-niri-test.py;
   };
 
   # The launcher tells how the desk light is lit and sets it, and the brightness

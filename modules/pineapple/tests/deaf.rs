@@ -354,7 +354,10 @@ fn a_search_deaf_every_round_is_told_while_its_partner_flickers() {
     let mut deaf = Deaf::new();
     let tag = Round::Deaf(Deafness::Unread(Search::Tag));
     let _ = deaf.heard(tag, AT);
-    assert!(matches!(deaf.heard(tag, AT + 30_000), Change::Tell(_)));
+    assert!(
+        matches!(deaf.heard(tag, AT + 30_000), Change::Tell(_)),
+        "two rounds with the tag's search deaf tell Joel"
+    );
     assert!(
         deaf.tells(Search::Tag) && !deaf.tells(Search::Phrase),
         "the row says the tag's search can't be read, and only that"

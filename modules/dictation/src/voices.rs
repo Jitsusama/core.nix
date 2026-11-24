@@ -1,7 +1,9 @@
 //! Telling a call's far-end voices apart: TitaNet small (titanet.nix), run
-//! through OpenVINO on the CPU, gives each take one embedding as it's
-//! heard, and at the call's end the takes are grouped by how alike their
-//! embeddings are. No sound is kept for it, only 192 numbers a take.
+//! through OpenVINO on the CPU, gives each 3 s piece of a take
+//! (pieces.rs) one embedding as it's heard, and at the call's end the
+//! pieces are grouped by how alike their embeddings are; each is a
+//! `Heard`, called a take below. No sound is kept for it, only 192
+//! numbers a piece.
 //!
 //! A take is the cutter's (takes.rs), cut where the far end pauses, so
 //! now and then one holds two voices, and a group may be a mix; grouping
@@ -37,8 +39,12 @@ pub const APART: f32 = 0.6;
 pub const LEAST_SHARE: f64 = 0.1;
 /// The most takes a call groups, its longest: grouping holds every take's
 /// distance from every other, 36 MB at this many, and a far end with
-/// chatter on it can cut a take a second for hours. The shortest are left
-/// out, saying least of how a voice sounds, and stay under Others.
+/// chatter on it can cut a take a second for hours. The shortest, saying
+/// least of how a voice sounds, are left out first, from anywhere in the
+/// call: takes and last pieces under 3 s, then the 3 s pieces, the latest
+/// first, and last pieces of 3 to 4.5 s last. About 2.5 hours of their
+/// speech fills it; a take with all its pieces left out stays under
+/// Others, and one left a single piece takes its voice whole, unsplit.
 pub const MOST_TAKES: usize = 3000;
 
 /// A window's samples, 25 ms, and how far each is from the last, 10 ms.
@@ -768,7 +774,7 @@ mod tests {
             samples: 1,
             ..heard(&[1.0, 0.0], 0)
         }];
-        takes.extend((0..MOST_TAKES).map(|_| Heard {
+        takes.extend((0..=MOST_TAKES).map(|_| Heard {
             samples: 2,
             ..heard(&[1.0, 0.0], 0)
         }));
@@ -780,8 +786,8 @@ mod tests {
             "more takes than the most were grouped"
         );
         assert!(
-            !held.contains(&0),
-            "the shortest take was grouped in place of a longer one"
+            !held.contains(&0) && !held.contains(&(MOST_TAKES + 1)),
+            "the shortest take was grouped, or of takes as long the latest wasn't the one left out"
         );
     }
 

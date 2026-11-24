@@ -340,7 +340,7 @@ onLinux {
   # niri walks every window at most once a frame, however often a client's
   # commits wake it (refreshes-once-a-frame.patch): its real niri, with the
   # account's configuration, nested in a headless sway in the sandbox
-  # (tests/nested-niri.sh), counts its refreshes in its log while a
+  # (tests/lib/nested-niri.sh), counts its refreshes in its log while a
   # stand-in commits a thousand times a second
   # (tests/refreshes-once-a-frame.py). niri's own tests say what it puts
   # off and what it doesn't; this shows the count falls on a running niri.
@@ -370,7 +370,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests}/refreshes-once-a-frame.py logs/niri.log
         touch $out
       '';
@@ -405,7 +405,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests}/tells-a-resize-at-once.py
         touch $out
       '';
@@ -451,7 +451,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests}/draws-a-fixed-surface-once.py shots
         touch $out
       '';
@@ -494,7 +494,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests}/keeps-a-blur-ready.py logs/niri.log
         touch $out
       '';
@@ -531,7 +531,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests}/opens-sandboxed-windows-behind.py ${lib.getExe display}
         touch $out
       '';
@@ -569,7 +569,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           python3 ${./tests}/keeps-secret-copies-from-sandboxes.py ${lib.getExe display}
         touch $out
       '';
@@ -620,7 +620,7 @@ onLinux {
         ${lib.concatLines (
           lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
         )}
-        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+        ${lib.getExe pkgs.bash} ${../../tests/lib/nested-niri.sh} niri/config.kdl logs \
           ${lib.getExe pkgs.bash} ${./tests/x11-needs-its-cookie.sh} logs/niri.log
         touch $out
       '';

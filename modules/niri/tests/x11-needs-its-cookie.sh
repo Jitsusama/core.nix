@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Runs on a nested niri (tests/nested-niri.sh) whose PATH holds the
+# Runs on a nested niri (tests/lib/nested-niri.sh) whose PATH holds the
 # session's xwayland-satellite: an X11 client holding the cookie in
 # $XAUTHORITY reaches the display niri opens, which starts the satellite and
 # Xwayland, and one without it is refused. What the clients say goes in

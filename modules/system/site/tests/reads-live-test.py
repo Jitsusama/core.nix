@@ -37,8 +37,9 @@ RETRY_MS = 35000
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
-# and since no comment is sent, its styles' included.
-BUDGET = Budget(files=25, kilobytes=442, elements=400)
+# and since no comment is sent, its styles' included; about 445 KB since machines
+# out of reach are named apart, a cost worth the page reading well with many down.
+BUDGET = Budget(files=25, kilobytes=450, elements=400)
 
 
 @pytest.fixture
@@ -456,6 +457,51 @@ def test_a_machine_that_turns_is_counted(system_page: Page, system_daemon: Stand
     }
     system_daemon.tell("machine", changed=[turned])
     counted(system_page, "Two machines, one in trouble and one worth a look.")
+
+
+def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon: StandIn) -> None:
+    """One the mycelium can't reach stands no pier and no section, and its one look goes to it."""
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    gone: dict[str, object] = {
+        **machine_called("wren"),
+        "health": "bad",
+        "says": "is out of reach",
+        "side": ["out of reach"],
+        "ties": {
+            "reached": False,
+            "heard_at": "2026-11-16T11:00:00Z",
+            "cells": {"busy": 1, "idle": 0, "ended": 0},
+            "network": None,
+            "code": None,
+            "figures": None,
+            "acts": None,
+        },
+    }
+    system_daemon.tell("machine", changed=[gone])
+    # The part names wren too, as the daemon's would once wren is a machine of it.
+    things = ["machine:kestrel", "machine:osprey", "machine:wren"]
+    named: dict[str, object] = {"key": "part:machines", "things": things}
+    system_daemon.tell("part", changed=[named])
+    counted(system_page, "Three machines, two worth a look and one out of reach.")
+    row = system_page.locator("#away a[data-row='machine:wren']")
+    expect(row, "wren wasn't named out of reach").to_be_visible(timeout=PACE_MS)
+    expect(system_page.locator("#away .heard"), "its cells went unsaid").to_contain_text(
+        "1 cell still on it"
+    )
+    expect(system_page.locator("section.machine"), "wren drew a section").to_have_count(2)
+    expect(system_page.locator("#bridge"), "wren stood a pier").not_to_contain_text("wren")
+    expect(system_page.locator('#places a[data-place="away"]'), "no place").to_have_count(1)
+    system_page.keyboard.press("a")
+    assert focused_row(system_page) == "look:away", "the look for those out of reach didn't lead"
+    system_page.keyboard.press("Enter")
+    assert section_of_the_cursor(system_page) == "away", "its look didn't go to them"
+    system_page.set_viewport_size({"width": 390, "height": 844})
+    spills = system_page.evaluate(
+        "(() => { const away = document.querySelector('#away');"
+        " return away.scrollWidth > away.clientWidth; })()"
+    )
+    assert spills is False, "the list out of reach spilled past a phone's width"
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:

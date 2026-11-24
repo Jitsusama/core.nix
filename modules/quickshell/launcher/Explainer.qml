@@ -48,7 +48,12 @@ Scope {
     // Told whenever what an act shows changes, so its place is said again.
     signal changed
 
-    function explain(key, address) {
+    // Explains the session at `address` on `key`'s row, whose acts Joel
+    // could answer it by are named `beside` (Explaining.facts), kept with
+    // it so its answer goes once they change (Explaining.fits). They're
+    // read as Explaining.names reads them, never screened here, as a list
+    // Qt hands through a property is no array of JavaScript's.
+    function explain(key, address, beside) {
         const command = Explaining.command(realm, address);
         const before = explaining;
         explaining = key;
@@ -59,7 +64,8 @@ Scope {
             delete left[before];
         left[key] = {
             stage: command === null ? Explaining.unasked(realm) : "reading",
-            at: Date.now()
+            at: Date.now(),
+            beside: beside ?? []
         };
         explained = left;
         changed();
@@ -67,7 +73,8 @@ Scope {
             return;
         if (asker === null)
             asker = own();
-        reading.createObject(explainer, { key: key, command: command, patience: patience });
+        reading.createObject(explainer, { key: key, command: command, patience: patience,
+            beside: beside ?? [] });
     }
 
     // Its own Ask, made as the launcher makes each source, or null where it
@@ -84,16 +91,21 @@ Scope {
         });
     }
 
+    // How `key`'s row stands now, `how`, its acts kept as explain was given
+    // them.
     function stands(key, how) {
-        explained = Object.assign({}, explained,
-            { [key]: Object.assign({ at: Date.now() }, how) });
+        explained = Object.assign({}, explained, { [key]: Object.assign({ at: Date.now(),
+            beside: explained[key]?.beside ?? [] }, how) });
         changed();
     }
 
     // What the node said of the session at `address`, for `key`'s row,
     // `out` and `errors`, or null when it gave no answer in time: it's this
     // row's only while the row is the one explained and still reads.
-    function heard(key, address, out, errors) {
+    // `beside` names the row's acts, as explain was given them, and the
+    // act's `acts` words ask the answer to end with one only while it names
+    // any (Explaining.message).
+    function heard(key, address, out, errors, beside) {
         if (key !== explaining || explained[key]?.stage !== "reading")
             return;
         const ended = out === null ? { stage: "failed" }
@@ -104,14 +116,18 @@ Scope {
             stands(key, { stage: ended.stage ?? "failed" });
             return;
         }
-        const message = Explaining.message(ended.cell, said.asks);
+        const message = Explaining.message(ended.cell, said.asks, beside, said.acts);
         stands(key, { stage: "asking", message: message });
         asker.pose(message);
     }
 
-    // What the act at `key` shows now, or null where it's the act as it was.
-    function shown(key) {
-        return Explaining.shown(explained[key] ?? null, asker, said, Date.now());
+    // What the act at `key` shows now, on a row whose acts are `beside`, or
+    // null where it's the act as it was, as it is once they change, since
+    // its answer may name one (Explaining.fits).
+    function shown(key, beside) {
+        const one = explained[key] ?? null;
+        return one !== null && !Explaining.fits(one.beside, beside) ? null
+            : Explaining.shown(one, asker, said, Date.now());
     }
 
     // The pi's answer, a word a moment as Ask tells it, said again for
@@ -139,6 +155,7 @@ Scope {
 
             required property string key
             required property int patience
+            required property var beside
             property var out: undefined
             property var errors: undefined
             property bool done: false
@@ -149,7 +166,7 @@ Scope {
                     return;
                 one.done = true;
                 // The address is the fifth word asked (Explaining.command).
-                explainer.heard(one.key, one.command[4], one.out, one.errors);
+                explainer.heard(one.key, one.command[4], one.out, one.errors, one.beside);
                 one.destroy();
             }
 

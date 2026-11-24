@@ -14,7 +14,8 @@ import { cellLink } from "../../local-sites/kit/cell.ts";
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
 import {
-  bookedFirst,
+  type Brood,
+  byBook,
   cellOrAway,
   claimedCell,
   escaped,
@@ -76,9 +77,17 @@ const FLOOR = {
   gills: 5,
   /** The most cells drawn on the floor; the list holds every one. */
   most: 48,
-  /** How much larger than its own units the floor is drawn, where the page has room. */
-  scale: 1.5,
+  /** The most steps a branch drops; the floor is always this deep, so its room never moves. */
+  steps: 3,
 } as const;
+
+/**
+ * The width of a floor of the most cells and one gap, which site.css sizes the
+ * floor's room and the cut for its words to. A floor skipping cells in more
+ * places is wider, and draws its words that much larger, so on screen they are
+ * never smaller than this one's.
+ */
+const WORDED = FLOOR.margin * 2 + FLOOR.most * FLOOR.room + FLOOR.gap;
 
 /** How `stage` is said. */
 function staged(stage: string): string {
@@ -218,16 +227,22 @@ ${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
 `;
 }
 
+/** The children of no cell, as when the floor is drawn around none on its list. */
+const BARREN: Brood = { booked: [], claimed: [] };
+
 /**
  * The cells the floor draws, in the list's order: every one when they fit.
  * Past that, it draws `around`, then the cells that grew from it, then the
  * cells nearest it, so the floor follows the cursor down a list longer
  * than it holds. Each comes with every cell it grew from, or not at all, so
- * no branch drawn hangs from a starter that isn't. Only `around`'s own line,
- * when deeper than the floor, is cut at its top, as the nearest of it beats
- * none, and it leaves room for the cells that grew from it, up to half the
- * floor. When no whole line fits the room left, as in a ring of starts
- * longer than it, the floor is filled with lines cut at their tops. With no
+ * no branch drawn hangs from a starter that isn't. Only `around`'s own line
+ * is cut at its top, as the nearest of it beats none: whenever it's longer
+ * than the room left once the cells the node's book holds as grown from
+ * `around` have theirs, up to half the floor, so a line shallower than the
+ * floor is cut too when enough booked cells grew from its cell. Cells that
+ * only claim to have grown from it come after, in whatever room is left.
+ * When no whole line fits the room left, as in a ring of starts longer
+ * than it, the floor is filled with lines cut at their tops. With no
  * `around` on the list, that's the list's first, as the list puts each cell
  * after its starter, but for a ring cut by the floor's last place.
  */
@@ -238,9 +253,9 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   }
   const { line, children } = kinOf(forages, grewFrom);
   const found = forages.findIndex((each) => each.cell === around);
-  const kids = found < 0 ? [] : bookedFirst(forages, children(found), grewClaimed);
-  const reach = FLOOR.most - Math.min(kids.length, FLOOR.most / 2);
-  const first = found < 0 ? [] : [found, ...kids];
+  const { booked, claimed } = found < 0 ? BARREN : byBook(forages, children(found), grewClaimed);
+  const reach = FLOOR.most - Math.min(booked.length, FLOOR.most / 2);
+  const first = found < 0 ? [] : [found, ...booked, ...claimed];
   const chosen = new Set<number>();
   for (const whole of [true, false]) {
     for (const start of starts(first, Math.max(found, 0), forages.length)) {
@@ -365,7 +380,7 @@ function placed(floor: Floor): Placing {
     if (at > next) {
       skip();
     }
-    const y = FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop;
+    const y = FLOOR.hypha + Math.min(forage.depth, FLOOR.steps) * FLOOR.drop;
     cells.push({ forage, x: end + FLOOR.room / 2, y });
     end += FLOOR.room;
     next = at + 1;
@@ -401,11 +416,13 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
   const forages = floor.of;
   const { cells, gaps, end } = placed(floor);
   const width = Math.max(end + FLOOR.margin, 320);
-  const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
-  const height = deepest + 40;
+  // As deep as the deepest branch could be, which site.css's room for the floor is cut to.
+  const height = FLOOR.hypha + FLOOR.steps * FLOOR.drop + 40;
   const at = new Map(cells.map((each) => [each.forage.cell, each]));
   const here = new Set(forages.map((each) => each.cell));
   // The main line breaks at each gap, where a mark stands for the cells left off.
+  // It still runs to the middle of each margin, so a gap before the first cell
+  // drawn or after the last leaves a dash beyond its mark: the list goes on.
   const stops = [
     FLOOR.margin / 2,
     ...gaps.flatMap((gap) => [gap - FLOOR.gap / 2, gap + FLOOR.gap / 2]),
@@ -460,7 +477,12 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
     forages.length > cells.length
       ? `<text class="note" x="${width - FLOOR.margin}" y="${height - 12}" text-anchor="end">and ${forages.length - cells.length} more in the list</text>`
       : "";
-  return `<svg viewBox="0 0 ${width} ${height}" style="--w:${width * FLOOR.scale}px" aria-hidden="true">
+  // site.css's words grow by this, so a floor wider than WORDED, which meet draws
+  // smaller, draws them at the size WORDED's would be on screen.
+  const grown = width > WORDED ? ` style="--grown:${width / WORDED}"` : "";
+  // At the room's foot, so any room a wide floor leaves on a phone is above it.
+  const fitted = `preserveAspectRatio="xMidYMax meet"${grown}`;
+  return `<svg viewBox="0 0 ${width} ${height}" ${fitted} aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
 ${main}${skipped}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}

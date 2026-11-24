@@ -66,9 +66,11 @@
 # every one in --introspect-cli, hidden ones too, as the deprecated --tty,
 # and the wrapper is built only once systemd-run-options.txt holds to that
 # list (systemd-run-options-hold.sh), so a machine whose systemd takes
-# another fails its build rather than misreading calls. A name no option
-# has, or two begin, and a letter no option has, are read as an option
-# taking no value, and the reading goes on. systemd-run refuses such a
+# another fails its build rather than misreading calls, where its builder
+# can run that systemd or has one built as it is; elsewhere the machine's
+# evaluation warns that the wrapper isn't held (systemd-run.nix). A name
+# no option has, or two begin, and a letter no option has, are read as an
+# option taking no value, and the reading goes on. systemd-run refuses such a
 # call whatever is added to it. That keeps the slice for a bare option a
 # table lacked, where passed through unchanged, the --tty that --help
 # leaves out would put an agent's unit among Joel's apps; but a valued one

@@ -13,9 +13,9 @@
 {
   # The repository's tree, as its flake sees it.
   src,
-  # The comments naming a path gone before the rule, each `file path`,
-  # listed once for each mention, while each is pointed at where the thing
-  # is now. The check fails on a mention not listed, and on a line listed
+  # The comments naming a path that's gone and waiting on their owner,
+  # each `file path`, listed once for each mention, while each is pointed
+  # at where the thing is now. The check fails on a mention not listed, and on a line listed
   # more often than it's found.
   waiting ? [ ],
   name ? "comments-name-what-exists",
