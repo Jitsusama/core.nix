@@ -620,8 +620,7 @@ mod tests {
         let retry = r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned();
         // An extension may edit another entry, or put text in its place.
         let other = r#"{"type":"context_edit","targetId":"s","replacement":null}"#.to_owned();
-        let rewrite =
-            r#"{"type":"context_edit","targetId":"f","replacement":"x"}"#.to_owned();
+        let rewrite = r#"{"type":"context_edit","targetId":"f","replacement":"x"}"#.to_owned();
         assert!(
             failed.contains(r#""id":"f""#),
             "the errored answer kept the others' id"
