@@ -285,11 +285,13 @@ impl Inputs {
     /// Keeps where each session's window sits now (arrangement.rs),
     /// writing it to `path` when it moved and saying when it can't.
     /// Nothing's kept on a boot Linux doesn't name, nor worked out while
-    /// the windows daemon lists no window: that would take the last window
-    /// Joel closed as orphaned, never let go, and write this boot's other
-    /// windows' places as none. A place closed by hand is still let go
-    /// when due, and what a failed write left unwritten is written all
-    /// the same. It answers when, in ms since the epoch, a
+    /// the windows daemon lists no window: that would write this boot's
+    /// places and its other windows' as none. A place closed by hand is
+    /// still let go when due, and what a failed write left unwritten is
+    /// written all the same. The last window closed is left unmarked,
+    /// though, and a keep once any window shows may take it as orphaned,
+    /// as after a crash of niri, until a follow-up due Wed 25 Nov. It
+    /// answers when, in ms since the epoch, a
     /// place closed by hand is to be let go, so it's kept again then, or
     /// soon after a write that failed, so the file catches up though no
     /// window moves.
@@ -337,7 +339,8 @@ impl Inputs {
     /// error changes and once more when a write succeeds again. It's
     /// kept in memory either way, so a closed mark keeps the time it was
     /// stamped at: one stamped again at each try would never come due
-    /// while the disk stays full.
+    /// while the disk stays full. A daemon stopped before a write goes
+    /// through loses what memory held past the file.
     fn write_places(&mut self, kept: Arrangement, path: &Path) {
         let why = kept.write(path).err().map(|why| why.to_string());
         if let Some(heard) = write_heard(path, why.as_deref(), self.unwritten.as_deref()) {
@@ -1350,8 +1353,9 @@ mod tests {
             {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
         ]}));
         inputs.keep_places(&path);
+        let kept = inputs.arrangement.boots["this-one"]["s-o"].clone();
         assert!(
-            inputs.arrangement.boots["this-one"].get("s-o").is_some(),
+            kept.is_object(),
             "its window is kept: {}",
             inputs.arrangement.boots["this-one"]
         );
@@ -1362,11 +1366,10 @@ mod tests {
             .insert("this-one".into(), slack.clone());
         inputs.windows.took(&json!({"records": []}));
         inputs.keep_places(&path);
-        assert!(
-            inputs.arrangement.boots["this-one"]["s-o"]
-                .get("orphaned")
-                .is_none(),
-            "the last window closed by hand isn't taken as orphaned, never then let go"
+        assert_eq!(
+            inputs.arrangement.boots["this-one"]["s-o"], kept,
+            "while no window is listed, the last window's place stands as it was kept, \
+             neither marked nor wiped"
         );
         assert_eq!(
             inputs.arrangement.others["this-one"], slack,
@@ -1518,6 +1521,32 @@ mod tests {
             (from + WRITE_AGAIN_MS..=now() + WRITE_AGAIN_MS).contains(&again),
             "with no window listed, what's unwritten is still tried again soon: {again}"
         );
+        // Cleared while still no window shows: the write is tried for
+        // being behind alone, and goes through.
+        std::fs::remove_file(&blocked).expect("the way cleared");
+        assert_eq!(
+            inputs.keep_places(&path),
+            Some(late),
+            "with no window listed, it's written though nothing moved"
+        );
+        assert_eq!(inputs.unwritten, None, "nothing's left unwritten");
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("the file written"))
+                .expect("the file reads");
+        assert_eq!(
+            Arrangement::of(&written).boots,
+            inputs.arrangement.boots,
+            "the file holds what memory does, no window listed"
+        );
+        // Blocked again, a let-go due with no window listed fails to be
+        // written, so memory is ahead of the file once more.
+        std::fs::remove_dir_all(&blocked).expect("its folder gone");
+        std::fs::write(&blocked, "").expect("a file where its folder would be");
+        let mut places = closed(late);
+        places["s-due"] = json!({"column": 2, "closed": now() - grace - 1_000});
+        inputs.arrangement.boots.insert("this-one".into(), places);
+        inputs.keep_places(&path).expect("tried again");
+        assert!(inputs.unwritten.is_some(), "the let-go wasn't written");
         // The window shows again where it was, so nothing moved, and the
         // write is tried for being behind alone.
         inputs.windows.took(&json!({"records": [

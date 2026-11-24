@@ -523,6 +523,30 @@ mod tests {
     }
 
     #[test]
+    fn places_heard_written_while_a_write_has_failed_leave_memory_as_it_is() {
+        let folder = std::env::temp_dir().join(format!("agents-stale-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        let paths = paths_in(&folder);
+        let stale = Arrangement::of(&json!({"v": 1, "boots": {"this": {"s-shut": {}}}}));
+        stale.write(&paths.arrangement).expect("written");
+        let ahead = Arrangement::of(&json!({"v": 1, "boots": {"this": {}}}));
+        let mut inputs = Inputs {
+            arrangement: ahead.clone(),
+            unwritten: Some("No space left on device".into()),
+            ..Inputs::default()
+        };
+        inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
+        assert_eq!(
+            inputs.arrangement, ahead,
+            "memory ahead of the file isn't thrown back to it, let-gos and all"
+        );
+        inputs.unwritten = None;
+        inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
+        assert_eq!(inputs.arrangement, stale, "once caught up, it's read again");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
     fn the_files_are_handed_over_once_as_they_stand_at_the_start() {
         let folder = std::env::temp_dir().join(format!("agents-start-{}", std::process::id()));
         fs::create_dir_all(&folder).expect("a folder");
