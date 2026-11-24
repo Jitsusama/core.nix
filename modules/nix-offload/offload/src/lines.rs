@@ -19,7 +19,7 @@
 //! cloud itself. The lender names the instance behind each lent builder in
 //! a file of its own; this checks the name and zone against its settings,
 //! asks the cloud whether the instance is still the one its maker made
-//! (`src/vet.rs`), every [`ASK_AGAIN`], and asks the instance's guest
+//! (`src/lines/vet.rs`), every [`ASK_AGAIN`], and asks the instance's guest
 //! attributes for its host key, which only the instance can write. Its
 //! other fields pass as written, since none of them changes who root
 //! trusts, but only in plain characters: Nix reads `;` as the start of
@@ -33,8 +33,9 @@
 //! pieces they prove: the clock each instance is asked again by, and what
 //! is kept of what the cloud last said.
 
-use crate::scripts;
-use crate::vet::{self, Pinned};
+mod scripts;
+mod vet;
+
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
@@ -42,6 +43,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use vet::Pinned;
 
 /// How often the lender's files are read again. A builder named a few
 /// seconds late only builds a few seconds less; this is the same pace the
@@ -145,9 +147,22 @@ pub struct Settings {
     pub images: Vec<String>,
 }
 
+/// Now, in seconds since 1970, as the cloud's timestamps count.
+fn now_seconds() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+/// The scripts' record's file in the service's state, and what its
+/// troubles are said of, so each is journalled once.
+const RECORD: &str = "scripts.json";
+
 /// What `settings` hold a lent builder to, read from the files they name,
-/// when they pin a startup script.
-fn pinned(settings: &Settings) -> Result<Option<Pinned>, String> {
+/// when they pin a startup script; `record` keeps the scripts named before.
+fn pinned(settings: &Settings, record: &mut scripts::Record) -> Result<Option<Pinned>, String> {
     let read = |path: &Path| {
         fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))
     };
@@ -155,18 +170,8 @@ fn pinned(settings: &Settings) -> Result<Option<Pinned>, String> {
         return Ok(None);
     };
     let script = read(script)?;
-    // A record that can't be read or written trusts only the script named
-    // now, as before there was one, rather than refusing every builder.
     let earlier = settings.state.as_ref().map_or_else(Vec::new, |state| {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |since| {
-                i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
-            });
-        scripts::earlier(&state.join("scripts.json"), &script, now).unwrap_or_else(|why| {
-            eprintln!("nix-offload: trusting only today's startup script: {why}");
-            Vec::new()
-        })
+        record.earlier(&state.join(RECORD), &script, now_seconds())
     });
     Ok(Some(Pinned {
         script,
@@ -538,6 +543,8 @@ pub struct HostKeys {
     said: HashMap<String, String>,
     /// Whether the project's metadata holds, and when that was asked.
     project: Option<(Instant, Result<(), String>)>,
+    /// The startup scripts named before the one named now.
+    scripts: scripts::Record,
 }
 
 impl HostKeys {
@@ -548,7 +555,19 @@ impl HostKeys {
             config,
             said: HashMap::new(),
             project: None,
+            scripts: scripts::Record::default(),
         }
+    }
+
+    /// Names the startup script `settings` pin as this service starts, so
+    /// its time is the switch's that named it rather than the first vet's
+    /// after, which could be hours later with nothing lent.
+    fn name_script(&mut self, settings: &Settings) {
+        if let Err(why) = pinned(settings, &mut self.scripts) {
+            eprintln!("nix-offload: the startup script couldn't be named as it started: {why}");
+        }
+        let trouble = self.scripts.trouble.clone();
+        self.say(RECORD, trouble);
     }
 
     /// Says `what` of `about` when it isn't what was last said of it, so a
@@ -639,7 +658,7 @@ impl HostKeys {
             .copied(token)
             .map_err(Unvouched::Unanswered)
             .and_then(|token| {
-                let verdict = match pinned(settings) {
+                let verdict = match pinned(settings, &mut self.scripts) {
                     Ok(None) => Ok(None),
                     Ok(Some(pinned)) => {
                         let first = (before.started.as_deref().zip(before.marks.as_deref()))
@@ -651,6 +670,8 @@ impl HostKeys {
                 };
                 verdict.map(|vouched| (token, vouched))
             });
+        let trouble = self.scripts.trouble.clone();
+        self.say(RECORD, trouble);
         let (token, (started, marks)) = match verdict {
             Ok((token, vouched)) => (token, vouched.unzip()),
             Err(Unvouched::Silent) => {
@@ -1097,6 +1118,7 @@ pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
 /// Copies what passes for as long as it runs, at [`PACE`].
 pub fn serve(settings: &Settings, config: PathBuf) -> ! {
     let mut keys = HostKeys::new(config);
+    keys.name_script(settings);
     loop {
         copy_once(settings, &mut keys);
         std::thread::sleep(PACE);
@@ -1796,6 +1818,26 @@ mod tests {
             lent_to_root(&dir),
             "",
             "with no record kept, the script before was trusted"
+        );
+    }
+
+    #[test]
+    fn the_service_names_its_script_as_it_starts() {
+        let (dir, mut settings, _) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        settings.state = Some(dir.path().to_path_buf());
+        let before = now_seconds();
+        HostKeys::new(dir.path().join("config")).name_script(&settings);
+        let record = fs::read_to_string(dir.path().join(RECORD)).expect("no record kept");
+        let named: Value = serde_json::from_str(&record).expect("the record isn't JSON");
+        let since = named[0]["since"].as_i64().unwrap_or_default();
+        assert!(
+            (before..=now_seconds()).contains(&since),
+            "the script wasn't named, in seconds, as the service started: {record}"
+        );
+        // 1 January 2026 and 2100, so seconds can't pass for milliseconds.
+        assert!(
+            (1_767_225_600..4_102_444_800).contains(&since),
+            "now isn't counted in seconds since 1970: {since}"
         );
     }
 

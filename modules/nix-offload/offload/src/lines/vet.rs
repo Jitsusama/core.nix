@@ -64,9 +64,10 @@ pub struct Pinned {
 /// A startup script the machine named before the one it names now. A
 /// switch that changes the script would otherwise refuse every builder
 /// standing, as on 23 November at 20:53, when all sixteen were refused
-/// and every run on them was cut. Root trusted each of them under that
-/// script, so trusting them on still widens nothing; one made after the
-/// change must run the new script.
+/// and every run on them was cut. A builder made before the change is
+/// trusted on under the script it was made with, as it would have been
+/// before the change, vetted in every other way as before; one made after
+/// the change must run the new script.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Earlier {
     /// The script, whole.
@@ -116,6 +117,13 @@ pub fn vetted(described: &Value, pinned: &Pinned) -> Result<String, String> {
         let named_before = |one: &&Earlier| script == Some(one.script.as_str());
         match pinned.earlier.iter().find(named_before) {
             Some(one) if made.is_some_and(|made| made < one.made_before) => {}
+            Some(_) if made.is_none() => {
+                return Err(
+                    "runs the startup script this machine named before, and says nothing of \
+                     when it was made"
+                        .to_owned(),
+                );
+            }
             Some(_) => {
                 return Err(
                     "runs the startup script this machine named before, though it was made \
