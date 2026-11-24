@@ -94,10 +94,23 @@ pub fn sched(text: &str) -> Option<Sched> {
 /// kernel keeps it only while `kernel.sched_schedstats` is on, and prints
 /// it in milliseconds; none where it isn't kept.
 pub fn blocked(text: &str) -> Option<u64> {
+    sched_ns(text, "sum_block_runtime")
+}
+
+/// How much of a thread's time blocked in the kernel was spent waiting on
+/// the disk, in nanoseconds, from its `sched`'s `iowait_sum`, so a block
+/// reads apart as io or something else (a lock, reclaim); none where it
+/// isn't kept.
+pub fn io_waited(text: &str) -> Option<u64> {
+    sched_ns(text, "iowait_sum")
+}
+
+/// The milliseconds a `sched` line ending in `name` holds, in nanoseconds.
+fn sched_ns(text: &str, name: &str) -> Option<u64> {
     let ms: f64 = text.lines().find_map(|line| {
         let (key, value) = line.split_once(':')?;
         key.trim()
-            .ends_with("sum_block_runtime")
+            .ends_with(name)
             .then(|| value.trim().parse().ok())?
     })?;
     #[expect(
@@ -440,6 +453,22 @@ pub mod tests {
         let unkept = "cat (7, #threads: 1)\n\
                       se.sum_exec_runtime          :          1.019739\n";
         assert_eq!(blocked(unkept), None, "a file without it read as blocked");
+    }
+
+    #[test]
+    fn a_sched_file_gives_the_time_waited_on_the_disk_only_while_it_is_kept() {
+        let kept = "chrome (7, #threads: 30)\n\
+                    stats.sum_block_runtime      :        842.500125\n\
+                    stats.iowait_sum             :        600.250000\n\
+                    stats.iowait_count           :              12\n";
+        assert_eq!(
+            io_waited(kept),
+            Some(600_250_000),
+            "the time waited on the disk wasn't read from its line"
+        );
+        let unkept = "cat (7, #threads: 1)\n\
+                      se.sum_exec_runtime          :          1.019739\n";
+        assert_eq!(io_waited(unkept), None, "a file without it read as io");
     }
 
     /// Writes `text` to a stand-in kernel file, making its folders.

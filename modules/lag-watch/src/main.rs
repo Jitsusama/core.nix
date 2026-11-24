@@ -244,12 +244,16 @@ fn snapshot(
                 .is_some();
         }
         // An app's thread blocked in the kernel, on a lock, a page read back or reclaim, hangs
-        // its window without waiting for a CPU, so its time blocked is read beside its waits.
-        if apps::is_app(thread)
-            && let Some(ns) =
-                kernel::blocked(&kernel::text(&thread.schedstat.with_file_name("sched")))
-        {
-            s.blocked.insert(thread.clone(), ns);
+        // its window without waiting for a CPU, so its time blocked is read beside its waits,
+        // and how much of it was the disk, so a block reads apart as io or something else.
+        if apps::is_app(thread) {
+            let sched = kernel::text(&thread.schedstat.with_file_name("sched"));
+            if let Some(ns) = kernel::blocked(&sched) {
+                s.blocked.insert(thread.clone(), ns);
+            }
+            if let Some(ns) = kernel::io_waited(&sched) {
+                s.io_waited.insert(thread.clone(), ns);
+            }
         }
         let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
         if let Some(sched) = kernel::sched(&text) {
@@ -700,7 +704,10 @@ mod tests {
             fs::write(at.join("stat"), &stat).unwrap();
             fs::write(dir.join(pid).join("stat"), &stat).unwrap();
             if let Some(ms) = blocked {
-                let sched = format!("slack ({pid}, #threads: 9)\nstats.sum_block_runtime : {ms}\n");
+                let sched = format!(
+                    "slack ({pid}, #threads: 9)\nstats.sum_block_runtime : {ms}\n\
+                     stats.iowait_sum : 1.000000\n"
+                );
                 fs::write(at.join("sched"), sched).unwrap();
             }
             kernel::Thread {
@@ -722,8 +729,13 @@ mod tests {
         );
         assert_eq!(
             s.blocked,
-            BTreeMap::from([(shown, 12_500_000), (hidden, 3_000_000)]),
+            BTreeMap::from([(shown.clone(), 12_500_000), (hidden.clone(), 3_000_000)]),
             "only the apps' threads, shown or hidden, had their time blocked read"
+        );
+        assert_eq!(
+            s.io_waited,
+            BTreeMap::from([(shown, 1_000_000), (hidden, 1_000_000)]),
+            "the apps' threads' time on the disk wasn't read beside their time blocked"
         );
         fs::remove_dir_all(&dir).unwrap();
     }

@@ -112,6 +112,7 @@ mod tests {
                 worst_us: 90.0,
                 doubted: 0,
                 blocked_ms: None,
+                io_ms: None,
             },
         );
         Window {

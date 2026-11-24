@@ -464,6 +464,41 @@ fn an_app_s_threads_blocked_in_the_kernel_say_the_most_one_was() {
     // A row written before it was kept reads as none kept.
     let old: Wait = serde_json::from_str(r#"{"mean_us": 1.0, "worst_us": 2.0}"#).unwrap();
     assert_eq!(old.blocked_ms, None, "an old row read as blocked");
+    assert_eq!(old.io_ms, None, "an old row read as waiting on the disk");
+}
+
+#[test]
+fn the_thread_blocked_most_says_how_much_of_it_was_the_disk() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    for s in [&mut then, &mut now] {
+        ran(s, "slack-ui", "slack", 0, 0);
+        ran(s, "slack-ui", "Compositor", 0, 0);
+    }
+    let thread = |s: &Snapshot, name: &str| {
+        s.threads
+            .keys()
+            .find(|t| t.name == name)
+            .expect("the thread was made above")
+            .clone()
+    };
+    for (s, slack, compositor) in [(&mut then, 0, 0), (&mut now, 350, 100)] {
+        let ms = |n: u64| n * 1_000_000;
+        let (main, drawer) = (thread(s, "slack"), thread(s, "Compositor"));
+        s.blocked.insert(main.clone(), ms(slack));
+        s.blocked.insert(drawer.clone(), ms(compositor));
+        // The main thread's block was a fifth io; the compositor's, all of it.
+        s.io_waited.insert(main, ms(slack / 5));
+        s.io_waited.insert(drawer, ms(compositor));
+    }
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    let slack = w.waits["slack-ui"];
+    assert_eq!(
+        (slack.blocked_ms, slack.io_ms),
+        (Some(350.0), Some(70.0)),
+        "the io said wasn't the io of the thread blocked most, so the two don't read together"
+    );
+    assert_eq!(w.waits["niri"].io_ms, None, "an io wait not kept was said");
 }
 
 fn sched(wait_ns: u64, slices: u64) -> Sched {
