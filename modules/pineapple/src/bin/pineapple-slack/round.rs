@@ -278,35 +278,15 @@ fn judge(
         }
     }
     if decision.stops() {
-        let records = state.join("stops");
         let mut stop = record::stop(&source, &decision, now, reader.shadow);
-        if !agreed {
-            stop["by_joel"] = false.into();
-            stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
-        }
-        let shadow = if reader.shadow { ", in shadow" } else { "" };
-        let unagreed = if agreed {
-            ""
-        } else {
-            ", in an answer no second ask agreed with"
-        };
-        let kept = record::keep(&records, &key, &stop);
-        match &kept {
-            // An unagreed stop is named by the key it's kept under, as its
-            // link could point anywhere.
-            Ok(true) => eprintln!(
-                "<5>a stop{shadow}{unagreed}: {}",
-                if agreed { link } else { key.as_str() }
-            ),
-            Ok(false) => {}
-            Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
-        }
-        if agreed
-            && kept.is_ok()
-            && let Err(error) = record::forget(&records, &unconfirmed(message))
-        {
-            eprintln!("<3>couldn't take away a stop's unconfirmed copy: {error}");
-        }
+        keep_stop(
+            &state.join("stops"),
+            &mut stop,
+            message,
+            &key,
+            agreed,
+            reader.shadow,
+        );
     }
     if agreed && decision.verdict == Verdict::Resume && decision.by_joel {
         let said = micros(&message.ts).unwrap_or(0);
@@ -317,6 +297,46 @@ fn judge(
             &message.link,
             reader.shadow,
         );
+    }
+}
+
+/// Keeps a stop's record, `stop`, under `key` in `records`, and says so.
+/// Not `agreed`, it never says Joel said it and calls its writer
+/// unconfirmed; agreed, its unconfirmed copy is taken away.
+fn keep_stop(
+    records: &Path,
+    stop: &mut serde_json::Value,
+    message: &Message,
+    key: &str,
+    agreed: bool,
+    shadow: bool,
+) {
+    if !agreed {
+        stop["by_joel"] = false.into();
+        stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
+    }
+    let shadow = if shadow { ", in shadow" } else { "" };
+    let unagreed = if agreed {
+        ""
+    } else {
+        ", in an answer no second ask agreed with"
+    };
+    let kept = record::keep(records, key, stop);
+    match &kept {
+        // An unagreed stop is named by the key it's kept under, as its
+        // link could point anywhere.
+        Ok(true) => eprintln!(
+            "<5>a stop{shadow}{unagreed}: {}",
+            if agreed { message.link.as_str() } else { key }
+        ),
+        Ok(false) => {}
+        Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
+    }
+    if agreed
+        && kept.is_ok()
+        && let Err(error) = record::forget(records, &unconfirmed(message))
+    {
+        eprintln!("<3>couldn't take away a stop's unconfirmed copy: {error}");
     }
 }
 
