@@ -191,11 +191,14 @@ ShellRoot {
     // its collection where it has no run, or run. It isn't run: it leaves
     // out a gone row, one held still, a step into a target or a copy's
     // contents, that a confirm inside a held step runs unless collecting,
-    // that a row marked below and run from below another isn't closed, and
-    // how a row that stays, opens or acts now runs. Nor is it what Return
-    // weighs before run (Arming.js's returnAct): an ask, arming, a step into
-    // a thing, an end and a landing in find. So it tells this check's rows
-    // apart, and stands for run on no other.
+    // that a row with a below of its own, run from below another, closes
+    // and opens that below in place of its run, and how a row that stays,
+    // opens or acts now runs. Nor is it what Return weighs before run: a
+    // Return held under a guessed step (Held.returnUnder), then Arming.js's
+    // returnAct, which gives words being asked for, does nothing on a
+    // Return doubling a landing, and arms, steps into a thing, lines an end
+    // or lands. So it tells this check's rows apart, and stands for run on
+    // no other.
     function offers(row) {
         const holds = (row?.verbs?.() ?? []).length > 0 || !!row?.targets;
         if (row?.start !== undefined)
