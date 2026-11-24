@@ -561,15 +561,15 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
         None,
         &[(step, &winning)],
     );
+    // First, so neither a win nor the gone run's absence below is read
+    // while its planting never got that far.
+    assert!(home.join("planted").exists(), "the two runs weren't planted: {err}");
     let heard = relay(said(&home).as_slice(), "1");
     assert!(
         code == Some(75) && heard == Heard::Untaken,
         "a run that lost its run's file read as {heard:?}, ending {code:?}: {err}"
     );
     let runs = work(&home);
-    // So the gone run's absence below says the sweep took it, not that
-    // its planting never got that far.
-    assert!(home.join("planted").exists(), "the two runs weren't planted: {err}");
     let file = std::fs::read_to_string(runs.join("1.run")).unwrap_or_default();
     assert!(
         file.starts_with(&format!("{theirs} ")),
