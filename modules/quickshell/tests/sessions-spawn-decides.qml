@@ -136,8 +136,8 @@ ShellRoot {
         Sessions.start("QEST-BADHOST", root.folder, false);
         Sessions.start("QEST-DASHID", root.folder, false);
         Sessions.start("QEST-DASHHOST", root.folder, false);
-        Sessions.start("QEST-LATE", root.folder, false);
-        Sessions.start("QEST-LATER", root.folder, false);
+        Sessions.start("QEST-LATE", root.folder, false, "Late Reef");
+        Sessions.start("QEST-LATER", root.folder, false, "Later Reef");
         root.startedAt = Date.now();
         stage = "starting";
     }
@@ -186,6 +186,12 @@ ShellRoot {
             late.filter(quest => root.unhosted[quest] === "opening").length === 1
             && Niri.spawns.filter(command => command.includes("/kitty.sock pi-hosted.s-late "))
                 .length === 1, `${JSON.stringify(root.unhosted)}\n${Niri.spawns.join("\n")}`);
+        // Held back, it's said by its quest's name too, never its id.
+        const titled = { "QEST-LATE": "Late Reef", "QEST-LATER": "Later Reef" };
+        Expect.expect("the one held back is said by its quest's name",
+            late.every(quest => root.unhosted[quest] !== "opening"
+                || root.unhostedNames[quest] === titled[quest]),
+            JSON.stringify(root.unhostedNames));
         const viewer = Niri.spawns.filter(command => command.includes(
             " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
