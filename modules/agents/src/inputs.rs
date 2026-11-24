@@ -301,11 +301,12 @@ impl Inputs {
     /// still let go when due, and what a failed write left unwritten is
     /// written all the same. The last window closed is left unmarked,
     /// though, and a keep once any window shows may take it as orphaned,
-    /// as after a crash of niri, until a follow-up due Wed 25 Nov. It
-    /// answers when, in ms since the epoch, a
-    /// place closed by hand is to be let go, so it's kept again then, or
-    /// soon after a write that failed, so the file catches up though no
-    /// window moves.
+    /// as after a crash of niri: with no other window shown, nothing here
+    /// tells a window closed by hand from a viewer gone with its host, so
+    /// it errs toward opening it again. It answers when, in ms since the
+    /// epoch, a place closed by hand is to be let go, so it's kept again
+    /// then, or soon after a write that failed, so the file catches up
+    /// though no window moves.
     pub fn keep_places(&mut self, path: &Path) -> Option<u64> {
         if self.boot.is_empty() {
             return None;

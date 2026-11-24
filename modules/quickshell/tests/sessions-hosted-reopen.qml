@@ -938,8 +938,8 @@ ShellRoot {
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
         // Looked at once s-cornered's place is kept, so before this walk's
         // settle pass and the return home of workspaces after it, which a
-        // follow-up waits for. A move of its window starts with focusing
-        // it.
+        // follow-up waits for. Every move of its window names it by id, or
+        // focuses it first to move its column.
         Expect.expect("one sent by name to a workspace on another screen than kept "
             + "isn't moved as it's placed",
             !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93

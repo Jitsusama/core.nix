@@ -329,7 +329,8 @@ impl Inputs {
             // Read again whenever it's written, by the daemon or another
             // hand, as the shell read its own file of them. While a write
             // has failed, memory is ahead of the file and is written over
-            // it at the next try, so the file isn't read back over it.
+            // it at the next try, so the file isn't read back over it: a
+            // hand edit made meanwhile is ignored, then written over.
             if self.unwritten.is_some() {
                 return;
             }
@@ -553,7 +554,10 @@ mod tests {
         );
         inputs.unwritten = None;
         inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
-        assert_eq!(inputs.arrangement, stale, "once caught up, it's read again");
+        assert_eq!(
+            inputs.arrangement, stale,
+            "with no write failed, a file written by another hand is read as it lands"
+        );
         let _ = fs::remove_dir_all(&folder);
     }
 
