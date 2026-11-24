@@ -18,7 +18,8 @@ emit sends, only the session events are said: it also sends a turn's
 streamed events, message_update among them, where a slow handler would say
 a line a token. The events with dispatch loops of their own (turn_end,
 before_agent_start, context, tool_call and the like) are not timed. A line
-that can't be written is dropped. Nothing else changes: the handlers
+whose write throws is dropped; an error the stream raises later is the
+process's own, as for any write. Nothing else changes: the handlers
 run in the same order, a cancel still returns at once, and an error still
 reaches emitError.
 

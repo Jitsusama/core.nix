@@ -180,12 +180,14 @@ const cancellingRun = (write) => {
   assert.deepEqual(lines, ['pi-host: "cancelling" session_before_switch took 300 ms']);
 }
 {
-  const { lines, ran, result } = await cancellingRun(() => {
+  let tried = 0;
+  const { ran, result } = await cancellingRun(() => {
+    tried += 1;
     throw new Error("stderr is gone");
   });
+  assert.equal(tried, 1, "the cancel's line was never written");
   assert.deepEqual(result, { cancel: true }, "a write that threw took the cancel's place");
   assert.deepEqual(ran, [], "a handler ran after the cancel");
-  assert.deepEqual(lines, []);
 }
 
 // resources_discover, which pi emits on its own path, is said the same way,
