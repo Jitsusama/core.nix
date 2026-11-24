@@ -214,8 +214,7 @@ pub fn line(text: &str, carried: &mut Carried) -> Option<Said> {
             // that answers them, not him.
             carried.acting = false;
             let full: Value = serde_json::from_str(text).ok()?;
-            let Some((words, looking_at)) = his(&text_of(full.pointer("/message/content")?))
-            else {
+            let Some((words, looking_at)) = his(&text_of(full.pointer("/message/content")?)) else {
                 carried.from = None;
                 return None;
             };
