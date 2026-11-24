@@ -223,19 +223,19 @@ fn every_figure_says_which_way_is_better_and_who_owns_it() {
         "Chrome's time blocked reads the wrong figure or target"
     );
     assert!(
-        blocked.behind[0].contains("300 windows"),
-        "Chrome's time blocked doesn't say how many windows kept it: {:?}",
+        blocked.behind[0].contains("300 of its 360 windows"),
+        "Chrome's time blocked doesn't say how many of its windows kept it: {:?}",
         blocked.behind
     );
-    let unkept = named(SLACK_BLOCKED);
+    let unopened = named(SLACK_BLOCKED);
     assert_eq!(
-        unkept.now, None,
-        "Slack's time blocked, never kept, was read"
+        unopened.now, None,
+        "Slack's time blocked, never open, was read"
     );
     assert!(
-        unkept.behind[0].contains("kernel.sched_schedstats"),
-        "a time blocked never kept doesn't say why: {:?}",
-        unkept.behind
+        unopened.behind[0].contains("not open") && !unopened.behind[0].contains("sched_schedstats"),
+        "an app never open in the hour is said to have its time blocked kept off: {:?}",
+        unopened.behind
     );
     assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
     assert_eq!(named("launcher open ms p99").now, Some(31.0));
@@ -245,6 +245,31 @@ fn every_figure_says_which_way_is_better_and_who_owns_it() {
         "an unread journal is said beside the figure cadence reads"
     );
     assert_eq!(named("call freezes per 10 min").behind[1], "a fake camera");
+}
+
+#[test]
+fn an_app_open_while_the_kernel_kept_no_time_blocked_says_so_by_its_windows() {
+    let unkept = Waits {
+        worst_p99: Some(3.0),
+        windows: 360,
+        ..Waits::default()
+    };
+    let all = measures(
+        &call(),
+        "a fake camera",
+        &unkept,
+        &Waits::default(),
+        &[20.0],
+        None,
+    );
+    let blocked = all.iter().find(|m| m.measure == CHROME_BLOCKED).unwrap();
+    assert_eq!(blocked.now, None, "a time blocked never kept was read");
+    assert!(
+        blocked.behind[0].contains("kernel.sched_schedstats")
+            && blocked.behind[0].contains("none of its 360 windows"),
+        "an app open while the kernel kept no time blocked doesn't say why: {:?}",
+        blocked.behind
+    );
 }
 
 #[test]
