@@ -228,13 +228,15 @@ function landedAfter(before, from, landed, now) {
 // Whether a key taken moves the clock the launcher times a change from
 // (Pacing.sinceKey), by its `name` as the key table has it: a modifier
 // pressed `alone`, as the Shift before a capital, acted on nothing, and
-// a key the field types itself while `typing`, a letter, a Space or one
-// the table can't name ("", as é), changes only what's typed, so a change
-// beside either is timed from the key that acted before it. An edit by
-// name, as Backspace, may act, since on an empty find it leaves for
-// normal, so it moves the clock.
+// a key the field types itself while `typing`, a letter, a Space, with
+// Shift or not, or one the table can't name ("", as é), changes only
+// what's typed, as the line's caret keys (QueryKeys' caretLeft to
+// caretEnd) change only where, so a change beside any is timed from the
+// key that acted before it. An edit by name, as Backspace, may act,
+// since on an empty find it leaves for normal, so it moves the clock.
 function movesClock(alone, typing, name) {
-    const typed = name.length <= 1 || name === "Space";
+    const typed = name.length <= 1
+        || ["Space", "Shift+Space", "Left", "Right", "Home", "End"].includes(name);
     return !alone && !(typing && typed);
 }
 

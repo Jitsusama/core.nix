@@ -373,6 +373,13 @@ QtObject {
             [Held.movesClock(true, false, ""), Held.movesClock(false, true, "a"),
                 Held.movesClock(false, true, "Space"), Held.movesClock(false, true, "")]
                 .join(" "), "false false false false");
+        // Shift+Space types a space as Space does, and the caret keys only
+        // move the caret; in normal, Left is a key that acts.
+        check("Shift+Space and the caret keys in the find keep it, Left in normal moves it",
+            ["Shift+Space", "Left", "Right", "Home", "End"]
+                .map(name => Held.movesClock(false, true, name))
+                .concat([Held.movesClock(false, false, "Left")]).join(" "),
+            "false false false false false true");
         // Backspace on an empty find leaves it for normal, so it may act.
         check("Escape and Backspace in the find, j and an unnamed key in normal move it",
             [Held.movesClock(false, true, "Escape"), Held.movesClock(false, true, "Backspace"),
@@ -386,6 +393,44 @@ QtObject {
             Held.movedSaid(true, 4, 5, false), true);
         check("a move said of another key isn't the clock's key's",
             Held.movedSaid(false, 4, 5, true), false);
+        // Prompt.modalKey's own order, through the launcher's two handlers:
+        // a press clears the word, is counted, then says its move; a
+        // repeat clears it, says its move, then is counted. A handler runs
+        // on a change alone, as a property's does.
+        const replay = writes => {
+            const at = { keys: 0, moved: false, heard: 0, word: false };
+            const say = moved => {
+                if (moved !== at.moved) {
+                    at.moved = moved;
+                    at.word = Held.movedSaid(at.word, at.heard, at.keys, moved);
+                }
+            };
+            const count = name => {
+                at.keys += 1;
+                if (Held.movesClock(name === "Shift", false, name)) {
+                    at.heard = at.keys;
+                    at.word = Held.movedSaid(false, at.keys, at.keys, at.moved);
+                }
+            };
+            // j moves; x, a key that acts, and Shift alone don't.
+            writes.forEach(one => {
+                say(false);
+                if (one === "repeat") {
+                    say(true);
+                    count("j");
+                } else {
+                    count(one);
+                    say(one === "j");
+                }
+            });
+            return at.word;
+        };
+        check("in the prompt's order, j moves, and a Shift after it or j's repeat keep that",
+            [replay(["j"]), replay(["j", "Shift"]), replay(["j", "repeat"])].join(" "),
+            "true true true");
+        check("in the prompt's order, x doesn't move, nor does j's move outlast an x",
+            [replay(["x"]), replay(["j", "x"]), replay(["j", "Shift", "x"])].join(" "),
+            "false false false");
 
         // Held.changeDoes, as refreshed and reanswer ask it of each change
         // and answer heard, keyedWithin 50 ms.
@@ -401,7 +446,7 @@ QtObject {
         check("an act whose source already waits on a refresh is recorded joined",
             does({ waiting: true }), "joined act");
         // A change to rows the launcher doesn't show, or an answer, which
-        // never records an act, is the key's within keyedWithin, so leaves
+        // records no act here, is the key's within keyedWithin, so leaves
         // its act his.
         check("one not shown within keyedWithin is kept, past it joins",
             [does({ shown: false }), does({ shown: false, ago: 50 })].join(" "),

@@ -6550,12 +6550,13 @@ Scope {
         // whose source was already waiting on a refresh is recorded
         // joined, either way no longer his alone (Held.changeDoes). A
         // change heard within keyedWithin of an acting key is his
-        // whoever made it, a share's too, and so is an answer heard so,
-        // which leaves his acts as they stood: either way a leave off its
-        // row goes unheld. An answer records an act only through a hold it
-        // agrees to (heldAgreed), whose refresh is heard as a change is;
-        // past keyedWithin, a daemon's, as Release It's may be, holds one
-        // Return should it land off its row.
+        // whoever made it, a share's too: the leave off its row goes
+        // unheld. An answer heard so records nothing and leaves his acts
+        // as they stood, so its leave goes unheld only where his key's act
+        // of that source is on record. An answer records an act only
+        // through a hold it agrees to (heldAgreed), whose refresh is heard
+        // as a change is; past keyedWithin, a daemon's, as Release It's
+        // may be, holds one Return should it land off its row.
         const act = Held.actOf(keyedActs, source, keyHeardAt);
         const byKey = Held.keyed(keyedActs, source, keyHeardAt);
         try {
