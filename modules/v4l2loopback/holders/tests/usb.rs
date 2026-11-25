@@ -241,6 +241,24 @@ fn the_file_is_there_while_the_camera_is_and_names_nobody_idle() {
         log.contains("forgot \"Unplugged\", whose node file said "),
         "what a killed run left went unsaid: {log}"
     );
+    // Said just after the file was first written, so it may follow the
+    // test's look by a moment; it's looked for each 50 ms, for 5 s.
+    let mut log = log;
+    for _ in 0..100 {
+        if log.contains("ready in ") {
+            break;
+        }
+        sleep(Duration::from_millis(50));
+        log = fs::read_to_string(&watch.log).unwrap();
+    }
+    let ready: Vec<_> = log
+        .lines()
+        .filter(|line| line.starts_with("ready in "))
+        .collect();
+    assert!(
+        ready.len() == 1 && ready[0].ends_with(" ms"),
+        "the watch didn't say once that it's ready: {log}"
+    );
 }
 
 #[test]
@@ -262,8 +280,11 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
     // it has counted 300 frames over ten to eleven seconds.
     for _ in 0..600 {
         let log = fs::read_to_string(&watch.log).unwrap();
-        // After what it forgot as it started.
-        if let Some(line) = log.lines().find(|line| !line.starts_with("forgot ")) {
+        // After what it forgot as it started, and its ready line.
+        let mut said = log
+            .lines()
+            .filter(|line| !line.starts_with("forgot ") && !line.starts_with("ready in "));
+        if let Some(line) = said.next() {
             assert!(line.starts_with("streams to \""), "{line}");
             let rate: f64 = line
                 .split_once("gave ")
