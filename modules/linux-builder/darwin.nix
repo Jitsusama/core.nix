@@ -247,15 +247,6 @@ let
   # The builders Nix reads: the builder's line while the Mac has room, and
   # nothing otherwise.
   offered = "${home}/offered";
-  room = pkgs.writeShellApplication {
-    name = "linux-builder-room";
-    runtimeInputs = [
-      pkgs.coreutils
-      pkgs.diffutils
-      pkgs.gnused
-    ];
-    text = builtins.readFile ./room.sh;
-  };
 
   line = lib.concatStringsSep " " [
     "ssh-ng://linux-builder"
@@ -517,7 +508,8 @@ in
     # within that. It writes its log only when the offer changes.
     launchd.daemons.linux-builder-room.serviceConfig = {
       ProgramArguments = [
-        (lib.getExe room)
+        (lib.getExe pkgs.bash)
+        "${./room.sh}"
         "/usr/sbin/sysctl"
         "/usr/bin/vm_stat"
         "/etc/nix/linux-builder.line"
@@ -526,6 +518,9 @@ in
         (toString cfg.room.floor)
         (toString cfg.room.hold)
       ];
+      # sed, cmp, date and what bash needs, from macOS itself, where only
+      # root can write, since the job runs as root.
+      EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
       StartInterval = 15;
       RunAtLoad = true;
       StandardErrorPath = "/var/log/linux-builder-room.log";
