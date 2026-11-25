@@ -17,9 +17,9 @@
 //! is read, joined, aged out or refused, with a git that answers or fails.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::{fs, io};
 
 use jiff::tz::TimeZone;
 use serde_json::Value;
@@ -90,10 +90,13 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
         return Sources::default();
     };
     let since = format!("--since=@{}", now - DAYS * DAY);
+    // Said, so a walk that fails every hour, and the kept walk shown in
+    // its place, can be seen in the journal rather than only as an old
+    // landing count.
     let tried = |args: &[&str]| {
         let mut all = vec!["-C", &at.checkout];
         all.extend_from_slice(args);
-        command("git", &all).ok()
+        command("git", &all).inspect_err(said).ok()
     };
     let git = |args: &[&str]| tried(args).unwrap_or_default();
     let (log, journal) = std::thread::scope(|s| {
@@ -334,7 +337,17 @@ fn keep_walk(kept: &Path, at: &str, folder: &str, walk: &Walk) {
     if let Some(folder) = kept.parent() {
         let _ = fs::create_dir_all(folder);
     }
-    let _ = write_whole(kept, &all.to_string());
+    if let Err(err) = write_whole(kept, &all.to_string()) {
+        said(&err);
+    }
+}
+
+/// Says on the journal why the walk read or kept less than it might. Git's
+/// answer is another program's text, so a newline in it can't write a line
+/// that reads as cadence's own.
+fn said(err: &io::Error) {
+    let err = err.to_string().replace(char::is_control, "?");
+    eprintln!("cadence: repository: {err}");
 }
 
 /// The kept times, `<sha> <seconds>` a line, of the built commits still
@@ -554,12 +567,31 @@ mod tests {
 
     const DOTS: &str = "home/a/dots";
 
+    /// A kept walk's file in a folder of its own, let go with it.
+    struct Kept(std::path::PathBuf);
+
+    impl std::ops::Deref for Kept {
+        type Target = Path;
+
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Kept {
+        fn drop(&mut self) {
+            if let Some(folder) = self.0.parent().and_then(Path::parent) {
+                let _ = fs::remove_dir_all(folder);
+            }
+        }
+    }
+
     /// A kept walk's file, in a folder of its own for `name`.
-    fn kept_at(name: &str) -> std::path::PathBuf {
+    fn kept_at(name: &str) -> Kept {
         let folder =
             std::env::temp_dir().join(format!("cadence-repository-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
-        folder.join("cadence/repository.json")
+        Kept(folder.join("cadence/repository.json"))
     }
 
     /// The answer that makes the git below fail.
@@ -719,6 +751,90 @@ mod tests {
     }
 
     #[test]
+    fn a_lock_walk_git_fails_in_alone_keeps_nothing() {
+        let kept = kept_at("lock-fails");
+        let before = Walk {
+            merges: "m1 200000 First".into(),
+            locks: String::new(),
+        };
+        keep_walk(&kept, "old", DOTS, &before);
+        let answers = [
+            ("merge-base old new", "old\n"),
+            ("old..new -- home/a/dots/flake.lock", FAILS),
+            ("old..new -- home/a/dots", "m2 300000 Second"),
+        ];
+        let asked = std::sync::Mutex::new(Vec::new());
+        let git = answering(&asked, &answers);
+        assert_eq!(
+            walked(&git, &kept, "new", DOTS, NOW),
+            before,
+            "merges joined with no word of their lock's moves were shown"
+        );
+        assert_eq!(
+            kept_walk(&kept, DOTS),
+            Some(("old".to_owned(), before)),
+            "a walk whose lock walk failed was kept"
+        );
+    }
+
+    #[test]
+    fn a_merge_base_git_fails_in_walks_the_whole_window_afresh() {
+        let kept = kept_at("base-fails");
+        let before = Walk {
+            merges: "m1 200000 First".into(),
+            locks: String::new(),
+        };
+        keep_walk(&kept, "old", DOTS, &before);
+        let answers = [
+            ("merge-base", FAILS),
+            ("new -- home/a/dots/flake.lock", ""),
+            ("new -- home/a/dots", "m2 300000 Second"),
+        ];
+        let asked = std::sync::Mutex::new(Vec::new());
+        let git = answering(&asked, &answers);
+        let whole = Walk {
+            merges: "m2 300000 Second".into(),
+            locks: String::new(),
+        };
+        assert_eq!(
+            walked(&git, &kept, "new", DOTS, NOW),
+            whole,
+            "with no proof main only gained, the kept walk was joined"
+        );
+        let asks = asked.lock().expect("no ask panicked").clone();
+        assert!(
+            !asks.iter().any(|ask| ask.contains("old..new")),
+            "only what main gained was walked: {asks:?}"
+        );
+        assert_eq!(
+            kept_walk(&kept, DOTS),
+            Some(("new".to_owned(), whole)),
+            "the whole walk wasn't kept for main as it stands"
+        );
+    }
+
+    #[test]
+    fn a_walk_kept_for_main_as_it_stands_is_not_written_again() {
+        let kept = kept_at("unmoved");
+        if let Some(folder) = kept.parent() {
+            let _ = fs::create_dir_all(folder);
+        }
+        let written = serde_json::json!({
+            "at": "new", "folder": DOTS, "merges": "", "locks": "", "by": "hand",
+        })
+        .to_string();
+        let _ = fs::write(&*kept, &written);
+        let asked = std::sync::Mutex::new(Vec::new());
+        let git = answering(&asked, &[]);
+        walked(&git, &kept, "new", DOTS, NOW);
+        assert_eq!(
+            fs::read_to_string(&*kept).unwrap_or_default(),
+            written,
+            "a walk main hasn't moved from was written again"
+        );
+    }
+
+    #[test]
     fn a_walk_kept_for_another_folder_reads_as_none() {
         let kept = kept_at("folder");
         let walk = Walk {
@@ -755,7 +871,7 @@ mod tests {
         if let Some(folder) = kept.parent() {
             let _ = fs::create_dir_all(folder);
         }
-        let _ = fs::write(&kept, r#"{"at":"main1","main":"aaa 1 A","reverts":""}"#);
+        let _ = fs::write(&*kept, r#"{"at":"main1","main":"aaa 1 A","reverts":""}"#);
         assert_eq!(
             kept_walk(&kept, DOTS),
             None,
