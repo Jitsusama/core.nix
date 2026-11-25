@@ -1249,8 +1249,8 @@ QtObject {
         check(failures, "its line breaks and quotes escaped",
             Presented.actShown('verb:calendar:a "b"\nlauncher: x', true),
             'verb:calendar:a \\"b\\"\\nlauncher: x');
-        check(failures, "and escaped with reports off where it's said whole",
-            Presented.actShown("place:x\nlauncher: y", false), "place:x\\nlauncher: y");
+        check(failures, "but an own kind's key holding a line break by its kind alone",
+            Presented.actShown("place:x\nlauncher: y", false), "place");
         // A refusal's code, which its line says whole, escaped as a key is.
         const refusing = { error: { code: "refused", refused: "WrongPassword" } };
         check(failures, "a refusal says the daemon's own reason first",
