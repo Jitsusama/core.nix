@@ -751,7 +751,8 @@ fn gate(checkout: &Path, log: &Path) -> Gated {
         Ok(status) => gated(status.code(), &words_of(log)),
         Err(error) => {
             println!(
-                "merge-net: the gate logging to {} wasn't heard whole, so it's red: {error}",
+                "merge-net: the gate logging to {} couldn't start, log or be heard whole, so \
+                 it's red, whatever its riders are told: {error}",
                 log.display()
             );
             Gated::Red
