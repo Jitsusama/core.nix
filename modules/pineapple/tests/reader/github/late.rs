@@ -1,23 +1,45 @@
-//! pineapple-github hearing a stop only after Joel resumed everything,
-//! though it was said before he did: it's kept as he left it, resumed.
+//! pineapple-github hearing a stop of Joel's only after he resumed
+//! everything, though he said it just before: it's kept as he left it,
+//! resumed, while someone else's said as early, and his own edited since,
+//! stand.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use pineapple::github::stamp;
 use serde_json::{Value, json};
 
-use super::{answer, github_reader, journal, only_stop};
-use crate::{answering, home, until_decided};
+use super::{LOGIN, answer_with, comment, github_reader, journal};
+use crate::late::kept;
+use crate::{answering, home};
 
 #[test]
-fn github_a_stop_said_before_joels_resume_and_heard_after_is_kept_resumed() {
-    let (origin, _) = answering(answer);
+fn github_a_stop_of_joels_said_before_his_resume_and_heard_after_is_kept_resumed() {
+    let (origin, _) = answering(|line, now| {
+        let mut edited = comment(3, LOGIN, "pineapple override", now, 80);
+        edited["updated_at"] = json!(stamp(now - 10));
+        answer_with(
+            line,
+            now,
+            &[
+                comment(1, LOGIN, "pineapple override", now, 90),
+                comment(
+                    2,
+                    "colleague",
+                    &format!("@{LOGIN} pineapple override"),
+                    now,
+                    85,
+                ),
+                edited,
+            ],
+        )
+    });
     let home = home();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("after the epoch")
         .as_millis();
-    // Joel resumed everything a minute ago, after the stand-in's stop said
-    // a minute and a half back.
+    // Joel resumed everything a minute ago, half a minute after the
+    // stand-in's comments say he and a colleague stopped.
     let at = u64::try_from(now).expect("a time in range") - 60_000;
     let state = home.join("state/pineapple");
     std::fs::create_dir_all(&state).expect("a state folder");
@@ -27,16 +49,19 @@ fn github_a_stop_said_before_joels_resume_and_heard_after_is_kept_resumed() {
     )
     .expect("a resume written");
     let mut reading = github_reader(&home, &origin, &[]);
-    until_decided(&home, 3);
+    // By when each was said: his, the colleague's, his edited one.
+    let records = kept(&state, 3);
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
-    let record: Value = serde_json::from_str(&only_stop(&home).expect("the stop's record"))
-        .expect("the record is JSON");
     assert_eq!(
-        record["resumed"],
-        json!({"at": at, "by": "joel"}),
-        "said before his resume, it's kept as that resume left it"
+        records
+            .iter()
+            .map(|record| record["resumed"].clone())
+            .collect::<Vec<_>>(),
+        [json!({"at": at, "by": "joel"}), Value::Null, Value::Null],
+        "his stop said before his resume is kept as it left it; someone else's and \
+         his edited one stand: {records:?}"
     );
     assert!(
         journal(&home).contains("said before Joel resumed it, kept as resumed"),
