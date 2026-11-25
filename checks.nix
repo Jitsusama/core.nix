@@ -617,6 +617,7 @@ gather {
     ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/file-link-keys/checks.nix
+    ./modules/find/checks.nix
     ./modules/firmware-errors/checks.nix
     ./modules/firmware-notice/checks.nix
     ./modules/firmware-settings/checks.nix
@@ -666,6 +667,7 @@ gather {
     ./modules/mx-brio/checks.nix
     ./modules/mx-brio-seat/checks.nix
     ./modules/mycelium/checks.nix
+    ./modules/name-lookups/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
     ./modules/net/checks.nix

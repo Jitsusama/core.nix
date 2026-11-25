@@ -7,8 +7,9 @@ pragma ComponentBehavior: Bound
 // them, whether they're muted, sharing their screen or showing their
 // camera; who's calling while a ring lasts, the calls missed, Joel's
 // room's link, and Recent, the calls ended and missed lately. Joining,
-// leaving, muting, sharing and opening the room are asks of the daemon,
-// which does each through Tuple's own command.
+// leaving, muting, sharing, showing or stopping his camera and opening
+// the room are asks of the daemon, which does each through Tuple's own
+// command.
 //
 // Tuple on Linux doesn't yet tell Joel when someone joins or leaves, or
 // that everyone else has left, so the shell does, as notices of Tuple's,
@@ -117,9 +118,9 @@ Singleton {
     // found anywhere by name and as Tuple's own acts in Programs › Tuple
     // (Calls.qml). A ringing call's window, where it's answered, comes
     // first; in a call, its window while it has one, whether Joel's Muted
-    // there, sharing while nothing is shared, his camera, and leaving; out of one,
-    // opening Joel's room, or joining the call whose link was just copied;
-    // and copying his room's link once it's known.
+    // there, sharing while nothing is shared, his camera, and leaving; out
+    // of one, opening Joel's room, or joining the call whose link was just
+    // copied; and copying his room's link once it's known.
     readonly property var controls: {
         // Named and found as the launcher's vocabulary says (Words.qml),
         // never by the program's name, which only finds them.
@@ -245,15 +246,33 @@ Singleton {
 
     // Opens Tuple's camera picker, which shares nothing until Joel picks
     // there, or stops his camera; Tuple's stream says which it is after.
-    // The launcher has closed by the time Tuple answers, so a refusal,
-    // such as no camera Tuple can open, goes to the journal with Tuple's
-    // reason.
+    // The launcher has closed by the time Tuple answers, so a refusal, or
+    // no answer at all with tuple-call gone, is told as a notice of
+    // Tuple's, with the reason given. A stop that didn't happen is kept
+    // and offers the call's window, where the camera stops by hand, since
+    // his face may still be in the call, until the call ends or his camera
+    // is said off; a picker that didn't open isn't kept, as nothing was
+    // shared.
     function camera(on) {
         calls.ask({ ask: "camera", on: on }, answer => {
-            if (answer?.error)
-                console.warn(`tuple: the camera's ${on ? "picker" : "stop"} was refused: `
-                    + (answer.error.message ?? answer.error.code));
+            if (answer?.done === true)
+                return;
+            const why = answer === null ? "Tuple's call daemon didn't answer"
+                : plain(answer?.error?.message ?? answer?.error?.code ?? "It wasn't done");
+            console.warn(`tuple: the camera's ${on ? "picker" : "stop"} didn't happen: ${why}`);
+            if (on)
+                notify("Tuple's camera picker didn't open", why, [], false);
+            else
+                notify("Your camera may still be in the call", why, [
+                    ["camera", "Go To the Call"]
+                ], true);
         });
+    }
+
+    // Text from elsewhere, as a notice's body says it rather than reading
+    // it as markup, which the notices daemon does.
+    function plain(text) {
+        return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     // Once Tuple says it's done, the record says so.
@@ -297,6 +316,8 @@ Singleton {
         call = now;
         if (was && !is)
             withdraw("leave");
+        if ((was && !is) || (before.camera && !now.camera))
+            withdraw("camera");
         if (before.ringing !== null && now.ringing === null)
             withdraw("show");
         const ring = now.ringing;
@@ -336,7 +357,8 @@ Singleton {
     property var offering: ({})
 
     // Puts away Tuple's notices that offer what can't be done any more,
-    // leaving a call that's over or showing a ring that's stopped. Each is
+    // leaving a call that's over, showing a ring that's stopped, or
+    // stopping a camera that's off or whose call is over. Each is
     // closed as its program would close it, by its id, which counts it
     // read.
     function withdraw(key) {
@@ -381,7 +403,7 @@ Singleton {
                                 { [said]: asking.offers });
                     } else if (said === "leave")
                         root.leave();
-                    else if (said === "show")
+                    else if (said === "show" || said === "camera")
                         root.show();
                 }
             }

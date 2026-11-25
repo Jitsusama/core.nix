@@ -83,8 +83,11 @@ pub enum Job {
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
 /// were read back from its file, their echoes already left out. Its
-/// `told` are the echo cuts from Joel's words already journaled, by line
-/// and the sample the cut starts at.
+/// `told` are the echo cuts from Joel's words already journaled, by the
+/// sample the cut starts at, and `left` the lines of his already
+/// journaled as left out whole, by the sample each starts at: splitting
+/// their takes by voice moves his lines' indices on but never their
+/// times, so what's told stays told across a rejoin.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -96,7 +99,8 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
-    told: HashSet<(usize, usize)>,
+    told: HashSet<usize>,
+    left: HashSet<usize>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -104,16 +108,18 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
-    /// What's newly cut from Joel's words as the others' echo, a journal
-    /// line a cut, said once each: how many words, when and how late,
-    /// never the words, since a call's words stay out of the journal. A
-    /// word wrongly cut is gone from the file, so this is all that says
-    /// where to listen for it.
+    /// What's newly left out of Joel's side as the others' echo, a
+    /// journal line each, said once: for words cut from a line, how many,
+    /// when and how late; for a line left out whole, how many words and
+    /// when. Never the words, since a call's words stay out of the
+    /// journal. What's wrongly left out is gone from the file, so this is
+    /// all that says where to listen for it.
     fn untold_cuts(&mut self) -> Vec<String> {
-        let (_, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
+        let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
         let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
-        cuts.into_iter()
-            .filter(|cut| self.told.insert((cut.line, cut.at)))
+        let mut untold: Vec<String> = cuts
+            .into_iter()
+            .filter(|cut| self.told.insert(cut.at))
             .map(|cut| {
                 format!(
                     "call-transcripts: {} of Joel's words at {} cut as their echo, \
@@ -123,7 +129,21 @@ impl Writing {
                     cut.after * 1000 / rate,
                 )
             })
-            .collect()
+            .collect();
+        let mut left: Vec<usize> = split::echoing(&cut, &self.pieces, self.read)
+            .into_iter()
+            .filter(|&index| self.left.insert(self.lines[index].start))
+            .collect();
+        left.sort_unstable();
+        untold.extend(left.into_iter().map(|index| {
+            format!(
+                "call-transcripts: a line of Joel's, {} words at {}, left out whole as \
+                 their echo",
+                cut[index].text.split_whitespace().count(),
+                transcript::clock(cut[index].start),
+            )
+        }));
+        untold
     }
 
     /// Keeps the embedding of each piece of a take of theirs embedded,

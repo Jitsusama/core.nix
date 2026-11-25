@@ -25,12 +25,17 @@ ShellRoot {
     property string stage: "handing"
     property real handedAt: 0
     property var opened: ({})
-    // Why Sessions said each start by its quest wasn't viewed.
+    // Why Sessions said each start by its quest wasn't viewed, and the
+    // name it gave each, which the launcher's foot says it by.
     property var unhosted: ({})
+    property var unhostedNames: ({})
     property real startedAt: 0
     // When QEST-HOSTED's session was started again, once its viewer was
     // listed, or 0 before.
     property real againAt: 0
+    // How many acts niri had been asked for then, so only a raise asked
+    // for after counts as the start's.
+    property int actsAgain: 0
     // How long a start the host runs may go unsaid, well past the stand-in
     // decider's answer and well inside the check's 60 s.
     readonly property int unsaidFor: 10000
@@ -124,15 +129,15 @@ ShellRoot {
         Expect.expect("a saved one is never asked", !lines.some(line => line.includes("s-saved")),
             lines.join("\n"));
         Expect.expect("the config says sessions start in pi's host", Sessions.startsHosted, "");
-        Sessions.start("QEST-HOSTED", root.folder, true);
+        Sessions.start("QEST-HOSTED", root.folder, true, "Kelp Harbour");
         Sessions.start("QEST-AWAY", root.folder, false);
         Sessions.start("QEST-PLAIN", root.folder, false);
-        Sessions.start("QEST-DOTTED", root.folder, false);
+        Sessions.start("QEST-DOTTED", root.folder, false, "Dotted Reef");
         Sessions.start("QEST-BADHOST", root.folder, false);
         Sessions.start("QEST-DASHID", root.folder, false);
         Sessions.start("QEST-DASHHOST", root.folder, false);
-        Sessions.start("QEST-LATE", root.folder, false);
-        Sessions.start("QEST-LATER", root.folder, false);
+        Sessions.start("QEST-LATE", root.folder, false, "Late Reef");
+        Sessions.start("QEST-LATER", root.folder, false, "Later Reef");
         root.startedAt = Date.now();
         stage = "starting";
     }
@@ -164,15 +169,29 @@ ShellRoot {
                 Expect.fail(`started but never said: ${JSON.stringify(root.unhosted)}`);
             return;
         }
-        Expect.expect("and each is said started, though it can't be viewed",
-            unviewed.every(quest => root.unhosted[quest] === "unviewable"),
+        // Said by which held: its id, or its host's name, which mycelium
+        // couldn't be given.
+        const why = { "QEST-DOTTED": "unviewable", "QEST-DASHID": "unviewable",
+            "QEST-BADHOST": "unviewableHost", "QEST-DASHHOST": "unviewableHost" };
+        Expect.expect("and each is said started, though it can't be viewed, by which held",
+            unviewed.every(quest => root.unhosted[quest] === why[quest]),
             JSON.stringify(root.unhosted));
+        // By its quest's name where the launcher gave one, never its id.
+        Expect.expect("one started by its quest's name is said by that name",
+            root.unhostedNames["QEST-DOTTED"] === "Dotted Reef",
+            JSON.stringify(root.unhostedNames));
         // The host answers both with one session: the first's viewer opens
         // and, while niri is slow to list it, the second is said opening.
         Expect.expect("of two started on one session, one viewer opens and the second says so",
             late.filter(quest => root.unhosted[quest] === "opening").length === 1
             && Niri.spawns.filter(command => command.includes("/kitty.sock pi-hosted.s-late "))
                 .length === 1, `${JSON.stringify(root.unhosted)}\n${Niri.spawns.join("\n")}`);
+        // Held back, it's said by its quest's name too, never its id.
+        const titled = { "QEST-LATE": "Late Reef", "QEST-LATER": "Later Reef" };
+        Expect.expect("the one held back is said by its quest's name",
+            late.every(quest => root.unhosted[quest] !== "opening"
+                || root.unhostedNames[quest] === titled[quest]),
+            JSON.stringify(root.unhostedNames));
         const viewer = Niri.spawns.filter(command => command.includes(
             " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
@@ -182,10 +201,11 @@ ShellRoot {
         // its window is named by.
         Expect.expect("its viewer is named for it",
             viewer[0].includes("/kitty.sock pi-hosted.s-begun "), viewer[0]);
-        // Titled for its quest before its words run, not "mycelium".
-        Expect.expect("and titled for its quest before its words run",
+        // Titled for its quest's name before its words run, not "mycelium"
+        // nor its id.
+        Expect.expect("and titled for its quest's name before its words run",
             viewer[0].includes('sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" '
-                + `\u03c0 - QEST-HOSTED - ${root.folder.slice(root.folder.lastIndexOf("/") + 1)}`
+                + `\u03c0 - Kelp Harbour - ${root.folder.slice(root.folder.lastIndexOf("/") + 1)}`
                 + " mycelium "), viewer[0]);
         decided.reload();
         const lines = decided.text().split("\n");
@@ -203,11 +223,12 @@ ShellRoot {
         if (!shown)
             return;
         if (root.againAt === 0) {
+            root.actsAgain = Niri.acts.length;
             Sessions.start("QEST-AGAIN", root.folder, false);
             root.againAt = Date.now();
             return;
         }
-        if (!Niri.acts.some(act => act.FocusWindow?.id === shown.id)) {
+        if (!Niri.acts.slice(root.actsAgain).some(act => act.FocusWindow?.id === shown.id)) {
             if (Date.now() - root.againAt > unsaidFor)
                 Expect.fail("started again but its viewer wasn't raised: "
                     + JSON.stringify(Niri.acts));
@@ -244,6 +265,8 @@ ShellRoot {
 
         function onUnhosted(session, why) {
             root.unhosted = Object.assign({}, root.unhosted, { [session.address]: why });
+            root.unhostedNames = Object.assign({}, root.unhostedNames,
+                { [session.address]: session.name ?? "" });
         }
     }
 

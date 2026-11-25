@@ -1,4 +1,4 @@
-use super::{Fault, MARK, SWEEPS_AFTER, copied, land, opened_as_listed, opened_plain};
+use super::{Fault, MARK, SWEEPS_AFTER, copied, land, opened_as_listed, opened_plain, unfollowed};
 use crate::far::tests::scratch;
 use std::collections::HashSet;
 use std::path::Path;
@@ -117,6 +117,22 @@ fn only_a_plain_file_is_opened_to_land() {
         opened_plain(&root.join("pipe")).is_err(),
         "a pipe was opened"
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_link_put_in_a_file_s_place_after_the_look_is_never_followed() {
+    let root = scratch("unfollowed");
+    std::fs::write(root.join("file"), "a").unwrap();
+    std::os::unix::fs::symlink(root.join("file"), root.join("link")).unwrap();
+    // The open itself, as it meets a link swapped in once the look found
+    // a plain file: the link leads to a file it could read, and isn't.
+    assert!(
+        unfollowed(&root.join("file")).is_ok(),
+        "a plain file wasn't opened"
+    );
+    let opened = unfollowed(&root.join("link"));
+    assert!(opened.is_err(), "a link was followed: {opened:?}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

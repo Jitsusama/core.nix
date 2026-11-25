@@ -167,9 +167,13 @@ export const spentOf = (cells: readonly Cell[]): number => {
 export const spentWords = (cells: readonly Cell[]): string =>
   spends(cells) ? `, ${money(spentOf(cells))} today` : "";
 
-/** How many questions wait, in words. */
+/**
+ * How many questions wait on a cell, in words said of the cell: the answers
+ * it owes. Said as a question waiting, it read as one waiting on the reader,
+ * when it is another cell's question and the cell's to answer.
+ */
 export const waitingWords = (owes: readonly Owed[]): string =>
-  `${owes.length === 1 ? "a question" : `${owes.length} questions`} waiting`;
+  `owes ${owes.length === 1 ? "an answer" : `${owes.length} answers`}`;
 
 /** How many of the cells stand each way. */
 export const countsOf = (cells: readonly Cell[]): Record<Standing, number> => {
@@ -185,10 +189,10 @@ export const countsWords = (cells: readonly Cell[]): string => {
   const n = countsOf(cells);
   const bits = STANDINGS.filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`);
   const held = cells.filter((s) => s.owes.length).length;
-  const asked = held === 1 ? "a question" : "questions";
+  const owed = held === 1 ? "an answer" : "answers";
   return (
     `${plural(cells.length, "cell")}${bits.length > 0 ? `: ${bits.join(", ")}` : ""}` +
-    (held ? `; ${held} with ${asked} waiting` : "")
+    (held ? `; ${held} owing ${owed}` : "")
   );
 };
 

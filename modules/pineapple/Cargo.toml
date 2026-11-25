@@ -2,7 +2,7 @@
 # Joel's agents, and what it stops. The library judges (src/lib.rs says
 # how the pieces fit); pineapple-slack reads Slack for it
 # (src/bin/pineapple-slack/), pineapple-github reads GitHub
-# (src/bin/pineapple-github.rs), and pineapple is Joel's own command to
+# (src/bin/pineapple-github/), and pineapple is Joel's own command to
 # list stops and resume them (src/bin/pineapple.rs), refused under pi,
 # and the daemon serving them to the launcher (pineapple serve).
 [package]
@@ -36,7 +36,7 @@ daemon-serve = { path = "../daemon-serve" }
 # IMs to find his own and posting there alone (src/phone.rs): the same
 # client Slack's module reads with, so the read-only door stays
 # read-only. GitHub's reader asks with it too, only GETs
-# (src/bin/pineapple-github.rs).
+# (src/bin/pineapple-github/).
 ureq = { version = "3", features = ["json"] }
 # The kernel's name for who pressed (SO_PEERPIDFD), so only Joel's shell
 # acts on a stop; the reader cases stop a reader by its pidfd with it too.

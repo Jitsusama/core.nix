@@ -36,7 +36,6 @@
 use std::convert::Infallible;
 use std::io::{self, Read};
 use std::net::SocketAddr;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -608,10 +607,7 @@ impl Relay {
         connections: usize,
         more: &[&str],
     ) -> Relay {
-        let before = std::fs::symlink_metadata(&socket)
-            .ok()
-            .map(|there| there.ino());
-        let child = Command::new(env!("CARGO_BIN_EXE_model-relay"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_model-relay"))
             .arg("--socket")
             .arg(&socket)
             .arg("--origin")
@@ -626,16 +622,20 @@ impl Relay {
             .spawn()
             .expect("the relay starts");
         let started = Instant::now();
-        while std::fs::symlink_metadata(&socket)
-            .ok()
-            .map(|there| there.ino())
-            == before
-            || std::os::unix::net::UnixStream::connect(&socket).is_err()
-        {
-            assert!(
-                started.elapsed() < LISTENS_WITHIN,
-                "the relay never listened"
-            );
+        // A socket left behind refuses, so only the relay's own answers. Its
+        // inode can't tell the two apart, as a filesystem may give the new
+        // socket the number the old one freed.
+        while let Err(why) = std::os::unix::net::UnixStream::connect(&socket) {
+            if started.elapsed() >= LISTENS_WITHIN {
+                let state = match child.try_wait() {
+                    Ok(Some(status)) => format!("it left with {status}"),
+                    _ => "it's still running".to_owned(),
+                };
+                panic!(
+                    "the relay never listened at {}: {why}, and {state}",
+                    socket.display()
+                );
+            }
             std::thread::sleep(Duration::from_millis(20));
         }
         Relay {

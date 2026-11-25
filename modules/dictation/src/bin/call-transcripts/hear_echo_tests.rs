@@ -127,6 +127,61 @@ fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
 }
 
 #[test]
+fn each_line_of_joels_left_out_whole_as_their_echo_is_told_once_and_without_it() {
+    let mut writing = ada_then_bo();
+    hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
+    writing.lines.push(joels(49, 51, "Sounds good."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: a line of Joel's, 2 words at 0:49, left out whole as their echo"],
+        "the line left out wasn't told, or was told with the call's words"
+    );
+    assert!(
+        joels_written(&writing).is_empty(),
+        "the line told as left out was written, so the journal and the file disagree"
+    );
+    hear_take(&mut writing, 60, &[ADA], &[("Right.", 0)]);
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "a line told when it was left out was told again with the next take"
+    );
+}
+
+#[test]
+fn what_was_told_left_out_stays_told_once_the_lines_are_split_by_voice() {
+    let mut writing = ada_then_bo();
+    let late = SECOND / 20;
+    let words = vec![
+        word("Right.", 44 * SECOND),
+        word("Not", 46 * SECOND + late),
+        word("yet.", 47 * SECOND + late),
+    ];
+    writing.words.insert(writing.lines.len(), words);
+    writing.lines.push(joels(44, 48, "Right. Not yet."));
+    hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
+    writing.lines.push(joels(49, 51, "Sounds good."));
+    assert_eq!(
+        writing.untold_cuts().len(),
+        2,
+        "the cut from Joel's words and his line left out whole weren't each told"
+    );
+    // The call ends and its takes are split by voice, moving each line
+    // of Joel's after the split take on by one; then it's rejoined.
+    let before = writing.lines.len();
+    give_voices(&mut writing, None);
+    assert!(
+        writing.lines.len() > before,
+        "no take was split, so Joel's lines never moved and this shows nothing"
+    );
+    hear_take(&mut writing, 60, &[ADA], &[("Right.", 0)]);
+    assert_eq!(
+        writing.untold_cuts(),
+        Vec::<String>::new(),
+        "what was told before the split was told again once Joel's lines moved"
+    );
+}
+
+#[test]
 fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("transcript.md");

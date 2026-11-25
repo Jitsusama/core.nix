@@ -47,24 +47,30 @@ impl Timed {
         (self.inside * 1000).checked_div(self.words).unwrap_or(1000)
     }
 
-    /// The words' times, said as the scorer prints them for `name`.
+    /// The words' times, said as the scorer prints them for `name`; with
+    /// none timed, it says so rather than give a share of none.
     pub fn describe(&self, name: &str) -> String {
+        let share = if self.words == 0 {
+            String::from("none timed")
+        } else {
+            percent(self.tenths_inside())
+        };
         format!(
             "{name} the far end's word times: {} words, {} outside their take, \
-             {} before the word ahead of them, {} while one of theirs speaks",
-            self.words,
-            self.outside,
-            self.backward,
-            percent(self.tenths_inside()),
+             {} before the word ahead of them, {share} while one of theirs speaks",
+            self.words, self.outside, self.backward,
         )
     }
 
-    /// Whether the times hold: none outside its take or out of order, and
-    /// at least `least` tenths of a percent while one of theirs speaks.
+    /// Whether the times hold: some timed, none outside its take or out of
+    /// order, and at least `least` tenths of a percent while one of theirs
+    /// speaks.
     pub fn verdict(&self, least: usize) -> Result<String, String> {
         let inside = percent(self.tenths_inside());
         let may = percent(least);
-        if self.outside > 0 || self.backward > 0 {
+        if self.words == 0 {
+            Err(String::from("none of the far end's words was timed"))
+        } else if self.outside > 0 || self.backward > 0 {
             Err(format!(
                 "{} of the far end's words were timed outside their take, {} out of order",
                 self.outside, self.backward
@@ -202,5 +208,18 @@ mod tests {
             ..held
         };
         assert!(backward.verdict(0).is_err(), "a word out of order fails");
+        assert!(
+            Timed::default().verdict(0).is_err(),
+            "no word timed fails, since a model that times none would otherwise pass"
+        );
+    }
+
+    #[test]
+    fn with_no_word_timed_the_report_says_none_rather_than_all() {
+        let said = Timed::default().describe("all");
+        assert!(
+            said.ends_with("none timed while one of theirs speaks") && !said.contains('%'),
+            "with no word timed, the report gave a share: {said}"
+        );
     }
 }

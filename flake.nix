@@ -207,6 +207,7 @@
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         file-link-keys = ./modules/file-link-keys/home.nix;
+        find = ./modules/find/home.nix;
         firmware-notice = ./modules/firmware-notice/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
@@ -249,6 +250,7 @@
         model-relay = ./modules/model-relay/home.nix;
         mpv = ./modules/mpv/home.nix;
         mycelium = moduleFrom ./modules/mycelium/home.nix { inherit mycelium; };
+        name-lookups = ./modules/name-lookups/home.nix;
         neovim = moduleFrom ./modules/neovim/home.nix { inherit neovim-pi; };
         net = ./modules/net/home.nix;
         network-revive = ./modules/network-revive/home.nix;
@@ -418,7 +420,7 @@
         mpv = ./modules/mpv/nixos.nix;
         mx-brio = ./modules/mx-brio/nixos.nix;
         mx-brio-seat = ./modules/mx-brio-seat/nixos.nix;
-        mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
+        mycelium = moduleFrom ./modules/mycelium/nixos.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
         sd-switch = ./modules/sd-switch/nixos.nix;
         net = ./modules/net/nixos.nix;
@@ -435,6 +437,7 @@
         openssh = ./modules/openssh/nixos.nix;
         panel = ./modules/panel/nixos.nix;
         perf = ./modules/perf/nixos.nix;
+        pi = ./modules/pi/agent-proxy/nixos.nix;
         pipewire = ./modules/pipewire/nixos.nix;
         plymouth = moduleFrom ./modules/plymouth/nixos.nix { inherit wallpapers; };
         podman = ./modules/podman/nixos.nix;

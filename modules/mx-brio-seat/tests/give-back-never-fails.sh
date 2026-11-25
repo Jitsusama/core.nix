@@ -151,7 +151,7 @@ touch "$work/root/hangs"
 give_back "a udev that never settles"
 expect warned "udev didn't settle the MX Brio's removal"
 expect warned "udev didn't finish the MX Brio's arrival"
-expect warned "systemctl restart mx-brio-seat replays it"
+expect warned "says once udev has, and systemctl restart mx-brio-seat looks again"
 refuse warned "still kept from the seat"
 refuse said "Gave the seat back"
 replayed "$both"
@@ -229,7 +229,27 @@ touch "$work/root/paths-fail/video0"
 give_back "a Brio whose path udev can't give"
 expect warned "Failed to get device path"
 expect warned "udev couldn't say how the cameras at $work/root/dev/video0 stand"
+expect warned "once udev can say, systemctl restart mx-brio-seat looks again"
 refuse said "No MX Brio is held"
+refuse said "Gave the seat back"
+replayed $'remove video1\nadd video1'
+
+# One udev can't say of at all may be the Brio's other node, so the run
+# replays the node it can read and never says it gave the Brio back.
+machine "$held" "$given"
+rm "$work/root/facts/video0"
+give_back "a Brio node udev can't say of beside one it can"
+expect warned "udev couldn't say how the cameras at $work/root/dev/video0 stand"
+refuse said "No MX Brio is held"
+refuse said "Gave the seat back"
+replayed $'remove video1\nadd video1'
+
+# One udev holds no record of may be the Brio's other node too, so the
+# run replays the node it can read and never says it gave the Brio back.
+machine "$held" "$given"
+printf 'DEVNAME=/dev/video0\nSUBSYSTEM=video4linux\n' >"$work/root/facts/video0"
+give_back "a Brio node udev holds no record of beside one it can read"
+expect warned "udev holds no record of the cameras at $work/root/dev/video0,"
 refuse said "Gave the seat back"
 replayed $'remove video1\nadd video1'
 
@@ -301,6 +321,19 @@ expect warned "systemctl restart mx-brio-seat looks again"
 refuse warned "holds no record"
 refuse said "No MX Brio is held"
 replayed ""
+
+# One node's add still queued once udev runs out of time may be the Brio's
+# other node, so the run replays the node it can read and never says it
+# gave the Brio back, though udev settles in time for the replay.
+machine "$held" "$given"
+mkdir "$work/root/queued"
+mv "$work/root/facts/video0" "$work/root/queued/video0"
+printf 'DEVNAME=/dev/video0\nSUBSYSTEM=video4linux\n' >"$work/root/facts/video0"
+touch "$work/root/hangs-once"
+give_back "a Brio node udev hasn't finished adding beside one it can read"
+expect warned "udev hasn't finished adding the cameras at $work/root/dev/video0 in"
+refuse said "Gave the seat back"
+replayed $'remove video1\nadd video1'
 
 machine "$given" "$given"
 rm "$work/root/dev"/*

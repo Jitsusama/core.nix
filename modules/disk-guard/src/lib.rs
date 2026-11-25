@@ -1,5 +1,21 @@
 //! Keeps a disk from filling without breaking a build.
 
+/// Says a line on standard error and goes on whatever comes of it, as
+/// `eprintln!` doesn't: that panics when the write fails. On a Mac the
+/// guard's standard error is a file on the disk it watches, so a write
+/// fails just when that disk is full, when the guard must keep going.
+macro_rules! say {
+    ($($line:tt)*) => {
+        $crate::tell(&mut ::std::io::stderr(), format_args!($($line)*))
+    };
+}
+
+/// Writes `line` to `to` as `say!` does, letting a failed write go: a
+/// line nobody could be told costs the guard nothing more.
+pub fn tell(to: &mut impl std::io::Write, line: std::fmt::Arguments<'_>) {
+    let _ = writeln!(to, "{line}");
+}
+
 pub mod activity;
 pub mod age;
 pub mod anchor;

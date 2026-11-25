@@ -175,11 +175,32 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     if total.words == 0 {
         return Err(format!("{} has no words to hear", set.display()));
     }
-    println!("{}", all_times.verdict(times::INSIDE)?);
-    match ceiling {
-        Some(most) => verdict(total.tenths(), most).map(|passed| println!("{passed}")),
-        None => Ok(()),
+    let rate = ceiling.map(|most| verdict(total.tenths(), most));
+    let (held, failed) = say_each([Some(all_times.verdict(times::INSIDE)), rate]);
+    for passed in held {
+        println!("{passed}");
     }
+    failed
+}
+
+/// Of the verdicts given, each that passed, and every one that failed in
+/// one, so a failure hides none after it.
+fn say_each<const N: usize>(
+    verdicts: [Option<Result<String, String>>; N],
+) -> (Vec<String>, Result<(), String>) {
+    let (mut passed, mut failed) = (Vec::new(), Vec::new());
+    for verdict in verdicts.into_iter().flatten() {
+        match verdict {
+            Ok(said) => passed.push(said),
+            Err(why) => failed.push(why),
+        }
+    }
+    let failed = if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(failed.join("; "))
+    };
+    (passed, failed)
 }
 
 /// Hears `meeting` with `speech` and says its errors, its far end's word
@@ -704,6 +725,28 @@ mod tests {
         assert_eq!(
             verdict(200, 199),
             Err("it misheard 20.0% of the words, above the 19.9% it may".to_owned())
+        );
+    }
+
+    #[test]
+    fn every_failed_verdict_is_said_and_one_failing_fails_them_all() {
+        let passed = || Some(Ok("held".to_owned()));
+        let failed = |why: &str| Some(Err(why.to_owned()));
+        assert_eq!(
+            say_each([passed(), None, passed()]),
+            (vec!["held".to_owned(), "held".to_owned()], Ok(())),
+            "the verdicts given, all passing, weren't each said"
+        );
+        let (_, both) = say_each([failed("times"), failed("rate")]);
+        assert!(
+            both.as_ref()
+                .is_err_and(|said| said.contains("times") && said.contains("rate")),
+            "a failed times verdict hid the rate's: {both:?}"
+        );
+        assert_eq!(
+            say_each([failed("times"), passed()]),
+            (vec!["held".to_owned()], Err("times".to_owned())),
+            "a failed times verdict hid the rate's that passed, or one failing passed"
         );
     }
 

@@ -23,6 +23,8 @@ fn status(bands: &[(&str, Band, u64)], last: Option<LastPass>) -> Status {
                 forecast: None,
                 fill_per_hour: None,
                 full_at: None,
+                nix_floor: None,
+                floor_at: None,
                 says: String::new(),
                 exhausted: false,
             })

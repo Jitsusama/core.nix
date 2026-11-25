@@ -40,17 +40,31 @@ else:
     print(os.environ["STAND_IN_DRIVER"])
 """
 
-# A stand-in for a check's driver: it notes the script it was handed and the
-# options pytest would read, which go with the run's folder, lists two tests
-# as pytest's quiet listing does when asked for one, and fails as told.
+# A stand-in for a check's driver: it notes the script it was handed, the
+# options pytest would read, which go with the run's folder, and how it was
+# run. Asked for a listing, it lists two tests as pytest's quiet listing
+# does, past a warning and a byte no text reads, or as -v lists them when
+# told; and it fails as told.
 DRIVER = """
 import json, os, sys
 script = open(sys.argv[sys.argv.index("--test-script") + 1]).read()
 with open(os.environ["STAND_IN_RAN"], "w") as ran:
-    json.dump({"script": script, "pytest": os.environ.get("PYTEST_ADDOPTS")}, ran)
+    json.dump({
+        "script": script,
+        "pytest": os.environ.get("PYTEST_ADDOPTS"),
+        "unbuffered": os.environ.get("PYTHONUNBUFFERED"),
+        "interactive": "--interactive" in sys.argv,
+    }, ran)
 if "--collect-only" in os.environ.get("PYTEST_ADDOPTS", ""):
-    print("signing-vm-test.py::test_terminal")
-    print("signing-vm-test.py::test_refused[the password]")
+    if os.environ.get("STAND_IN_LISTS_VERBOSE"):
+        print("<Module signing-vm-test.py>")
+        print("  <Function test_terminal>")
+    else:
+        print("vm_pytest.py:12: UserWarning: a warning before the names", flush=True)
+        sys.stdout.buffer.write(b"a byte no text reads: \\xff\\n")
+        sys.stdout.buffer.flush()
+        print("signing-vm-test.py::test_terminal")
+        print("signing-vm-test.py::test_refused[the password]")
     print()
     print("2 tests collected in 0.01s")
 sys.exit(int(os.environ.get("STAND_IN_STATUS", "0")))
@@ -265,24 +279,27 @@ def test_a_listing_built_elsewhere_gives_the_names_the_build_kept(
     assert "pictures" not in said.err, f"a listing spoke of pictures: {said.err!r}"
 
 
+@pytest.mark.parametrize("status", [0, 1])
 def test_a_listing_built_elsewhere_never_prints_a_list_left_from_before(
     tool: Tool,
     stand_in: StandIn,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
+    status: int,
 ) -> None:
-    out = tmp_path / "out"
+    # A build that brings back no list, passing or not, would leave the
+    # folder's earlier list where the run reads it.
+    out = stand_in.folder / "out"
     out.mkdir()
     (out / "subtests").write_text("test_stale\n")
     monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
-    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", str(status))
 
-    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 1
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == status
 
     assert stand_in.asked() is not None, "a listing elsewhere never asked nix-offload"
     said = capsys.readouterr().out
-    assert "test_stale" not in said, f"a failed build printed an earlier list: {said!r}"
+    assert "test_stale" not in said, f"a build bringing back none printed an old list: {said!r}"
 
 
 def test_a_pytest_check_that_fails_fails_the_run(
@@ -301,6 +318,20 @@ def test_a_word_pytest_cant_take_is_refused_before_anything_runs(
 
     assert tool.main(["vm-commits-are-signed", "a'b"]) == tool.USAGE
     assert stand_in.ran() is None
+
+
+def test_a_word_pytest_cant_take_is_refused_before_anything_is_built_elsewhere(
+    tool: Tool, stand_in: StandIn, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The build would refuse it and fail, and a quarantine would excuse the
+    # failure of a run that ran no test.
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "100")
+
+    assert tool.main(["--there", "vm-desktop-x", "and"]) == tool.USAGE
+    assert stand_in.asked() is None, "a word pytest can't take was sent to be built"
 
 
 def test_there_has_the_subtests_built_elsewhere_and_runs_nothing_here(
@@ -591,6 +622,97 @@ def test_inside_a_build_the_driver_given_is_run_and_none_is_built(
     assert listed == wanted, f"the build kept {listed!r}"
     said = capsys.readouterr().out
     assert "signing-vm-test.py::test_terminal" in said, f"the log lost the listing: {said!r}"
+    assert "a byte no text reads: \ufffd" in said, f"a byte no text reads was lost: {said!r}"
+    assert ran["unbuffered"] == "1", "the listing's driver held its lines back"
+
+
+def test_inside_a_build_a_listing_naming_none_fails_and_keeps_none(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    # pytest fails a listing that collects nothing, so one that passes
+    # naming none is in another shape, which an empty list would hide.
+    stand_in.script.write_text(PYTEST_SCRIPT)
+    monkeypatch.setenv("STAND_IN_LISTS_VERBOSE", "1")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+
+    assert tool.main(["--driver", str(stand_in.driver), "--out", str(out), "vm-desktop-x"]) == 1
+
+    assert not (out / "subtests").exists(), "a listing naming none kept a list"
+    said = capsys.readouterr().err
+    assert "named no test" in said, f"a listing naming none passed unsaid: {said!r}"
+
+
+def test_an_interactive_listing_keeps_its_output_the_persons(
+    tool: Tool,
+    stand_in: StandIn,
+    capfd: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    stand_in.script.write_text(PYTEST_SCRIPT)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+
+    assert tool.main(["-I", "--out", str(out), "vm-desktop-x"]) == 0
+
+    ran = stand_in.ran()
+    assert ran is not None, "an interactive listing never ran the driver"
+    assert ran["interactive"], "an interactive listing ran the driver as no terminal"
+    shown = capfd.readouterr().out
+    assert "signing-vm-test.py::test_terminal" in shown, f"the person lost it: {shown!r}"
+    assert not (out / "subtests").exists(), "an interactive listing kept names, or old ones"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (["--out", "out", "vm-desktop-x"], {"STAND_IN_LISTS_VERBOSE": "1"}, 1),
+        (["--out", "out", "vm-desktop-x"], {"STAND_IN_STATUS": "1"}, 1),
+        (["--there", "vm-desktop-x"], {"STAND_IN_OFFLOAD_STATUS": "100"}, 100),
+    ],
+)
+def test_a_failed_listing_is_never_excused_by_a_quarantine(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[list[str], dict[str, str], int],
+) -> None:
+    # A quarantine excuses tests that ran and failed, and a listing runs
+    # none, so one failing, here or in the build elsewhere, fails.
+    argv, given, status = case
+    stand_in.script.write_text(PYTEST_SCRIPT)
+    listed = stand_in.folder / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    for name, value in given.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.chdir(stand_in.folder)
+
+    assert tool.main(argv) == status
+
+    said = capsys.readouterr().err
+    assert "blocks nothing" not in said, f"a quarantine excused a listing: {said!r}"
+    assert "ran none" not in said, f"a failed listing said it listed: {said!r}"
+
+
+def test_the_whole_tests_command_is_said_ready_to_paste(
+    tool: Tool, stand_in: StandIn, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stand_in.script.write_text(PYTEST_SCRIPT)
+
+    assert tool.main(["--flake", "/a flake", "vm-desktop-x"]) == 0
+
+    said = capsys.readouterr().err
+    whole = re.search(r"nix-offload there '/a flake' checks\.\S+\.vm-desktop-x", said)
+    assert whole, f"the whole test's command can't be pasted as said: {said!r}"
 
 
 def test_inside_a_build_a_failed_listing_keeps_no_names(

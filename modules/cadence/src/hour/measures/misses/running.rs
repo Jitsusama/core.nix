@@ -12,6 +12,7 @@ mod conversations;
 mod hosts;
 mod program;
 mod resumed;
+mod services;
 
 use conversations::conversations;
 use hosts::hosts;
@@ -142,6 +143,7 @@ pub fn unrun(
     let revs = running(switches, repos);
     let mut hosts: Option<Option<Vec<Host>>> = None;
     let mut talks: Option<Option<Vec<Host>>> = None;
+    let running_services = std::cell::OnceCell::new();
     let mut unrun = BTreeMap::new();
     for change in merged.iter().filter(|change| !ran.contains(*change)) {
         let Some(path) = repos.get(&change.repo) else {
@@ -198,6 +200,9 @@ pub fn unrun(
                 })
             },
         );
+        // A change its revision carries runs only once each service it
+        // reaches runs the build its unit names, read once an hour.
+        let why = why.or_else(|| served(&change.repo, &path, merge.as_deref(), &running_services));
         // A walk left at its time says so, since its owner can't find a
         // merge that is there, only wait for a quieter hour.
         let why = said_of_walk(why, left);
@@ -220,6 +225,28 @@ pub fn unrun(
         "when changes were installed",
     );
     unrun
+}
+
+/// Why a change of `repo`, merged as `merge` in the checkout at `path`,
+/// doesn't run yet though its revision carries it, if it doesn't: a
+/// service it reaches runs another build than its unit names, as
+/// `services::lack` says, with what runs read into `read` once an hour.
+fn served(
+    repo: &str,
+    path: &str,
+    merge: Option<&str>,
+    read: &std::cell::OnceCell<Option<Vec<services::Service>>>,
+) -> Option<&'static str> {
+    let files = match (repo, merge) {
+        ("core", Some(sha)) => changed(path, sha),
+        _ => None,
+    };
+    let reached = services::reached(repo, files.as_deref());
+    if reached.is_empty() {
+        return None;
+    }
+    let read = read.get_or_init(services::read);
+    services::lack(&reached, read.as_deref())
 }
 
 /// Writes `now` whole to `at` where it differs from `was`, what an hour

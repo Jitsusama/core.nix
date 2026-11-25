@@ -112,10 +112,9 @@ by = "85PKB2"
 due = "2026-11-25 12:00"
 why = "mesh_read gives a peer's question, not a want's whole text and choices"
 
-[act.map.owed]
-by = "KP0L6A"
-due = "2026-11-25 12:00"
-why = "its drawer says what a node sends whole, and none sends it until mycelium#426's pin"
+[act.map.has]
+file = "modules/mycelium/site/view.js"
+holds = "It Asks You"
 
 [act.launcher.owed]
 by = "42P0R4"
@@ -151,10 +150,9 @@ name = "sprout"
 says = "start new work from a link or words, in a folder or a World zone"
 through = "mycelium sprout, its folder or a zone by name"
 
-[act.cli.owed]
-by = "KP0L6A"
-due = "2026-11-25 12:00"
-why = "sprout takes a folder; a zone by name waits on mycelium#425 and its pin"
+[act.cli.has]
+command = "sprout"
+holds = "or a place by name"
 
 # mesh_sprout starts new work as a cell of its own, from words or a link.
 [act.session.has]

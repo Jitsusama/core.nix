@@ -4,9 +4,9 @@
 //! a call that ended kept in Recent's file, as the caller's when a ring
 //! answered began it, and read back after a restart; a ring and a missed
 //! call are read from the log as it's written, a new log from its start;
-//! each act runs Tuple's command, and opening the room keeps its link and
-//! makes the call in it Joel's; and an ask or kind it doesn't know is
-//! refused.
+//! each act runs Tuple's command, a camera stopped is off before Tuple's
+//! stream says so, and opening the room keeps its link and makes the call
+//! in it Joel's; and an ask or kind it doesn't know is refused.
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -497,6 +497,31 @@ fn each_act_runs_tuples_command_and_answers_once_done() {
     assert_eq!(said["error"]["message"], "no call is ringing");
     let said = client.ask(&json!({"id": "j", "ask": "join", "link": "https://example.com"}));
     assert_eq!(said["error"]["code"], "refused");
+}
+
+#[test]
+fn a_camera_stopped_is_off_ahead_of_tuples_stream() {
+    let running = Running::start("camera", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    let filming = CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    );
+    running.streams(&filming);
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    // Asked apart from the watch, so a change said ahead of the answer
+    // isn't read as it.
+    let said = running
+        .client()
+        .ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    assert_eq!(said["done"], true, "the camera's stop: {said}");
+    watching.until("Joel's camera stayed on once its stop was done", |record| {
+        record["camera"] == false
+    });
 }
 
 #[test]
