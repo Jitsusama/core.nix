@@ -355,7 +355,7 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
 pub fn waits_on_gateway(why: Deafness, since: u64, at: u64) -> Value {
     let mut told = waits(why, since, at);
     let said = match why {
-        Deafness::Refused => "The tool gateway refused the safe word's sign-in",
+        Deafness::Refused => "The tool gateway or Slack behind it refused the safe word's sign-in",
         Deafness::NoSignIn => "The safe word has no tool gateway sign-in it can read",
         Deafness::Unreadable | Deafness::Unread(_) => return told,
     };

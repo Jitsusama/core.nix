@@ -340,8 +340,8 @@ fn a_gateway_with_no_sign_in_to_give_writes_its_row_in_its_own_folder() {
     assert!(
         row["items"][0]["why"]
             .as_str()
-            .is_some_and(|why| why.contains("no Slack sign-in it can read")),
-        "for want of a sign-in, not a refused one: {row}"
+            .is_some_and(|why| why.contains("no tool gateway sign-in it can read")),
+        "for want of the gateway's sign-in, not a refused one: {row}"
     );
     assert!(
         !named.exists(),
@@ -639,7 +639,7 @@ fn a_search_slack_refuses_stops_the_round_though_the_other_reads() {
     );
     assert!(
         came.why
-            .starts_with("Slack refused the safe word's sign-in"),
+            .starts_with("The tool gateway or Slack behind it refused the safe word's sign-in"),
         "a refusal is told as one, not as a search that can't be read: {}",
         came.why
     );

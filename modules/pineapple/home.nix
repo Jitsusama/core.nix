@@ -177,7 +177,8 @@ in
     description = ''
       A tool gateway reading Slack for Joel, heard by a second reader in
       shadow beside the one asking Slack itself, so the two can be compared
-      before the gateway's is trusted; none unless a machine names one.
+      before the gateway's is trusted, or in its place once `live` says
+      so; none unless a machine names one.
     '';
     default = null;
     type = lib.types.nullOr (
@@ -215,9 +216,9 @@ in
       # The Slack reader again, hearing Slack through the gateway
       # (src/ears.rs), in shadow, as it isn't given --live: it keeps to
       # pineapple-gateway beside the live reader's state, its row of what
-      # waits included, however it's run,
-      # so a gateway it can't hear never reaches Joel while the reader he
-      # trusts goes on. The environment is left alone, for the sign-in
+      # waits included, so a gateway it can't hear never reaches Joel while
+      # the reader he trusts goes on. Given --live, as only the live unit
+      # below is, the same program keeps to the live reader's state instead. The environment is left alone, for the sign-in
       # program it runs.
       systemd.user.services.pineapple-slack-gateway = {
         Unit = {

@@ -158,8 +158,9 @@ onLinux {
       );
   # A machine naming a tool gateway hears Slack through it with a second
   # reader, started as Slack's is but only ever in shadow, keeping its
-  # own state and telling For You in a file there that nothing reads;
-  # and a machine naming none has no such reader.
+  # own state and telling For You in a file there that nothing reads,
+  # while the keyring's reader stays pineapple-slack; and a machine naming
+  # none has no such reader.
   pineapple-slack-hears-a-gateway-in-shadow =
     let
       withGateway =
@@ -180,9 +181,10 @@ onLinux {
       percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
       encoded = lib.concatStringsSep " " (lib.toList percent.pineapple-slack-gateway.Service.ExecStart);
       refused = (at "http://gateway.example.com/mcp").assertions;
+      keyring = home.systemd.user.services.pineapple-slack;
     in
     holds "pineapple-slack-hears-a-gateway-in-shadow"
-      "The gateway's reader lacks its command, shadow or start, moves the state its sign-in reads, mangles a URL's %, takes plain http, or runs unnamed."
+      "The gateway's reader lacks its command, shadow or start, moves the state its sign-in reads, mangles a URL's %, takes plain http, runs unnamed, or takes the keyring's reader's place."
       (
         lib.hasInfix (
           "/bin/pineapple-slack pineapple-slack-gateway run"
@@ -198,6 +200,8 @@ onLinux {
         && unit.Service.Restart == "on-failure"
         && unit.Service.Slice == "background.slice"
         && !((withGateway null).systemd.user.services ? pineapple-slack-gateway)
+        && !(lib.hasInfix "--gateway" (lib.concatStringsSep " " (lib.toList keyring.Service.ExecStart)))
+        && lib.any (lib.hasPrefix "SIGN_IN_KEYRING=/nix/store/") (lib.toList keyring.Service.Environment)
       );
   # A machine saying its gateway's reader is live runs it as pineapple-slack
   # in the keyring's reader's place: live, given the gateway and its
@@ -226,13 +230,12 @@ onLinux {
       waiting = "${home.xdg.stateHome}/mission/waiting/pineapple.json";
     in
     holds "pineapple-slack-goes-live-through-a-gateway"
-      "pineapple-slack over a live gateway lacks --live, the gateway or its row, reads the keyring, or runs beside a shadow."
+      "pineapple-slack over a live gateway lacks --live, the gateway or its row, is given more than its row, or runs beside a shadow."
       (
         lib.hasInfix (
           "/bin/pineapple-slack pineapple-slack run --live"
           + " --gateway https://gateway.example.com/mcp --gateway-sign-in /nix/store/"
         ) command
-        && !(lib.any (lib.hasPrefix "SIGN_IN_KEYRING=") environment)
         && environment == [ ''"SAFE_WORD_WAITING=${waiting}"'' ]
         && lib.hasInfix waiting unit.Service.ExecStopPost
         && lib.hasSuffix ", through a tool gateway" unit.Unit.Description
