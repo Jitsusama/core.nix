@@ -371,6 +371,19 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
 # the focus the secret copy's phase needs.
 WALLS_HOLD = "WALLS HOLD: "
 FOCUSED = "FOCUSED: "
+# The one failure the fence's subtest excuses, the focus never coming,
+# which the quarantined subtest above it answers for.
+NO_FOCUS = "FAIL: niri focused no X11 window"
+# Where the script's words are kept as it runs, so a run cut off at the
+# timeout still says which phases held: Joel's runtime folder, his alone.
+X11_SAID = "$XDG_RUNTIME_DIR/x11-fence-said"
+# The script bounds its waits to about two minutes; this leaves it room.
+X11_ENDING = timedelta(minutes=3)
+
+
+def said_line(said: str, mark: str) -> bool:
+    """Whether a line of the script's own opens with `mark`, never words it quoted."""
+    return any(line.startswith(mark) for line in said.splitlines())
 
 
 @functools.cache
@@ -388,15 +401,23 @@ def x11_fence_said(desktop: Desktop) -> str:
         # The script says each case it tried, and fails naming the one
         # that let the secret through (modules/pi/tests); this area alone
         # has it.
-        return desktop.as_account("pi-fence-keeps-x11-from-secrets 2>&1; echo ended $?")
+        return desktop.as_account(
+            f"pi-fence-keeps-x11-from-secrets > {X11_SAID} 2>&1; echo ended $? >> {X11_SAID};"
+            f" cat {X11_SAID}",
+            timeout=X11_ENDING,
+        )
     except Exception as error:  # noqa: BLE001 # Said by the subtests that read it.
-        return f"the script didn't end: {error!r}"
+        so_far = desktop.diagnosis(f"cat {X11_SAID} 2>&1 || true")
+        return f"{so_far}\nthe script didn't end: {error!r}"
 
 
 def test_an_x11_window_of_joels_takes_the_focus(desktop: Desktop) -> None:
     """An X11 window of Joel's takes the focus through the satellite."""
     said = x11_fence_said(desktop)
-    assert FOCUSED in said, f"no X11 window was seen to take the focus: {said}"
+    # The walls come first, so a run that never reached the focus says so
+    # by its own cause rather than as a window that never took it.
+    assert said_line(said, WALLS_HOLD), f"the walls didn't hold, so the focus went untried: {said}"
+    assert said_line(said, FOCUSED), f"no X11 window was seen to take the focus: {said}"
 
 
 def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
@@ -404,12 +425,15 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
     said = x11_fence_said(desktop)
     # The walls are tried before any window takes the focus, so this
     # proves them in every run, and fails in every run they let X through.
-    assert WALLS_HOLD in said, f"the fence's walls weren't shown to hold: {said}"
+    assert said_line(said, WALLS_HOLD), f"the fence's walls weren't shown to hold: {said}"
     # Past the focus, the secret copy's phase is this one's too: only a
     # run whose window never took the focus, the subtest above's failure,
-    # ends there untried.
-    if FOCUSED in said:
-        assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+    # ends there untried, and it shows as a skip, never a pass.
+    if not said_line(said, FOCUSED):
+        assert said_line(said, NO_FOCUS), f"it ended past the walls for another cause: {said}"
+        assert said.rstrip().endswith("ended 1"), f"the script ended past the walls unsaid: {said}"
+        pytest.skip("no X11 window took the focus, so the secret copy's phase went untried")
+    assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and
