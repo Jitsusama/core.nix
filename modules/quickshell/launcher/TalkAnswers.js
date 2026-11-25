@@ -128,16 +128,49 @@ function kept(list, one) {
 }
 
 // Which of a session's answers its Talk shows at `nowMs`: those to the want it asks, `want`,
-// while it asks one, and none for a null `want`, one he can't answer here; else, once it asks
-// nothing (""), those said in the last SHOWN_AFTER_MS, so one long done, or to an ask since
-// replaced, never leads a later Talk. One not delivered, or not known to be, in that time
-// shows under any ask, since the node refuses an answer to an ask since replaced, and the
+// while it asks one; else, once it asks nothing (""), those said in the last SHOWN_AFTER_MS,
+// so one long done, or to an ask since replaced, never leads a later Talk. One not delivered,
+// or not known to be, in that time shows under any ask, a null `want` (one he can't answer
+// here) among them, since the node refuses an answer to an ask since replaced, and the
 // refusal is shown under the ask that replaced it.
 function standing(list, want, nowMs) {
     const recent = one => nowMs - Date.parse(one.at) < SHOWN_AFTER_MS;
     const unput = one => one.stage === "failed" || one.stage === "unheard";
     return (list ?? []).filter(one => (want === "" ? recent(one)
         : one.want === want || (unput(one) && recent(one))));
+}
+
+// The `want` standing takes for a Talk drawing `answers` (asked's) of what a session asks
+// `now` (Agents.qml's answersOf): the id of what it asks while it asks one he can answer
+// here, null while it asks one he can't, and "" once it asks nothing.
+function shownWant(now, answers) {
+    return now?.asking === true ? answers?.want ?? null : "";
+}
+
+// What Joel's Return in the Talk kept as `draft` answers: what that Talk last drew it asking
+// (`drawnBy`, by draft) while it's the Talk held (`heldDraft`), so he answers what he was shown
+// rather than what's held by the time he presses it; else, a walk from a terminal drawing
+// none, what it asks `now`. Null where it asks nothing he can answer, and his words go as a
+// talk.
+function answering(heldDraft, draft, drawnBy, now) {
+    const drawn = heldDraft === draft && draft in (drawnBy ?? {});
+    return drawn ? drawnBy[draft] : now;
+}
+
+// Whether his words to `answers` stay to be given back once the node has said of them: only
+// where they didn't go (`went`) and the session still asks what they answer (`now`, asked's),
+// so given back they never answer a newer ask.
+function keepsWords(went, now, answers) {
+    return went !== true && now !== null && now !== undefined && now.want === answers?.want;
+}
+
+// The words of a session's answers (`list`) kept to be given back that no longer answer what
+// it asks, `want` as standing takes it: those not delivered, or not known to be, to another
+// want. A refusal can come before the want that replaced its ask, so they're let go once
+// that want is drawn, or given back they'd answer it.
+function stale(list, want) {
+    return (list ?? []).filter(one => (one.stage === "failed" || one.stage === "unheard")
+        && one.want !== want).map(one => one.words);
 }
 
 // What the node's put made of the answer `one`: answered where it went, failed with `why`

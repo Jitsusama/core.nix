@@ -1214,9 +1214,15 @@ Provider {
         const asked = TalkAnswers.question(now, session.title, words, dayOf);
         const answers = TalkAnswers.asked(now.want, now.asking);
         answersShown[to] = answers;
-        // While it asks, only answers to what it asks show; asking what he can't answer here,
-        // none do.
-        const want = now.asking ? answers?.want ?? null : "";
+        // While it asks, only answers to what it asks show, and those not delivered in the last
+        // quarter hour.
+        const want = TalkAnswers.shownWant(now, answers);
+        // Words given back for an ask it no longer asks go, as the refusal may have come before
+        // the want that replaced it; later, since this runs as the Talk draws.
+        const stale = TalkAnswers.stale(answeredTo[to], answers?.want ?? "");
+        if (stale.length > 0)
+            Qt.callLater(() => launcher?.drafts?.settle({ [to]: stale
+                .map(words => ({ words, stage: "answered" })) }));
         return (asked === null ? [] : [asked]).concat(TalkAnswers
             .standing(answeredTo[to] ?? [], want, Date.now())
             .map(one => TalkAnswers.shown(one, working, words, dayOf)));
@@ -1258,7 +1264,7 @@ Provider {
             // given back they'd answer the new ask with words for the old one, so they show
             // only as not delivered, and the foot says why.
             const now = answersOf(sessionAt(session.address) ?? session);
-            if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
+            if (!TalkAnswers.keepsWords(put, TalkAnswers.asked(now.want, now.asking), answers))
                 launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
             if (unheard)
                 told = TalkAnswers.filled(said.unheardWhy ?? "", { name: session.title });
@@ -1597,9 +1603,8 @@ Provider {
                     // What the Talk showed it asking when he pressed Return, while that Talk is
                     // the one held; a walk from a terminal, which draws none, answers what it
                     // asks now.
-                    const held = provider.launcher?.asking?.draft === draft
-                        && draft in provider.answersShown;
-                    const answers = held ? provider.answersShown[draft] : asks();
+                    const answers = TalkAnswers.answering(provider.launcher?.asking?.draft,
+                        draft, provider.answersShown, asks());
                     // An answer goes as Joel's, so only his own Return gives one: a walk from
                     // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
                     if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
