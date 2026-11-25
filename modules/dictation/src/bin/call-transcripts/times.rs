@@ -202,5 +202,9 @@ mod tests {
             ..held
         };
         assert!(backward.verdict(0).is_err(), "a word out of order fails");
+        assert!(
+            Timed::default().verdict(0).is_err(),
+            "no word timed fails, since a model that times none would otherwise pass"
+        );
     }
 }
