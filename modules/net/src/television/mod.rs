@@ -72,7 +72,7 @@ const APART: Duration = Duration::from_secs(1);
 /// standby says nothing on its page and the daemon may have started
 /// since it last did. `allowed` says whether a TV with a hardware address
 /// has allowed this machine.
-fn television<'a>(device: &'a Device, allowed: impl Fn(&str) -> bool) -> Result<&'a str, Failure> {
+fn television(device: &Device, allowed: impl Fn(&str) -> bool) -> Result<&str, Failure> {
     let mac = device.macs.first().map(String::as_str);
     let known = device.roles.contains(&Role::Television) || mac.is_some_and(&allowed);
     if !known {
