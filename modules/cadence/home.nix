@@ -274,6 +274,12 @@ in
 
     systemd.user.services.cadence = {
       Unit.Description = "Watches the delivery cycle and writes its card";
+      # A switch leaves a running tick be: its timer starts the new unit next
+      # time, while restarting it would make home-manager wait out a tick
+      # under load and send the whole switch back, as call-under-load did to
+      # switch 1186's first try on 24 November. The day, review and hour
+      # runs are kept the same way.
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -309,6 +315,7 @@ in
     };
     systemd.user.services.cadence-day = {
       Unit.Description = "Reads the day just ended against the days before it";
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -335,6 +342,7 @@ in
     };
     systemd.user.services.cadence-review = {
       Unit.Description = "Reviews the week's noise and blind spots";
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -419,6 +427,7 @@ in
     };
     systemd.user.services.cadence-hour = {
       Unit.Description = "Measures the hour's shipping, quality and clean zones";
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (

@@ -104,6 +104,24 @@ onLinux {
           && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
         ) environment
       );
+  # A switch leaves a running tick, day, review or hour run be, since
+  # waiting on its start would outlast home-manager's patience under load
+  # and send the whole switch back; each timer starts the new unit next.
+  cadence-outlasts-a-switch =
+    let
+      services = exampleLaptop.config.home-manager.users.joel.systemd.user.services;
+      keeps = name: (services.${name}.Unit.X-SwitchMethod or null) == "keep-old";
+    in
+    holds "cadence-outlasts-a-switch"
+      "A switch restarts a running cadence, cadence-day, cadence-review or cadence-hour run and waits on it."
+      (
+        builtins.all keeps [
+          "cadence"
+          "cadence-day"
+          "cadence-review"
+          "cadence-hour"
+        ]
+      );
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or
