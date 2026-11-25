@@ -10,7 +10,8 @@ Its feed is trimmed to the fields home.nix declares for a machine in a realm
 (NODE_KINDS). It must say it's live with every cell drawn, each started or
 split cell under the one it grew from, the booked start drawn whole and the
 claimed split dashed and said as claimed at both ends, say what waits on its person and the
-plan furthest from done in its lede, draw each cell's plans, quest, needs and
+plan furthest from done in its lede, fit every lede it writes whole in the
+box the lede opens in, draw each cell's plans, quest, needs and
 split in its panel and the need as a dotted arc, step its cursor by keys,
 follow a purpose written, drawn as words though it holds markup, a wait
 answered, a cell going and, once every cell has, the crest drawn again until

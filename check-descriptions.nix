@@ -4616,7 +4616,9 @@
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
     headless Chromium: every cell drawn in order, a started or split cell under the one it grew
-    from, what waits on its person and the plan furthest to go said in its lede, each cell's plans,
+    from, what waits on its person and the plan furthest to go said in its lede, every lede it
+    writes fitting whole in the four lines its box opens on at a phone's width and the three at a
+    desk's and a wide desk's, each cell's plans,
     quest, needs and split in its panel and a need as a dotted arc, its keys stepping the cursor, a
     purpose written followed and drawn as words though it holds markup, a cell a purpose takes out
     of the view of cells without purpose taking the cursor with it, a wait answered no longer

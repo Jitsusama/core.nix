@@ -64,8 +64,10 @@ open beside it.
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you
   and from which cells, then names the cells without purpose and the
-  plan furthest from done. A cell with no purpose is the one worth a
-  look, since a cell without one serves no use.
+  plan furthest from done. It names two cells at most and counts the
+  rest, so it keeps to the lines it opens on: four on a phone, three
+  at a desk. A cell with no purpose is the one worth a look, since a
+  cell without one serves no use.
 - **One row per cell,** each set in under the cell the records say it
   was started by or split from. The set-in says only where a row
   stands; the floor and the panel say which starts the node's book
