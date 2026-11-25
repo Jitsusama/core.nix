@@ -5006,7 +5006,7 @@
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
     ahead of the step back, after a frame, and one told while already there once its sources have
     woken, a turn's worth a frame, one at least, felt as Quests' ahead, one that throws once made
-    let go for its step back, nothing of it kept, and the rest made still, making no row on the
+    let go for its step back, not left made, and the rest made still, making no row on the
     step back, though none as an opening fills
     in at home, holds another place's step or wakes its sources, under a viewer's command line,
     shut with a step held, or as a close runs a batch waiting on its frame, and sees one made
