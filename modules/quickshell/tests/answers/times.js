@@ -100,36 +100,40 @@ function run(failures, fromRoot) {
     return asked + twoChanges(failures, zones);
 }
 
-// A zone's next two changes, at fixed moments so no case depends on the
-// day it runs: one a year ahead, a southern zone's order, a zone with none,
-// and one past whose next change the years kept (zones.nix) hold no more.
+// A zone's next two changes as its drawer says them, at fixed moments so
+// no case depends on the day it runs: one a year ahead, a southern zone's
+// order, a zone with none, and one past whose next change the years kept
+// hold no more. That last case's year is zones.nix's last, 2045, which
+// time.json's "none before 2046" names too: move all three together.
 function twoChanges(failures, zones) {
     const quoted = Common.quoted;
     const at = Common.at;
-    const iso = change => change ? new Date(change.when).toISOString() : null;
+    const iso = change => change && change.when !== null
+        ? new Date(change.when).toISOString() : null;
+    const turns = change => change ? change.note : null;
     const cases = [
         ["America/Toronto", "2026-11-04T22:00", "2027-03-14T07:00:00.000Z",
             "2027-11-07T06:00:00.000Z", "EDT, UTC\u22124", "EST, UTC\u22125"],
         ["Australia/Sydney", "2026-01-15T12:00", "2026-04-04T16:00:00.000Z",
             "2026-10-03T16:00:00.000Z", "AEST, UTC+10", "AEDT, UTC+11"],
-        ["Asia/Tokyo", "2026-01-15T12:00", null, null, null, null],
+        // Tokyo never changes: Next Change says so, and After That is left
+        // out, so it reads as a zone with no changes rather than one more.
+        ["Asia/Tokyo", "2026-01-15T12:00", null, "left out", "", "left out"],
+        // Past the last change kept, After That says the years end.
         ["America/Toronto", "2045-04-01T12:00", "2045-11-05T06:00:00.000Z", null,
-            "EST, UTC\u22125", null]
+            "EST, UTC\u22125", ""],
+        // A zone tzdata names by offset alone says the offset once.
+        ["America/Santiago", "2026-01-15T12:00", "2026-04-05T03:00:00.000Z",
+            "2026-09-06T04:00:00.000Z", "UTC\u22124", "UTC\u22123"]
     ];
     for (const [id, when, next, after, nextTurns, afterTurns] of cases) {
-        const two = Zones.nextTwo(zones.zones[id], at(when) / 1000);
-        const turns = change => change ? Zones.turnsTo(change) : null;
-        const got = [iso(two.next), iso(two.after), turns(two.next), turns(two.after)];
+        const said = Zones.changesSaid(Zones.nextTwo(zones.zones[id], at(when) / 1000));
+        const gone = said.after === null ? "left out" : null;
+        const got = [iso(said.next), gone ?? iso(said.after), turns(said.next),
+            gone ?? turns(said.after)];
         if (JSON.stringify(got) !== JSON.stringify([next, after, nextTurns, afterTurns])) {
             failures.push(`${id}'s two changes from ${when} were ${quoted(got)}`);
         }
     }
-    // A zone tzdata names by offset alone says the offset once.
-    const santiago = Zones.nextChange(zones.zones["America/Santiago"],
-        at("2026-01-15T12:00") / 1000);
-    const said = santiago ? Zones.turnsTo(santiago) : null;
-    if (said !== (santiago ? Zones.offset(santiago.minutes) : "a change")) {
-        failures.push(`Santiago's next change turns it to ${quoted(said)}`);
-    }
-    return cases.length + 1;
+    return cases.length;
 }

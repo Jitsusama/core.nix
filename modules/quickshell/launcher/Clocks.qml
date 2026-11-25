@@ -212,27 +212,23 @@ Provider {
 
     // The zone the clock keeps, a figure copying its name: its offset and
     // abbreviation, its next two changes and what each turns it to, and
-    // which tzdata told it are facts in its drawer, never a step of copies alone (Joel,
-    // 2026-11-11: "if they have nothing under them, we shouldn't open a
-    // submenu for them").
+    // which tzdata told it are facts in its drawer, never a step of copies
+    // alone (Joel, 2026-11-11: "if they have nothing under them, we
+    // shouldn't open a submenu for them").
     function zoneThing(told, zone, now) {
         const said = told.rows.find(row => row.part === "zone") ?? null;
         const minutes = -new Date(now).getTimezoneOffset();
         const standing = zone ? Zones.standing(zone, Math.floor(now / 1000)) : [minutes, ""];
-        const { next, after } = zone ? Zones.nextTwo(zone, Math.floor(now / 1000))
-            : { next: null, after: null };
-        const abbreviation = /^[A-Za-z]/.test(standing[1]) ? standing[1] : "";
-        // A zone that changes says what comes after its next change too,
-        // and says so where the years kept end, as Next Change does, rather
-        // than looking like a zone that changes once more and never again.
-        const afterSide = !next ? "" : after ? Moment.dayAndClock(after.when, now)
-            : timeWord("time:zone", "never");
+        const changes = Zones.changesSaid(zone ? Zones.nextTwo(zone, Math.floor(now / 1000))
+            : { next: null, after: null });
+        const when = change => change.when === null ? timeWord("time:zone", "never")
+            : Moment.dayAndClock(change.when, now);
+        const after = changes.after ?? { when: null, note: "" };
         const parts = [
             { id: "offset", side: Zones.offset(standing[0]), note: "" },
-            { id: "abbreviation", side: abbreviation, note: "" },
-            { id: "next", side: next ? Moment.dayAndClock(next.when, now)
-                : timeWord("time:zone", "never"), note: next ? Zones.turnsTo(next) : "" },
-            { id: "after", side: afterSide, note: after ? Zones.turnsTo(after) : "" },
+            { id: "abbreviation", side: Zones.named(standing[1]), note: "" },
+            { id: "next", side: when(changes.next), note: changes.next.note },
+            { id: "after", side: changes.after ? when(after) : "", note: after.note },
             { id: "database", side: settings.tzdata ?? "", note: timeWord("time:zone", "iana") }
         ].filter(part => part.side !== "");
         const name = said ? said.text : Zones.offset(standing[0]);
@@ -248,8 +244,8 @@ Provider {
                 eyebrow: Words.name("time:zone:plate"),
                 title: name,
                 // What each of the next two changes turns it to stays
-                // beside when it comes, as its row's note said it; the database's note
-                // only says what tzdata is.
+                // beside when it comes, as its row's note said it; the
+                // database's note only says what tzdata is.
                 facts: parts.map(part => ({ label: Words.name(`time:zone:${part.id}`),
                     value: (part.id === "next" || part.id === "after") && part.note !== ""
                         ? `${part.side} \u00b7 ${part.note}` : part.side }))
