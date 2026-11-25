@@ -286,6 +286,13 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
     (Some(source), found)
 }
 
+/// Whether `answer` is a TV's saying it's on, as one woken from standby
+/// says once it's up.
+pub fn on_now(answer: &str) -> bool {
+    television(String::new(), answer)
+        .is_ok_and(|found| found.television.power.as_deref() == Some("on"))
+}
+
 /// One TV from its answer, kept whole in its own words but for its ids
 /// and addresses, or why the answer isn't a TV's.
 fn television(mac: String, answer: &str) -> Result<Found, String> {
