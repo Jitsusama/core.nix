@@ -78,7 +78,7 @@ pub fn mycelium(health: &Answer) -> Part {
     let (busy, idle) = (of("busy"), of("idle"));
     let across = machines.map_or(0, serde_json::Map::len);
     let mut held = vec![format!(
-        "{} busy and {} idle sessions on {}",
+        "{} busy and {} idle cells on {}",
         grouped(busy),
         grouped(idle),
         count(across as u64, "machine", "machines")
@@ -364,12 +364,12 @@ mod tests {
         assert_eq!(part.health, Health::Good);
         assert_eq!(
             part.says,
-            "57 busy and 34 idle sessions on 2 machines; 1 link up"
+            "57 busy and 34 idle cells on 2 machines; 1 link up"
         );
         assert_eq!(part.side, NO_LOOK, "what it holds is no look");
         assert_eq!(
             part.holds.as_deref(),
-            Some("57 busy and 34 idle sessions on 2 machines; 1 link up"),
+            Some("57 busy and 34 idle cells on 2 machines; 1 link up"),
             "what it holds is said apart"
         );
     }
@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(held.side, NO_LOOK);
         assert_eq!(
             held.holds.as_deref(),
-            Some("57 busy and 34 idle sessions on 2 machines; 7 sessions gone; 1 link up")
+            Some("57 busy and 34 idle cells on 2 machines; 7 sessions gone; 1 link up")
         );
         said["links"][0]["state"] = json!("unreachable");
         let part = mycelium(&Ok(said));
@@ -601,7 +601,7 @@ mod tests {
         said["sessions"]["laptop"] = json!({"busy": 1_200, "idle": 3_400, "ended": 0});
         assert_eq!(
             mycelium(&Ok(said)).says,
-            "1,202 busy and 3,401 idle sessions on 2 machines; 1 link up",
+            "1,202 busy and 3,401 idle cells on 2 machines; 1 link up",
             "a session count is grouped, as a machine's card says it"
         );
     }

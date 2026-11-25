@@ -63,8 +63,13 @@ BACK_MS = 12000
 # so waiting past one hand-over lets a page that dropped what it drew on a
 # change show it, before the test looks for what should have stayed.
 REDRAWN_MS = 2500
-# What node.json's realm comes to on the map, every part of the count.
-COUNTED = "8 cells, 2 moving, 1 stuck"
+# What node.json's realm comes to on the map, every part of the count. Its
+# sentence counts the seven sessions alone, as the node counts cells, while
+# the map draws all eight marks, the receptor at the edge among them; the
+# sentence after one session moves, and after the stuck one goes.
+COUNTED = "7 cells, 2 moving, 1 stuck"
+COUNTED_MOVED = "7 cells, 3 moving, 1 stuck"
+COUNTED_GONE = "6 cells, 2 moving"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
 # 33 files since the balance, who started each cell, the tree beside the map,
@@ -567,7 +572,7 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
-    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the moved cell wasn't drawn moving")
+    the_map_counts(page, COUNTED_MOVED, "the moved cell wasn't drawn moving")
 
 
 # The two cells node.json names "Mend the Sails": the first moving, the
@@ -611,7 +616,7 @@ def test_cells_sharing_a_title_that_move_are_drawn_moving(
         still_owe(page, "before either moved")
         namesakes_node.tell("cell", changed=[{"key": f"cell:{second}", "standing": "moving"}])
         why = f"the map froze as {second}, sharing {first}'s title, moved"
-        the_map_counts(page, "8 cells, 3 moving, 1 stuck", why)
+        the_map_counts(page, COUNTED_MOVED, why)
         asks = page.locator(f'#world circle.cell[data-key="c:{second}"]')
         expect(asks, f"{second} still needs Joel once moving").not_to_have_attribute(
             "data-asks", ""
@@ -1376,7 +1381,7 @@ def test_new_works_kept_words_keep_a_cleared_tick_and_let_a_gone_cell_go(
     page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
     expect(page, "the first cell didn't open").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
     mycelium_node.tell("cell", gone=[f"cell:{NEEDING[1]}"])
-    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
+    the_map_counts(page, COUNTED_GONE, "the gone cell was still counted")
     sent_again(page, f"mycelium:sprout?words=last&from={NEEDING[0]}")
 
 
@@ -1818,7 +1823,7 @@ def test_a_cell_that_goes_leaves_the_map(mycelium_opened: Opened, mycelium_node:
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", gone=["cell:HERON1"])
-    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
+    the_map_counts(page, COUNTED_GONE, "the gone cell was still counted")
 
 
 def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
@@ -1839,7 +1844,7 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
     the_map_stands(page, "live", BACK_MS)
     # A change after it's back shows the watch delivers again, not just the old map.
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
-    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map back live missed a change")
+    the_map_counts(page, COUNTED_MOVED, "the map back live missed a change")
 
 
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:

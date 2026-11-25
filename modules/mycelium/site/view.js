@@ -4872,8 +4872,12 @@ import {
   };
   const drawStatus = () => {
     if (!current) return;
-    const n = countsOf(current.cells);
-    const all = current.cells.length;
+    // Cells alone are the sessions that haven't ended, parked ones too, as
+    // the node counts them; the receptors at the edge are counted apart, in
+    // Now, so this sentence and every other page say the same number.
+    const cells = current.cells.filter((s) => s.kind === "session");
+    const n = countsOf(cells);
+    const all = cells.length;
     const stuck = n.stuck ? `, ${NUMBER.format(n.stuck)} stuck` : "";
     const asks = n.asks === 1 ? "one needs you" : n.asks ? `${NUMBER.format(n.asks)} need you` : "";
     const clauses = [["cells", plural(all, "cell")]];

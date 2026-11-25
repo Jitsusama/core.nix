@@ -87,11 +87,24 @@ fn coarse(value: Option<&Value>, unit: f64) -> Value {
     }
 }
 
-/// The mycelium's cells on a machine: the busy, the idle and the ended,
-/// as the node's health counts them.
+/// The mycelium's cells on a machine: the busy, the idle, those out of
+/// reach, the parked and the ended, as the node's health counts them. A
+/// machine the node can't reach has its cells counted out of reach rather
+/// than busy or idle, so they are carried too, or it would seem to hold none.
 fn cells(sessions: &Value) -> Value {
     let of = |key: &str| sessions.get(key).and_then(Value::as_u64).unwrap_or(0);
-    json!({"busy": of("busy"), "idle": of("idle"), "ended": of("ended")})
+    let mut cells = json!({
+        "busy": of("busy"),
+        "idle": of("idle"),
+        "unreachable": of("unreachable"),
+        "ended": of("ended"),
+    });
+    // A node too old to tell the parked apart sends no `parked`, and its
+    // `ended` holds them too; leaving the key out tells every reader so.
+    if let Some(parked) = sessions.get("parked").and_then(Value::as_u64) {
+        cells["parked"] = json!(parked);
+    }
+    cells
 }
 
 /// Where a machine meets the network: each device the network names for
@@ -268,14 +281,42 @@ mod tests {
     fn a_machine_carries_its_cells_as_busy_idle_and_ended() {
         let sessions = json!({"busy": 45, "idle": 27, "ended": 50, "unreachable": 0});
         let ties = ties(&laptop(), Some(&sessions), None, None);
-        assert_eq!(ties["cells"], json!({"busy": 45, "idle": 27, "ended": 50}));
+        assert_eq!(
+            ties["cells"],
+            json!({"busy": 45, "idle": 27, "unreachable": 0, "ended": 50})
+        );
         let unread = super::ties(&laptop(), None, None, None);
         assert_eq!(unread["cells"], Value::Null, "unread health says no cells");
         let unlisted = super::ties(&laptop(), Some(&Value::Null), None, None);
         assert_eq!(
             unlisted["cells"],
-            json!({"busy": 0, "idle": 0, "ended": 0}),
+            json!({"busy": 0, "idle": 0, "unreachable": 0, "ended": 0}),
             "a health read that lists none on it says none"
+        );
+    }
+
+    #[test]
+    fn a_machine_carries_its_unreached_cells_and_its_parked_where_told_apart() {
+        let sessions = json!({"busy": 9, "idle": 31, "parked": 22, "ended": 7});
+        let ties = ties(&laptop(), Some(&sessions), None, None);
+        assert_eq!(
+            ties["cells"],
+            json!({"busy": 9, "idle": 31, "unreachable": 0, "parked": 22, "ended": 7}),
+            "the parked cells were dropped"
+        );
+        let far = json!({"busy": 0, "idle": 0, "ended": 0, "unreachable": 12});
+        let ties = super::ties(&laptop(), Some(&far), None, None);
+        assert_eq!(
+            ties["cells"]["unreachable"],
+            json!(12),
+            "an unreached machine's cells were dropped"
+        );
+        let none = json!({"busy": 9, "idle": 31, "parked": 0, "ended": 7});
+        let ties = super::ties(&laptop(), Some(&none), None, None);
+        assert_eq!(
+            ties["cells"]["parked"],
+            json!(0),
+            "none parked read as untold"
         );
     }
 

@@ -349,7 +349,7 @@ mod tests {
         assert_eq!(
             lines[at + 1..at + 4],
             [
-                "laptop cells 3 busy and 1 idle",
+                "laptop cells 4 running: 3 busy and 1 idle",
                 "laptop network Wi-Fi to the Hall point, on 5 GHz",
                 "laptop code 14 checkouts of 12 repositories",
             ],
@@ -373,7 +373,7 @@ mod tests {
         for line in [
             "! laptop watch is short of memory, runs 3 busy sessions",
             "kind Example 14, Linux, this machine",
-            "cells 3 busy and 1 idle · none has ended",
+            "cells 4 running: 3 busy and 1 idle · none parked or ended",
             "network Wi-Fi to the Hall point, on 5 GHz · a strong signal, with 183 Mb/s of room",
             "code 14 checkouts of 12 repositories · 3 trees; 1 checkout behind its upstream; \
              2 open changes",

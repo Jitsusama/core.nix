@@ -43,8 +43,10 @@ Every health is good, watch, bad or not read, each with its own mark.
   then how many more, linked to the map. Each has its name, linked to it on the
   map, its kind (model and system, and whether it is this one) and how
   it stands, then four ties:
-  - Cells: how many of the mycelium's cells are busy and idle on it,
-    those ended aside, linked to it on the map.
+  - Cells: how many of the mycelium's cells run on it, busy and idle,
+    and how many are out of reach when the node can't reach it, with the
+    parked and the ended aside (said together where the node's health
+    doesn't tell them apart), linked to it on the map.
   - Network: where it meets the network, by band or by wire, and how
     well, linked to its device on the network's page.
   - Code: what it holds, counted, linked to the code's page; said not

@@ -56,7 +56,9 @@ fn kept(ties: &Value, tie: &str, said: Said) -> Said {
     }
 }
 
-/// A machine's cells, busy and idle, with those that have ended aside.
+/// A machine's cells: those running, busy and idle, with the parked and
+/// the ended aside, or the two together where health doesn't tell them
+/// apart.
 pub fn cells(ties: &Value) -> Said {
     kept(ties, "cells", cells_now(ties))
 }
@@ -70,16 +72,45 @@ fn cells_now(ties: &Value) -> Said {
         0 => "none".to_owned(),
         count => grouped(count),
     };
-    let said = match (of("busy"), of("idle")) {
-        (0, 0) => "none busy or idle".to_owned(),
-        (busy, idle) => format!("{} busy and {} idle", none_or(busy), none_or(idle)),
+    let (busy, idle, far) = (of("busy"), of("idle"), of("unreachable"));
+    // A machine the node can't reach has its cells counted out of reach,
+    // not busy or idle: they are still its cells, so they are said.
+    let running = format!(
+        "{} running: {} busy and {} idle",
+        grouped(busy + idle),
+        none_or(busy),
+        none_or(idle)
+    );
+    let said = match (busy + idle, far) {
+        (0, 0) => "none running".to_owned(),
+        (0, far) => format!("{} out of reach", grouped(far)),
+        (_, 0) => running,
+        (_, far) => format!("{running}, and {} out of reach", grouped(far)),
     };
-    let aside = match of("ended") {
-        0 => "none has ended".to_owned(),
-        1 => "and 1 that has ended".to_owned(),
-        ended => format!("and {} that have ended", grouped(ended)),
+    let ended = of("ended");
+    // A node too old to tell the parked apart sends no `parked`, and its
+    // ended hold them too, so they are said together rather than a parked
+    // cell, which the node still counts, being called ended.
+    let aside = match cells.get("parked").and_then(Value::as_u64) {
+        Some(parked) => parked_and_ended(parked, ended),
+        None if ended == 0 => "none parked or ended".to_owned(),
+        None => format!("and {} parked or ended", grouped(ended)),
     };
     Said::new(said, aside)
+}
+
+/// A machine's parked cells and its ended ones, told apart.
+fn parked_and_ended(parked: u64, ended: u64) -> String {
+    let first = match parked {
+        0 => "none parked".to_owned(),
+        parked => format!("and {} parked", grouped(parked)),
+    };
+    match (parked, ended) {
+        (0, 0) => "none parked or ended".to_owned(),
+        (_, 0) => format!("{first}; none has ended"),
+        (_, 1) => format!("{first}; 1 has ended"),
+        (_, ended) => format!("{first}; {} have ended", grouped(ended)),
+    }
 }
 
 /// Where a machine meets the network, a clause for each place, and how
@@ -373,27 +404,58 @@ mod tests {
     }
 
     #[test]
-    fn cells_say_the_busy_and_the_idle_with_the_ended_aside() {
+    fn cells_say_those_running_with_the_parked_or_ended_aside() {
         let of = |busy: u64, idle: u64, ended: u64| {
             cells(&json!({"cells": {"busy": busy, "idle": idle, "ended": ended}}))
         };
         assert_eq!(
             of(2, 1_204, 0),
-            said("2 busy and 1,204 idle", "none has ended")
+            said(
+                "1,206 running: 2 busy and 1,204 idle",
+                "none parked or ended"
+            )
         );
         assert_eq!(
             of(0, 3, 5),
-            said("none busy and 3 idle", "and 5 that have ended")
+            said("3 running: none busy and 3 idle", "and 5 parked or ended")
         );
-        assert_eq!(of(4, 0, 0), said("4 busy and none idle", "none has ended"));
         assert_eq!(
-            of(0, 0, 1),
-            said("none busy or idle", "and 1 that has ended")
+            of(4, 0, 0),
+            said("4 running: 4 busy and none idle", "none parked or ended")
+        );
+        assert_eq!(of(0, 0, 1), said("none running", "and 1 parked or ended"));
+        let far = |busy: u64, unreachable: u64| {
+            cells(&json!({"cells": {"busy": busy, "idle": 0, "ended": 0,
+                                    "unreachable": unreachable}}))
+            .said
+        };
+        assert_eq!(
+            far(0, 12),
+            "12 out of reach",
+            "an unreached machine's cells"
+        );
+        assert_eq!(
+            far(2, 1),
+            "2 running: 2 busy and none idle, and 1 out of reach",
+            "some reached and some not"
         );
         assert_eq!(
             cells(&json!({"cells": null})),
             said("not read", "the mycelium's health couldn't be had")
         );
+    }
+
+    #[test]
+    fn cells_tell_the_parked_from_the_ended_where_health_does() {
+        let of = |parked: u64, ended: u64| {
+            cells(&json!({"cells": {"busy": 9, "idle": 31, "parked": parked, "ended": ended}}))
+                .aside
+        };
+        assert_eq!(of(22, 7), "and 22 parked; 7 have ended", "both counted");
+        assert_eq!(of(22, 1), "and 22 parked; 1 has ended", "one ended");
+        assert_eq!(of(1, 0), "and 1 parked; none has ended", "none ended");
+        assert_eq!(of(0, 7), "none parked; 7 have ended", "none parked");
+        assert_eq!(of(0, 0), "none parked or ended", "neither");
     }
 
     #[test]
@@ -406,7 +468,10 @@ mod tests {
         });
         assert_eq!(
             cells(&ties),
-            said("2 busy and 3 idle", &format!("none has ended, {note}")),
+            said(
+                "5 running: 2 busy and 3 idle",
+                &format!("none parked or ended, {note}")
+            ),
             "cells read from a kept health say when it was read"
         );
         assert_eq!(
@@ -501,7 +566,7 @@ mod tests {
         );
         assert_eq!(
             cells(&ties).aside,
-            "none has ended",
+            "none parked or ended",
             "cells read from their own answer say nothing of the others"
         );
     }

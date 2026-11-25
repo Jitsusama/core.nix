@@ -297,7 +297,10 @@ function awayRow(thing: Thing, when: (at: string) => string): string {
       ? "Not heard here yet"
       : `Last heard ${when(thing.ties.heardAt)}`;
   const cells = thing.ties.cells;
-  const left = cells === undefined ? 0 : cells.busy + cells.idle;
+  // The node counts an unreached machine's cells out of reach rather than
+  // busy or idle, and a parked cell is still the mycelium's, so both count.
+  const left =
+    cells === undefined ? 0 : cells.busy + cells.idle + cells.unreachable + (cells.parked ?? 0);
   const stranded = left === 0 ? "" : `, ${counted(left, "cell")} still on it`;
   return `<li><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(onTheMap(thing))}"><span translate="no">${escaped(thing.name)}</span></a><span class="heard">${escaped(`${heard}${stranded}`)}</span></li>`;
 }

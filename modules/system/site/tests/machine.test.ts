@@ -113,24 +113,42 @@ it("a machine's kind is its model and its system, and says which is this one", (
   assert.equal(kindOf({ ...here, ties: tiesOf(undefined) }, "kestrel"), "This machine");
 });
 
-it("its cells are counted busy and idle, with those ended aside", () => {
+it("its cells are counted running, busy and idle, with the parked or ended aside", () => {
   assert.deepEqual(cellsSaid(tiesOf(ties)), {
-    said: "45 busy and 27 idle",
-    aside: "And 50 that have ended.",
+    said: "72 running: 45 busy and 27 idle",
+    aside: "And 50 parked or ended.",
   });
   assert.deepEqual(cellsSaid(tiesOf({ cells: { busy: 0, idle: 1, ended: 0 } })), {
-    said: "None busy and 1 idle",
-    aside: "None has ended.",
+    said: "1 running: none busy and 1 idle",
+    aside: "None parked or ended.",
   });
   assert.equal(
     cellsSaid(tiesOf({ cells: { busy: 4, idle: 0, ended: 0 } })).said,
-    "4 busy and none idle",
+    "4 running: 4 busy and none idle",
   );
   assert.deepEqual(cellsSaid(tiesOf({ cells: { busy: 0, idle: 0, ended: 1 } })), {
-    said: "None busy or idle",
-    aside: "And 1 that has ended.",
+    said: "None running",
+    aside: "And 1 parked or ended.",
   });
   assert.equal(cellsSaid(tiesOf({ cells: null })).said, "Not read");
+  const far = (busy: number, unreachable: number): string =>
+    cellsSaid(tiesOf({ cells: { busy, idle: 0, ended: 0, unreachable } })).said;
+  assert.equal(far(0, 12), "12 out of reach", "an unreached machine's cells");
+  assert.equal(
+    far(2, 1),
+    "2 running: 2 busy and none idle, and 1 out of reach",
+    "some reached and some not",
+  );
+});
+
+it("its parked cells are told from its ended ones where the node's health does", () => {
+  const aside = (parked: number, ended: number): string =>
+    cellsSaid(tiesOf({ cells: { busy: 9, idle: 31, parked, ended } })).aside;
+  assert.equal(aside(22, 7), "And 22 parked; 7 have ended.", "both counted");
+  assert.equal(aside(22, 1), "And 22 parked; 1 has ended.", "one ended");
+  assert.equal(aside(1, 0), "And 1 parked; none has ended.", "none ended");
+  assert.equal(aside(0, 7), "None parked; 7 have ended.", "none parked");
+  assert.equal(aside(0, 0), "None parked or ended.", "neither");
 });
 
 it("a tie read from an owner's last good answer says when and why", () => {
@@ -140,8 +158,8 @@ it("a tie read from an owner's last good answer says when and why", () => {
   assert.deepEqual(
     cellsSaid(kept),
     {
-      said: "45 busy and 27 idle",
-      aside: `And 50 that have ended. ${told}`,
+      said: "72 running: 45 busy and 27 idle",
+      aside: `And 50 parked or ended. ${told}`,
     },
     "cells read from a kept health say when it was read",
   );

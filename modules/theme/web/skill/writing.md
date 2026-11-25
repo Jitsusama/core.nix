@@ -119,8 +119,11 @@ novel mode and lost its pithy title. this is not what i meant" (2026-11-06).
 - **A count says what it counts**, in words beside it: "149 standing now",
   "170 seen today". On 22 Nov three pages counted cells 170, 149 and 102
   plus 22, each right by its own rule and wrong side by side. Cells alone
-  means the cells standing now, as the mycelium node counts them; a page
-  counting another set names it.
+  means the cells standing now, as the mycelium node counts them: every
+  session that hasn't ended, parked ones included, never its machines or
+  receptors. Running means those less the parked. A page counting another
+  set names it beside the number: "61 running", "38 here at work on a
+  quest".
 - **A thing is named by what it is to Joel, never by its id**: a cell by
   what it works on, its address only in its link; a tree by its branch,
   never a snapshot's sha.
