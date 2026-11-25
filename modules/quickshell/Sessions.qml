@@ -2803,7 +2803,10 @@ Singleton {
             keepPlaces(kept);
             console.info(`sessions: ${waited.join(", ")}'s kept place let go, its viewer come`);
         }
+        const told = disownedSaid[named];
         forgetAsk(named);
+        if (told)
+            unhosted(told, told.started ? "startedCameAfter" : "cameAfter");
     }
     // A viewer no longer asked for, come or given up on, and what its
     // press and any refused window said of it.
@@ -2853,8 +2856,19 @@ Singleton {
         if (!refusedOwn(named))
             return false;
         unhosted(said, said?.started ? "startedDisowned" : "disowned");
+        // While the script may still answer for the ask whose window came
+        // refused, its own may yet come after a stray: this press takes the
+        // focus it would take and is told if it comes (disownedSaid).
+        if (Date.now() - (refusedAt[named] ?? 0) < answerPatience) {
+            goingTo = { app: named, at: Date.now(), from: Niri.focused };
+            disownedSaid = Object.assign({}, disownedSaid, { [named]: said });
+        }
         return true;
     }
+    // The press last told disowned of each viewer while its own could still
+    // come, by app id, told once it does (viewerCame), as the foot would
+    // otherwise keep saying the session isn't viewed.
+    property var disownedSaid: ({})
     // Each viewer whose window came while it was asked for and was
     // refused (heardWindow), by its app id, to that window's niri id, so
     // Go To asks for it no more while that window stays.
@@ -2863,6 +2877,11 @@ Singleton {
     // give-up of that ask still reaches it (refusedUntaken).
     property var refusedAt: ({})
     function forgetRefusal(named) {
+        if (named in disownedSaid) {
+            const told = Object.assign({}, disownedSaid);
+            delete told[named];
+            disownedSaid = told;
+        }
         if (!(named in refusedAsks) && !(named in refusedAt))
             return;
         const refused = Object.assign({}, refusedAsks);
@@ -3198,6 +3217,7 @@ Singleton {
             delete pressed[named];
             pressedFor = pressed;
             unhosted(said, said.started ? "startedDisowned" : "disowned");
+            disownedSaid = Object.assign({}, disownedSaid, { [named]: said });
         }
         if (own)
             waitedOnNoMore(named, "its window wasn't the sessions kitty's");
