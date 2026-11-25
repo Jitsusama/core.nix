@@ -463,15 +463,11 @@ impl Row {
     }
 }
 
-/// How a session stands to Joel, how it would stand wanting nothing when
-/// he put off what it wants of him, and the hue its row wears. A want put
-/// off still waits, so its row keeps his mark, but in the hue it would
-/// wear wanting nothing, muted for one parked, as its mark is, lighting
-/// nothing above it (top.rs) until the hour is up.
 /// How it stands to what it can be asked to do: one paused that wants
 /// Joel needs him, but its acts stay a paused one's, Resume and no Park,
 /// since the harness parks none under another hold (agentic-harness.pi
-/// #2159), as a parked one's stay a parked one's (Session::stands_to_joel).
+/// #2159), as a parked one's stay a parked one's
+/// (`Session::stands_to_joel`).
 fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
     match stands {
         Stands::Needs if session.stands_wanting_nothing(known.jobs) == Stands::Paused => {
@@ -480,6 +476,12 @@ fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
         stands => stands,
     }
 }
+
+/// How a session stands to Joel, how it would stand wanting nothing when
+/// he put off what it wants of him, and the hue its row wears. A want put
+/// off still waits, so its row keeps his mark, but in the hue it would
+/// wear wanting nothing, muted for one parked, as its mark is, lighting
+/// nothing above it (top.rs) until the hour is up.
 
 fn worn(session: Session, known: &Known, warns: bool) -> (Stands, Option<Stands>, &'static str) {
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
