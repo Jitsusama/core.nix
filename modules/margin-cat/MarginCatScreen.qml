@@ -1684,29 +1684,29 @@ PanelWindow {
     // edge and go back behind it.
     Companion {
         at: window.yarnAt
-        left: window.yarnLeft
+        remains: window.yarnLeft
         drawn: window.yarnDrawn
     }
     Companion {
         at: window.puppyAt
-        left: window.puppyLeft
+        remains: window.puppyLeft
         drawn: window.puppyDrawn
     }
 
-    // One of them, `at` where its play has it, `left` of it as it fades
+    // One of them, `at` where its play has it, what `remains` of it as it fades
     // and `drawn` in its pose's cells.
     component Companion: Item {
         id: companion
 
         required property var at
-        required property real left
+        required property real remains
         required property var drawn
 
         x: at ? window.snapped(at.within.left) : 0
         width: at ? window.snapped(at.within.right) - window.snapped(at.within.left) : 0
         height: parent.height
         clip: true
-        opacity: left
+        opacity: remains
         visible: at !== null
 
         Item {
