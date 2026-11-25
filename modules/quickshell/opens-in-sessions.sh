@@ -18,9 +18,10 @@
 # this start, its last look included, which the shell's answerPatience
 # counts on. It's timed by the time since boot, which no time sync steps,
 # rather than by counting looks, since each look asks systemd and can be
-# slow under a cold boot's load; so each look is cut at 2 s and none
-# begins once 17 s have passed, leaving a second for starting what each
-# look runs and reading the kitty's command line, which isn't cut. The
+# slow under a cold boot's load; so each look is cut at 2 s, said if it
+# is, the first always made and another only while it would begin before
+# 17 s, with no pause after the last, so the wait ends by 19 s and its
+# programs' starts, the kitty's command line read uncut among them. The
 # old kitty's own launch, through systemd-run, isn't cut either, as a cut
 # could end the kitty it starts were the old one gone since; it's reached
 # only until the next login.
@@ -49,7 +50,8 @@
 # the shell nothing.
 
 # The time since boot in hundredths of a second, from /proc/uptime,
-# whose first field always has two decimals.
+# whose first field always has two decimals, read by cut, as the doors
+# test's stand-in for it takes it.
 up() {
   since=$(cut -d ' ' -f 1 /proc/uptime)
   echo $((${since%.*} * 100 + 1${since#*.} - 100))
@@ -67,11 +69,15 @@ number() {
 asked=$(date +%s%3N)
 started=$(up)
 # A first start's times are taken only as its run under the journal is
-# given them: both numbers, the start no later than this one's. So any
-# other that set them is never evaluated, never holds the wait past its
-# 17 s, and leaves a run given no output still moving to the journal.
-if number "${OPENS_IN_SESSIONS_ASKED:-}" && number "${OPENS_IN_SESSIONS_STARTED:-}" &&
-  [ "$OPENS_IN_SESSIONS_STARTED" -le "$started" ]; then
+# given them: with output, both numbers, the start no later than this
+# one's and within 5 s of it, as that run follows its first within
+# moments. So any other that set them is never evaluated, neither holds
+# the wait past its 17 s nor cuts it short, and leaves a run given no
+# output still moving to the journal.
+if ! [ /proc/self/fd/2 -ef /dev/null ] && number "${OPENS_IN_SESSIONS_ASKED:-}" &&
+  number "${OPENS_IN_SESSIONS_STARTED:-}" &&
+  [ $((started - OPENS_IN_SESSIONS_STARTED)) -ge 0 ] &&
+  [ $((started - OPENS_IN_SESSIONS_STARTED)) -le 500 ]; then
   asked=$OPENS_IN_SESSIONS_ASKED
   started=$OPENS_IN_SESSIONS_STARTED
 elif [ /proc/self/fd/2 -ef /dev/null ] && command -v systemd-cat > /dev/null &&
@@ -89,21 +95,24 @@ if [ "$1" = --directory ]; then
   shift 2
 fi
 
-# Whether the unit's main process is a kitty from before it listened.
+# Whether the unit's main process is a kitty from before it listened,
+# marking a look systemd didn't answer in time (cut).
 old() {
-  pid=$(timeout 2 systemctl --user show --property=MainPID --value sessions-kitty.service)
+  pid=$(timeout 2 systemctl --user show --property=MainPID --value sessions-kitty.service) ||
+    [ $? -ne 124 ] || cut=yes
   [ "${pid:-0}" -gt 0 ] &&
     tr "\0" " " < "/proc/$pid/cmdline" | grep -q -- "--instance-group pi-sessions"
 }
 
 reached=
+cut=
 until [ -S "$sock" ]; do
-  now=$(up)
-  [ "$now" -lt $((started + 1700)) ] || break
   if old; then
     reached=old
     break
   fi
+  now=$(up)
+  [ "$now" -lt $((started + 1680)) ] || break
   sleep 0.2
 done
 
@@ -116,7 +125,8 @@ if [ -S "$sock" ]; then
   launched=$?
   [ -z "$said" ] || printf '%s\n' "$said" >&2
   [ "$launched" -ne 0 ] || exit 0
-  case $said in
+  # Its own last words, never words of the launch's it may repeat.
+  case $(printf '%s\n' "$said" | tail -n 1) in
     *"Timed out waiting for a response from kitty"*)
       echo "sessions: the sessions kitty didn't answer for $class in a minute" >&2
       ;;
@@ -128,6 +138,8 @@ elif [ "$reached" = old ]; then
     --directory "$dir" "$@" && exit 0
   echo "sessions: the sessions kitty opened no $class" >&2
 else
+  [ -z "$cut" ] ||
+    echo "sessions: systemd didn't name the sessions kitty's process within 2 s" >&2
   echo "sessions: no sessions kitty to open $class in" >&2
 fi
 # Within 5 s, so a shell stalled or starting again leaves no script behind.
