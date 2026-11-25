@@ -6,8 +6,8 @@
 // before the page's styles are read, since the server lets none of the
 // sites' own pages run a script written into the page (src/http.rs says
 // why). Written by hand rather than in TypeScript, since it runs as a plain
-// script, which the kit's modules can't be.
-"use strict";
+// script, which the kit's modules can't be. Its names stay in a block of
+// their own, so none is left on the page's global scope.
 {
   const root = document.documentElement;
   root.classList.add("js");
