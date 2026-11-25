@@ -2366,7 +2366,7 @@ in
   # none authorizes nothing of mycelium's.
   mycelium-lets-a-link-key-only-link =
     holds "mycelium-lets-a-link-key-only-link"
-      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, a machine naming none authorizes a key, a realm or machine name opening with a hyphen is taken, or a key of two lines is."
+      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, a machine naming none authorizes a key, a realm or machine name opening with a hyphen is taken, a key of two lines is, or a key's last newline isn't dropped."
       (
         let
           key = "ecdsa-sha2-nistp256 AAAAone";
@@ -2388,6 +2388,17 @@ in
             builtins.length given == 1
             && lib.hasPrefix ''restrict,pty,command="/nix/store/'' (lib.head given)
             && lib.hasSuffix ''/bin/mycelium --realm personal ssh --from one" ${key}'' (lib.head given);
+          # The machines' keys as the option gives them.
+          linked =
+            given:
+            (bareNixos [
+              self.nixosModules.workstation
+              {
+                jitsusama.mycelium = pinning // {
+                  linkedFrom.personal.one = given;
+                };
+              }
+            ]).config.jitsusama.mycelium.linkedFrom;
           # Whether the name's own assertion refuses a realm and machine so
           # named, read by its message so another assertion failing can't
           # stand in. Only a failed one's message is read, since some are
@@ -2417,13 +2428,12 @@ in
         && misnamed "personal" "-h"
         && misnamed "-h" "one"
         && !misnamed "personal" "other-machine"
-        # A key's second line would be one of authorized_keys' own, unpinned;
-        # the same settings with a key of one line are taken above.
-        && !(builtins.tryEval (
-          builtins.deepSeq (keys bareNixos self.nixosModules.workstation (
-            pinning // { linkedFrom.personal.one = "${key}\nssh-ed25519 AAAAtwo"; }
-          )) true
-        )).success
+        # A key's second line would be one of authorized_keys' own, unpinned.
+        # The option's own value is read, since NixOS's keys refuse it too
+        # and nix-darwin's may not; a key read from its file keeps its last
+        # newline, which is taken and dropped.
+        && !(builtins.tryEval (builtins.deepSeq (linked "${key}\nssh-ed25519 AAAAtwo") true)).success
+        && linked "${key}\n" == { personal.one = key; }
       );
 
   # The words a link key is pinned to, read from the line a machine's system

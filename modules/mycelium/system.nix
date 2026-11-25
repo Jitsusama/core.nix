@@ -25,8 +25,6 @@ let
   package = mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   # Never opening with a hyphen, which mycelium would read as a flag.
   name = lib.types.strMatching "[a-z0-9][a-z0-9-]*";
-  # One line, so a key can't add an unpinned line of its own.
-  keyLine = lib.types.strMatching "[^\n]+";
   # An attach joins a session held here, so the key may have a terminal.
   pinned =
     realm: machine: key:
@@ -42,7 +40,9 @@ in
     };
 
     linkedFrom = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.attrsOf keyLine);
+      # One line, so a key can't add an unpinned line of its own; a key
+      # read from its file keeps its last newline, which this drops.
+      type = lib.types.attrsOf (lib.types.attrsOf lib.types.singleLineStr);
       default = { };
       example = {
         personal.other-machine = "ecdsa-sha2-nistp256 AAAA...";
