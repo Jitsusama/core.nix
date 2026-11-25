@@ -9,7 +9,9 @@ it answers and how a test drives it.
 | ---------------------------- | -------------------------------------------------------------- |
 | `battery-stand-ins/`         | what a service following the battery talks to, in its README  |
 | `btvirt.nix` and its patch   | a Bluetooth radio, BlueZ's btvirt, with a buffer per client    |
+| `busctl-stand-in.sh`         | busctl, closing the notify-send stand-in's notices             |
 | `desk-light-stand-in.py`     | a Litra Glow or a Pebble's lights, made of uhid                |
+| `notify-send-stand-in.sh`    | notify-send, keeping each notice and waiting as it waits       |
 | `pi-stand-in.nix`, `.sh`     | pi, as the shell opens it, for the VM tests                    |
 | `spotify-recent-stand-in.sh` | spotify-recent, for Spotify's own check and the desktop        |
 | `stand-in-notices.py`        | whatever shows notices, on the session bus                     |

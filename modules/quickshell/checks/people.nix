@@ -191,8 +191,9 @@
   # tuple whose stream says each line the test writes, and whose other commands
   # are kept, while a listener stands in for Tuple's daemon answering. The shell
   # tells who comes and goes through a stand-in notify-send that keeps what it's
-  # asked. The daemon's own reading of Tuple is its tests', run as it builds
-  # (tuple-call-holds-the-call).
+  # asked and waits as notify-send waits, and closes notices through a stand-in
+  # busctl that keeps each close (tests/stand-ins). The daemon's own reading of
+  # Tuple is its tests', run as it builds (tuple-call-holds-the-call).
   the-desktop-hears-tuples-call =
     let
       calls = pkgs.callPackage ../../tuple/call/package.nix { };
@@ -212,9 +213,12 @@
       # it's written; `new` opens a room, and every other command is kept.
       # Each camera command is refused, as Tuple refuses one, from the
       # second time it's asked on, which the list of asks says without a
-      # race, its reason holding what markup reads. Kept in Nix because
-      # it's a stand-in of a few lines that names tail and grep by their
-      # store paths, so it runs on those whatever PATH tuple-call gives it.
+      # race, its reason holding what markup reads; from the third, it's
+      # refused only once the test writes go-<command>-<time asked>, so the
+      # test changes the call while Tuple has yet to answer. Kept in Nix
+      # because it's a stand-in of a few lines that names tail and grep by
+      # their store paths, so it runs on those whatever PATH tuple-call
+      # gives it.
       tuple = pkgs.writeShellScript "tuple" ''
         if [ "$3 $4" = "state follow" ]; then
           exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
@@ -223,7 +227,10 @@
         if [ "$*" = new ]; then echo "Joining https://tuple.app/c/opened"; fi
         case "$*" in
           "webcam stop" | "webcam start")
-            if [ "$(${pkgs.gnugrep}/bin/grep -cx "$*" "$XDG_RUNTIME_DIR/asked")" -gt 1 ]; then
+            n=$(${pkgs.gnugrep}/bin/grep -cx "$*" "$XDG_RUNTIME_DIR/asked")
+            if [ "$n" -gt 1 ]; then
+              # Looks for the test's go about as often as a frame is drawn.
+              until [ "$n" -lt 3 ] || [ -e "$XDG_RUNTIME_DIR/go-$2-$n" ]; do sleep 0.05; done
               echo "no webcam to $2 <&>" >&2
               exit 1
             fi
@@ -258,10 +265,16 @@
       }}'';
       notify = pkgs.writeShellApplication {
         name = "notify-send";
-        text = ''
-          printf '%s\n' "$*" >> "$XDG_RUNTIME_DIR/told"
-          echo 1
-        '';
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.util-linux
+        ];
+        text = builtins.readFile ../../../tests/stand-ins/notify-send-stand-in.sh;
+      };
+      busctl = pkgs.writeShellApplication {
+        name = "busctl";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = builtins.readFile ../../../tests/stand-ins/busctl-stand-in.sh;
       };
     in
     pkgs.runCommandLocal "the-desktop-hears-tuples-call" { } ''
@@ -282,7 +295,7 @@
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
       export XDG_STATE_HOME=$TMPDIR/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PATH=${notify}/bin:$PATH
+      export PATH=${notify}/bin:${busctl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/daemons
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told

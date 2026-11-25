@@ -252,10 +252,10 @@ Singleton {
     // one at a time, offering the call's window while Tuple has one, where
     // the camera stops by hand, since his face may still be in the call,
     // until the call ends or his camera is said off; a picker that didn't
-    // open isn't kept, as nothing was shared. By the time Tuple answers,
-    // the call may be over or his camera said off, and then nothing's
-    // told; nor is a picker Tuple hasn't answered in time, which may be
-    // open, waiting on him to pick.
+    // open isn't kept, as nothing was shared, and one Tuple hasn't
+    // answered in time is told as not yet said open, since it may be open
+    // all the same. By the time Tuple answers, the call may be over or his
+    // camera said off, and then nothing's told.
     function camera(on) {
         calls.ask({ ask: "camera", on: on }, answer => {
             if (answer?.done === true)
@@ -265,10 +265,11 @@ Singleton {
             console.warn(`tuple: the camera's ${on ? "picker" : "stop"} wasn't done: ${why}`);
             if (!calling)
                 return;
-            if (on) {
-                if (answer?.error?.code !== "unanswered")
-                    notify("Tuple's camera picker didn't open", plain(why), [], false);
-            } else if (filming) {
+            if (on)
+                notify(answer?.error?.code === "unanswered"
+                    ? "Tuple hasn't said its camera picker opened"
+                    : "Tuple's camera picker didn't open", plain(why), [], false);
+            else if (filming) {
                 withdraw("camera");
                 notify("Your camera may still be in the call", plain(why),
                     windowed ? [["camera", "Go To the Call"]] : [], true, ["camera"]);
