@@ -9,6 +9,7 @@
 
 use crate::stamp::{Stamp, Stamps};
 use crate::wildmatch;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 #[derive(Default)]
@@ -151,14 +152,16 @@ pub fn parse_bool(value: Option<&str>) -> Option<bool> {
 
 /// The system-wide file git reads, from its environment as `var` gives it:
 /// none where `nosystem` is true, else where `system` names, where git
-/// has such a variable, none where it is empty, else `default`.
+/// has such a variable, none where it is empty, else `default`. The
+/// environment's own bytes name the file, as git takes them, whether or
+/// not they are UTF-8.
 pub fn system_file(
-    var: impl Fn(&str) -> Option<String>,
+    var: impl Fn(&str) -> Option<OsString>,
     nosystem: &str,
     system: Option<&str>,
     default: &str,
 ) -> Option<PathBuf> {
-    if var(nosystem).is_some_and(|value| parse_bool(Some(&value)) == Some(true)) {
+    if var(nosystem).is_some_and(|value| parse_bool(value.to_str()) == Some(true)) {
         return None;
     }
     match system.and_then(&var) {
@@ -641,6 +644,19 @@ mod tests {
             [one("a.x", "first"), one("a.x", "last")],
             "the counted pairs weren't read before the -c ones, or one git dies on was kept"
         );
+        // Within the count first, so a read going on past the first missing
+        // fails here rather than counting toward the largest count.
+        assert_eq!(
+            passed(&[
+                ("GIT_CONFIG_COUNT", "3"),
+                ("GIT_CONFIG_KEY_0", "a.x"),
+                ("GIT_CONFIG_VALUE_0", "0"),
+                ("GIT_CONFIG_KEY_2", "a.y"),
+                ("GIT_CONFIG_VALUE_2", "2"),
+            ]),
+            [one("a.x", "0")],
+            "a pair past one missing within the count was read"
+        );
         assert_eq!(
             passed(&[
                 ("GIT_CONFIG_COUNT", "18446744073709551615"),
@@ -695,7 +711,7 @@ mod tests {
                 move |name| {
                     vars.iter()
                         .find(|(key, _)| key == name)
-                        .map(|(_, value)| value.clone())
+                        .map(|(_, value)| value.into())
                 },
                 "NOSYSTEM",
                 system,

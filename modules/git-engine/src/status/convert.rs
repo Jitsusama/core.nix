@@ -123,13 +123,16 @@ pub fn filter_drivers(config: &Config) -> BTreeMap<String, Driver> {
         .collect()
 }
 
-/// Whether `command` runs git-lfs's `verb`, by any path to it: a driver
-/// running anything else might write something other than its pointer.
+/// Whether `command` runs git-lfs's `verb`, by any path to it, itself or
+/// as `git lfs`: a driver running anything else might write something
+/// other than its pointer.
 fn is_git_lfs(command: &str, verb: &str) -> bool {
+    let is = |word: Option<&str>, program: &str| {
+        word.is_some_and(|word| word.rsplit('/').next() == Some(program))
+    };
     let mut words = command.split_ascii_whitespace();
-    words
-        .next()
-        .is_some_and(|program| program.rsplit('/').next() == Some("git-lfs"))
+    let first = words.next();
+    (is(first, "git-lfs") || is(first, "git") && words.next() == Some("lfs"))
         && words.next() == Some(verb)
 }
 
@@ -366,6 +369,10 @@ mod tests {
              [filter \"pathed\"]\n clean = /bin/git-lfs clean -- %f\n\
              [filter \"wrapped\"]\n process = git-lfs-wrapper filter-process\n\
              [filter \"crossed\"]\n process = git-lfs clean\n\
+             [filter \"through\"]\n process = git lfs filter-process\n\
+             [filter \"cleaned\"]\n clean = /usr/bin/git lfs clean -- %f\n\
+             [filter \"lfsx\"]\n process = git lfsx filter-process\n\
+             [filter \"either\"]\n clean = git-lfs clean -- %f\n process = crypt\n\
              [filters]\n x = y\n",
         );
         let runs = |name: &str| (name.to_owned(), Driver::Runs);
@@ -382,11 +389,16 @@ mod tests {
                 ("must".to_owned(), Driver::Refuses),
                 runs("sure"),
                 runs("twice"),
+                lfs("through"),
+                lfs("cleaned"),
+                runs("lfsx"),
+                runs("either"),
             ]),
             "took a filter only smudging, with an empty or emptied command, an empty \
              process over a clean one, or another section's keys; missed one with a dot \
-             or a capital in its name; misjudged a required one; or took for git-lfs's \
-             a command other than its process or clean"
+             or a capital in its name; misjudged a required one; took for git-lfs's \
+             a command other than its process or clean, or one whose process runs \
+             another; or missed git-lfs run through git"
         );
     }
 
