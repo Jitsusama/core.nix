@@ -3661,7 +3661,8 @@
     clears so none opens the host's inspector or runs code as the host, fails evaluation naming
     the realm and only the ones it gave, joined as written and spoken of as it or each, then
     names each of the eight again where it says how they load code, the options a conversation's
-    own node takes instead, and that a command needing one sets it itself, rather than having them dropped unseen, while a variable that loads nothing passes beside them unnamed
+    own node takes instead, and that a command needing one sets it itself, rather than having
+    them dropped unseen, while a variable that loads nothing passes beside them unnamed
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the

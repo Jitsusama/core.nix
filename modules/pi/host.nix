@@ -536,20 +536,20 @@ in
               grows each limit by one plus the percent over a hundred, in place
               of the factor it would pick. It still grows a limit by at least a
               few megabytes past what is live, adds room for the young
-              generation and stops halfway to the heap limit, so a small heap
-              grows by more than the percent. Unset, with a heap
-              limit of 2048 MB or more, as conversationHeapMb's default is, V8
-              lets the heap reach up to four times what is live while
-              collections keep up, and carries that growth as resident memory
-              between collections, but grows by a tenth after a collection that
-              gives memory back. Set, the percent stands in for both. A lower
-              percent collects more often, keeping less resident for more
-              collection time; it stops at 100, since more would grow past V8's
-              own choice more often. It reaches only conversations in a unit of
-              their own, on Linux: hosts, and a Mac's pi, keep V8's own growth.
-              A node that doesn't know the flag refuses it as a bad option, so
-              each of the realm's conversations would end as it starts until
-              the percent is unset.
+              generation and stops halfway from what is live to the heap
+              limit, so a small heap grows by more than the percent. Unset,
+              with a heap limit of 2048 MB or more, as conversationHeapMb's
+              default is, V8 lets the heap reach up to four times what is live
+              while collections keep up, and carries that growth as resident
+              memory between collections, but grows by a tenth after a
+              collection that gives memory back. Set, the percent stands in for
+              both. A lower percent collects more often, keeping less resident
+              for more collection time; it stops at 100, since more would grow
+              past V8's own choice more often. It reaches only conversations in
+              a unit of their own, on Linux: hosts, and a Mac's pi, keep V8's
+              own growth. A node that doesn't know the flag refuses it as a bad
+              option, so each of the realm's conversations would end as it
+              starts until the percent is unset.
             '';
           };
           asyncContextFrame = lib.mkOption {

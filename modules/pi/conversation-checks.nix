@@ -256,7 +256,8 @@ in
         in
         lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
         && lib.hasSuffix "/scripts/pi-host.ts --child" start;
-      grows =
+      # Whether a unit is there and its command leaves V8 its own growth.
+      keepsOwnGrowth =
         unit: services ? ${unit} && !(lib.hasInfix "--heap-growing-percent" (startOf services unit));
       # How a realm naming this percent evaluates its conversation's command.
       tried =
@@ -280,9 +281,9 @@ in
           (
             kind:
             set kind
-            && grows "pi-host-set-${kind}"
-            && grows "pi-conversation-plain-${kind}@"
-            && grows "pi-host-plain-${kind}"
+            && keepsOwnGrowth "pi-host-set-${kind}"
+            && keepsOwnGrowth "pi-conversation-plain-${kind}@"
+            && keepsOwnGrowth "pi-host-plain-${kind}"
           )
           [
             "attended"
