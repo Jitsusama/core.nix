@@ -209,10 +209,53 @@ impl Said {
     }
 }
 
-/// One machine: whether a link reaches it, what it's short of, its disk,
-/// its battery, what its own health says of its own parts and its
-/// sessions, each said only when it's worth saying, with the words of
-/// what is worth a look in it.
+/// One machine: what its node says of it, then its sessions, each said
+/// only when it's worth saying, with the words of what is worth a look in
+/// it, its worst first.
+fn machine(
+    said: &Value,
+    sessions: Option<&Value>,
+    own: Option<&Value>,
+    backup: Option<Backup>,
+) -> (Thing, Vec<String>) {
+    let Said {
+        mut line,
+        mut looks,
+    } = looked(said, own, backup);
+    let health = looks
+        .iter()
+        .map(|(health, ..)| *health)
+        .max()
+        .unwrap_or(Health::Good);
+    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
+    // The side says the worst first; a sort that keeps ties in place keeps
+    // the rest in the order they were found.
+    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
+    let looks: Vec<Look> = looks.into_iter().map(|(.., look)| look).collect();
+    let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
+    if line.is_empty() {
+        line.push("is ready".to_owned());
+    }
+    if let Some(sessions) = sessions {
+        line.push(format!("runs {}", sessions_said(sessions)));
+    }
+    let thing = Thing {
+        kind: "machine",
+        name: name_of(said).to_owned(),
+        health,
+        says: line.join(", "),
+        side,
+        looks,
+        address: None,
+        ties: Value::Null,
+    };
+    (thing, named)
+}
+
+/// What a machine's node says of it, in the order its line says it:
+/// whether a link reaches it, what it's short of, its disk, its battery,
+/// its firmware, what its own health says of its own parts and its quest
+/// backup, each a look with why it matters where it is worth one.
 ///
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
@@ -222,12 +265,7 @@ impl Said {
 /// regenerates by itself, so only one it couldn't keep from nearly full
 /// is the reader's to act on. Two machines each with hundreds of
 /// gigabytes free were once headlined both worth a look for it.
-fn machine(
-    said: &Value,
-    sessions: Option<&Value>,
-    own: Option<&Value>,
-    backup: Option<Backup>,
-) -> (Thing, Vec<String>) {
+fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
         words.look(
@@ -324,38 +362,7 @@ fn machine(
     if let Some(backup) = backup {
         backup_looks(&mut words, backup);
     }
-    let Said {
-        mut line,
-        mut looks,
-    } = words;
-    let health = looks
-        .iter()
-        .map(|(health, ..)| *health)
-        .max()
-        .unwrap_or(Health::Good);
-    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
-    // The side says the worst first; a sort that keeps ties in place keeps
-    // the rest in the order they were found.
-    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
-    let looks: Vec<Look> = looks.into_iter().map(|(.., look)| look).collect();
-    let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
-    if line.is_empty() {
-        line.push("is ready".to_owned());
-    }
-    if let Some(sessions) = sessions {
-        line.push(format!("runs {}", sessions_said(sessions)));
-    }
-    let thing = Thing {
-        kind: "machine",
-        name: name_of(said).to_owned(),
-        health,
-        says: line.join(", "),
-        side,
-        looks,
-        address: None,
-        ties: Value::Null,
-    };
-    (thing, named)
+    words
 }
 
 /// How long ago, in whole hours, and under the first hour as one span.
