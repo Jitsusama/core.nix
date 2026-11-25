@@ -7,7 +7,8 @@ say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
 page checks at a phone's width and a desk's in both looks. It must open with
-what is worth a look, each leading where it can be seen whole. Its keys and
+what is worth a look, each leading where it can be seen whole, a machine's
+long name leaving its look's words room at both widths. Its keys and
 places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
@@ -502,6 +503,45 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
         " return away.scrollWidth > away.clientWidth; })()"
     )
     assert spills is False, "the list out of reach spilled past a phone's width"
+
+
+# A spot machine's name, as long as the provider's: sized to it, the names'
+# column once took a phone's whole width and left the words a letter wide.
+LONG_NAME = "gull-spot-provider-s99ia2-1795535220"
+# The least of the list's width each look's words keep, whatever the names:
+# the names' column takes two fifths at most, and the mark and gaps a little.
+WORDS_KEEP = 0.4
+# Where each look's words run to, against the list's width and the window's.
+WORDS_ROOM = """(() => {
+  const list = document.querySelector('#looks').getBoundingClientRect();
+  const words = [...document.querySelectorAll('#looks .words')]
+    .map((w) => w.getBoundingClientRect());
+  return { least: Math.min(...words.map((w) => w.width)) / list.width,
+    past: Math.max(...words.map((w) => w.right)) - innerWidth };
+})()"""
+
+
+def test_a_long_name_leaves_its_words_room_on_a_phone(
+    system_page: Page, system_daemon: StandIn
+) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    long: dict[str, object] = {
+        **machine_called(LONG_NAME),
+        "health": "bad",
+        "says": "has a nearly full disk, 54 GB free",
+        "side": ["nearly full disk, 54 GB free"],
+    }
+    system_daemon.tell("machine", changed=[long])
+    things = ["machine:kestrel", "machine:osprey", f"machine:{LONG_NAME}"]
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": things}])
+    look = system_page.locator(f"#looks a[data-row^='look:machine:{LONG_NAME}:']")
+    expect(look, "the long-named machine's look never came").to_be_visible(timeout=PACE_MS)
+    for width, height in SIZES:
+        system_page.set_viewport_size({"width": width, "height": height})
+        room = system_page.evaluate(WORDS_ROOM)
+        assert room["past"] <= 0, f"at {width} px a look's words ran {room['past']} px past"
+        assert room["least"] >= WORDS_KEEP, f"at {width} px a look's words kept {room['least']}"
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:
