@@ -410,10 +410,15 @@
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
       export PYTHON=${lib.getExe pkgs.python3} KINDS=${../tests/stand-ins/daemon-kinds.py}
       ${shellFolderLint}
+      set -o pipefail
       timeout 90 ${qs} -p shell.qml 2>&1 | tee log
-      grep -F 'letting-go: let its connection go with 1 ask unanswered' log
       # Said as information, since nothing went wrong: a warning here is one
       # a journal read for the shell's faults would find (Daemon.qml's gone).
+      # Quickshell says a line's level before it, as INFO or WARN.
+      if ! grep -E 'INFO.*letting-go: let its connection go with 1 ask unanswered' log; then
+        echo 'a connection the shell let go was not said as information' >&2
+        exit 1
+      fi
       if grep -F 'letting-go: let its connection go' log | grep -q 'WARN'; then
         echo 'a connection the shell let go was said as a warning' >&2
         exit 1
