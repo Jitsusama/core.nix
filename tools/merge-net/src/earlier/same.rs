@@ -6,6 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::process::Command;
 
 use super::{pins, seen};
 use crate::{candidates, candidates_at, git_at, patch_of, ready, short};
@@ -172,17 +173,52 @@ fn in_full<'a>(
         .collect()
 }
 
-/// Whether a base is on `main`, in the repo at `repo`, one git a base.
+/// Whether a base is on `main`, in the repo at `repo`, one git a base. A
+/// git that couldn't check one, as in a repo it can't open, counts it as
+/// off main, as the gate must, but says git's own words, so its refusal
+/// isn't read as a review gap when it's the net that's broken.
 fn on_main_at<'a>(repo: &'a Path, main: &'a str) -> impl FnMut(&str) -> bool + 'a {
     let mut known = HashMap::new();
     move |base: &str| {
         *known.entry(base.to_owned()).or_insert_with(|| {
             // One git would read as an option is no base.
-            !base.is_empty()
-                && !base.starts_with('-')
-                && git_at(repo, &["merge-base", "--is-ancestor", base, main]).is_ok()
+            if base.is_empty() || base.starts_with('-') {
+                return false;
+            }
+            match is_ancestor(repo, base, main) {
+                Ok(on_main) => on_main,
+                Err(said) => {
+                    eprintln!("merge-net: {}", couldnt_check(base, &said));
+                    false
+                }
+            }
         })
     }
+}
+
+/// Whether `base` is an ancestor of `main` in the repo at `repo`, as
+/// `merge-base --is-ancestor` answers, its 1 being no; anything else git
+/// ends with is its failure, in its own words.
+fn is_ancestor(repo: &Path, base: &str, main: &str) -> Result<bool, String> {
+    let ran = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["merge-base", "--is-ancestor", base, main])
+        .output()
+        .map_err(|error| format!("running git: {error}"))?;
+    match ran.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => Err(String::from_utf8_lossy(&ran.stderr).trim().to_owned()),
+    }
+}
+
+/// What's said of a base git couldn't check, with what git said.
+fn couldnt_check(base: &str, said: &str) -> String {
+    format!(
+        "git couldn't check whether the base {} is on main, so it counts as off main: {said}",
+        seen::base_named(base)
+    )
 }
 
 /// The earlier commits of `commit`'s change among `records` touching
@@ -612,11 +648,11 @@ mod tests {
         assert_eq!(unread, seen::unread("ccc"));
     }
 
-    // A base git can't check, as in a repo it can't open, reads as one off
-    // main, so the refusal names it, which is how a reader tells the two
-    // apart.
+    // A base git can't check, as in a repo it can't open, counts as one off
+    // main, as the gate must, and git's own failure is kept apart from its
+    // no, so it can be said.
     #[test]
-    fn a_base_git_cannot_check_is_named() {
+    fn a_base_git_cannot_check_counts_as_off_main_and_keeps_why() {
         let repo = env::temp_dir().join(format!("merge-net-no-repo-{}", std::process::id()));
         let _ = fs::remove_dir_all(&repo);
         let base = "0123456789abcdef0123456789abcdef01234567";
@@ -632,6 +668,13 @@ mod tests {
         assert!(
             refused.contains("couldn't check (read from: 0123456789ab)"),
             "a base git couldn't check wasn't named: {refused}"
+        );
+        let said = is_ancestor(&repo, base, "main").unwrap_err();
+        assert!(!said.is_empty(), "git's failure lost its words");
+        let told = couldnt_check(base, &said);
+        assert!(
+            told.contains("the base 0123456789ab is on main") && told.ends_with(&said),
+            "{told}"
         );
     }
 

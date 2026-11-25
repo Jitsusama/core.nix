@@ -269,9 +269,10 @@ fn read_in(text: &str) -> Vec<Read> {
             // A recorded base that's no commit, null and other kinds
             // included, is no base, rather than the range's name, which may
             // be another commit than the round read. Only a round that
-            // records none, from before rounds did, falls back to the name.
+            // records none, from before rounds did, falls back to the name,
+            // a full id in it spelled as git spells one, a ref as it is.
             let from = named.as_ref().map(|named| match round.get("from") {
-                None => named.clone(),
+                None => as_commit_id(named).unwrap_or_else(|| named.clone()),
                 Some(from) => from.as_str().and_then(as_commit_id).unwrap_or_default(),
             });
             round["witness"]
@@ -284,9 +285,9 @@ fn read_in(text: &str) -> Vec<Read> {
                         .flatten()
                         .filter_map(Value::as_str),
                 )
-                .filter(|witness| is_commit_id(witness))
+                .filter_map(as_commit_id)
                 .map(|witness| Read {
-                    commit: witness.to_owned(),
+                    commit: witness,
                     from: from.clone(),
                 })
                 .collect::<Vec<_>>()
@@ -361,30 +362,38 @@ pub fn unread(short: &str) -> String {
 /// only a round of this machine that recorded no base at all falls back
 /// to, as the range spelled it. That name is shown whole up to
 /// `LONGEST_NAME` characters, since a ref cut short names no ref, with each
-/// control character as a question mark, so it can't move the terminal it
-/// is printed to. A ref may point elsewhere by the time it's read.
+/// character that could move the terminal it is printed to or reorder the
+/// line (`unshown`) as a question mark. A ref may point elsewhere by the
+/// time it's read.
 pub fn base_named(base: &str) -> String {
     if base.is_empty() {
         "no commit id recorded".to_owned()
-    } else if is_commit_id(base) {
-        crate::short(base).to_owned()
+    } else if let Some(commit) = as_commit_id(base) {
+        crate::short(&commit).to_owned()
     } else {
         let mut named: String = base
             .chars()
             .take(LONGEST_NAME)
-            .map(|character| {
-                if character.is_control() {
-                    '?'
-                } else {
-                    character
-                }
-            })
+            .map(|character| if unshown(character) { '?' } else { character })
             .collect();
         if base.chars().nth(LONGEST_NAME).is_some() {
             named.push_str("...");
         }
         named
     }
+}
+
+/// Whether `character` would act on the terminal rather than show: a
+/// control character (C0, DEL and C1, the 8-bit CSI among them), or a
+/// format character that reorders or hides text (bidi embeddings,
+/// overrides and isolates, the Arabic letter mark, and the zero-width
+/// marks), as Trojan Source uses to make one name read as another.
+fn unshown(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character,
+            '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'
+        )
 }
 
 /// The most characters of a range's name a refusal shows: git's longest

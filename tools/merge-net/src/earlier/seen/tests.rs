@@ -75,6 +75,12 @@ fn a_collected_round_reads_its_witness() {
         ]}))]),
         [id('a')]
     );
+    // git reads a full id in capitals as the same commit, so it's read in
+    // git's own spelling, as a base is.
+    assert_eq!(
+        read(&[round(&json!({"witness": id('a').to_uppercase()}))]),
+        [id('a')]
+    );
 }
 
 // A witness that isn't a full commit id, which git would read as
@@ -85,7 +91,7 @@ fn a_witness_that_is_no_commit_id_reads_nothing() {
         "main",
         "HEAD",
         "aaa",
-        &id('A'),
+        "AAA",
         &id('g'),
         &format!("{}a", id('a')),
     ] {
@@ -243,9 +249,11 @@ fn a_range_round_reads_from_the_base_it_records() {
         ),
     ]
     .map(|(base, from, read)| (base.to_owned(), Some(from), read));
+    let capitals = id('9').to_uppercase();
     let absent = [
         ("origin/main", Some("origin/main".to_owned())),
         (id('9').as_str(), Some(id('9'))),
+        (capitals.as_str(), Some(id('9'))),
     ]
     .map(|(base, read)| (base.to_owned(), None, read));
     for (base, from, read) in cases.into_iter().chain(absent) {
@@ -471,7 +479,8 @@ fn newest_round_files_of_another_shape_are_said_so() {
 // A refusal names a base by what it is: a full commit id of either length
 // short; an empty one as no commit id; anything else, a hex short id as
 // much as a ref, whole, since cut short it names nothing, but bounded and
-// with no control character to move the terminal it's printed to.
+// with no character to move the terminal it's printed to or reorder the
+// line.
 #[test]
 fn a_base_is_named_short_only_as_a_full_commit_id() {
     let sha256 = "e".repeat(64);
@@ -486,7 +495,17 @@ fn a_base_is_named_short_only_as_a_full_commit_id() {
             "origin/release-2026".to_owned(),
         ),
         ("a\u{1b}[31mb\nc".to_owned(), "a?[31mb?c".to_owned()),
+        ("a\u{9b}31mb".to_owned(), "a?31mb".to_owned()),
+        (
+            "main\u{202e}\u{2066}x\u{200b}\u{feff}\u{61c}".to_owned(),
+            "main??x???".to_owned(),
+        ),
+        (id('E').to_uppercase(), "e".repeat(12)),
         (long_name, format!("{}...", "x".repeat(LONGEST_NAME))),
+        (
+            "x".repeat(LONGEST_NAME + 1),
+            format!("{}...", "x".repeat(LONGEST_NAME)),
+        ),
         ("x".repeat(LONGEST_NAME), "x".repeat(LONGEST_NAME)),
     ];
     for (base, named) in cases {
