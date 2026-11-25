@@ -51,7 +51,8 @@ Nothing on it acts on the network.
   grows out of says how it came. Both drawers say it split rather than
   that anybody started it, since a split is not a start. Only a forage here says a split, and
   only of a cell with a forage here, so only this machine's splits are
-  drawn.
+  drawn, and a network can grow out of one network here and another on a
+  machine that can't read its splits.
 - **Lines thin as the map steps out past its own size.** What each line
   carries past a hairline thins with the zoom, as the cells shrink with
   it, so the cells read first: a heavier line still reads heavier than a

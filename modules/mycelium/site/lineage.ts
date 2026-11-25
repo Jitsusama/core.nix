@@ -220,17 +220,19 @@ function grownFrom(key: string, { starters, splitters, cells, split }: Came): Gr
  * the network it is drawn in, none for a receptor or a cell working
  * alone). A network the node sets within none grows out of the network
  * whose cells started more of its cells than any other, ties going to the
- * first by name. Where the node says a network sits always stands, a start
- * from inside the network or what sits in it counts for nothing, and the
- * strongest starts are settled first, so of two networks that started
- * each other's cells the one that started more is the trunk, and no
- * branch is grown that would loop back round to itself. A split counts as
- * a start does, and is said apart, since nobody is said to have started it.
- * Each of a cell's origins counts toward the network it came from, once a
- * network and its start before its split, so a cell started from one
- * network and split from another counts toward both, and where its branch
- * grows from says how it came from there. A network whose strongest choice
- * would loop grows out of the next, so a start refused never hides a split.
+ * one that started more, then to the first by name. Where the node says a
+ * network sits always stands, a start from inside the network or what sits
+ * in it counts for nothing, and every network's choices are settled
+ * together, strongest first, so of two networks that started each other's
+ * cells the one that started more is the trunk, and no branch is grown
+ * that would loop back round to itself. A network whose strongest choice
+ * would loop grows out of its next when that comes, never ahead of a
+ * stronger choice elsewhere. A split counts as a start does, and is said
+ * apart, since nobody is said to have started it. Each of a cell's origins
+ * counts toward the network it came from, once a network and its start
+ * before its split, so a cell started from one network and split from
+ * another counts toward both, and where its branch grows from says how it
+ * came from there.
  */
 function grownOf(
   networks: readonly Network[],
@@ -276,25 +278,21 @@ function grownOf(
         from.set(hub, had);
       }
     }
-    return [...from]
-      .map(([key, had]) => grownFrom(key, had))
-      .sort(
-        (one, other) => other.cells - one.cells || collate(nameOf(one.from), nameOf(other.from)),
-      );
+    return [...from].map(([key, had]) => grownFrom(key, had));
   };
-  const offered = networks
+  const choices = networks
     .filter((network) => network.within === null)
-    .map((network) => ({ key: network.key, choices: cameFrom(network) }))
-    .filter(({ choices }) => choices.length > 0);
-  const strongest = (choices: readonly Grown[]): number => choices[0]?.cells ?? 0;
-  offered.sort(
+    .flatMap((network) => cameFrom(network).map((choice) => ({ key: network.key, choice })));
+  choices.sort(
     (one, other) =>
-      strongest(other.choices) - strongest(one.choices) || collate(one.key, other.key),
+      other.choice.cells - one.choice.cells ||
+      other.choice.started - one.choice.started ||
+      collate(one.key, other.key) ||
+      collate(nameOf(one.choice.from), nameOf(other.choice.from)),
   );
-  for (const { key, choices } of offered) {
-    const offer = choices.find((choice) => !sitsIn(choice.from, key));
-    if (offer) {
-      grown.set(key, offer);
+  for (const { key, choice } of choices) {
+    if (!grown.has(key) && !sitsIn(choice.from, key)) {
+      grown.set(key, choice);
     }
   }
   return grown;

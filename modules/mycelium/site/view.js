@@ -3372,9 +3372,10 @@ import {
       ["Repository", s.repo],
       // Who started it, as its record or forage says, by name where it is drawn.
       ["Started", [s.since ? atWords(s.since) : "", m.startedBy.has(s.address) ? `by ${m.byAddress.get(m.startedBy.get(s.address))?.short || m.startedBy.get(s.address)}` : ""].filter(Boolean).join(", ")],
-      // What its purpose split from, as its forage says, which can name a
-      // cell its start doesn't, or say it once the start is let go.
-      ["Split from", from ? m.byAddress.get(from)?.short || from : ""],
+      // What its purpose split from, as its forage says, where it names a
+      // cell its start doesn't or says it once the start is let go: a split
+      // from the cell that started it is said once, as the network's drawer does.
+      ["Split from", from && from !== m.startedBy.get(s.address) ? m.byAddress.get(from)?.short || from : ""],
       ["Last turn", u.last_turn ? agoWords(u.last_turn) : ""],
     ].filter(([, v]) => v);
     // Its machine as drawn, a basin for a basin's machine; and the machine

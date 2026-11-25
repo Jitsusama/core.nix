@@ -246,12 +246,13 @@ it("a cell's forage says what it split from, else the first forage listing it sp
 it("a split naming the cell itself, a blank or anything but words names nothing", () => {
   const these = [
     forage("SELF01", { split_from: "SELF01", split_into: ["SELF01", "", 7] }),
-    forage("BLANK1", { split_from: "", split_into: "TERNAA" }),
+    forage("BLANK1", { split_from: "", split_into: "T" }),
     forage("NUMBER", { split_from: 7, split_into: null }),
     forage("ALONE1", { split_from: null }),
     { key: "forage:NOCELL", kind: "forage", heard: AT, lineage: { split_into: ["GULL01"] } },
-    // The cells listed have forages here, so only how they were listed keeps them out.
-    forage("TERNAA", {}),
+    // The cells listed have forages here, so only how they were listed keeps them out:
+    // a string read as a list would name T.
+    forage("T", {}),
     forage("GULL01", {}),
   ];
   assert.deepEqual(nowOf(told(these), AT).split, []);
@@ -350,19 +351,38 @@ it("a start whose branch would loop leaves the network to grow from its split", 
   });
 });
 
-it("splits count as starts do in choosing the trunk, and a start elsewhere is not said", () => {
+it("a start and a split of one weight grow from the start, whatever their names", () => {
   const networks = [
     network("skiff", ["SKIFF1"]),
     network("gull", ["GULL01"]),
-    network("heron", ["HERON1", "HERON2", "HERON3"]),
+    network("heron", ["HERON1"]),
   ];
-  const origins = originsOf(startedBy("SKIFF1", "HERON1"), [
-    { cell: "HERON2", from: "GULL01" },
-    { cell: "HERON3", from: "GULL01" },
-  ]);
+  const origins = originsOf(startedBy("SKIFF1", "HERON1"), [{ cell: "HERON1", from: "GULL01" }]);
   assert.deepEqual(grown(networks, origins), {
-    heron: { from: "gull", by: [], cells: 2, started: 0, split: { from: ["GULL01"], cells: 2 } },
+    heron: { from: "skiff", by: ["SKIFF1"], cells: 1, started: 1 },
   });
+});
+
+it("a choice left over from a loop settles only after every stronger choice", () => {
+  const networks = [
+    network("aaa", ["AUK001", "AUK002", "AUK003", "AUK004"]),
+    network("bbb", ["BRANT1", "BRANT2", "BRANT3", "BRANT4", "BRANT5"]),
+    network("ccc", ["CRANE1", "CRANE2"]),
+  ];
+  const origins = [
+    ...startedBy("AUK001", "BRANT1", "BRANT2", "BRANT3", "BRANT4", "BRANT5"),
+    ...startedBy("BRANT1", "AUK001", "AUK002", "AUK003"),
+    ...startedBy("CRANE1", "AUK004"),
+    ...startedBy("AUK002", "CRANE1", "CRANE2"),
+  ];
+  assert.deepEqual(
+    grown(networks, origins),
+    {
+      bbb: { from: "aaa", by: ["AUK001"], cells: 5, started: 5 },
+      ccc: { from: "aaa", by: ["AUK002"], cells: 2, started: 2 },
+    },
+    "aaa's one cell from ccc must not settle ahead of ccc's two from aaa and make it loop",
+  );
 });
 
 it("a network some of whose cells were started there and some split from it says each", () => {

@@ -380,11 +380,6 @@ export const described = (reading: Reading, key: string): string => {
   return `${id}, ${machineWords(reading, id)}, ${what}`;
 };
 
-/**
- * What each kind of shared thing a network gathers round is called in words.
- * The model keeps only the networks whose kind is named here, so the panel
- * and the map's drawing never meet a kind without its word.
- */
 /** How a branch grew, as lineage.ts counts it: whose cells there started or split its own. */
 export interface Grew<T> {
   readonly by: readonly T[];
@@ -419,6 +414,11 @@ export const grewWords = <T>(
   return lines;
 };
 
+/**
+ * What each kind of shared thing a network gathers round is called in words.
+ * The model keeps only the networks whose kind is named here, so the panel
+ * and the map's drawing never meet a kind without its word.
+ */
 export const SHARED_WORD: Readonly<Record<string, string>> = {
   project: "quest",
   repository: "repository",
