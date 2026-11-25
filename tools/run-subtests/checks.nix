@@ -8,17 +8,21 @@
 {
   # run-subtests runs a VM test whole with pytest picking the tests named, and
   # refuses a script that doesn't hand its tests to pytest, so what it runs is
-  # what was asked for (tools/run-subtests/run-subtests-test.py, against
-  # stand-ins for nix and a check's driver).
+  # what was asked for, and that only a failure main's quarantine lists
+  # blocks nothing (tools/run-subtests/run-subtests-test.py and
+  # run-subtests-quarantine-test.py, against stand_ins.py's stand-ins for
+  # nix, nix-offload, git and a check's driver, run from the folder so each
+  # finds conftest.py's fixtures).
   run-subtests-keeps-what-is-named =
     let
       run-subtests = pkgs.callPackage ./run-subtests.nix { };
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
     in
     pkgs.runCommandLocal "run-subtests-keeps-what-is-named" { } ''
-      RUN_SUBTESTS=${lib.getExe run-subtests} PYTHONDONTWRITEBYTECODE=1 \
+      cd ${./.}
+      RUN_SUBTESTS=${lib.getExe run-subtests} PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
         ${python}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
-        --quiet ${./run-subtests-test.py}
+        --quiet run-subtests-test.py run-subtests-quarantine-test.py
       touch $out
     '';
 
