@@ -699,9 +699,7 @@ Provider {
             detail: what, clears: 0, lapses: 0, period: 0 };
         Clearing.copied = copy;
         Clearing.now = Date.now();
-        // A copy asked is newer than any type before it, so the foot says
-        // the copy's own word, never an older type's refusal.
-        provider.typed = null;
+        provider.copyAsked = Clearing.now;
         const asked = { ask: "copy", key: key };
         if (detail !== null)
             asked.detail = detail;
@@ -714,9 +712,12 @@ Provider {
         });
     }
 
-    // The last type asked of the daemon: { key, title, detail, why, done },
-    // as Passwords.js's typeTold reads it, never the secret.
+    // The last type asked of the daemon: { key, title, detail, why, done,
+    // asked }, as Passwords.js's typeTold reads it, never the secret.
     property var typed: null
+    // When the last copy was asked, so the foot says whichever of a copy
+    // and a type came last (footFor).
+    property real copyAsked: 0
     // The window niri gave the keys as the launcher last opened, the one
     // a type may go into (typeSecret), or null over none.
     property var openedOver: null
@@ -737,7 +738,8 @@ Provider {
         const record = recordOf(key);
         if (record === null)
             return;
-        const typing = { key: key, title: Passwords.titleOf(record), detail: what, why: "" };
+        const typing = { key: key, title: Passwords.titleOf(record), detail: what, why: "",
+            asked: Date.now() };
         const window = Niri.current;
         if (window === null) {
             provider.typed = Object.assign(typing, { why: said.nowhere ?? "" });
@@ -762,16 +764,22 @@ Provider {
         });
     }
 
-    // What the foot says for a row of this entry: how its type stands, or
-    // its copy, while there's something to say of it (Passwords.js's
-    // typeTold and speaks), else `otherwise`.
+    // What the foot says for a row of this entry: how the later of its
+    // type and its copy stands, while there's something to say of it
+    // (Passwords.js's typeTold and speaks), else `otherwise`. An older
+    // act's word never stands in for a newer one's, as a copy refused
+    // before a type that went.
     function footFor(key, otherwise) {
         const typing = provider.typed?.key === key
             ? Passwords.typeTold(provider.typed, said) : "";
-        if (typing !== "")
-            return typing;
+        const typedLast = provider.typed?.key === key
+            && (provider.typed.asked ?? 0) >= provider.copyAsked;
+        if (typedLast)
+            return typing !== "" ? typing : otherwise;
         const copy = Clearing.copied?.key === key ? Clearing.copied : null;
-        return Passwords.speaks(copy) ? Passwords.told(copy, Clearing.now, said) : otherwise;
+        if (Passwords.speaks(copy))
+            return Passwords.told(copy, Clearing.now, said);
+        return typing !== "" ? typing : otherwise;
     }
 
     // The row leading the place while a manager can't read: a thing, the

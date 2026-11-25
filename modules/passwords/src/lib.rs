@@ -165,7 +165,8 @@ pub enum Ask {
         detail: Option<String>,
         window: u64,
     },
-    /// The one-time code an entry gives now, and how long it lasts.
+    /// The one-time code an entry gives now, which is refused, as a
+    /// reveal is, since the code would be a secret on the pipe.
     Code {
         id: Value,
         key: String,

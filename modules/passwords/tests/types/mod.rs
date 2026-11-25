@@ -694,7 +694,7 @@ fn a_type_asked_while_one_is_under_way_is_refused_and_typed_once() {
     std::fs::write(&slow, SLOW_TYPIST).unwrap();
     std::fs::set_permissions(&slow, PermissionsExt::from_mode(0o755)).unwrap();
     let typist = slow.to_string_lossy().into_owned();
-    let (running, _journal) = running("twice", &desk, &[("PASSWORDS_TYPIST", &typist)]);
+    let (running, journal) = running("twice", &desk, &[("PASSWORDS_TYPIST", &typist)]);
     let mut client = running.client();
     client.say(&json!({"id": 2, "ask": "type", "key": "entry:keeping:gh", "window": WINDOW}));
     let begun = desk.folder.join("typed.begun");
@@ -710,6 +710,12 @@ fn a_type_asked_while_one_is_under_way_is_refused_and_typed_once() {
         "the second type wasn't refused as one under way: {again}"
     );
     holds_no_secret(&again);
+    // The journal says the refusal before the first type's own line.
+    let refusal = told(&journal);
+    assert!(
+        refusal.contains("PASSWORDS_TYPED=didn't type") && refusal.contains("already under way"),
+        "the refused type wasn't said in the journal: {refusal}"
+    );
     std::fs::write(desk.folder.join("typed.go"), "").unwrap();
     let first = loop {
         let heard = client.hear();

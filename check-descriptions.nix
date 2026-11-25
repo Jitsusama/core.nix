@@ -3185,8 +3185,8 @@
     naming no secret, can't be read through /proc by the
     account's other processes nor write a core dump, says nothing of its own on the shell's pipe
     whether it ends well, fails or panics, ends once whatever ran it closes its end,
-    says how long a one-time code lasts and never the code, gives a one-time code's detail as
-    its code and never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    refuses to hand a one-time code back, reading none, gives a one-time code's detail as its
+    code and never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     serves each entry's row and drawer keyed by its place, in the account's own words and with no
     secret, rows spaced 1024 apart and one row moving told alone, a row with nothing to copy or
     open reading its details, and refuses rows where the words didn't read;

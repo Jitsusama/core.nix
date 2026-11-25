@@ -1024,8 +1024,9 @@ fn answer(shared: &Shared, asked: Ask, told: &Sender<String>) -> Value {
         // Refused, reading nothing: a secret handed back on the pipe would
         // reach any process of Joel's that opens the shell's end of it, which
         // copying and typing never hand back (ISXEG8, 2026-11-25), and
-        // nothing in the shell asks it.
-        Ask::Reveal { id, .. } => error(&id, "refused", REVEALS_NOTHING),
+        // nothing in the shell asks it. A one-time code is such a secret,
+        // and a copy of one already says how long it lasts.
+        Ask::Reveal { id, .. } | Ask::Code { id, .. } => error(&id, "refused", REVEALS_NOTHING),
         Ask::Copy { id, key, detail } => copied(shared, &id, &key, detail.as_deref()),
         Ask::Type {
             id,
@@ -1033,7 +1034,6 @@ fn answer(shared: &Shared, asked: Ask, told: &Sender<String>) -> Value {
             detail,
             window,
         } => type_in(shared, &id, &key, detail.as_deref(), window),
-        Ask::Code { id, key } => code(shared, &id, &key),
         Ask::Audit { id, asked } => audit_all(shared, &id, asked),
         Ask::LetIn { id, manager } => {
             if !lock(shared).held.managers().contains(&manager) {
@@ -1373,16 +1373,22 @@ fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window:
     // asked while another is under way is refused, not queued, since a
     // Return pressed again while nothing seems to happen would otherwise
     // type the secret a second time once the first is done.
-    let _one = match TYPING.try_lock() {
-        Ok(one) => one,
-        Err(std::sync::TryLockError::Poisoned(one)) => one.into_inner(),
-        Err(std::sync::TryLockError::WouldBlock) => return error(id, "refused", TYPING_ALREADY),
-    };
     let title = lock(shared)
         .held
         .get(key)
         .map(|entry| entry.title().to_owned())
         .unwrap_or_default();
+    let journal = lock(shared).journal.clone();
+    let _one = match TYPING.try_lock() {
+        Ok(one) => one,
+        Err(std::sync::TryLockError::Poisoned(one)) => one.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => {
+            // Said in the journal as every other refused type is.
+            let line = passwords::typing::journal_line(&title, "", "didn't type", TYPING_ALREADY);
+            secret_asks::reading::send(&journal, &line);
+            return error(id, "refused", TYPING_ALREADY);
+        }
+    };
     let (answer, line) = match typed(shared, key, detail, window) {
         Ok((app, label)) => (
             json!({"id": id, "typed": true, "detail": label}),
@@ -1393,7 +1399,6 @@ fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window:
             passwords::typing::journal_line(&title, &app, "didn't type", &why),
         ),
     };
-    let journal = lock(shared).journal.clone();
     secret_asks::reading::send(&journal, &line);
     answer
 }
@@ -1453,28 +1458,6 @@ fn typed(
         return Err(failed(format!("the typist ended {ended}")));
     }
     Ok((app, secret.label))
-}
-
-/// How long an entry's one-time code lasts: its period and the seconds
-/// left in it, never the code, which only copying or typing hands on, as
-/// reveal is refused (`REVEALS_NOTHING`).
-fn code(shared: &Shared, id: &Value, key: &str) -> Value {
-    let Some((manager, entry)) = named(key) else {
-        return error(id, "refused", &format!("{key} isn't an entry's key"));
-    };
-    match ask_of(
-        shared,
-        manager,
-        asking("code", &[("entry", json!(entry))]),
-        PATIENCE * 6,
-    ) {
-        Ok(answer) => json!({
-            "id": id,
-            "period": answer.get("period"),
-            "left": answer.get("left"),
-        }),
-        Err((code, message)) => error(id, code, &message),
-    }
 }
 
 /// How long a manager may take to give every password: 1Password asks
