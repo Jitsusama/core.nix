@@ -394,7 +394,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         } else {
             standing::returns(stands, windowed)
         },
-        acts: standing::acts(stands, windowed, session.here()),
+        acts: standing::acts(acting(session, stands, known), windowed, session.here()),
         leaves: leaves(session, known, words),
         talk: None,
         ranked: Ranked {
@@ -468,6 +468,19 @@ impl Row {
 /// off still waits, so its row keeps his mark, but in the hue it would
 /// wear wanting nothing, muted for one parked, as its mark is, lighting
 /// nothing above it (top.rs) until the hour is up.
+/// How it stands to what it can be asked to do: one paused that wants
+/// Joel needs him, but its acts stay a paused one's, Resume and no Park,
+/// since the harness parks none under another hold (agentic-harness.pi
+/// #2159), as a parked one's stay a parked one's (Session::stands_to_joel).
+fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
+    match stands {
+        Stands::Needs if session.stands_wanting_nothing(known.jobs) == Stands::Paused => {
+            Stands::Paused
+        }
+        stands => stands,
+    }
+}
+
 fn worn(session: Session, known: &Known, warns: bool) -> (Stands, Option<Stands>, &'static str) {
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
     let unwanted = unwanted(session, known, wears);
@@ -707,6 +720,29 @@ mod tests {
             ["shapeSquare", "agent", "agent"],
             "its team's shape as it orchestrates; the agent's mark once it doesn't, or for one \
              leading no team"
+        );
+    }
+
+    #[test]
+    fn a_paused_session_wanting_joel_keeps_a_paused_ones_acts() {
+        let asking = |state: &str| {
+            json!({"presence": {"addresses": ["P"], "session": "s-lead", "state": state,
+                "wants": {"kind": "approval", "said": "May I push?"}}})
+        };
+        let row = made(&asking("paused"), Place::default(), &given());
+        assert_eq!(row.state, "needs", "it needs Joel, so it's marked as his");
+        assert_eq!(
+            row.acts.join(" "),
+            "switch talk resume close",
+            "it's offered Resume, and neither a Pause nor a Park the harness refuses under \
+             its hold"
+        );
+        assert_eq!(
+            made(&asking("listening"), Place::default(), &given())
+                .acts
+                .join(" "),
+            "switch talk pause park close",
+            "one listening that wants him can still be paused or parked"
         );
     }
 
