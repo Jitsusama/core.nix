@@ -111,7 +111,7 @@ pub fn answering(
                                     });
                                 if let Err(error) = walking {
                                     WALKING.store(false, Ordering::Release);
-                                    eprintln!("disk-guard: footprint: {error}");
+                                    say!("disk-guard: footprint: {error}");
                                 }
                                 return;
                             }
@@ -138,7 +138,7 @@ pub fn answering(
                 });
                 if let Err(error) = answered {
                     // Out of descriptors, most likely; a moment may free one.
-                    eprintln!("disk-guard: answering: {error}");
+                    say!("disk-guard: answering: {error}");
                     std::thread::sleep(Duration::from_millis(500));
                 }
             }

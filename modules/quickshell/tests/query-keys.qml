@@ -1110,6 +1110,16 @@ QtObject {
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
             Search.found("\u2060\u200b", "a-\u2060b"), []);
+        // A title's lines are its words broken where a space stood
+        // (Identifier.titleLines), so its wash reads each break as that
+        // space and washes across it, where any other text's break ends one.
+        const wash = { ink: "ink", ground: "ground" };
+        const washing = words => `<span style="color:ink;background-color:ground">${words}</span>`;
+        holds("a title's break is washed across as the space it stood for",
+            Search.washed("Drawing 2026-11-09\n10.12.03.svg", "11-09 10", wash, true),
+            `Drawing 2026-${washing("11-09<br>10")}.12.03.svg`);
+        holds("though another text's break still ends what's washed",
+            Search.washed("line 14\nline 15", "14 line", wash, false), "line 14<br>line 15");
         // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
@@ -1921,6 +1931,12 @@ QtObject {
         // What a laid line runs on into the next with (DrawerLines.runsOn),
         // from all it holds to the next line past the letters it keeps:
         // what Qt wrapped at, or null for a break however Qt keeps it.
+        // A title's break stands for the space it was laid at, so a search
+        // runs on across it as across a wrap, as the title's wash does.
+        holds("a laid line of a title runs on with the space its break stood for",
+            Lines.runsOn("Drawing 2026-11-09\u2028", 18, true), " ");
+        holds("and with none at another text's break",
+            Lines.runsOn("Drawing 2026-11-09\u2028", 18, false), null);
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],

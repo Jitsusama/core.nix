@@ -8,7 +8,8 @@
 //! host asked for as its key's fingerprint and the session the client
 //! claims (src/peer.rs), and only then, after ` -- `, the sentence a
 //! person reads. A login signed also says which key signed it, the
-//! builders' or an agent's behind, and the account it logs in as:
+//! builders', the proxy's own for OS Login hosts or an agent's behind,
+//! and the account it logs in as:
 //!
 //! ```text
 //! pi-agent-proxy: signed host=SHA256:... key=builders user=nix-offload claimed-session=01a1...
@@ -52,6 +53,10 @@ pub enum Why {
     NotLent,
     /// A login to a lent builder with a key other than the builders'.
     LentHost,
+    /// A login with the OS Login key to a host that isn't an OS Login one.
+    NotOsLogin,
+    /// A login to an OS Login host with a key other than the OS Login one.
+    OsLoginHost,
 }
 
 impl Why {
@@ -73,6 +78,8 @@ impl Why {
             Why::Account => "account",
             Why::NotLent => "not-lent",
             Why::LentHost => "lent-host",
+            Why::NotOsLogin => "not-os-login",
+            Why::OsLoginHost => "os-login-host",
         }
     }
 }
@@ -122,11 +129,13 @@ impl From<String> for Refusal {
     }
 }
 
-/// Which key signed a login: the builders', which the proxy holds, or
-/// one an agent behind it holds.
+/// Which key signed a login: the builders', which the proxy holds, the
+/// one it made for OS Login hosts (`src/os_login.rs`), or one an agent
+/// behind it holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Signer {
     Builders,
+    OsLogin,
     Agent,
 }
 
@@ -150,6 +159,7 @@ fn account(user: &[u8]) -> String {
 pub fn signed_line(host: &KeyData, signer: Signer, user: &[u8], claimed: &str) -> String {
     let key = match signer {
         Signer::Builders => "builders",
+        Signer::OsLogin => "os-login",
         Signer::Agent => "agent",
     };
     format!(

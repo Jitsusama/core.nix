@@ -128,6 +128,11 @@ Scope {
     function awaits(letters) {
         return false;
     }
+    // How its search of a daemon stands (ReadyRows.qml's searchState), for
+    // the launcher's searching call, or null where it asks no daemon.
+    function searchState() {
+        return null;
+    }
     // A collection's things changed while it might be open, or what its
     // hooks give a program did (programActs, sentBy): Programs holds
     // whether a closed program starts only until a giver says this. A

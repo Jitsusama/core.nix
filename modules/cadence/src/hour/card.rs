@@ -552,6 +552,36 @@ mod tests {
         );
     }
 
+    /// The hour forgets a miss carried into the asks before the card tells
+    /// what closed, so the card says nothing of it, as on 24 November at
+    /// 21:10 it told Joel his footer's stuck process path was fixed.
+    #[test]
+    fn a_miss_carried_into_the_asks_is_not_told_fixed_on_the_card() {
+        let open = measure("misses", Class::Miss, 0.0, Some(0.0));
+        let ledger = concat!(
+            r#"{"words":"process path stuck","owner":"WCJQSG","carried":true}"#,
+            "\n",
+            r#"{"words":"the map had no network","owner":"KNURBN","check":"core #1"}"#,
+        );
+        let mut kept = Kept {
+            open: vec![
+                "process path stuck · WCJQSG".to_owned(),
+                "the map had no network · KNURBN".to_owned(),
+            ],
+            ..Kept::default()
+        };
+        super::super::measures::forget_unfixed(ledger, &mut kept.open);
+        let (card, _) = compose("21:10", &[open], &kept, &none(), "");
+        assert!(
+            !card.contains("process path stuck, is fixed"),
+            "a miss carried into the asks was told fixed: {card}"
+        );
+        assert!(
+            card.contains("the map had no network, is fixed"),
+            "a miss closed on its check wasn't told fixed beside it: {card}"
+        );
+    }
+
     /// A node that doesn't answer for an hour holds a fixed miss open again;
     /// once it answers, Joel isn't told a second time.
     #[test]

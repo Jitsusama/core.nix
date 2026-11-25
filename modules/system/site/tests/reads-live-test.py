@@ -7,7 +7,9 @@ say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
 page checks at a phone's width and a desk's in both looks. It must open with
-what is worth a look, each leading where it can be seen whole. Its keys and
+what is worth a look, each leading where it can be seen whole, a machine's
+long name leaving its look's words room at both widths, and a good part read
+from a kept answer never among them, its note said where it belongs. Its keys and
 places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
@@ -325,6 +327,32 @@ def test_a_says_what_the_list_cannot_know(system_page: Page, system_daemon: Stan
     )
 
 
+def test_a_kept_answer_is_no_look(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    quieted(system_page, system_daemon)
+    # The daemon stands a part on its owner's last answer only while that is
+    # fresh enough to, so the note it carries says how the page was read: the
+    # machines' in the page's note, a part's in its own section.
+    machines = "as read at 00:19; just now mycelium machines gave no answer in 20 s"
+    code = "as read at 00:19; just now repos --json gave no answer in 20 s"
+    system_daemon.tell(
+        "part",
+        changed=[
+            {"key": "part:machines", "side": [machines]},
+            {"key": "part:code", "side": [code]},
+        ],
+    )
+    expect(system_page.locator("#note"), "the machines' kept answer went unsaid").to_contain_text(
+        f"Machines {machines}.", timeout=PACE_MS
+    )
+    aside = system_page.locator("[data-part='part-code'] .aside")
+    expect(aside, "the code part's kept answer went unsaid").to_have_text(f"A{code[1:]}")
+    expect(aside, "the code part's kept answer was hidden").to_be_visible()
+    expect(system_page.locator("#looks"), "a kept answer was listed as a look").to_have_text(
+        "Nothing is worth a look."
+    )
+
+
 def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_served: Served) -> None:
     root, _ = system_served
     opened = Opened(browser, f"{root}system/#machine=osprey", SIZES[-1], "dark")
@@ -505,6 +533,45 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
         " return away.scrollWidth > away.clientWidth; })()"
     )
     assert spills is False, "the list out of reach spilled past a phone's width"
+
+
+# A spot machine's name, as long as the provider's: sized to it, the names'
+# column once took a phone's whole width and left the words a letter wide.
+LONG_NAME = "gull-spot-provider-s99ia2-1795535220"
+# The least of the list's width each look's words keep, whatever the names:
+# the names' column takes two fifths at most, and the mark and gaps a little.
+WORDS_KEEP = 0.4
+# Where each look's words run to, against the list's width and the window's.
+WORDS_ROOM = """(() => {
+  const list = document.querySelector('#looks').getBoundingClientRect();
+  const words = [...document.querySelectorAll('#looks .words')]
+    .map((w) => w.getBoundingClientRect());
+  return { least: Math.min(...words.map((w) => w.width)) / list.width,
+    past: Math.max(...words.map((w) => w.right)) - innerWidth };
+})()"""
+
+
+def test_a_long_name_leaves_its_words_room_on_a_phone(
+    system_page: Page, system_daemon: StandIn
+) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    long: dict[str, object] = {
+        **machine_called(LONG_NAME),
+        "health": "bad",
+        "says": "has a nearly full disk, 54 GB free",
+        "side": ["nearly full disk, 54 GB free"],
+    }
+    system_daemon.tell("machine", changed=[long])
+    things = ["machine:kestrel", "machine:osprey", f"machine:{LONG_NAME}"]
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": things}])
+    look = system_page.locator(f"#looks a[data-row^='look:machine:{LONG_NAME}:']")
+    expect(look, "the long-named machine's look never came").to_be_visible(timeout=PACE_MS)
+    for width, height in SIZES:
+        system_page.set_viewport_size({"width": width, "height": height})
+        room = system_page.evaluate(WORDS_ROOM)
+        assert room["past"] <= 0, f"at {width} px a look's words ran {room['past']} px past"
+        assert room["least"] >= WORDS_KEEP, f"at {width} px a look's words kept {room['least']}"
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:

@@ -1974,10 +1974,17 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
         shell.send_key("down")
     shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
     first: list[Json] = []
+    # Marked before the key, so its own first frame is judged: marked after, that frame was
+    # mostly past, and a letter that let the held answer go passed once its own answer came.
+    since = shell.mark()
 
-    def typed_f(shown: Json) -> bool:
-        if shown["typed"] == "f" and not first:
-            first.append(shown)
+    def typed_f(_: Json) -> bool:
+        reports, _end = shell.said_since(since)
+        for said in reports:
+            if not first and said.startswith("showing "):
+                shown = json.loads(said[len("showing ") :])
+                if shown["typed"] == "f":
+                    first.append(shown)
         return bool(first)
 
     shell.send_chars("f")

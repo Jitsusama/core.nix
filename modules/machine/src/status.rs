@@ -51,7 +51,14 @@ const BEATS: [&str; 2] = ["heartbeat", "at"];
 const MEASURES: [(&str, &[&str]); 3] = [
     (
         "filesystems",
-        &["free", "used", "forecast", "fill_per_hour", "full_at"],
+        &[
+            "free",
+            "used",
+            "forecast",
+            "fill_per_hour",
+            "full_at",
+            "floor_at",
+        ],
     ),
     ("writer", &["rate"]),
     ("notice", &["body"]),
@@ -460,7 +467,7 @@ mod tests {
                 "says": "filling",
                 "filesystems": [{ "path": "/", "band": band, "free": free,
                     "used": 1000 - free, "forecast": free, "fill_per_hour": 1,
-                    "full_at": heartbeat + free }],
+                    "full_at": heartbeat + free, "floor_at": heartbeat + free / 2 }],
                 "writer": { "name": "nix-daemon", "rate": rate },
                 "notice": { "summary": "filling", "body": format!("at {rate} a second") }
             })
@@ -497,7 +504,7 @@ mod tests {
         assert_eq!(
             banded[0]["said"]["filesystems"][0],
             json!({ "path": "/", "band": "short", "free": 497, "used": 503,
-                "forecast": 497, "fill_per_hour": 1, "full_at": 1563 }),
+                "forecast": 497, "fill_per_hour": 1, "full_at": 1563, "floor_at": 1314 }),
             "a new band is told at once, with the measures beside it"
         );
         let silent = kept.records(&root, &watchers, at(200), epoch(200));

@@ -77,6 +77,107 @@
         && !(mac.systemd.user.services ? pi-agent-proxy)
       );
 }
+# The OS Login route's check builds an x86_64-linux machine's script and
+# its stand-in gcloud reads /proc, so a Mac neither builds nor evaluates it.
+// onLinux {
+  # Where the proxy runs, it makes a key for the OS Login hosts gcloud
+  # knows, starting with the session so the key is there for an agent's
+  # first ssh, and never dumping its memory; the account's gcloud registers
+  # each key it writes, renews it each quarter hour by the wall clock, so a
+  # night asleep doesn't leave it lapsed, bounded so none hangs, and takes
+  # it out as the proxy stops; and the machine's ssh offers it to every
+  # compute.<id> host, and its block ends so what follows reaches every
+  # host. Null known hosts turns it off.
+  # The registering script is run against a stand-in gcloud
+  # (os-login-test.sh).
+  pi-agent-proxy-reaches-os-login-machines =
+    let
+      key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+      proxying = hosts: {
+        home-manager.sharedModules = [
+          {
+            jitsusama.pi.agentProxy = {
+              machines = [ key ];
+              upstreams = [ "%t/agents.sock" ];
+            }
+            // hosts;
+          }
+        ];
+      };
+      # Left unset, as a machine repository leaves it, the route is on.
+      machine = bareNixos [
+        self.nixosModules.workstation
+        (proxying { })
+      ];
+      home = account machine;
+      services = home.systemd.user.services;
+      renewing = services.pi-agent-proxy-os-login;
+      watching = home.systemd.user.paths.pi-agent-proxy-os-login;
+      renewer = home.systemd.user.timers.pi-agent-proxy-os-login;
+      onProxy = [ "pi-agent-proxy.service" ];
+      off = account (bareNixos [
+        self.nixosModules.workstation
+        (proxying { osLoginKnownHosts = null; })
+      ]);
+      proxy = home.systemd.user.services.pi-agent-proxy;
+      start = lib.head (lib.toList proxy.Service.ExecStart);
+      stop = lib.head (lib.toList proxy.Service.ExecStopPost);
+      register = lib.head (
+        lib.toList home.systemd.user.services.pi-agent-proxy-os-login.Service.ExecStart
+      );
+      offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
+      wired =
+        holds "pi-agent-proxy-reaches-os-login-machines-wired"
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written and as the desktop starts, renewed each quarter hour by the wall clock within a bound, retried on failure in growing steps without ever giving up, or removed as it stops, its renewal is ordered after the proxy, which makes a cycle at login, is registered or renewed while the proxy isn't running, may dump or swap its memory, or the machine's ssh config doesn't name it for compute.* hosts alone."
+          (
+            lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
+            && lib.toList proxy.Install.WantedBy == [ "default.target" ]
+            && lib.hasPrefix "-" stop
+            && lib.hasSuffix "/bin/pi-agent-proxy-os-login remove %t/pi-agent/os-login.pub" stop
+            && lib.hasSuffix "/bin/pi-agent-proxy-os-login register %t/pi-agent/os-login.pub" register
+            && lib.toList watching.Path.PathChanged == [ "%t/pi-agent/os-login.pub" ]
+            && watching.Unit.BindsTo == onProxy
+            && watching.Unit.Before == onProxy
+            && watching.Install.WantedBy == onProxy
+            && renewer.Timer.OnCalendar == "*:0/15"
+            && renewer.Timer.Persistent
+            && renewer.Unit.BindsTo == onProxy
+            && !(renewer.Unit ? After)
+            && renewer.Install.WantedBy == onProxy
+            && renewing.Unit.Requisite == onProxy
+            && renewing.Unit.After == onProxy
+            && renewing.Unit.PartOf == onProxy
+            && renewing.Service.TimeoutStartSec == "4min"
+            && renewing.Service.Restart == "on-failure"
+            && renewing.Service.RestartSec == "30s"
+            && renewing.Service.RestartSteps == 5
+            && renewing.Service.RestartMaxDelaySec == "15min"
+            && renewing.Unit.StartLimitIntervalSec == 0
+            && renewing.Install.WantedBy == [ "graphical-session.target" ]
+            && proxy.Service.LimitCORE == 0
+            && proxy.Service.MemorySwapMax == 0
+            && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub\nHost *\n" machine.config.programs.ssh.extraConfig
+            && !(lib.hasInfix "--os-login" offStart)
+            && !(off.systemd.user.services ? pi-agent-proxy-os-login)
+            && !(off.systemd.user.paths ? pi-agent-proxy-os-login)
+            && !(off.systemd.user.timers ? pi-agent-proxy-os-login)
+          );
+    in
+    pkgs.runCommandLocal "pi-agent-proxy-reaches-os-login-machines"
+      {
+        nativeBuildInputs = [ pkgs.openssh ];
+        sshConfig = machine.config.programs.ssh.extraConfig;
+        passAsFile = [ "sshConfig" ];
+      }
+      ''
+        cat ${wired}
+        $BASH ${./ssh-offer-test.sh} "$sshConfigPath"
+        # One agent behind the proxy: its 5 s patience and a margin.
+        grep -qx 'asking=8' ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
+        $BASH ${./os-login-test.sh} ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
+        touch $out
+      '';
+}
 # The proxy knows its caller by SO_PEERCRED, which only Linux has.
 // onLinux {
   # pi-agent-proxy builds with its tests run (tests/agent_proxy.rs):
@@ -88,7 +189,10 @@
   # builders' key listed first and signing a login as nix-offload to a
   # builder lent now, and no other: not as another account, not to a host
   # that isn't lent, not to a standing builder, not once a builder leaves
-  # root's file, and no agent's key for a lent builder; an agent
+  # root's file, and no agent's key for a lent builder; a key made in
+  # memory listed last and signing only for an OS Login host gcloud's
+  # known hosts name, neither told nor lent, and no other key for one,
+  # the proxy going on without it when it can't be written; an agent
   # behind that never answers given up on; and each login signed and each
   # refusal said in one line of a fixed shape, with its host, its reason
   # as a word from a fixed set, and the session the client claims.

@@ -3,17 +3,17 @@
 //! the days before it and a repository getting messier is named the day it
 //! does: its long files with no reason, its suppressions, its crowded
 //! folders with no reason, its lines of code repeated from elsewhere, the
-//! tests its merge net keeps in quarantine, the points its daemons wait
-//! on to agree and the lines of its VM tests (measure.rs says how each is
-//! counted); the lints its configs turn off (lints.rs), its files nothing
-//! reaches (reached.rs) and its folders that don't say what they hold
-//! (notes.rs), as the quality standard has them; its Terraform's files
-//! not as `tofu fmt` writes them, what tflint finds, what trivy finds
-//! insecure (terraform.rs) and what `tofu validate` refuses or warns
-//! of (`terraform_validate.rs`), what of it says nothing of what it is
-//! (`terraform_docs.rs`) and what of it nothing tests
-//! (`terraform_tests.rs`); and how long the changes it merged in the last
-//! day took from first edit to merge (merges.rs).
+//! tests its merge net keeps in quarantine, the points its daemons wait on
+//! to agree and the lines of its VM tests (measure.rs says how each is
+//! counted, attributes.rs how a Rust line turns a lint off); the lints its
+//! configs turn off (lints.rs), its files nothing reaches (reached.rs) and
+//! its folders that don't say what they hold (notes.rs), as the quality
+//! standard has them; its Terraform's files not as `tofu fmt` writes them,
+//! what tflint finds, what trivy finds insecure (terraform.rs) and what
+//! `tofu validate` refuses or warns of (`terraform_validate.rs`), what of
+//! it says nothing of what it is (`terraform_docs.rs`) and what of it
+//! nothing tests (`terraform_tests.rs`); and how long the changes it
+//! merged in the last day took from first edit to merge (merges.rs).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
 //! the form cadence reads, `<date>-named.json` beside it naming the first
@@ -49,6 +49,7 @@
 //! it's found, so the list only shrinks (tree.rs). The same rule then
 //! counts each hour and holds each change.
 
+mod attributes;
 mod git;
 mod hour;
 mod lints;

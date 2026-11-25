@@ -7,7 +7,8 @@ arrow and the letters of the row it named, and a key the launcher names itself, 
 since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
 no case in Qt's engine reaches, so these press each kind and read its line. A key listed
 without a daemon's answer, and the answer that comes late, count its letters the same way, and
-a lagging drawer is said by its row's kind (Presented.rowShown), not by the id its key carries.
+a lagging program's drawer is said by its desktop entry's id (Presented.rowShown), never the
+name its window shows, so each program's drawer is timed apart.
 """
 
 from __future__ import annotations
@@ -41,8 +42,13 @@ LISTED = re.compile(r"launcher: (.+?) listed without ")
 LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
 # Words typed with nothing else named by them, so no line says them but by the letters.
 UNNAMED = "zygodactyl"
-# What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`.
-PROGRAMS_DRAWER = 'drawer for "program"'
+# What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`: the id,
+# shaped as an app's (Presented.js's appWord), so RTOIMQ can time Chrome's drawer apart from
+# kitty's (2026-11-24), and never more of the key.
+PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"')
+# Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of
+# another kind that begins with program's word.
+A_PROGRAMS_DRAWER = re.compile(r'drawer for "program[:"]')
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -171,12 +177,13 @@ def program_timed_since(shown: Json, before: int) -> bool:
     return timed["count"] > before and str(timed["key"]).startswith("program:")
 
 
-def test_a_programs_lagging_drawer_is_said_by_its_kind(shell: Shell) -> None:
-    """A program's drawer lagging to its frame is said by its row's kind, not by the program's id.
+def test_a_programs_lagging_drawer_is_said_by_its_id(shell: Shell) -> None:
+    """A program's drawer lagging to its frame is said by its desktop entry's id, and no more.
 
-    Launcher.qml's drawerMade hands Trials.drawerTimed the row as Presented.rowShown says it;
-    handed the row's key, the line would say the id after `program:`, which a package wrote, as
-    a window's key carries its title.
+    Launcher.qml's drawerMade hands Trials.drawerTimed the row as Presented.rowShown says it,
+    which keeps a program's id as it keeps a window's app, so each program's drawer is timed
+    apart, and drops any part past it; said by its kind alone, the line names the program the
+    launcher timed nowhere.
     """
     keyed: set[str] = set()
 
@@ -190,7 +197,10 @@ def test_a_programs_lagging_drawer_is_said_by_its_kind(shell: Shell) -> None:
         keyed.add(str(shell.showing()["drawer"]["timed"]["key"]))
         shell.close_launcher()
 
-    said = said_by(shell, drawn, lambda keys: PROGRAMS_DRAWER in keys)
-    whole = [line for line in said if any(key in line for key in keyed)]
-    assert not whole, f"a drawer said its row's key {sorted(keyed)}: {whole}"
-    assert PROGRAMS_DRAWER in said, f"no program's drawer was said by its kind: {said}"
+    said = said_by(shell, drawn, lambda keys: any(PROGRAMS_DRAWER.fullmatch(key) for key in keys))
+    programs = [key for key in said if A_PROGRAMS_DRAWER.match(key)]
+    assert programs, f"no program's drawer was said: {said}"
+    unshaped = [key for key in programs if not PROGRAMS_DRAWER.fullmatch(key)]
+    assert not unshaped, f"a program's drawer was said without its id, or with more: {unshaped}"
+    timed = {f'drawer for "{key}"' for key in keyed}
+    assert timed & set(programs), f"no drawer said the program timed, {sorted(keyed)}: {programs}"

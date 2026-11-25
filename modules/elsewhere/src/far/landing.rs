@@ -42,6 +42,20 @@ const OPEN_NONBLOCKING: i32 = 0o4000;
 #[cfg(target_os = "macos")]
 const OPEN_NONBLOCKING: i32 = 0x4;
 
+/// `O_NOFOLLOW`, so opening a link that took a file's place fails rather
+/// than opening whatever it leads to: a device outside the tree is never
+/// opened, even to be refused. Its value is the platform's, as above;
+/// arm64's Linux has its own.
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "riscv64")
+))]
+const OPEN_UNFOLLOWED: i32 = 0o400_000;
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const OPEN_UNFOLLOWED: i32 = 0o100_000;
+#[cfg(target_os = "macos")]
+const OPEN_UNFOLLOWED: i32 = 0x100;
+
 /// The number the next landing name takes, so no two in this process
 /// share one.
 static NEXT_LANDING: AtomicU32 = AtomicU32::new(0);
@@ -252,17 +266,30 @@ pub(super) fn opened_plain(path: &Path) -> io::Result<fs::File> {
     if !looked.is_file() {
         return Err(io::Error::other("it isn't a plain file"));
     }
-    // Without blocking, so a pipe put there after the look can't hold the
-    // run; it is then refused as not the file looked at.
-    let file = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(OPEN_NONBLOCKING)
-        .open(path)?;
+    // A link put there since the look fails to open, which the platform
+    // words as a loop of links: said instead as what it is.
+    let file = unfollowed(path).map_err(|error| {
+        if fs::symlink_metadata(path).is_ok_and(|now| now.file_type().is_symlink()) {
+            io::Error::other("it changed as it was opened")
+        } else {
+            error
+        }
+    })?;
     let opened = file.metadata()?;
     if opened.dev() != looked.dev() || opened.ino() != looked.ino() {
         return Err(io::Error::other("it changed as it was opened"));
     }
     Ok(file)
+}
+
+/// Opens `path` to read, failing on a link at its name rather than
+/// following it, and without blocking, so a pipe put there can't hold the
+/// run; whatever does open is then the caller's to judge.
+fn unfollowed(path: &Path) -> io::Result<fs::File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(OPEN_NONBLOCKING | OPEN_UNFOLLOWED)
+        .open(path)
 }
 
 /// The first folder on the way to `path` under `folder` that is a symbolic

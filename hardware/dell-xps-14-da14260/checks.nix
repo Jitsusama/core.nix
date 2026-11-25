@@ -520,6 +520,24 @@ in
       touch $out
     '';
 
+  # The camera's capture buffers took 40 s to open while memory was
+  # fragmented, asking reclaim and compaction again for every block size
+  # that had failed, for every piece. Read from the patched source, a size
+  # that failed isn't asked for again, and blocks above a page are asked
+  # for without retrying, each line checked where it sits. No test runs
+  # the fallback itself: it needs memory fragmented on cue, and no VM here
+  # has a camera on videobuf2's scattered allocator
+  # (tests/camera-buffers-never-ask-twice.sh).
+  camera-buffers-never-ask-twice-for-big-pages =
+    let
+      allocator = "drivers/media/common/videobuf2/videobuf2-dma-sg.c";
+      file = "${kernelSource [ allocator ]}/${allocator}";
+    in
+    pkgs.runCommandLocal "camera-buffers-never-ask-twice-for-big-pages" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/camera-buffers-never-ask-twice.sh} ${file}
+      touch $out
+    '';
+
   # The capture side of the XPS 14's image processor, and the ports its video nodes sit
   # in, are freed at the V4L2 device's last reference rather than with the
   # device, since a file open on one of its nodes outlives an unbind and

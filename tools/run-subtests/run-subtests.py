@@ -185,7 +185,8 @@ def run(driver: Path, script: str, out: Path, options: Options, pytest: str = ""
     """Run the script on the driver, its pictures kept in out, pytest given those options.
 
     A listing given a folder, as the build for --there is, keeps the names of
-    the tests pytest collects there too, for the run that asked.
+    the tests pytest collects there too, for the run that asked, unless it
+    is at the person's terminal, fails or names none.
     """
     with runtime_folder(options.check, keep=options.keep_machine_state) as runtime:
         script_path = runtime / "test-script.py"
@@ -207,18 +208,23 @@ def run(driver: Path, script: str, out: Path, options: Options, pytest: str = ""
             # After any the person set, so theirs hold too.
             given = os.environ.get("PYTEST_ADDOPTS", "")
             environment["PYTEST_ADDOPTS"] = f"{given} {pytest}".strip()
-        if pytest != LISTING or options.out is None:
+        # A list left from an earlier listing is never taken for this one's.
+        listed = out / "subtests"
+        if pytest == LISTING and options.out is not None:
+            listed.unlink(missing_ok=True)
+        # A listing at the person's own terminal, as -I makes one, keeps its
+        # output theirs.
+        if pytest != LISTING or options.out is None or options.interactive:
             # The driver is the one the check built, given the person's own words.
             return subprocess.run(  # noqa: S603
                 command,
                 env=environment,
                 check=False,
             ).returncode
-        # Echoed as it comes, since the build's log is the listing's only
-        # other copy, and kept only from a listing that passed, so a list
-        # left from an earlier one is never taken for this one's.
-        listed = out / "subtests"
-        listed.unlink(missing_ok=True)
+        # Echoed line by line, the driver unbuffered, since the build's log
+        # is the listing's only other copy, and kept only from a listing
+        # that passed.
+        environment["PYTHONUNBUFFERED"] = "1"
         names: list[str] = []
         # The same driver, run the same way, with its output read for the names.
         with subprocess.Popen(  # noqa: S603
@@ -226,11 +232,24 @@ def run(driver: Path, script: str, out: Path, options: Options, pytest: str = ""
         ) as running:
             for line in running.stdout or ():
                 sys.stdout.write(line)
+                sys.stdout.flush()
                 if (found := COLLECTED.fullmatch(line.strip())) is not None:
                     names.append(found["test"])
-        if running.returncode == 0:
-            listed.write_text("".join(f"{name}\n" for name in names))
-        return running.returncode
+        if running.returncode != 0:
+            return running.returncode
+        # pytest fails a listing that collects nothing, so one that passes
+        # naming none was written in another shape, as a -v of the person's
+        # own makes it, and an empty list would read as a test with none.
+        if not names:
+            print(
+                f"run-subtests: {options.check}'s listing passed but named no test as "
+                "pytest's quiet listing does, so none is kept; pytest options given as well, "
+                "such as -v, change its shape",
+                file=sys.stderr,
+            )
+            return 1
+        listed.write_text("".join(f"{name}\n" for name in names))
+        return 0
 
 
 def arguments(argv: Sequence[str]) -> Options:
@@ -470,9 +489,10 @@ def blocking(options: Options, status: int, failed: frozenset[str]) -> int:
     """Give the run's status, a failure main's quarantine excuses read as none.
 
     Inside a build, given its driver, the status is the build's own, and
-    the run that sent it there reads the list.
+    the run that sent it there reads the list. A listing runs no test, so
+    one failing, here or in that build, is never a failure to excuse.
     """
-    if status not in FAILED or options.driver is not None:
+    if status not in FAILED or options.driver is not None or not options.words:
         return status
     held = quarantined(options.flake, options.check)
     if not held:
@@ -516,11 +536,20 @@ def whole(options: Options) -> str:
     """Give the command that builds the whole check from its flake, for this machine's system."""
     machine = {"arm64": "aarch64"}.get(platform.machine(), platform.machine())
     system = f"{machine}-{platform.system().lower()}"
-    return f"nix-offload there {options.flake} checks.{system}.{options.check}"
+    # Quoted, so it can be pasted as it's said whatever the flake's path holds.
+    target = shlex.quote(f"checks.{system}.{options.check}")
+    return f"nix-offload there {shlex.quote(options.flake)} {target}"
 
 
 def listed_or_ran(options: Options) -> int:
     """List a check's subtests, or run those the words name, here or elsewhere."""
+    # Before anything is built, here or elsewhere, since a build refusing
+    # a word fails having run no test, which a quarantine would excuse.
+    try:
+        selecting(options.words)
+    except ValueError as error:
+        print(f"run-subtests: {error}", file=sys.stderr)
+        return USAGE
     if options.there:
         built = there(options)
         if built is not None:
@@ -560,11 +589,7 @@ def run_pytest(driver: Path, script: str, options: Options) -> int:
             return run(driver, script, out, options, LISTING)
         finally:
             shutil.rmtree(out, ignore_errors=True)
-    try:
-        chosen = selecting(options.words)
-    except ValueError as error:
-        print(f"run-subtests: {error}", file=sys.stderr)
-        return USAGE
+    chosen = selecting(options.words)
     print(f"running the tests pytest picks with {chosen}", file=sys.stderr)
     out = options.out or Path(tempfile.mkdtemp(prefix=f"{options.check}."))
     out.mkdir(parents=True, exist_ok=True)

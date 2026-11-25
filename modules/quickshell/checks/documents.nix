@@ -17,7 +17,11 @@
   # and the google daemon's rows move, and make them once as it opens, in
   # the daemon's order (modules/quickshell/tests/documents.qml), through
   # the real ReadyRows.qml and Daemon.qml, with Google's account, the clock,
-  # the mail, the saves and the entry its links open through stood in.
+  # the mail, the saves and the entry its links open through stood in. What
+  # the cases' daemon and rows say is read from the log: a connection going
+  # with asks in flight says so, a line that isn't JSON is said once a
+  # connection, and a search lost again once asked again says it waits for
+  # the next key each time, since no case in Qt's engine reads console lines.
   a-shut-launcher-makes-no-document-rows =
     let
       # The entry every Google link opens through, as google's home.nix
@@ -77,7 +81,24 @@
       export TZ=UTC FONTCONFIG_FILE=${noFonts}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee log
+      said() {
+        grep -c -E "$1" log || true
+      }
+      if [ "$(said 'the connection went with [0-9]+ asks? unanswered: find-')" = 0 ]; then
+        echo "a connection gone with a search in flight said nothing of it" >&2
+        exit 1
+      fi
+      unread=$(said "a line that isn't JSON let go")
+      if [ "$unread" != 2 ]; then
+        echo "lines that aren't JSON were said $unread times, not once a connection" >&2
+        exit 1
+      fi
+      again=$(said "search went unanswered again once asked again, left for the next key")
+      if [ "$again" != 3 ]; then
+        echo "a search lost twice was said $again times, not each of the 3 times" >&2
+        exit 1
+      fi
       touch $out
     '';
 }

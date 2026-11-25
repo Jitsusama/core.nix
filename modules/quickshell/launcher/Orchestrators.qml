@@ -46,7 +46,8 @@ Provider {
             side: String(said[folder !== "" ? "gone" : "nowhere"] ?? "")
                 .replace("{cwd}", homely(one.gone.cwd ?? ""))
                 .replace("{folder}", homely(folder)),
-            afresh: folder !== "" ? () => Sessions.start(one.quest, folder) : null
+            afresh: folder !== "" ? () => Sessions.start(one.quest, folder, false, one.name)
+                : null
         };
     }
     function homely(folder) {
@@ -166,7 +167,7 @@ Provider {
         const last = one.resume ?? "";
         const folder = one.start ?? "";
         if (last === "") {
-            Sessions.start(one.quest, folder || Sessions.home);
+            Sessions.start(one.quest, folder || Sessions.home, false, one.name);
             return;
         }
         const name = one.name;
