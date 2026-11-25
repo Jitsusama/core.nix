@@ -86,7 +86,9 @@ body {
     gap: var(--tie);
   }
 
-  :root .head .page-head > * {
+  /* The lede by name too, since its place above outweighs `> *`. */
+  :root .head .page-head > *,
+  :root .head .page-head .lede {
     grid-area: auto;
   }
 }

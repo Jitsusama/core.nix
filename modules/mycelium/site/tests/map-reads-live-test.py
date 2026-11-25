@@ -78,8 +78,9 @@ CELLS = 8
 # included, a little more with the drawer's acts and its whole question, and
 # under the 677 KB allowed; new work's line and its hidden controls draw about
 # 20 elements of the 611. One file more and two of the kilobytes are the kit's
-# head.css, the head every live page shares, less the map's own head rules,
-# and three elements are the head's own parts the map's header lacked.
+# head.css, the head every live page shares, less the map's own head rules;
+# the head and its link are seven elements more in the markup than the map's
+# header was, and the budget rose by three, the rest within its room.
 BUDGET = Budget(files=34, kilobytes=679, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000

@@ -182,7 +182,6 @@ function theInternet(context: Context): Child[] {
   ];
 }
 
-/** What's worth a look: net's concerns, and any source that didn't answer. */
 /** What's worth a look: the concerns, then the sources that didn't answer. */
 function worthOf(network: Network): { worth: readonly Concern[]; quiet: readonly Source[] } {
   return {
@@ -218,6 +217,7 @@ function sayStandsNow(lede: HTMLElement, context: Context | undefined): void {
   }
 }
 
+/** What's worth a look: net's concerns, and any source that didn't answer. */
 function worthALook(context: Context): HTMLElement {
   const { network } = context;
   const { worth, quiet } = worthOf(network);
@@ -289,4 +289,4 @@ function found(context: Context, query: string): Child[] {
 }
 
 export type { Context };
-export { concernRows, found, overview, row, sayStandsNow };
+export { concernRows, found, overview, row, sayStandsNow, standsNow };

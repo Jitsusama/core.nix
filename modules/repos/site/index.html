@@ -26,7 +26,7 @@
   try {
     const room = JSON.parse(localStorage.getItem("code-room") ?? "null");
     if (room?.width === innerWidth) {
-      for (const id of ["lede", "grove", "list", "open"]) {
+      for (const id of ["lede", "standing", "grove", "list", "open"]) {
         const px = Number(room.heights?.[id]);
         if (px > 0) {
           document.documentElement.style.setProperty(`--room-${id}`, `${px}px`);
@@ -77,7 +77,7 @@
   <!-- Not a live region: it is written again each time a check or a tree moves, and a screen
        reader would say it whole every time; the standing line's status speaks for the feeds. -->
   <p id="lede" class="lede">Reading every repository from git's own files.</p>
-  <p class="standing"><span class="glyph" aria-hidden="true"></span>
+  <p id="standing" class="standing"><span class="glyph" aria-hidden="true"></span>
     <span id="asof" class="asof" role="status" data-state="connecting">Reaching the repos daemon.</span></p>
   <div class="quiet">
     <p class="keys">Press <kbd>j</kbd> and <kbd>k</kbd> to step through the repositories, <kbd>h</kbd> and <kbd>l</kbd> to walk the grove, <kbd>Return</kbd> to step in, and <kbd>?</kbd> for every key.</p>

@@ -22,6 +22,7 @@
 // cell's own record doesn't, as an older node's doesn't.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { watchForKeys } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
 import { expiryOf, type Heard, nowOf } from "./model.ts";
@@ -203,6 +204,9 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 sayHow();
+// The map answers its keys in the drawing (view.js), so the kit is told of
+// the first one here: a touch screen shows the head's key line once typed on.
+watchForKeys();
 // Opened to be checked, the page says whether it reaches every cell.
 if (asked(location.search)) {
   sayReach(document.documentElement, document);

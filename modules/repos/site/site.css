@@ -341,6 +341,10 @@ code,
   min-block-size: var(--room-lede, auto);
 }
 
+#standing {
+  min-block-size: var(--room-standing, auto);
+}
+
 #grove {
   min-block-size: var(--room-grove, auto);
 }
