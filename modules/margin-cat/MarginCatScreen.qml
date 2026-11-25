@@ -423,11 +423,20 @@ PanelWindow {
             // rides that window, as it would sitting, rather than walking
             // on to where that window was, over the air. A drop by his
             // hand falls on as it was let go.
+            // Caught mid-leap, on a side or on the top it set off from,
+            // it walks on to that window where niri moved it instead,
+            // riding what moved, never held in the air until the keys
+            // rest (Stacked.standsOnTop).
             if (going !== null && !byHand
                 && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
                 const was = goingTo;
-                halt();
-                sat = was;
+                const top = (saw ?? []).find(one => one.id === was);
+                if (Stacked.standsOnTop(drawnAt(), top, { wide: size, tall: size, air: cell })) {
+                    halt();
+                    sat = was;
+                } else {
+                    walkOnTo(was, saw);
+                }
             }
             if (going === null)
                 carried(saw);
@@ -456,10 +465,11 @@ PanelWindow {
             return;
         rideTo({ x: place.x + by.x, y: place.y + by.y });
     }
-    // Whether niri's scroll of its workspace still runs: told less than
+    // Whether niri's scroll of its workspace still runs: begun less than
     // its spring's length ago, since niri never says one ended, so an old
     // scroll's word, still on its windows, isn't taken for a new one
-    // (MarginCatTiles.js's told). Heard again with each layout niri sends.
+    // (MarginCatTiles.js's hears). Heard again with each layout niri
+    // sends, so each word is dated as near as it can be to when it came.
     function scrolling(): bool {
         const now = Date.now();
         scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
@@ -467,6 +477,13 @@ PanelWindow {
         return Tiles.runs(scrollHeard, now, slideMs);
     }
     property var scrollHeard: null
+    Connections {
+        target: Niri
+
+        function onRevisionChanged() {
+            window.scrolling();
+        }
+    }
     readonly property var spring: Object.assign({}, Theme.motion.spring,
         { slowdown: Theme.motion.slowdown })
     readonly property int slideMs: MarginCat.slides(spring)
@@ -475,10 +492,12 @@ PanelWindow {
     // (MarginCatStacked.js's rides).
     function rideTo(to: var): void {
         const now = Date.now();
-        // As far into the scroll as niri says, or a guess at how late it
-        // hears of one where niri says nothing or tells of one ended.
+        // As far into the scroll as niri says, by its latest begin rather
+        // than an old scroll's word left on another window, or a guess at
+        // how late it hears of one where niri says nothing or tells of one
+        // ended.
         const behind = MarginCat.behindTold(frameMs, "slide", scrolling()
-            ? Tiles.animating(Niri.windows, space?.id, "ViewMove") : null);
+            ? now - scrollHeard.at : null);
         carry = Stacked.rides(carry, place, to, { at: now - behind, spring });
         lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
@@ -490,10 +509,14 @@ PanelWindow {
     // A ride ended where it's drawn, so whatever it does next, a walk, a
     // move or a lift, sets off from there, never from its place a lag on.
     function unride(): void {
-        if (carry !== null)
-            place = drawnAt();
+        // Where it's drawn is taken before the lag goes and set after, so
+        // the report its place's change sends says it drawn there, not a
+        // lag on again.
+        const at = carry !== null ? drawnAt() : null;
         carry = null;
         lag = { x: 0, y: 0 };
+        if (at !== null)
+            place = at;
     }
     // The scroll carrying it, while niri's spring runs, and how far from
     // its place that has it drawn now.
@@ -568,6 +591,24 @@ PanelWindow {
             x: off < 0 ? 0 : off > 0 ? modelData.width - size : place.x,
             y: floor
         });
+    }
+
+    // A walk on to the window `id`'s seat where niri has it now, riding
+    // what moved of the windows it `saw`, rather than to the keys' window,
+    // still standing on `id` for what follows; held where it's drawn if
+    // that window has no tile here now.
+    function walkOnTo(id: var, saw: var): void {
+        const onto = tile(id);
+        if (onto === null) {
+            halt();
+            sat = id;
+            return;
+        }
+        walkTo(true, saw, seat(onto));
+        goingTo = id;
+        under = onto;
+        if (going === null)
+            sat = id;
     }
 
     function walkTo(hurried: bool, saw: var, to: var): void {

@@ -126,9 +126,12 @@ screen with it on niri's spring if that's where niri scrolls it, and back
 with it the same way if the keys come back first; then it comes back in at
 that edge head first, as between workspaces, and walks the strip to its
 seat, leaping the gap at the edge only where its window is all past it.
-Caught mid-walk by the scroll, it stops where it's drawn and rides the same
-way, and a ride isn't a rest: no play sets off and no pet starts till it
-ends. Moved to another workspace while it's off the edge, it holds out of
+Caught mid-walk by the scroll standing on its window's top, it stops where
+it's drawn and rides the same way; caught mid-leap or anywhere else, it walks
+on to that window where niri moved it. A ride isn't a rest: no play sets off
+and no pet starts till it ends. A scroll runs for niri's spring from when
+niri says it began, so a scroll's word left on a window long after reads as
+ended. Moved to another workspace while it's off the edge, it holds out of
 sight through niri's slide, then comes in at that edge head first over the
 new workspace's windows; with its workspace emptied, it comes in at that
 edge along the floor.
@@ -147,8 +150,15 @@ edge along the floor.
 - Held by `margin-cat-one-screen.qml`: "it holds out of sight as niri slides"
 - Held by `margin-cat-one-screen.qml`: "it comes in at that edge, head first"
 - Held by `margin-cat-one-screen.qml`: "a floating window dragged, it sits there at once"
+- Held by `margin-cat-one-screen.qml`: "walking along its top"
+- Held by `margin-cat-one-screen.qml`: "in the air of a leap onto it"
+- Held by `margin-cat-tiles.qml`: "a scroll's word left on a window as another's layout comes
+  keeps its begin"
+- Held by `margin-cat-tiles.qml`: "a layout sent again mid-scroll keeps the scroll's begin"
 - Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
   window, and a floor came to from off the edge.
+- Owed since 2026-11-25: a scroll first heard as the tiles watch goes live is dated from
+  when the daemon answered, not when niri sent it, so its ride may start late; unmeasured.
 
 ### Climb, Path and Leap About the Windows
 

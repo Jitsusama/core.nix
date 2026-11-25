@@ -34,6 +34,7 @@ QtObject {
         scrolled(expect);
         movedOff(expect);
         backOnIt(expect);
+        standsIt(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -524,5 +525,26 @@ QtObject {
         ];
         for (const [name, place, told, want] of cases)
             expect(`back on its column, ${name}`, Stacked.backOn(place, seat, told), want);
+    }
+
+    // Caught mid-walk as the window it walks to moves, it rides that
+    // window only standing on its top, never from the air of a leap, a side
+    // or another window's top.
+    function standsIt(expect) {
+        const size = { wide: 8, tall: 8, air: 1 };
+        const tile = { id: 2, left: 400, top: 40, width: 380, height: 740 };
+        const standing = { x: 500, y: 31 };
+        const cases = [
+            ["walking along its top", standing, true],
+            ["within half a cell of its top", { x: 500, y: 31.4 }, true],
+            ["its middle just over its left edge", { x: 397, y: 31 }, true],
+            ["in the air of a leap onto it", { x: 500, y: 20 }, false],
+            ["hanging on its side", { x: 392, y: 60 }, false],
+            ["on another window's top at its height", { x: 300, y: 31 }, false]
+        ];
+        for (const [name, at, want] of cases)
+            expect(`caught mid-walk, ${name}`, Stacked.standsOnTop(at, tile, size), want);
+        expect("caught mid-walk, with no tile for it, it doesn't stand",
+            Stacked.standsOnTop(standing, undefined, size), false);
     }
 }

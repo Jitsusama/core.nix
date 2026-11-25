@@ -208,6 +208,19 @@ function backOn(place, there, at) {
     return at.riding || at.scrolling || off ? "rides" : "sits";
 }
 
+// Whether a cat drawn at `at`, `size` {wide, tall, air}, stands on the top
+// of `tile` (MarginCatTiles.js's of), its middle over it and its feet on
+// it, as a walk along that top has it; not mid-leap, on a side or on
+// another window's top. Only then can it ride that window and sit.
+function standsOnTop(at, tile, size) {
+    if (!at || !tile) {
+        return false;
+    }
+    const middle = at.x + size.wide / 2;
+    return middle >= tile.left && middle <= tile.left + tile.width
+        && Math.abs(at.y - Ledges.stands(tile.top, size)) < size.air / 2;
+}
+
 // A move between workspaces, `at.way` 1 to the one below and -1 to the
 // one above, from `from` on `at.was`'s tiles to its seat `to` on
 // `at.now`'s, as MarginCatPaths.js's moves() takes it. It's walked as
