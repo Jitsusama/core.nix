@@ -65,13 +65,18 @@ pub struct Part {
 
 /// Writes `paths`, files of the tree at `root`, as archives in `into`,
 /// each at most `most` bytes, named `0.tar`, `1.tar` and on, and answers
-/// them in order. Each file is read once, whole, so it goes in at the
-/// size it was read at even when it changed after it was gathered. A
-/// file whose own entry is past `most` is refused, as no share carries it,
-/// and so is one that would take the archives past `all` bytes in all,
-/// before it is written: a tree that grew after it was gathered leaves
-/// this job's archives no larger than `all` all the same. A refusal
-/// leaves the archives written so far unlisted, for the caller to clear.
+/// them in order. Each is written under a hidden name and takes its own
+/// once closed and on the disk, so a share, which carries no hidden file,
+/// never carries one half written. Each file is read once, whole, so it
+/// goes in at the size it was read at even when it changed after it was
+/// gathered. A file whose own entry is past `most` is refused, as no
+/// share carries it, and so is one that would take the archives past
+/// `all` bytes in all, before it is written: a tree that grew after it
+/// was gathered leaves this job's archives no larger than `all` all the
+/// same. A refusal leaves the archives written so far unlisted, and the
+/// one still open under its hidden name, for the caller to clear. Each is
+/// made new, so nothing standing at its name, a link included, is written
+/// through.
 pub fn write<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
@@ -97,7 +102,7 @@ pub fn write<'a>(
             .as_ref()
             .is_some_and(|(_, size)| size + length + close > most)
         {
-            let part = closed(open.take(), parts.len())?;
+            let part = closed(open.take(), into, parts.len())?;
             done += part.size;
             parts.push(part);
         }
@@ -110,13 +115,13 @@ pub fn write<'a>(
         }
         let (file, size) = match &mut open {
             Some(open) => open,
-            slot @ None => slot.insert((fs::File::create(into.join(name(parts.len())))?, 0)),
+            slot @ None => slot.insert((made_new(&into.join(writing(parts.len())))?, 0)),
         };
         file.write_all(&entry)?;
         *size += length;
     }
     if open.is_some() {
-        parts.push(closed(open, parts.len())?);
+        parts.push(closed(open, into, parts.len())?);
     }
     Ok(parts)
 }
@@ -124,14 +129,15 @@ pub fn write<'a>(
 /// The plain file at `name` in the tree at `root`, read whole through one
 /// opening, with what that opening says of it. A link or a pipe where the
 /// file was gathered from is refused before any of it is read: one there
-/// at the look is never opened, and one swapped in after it is opened
-/// without waiting and refused as not the file looked at. A folder on its
-/// way that is a link once it is open is refused too, as the file may lie
-/// outside the tree. So nothing outside the tree goes in, unless a link is
-/// put in a folder's place and taken out again while the file is opened,
-/// which something swapping it over and over could win, as only opening
-/// each folder from the one before would close it and std can't; and
-/// nothing holds the job. A file past `most` bytes, as it is opened or
+/// at the look is never opened, a link swapped in after it is never
+/// followed, and a pipe swapped in is opened without waiting and refused
+/// as not the file looked at. A folder on its way that is a link once it
+/// is open is refused too, as the file may lie outside the tree. So
+/// nothing outside the tree goes in, unless a link is put in a folder's
+/// place and taken out again while the file is opened, which something
+/// swapping it over and over could win, as only opening each folder from
+/// the one before would close it and std can't; and nothing holds the
+/// job. A file past `most` bytes, as it is opened or
 /// as it is read, is refused without being read whole, as no share
 /// carries it.
 fn read(root: &Path, name: &str, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
@@ -175,13 +181,34 @@ fn name(number: usize) -> String {
     format!("{number}.tar")
 }
 
-/// Closes the archive `open`, numbered `number`, and answers it.
-fn closed(open: Option<(fs::File, u64)>, number: usize) -> io::Result<Part> {
+/// A file at `path` made new, whatever stood there taken away first and
+/// never followed, as a link the job left at the name would be.
+fn made_new(path: &Path) -> io::Result<fs::File> {
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+}
+
+/// The archive numbered `number`'s name while it is written: hidden, so
+/// no share carries it.
+fn writing(number: usize) -> String {
+    format!(".{number}.tar")
+}
+
+/// Closes the archive `open`, numbered `number` in `into`, gives it its
+/// own name once it is on the disk, and answers it.
+fn closed(open: Option<(fs::File, u64)>, into: &Path, number: usize) -> io::Result<Part> {
     let Some((mut file, size)) = open else {
         return Err(io::Error::other("no archive was open to close"));
     };
     file.write_all(&[0; CLOSE])?;
     file.sync_all()?;
+    fs::rename(into.join(writing(number)), into.join(name(number)))?;
     Ok(Part {
         name: name(number),
         size: size + CLOSE as u64,
