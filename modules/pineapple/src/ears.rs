@@ -79,9 +79,9 @@ pub trait Ears {
         Unread::default()
     }
 
-    /// Whether the search for `query` waits on a later page it left
-    /// unanswered, as one whose first page goes unanswered doesn't: never
-    /// unless these ears read in pages.
+    /// Whether the last search for `query` waited on a later page it left
+    /// unanswered, as one whose first page goes unanswered doesn't, whatever
+    /// the rounds before it did: never unless these ears read in pages.
     fn waiting(&self, _query: &str) -> bool {
         false
     }
@@ -178,6 +178,10 @@ pub struct Through {
     /// How many rounds in a row each search's later page, by its query,
     /// went unanswered.
     unanswered: HashMap<String, u32>,
+    /// The searches, by query, whose last round waited on a later page,
+    /// as a count of unanswered rounds doesn't say: a round whose first
+    /// page fails keeps the count but waits on nothing.
+    waiting: HashSet<String>,
     /// The searches, by query, whose gap Joel's row has told him of.
     told: HashSet<String>,
     /// What each search's last answer, by its query, gave that it
@@ -214,6 +218,7 @@ impl Through {
             gateway,
             gaps: HashMap::new(),
             unanswered: HashMap::new(),
+            waiting: HashSet::new(),
             told: HashSet::new(),
             unread: HashMap::new(),
             record,
@@ -567,6 +572,7 @@ impl Ears for Through {
             Round::Deaf(Deafness::Unreadable)
         };
         self.unread.remove(query);
+        self.waiting.remove(query);
         let (found, asked, cuts) = self.agreed(query, None)?;
         let cut = !cuts.is_empty();
         let cut_to = |why: String| cut_to(&cuts, asked, why);
@@ -579,6 +585,7 @@ impl Ears for Through {
             self.paged(query, back_to, found)?
         };
         if self.waits(query, &found, &mut short) {
+            self.waiting.insert(query.to_owned());
             return Err(Round::Unasked);
         }
         if let Some(Short::Gap(short)) = short {
@@ -656,9 +663,7 @@ impl Ears for Through {
     }
 
     fn waiting(&self, query: &str) -> bool {
-        self.unanswered
-            .get(query)
-            .is_some_and(|rounds| *rounds < UNANSWERED)
+        self.waiting.contains(query)
     }
 }
 

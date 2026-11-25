@@ -707,3 +707,89 @@ fn a_stop_an_unreadable_page_first_gives_in_the_round_that_reads_on_is_kept() {
         came.journal
     );
 }
+
+#[test]
+fn a_first_page_blinking_after_a_wait_leaves_the_row_as_it_was() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            } else if asked["query"] == "pineapple" {
+                return poisoned();
+            } else if asked.get("before").is_some() {
+                return format!("{FAILS}Slack said: ratelimited");
+            }
+            let round = if opens(asked) {
+                TAGS.fetch_add(1, Ordering::SeqCst) + 1
+            } else {
+                TAGS.load(Ordering::SeqCst)
+            };
+            // Read whole, then waiting on its second page a round, then
+            // unreadable three rounds, so the row says both can't be read,
+            // then blinking at its first page every round.
+            match round {
+                1 => tags(asked, &[(began - 300, "a word")], 1),
+                2 => bounded(asked, &paged(began, "a word"), 3, true),
+                3..=5 => poisoned(),
+                _ => format!("{FAILS}Slack said: ratelimited"),
+            }
+        },
+        &Until {
+            judging: 0,
+            asks: 24,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.journal.contains("1 of 10 rounds in a row")
+            && came
+                .why
+                .contains("Slack's answers to the safe word can't be read"),
+        "a wait rounds ago doesn't make a first page's blink a wait, so the row still says \
+         both can't be read: {}\n{}",
+        came.why,
+        came.journal
+    );
+}
+
+#[test]
+fn a_search_that_cant_be_read_is_told_while_the_phrase_waits_on_a_later_page() {
+    static PHRASES: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] != "pineapple" {
+                poisoned()
+            } else if asked.get("before").is_some() {
+                format!("{FAILS}Slack said: ratelimited")
+            } else {
+                in_pages(&PHRASES, asked, began, &paged(began, "a word"), 3, true)
+            }
+        },
+        // Only until the row is told.
+        &Until {
+            judging: 0,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    let told = came.journal.find("<5>wrote Joel's row in ");
+    let began_waiting = came.journal.find("1 of 10 rounds in a row");
+    let waiting = came.journal.find("3 of 10 rounds in a row");
+    assert!(
+        came.why
+            .contains("search of Slack for your tag can't be read")
+            && began_waiting.is_some()
+            && told > began_waiting
+            && (waiting.is_none() || told < waiting),
+        "the tag's search, unreadable, is told in its rounds while the phrase's waits on its \
+         second page: {}",
+        came.journal
+    );
+}
