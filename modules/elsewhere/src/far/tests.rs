@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 mod crossing;
 mod handing;
 mod heard;
+mod holding;
 mod leaving;
 mod sweeping;
 mod unpacking;
