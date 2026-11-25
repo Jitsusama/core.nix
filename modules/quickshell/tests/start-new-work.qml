@@ -492,6 +492,31 @@ QtObject {
                 { foot: ["ta", "tc"], notice: ["tb"] });
             Expect.same("and all noticed where he waits on none",
                 Openings.toldWhere(toldNow, () => false), { foot: [], notice: ["ta", "tb", "tc"] });
+            // At the shut, an act that promised a window says it shows in Agents instead.
+            const promising = [
+                { key: "a", held: "h1", machine: "kestrel", keys: 4 },
+                { key: "b", held: "h2", machine: "kestrel", keys: 5, late: true },
+                { key: "c", held: "h3", machine: "kestrel", keys: -1 }];
+            Expect.same("only one that promised a window, not late or spent, is said again",
+                Openings.unpromised(promising).map(each => [each.one.key,
+                    Sprouting.told(each.how, written)]),
+                [["a", written.unheld.replace("{machine}", "kestrel")]]);
+            // A start no act waits on is watched once, never taking the keys.
+            const watchedOne = Openings.watching([], heldHow, { key: "a", asked: 200 }, 900);
+            Expect.same("one answered late is watched from its act, never taking the keys",
+                watchedOne, { key: "a", held: "h1", machine: "kestrel", since: 900, asked: 200,
+                    keys: -1 });
+            Expect.same("and watched no more once it is, whichever came first",
+                Openings.watching([watchedOne], heldHow, { key: "start:t" }, 950), null);
+            Expect.same("but the same hold on another machine is",
+                Openings.watching([watchedOne], Object.assign({}, heldHow,
+                    { machine: "osprey" }), { key: "start:t" }, 950).machine, "osprey");
+            Expect.same("one refused or unheld isn't watched, as it opens nothing",
+                [{ started: false, held: "h9", machine: "kestrel", why: "no" },
+                    { started: true, held: "", machine: "kestrel" }]
+                    .map(how => Openings.watching([], how, { key: "a" }, 900)), [null, null]);
+            Expect.same("one kept has no Return, so its own time stands for it",
+                Openings.askedOf(Openings.watching([], heldHow, { key: "start:t" }, 900)), 900);
         }
         Expect.same("an act pressed since, or given fresh words, doesn't",
             Openings.saysOnAct({ a: 300 }, "a", 200), false);

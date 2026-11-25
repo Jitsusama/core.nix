@@ -103,6 +103,30 @@ function promised(how, given) {
         ? Object.assign({}, how, { held: "" }) : how;
 }
 
+// The `openings` whose acts promised a window (not spent, nor said yet to be
+// still coming up), each `{ one, how }`, how its act is said once the
+// launcher shuts, spending their keys (shutOn): as one that shows in Agents
+// once it's up (promised).
+function unpromised(openings) {
+    return openings.filter(one => one.keys !== -1 && one.late !== true).map(one => ({ one,
+        how: promised({ started: true, held: one.held, machine: one.machine }, { keys: -1 }) }));
+}
+
+// The opening watching a start `how` no act waits on (one kept, or answered
+// late), from `act`, `{ key, asked }` (the act it was asked from and its
+// Return, or for one kept a key of its own and none), answered `now`: keys
+// -1, so it never takes the keys, and Joel is told when it's up or lost.
+// Null for one refused or with no hold to find, which Sprouting.reach tells,
+// and for one `openings` already watch.
+function watching(openings, how, act, now) {
+    if (how.started !== true || how.held === ""
+        || openings.some(one => one.held === how.held && one.machine === how.machine)) {
+        return null;
+    }
+    return { key: act.key, held: how.held, machine: how.machine, since: now, asked: act.asked,
+        keys: -1 };
+}
+
 // What a pass tells of starts (`told`, each `{ one, text }`, in order), by
 // where Joel sees it: in the foot, `foot`, those he still `waits` on
 // (Sprouting.waitsOn), whose foot he's watching; the rest as a notice,
