@@ -87,6 +87,13 @@ impl Splitting {
         false
     }
 
+    /// Whether the train searches no red and waits on no builder, so a
+    /// change that boards now rides a run that could land it, rather than
+    /// one that could drop it for a red or an outage not its own.
+    pub(super) fn clear(&self) -> bool {
+        self.suspects == 0 && self.untaken_since.is_none()
+    }
+
     /// A builder took a candidate, whatever it found.
     pub(super) fn taken(&mut self) {
         self.untaken_since = None;
