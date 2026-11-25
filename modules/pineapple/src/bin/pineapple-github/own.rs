@@ -4,9 +4,10 @@
 //! minute and by far more in an incident, so the search asks from an hour
 //! before the last whole one, and a stop it indexed that late is still
 //! heard. A stop of his that a read finds from the hour before then stops
-//! nothing, and the journal says so once a run, so one indexed up to two
-//! hours late is said rather than lost unsaid; later still, on a thread
-//! nothing else changes, it's missed. How far it reached is kept across a
+//! nothing, and the journal says so once a run. Indexed more than an hour
+//! late, it's said only when something else changes its thread after it,
+//! as a search finds a thread by its last change; on a thread nothing
+//! else changes, it's missed unsaid. How far it reached is kept across a
 //! restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
@@ -18,7 +19,8 @@ use pineapple::{Joel, Platform, Saying, Verdict, judge};
 use super::{GitHub, Unread, searched};
 
 /// How far before the last whole search Joel's own words are searched for
-/// and read, in seconds. A stop heard an hour late beats one never heard,
+/// and judged, and how far before that a thread found is read, in
+/// seconds. A stop heard an hour late beats one never heard,
 /// while one older than that he may have moved past. What that finds
 /// again is known by its key, so nothing is judged twice.
 const OWN_LAG: u64 = 60 * 60;
@@ -72,7 +74,7 @@ impl Searched {
         }
     }
 
-    /// The farthest back this round searches for and reads Joel's words.
+    /// The farthest back this round searches for and judges Joel's words.
     pub(super) fn reach(&self) -> u64 {
         self.from.saturating_sub(OWN_LAG).max(self.floor)
     }
@@ -111,10 +113,13 @@ impl Searched {
                 }
             }
             Err(Unread::Gone(why) | Unread::Failed(why)) => {
+                // Its reach stays put, so the journal says how far back
+                // it has fallen.
                 eprintln!(
-                    "<4>couldn't search {} for what Joel said, so it's searched from as \
-                     far back next round: {why}",
-                    github.name
+                    "<4>couldn't search {} for what Joel said, so it's searched from {} \
+                     again next round: {why}",
+                    github.name,
+                    github::stamp(self.reach())
                 );
                 found.whole = false;
             }
@@ -150,11 +155,75 @@ impl Searched {
         if unjudged && self.told.insert(said.key.clone()) {
             eprintln!(
                 "<4>{} holds Joel's {SAFE_WORD} from {}, before {}, the farthest back \
-                 his words are read, so it stops nothing",
+                 his words are judged, so it stops nothing",
                 said.key,
                 github::stamp(said.at),
                 github::stamp(reach)
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pineapple::progress::Own;
+
+    use super::{OWN_LAG, Searched};
+
+    /// When the reader's rounds begin in these cases, in seconds.
+    const SINCE: u64 = 100_000;
+
+    /// A search's lag, as a first start is given it.
+    const LAG: u64 = 600;
+
+    #[test]
+    fn a_first_start_reaches_back_only_to_its_look_back() {
+        let searched = Searched::new(SINCE, None, true, LAG);
+        assert_eq!(searched.reach(), SINCE - LAG, "its look back and a lag");
+        assert_eq!(
+            searched.read_from(),
+            SINCE - LAG - OWN_LAG,
+            "what it finds is read from an hour before that"
+        );
+    }
+
+    #[test]
+    fn a_file_with_nothing_kept_reaches_the_whole_hour() {
+        let searched = Searched::new(SINCE, None, false, LAG);
+        assert_eq!(searched.reach(), SINCE - OWN_LAG, "the whole hour");
+        assert_eq!(
+            searched.read_from(),
+            SINCE - 2 * OWN_LAG,
+            "read an hour before"
+        );
+    }
+
+    #[test]
+    fn what_was_kept_beats_a_first_start() {
+        let kept = Own {
+            from: SINCE - 2 * OWN_LAG,
+            floor: 0,
+        };
+        let searched = Searched::new(SINCE, Some(kept), true, LAG);
+        assert_eq!(searched.kept(), kept, "kept as it was");
+        assert_eq!(
+            searched.reach(),
+            SINCE - 3 * OWN_LAG,
+            "an hour before the search it held back, not the first start's floor"
+        );
+    }
+
+    #[test]
+    fn a_kept_floor_holds_back_the_reach() {
+        let kept = Own {
+            from: SINCE,
+            floor: SINCE - LAG,
+        };
+        let searched = Searched::new(SINCE, Some(kept), false, LAG);
+        assert_eq!(
+            searched.reach(),
+            SINCE - LAG,
+            "no further back than its floor"
+        );
     }
 }

@@ -655,7 +655,10 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     if let Some(hits) = hits.filter(|hits| hits.whole) {
         own.moved_on(began, hits.seen);
     }
-    judged.own = Some(own.kept());
+    // Kept only where Joel's words are searched for, as a site read by
+    // what he opened never moves it on, and dropping that flag later
+    // would search from its first start.
+    judged.own = mine.then(|| own.kept());
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
     progress::write(state, &how.site, judged, millis());
