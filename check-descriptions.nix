@@ -1685,8 +1685,9 @@
     opens the site under the cursor, ? and F1 show its keys and Escape hides them, its shown keys
     answer a tap, an arrow on the theme switch chooses a look and leaves the cursor, the look holds
     to the next visit, its mark takes each look's own tint from the kit, a document under a hero
-    answers a tap on its keys, and the web-design skill's page checks pass at a phone's width and a
-    desk's in both looks, with nothing logged
+    answers a tap on its keys, the web-design skill's page checks pass at a phone's width and a
+    desk's in both looks, with nothing logged, a laptop's 1280 by 800 and 1024 by 768 screens show
+    its first site whole, and a tall screen draws its crest whole
   '';
   home-builds-from-its-rows = ''
     the local sites' home lists each site from its row in sites.json, the settled apart and every

@@ -10,10 +10,11 @@ its list of keys and Escape closes it, the keys its head shows answer a tap,
 the arrows on the theme switch choose a look and leave the cursor where it was,
 and the look chosen holds on the next visit. Its mark is drawn in each look's
 own tint from the kit. It passes the web-design skill's page checks at a
-phone's width and a desk's in both looks, and anything it logs fails it. A
-document whose head is a hero rather than a head answers a tap on its shown
-keys too. The server, the browser and the tab are
-modules/local-sites/tests/live_page.py's.
+phone's width and a desk's in both looks, and anything it logs fails it. On a
+laptop's short screen its first site stands whole in the first screen, and a
+tall one draws its crest whole. A document whose head is a hero rather than a
+head answers a tap on its shown keys too. The server, the browser and the tab
+are modules/local-sites/tests/live_page.py's.
 """
 
 import json
@@ -72,6 +73,12 @@ PAST_TWICE_MS = 1000
 LIGHT = "@media (prefers-color-scheme: light)"
 DARK_STROKE = re.compile(r"dark\) \{ g \{ stroke: ([^;]+); \}")
 LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
+# A laptop's short screens, on which the first site must stand whole in the
+# first screen, and one tall enough for the crest at its 13rem, as home.css
+# draws it from 70rem tall.
+LAPTOPS = [(1280, 800), (1024, 768)]
+TALL = (1280, 1200)
+FULL_CREST_PX = 208
 
 
 @pytest.fixture
@@ -209,3 +216,31 @@ def test_the_home_passes_the_skills_page_checks(
     expect(opened.page.locator(CURSOR), "the home drew no sites").to_have_text(NAMES[0])
     opened.passes_the_skills_checks()
     opened.close()
+
+
+@pytest.mark.parametrize("size", LAPTOPS, ids=[f"{width}x{height}" for width, height in LAPTOPS])
+def test_a_laptops_first_screen_shows_a_site_whole(
+    browser: Browser, home: str, size: tuple[int, int]
+) -> None:
+    """On a laptop's short screen the threshold gives way, and the first site stands whole."""
+    opened = Opened(browser, home, size, "dark")
+    try:
+        first = opened.page.locator(".bed .sites a").first
+        expect(first, "the home drew no sites").to_be_visible()
+        box = first.bounding_box()
+        assert box, "the first site was drawn with no box"
+        ends, (_, height) = box["y"] + box["height"], size
+        assert ends <= height, f"the first site ends at {ends:.0f} px, past the {height} px screen"
+    finally:
+        opened.close()
+
+
+def test_a_tall_screen_keeps_the_whole_crest(browser: Browser, home: str) -> None:
+    """A screen with room for the threshold draws its crest at its full size."""
+    opened = Opened(browser, home, TALL, "dark")
+    try:
+        crest = opened.page.locator(".crest").bounding_box()
+        assert crest, "the crest was drawn with no box"
+        assert crest["width"] == FULL_CREST_PX, f"a tall screen drew the crest {crest['width']} px"
+    finally:
+        opened.close()
