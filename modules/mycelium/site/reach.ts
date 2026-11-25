@@ -148,6 +148,11 @@ function orchestrationOf(
   return key && orchestrations.has(key) ? key : belongsTo(cell, orchestrations);
 }
 
+/** Whether `cell` has no name to be drawn or found by. */
+function nameless(cell: Cell): boolean {
+  return typeof cell.name !== "string" || cell.name === "";
+}
+
 /** Each cell of `reading` that `model`, the map drawn of it, misses. */
 function reachOf(reading: Reading, model: Model): Reach {
   const orchestrations = new Set(
@@ -157,8 +162,10 @@ function reachOf(reading: Reading, model: Model): Reach {
   );
   // A cell moving between machines can come from both for a while; the
   // drawing holds it once, under its one address, so it's judged once, by
-  // the copy the drawing keeps.
-  const cells = oneCopyEach(reading.cells);
+  // the copy the drawing keeps. A cell with no name is one the drawing
+  // drops, so it's judged here on its own, and found unreachable, rather
+  // than left out by the same rule that lost it.
+  const cells = [...oneCopyEach(reading.cells), ...reading.cells.filter(nameless)];
   const failures: Failure[] = [];
   for (const cell of cells) {
     const drawn = model.byAddress.get(cell.name);
