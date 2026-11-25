@@ -4,7 +4,7 @@
 //! four of a zone's changes were refused twice for one such file, and the
 //! dates they waited on were said to stand.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
@@ -26,16 +26,18 @@ type Risk = (i64, String, String);
 
 /// The dates still to come of open asks of the kind `which` in the asks
 /// list `text` at `now`, each waiting on a change's merge that shares
-/// files with what main has changed since. A `core.nix` change is asked
-/// of `core` by its number, a `world` one of `world` by its piece's
-/// branch, since that zone's gate writes no number of its own; the other
-/// repositories' changes aren't judged here. A piece waits on a
-/// merge while its `pr` names one and it has neither landed nor closed;
-/// an ask with no pieces is its own. An ask [`parked`] on a ruling, put
-/// down, closed or confirmed waits on nothing. Each ask is read from its
-/// latest line, as the list writes an ask whole each time. A change whose
-/// files couldn't be read isn't counted, and the measure says how many,
-/// so a read that fails never passes for none at risk.
+/// files with what main has changed since, each date once however many
+/// changes it waits on. A `core.nix` change is asked of `core` by its
+/// number, a `world` one of `world` by its piece's branch, since that
+/// zone's gate writes no number of its own; the other repositories'
+/// changes aren't judged here. A piece waits on a merge while its `pr`
+/// names one and it has neither landed nor closed; an ask with no pieces
+/// is its own. An ask [`parked`] on a ruling, put down, closed or
+/// confirmed waits on nothing. Each ask is read from its latest line, as
+/// the list writes an ask whole each time. A date whose changes couldn't
+/// be read, or whose `pr` names none that can be found, isn't counted,
+/// and the measure says how many; with none at risk beside them, it goes
+/// unjudged, so a read that fails never passes for none at risk.
 #[must_use]
 pub fn at_risk(
     text: &str,
@@ -55,22 +57,12 @@ pub fn at_risk(
             let Some(due) = seconds(&piece["expected"]).filter(|&due| due > now) else {
                 continue;
             };
-            let pr = piece["pr"].as_str().unwrap_or_default();
-            for (repo, number) in changes(pr) {
-                let shared = match repo {
-                    Repo::Core => core(number),
-                    Repo::World => piece["branch"]
-                        .as_str()
-                        .map_or_else(|| Err("its piece names no branch".to_owned()), world),
-                    Repo::Harness | Repo::Mycelium => continue,
-                };
-                match shared {
-                    Ok(files) if files.is_empty() => {}
-                    Ok(files) => risks.push(risk(ask, piece, (due, now), &files)),
-                    Err(why) => {
-                        eprintln!("cadence: at risk: {pr} unread: {why}");
-                        unread += 1;
-                    }
+            match shared(piece, core, world) {
+                Ok(files) if files.is_empty() => {}
+                Ok(files) => risks.push(risk(ask, piece, (due, now), &files)),
+                Err(why) => {
+                    eprintln!("cadence: at risk: {why}");
+                    unread += 1;
                 }
             }
         }
@@ -86,7 +78,7 @@ pub fn at_risk(
             format!("{says} ({unread} unread)")
         },
         now: count(risks.len()),
-        target: Some(0.0),
+        target: (unread == 0 || !risks.is_empty()).then_some(0.0),
         owner: risks.first().map(|(_, _, o)| o.clone()).unwrap_or_default(),
         behind: risks.into_iter().map(|(_, line, _)| line).collect(),
     }
@@ -100,11 +92,16 @@ pub const REFUSALS: &str = "home-merge-gate/refusals.jsonl";
 /// what main has changed beside it, as its timer writes one each hour.
 const DRIFT_LASTS: i64 = 2 * 3600;
 
+/// How far ahead of the hour a gate line's time may be, as two clocks on
+/// one machine may differ, before it's taken for one never going stale.
+const AHEAD: i64 = 5 * 60;
+
 /// The files `branch` shares with main by the latest line for it in the
 /// zone gate's `refusals` at `now`, its hourly drift or a refusal,
 /// whichever came last: each line holds the branch, when it was `at` and
-/// the `overlap`. No record, no line for the branch, or none in the last
-/// two hours is unread, never none shared.
+/// the `overlap`. No record, no line for the branch, none in the last
+/// two hours, one dated ahead or one naming no overlap is unread, never
+/// none shared.
 pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
     let text = refusals.ok_or_else(|| "the zone's merge gate keeps no record yet".to_owned())?;
     let line = lines(text)
@@ -116,8 +113,14 @@ pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
         let hours = (now - at) / 3600;
         return Err(format!("its latest line for {branch} is {hours} h old"));
     }
-    let overlap = line["overlap"].as_array().into_iter().flatten();
+    if at > now + AHEAD {
+        return Err(format!("its latest line for {branch} is dated ahead"));
+    }
+    let Some(overlap) = line["overlap"].as_array() else {
+        return Err(format!("its latest line for {branch} names no overlap"));
+    };
     Ok(overlap
+        .iter()
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect())
@@ -135,6 +138,31 @@ fn open(ask: &Value, which: Tracking) -> bool {
 /// Whether a field is missing, null or empty.
 fn unset(field: &Value) -> bool {
     field.is_null() || field.as_str() == Some("")
+}
+
+/// The files the changes `piece`'s `pr` names share with main, sorted
+/// and each once, asked of `core` by number and of `world` once by the
+/// piece's branch. Why not, naming the change, when one couldn't be read
+/// or the `pr` names no change that can be found.
+fn shared(piece: &Value, core: &dyn Fn(u32) -> Shared, world: &dyn Fn(&str) -> Shared) -> Shared {
+    let pr = piece["pr"].as_str().unwrap_or_default();
+    let named = changes(pr);
+    if named.is_empty() {
+        return Err(format!("{pr} names no change that can be found"));
+    }
+    let mut files = BTreeSet::new();
+    let numbers = named.iter().filter(|(repo, _)| *repo == Repo::Core);
+    for &(_, number) in numbers {
+        let read = core(number).map_err(|why| format!("core.nix#{number} unread: {why}"))?;
+        files.extend(read);
+    }
+    if named.iter().any(|(repo, _)| *repo == Repo::World) {
+        let Some(branch) = piece["branch"].as_str() else {
+            return Err(format!("{pr} unread: its piece names no branch"));
+        };
+        files.extend(world(branch).map_err(|why| format!("{branch} unread: {why}"))?);
+    }
+    Ok(files.into_iter().collect())
 }
 
 /// The parts of `ask` that wait on a merge: each piece naming a change
@@ -189,14 +217,23 @@ pub enum Repo {
 }
 
 impl Repo {
-    /// The repository a name in a `pr` value means, by its last part, as
-    /// its keeper writes it short, whole or with its owner.
+    /// The repository a name in a `pr` value means, as its keeper writes
+    /// it short, whole, under its owner or in its address; one under
+    /// another owner is another repository.
     fn named(name: &str) -> Option<Self> {
-        let last = name.rsplit('/').next().unwrap_or_default();
-        match last.to_ascii_lowercase().as_str() {
-            "core.nix" | "core" => Some(Self::Core),
-            "world" => Some(Self::World),
-            "agentic-harness.pi" | "harness" => Some(Self::Harness),
+        let name = name.to_ascii_lowercase();
+        let name = name
+            .trim_start_matches("https://")
+            .trim_start_matches("github.com/");
+        let (owner, repo) = match name.split_once('/') {
+            Some((owner, repo)) => (Some(owner), repo),
+            None => (None, name),
+        };
+        let under = |of: &str| owner.is_none_or(|owner| owner == of);
+        match repo {
+            "core.nix" | "core" if under("jitsusama") => Some(Self::Core),
+            "world" if under("shop") => Some(Self::World),
+            "agentic-harness.pi" | "harness" if under("jitsusama") => Some(Self::Harness),
             "mycelium" => Some(Self::Mycelium),
             _ => None,
         }
@@ -206,9 +243,10 @@ impl Repo {
 /// Each change an ask's `pr` names, in the forms its keeper has written:
 /// `repo#N`, with the repository short, whole or under its owner; a
 /// change's address; or several after one another, where a bare `#N`
-/// is in the repository named before it. A number with no repository
-/// says no change that can be found, so it names none rather than one
-/// guessed.
+/// is in the repository named just before it. A number with no
+/// repository, or one it doesn't know, says no change that can be found,
+/// so it names none rather than one guessed, and each change is named
+/// once.
 pub fn changes(pr: &str) -> Vec<(Repo, u32)> {
     let mut named = Vec::new();
     let mut last = None;
@@ -221,10 +259,12 @@ pub fn changes(pr: &str) -> Vec<(Repo, u32)> {
                 None => (None, ""),
             },
         };
-        let number = number.trim_end_matches('/').parse::<u32>().ok();
-        if let (Some(repo), Some(number)) = (repo, number) {
+        last = repo;
+        let number = number.split('/').next().and_then(|n| n.parse::<u32>().ok());
+        if let (Some(repo), Some(number)) = (repo, number)
+            && !named.contains(&(repo, number))
+        {
             named.push((repo, number));
-            last = Some(repo);
         }
     }
     named

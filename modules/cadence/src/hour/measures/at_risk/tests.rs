@@ -53,7 +53,7 @@ fn read_as(text: &str, which: Tracking) -> Measure {
 
 #[test]
 fn each_form_the_keeper_has_written_names_its_change() {
-    let cases: [(&str, &[(Repo, u32)]); 10] = [
+    let cases: [(&str, &[(Repo, u32)]); 16] = [
         ("core.nix#6595", &[(Repo::Core, 6595)]),
         ("core#4057", &[(Repo::Core, 4057)]),
         ("Jitsusama/core.nix#4220", &[(Repo::Core, 4220)]),
@@ -61,7 +61,12 @@ fn each_form_the_keeper_has_written_names_its_change() {
             "https://github.com/Jitsusama/core.nix/pull/6102",
             &[(Repo::Core, 6102)],
         ),
+        (
+            "https://github.com/Jitsusama/core.nix/pull/6103/files",
+            &[(Repo::Core, 6103)],
+        ),
         ("world#2536168", &[(Repo::World, 2_536_168)]),
+        ("shop/world#2523084", &[(Repo::World, 2_523_084)]),
         ("World#2507660", &[(Repo::World, 2_507_660)]),
         ("harness#1555", &[(Repo::Harness, 1555)]),
         ("agentic-harness.pi#2211", &[(Repo::Harness, 2211)]),
@@ -74,6 +79,9 @@ fn each_form_the_keeper_has_written_names_its_change() {
             ],
         ),
         ("4224", &[]),
+        ("someone/core.nix#5", &[]),
+        ("core#1, elsewhere#2, #3", &[(Repo::Core, 1)]),
+        ("core#6595, #6595", &[(Repo::Core, 6595)]),
     ];
     for (pr, named) in cases {
         assert_eq!(changes(pr), named, "{pr} read as other changes");
@@ -181,6 +189,11 @@ fn a_world_piece_is_asked_by_its_branch_and_one_with_none_is_unread() {
         "a piece with no branch passed for none at risk: {}",
         m.says
     );
+    assert_eq!(
+        m.target,
+        Some(0.0),
+        "a date at risk beside an unread went unjudged"
+    );
 }
 
 #[test]
@@ -198,6 +211,55 @@ fn a_change_that_cannot_be_read_is_said_unread_not_safe() {
         m.says.ends_with("(1 unread)"),
         "an unread change passed for none at risk: {}",
         m.says
+    );
+    assert_eq!(m.target, None, "an unread change alone was judged met");
+}
+
+#[test]
+fn a_pr_naming_no_change_that_can_be_found_is_unread_not_safe() {
+    for pr in ["4224", "core#1 core#2", "someone/core.nix#6595"] {
+        let text = list(&[ask_waiting("a fix", "A", (NOW + 600, pr), &json!({}))]);
+        let m = read(&text);
+        assert!(
+            m.says.ends_with("(1 unread)") && m.target.is_none(),
+            "{pr} passed for none at risk: {} {:?}",
+            m.says,
+            m.target
+        );
+    }
+}
+
+#[test]
+fn a_date_waiting_on_several_changes_counts_once_with_all_they_share() {
+    let world = |_: &str| -> Shared { Ok(vec!["flake.lock".to_owned(), "README.md".to_owned()]) };
+    let text = list(&[ask_waiting(
+        "both halves",
+        "A",
+        (NOW + 600, "core.nix#6595, world#7, #8"),
+        &json!({"branch": "halves"}),
+    )]);
+    let m = at_risk(&text, NOW, Tracking::His, &|n| Ok(beside(n)), &world);
+    assert_eq!(
+        m.behind,
+        ["both halves, due in 10 min, main changed README.md, flake.lock since it parted · A"],
+        "one date waiting on three changes didn't count once, each file once"
+    );
+}
+
+#[test]
+fn only_a_piece_naming_a_change_waits_and_an_ask_s_own_pr_beside_pieces_is_not_read() {
+    let mut ask = ask_waiting("a fix", "A", (NOW + 600, "core.nix#6000"), &json!({}));
+    ask["pr"] = json!("core.nix#6595");
+    ask["pieces"][0] = json!({
+        "what": "a step with no change", "owner": "A", "expected": at(NOW + 600),
+        "landed": null, "pr": null,
+    });
+    let m = read(&list(&[ask]));
+    assert!(
+        m.behind.is_empty() && !m.says.contains("unread"),
+        "a piece with no change, or the ask's own pr beside its pieces, was read: {} {:?}",
+        m.says,
+        m.behind
     );
 }
 
@@ -222,8 +284,9 @@ fn the_soonest_date_owns_it_and_leads_the_lines() {
 /// The zone gate's line for a branch, `at`, of `kind`, sharing `overlap`.
 fn gate_line(branch: &str, at_seconds: i64, kind: &str, overlap: &[&str]) -> Value {
     json!({
-        "at": at(at_seconds), "commit": "c", "base": "b", "main": "m", "ours": overlap,
-        "overlap": overlap, "branch": branch, "change": null, "kind": kind,
+        "at": at(at_seconds), "commit": "c", "base": "b", "main": "m",
+        "ours": ["only-ours"], "overlap": overlap, "branch": branch, "change": null,
+        "kind": kind,
     })
 }
 
@@ -243,11 +306,21 @@ fn a_branch_shares_what_its_latest_gate_line_says() {
 
 #[test]
 fn no_record_no_line_or_a_stale_one_is_unread_not_none_shared() {
-    let refusals = list(&[gate_line("old", NOW - 3 * 3600, "drift", &[])]);
+    let mut bare = gate_line("bare", NOW - 60, "drift", &[]);
+    if let Some(line) = bare.as_object_mut() {
+        line.remove("overlap");
+    }
+    let refusals = list(&[
+        gate_line("old", NOW - 3 * 3600, "drift", &[]),
+        gate_line("ahead", NOW + 3600, "drift", &[]),
+        bare,
+    ]);
     for (case, read) in [
         ("no record", drifted(None, "gates", NOW)),
         ("no line", drifted(Some(&refusals), "gates", NOW)),
         ("a stale line", drifted(Some(&refusals), "old", NOW)),
+        ("a line dated ahead", drifted(Some(&refusals), "ahead", NOW)),
+        ("no overlap", drifted(Some(&refusals), "bare", NOW)),
     ] {
         assert!(read.is_err(), "{case} read as {read:?}");
     }
