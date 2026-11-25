@@ -1185,7 +1185,10 @@ mod tests {
     fn a_report_is_twenty_bytes_behind_its_header() {
         let made = report(POWER, &[1]);
         assert_eq!(made[..5], [0x11, 0xff, 0x04, 0x1c, 1]);
-        assert!(made[5..].iter().all(|byte| *byte == 0));
+        assert!(
+            made[5..].iter().all(|byte| *byte == 0),
+            "a report's padding wasn't zero: {made:?}"
+        );
         assert_eq!(
             report(TEMPERATURE, &4000u16.to_be_bytes())[4..6],
             [0x0f, 0xa0]
@@ -1332,19 +1335,22 @@ mod tests {
     #[test]
     fn streaming_is_any_cameras_file_naming_a_program() {
         let root = root("streaming");
-        assert!(!streaming(&root));
+        assert!(!streaming(&root), "an empty folder streams");
         fs::write(root.join("camera"), "").unwrap();
         fs::write(root.join("MX Brio 705 for Business"), "\n").unwrap();
-        assert!(!streaming(&root));
+        assert!(!streaming(&root), "a camera's empty file names a program");
         fs::write(root.join(".camera.4123"), "zoom\n").unwrap();
         fs::write(root.join(".camera"), "zoom\n").unwrap();
         assert!(!streaming(&root), "a file being replaced is no camera");
         fs::write(root.join("MX Brio 705 for Business"), "zoom\n").unwrap();
-        assert!(streaming(&root));
+        assert!(streaming(&root), "a camera naming a program doesn't stream");
         fs::remove_file(root.join("MX Brio 705 for Business")).unwrap();
         fs::write(root.join("Webcam 2.0"), "zoom\n").unwrap();
         assert!(streaming(&root), "a camera named for a version is a camera");
-        assert!(!streaming(&root.join("nothing")));
+        assert!(
+            !streaming(&root.join("nothing")),
+            "a folder that isn't there streams"
+        );
     }
 
     #[test]
@@ -1354,14 +1360,26 @@ mod tests {
         fs::create_dir_all(&cameras).unwrap();
         fs::write(cameras.join("MX Brio 705 for Business"), "zoom\n").unwrap();
         let marker = root.join("quickshell-locked");
-        assert!(wanted(&cameras, None));
+        assert!(
+            wanted(&cameras, None),
+            "a camera streams with no lock, yet the lights aren't wanted"
+        );
         assert!(wanted(&cameras, Some(&marker)), "no file says unlocked");
         fs::write(&marker, "locked\n").unwrap();
-        assert!(!wanted(&cameras, Some(&marker)));
+        assert!(
+            !wanted(&cameras, Some(&marker)),
+            "a locked screen let the lights light"
+        );
         fs::write(&marker, "unlocked\n").unwrap();
-        assert!(wanted(&cameras, Some(&marker)));
+        assert!(
+            wanted(&cameras, Some(&marker)),
+            "an unlocked screen kept the lights out"
+        );
         fs::write(cameras.join("MX Brio 705 for Business"), "").unwrap();
-        assert!(!wanted(&cameras, Some(&marker)));
+        assert!(
+            !wanted(&cameras, Some(&marker)),
+            "no camera streams, yet the lights are wanted"
+        );
     }
 
     #[test]
@@ -1377,8 +1395,14 @@ mod tests {
             events.extend_from_slice(&u32::try_from(name.len()).unwrap().to_ne_bytes());
             events.extend_from_slice(name);
         }
-        assert!(folder_gone(&events));
-        assert!(!folder_gone(&events[..24]));
+        assert!(
+            folder_gone(&events),
+            "the folder's going was missed among other events"
+        );
+        assert!(
+            !folder_gone(&events[..24]),
+            "a camera's file closing was taken for the folder going"
+        );
     }
 
     #[test]
