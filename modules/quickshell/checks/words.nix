@@ -79,10 +79,11 @@
   # Agents.qml names to the launcher's foot, has words in agents:machine
   # (modules/quickshell/tests/foot-words.py), since the foot says nothing for
   # a key it hasn't and a press must never do nothing. Keys read off
-  # agents:machine by name elsewhere, as SessionRow.js's, aren't read here.
+  # agents:machine by name elsewhere, as SessionRow.js's, aren't read here;
+  # each why SessionRow.js says plainly must be one the shell gives.
   every-why-in-the-foot-has-words = pkgs.runCommandLocal "every-why-in-the-foot-has-words" { } ''
     ${lib.getExe pkgs.python3} ${../tests/foot-words.py} ${../launcher/words/agents.json} \
-      ${../Sessions.qml} ${../launcher/Agents.qml}
+      ${../Sessions.qml} ${../launcher/Agents.qml} ${../launcher/SessionRow.js}
     touch $out
   '';
 

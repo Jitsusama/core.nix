@@ -1,9 +1,12 @@
 """Check that every why the shell gives a press it can't answer has words in the foot.
 
-    foot-words AGENTS SESSIONS LAUNCHER
+    foot-words AGENTS SESSIONS LAUNCHER ROWS
 
 AGENTS is the vocabulary's own file for agents (launcher/words/agents.json),
-SESSIONS the shell's Sessions.qml and LAUNCHER the launcher's Agents.qml. Each
+SESSIONS the shell's Sessions.qml, LAUNCHER the launcher's Agents.qml and ROWS
+its SessionRow.js, whose VIEWED_WHYS says which whys the foot says plainly:
+each must be a why the shell gives, so one renamed there fails rather than
+turning a viewer's plain words into the alert's. Each
 why Sessions says a session by (`unhosted(session, "why")`, one or a choice
 of two) and each key the launcher names to its foot (`elsewhere("key", ...)`)
 must have words in agents:machine's `said`: the launcher reads them there and
@@ -14,8 +17,10 @@ read here. A call is read to its closing paren, however it's wrapped. Each why
 or key missing, or worded "", fails, printed, and so does a why or key that can
 come to anything but a word, as one held in a name, which can't be read; only
 the why the launcher's onUnhosted is given, inside that handler, may be a
-name, and that handler must pass it on to elsewhere, or every why the shell
-gives would meet an empty foot. A word a choice is made by is no why. The
+name, and that handler must pass it on to elsewhere, in its code rather than
+a string or comment there, or every why the shell gives would meet an empty
+foot; a handler whose body never closes, as a quote in a regex can leave
+it, is none. A word a choice is made by is no why. The
 check first proves it finds a why in a choice or a wrapped call and refuses a
 why with no words, so a rule that stopped finding or refusing fails it too.
 """
@@ -25,10 +30,11 @@ from __future__ import annotations
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
-# The vocabulary's file, Sessions.qml and Agents.qml.
-ARGUMENTS = 3
+# The vocabulary's file, Sessions.qml, Agents.qml and SessionRow.js.
+ARGUMENTS = 4
 
 # A call of the signal, not its declaration.
 UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(")
@@ -41,6 +47,8 @@ HANDLER = re.compile(r"\bfunction onUnhosted\(\s*\w+\s*,\s*(\w+)\s*\)[^{]*\{")
 # A string in double quotes, as each why and key is said, "" too, so the
 # quote that closes one is never read as opening the next.
 WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
+# SessionRow.js's list of the whys said plainly, up to its closing bracket.
+VIEWED = re.compile(r"\bconst VIEWED_WHYS = \[([^\]]*)\]")
 OPENS = "([{"
 CLOSES = ")]}"
 QUOTES = "\"'`"
@@ -181,16 +189,35 @@ def keys(source: str) -> set[str]:
     return found
 
 
-def handler(source: str) -> tuple[str, int, int] | None:
-    """Give the name onUnhosted keeps the shell's why in, and where its body begins and ends.
+@dataclass(frozen=True)
+class Handler:
+    """Where onUnhosted keeps the shell's why, where its body is, and what in it isn't code."""
+
+    name: str
+    begins: int
+    ends: int
+    unread: tuple[tuple[int, int], ...]
+
+    def holds(self, at: int) -> bool:
+        """Say whether `at` is the body's code, not a string or comment in it."""
+        return self.begins <= at < self.ends and not any(
+            start <= at < end for start, end in self.unread
+        )
+
+
+def handler(source: str) -> Handler | None:
+    """Give onUnhosted's name for the shell's why, its body, and the strings and comments there.
 
     A brace inside a string or a comment is none of the body's, and a quote
-    inside a comment opens no string, so neither moves where it ends.
+    inside a comment opens no string, so neither moves where it ends. A body
+    that never closes is none, as a quote misread, in a regex, would
+    otherwise widen it to the file's end and excuse every name after.
     """
     found = HANDLER.search(source)
     if found is None:
         return None
-    depth, quote, at = 1, "", found.end()
+    unread: list[tuple[int, int]] = []
+    depth, quote, opened, at = 1, "", 0, found.end()
     while depth and at < len(source):
         one = source[at]
         if quote:
@@ -198,18 +225,25 @@ def handler(source: str) -> tuple[str, int, int] | None:
                 at += 1
             elif one == quote:
                 quote = ""
+                unread.append((opened, at + 1))
         elif source.startswith("//", at):
-            at = source.find("\n", at)
-            at = len(source) if at < 0 else at
+            ends = source.find("\n", at)
+            ends = len(source) if ends < 0 else ends
+            unread.append((at, ends))
+            at = ends
         elif source.startswith("/*", at):
-            at = source.find("*/", at)
-            at = len(source) if at < 0 else at + 1
+            ends = source.find("*/", at)
+            ends = len(source) if ends < 0 else ends + 2
+            unread.append((at, ends))
+            at = ends - 1
         elif one in QUOTES:
-            quote = one
+            quote, opened = one, at
         else:
             depth += {"{": 1, "}": -1}.get(one, 0)
         at += 1
-    return found.group(1), found.end(), at
+    if depth:
+        return None
+    return Handler(found.group(1), found.end(), at, tuple(unread))
 
 
 def firsts(source: str) -> list[tuple[int, str]]:
@@ -221,9 +255,9 @@ def firsts(source: str) -> list[tuple[int, str]]:
     return found
 
 
-def shells(held: tuple[str, int, int] | None, at: int, first: str) -> bool:
-    """Say whether a call at `at` passes on the shell's why, inside the handler given it."""
-    return held is not None and first.strip() == held[0] and held[1] <= at < held[2]
+def shells(held: Handler | None, at: int, first: str) -> bool:
+    """Say whether a call at `at` passes on the shell's why, in the code of the handler given it."""
+    return held is not None and first.strip() == held.name and held.holds(at)
 
 
 def unkeyed(source: str) -> list[str]:
@@ -246,6 +280,12 @@ def passes_on(source: str) -> bool:
     """Say whether onUnhosted passes the shell's why on to elsewhere, so it reaches the foot."""
     held = handler(source)
     return any(shells(held, at, first) for at, first in firsts(source))
+
+
+def viewed(rows: str) -> list[str] | None:
+    """Give the whys SessionRow.js's VIEWED_WHYS names, or None where it has no such list."""
+    found = VIEWED.search(rows)
+    return None if found is None else WORD.findall(found.group(1))
 
 
 def said(vocabulary: object) -> dict[str, object]:
@@ -363,6 +403,11 @@ def refuses_what_it_should() -> list[str]:
             "a body never closed, as a quote in a regex leaves it, read to the file's end",
         ),
         (
+            viewed('const VIEWED_WHYS = ["opening",\n    "cameAfter"];'),
+            ["opening", "cameAfter"],
+            "the whys said plainly, wrapped onto a next line",
+        ),
+        (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
             ["opening", "unnamed"],
             "a why worded empty or not at all",
@@ -374,7 +419,7 @@ def refuses_what_it_should() -> list[str]:
 def main(arguments: list[str]) -> int:
     """Check each why and key against agents:machine's words, saying each with none."""
     if len(arguments) != ARGUMENTS:
-        print("usage: foot-words AGENTS SESSIONS LAUNCHER", file=sys.stderr)
+        print("usage: foot-words AGENTS SESSIONS LAUNCHER ROWS", file=sys.stderr)
         return 64
     let_through = refuses_what_it_should()
     for rule in let_through:
@@ -404,8 +449,14 @@ def main(arguments: list[str]) -> int:
     missing = unworded(given | asked, said(vocabulary))
     for key in missing:
         print(f"foot-words: {key} has no words in agents:machine's said", file=sys.stderr)
+    plain = viewed(Path(arguments[3]).read_text(encoding="utf-8"))
+    if plain is None:
+        print(f"foot-words: {arguments[3]} has no VIEWED_WHYS to read", file=sys.stderr)
+    ungiven = sorted(set(plain or []) - given)
+    for why in ungiven:
+        print(f"foot-words: {why} is said plainly but no why the shell gives", file=sys.stderr)
     unheld = let_through or missing or named or unasked or not passed or not given
-    return 1 if unheld else 0
+    return 1 if unheld or plain is None or ungiven else 0
 
 
 if __name__ == "__main__":

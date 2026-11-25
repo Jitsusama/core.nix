@@ -866,15 +866,13 @@ Provider {
                 Theme.alert]]);
         }
 
-        // Said by why it held, in words of its own (Sessions' unhosted).
-        // A why that tells of a viewer opening or viewed is said plainly, the
-        // alert kept for a press that didn't view (docs/design.md: colour
-        // carries the meaning).
+        // Said by why it held, in words of its own (Sessions' unhosted),
+        // plainly where it tells of a viewer opening or viewed, the alert
+        // kept for a press that didn't view (SessionRow.viewedWhy).
         function onUnhosted(session, why) {
-            const viewed = ["opening", "cameAfter", "startedCameAfter", "ownAfterAll",
-                "startedOwnAfterAll"].includes(why);
             provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(why, session), viewed ? Theme.text : Theme.alert]]);
+                provider.elsewhere(why, session),
+                SessionRow.viewedWhy(why) ? Theme.text : Theme.alert]]);
         }
 
         function onUnopened(session) {

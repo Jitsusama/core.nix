@@ -199,6 +199,20 @@ function footNameOf(served, session, titleOf) {
         session.address);
 }
 
+// The whys Sessions gives a press it can't answer as asked (its unhosted)
+// that tell of the press's viewer opening or viewed, said plainly in the
+// foot; every other is said in the alert's colour, as a press that viewed
+// nothing (docs/design.md: colour carries the meaning). foot-words.py
+// holds each to a why the shell gives, so one renamed there fails rather
+// than turning a viewer's plain words into an alert.
+const VIEWED_WHYS = ["opening", "startedOpening", "cameAfter", "startedCameAfter",
+    "ownAfterAll", "startedOwnAfterAll"];
+
+// Whether the foot says `why` plainly, as of a viewer opening or viewed.
+function viewedWhy(why) {
+    return VIEWED_WHYS.includes(String(why ?? ""));
+}
+
 // What an address is made of, the only kind reasonOf looks for in a reason.
 const ADDRESS = /^[A-Z0-9]+$/u;
 

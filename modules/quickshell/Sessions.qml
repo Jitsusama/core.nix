@@ -652,11 +652,13 @@ Singleton {
     // (disowned) or is still coming (heldBack); otherwise opened as any
     // viewer is (viewWith), titled for its quest and folder until pi
     // titles it, rather than a bare attach whose window reads "mycelium".
-    // What's said of its viewer is led by the start (started), so the foot
-    // never reads as the start not taking. Answers the listed one, if any.
+    // What's said of its viewer is led by the start (startedInHost, a mark
+    // no session or row carries), so the foot never reads as the start not
+    // taking. Answers the listed one, if any.
     function viewStarted(host, id, named, title, folder, footed) {
         readKittyPid();
-        const said = Object.assign({}, footed, { started: true });
+        raisedOwn(named);
+        const said = Object.assign({}, footed, { startedInHost: true });
         const listed = listedNamed(named);
         if (listed)
             Niri.act({ FocusWindow: { id: listed.id } });
@@ -679,7 +681,7 @@ Singleton {
         console.info(`sessions: ${id} not viewed again, since its viewer is asked for already`);
         goingTo = { app: named, at: Date.now(), from: Niri.focused };
         pressedFor = Object.assign({}, pressedFor, { [named]: said });
-        unhosted(said, "opening");
+        unhosted(said, said?.startedInHost ? "startedOpening" : "opening");
         return true;
     }
 
@@ -1424,7 +1426,7 @@ Singleton {
         if (going.waiting !== null || going.looking !== null)
             return;
         if (going.queue.length > 0) {
-            if (!reopenPacing.running)
+            if (!reopenPaced)
                 reopenSoon();
             return;
         }
@@ -1506,6 +1508,11 @@ Singleton {
         id: reopenPacing
         onTriggered: root.reopenSoon()
     }
+    // Whether the pace holds the next begin, which settles nothing
+    // meanwhile, as its end asks again (reopenSoon); read by the walk and
+    // the lock's end (placeBehind), and by cases, which can't reach the
+    // timer itself, to tell its settling from their own.
+    readonly property bool reopenPaced: reopenPacing.running
 
     // Each session Reopen Them All opened is told to carry on only as the
     // uplink has room (Reopening.carryOnsDue), since the words make it send,
@@ -1680,8 +1687,7 @@ Singleton {
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
             reopenSettling.stop();
-            if (reopening.waiting === null && reopening.looking === null
-                && !reopenPacing.running)
+            if (reopening.waiting === null && reopening.looking === null && !reopenPaced)
                 reopenSoon();
             return;
         }
@@ -2586,7 +2592,7 @@ Singleton {
                 going.behind.push(held);
         }
         if (going.queue.length === 0 && going.waiting === null && going.looking === null
-            && !reopenPacing.running)
+            && !root.reopenPaced)
             root.settleReopened();
     }
 
@@ -2640,6 +2646,8 @@ Singleton {
     // never on whichever workspace Joel is on.
     function goTo(session) {
         readKittyPid();
+        if (session.presence?.hosted)
+            raisedOwn(viewerOf(session.presence));
         if (session.presence?.hosted
             && !(root.listedNow(session.window) && root.drawnHere(session.window))) {
             // Its viewer niri lists is raised, never a second
@@ -2816,8 +2824,17 @@ Singleton {
         const same = refusedAsks[named] === String(window.id);
         forgetAsk(named);
         if (told)
-            unhosted(told, same && told.started ? "startedOwnAfterAll" : same ? "ownAfterAll"
-                : told.started ? "startedCameAfter" : "cameAfter");
+            unhosted(told, same && told.startedInHost ? "startedOwnAfterAll"
+                : same ? "ownAfterAll" : told.startedInHost ? "startedCameAfter" : "cameAfter");
+    }
+    // A press of a viewer whose window came refused and is listed now as
+    // the kitty's, its pid read again as each press reads it, is its own
+    // come (viewerCame): the press told disowned is told so now, as the
+    // window is raised, rather than whenever niri next says it changed.
+    function raisedOwn(named) {
+        const listed = named in disownedSaid ? listedNamed(named) : undefined;
+        if (listed)
+            viewerCame(listed);
     }
     // A viewer no longer asked for, come or given up on, and what its
     // press and any refused window said of it.
@@ -2866,11 +2883,14 @@ Singleton {
     function disowned(named, said) {
         if (!refusedOwn(named))
             return false;
-        unhosted(said, said?.started ? "startedDisowned" : "disowned");
+        unhosted(said, said?.startedInHost ? "startedDisowned" : "disowned");
         // While the script may still answer for the ask whose window came
         // refused, its own may yet come after a stray: this press takes the
-        // focus it would take and is told if it comes (disownedSaid).
+        // focus it would take and is told if it comes (disownedSaid), said
+        // in the journal, as it takes the place of any Go To still opening.
         if (Date.now() - (refusedAt[named] ?? 0) < answerPatience) {
+            console.info(`sessions: a press of ${named} waits on the refused ask's own window, `
+                + "taking the focus");
             goingTo = { app: named, at: Date.now(), from: Niri.focused };
             disownedSaid = Object.assign({}, disownedSaid, { [named]: said });
         }
@@ -2927,7 +2947,7 @@ Singleton {
             goingTo = null;
         keepAgain(back);
         if (told !== null)
-            unhosted(told, told.started ? "startedUntaken" : "untaken");
+            unhosted(told, told.startedInHost ? "startedUntaken" : "untaken");
     }
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
@@ -2941,8 +2961,10 @@ Singleton {
     // Any program of Joel's can call it, so only a viewer's app id and a
     // time in ms are taken, which stops a malformed ask, not one meant: the
     // time orders the script's own give-ups against newer presses, and
-    // ends a refusal only within answerPatience of its ask; any program of
-    // his could start a viewer itself anyway.
+    // ends a refusal only within answerPatience of its ask. A call meant
+    // can so end a refusal, let a press's focus go, keep a place again and
+    // have the foot say untaken, none past a boundary: any program of his
+    // could start a viewer, or reach the kitty's socket, itself anyway.
     // The press that asked, which saw no window, is told "untaken", and the
     // focus it took is let go, as for a refusal ended (refusedUntaken).
     function untaken(named, asked) {
@@ -2964,7 +2986,7 @@ Singleton {
             + "opening, and a press asks for it afresh"
             + (said !== null ? "; its press is told" : ""));
         if (said !== null)
-            unhosted(said, said.started ? "startedUntaken" : "untaken");
+            unhosted(said, said.startedInHost ? "startedUntaken" : "untaken");
         waitedOnNoMore(named, "no sessions kitty took it");
     }
     // Reopen Them All's walk waits on viewer `named` no more once its
@@ -3040,23 +3062,28 @@ Singleton {
     }
     // The place viewKept let go as it asked for each viewer, by app id, so
     // one no kitty took is kept again as it was (keepAgain), to open there
-    // once a kitty can, rather than wherever niri puts it next. Only once
-    // (keptAgain), as a kitty starting again as it was asked takes the next
-    // ask, and one that stays down would otherwise be asked for it with
-    // every move of niri's, for as long as a day for a place viewersDue
-    // lets go only at KEPT_FOR.
+    // once a kitty can, rather than wherever niri puts it next. It's asked
+    // for again only once the kitty's pid is other than at the give-up
+    // (keptUnder, held by viewKept): a kitty down comes back under a new
+    // one, while one alive that only didn't answer may yet draw the first
+    // ask's window, which a second ask would open another beside, and
+    // asked at once, with niri's next move, a kitty down would be asked
+    // twice within one outage. Kept again once: given up on under its new
+    // pid too, it's let go, rather than kept till KEPT_FOR, a day.
     property var keptAsks: ({})
     function keepAgain(back) {
         if (!back || keptPlaces[back.id] !== undefined)
             return;
-        if (back.place?.keptAgain === true) {
+        if (back.place?.keptUnder !== undefined) {
             console.info(`sessions: ${back.id}'s kept place let go, as no kitty took its viewer `
                 + "twice");
             return;
         }
+        const under = readKittyPid() || sessionsKittyPid;
         keepPlaces(Object.assign({}, keptPlaces,
-            { [back.id]: Object.assign({}, back.place, { keptAgain: true }) }));
-        console.info(`sessions: ${back.id}'s kept place kept again, as no kitty took its viewer`);
+            { [back.id]: Object.assign({}, back.place, { keptUnder: under }) }));
+        console.info(`sessions: ${back.id}'s kept place kept again, as no kitty took its viewer, `
+            + `to be asked for once a kitty other than ${under || "none"} draws`);
     }
     // Keeps where the window of the session here that pi knows as `id`
     // sits, answering "kept", or "no window to keep" for one with no
@@ -3112,6 +3139,14 @@ Singleton {
         // One waiting for its host, asked of moments ago, stays kept.
         const kept = due.kept;
         for (const one of due.open) {
+            // Kept again after a give-up, it waits for a kitty under another
+            // pid (keepAgain), unasked and unsaid with every move of niri's.
+            const keptId = String(one.id ?? one.session?.presence?.session ?? "");
+            const under = keptPlaces[keptId]?.keptUnder;
+            if (under !== undefined && under === sessionsKittyPid) {
+                kept[keptId] = keptPlaces[keptId];
+                continue;
+            }
             // Its own come and refused, it stays kept unasked (viewWith), as
             // heardWindow journalled once, rather than saying with every
             // move of niri's that one is opening.
@@ -3250,7 +3285,7 @@ Singleton {
             const pressed = Object.assign({}, pressedFor);
             delete pressed[named];
             pressedFor = pressed;
-            unhosted(said, said.started ? "startedDisowned" : "disowned");
+            unhosted(said, said.startedInHost ? "startedDisowned" : "disowned");
             disownedSaid = Object.assign({}, disownedSaid, { [named]: said });
         }
         if (own)
