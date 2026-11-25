@@ -302,6 +302,23 @@ fn a_multi_pack_index_naming_a_file_outside_the_pack_folder_is_refused() {
 }
 
 #[test]
+fn pack_names_past_one_read_are_read_whole_across_its_edge() {
+    // Fifty bytes a name, so 100 of them take 5000 bytes, past one read,
+    // and one name lies across its edge.
+    let owned: Vec<String> = (0..100).map(|at| format!("pack-{at:040}.idx")).collect();
+    let packs: Vec<&str> = owned.iter().map(String::as_str).collect();
+    assert!(
+        owned.iter().map(|name| name.len() as u64 + 1).sum::<u64>() > NAMES_READ,
+        "the names fit in one read, so its edge goes untried"
+    );
+    let midx = opened("many-packs", &midx(&packs, 100, None), Midx::open).expect("it opens");
+    assert_eq!(
+        midx.packs, owned,
+        "a name across a read's edge was read wrong"
+    );
+}
+
+#[test]
 fn a_multi_pack_index_naming_fewer_packs_than_it_holds_is_refused() {
     let bytes = midx(&["pack-a.idx"], 2, None);
     assert_eq!(
