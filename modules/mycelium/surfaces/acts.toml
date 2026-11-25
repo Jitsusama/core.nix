@@ -267,13 +267,13 @@ through = "a steer with act park and when it was asked, which the harness's park
 
 [act.cli.owed]
 by = "KP0L6A"
-due = "2026-11-24 21:00"
-why = "mycelium steer takes act park on mycelium's train 53, then core's pin of it"
+due = "2026-11-26 18:00"
+why = "mycelium steer --help names no park, though the node relays one the launcher asks"
 
 [act.session.owed]
 by = "85PKB2"
 due = "2026-11-26 12:00"
-why = "no tool parks a cell until the harness's steer does"
+why = "the harness takes a Park steered to it, but no tool of a session's asks one"
 
 [act.map.owed]
 by = "KP0L6A"
