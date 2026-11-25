@@ -1866,9 +1866,11 @@ Provider {
             console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
-        // A walk's Return, refused above, stamps nothing, so no program
-        // outside quiets a start still coming up by pressing for him; a link
-        // offer stamps its own act, which it gives fresh words (newWorkFor).
+        // A walk's Return, refused above, stamps nothing, so no walk from
+        // outside quiets a start still coming up. A link offer, which any
+        // program may make while the launcher is free, stamps its own act's
+        // row, which it gives fresh words (newWorkFor); the start is still
+        // told in the foot or as a notice.
         sproutPressed = Openings.pressedAt(sproutPressed, key, Date.now());
         if (sprouting !== "") {
             sproutSays(key, words.busy);
@@ -2219,7 +2221,7 @@ Provider {
         if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
             sproutJournal(`new work held ${one.held} is up${late} as session `
                 + `${one.session.address}; left for Go To`);
-            return said(one, one.late === true ? "upLater" : "up");
+            return said(one, Openings.upWord(one));
         }
         said(one, "opening");
         launcher.open = false;
@@ -2244,12 +2246,11 @@ Provider {
         if (launcher.saying === shown)
             launcher.say([]);
     }
-    // What becomes of a start, to the journal on any machine and as a report
-    // for the desktop test (Report), so a slow or lost one can be matched to
-    // the node's record by its hold.
+    // What becomes of a start, to the journal on any machine, so a slow or
+    // lost one can be matched to the node's record by its hold. A desktop
+    // test reads it there, as it reads the other `launcher:` lines.
     function sproutJournal(what) {
         console.info(`launcher: ${what}`);
-        Report.say(what);
     }
     Timer {
         interval: 5000

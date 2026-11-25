@@ -1,8 +1,8 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js, tests/lib/Expect.js and Agents'
-// words, as words.json, beside this file and runs it offscreen.
+// modules/quickshell/launcher/Sprouting.js and Openings.js, tests/lib/Expect.js
+// and Agents' words, as words.json, beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Openings.js" as Openings
@@ -222,7 +222,7 @@ QtObject {
             stood.up.map(one => [one.key, one.session.address]),
             [["slow", "h1"], ["quick", "h2"], ["unmarked", "h7"], ["watched", "h8"]]);
         Expect.same("each up keeps its late mark, which picks the words said of it",
-            stood.up.map(one => one.late === true), [true, false, false, true]);
+            stood.up.map(one => Openings.upWord(one)), ["upLater", "up", "up", "upLater"]);
         Expect.same("an up keeps the words said of it late, which it takes back",
             Sprouting.settled([{ key: "k", held: "h9", machine: "m", since: 0, late: true,
                 told: "late on m" }], () => ({ address: "h9" }), now, times).up[0].told,

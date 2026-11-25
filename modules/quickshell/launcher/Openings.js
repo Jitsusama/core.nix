@@ -56,6 +56,13 @@ function footedWithout(footed, text) {
     return told.length === 0 ? null : Object.assign({}, footed, { told });
 }
 
+// The word said of `one` come up and left for Go To: "upLater", naming
+// it, where it was said late to be still coming up, so Joel knows which
+// start it was; else "up".
+function upWord(one) {
+    return one.late === true ? "upLater" : "up";
+}
+
 // What the foot told once opening `one` takes back the words said of it
 // late (its `told`, toldOf's), as its window opens or its up word is
 // told: `footed` what's left, and `cleared` the foot it was shown in where
