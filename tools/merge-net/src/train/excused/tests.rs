@@ -501,7 +501,7 @@ fn watch_of(folder: &Path, runs: &[(Ran, Option<&str>)]) -> State {
         if let Some(words) = words {
             fs::write(&log, words).unwrap();
         }
-        let code = if *ran == Ran::Passed { 0 } else { 1 };
+        let code = i32::from(*ran != Ran::Passed);
         state
             .record("b1", "cat", *ran, Some(code), &log, 60)
             .unwrap();
@@ -605,7 +605,7 @@ fn a_derivation_that_isnt_its_check_s_holds_the_red() {
         })
     };
     let unevaluated = |_: &str| None;
-    let cases: [(String, &(dyn Fn(&str) -> Option<Named> + Sync)); 4] = [
+    let cases: [(String, &Naming); 4] = [
         (red(&[("cat", &["x"])], &[]), &elsewhere),
         (format!("{}{forged}", red(&[("cat", &["x"])], &[])), &OWN),
         (part, &OWN),
@@ -777,16 +777,19 @@ fn a_check_runs_again_from_the_candidate_s_checkout() {
     let _ = fs::remove_dir_all(&folder);
 }
 
+/// What names a check's derivation, as a case gives it.
+type Naming = dyn Fn(&str) -> Option<Named> + Sync;
+
 /// A runner that evaluates only `cat`'s derivation, as `red` names it,
-/// and is asked for no build.
+/// and is asked for no build; one that can't write its log never ran.
 fn naming_cat(args: &[String], _: &str, log: &Path, _: &dyn Fn() -> bool) -> Option<i32> {
     assert_eq!(
         args,
         naming("cat"),
         "a run other than naming cat was asked for"
     );
-    fs::create_dir_all(log.parent().unwrap()).unwrap();
-    fs::write(log, "own /nix/store/0x1c-cat.drv\n").unwrap();
+    fs::create_dir_all(log.parent()?).ok()?;
+    fs::write(log, "own /nix/store/0x1c-cat.drv\n").ok()?;
     Some(0)
 }
 

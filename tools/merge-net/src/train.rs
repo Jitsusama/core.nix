@@ -56,6 +56,7 @@
 //! boarded, is kept a line each in `train/landed.jsonl`, so a day's rides
 //! can be counted against the runs again they saved.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -513,55 +514,17 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        let mut excused = Vec::new();
-        match gate(&checkout, &log) {
-            Gated::Passed => splitting.taken(),
-            Gated::Red { whole } => {
-                splitting.taken();
-                let asked = excused::Red {
-                    root: &root,
-                    slug: &slug,
-                    checkout: &checkout,
-                    base: &base,
-                    candidate: &candidate,
-                    log: &log,
-                };
-                match excused::excuse_of(&asked, whole) {
-                    Ok(checks) => excused = checks,
-                    Err(unexcused) => {
-                        way(&root, &Ended::Otherwise);
-                        let failed = Failed {
-                            candidate: &candidate,
-                            log: &log,
-                            unexcused: Some(&unexcused),
-                        };
-                        red(&root, &failed, &done.merged, &mut splitting);
-                        continue;
-                    }
-                }
-            }
-            Gated::Unsent => {
-                // The train stays in its ride rather than waiting for a
-                // ready, since a rider is told it needn't ask again.
-                let now = crate::state::now();
-                if unsent(&root, &candidate, &log, &done.merged, &mut splitting, now) {
-                    std::thread::sleep(UNTAKEN_PAUSE);
-                }
-                continue;
-            }
-            Gated::Unstarted(why) => {
-                // A full disk or a missing nix-offload is the machine's,
-                // not a builder's, so no rider falls for it: the net's
-                // log says why, and the train tries again after a pause.
-                crate::state::State::at(root.clone()).say(&format!(
-                    "the gate of the candidate {} couldn't start, as {why}, so it's tried \
-                     again",
-                    short(&candidate)
-                ));
-                std::thread::sleep(UNTAKEN_PAUSE);
-                continue;
-            }
-        }
+        let ride = excused::Red {
+            root: &root,
+            slug: &slug,
+            checkout: &checkout,
+            base: &base,
+            candidate: &candidate,
+            log: &log,
+        };
+        let Some(excused) = gated_ride(&ride, &done.merged, &mut splitting) else {
+            continue;
+        };
         let hub = GitHub { slug: slug.clone() };
         let landing = land(
             &checkout,
@@ -578,6 +541,60 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             excused: &excused,
         };
         after_landing(&root, landing, &run, &mut splitting);
+    }
+}
+
+/// Gate the candidate `ride` names, which merged `merged`: the checks
+/// that failed in it but excused its red when it may land, none (the
+/// train going round again) when its riders fell, no builder took it
+/// or it couldn't start.
+fn gated_ride(
+    ride: &excused::Red,
+    merged: &[String],
+    splitting: &mut Splitting,
+) -> Option<Vec<String>> {
+    let (root, candidate, log) = (ride.root, ride.candidate, ride.log);
+    match gate(ride.checkout, log) {
+        Gated::Passed => {
+            splitting.taken();
+            Some(Vec::new())
+        }
+        Gated::Red { whole } => {
+            splitting.taken();
+            match excused::excuse_of(ride, whole) {
+                Ok(checks) => Some(checks),
+                Err(unexcused) => {
+                    way(root, &Ended::Otherwise);
+                    let failed = Failed {
+                        candidate,
+                        log,
+                        unexcused: Some(&unexcused),
+                    };
+                    red(root, &failed, merged, splitting);
+                    None
+                }
+            }
+        }
+        Gated::Unsent => {
+            // The train stays in its ride rather than waiting for a
+            // ready, since a rider is told it needn't ask again.
+            let now = crate::state::now();
+            if unsent(root, candidate, log, merged, splitting, now) {
+                std::thread::sleep(UNTAKEN_PAUSE);
+            }
+            None
+        }
+        Gated::Unstarted(why) => {
+            // A full disk or a missing nix-offload is the machine's, not
+            // a builder's, so no rider falls for it: the net's log says
+            // why, and the train tries again after a pause.
+            crate::state::State::at(root.to_path_buf()).say(&format!(
+                "the gate of the candidate {} couldn't start, as {why}, so it's tried again",
+                short(candidate)
+            ));
+            std::thread::sleep(UNTAKEN_PAUSE);
+            None
+        }
     }
 }
 
@@ -777,9 +794,7 @@ fn red(root: &Path, failed: &Failed, merged: &[String], splitting: &mut Splittin
             log.display()
         );
         if let Some(unexcused) = failed.unexcused {
-            said.push_str(&format!(
-                "; it wasn't excused as main's own, as {unexcused}"
-            ));
+            let _ = write!(said, "; it wasn't excused as main's own, as {unexcused}");
         }
         let _ = fall(root, head, &said);
     }

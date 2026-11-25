@@ -2138,6 +2138,18 @@ fn narrowed_at(world: &dyn World, state: &State, head: &str, test: &str) -> Stri
         })
         .collect();
     let narrowed = subtests::narrowed(test, &at_head);
+    // Subtests that can't be built alone are built whole at every step,
+    // so a search narrowed to them runs the whole test anyway, and its
+    // runs at the head, already the whole test's, would be run again.
+    let refused = (1..=2)
+        .any(|run| subtests::unbuildable(crate::world::lines_of(&state.log(head, test, run))));
+    if narrowed != test && refused {
+        state.say(&format!(
+            "{test}'s subtests couldn't be built alone at {}, so the search runs it whole",
+            short(head)
+        ));
+        return test.to_owned();
+    }
     // Subtests that passed alone at the head fail only beside the others,
     // so no step run on them alone can say where they broke. On
     // 14 November vm-desktop-launcher-waits-on-joel's passed alone there
@@ -2639,10 +2651,10 @@ mod tests {
         unbuilt: Vec<String>,
         /// Merges of heads whose gate skipped a Mac's comparison.
         mac_skipped: Vec<String>,
-        /// Whether subtests can't be built alone, so a failed run of them
-        /// logs the refusal and then the whole test's failure, as the real
-        /// build does in one log.
-        apart_refused: bool,
+        /// Tests whose subtests can't be built alone, so a failed run of
+        /// them logs the refusal and then the whole test's failure, as the
+        /// real build does in one log.
+        apart_refused: Vec<String>,
     }
 
     impl Stand {
@@ -2834,7 +2846,10 @@ mod tests {
                 .or(self.fails_in.as_ref())
                 .filter(|_| exit != 0)
             {
-                let refused = if self.apart_refused && check.contains("::") {
+                let refused = if check
+                    .split_once("::")
+                    .is_some_and(|(test, _)| self.apart_refused.iter().any(|t| t == test))
+                {
                     "error: flake does not provide attribute 'subtests'\n"
                 } else {
                     ""
@@ -4117,7 +4132,7 @@ mod tests {
             merges: names("h"),
             changed: changed("vm-a"),
             fails_in: Some("test_b".into()),
-            apart_refused: true,
+            apart_refused: names("vm-a"),
             ..Stand::default()
         }
         .exits("h", "vm-a", &[1])

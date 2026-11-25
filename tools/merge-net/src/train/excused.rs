@@ -739,8 +739,11 @@ const NAMING_AT_MOST: &str = "600";
 /// unless one line names its own, a store derivation, and the rest name
 /// its inputs.
 fn named_in(words: &str) -> Option<Named> {
-    let derivation =
-        |path: &str| path.starts_with("/nix/store/") && path.ends_with(".drv") && store_path(path);
+    let derivation = |path: &str| {
+        path.starts_with("/nix/store/")
+            && Path::new(path).extension().is_some_and(|ext| ext == "drv")
+            && store_path(path)
+    };
     let mut own = None;
     let mut inputs = BTreeSet::new();
     for line in words.lines() {

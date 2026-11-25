@@ -262,6 +262,7 @@ fn only_lines_signed_with_the_gate_s_mark_are_nix_offload_s() {
 #[test]
 fn a_gate_that_cant_make_its_log_is_unstarted() {
     let root = root("gate-unstarted");
+    fs::create_dir_all(&root).unwrap();
     let log = root.join("gone").join("candidate.log");
     assert!(
         matches!(gate(&root, &log), Gated::Unstarted(_)),
