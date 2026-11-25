@@ -35,9 +35,11 @@
 //! rules they prove one by one, as every module in wifid keeps them.
 
 use std::collections::{HashMap, VecDeque};
+use std::time::SystemTime;
 
 use tokio::time::{Duration, Instant};
 
+use crate::kept_off::{self, Spurn};
 use crate::measure::{Measured, SPAN};
 
 /// How long after a move the card stays put, so it never hunts.
@@ -272,15 +274,20 @@ pub struct Chooser {
     /// Each access point kept off and until when.
     spurned: HashMap<String, Kept>,
     /// Each access point found worse lately, how many times running and
-    /// until when it was last kept off for it, so it's kept off longer
+    /// when that's forgotten, so it's kept off longer
     /// each time (`SPURNED_MOST`). Every back that keeps a point off counts:
     /// carrying worse than the point left, slower under load, badly for a
     /// wider band's room, or worse than the usual a second time, as each
-    /// is a trial that didn't pay. Like `spurned`, it lives only as long as
-    /// the card's chooser: a restart of wifid, or a minute's tick finding
-    /// the card unjoined, as on a resume, starts every point afresh. Its
-    /// times are awake time, as `Instant` doesn't count a suspend.
+    /// is a trial that didn't pay. Like `spurned`, a trusted network's is
+    /// kept on the disk (`kept_off`) and taken up by the chooser begun
+    /// after a restart of wifid, or a minute's tick finding the card
+    /// unjoined, as on a resume (`carry_in`); another's starts every point
+    /// afresh then. Its times are awake time, as `Instant` doesn't count a
+    /// suspend, where the disk's are the machine's own.
     struck: HashMap<String, Struck>,
+    /// What `spurned` and `struck` held when last asked for the disk, so
+    /// they're written only once either changes (`kept_off_lately`).
+    written: Option<(HashMap<String, Kept>, HashMap<String, Struck>)>,
     /// What the card's access point carried over each of the last
     /// `JUDGED_MINUTES` minutes alone, where, and whether badly, as a trial
     /// is judged early by single minutes, not spans that share them.
@@ -334,6 +341,7 @@ pub struct Chooser {
 
 /// An access point kept off, until when, and until when a failing link
 /// may not leave for it either.
+#[derive(Clone, PartialEq)]
 struct Kept {
     until: Instant,
     /// One kept off for carrying worse only than the usual carried no
@@ -362,11 +370,32 @@ enum Carrying {
     Enough,
 }
 
-/// How many times running an access point's trials went back, and until
-/// when the last kept it off.
+/// How many times running an access point's trials went back, and when
+/// that's forgotten: `SPURNED_MOST` after the last kept it off ends. It's
+/// kept as the time forgotten, always ahead while it's kept, since a time
+/// a keep-off ended can be further back than an `Instant` reaches soon
+/// after a boot, where it's taken up from the disk (`carry_in`).
+#[derive(Clone, PartialEq)]
 struct Struck {
     times: u32,
-    until: Instant,
+    forgotten: Instant,
+}
+
+/// An awake time as the machine's own, `now` being `wall`.
+fn wall_of(time: Instant, now: Instant, wall: SystemTime) -> SystemTime {
+    if time >= now {
+        wall + time.duration_since(now)
+    } else {
+        wall.checked_sub(now.duration_since(time))
+            .unwrap_or(SystemTime::UNIX_EPOCH)
+    }
+}
+
+/// A time of the machine's own as an awake time, `wall` being `now`: one
+/// passed as now, and one ahead as no further ahead than `most`.
+fn instant_of(time: SystemTime, most: Duration, now: Instant, wall: SystemTime) -> Instant {
+    time.duration_since(wall)
+        .map_or(now, |ahead| now + ahead.min(most))
 }
 
 /// Why a trial went back.
@@ -770,8 +799,7 @@ impl Chooser {
     /// each found worse whose last keep-off ended `SPURNED_MOST` ago.
     fn forget_kept_off(&mut self, now: Instant) {
         self.spurned.retain(|_, kept| now < kept.until);
-        self.struck
-            .retain(|_, struck| now < struck.until + SPURNED_MOST);
+        self.struck.retain(|_, struck| now < struck.forgotten);
     }
 
     /// How long an access point a trial went back from is kept off from
@@ -783,13 +811,13 @@ impl Chooser {
         let times = self
             .struck
             .get(point)
-            .filter(|struck| now < struck.until + SPURNED_MOST)
+            .filter(|struck| now < struck.forgotten)
             .map_or(1, |struck| struck.times.saturating_add(1));
         let doubled = SPURNED.saturating_mul(2_u32.saturating_pow(times - 1));
         let lasts = doubled.min(SPURNED_MOST);
-        let until = now + lasts;
+        let forgotten = now + lasts + SPURNED_MOST;
         self.struck
-            .insert(point.to_owned(), Struck { times, until });
+            .insert(point.to_owned(), Struck { times, forgotten });
         lasts
     }
 
@@ -809,6 +837,78 @@ impl Chooser {
             from: Some(from.to_owned()),
         };
         self.spurned.insert(point.to_owned(), kept);
+    }
+
+    /// What the card keeps off and has struck, in the machine's own time,
+    /// where either changed since last asked, for the disk (`kept_off`).
+    pub fn kept_off_lately(&mut self, now: Instant, wall: SystemTime) -> Option<Vec<Spurn>> {
+        let held = (self.spurned.clone(), self.struck.clone());
+        if self.written.as_ref() == Some(&held) {
+            return None;
+        }
+        self.written = Some(held);
+        let mut points: Vec<&String> = self.spurned.keys().chain(self.struck.keys()).collect();
+        points.sort();
+        points.dedup();
+        let spurns = points
+            .into_iter()
+            .map(|point| Spurn {
+                point: point.clone(),
+                kept: self.spurned.get(point).map(|kept| kept_off::Kept {
+                    until: kept_off::millis(wall_of(kept.until, now, wall)),
+                    firm: kept_off::millis(wall_of(kept.firm, now, wall)),
+                    from: kept.from.clone(),
+                }),
+                struck: self.struck.get(point).map(|struck| {
+                    let forgotten = wall_of(struck.forgotten, now, wall);
+                    let until = forgotten.checked_sub(SPURNED_MOST);
+                    kept_off::Struck {
+                        times: struck.times,
+                        until: kept_off::millis(until.unwrap_or(SystemTime::UNIX_EPOCH)),
+                    }
+                }),
+            })
+            .collect();
+        Some(spurns)
+    }
+
+    /// Takes up what a trusted network's access points were kept off for
+    /// and struck before this chooser began, as the disk kept them in the
+    /// machine's own time. A keep-off over is dropped, as is a strike whose
+    /// keep-off ended `SPURNED_MOST` ago, and none is read as lasting past
+    /// `SPURNED_MOST` from now, the longest the chooser keeps one, so a
+    /// clock set back, or a file written by hand, can't keep a point off
+    /// for longer.
+    pub fn carry_in(&mut self, spurns: &[Spurn], now: Instant, wall: SystemTime) {
+        for spurn in spurns {
+            if let Some(kept) = &spurn.kept {
+                let until = instant_of(kept_off::time_of(kept.until), SPURNED_MOST, now, wall);
+                if now < until {
+                    let firm = instant_of(kept_off::time_of(kept.firm), SPURNED_MOST, now, wall)
+                        .min(until);
+                    let kept = Kept {
+                        until,
+                        firm,
+                        from: kept.from.clone(),
+                    };
+                    self.spurned.insert(spurn.point.clone(), kept);
+                }
+            }
+            if let Some(struck) = &spurn.struck {
+                // Forgotten no later than the longest keep-off from now,
+                // and `SPURNED_MOST` after that, as `spurn_for` keeps it.
+                let forgotten = kept_off::time_of(struck.until) + SPURNED_MOST;
+                let forgotten = instant_of(forgotten, SPURNED_MOST * 2, now, wall);
+                if now < forgotten {
+                    let struck = Struck {
+                        times: struck.times,
+                        forgotten,
+                    };
+                    self.struck.insert(spurn.point.clone(), struck);
+                }
+            }
+        }
+        self.written = Some((self.spurned.clone(), self.struck.clone()));
     }
 
     /// How long from now the card keeps off this access point, if it does.
@@ -5683,5 +5783,146 @@ pub(crate) mod tests {
             "found worse again within 12 h, not doubled"
         );
         assert_eq!(past, Some(HOUR), "found worse 12 h after, not afresh");
+    }
+
+    /// The machine's own time when the card went back, a whole second so
+    /// the disk's milliseconds hold it exactly.
+    fn wall_at_back() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_795_600_000)
+    }
+
+    /// A minute's choosing ten minutes after the card went back, by a
+    /// chooser begun afresh, as after a restart of wifid or a resume, with
+    /// these keep-offs from the disk, and the awake and own times then.
+    fn begun_again(spurns: &[Spurn], back: Instant) -> (Chooser, Instant, SystemTime) {
+        let after = Duration::from_mins(10);
+        let (now, wall) = (back + after, wall_at_back() + after);
+        let mut chooser = Chooser::default();
+        chooser.carry_in(spurns, now, wall);
+        (chooser, now, wall)
+    }
+
+    #[test]
+    fn a_chooser_begun_again_keeps_a_point_off_for_what_was_left_of_its_keep_off() {
+        let mut before = Chooser::default();
+        let back = tried_ch52_and_back(&mut before, Instant::now());
+        let spurns = before.kept_off_lately(back, wall_at_back()).unwrap();
+
+        let (after, now, _) = begun_again(&spurns, back);
+
+        assert_eq!(
+            after.kept_for(DESK, now),
+            Some(Duration::from_mins(50)),
+            "ch52's keep-off didn't carry over the restart"
+        );
+    }
+
+    #[test]
+    fn a_point_found_worse_again_after_a_restart_is_kept_off_twice_as_long() {
+        // On 25 Nov 2026 ch52 was tried afresh after each restart of wifid,
+        // so its every back was a first, kept off for an hour.
+        let mut before = Chooser::default();
+        let back = tried_ch52_and_back(&mut before, Instant::now());
+        let spurns = before.kept_off_lately(back, wall_at_back()).unwrap();
+        let (mut carried_over, _, _) = begun_again(&spurns, back);
+        let mut afresh = Chooser::default();
+
+        let again = tried_ch52_and_back(&mut carried_over, back + HOUR);
+        let first = tried_ch52_and_back(&mut afresh, back + HOUR);
+
+        assert_eq!(
+            carried_over.kept_for(DESK, again),
+            Some(HOUR * 2),
+            "ch52 found worse again after a restart wasn't kept off twice as long"
+        );
+        assert_eq!(afresh.kept_for(DESK, first), Some(HOUR));
+    }
+
+    #[test]
+    fn a_keep_off_over_or_a_strike_12_hours_past_it_is_not_taken_up() {
+        let wall = wall_at_back();
+        let ended = |ago: Duration| kept_off::millis(wall - ago);
+        let spurns = [Spurn {
+            point: DESK.into(),
+            kept: Some(kept_off::Kept {
+                until: ended(Duration::from_secs(1)),
+                firm: ended(Duration::from_secs(1)),
+                from: Some(NEAR.into()),
+            }),
+            struck: Some(kept_off::Struck {
+                times: 3,
+                until: ended(SPURNED_MOST),
+            }),
+        }];
+        let now = Instant::now() + HOUR;
+        let mut chooser = Chooser::default();
+
+        chooser.carry_in(&spurns, now, wall);
+
+        assert!(
+            !chooser.keeps_off(DESK, now),
+            "a keep-off over was taken up"
+        );
+        let back = tried_ch52_and_back(&mut chooser, now);
+        assert_eq!(
+            chooser.kept_for(DESK, back),
+            Some(HOUR),
+            "a strike 12 h past its keep-off still doubled the next"
+        );
+    }
+
+    #[test]
+    fn a_keep_off_read_back_lasts_no_longer_than_12_hours() {
+        // As a clock set back, or a file written by hand, would have it.
+        let wall = wall_at_back();
+        let later = kept_off::millis(wall + Duration::from_hours(48));
+        let spurns = [Spurn {
+            point: DESK.into(),
+            kept: Some(kept_off::Kept {
+                until: later,
+                firm: later,
+                from: None,
+            }),
+            struck: None,
+        }];
+        let now = Instant::now();
+        let mut chooser = Chooser::default();
+
+        chooser.carry_in(&spurns, now, wall);
+
+        assert_eq!(
+            chooser.kept_for(DESK, now),
+            Some(SPURNED_MOST),
+            "a keep-off two days off was taken up for longer than 12 h"
+        );
+    }
+
+    #[test]
+    fn keep_offs_are_asked_for_the_disk_only_once_they_change() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        let wall = wall_at_back();
+        assert_eq!(chooser.kept_off_lately(start, wall), Some(Vec::new()));
+        assert_eq!(
+            chooser.kept_off_lately(start, wall),
+            None,
+            "nothing changed and they were asked for again"
+        );
+
+        let back = tried_ch52_and_back(&mut chooser, start);
+        let spurns = chooser.kept_off_lately(back, wall);
+        assert_eq!(
+            spurns.as_ref().map(Vec::len),
+            Some(1),
+            "a back wasn't asked for"
+        );
+        assert_eq!(chooser.kept_off_lately(back, wall), None);
+
+        let (mut after, now, wall) = begun_again(&spurns.unwrap(), back);
+        assert_eq!(
+            after.kept_off_lately(now, wall),
+            None,
+            "what was just taken up was asked for again"
+        );
     }
 }
