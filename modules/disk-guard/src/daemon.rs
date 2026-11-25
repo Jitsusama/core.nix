@@ -2354,18 +2354,18 @@ impl Guard {
         self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
             Ok(read) => {
                 if failures > 0 {
-                    eprintln!("disk-guard: read Nix's min-free again after {failures} failed");
+                    say!("disk-guard: read Nix's min-free again after {failures} failed");
                 }
                 (now, Some(read), 0)
             }
             Err(why) => {
                 if failures == 0 {
                     match kept {
-                        Some(floor) => eprintln!(
+                        Some(floor) => say!(
                             "disk-guard: reading Nix's min-free: {why}; keeping the last read, \
                              {floor} bytes"
                         ),
-                        None => eprintln!(
+                        None => say!(
                             "disk-guard: reading Nix's min-free: {why}; telling without Nix's \
                              floor until it answers"
                         ),
