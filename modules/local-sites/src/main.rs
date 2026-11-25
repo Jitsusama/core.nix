@@ -15,13 +15,15 @@
 //! and never act (gate.rs), and it admits only its own pages, by the name
 //! a request reaches it by and the page a feed's handshake came from
 //! (door.rs). An answer Joel presses on one of the sites' own pages is
-//! the one thing a page sends that acts, checked and carried by answer.rs.
+//! the one thing a page sends that acts, checked and carried by answer.rs,
+//! against times its looks write as clock.rs reads them.
 //! A document a session wrote runs sandboxed, in an origin of
 //! no one's, so it reads no feed and can't act as one of the sites' own
 //! pages, which run only the scripts served beside them (http.rs). Files are
 //! found by files.rs; one connection is http.rs.
 
 mod answer;
+mod clock;
 mod config;
 mod door;
 mod files;

@@ -217,13 +217,9 @@ it("a page asks once whether its answers are taken, and is told why not", async 
     Promise.resolve({ status: 404, text: "this server takes no answers\n" }),
   );
   assert.match(String(none), TAKES_NONE);
-  const agents = await ready(() =>
-    Promise.resolve({ status: 403, text: '{"refused":"agent"}' }),
-  );
+  const agents = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"agent"}' }));
   assert.match(String(agents), AGENTS);
-  const untold = await ready(() =>
-    Promise.resolve({ status: 403, text: '{"refused":"untold"}' }),
-  );
+  const untold = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"untold"}' }));
   assert.match(String(untold), UNTOLD);
   const down = await ready(() => Promise.reject(new Error("down")));
   assert.match(String(down), UNREACHED);
@@ -299,7 +295,10 @@ it("answers show only while the feed is live and go once one is pressed", async 
   assert.equal(holder.all("button").length, 0, "answers stayed once one was pressed");
   await Promise.resolve();
   await Promise.resolve();
-  assert.deepEqual(posted.map((body) => JSON.parse(body)), [{ look: "l1", value: "yes" }]);
+  assert.deepEqual(
+    posted.map((body) => JSON.parse(body)),
+    [{ look: "l1", value: "yes" }],
+  );
   assert.match(holder.words(), ANSWERED);
   assert.deepEqual(counts.slice(-1), [1]);
 });
