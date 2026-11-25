@@ -511,6 +511,21 @@ Scope {
     // How many times the search has ended, so an answer asked before it
     // last did is let go.
     property int searchesEnded: 0
+    // What was being asked when the daemon couldn't answer, gone or not yet there, as
+    // `{ words, most }`, asked again once it says hello, or null. Nothing else asks it till the
+    // next key, so the rows held from an answer before would stand for what's typed, as Emoji
+    // holds those of a word what's typed goes on from while it's asked. Kept only while the
+    // rows are drawn, as Programs, Code and Capture never end their search as the launcher
+    // shuts, and only while its words are what's searched, so a backspace to words whose
+    // answer is held lets it go.
+    property var lost: null
+    // The words last asked again at a hello, till they're answered or other words are
+    // searched. Lost again, they're held back (`lostTwice`) till the next key, neither the
+    // hello nor a refresh of what's typed asking them, so a search that is what takes the
+    // daemon down isn't asked at every restart till systemd gives the unit up.
+    property string reasked: ""
+    property string lostTwice: ""
+
     // Whether the daemon said it can't search, so a place that can matches
     // its rows itself, as it did before, said once in the journal. It's
     // asked again a minute on, as a daemon an old shell asked while a
@@ -527,28 +542,74 @@ Scope {
     // The daemon's answer to `words` if it's held, else null, asking it,
     // for at most `most` rows where the place shows no more.
     function search(words, most) {
+        if (lost !== null && lost.words !== words)
+            lost = null;
+        if (reasked !== words) {
+            reasked = "";
+            lostTwice = "";
+        }
         if (found.words === words)
             return found;
         const asks = !searchless || Date.now() - searchlessAt > searchlessFor;
-        if (asking !== words && asks && link) {
+        if (asking !== words && lostTwice !== words && asks && link) {
             asking = words;
+            lost = null;
             const ask = { ask: "search", place: ready.place, words: words };
             const ending = searchesEnded;
             link.find(most > 0 ? Object.assign(ask, { most: most }) : ask,
-                answer => ready.answered(words, answer, ending));
+                answer => ready.answered(words, answer, ending, most));
         }
         return null;
+    }
+
+    // What was being asked as the daemon went, asked again as it comes back.
+    Connections {
+        target: ready.link
+        ignoreUnknownSignals: true
+
+        function onTold(answer) {
+            if (answer?.id !== "hello" || ready.lost === null)
+                return;
+            const was = ready.lost;
+            ready.lost = null;
+            ready.reasked = was.words;
+            ready.search(was.words, was.most);
+        }
+    }
+
+    // How the search stands, for a check that fails waiting on it to say why: what's asked,
+    // the words of the answer held, what waits for the daemon to come back or was asked again
+    // as it did, and the link's finds unanswered.
+    function searchState() {
+        return {
+            asking,
+            reasked,
+            lostTwice,
+            found: found.words,
+            lost: lost?.words ?? null,
+            ended: searchesEnded,
+            searchless,
+            asked: link?.asked ?? null,
+            awaiting: Object.keys(link?.awaited ?? {}),
+            wire: !!link?.wire,
+            heard: link?.linesHeard ?? null
+        };
     }
 
     // The search over, as the launcher closing ends it, so what it found
     // is let go, and so is an answer still to come: taken once the
     // launcher had shut, it stood at the next opening for what's typed on
     // from its words, Emoji making as many as a hundred rows of it. What's
-    // typed next is asked anew.
+    // typed next is asked anew, inside a row as at home, so an answer to
+    // what was typed inside one is let go too (typedAgain).
     function ended() {
         letFoundGo();
         asking = "";
+        lost = null;
+        reasked = "";
+        lostTwice = "";
         searchesEnded += 1;
+        typedAgain();
     }
 
     // What was found let go, as rows moving under it ask it again; an
@@ -559,16 +620,30 @@ Scope {
             delete foundMade[key];
     }
 
-    // An answer taken, unless it was asked before the search last ended,
-    // though it's to words typed over since. One that didn't come, the
-    // daemon gone, is asked again with the next key.
-    function answered(words, answer, ending) {
+    // An answer taken, even one to words typed over since, unless it was
+    // asked before the search last ended. One that didn't come, the daemon
+    // gone, is asked again once it's back (`lost`), if it's still what's
+    // asked and the rows are drawn, and only once (`reasked`).
+    function answered(words, answer, ending, most) {
         if (ending !== searchesEnded)
             return;
-        if (asking === words)
+        const awaited = asking === words;
+        if (awaited)
             asking = "";
-        if (answer === null)
+        if (answer === null) {
+            if (awaited && drawn && reasked !== words)
+                lost = { words, most };
+            else if (awaited && drawn && lostTwice !== words) {
+                lostTwice = words;
+                console.warn(`launcher: ${place}'s search went unanswered again once asked `
+                    + "again, left for the next key");
+            }
             return;
+        }
+        if (reasked === words) {
+            reasked = "";
+            lostTwice = "";
+        }
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `
@@ -1395,6 +1470,9 @@ Scope {
         }
         saying = {};
         filling = null;
+        lost = null;
+        reasked = "";
+        lostTwice = "";
     }
 
     // The rows whose words the clock has moved on since they were made,

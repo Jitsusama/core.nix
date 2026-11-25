@@ -8974,6 +8974,13 @@ Scope {
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
         }
 
+        // How the search of the source by this name stands with its daemon
+        // (Provider's searchState), or null, for a check waiting on its rows
+        // to say why they never came.
+        function searching(name: string): string {
+            return JSON.stringify(root.sourcesNamed[name]?.searchState?.() ?? null);
+        }
+
         // The keys of a kind a pick would know now (knowing), for the check
         // that a shut launcher knows a window come since it last made its
         // rows, with none made.
