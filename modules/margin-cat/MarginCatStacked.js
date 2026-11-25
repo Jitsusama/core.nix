@@ -133,9 +133,12 @@ function comesIn(from, at) {
     const cols = at.cols ?? [];
     const seen = side > 0 ? from.x < at.across : from.x + at.wide > 0;
     const peeked = side > 0 ? at.across - PEEKS * at.cell : PEEKS * at.cell - at.wide;
-    // The window past the edge it comes in on, where niri lays one there.
-    const under = seen ? null : Routes.columnAt(cols, peeked, at.wide);
-    const past = under && (side > 0 ? under.right > at.across : under.left < 0) ? under : null;
+    // The window past the edge it comes in on, where niri lays one there: the
+    // nearest the edge, so a gap at the edge is peeked over from that
+    // window's top, never from the air where the cat was drawn.
+    const past = seen ? null : cols.filter(one => side > 0 ? one.right > at.across : one.left < 0)
+        .sort((one, other) => side > 0 ? one.left - other.left : other.right - one.right)[0]
+        ?? null;
     const y = past ? Routes.stands(past.top, at) : from.y;
     const way = Ways.begun(at, { x: seen ? from.x : side > 0 ? at.across : -at.wide, y });
     way.facing = -side;
@@ -162,6 +165,21 @@ function comesIn(from, at) {
         Ways.holds(way, "lands", MarginCat.LANDS);
     }
     return { way, side };
+}
+
+// A ride on niri's scroll to `to`, which niri set off `behind` ms before
+// `now`, from where the cat was drawn as niri set it off: at `place`, short
+// of it by what was left then of the ride `carry` under way, or by nothing
+// (MarginCatScreen.qml's rideTo). The scroll turned back mid-way carries
+// on from where the cat was as niri turned it, never from where it's drawn
+// now, which would count the time since twice and set it ahead of its
+// window.
+function rides(carry, place, to, now, behind, spring) {
+    const at = now - behind;
+    const left = carry === null ? { x: 0, y: 0 }
+        : MarginCat.lags(carry.from, Math.min(at - carry.at, carry.ends), carry.spring);
+    const from = { x: place.x + left.x - to.x, y: place.y + left.y - to.y };
+    return { from, at, ends: MarginCat.slides(spring), spring };
 }
 
 // A move between workspaces, `at.way` 1 to the one below and -1 to the
