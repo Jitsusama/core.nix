@@ -794,8 +794,7 @@ in
   # never two refreshes closer than that however the first was asked for, and
   # a source's rows are wanted only where they're shown or searched, and a
   # key's act is said shown by the first frame begun after its refresh, and
-  # Pacing's run of what waits on a frame runs each in turn though one
-  # throws, and
+  # what waits on a frame runs each in turn though one throws, and
   # an opening weighs the foot's verbs only once its words or face change,
   # and a daemon's changes are said presented by place, and they and keys
   # with where their time went, and a closing makes again only the spots of
@@ -804,7 +803,8 @@ in
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
   # launcher/ChangesPresented.js, launcher/Collector.js, launcher/Flash.js,
   # launcher/Pacing.js, launcher/Presented.js with its launcher/KeysSaid.js,
-  # launcher/Spots.js, launcher/Thread.js and launcher/Wanted.js to it in
+  # launcher/Spots.js, launcher/Thread.js, launcher/Thrown.js and
+  # launcher/Wanted.js to it in
   # Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
@@ -824,6 +824,7 @@ in
       cp ${../launcher/Presented.js} Presented.js
       cp ${../launcher/Spots.js} Spots.js
       cp ${../launcher/Thread.js} Thread.js
+      cp ${../launcher/Thrown.js} Thrown.js
       cp ${../launcher/Wanted.js} Wanted.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

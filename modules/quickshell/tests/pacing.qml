@@ -32,6 +32,7 @@ import "Makings.js" as Makings
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
 import "Spots.js" as Spots
+import "Thrown.js" as Thrown
 import "Thread.js" as Thread
 import "Wanted.js" as Wanted
 
@@ -779,7 +780,7 @@ QtObject {
         // rows made ahead, queued after it, clear their wait only as they run.
         const ran = [];
         const said = [];
-        Pacing.runEach([() => ran.push("first"), () => {
+        Thrown.runEach([() => ran.push("first"), () => {
             throw new Error("a row broke\nits second line");
         }, () => ran.push("last")], line => said.push(line));
         check(failures, "one that throws stops none after it", ran.join(" "), "first last");
@@ -789,7 +790,7 @@ QtObject {
         // A value thrown that can't be said as text, with no prototype to
         // say it by, is said as one that can't be, its saying throwing none.
         const unsaid = [];
-        Pacing.runEach([() => {
+        Thrown.runEach([() => {
             throw Object.create(null);
         }, () => ran.push("after")], line => unsaid.push(line));
         check(failures, "one thrown that can't be said is said so, the rest run still",

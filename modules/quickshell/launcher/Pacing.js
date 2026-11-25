@@ -1,6 +1,5 @@
 .pragma library
 .import "Order.js" as Order
-.import "Presented.js" as Presented
 .import "Thread.js" as Thread
 
 // When an open launcher next refreshes a source that said it changed. The
@@ -165,20 +164,6 @@ function frameBegun(acts) {
 // frame to follow (draws-still at 7b2252da0, 2026-11-10).
 function frameSwapped(acts) {
     return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
-}
-
-// What waited on a frame, each run in turn, one that throws said in a line and the rest run
-// still: the list is let go before it runs, so a throw ending the loop dropped the rest for
-// good, as Quests' rows made ahead, whose callback alone clears its wait, would never be
-// made ahead again (core.nix#6524's F17).
-function runEach(due, said) {
-    for (const then of due) {
-        try {
-            then();
-        } catch (error) {
-            said(Presented.thrownShown(error));
-        }
-    }
 }
 
 // A drawer coming the frame after its key's waited one whole refresh for

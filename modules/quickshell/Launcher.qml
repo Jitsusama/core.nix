@@ -90,6 +90,7 @@ import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
 import "launcher/ChangesPresented.js" as ChangesPresented
+import "launcher/Thrown.js" as Thrown
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -7650,9 +7651,9 @@ Scope {
         afterFramesRun(due);
     }
     // Each in turn, one that throws said and the rest run still
-    // (launcher/Pacing.js's runEach).
+    // (launcher/Thrown.js's runEach).
     function afterFramesRun(due) {
-        Pacing.runEach(due, said => console.warn(
+        Thrown.runEach(due, said => console.warn(
             `launcher: what waited on a frame threw: ${said}`));
     }
 
@@ -14167,7 +14168,7 @@ Scope {
             // Each is run as what waits on the frame is, so a throw timing
             // one holds none of it back.
             function onFrameSwapped() {
-                Pacing.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
+                Thrown.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
                     said => console.warn(`launcher: timing a frame threw: ${said}`));
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];

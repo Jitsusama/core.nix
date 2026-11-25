@@ -422,19 +422,6 @@ function codeShown(answer) {
 // reports setting: its code, its kind, and a refusal's own, as wifid's WrongPassword.
 const errorCodes = new Set(["code", "kind", "refused"]);
 
-// A throw as one line of the journal: its message's first line and where it was thrown, its
-// stack's first frame, or a fixed line for a value that can't be said as text, as a Symbol or
-// an object with no prototype can't, so saying a throw never throws in its turn.
-function thrownShown(error) {
-    try {
-        const at = `${error?.stack ?? ""}`.split("\n")[0];
-        const message = `${error?.message ?? error}`.split("\n")[0];
-        return at === "" ? message : `${message} at ${at}`;
-    } catch (unsaid) {
-        return "a value that can't be said as text";
-    }
-}
-
 // A daemon's error as a line in the journal may say it, quoted as JSON: whole where `whole`, and
 // otherwise its codes, numbers and truths whole and each of its words as typedShown says typed
 // words, since a daemon's own words can name a row, as "couldn't join Harbour House" (Y2YBTS,

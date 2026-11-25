@@ -21,6 +21,7 @@ import "ActForms.js" as Forms
 import "Moved.js" as Moved
 import "Presented.js" as Presented
 import "Beneath.js" as Beneath
+import "Thrown.js" as Thrown
 import "../Confirm.js" as Confirm
 import "../Fuzzy.js" as Fuzzy
 
@@ -297,7 +298,7 @@ Scope {
             try {
                 rowAt(key);
             } catch (error) {
-                console.warn(`${place}: ${key} not made ahead: ${Presented.thrownShown(error)}`);
+                console.warn(`${place}: ${key} not made ahead: ${Thrown.shown(error)}`);
                 unmade(key);
             }
         }

@@ -253,7 +253,6 @@
   ];
   "launcher/Pacing.js" = [
     "launcher/Order.js"
-    "launcher/Presented.js"
     "launcher/Thread.js"
   ];
   "launcher/PastNotices.qml" = [
@@ -300,6 +299,7 @@
     "launcher/Moved.js"
     "launcher/Presented.js"
     "launcher/ReadyRows.js"
+    "launcher/Thrown.js"
   ];
   "launcher/RealmMachines.js" = [
     "launcher/Machine.js"

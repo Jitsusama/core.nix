@@ -38,7 +38,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
-import "launcher/Pacing.js" as Pacing
+import "launcher/Thrown.js" as Thrown
 
 ShellRoot {
     id: root
@@ -105,7 +105,7 @@ ShellRoot {
         function drawFrame() {
             const due = framed;
             framed = [];
-            Pacing.runEach(due, said => console.warn(`what waited on a frame threw: ${said}`));
+            Thrown.runEach(due, said => console.warn(`what waited on a frame threw: ${said}`));
         }
         // Shut, or an opening ended unopened, what waits on a frame runs
         // in that turn, as Launcher.qml's afterFramesDue does from its close
