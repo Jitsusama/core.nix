@@ -423,7 +423,8 @@
     what comes true by itself is said once, and nothing of what stood as the shell started; a
     piece that tells something new is said again, its own earlier notice taken back first and no
     other's; one whose words alone change is said again in place, by its id, and not once Joel has
-    put it away; and one that goes takes back whichever of its notices is up
+    put it away; one that goes takes back whichever of its notices is up; and its words follow a
+    "--", so words opening with "-" are said rather than read as notify-send's flags
   '';
   an-emoji-stands-on-its-name-on-niri = ''
     each of Super+E's groups, as niri shows the launcher's rows drawn through Qt's GPU path at 1.5

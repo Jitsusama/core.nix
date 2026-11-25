@@ -379,7 +379,8 @@ Singleton {
             command: item === null ? [] : ["notify-send", "--app-name=waiting",
                 `--action=go=${Words.name("verb:on:waiting:go")}`,
                 `--hint=string:x-waiting:${root.identity(item)}`,
-                item.title, root.told(item)]
+                // "--" ends the flags, so a title opening with - is said.
+                "--", item.title, root.told(item)]
             stdout: SplitParser {
                 onRead: line => {
                     if (line.trim() === "go")

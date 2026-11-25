@@ -252,6 +252,11 @@ ShellRoot {
                 expect("the tokens are said as a new notice", last.includes("--app-name=Tokens")
                     && last.includes("--print-id") && !last.includes("--replace-id")
                     && last.includes("About 50 Min") && root.idOf(last) === 103, last);
+                // Its words come after a -- ending the flags, so words opening
+                // with - are said rather than read as notify-send's own flags.
+                expect("its words follow the end of its flags",
+                    last.includes(" -- ") && last.indexOf(" -- ") < last.indexOf("About 50 Min"),
+                    last);
                 Notices.live = { "103": notice(103, "tokens") };
                 root.waiting = "the count said in place";
                 tokens.hint = "Tokens Run Out in About 49 Min";
