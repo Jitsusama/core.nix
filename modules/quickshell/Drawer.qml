@@ -284,8 +284,9 @@ Floating {
         font.features: drawer.eyebrowLevel.features
     }
     readonly property string title: shown ? shown.title ?? "" : ""
-    // Its facts, less any that only says the title again (DrawerValue.js).
-    readonly property var facts: shown ? Value.factsShown(shown.facts, title) : []
+    // Its facts, less any that only says the title again
+    // (DrawerValue.factsDrawn).
+    readonly property var facts: shown ? Value.factsDrawn(shown.facts, title) : []
     // A fact's row is kept once made, each reading the fact at its place
     // and hidden past the facts shown, so only a thing with more facts
     // than any before makes rows: they were made afresh for every fact
