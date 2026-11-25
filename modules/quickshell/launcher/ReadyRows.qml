@@ -224,12 +224,86 @@ Scope {
         return typeof stamp === "function" ? stamp(key, ask) : ask;
     }
 
+    // Whether a row it made, let go as a change told it, is made again ahead, a few a turn,
+    // while the launcher is open and these rows aren't wanted, rather than all at the step back
+    // to them. A step back to Now made 31 to 37 of Quests' rows after 20 minutes of changes to
+    // their sessions, and 224 after its daemon started again (2026-11-23). Never while shut,
+    // with nothing drawn to step back to, and only rows made before. A place whose rows change
+    // each second leaves it off, since each change would be made with nobody seeing it.
+    property bool madeAhead: false
+    // The rows owed so, by key, and how many are made a turn.
+    readonly property var owedAhead: ({})
+    readonly property int aheadEachTurn: 8
+    // Elsewhere is a step held in another place, settled, not only these rows unwanted: they're
+    // unwanted too as a kept opening fills in at home, before their turn to wake, and under a
+    // viewer's command line (Wanted.js), and a chord or a kept opening holds its place's step
+    // as it opens, before that place has woken. Rows made then would land in the frames those
+    // keep short, so none is made while the launcher opens or wakes its sources, and the first
+    // waits for the frame after.
+    readonly property bool elsewhere: maker?.wanted === false
+        && (maker?.launcher?.held?.length ?? 0) > 0 && maker?.launcher?.viewing !== true
+        && maker?.launcher?.opening !== true && maker?.launcher?.waking !== true
+    readonly property bool makingAhead: madeAhead && drawn && elsewhere
+    onMakingAheadChanged: aheadSoon()
+
+    function owe(key) {
+        if (madeAhead && key in made)
+            owedAhead[key] = true;
+    }
+
+    // Each turn after the launcher's next frame (its afterFrame), so no one frame makes them
+    // all, or the next turn of the event loop where it has no frames to wait on.
+    function aheadSoon() {
+        if (!makingAhead || aheadWaiting || Object.keys(owedAhead).length === 0)
+            return;
+        if (typeof maker?.launcher?.afterFrame !== "function") {
+            aheadTurn.start();
+            return;
+        }
+        aheadWaiting = true;
+        // Felt as "<its name> ahead", so a frame its rows stall says who held it, as Agents'
+        // wraps do.
+        maker.launcher.afterFrame(() => {
+            aheadWaiting = false;
+            if (typeof maker.felt === "function")
+                maker.felt("ahead", makeAhead);
+            else
+                makeAhead();
+        });
+    }
+    property bool aheadWaiting: false
+
+    Timer {
+        id: aheadTurn
+        interval: 0
+        onTriggered: ready.makeAhead()
+    }
+
+    // A close runs what waits on a frame in its own turn, which can come before `drawn` has
+    // followed the launcher's open, so its open is read here too.
+    function makeAhead() {
+        if (!makingAhead || maker?.launcher?.open === false)
+            return;
+        let count = 0;
+        for (const key of Object.keys(owedAhead)) {
+            if (count === aheadEachTurn) {
+                aheadSoon();
+                return;
+            }
+            delete owedAhead[key];
+            if (!(key in made) && served(key) !== null) {
+                rowAt(key);
+                count += 1;
+            }
+        }
+    }
+
     // Not watched, nothing is held, so nothing it made stands.
     onActiveChanged: {
         if (active)
             return;
         for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats, lending,
-            typedHeld]) {
+            typedHeld, owedAhead]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -261,10 +335,13 @@ Scope {
         for (const key of dropped)
             delete repeats[key];
         for (const key of said.concat(dropped)) {
-            if (key in drawers)
+            if (key in drawers) {
+                owe(drawers[key]);
                 delete made[drawers[key]];
+            }
             if (moved[key] === true)
                 continue;
+            owe(key);
             delete made[key];
             delete madeFrom[key];
             delete lending[key];
@@ -297,6 +374,7 @@ Scope {
         if (found.words !== null && Found.reranks(before, keys, said.concat(dropped)))
             ended();
         heard(said, dropped);
+        aheadSoon();
     }
 
     // The row the record of `key` holds, as served or typed for, or null.

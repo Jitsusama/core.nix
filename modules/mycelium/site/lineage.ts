@@ -1,11 +1,12 @@
-// Who started each cell, from its forage (the node's `forage` kind): the
-// cell that asked this machine's node to start it, else the orchestrator
-// its presence names. Nothing of a forage crosses a link, so a node says
-// it only of its own machine's cells, and the map grows one network out
-// of another only from those until the cell itself carries it. From that,
-// which network grows out of which, as a hypha branches from another.
+// Who started each cell: the cell whose ask started it, from the book of
+// starts kept by the node that started it, else the orchestrator its
+// presence names. Each cell's own record says so on every machine, since
+// links carry it; a node too old to say it there says it only in its
+// forages (the node's `forage` kind), which never cross a link, so only
+// this machine's cells are known that way. From that, which network grows
+// out of which, as a hypha branches from another.
 
-import { type Held, object, text } from "../../local-sites/kit/records.ts";
+import { type Held, object, type Record, text } from "../../local-sites/kit/records.ts";
 
 /** A cell and the cell that started it, each by its address. */
 interface Started {
@@ -31,24 +32,40 @@ interface Grown {
 const collate = new Intl.Collator("en-CA").compare;
 
 /**
- * Who started each cell a forage is held for; none at all when the node
- * serves no forages, so a node too old to serve them reads as one that
- * says nothing of who started whom. A cell said to have started itself
- * names nobody.
+ * Who started each cell: its own record's word first, which reaches every
+ * machine, then its forage's for a cell whose record says nothing, as an
+ * older node's does. The two never disagree on a node that says both,
+ * since it makes them from the same book and presence and leaves the
+ * record's out where nothing names a starter, so the forage only fills in
+ * for a node too old to say it on the record. A cell said to have started
+ * itself names nobody, and a node that says neither reads as one where
+ * nobody started anybody, which grows no branch either way.
  */
-function startedOf(held: Held | undefined): Started[] | null {
-  if (held === undefined) {
-    return null;
-  }
-  const started: Started[] = [];
-  for (const record of held.all()) {
-    const cell = text(record, "cell");
-    const by = text(object(record, "lineage") ?? {}, "started_by");
-    if (cell && by && by !== cell) {
-      started.push({ cell, by });
+function startedOf(cells: Held, forages: Held | undefined): Started[] {
+  const by = new Map<string, string>();
+  const say = (cell: string | undefined, starter: string | undefined): void => {
+    if (cell && starter && starter !== cell && !by.has(cell)) {
+      by.set(cell, starter);
+    }
+  };
+  // A cell moving between machines can be listed by both for a while, the
+  // one it left still saying what it last knew. The map draws the copy
+  // started most recently, so its starter is that copy's.
+  const latest = new Map<string, Record>();
+  for (const record of cells.all()) {
+    const name = text(record, "name");
+    const had = name ? latest.get(name) : undefined;
+    if (name && (!had || (text(record, "since") ?? "") > (text(had, "since") ?? ""))) {
+      latest.set(name, record);
     }
   }
-  return started;
+  for (const [name, record] of latest) {
+    say(name, text(record, "started_by"));
+  }
+  for (const record of forages?.all() ?? []) {
+    say(text(record, "cell"), text(object(record, "lineage") ?? {}, "started_by"));
+  }
+  return [...by].map(([cell, starter]) => ({ cell, by: starter }));
 }
 
 /**
@@ -77,10 +94,10 @@ function foragedOf(held: Held | undefined): string[] | null {
 function grownOf(
   networks: readonly Network[],
   hubOf: ReadonlyMap<string, string>,
-  started: readonly Started[] | null,
+  started: readonly Started[],
 ): Map<string, Grown> {
   const named = new Map(networks.map((network) => [network.key, network]));
-  const startedBy = new Map((started ?? []).map((start) => [start.cell, start.by]));
+  const startedBy = new Map(started.map((start) => [start.cell, start.by]));
   const grown = new Map<string, Grown>();
   const within = (key: string): string | null =>
     named.get(key)?.within ?? grown.get(key)?.from ?? null;

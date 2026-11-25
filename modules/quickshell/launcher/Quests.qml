@@ -65,6 +65,9 @@ Provider {
         make: (row, key) => provider.made(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
+        // A row's session parks, wakes or moves about a minute and a half apart, so the rows
+        // a step back to Now finds told are made while Joel is elsewhere in the launcher.
+        madeAhead: true
         // The daemon's answer to what's typed now, the ended quests it
         // found among it, is searched again (Launcher.qml's foundMore).
         onSearched: words => {

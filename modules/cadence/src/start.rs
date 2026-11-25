@@ -18,6 +18,7 @@ use serde::Deserialize;
 use crate::mesh::{Mesh, Presence};
 use crate::revive::{self, Gate, Held, Holder, Hosting, Memory, Seen, Verdict};
 use crate::watch::down;
+use crate::write_whole;
 
 /// What reviving is told: whom to watch and tell, and how a session is
 /// started, as the words a login shell runs, before `--session <id>`.
@@ -42,6 +43,15 @@ const DOOR_TRIES: u32 = 100;
 /// unit listened, as its single instance.
 const OLD_KITTY: &[u8] = b"--instance-group\0pi-sessions";
 
+/// Revive's memory as `bytes` from `path` hold it, or none, said in the
+/// journal, when they don't parse, so starts counted from none show.
+fn remembered(path: &Path, bytes: &[u8]) -> Memory {
+    serde_json::from_slice(bytes).unwrap_or_else(|e| {
+        println!("{}: {e}, so starts count from none", path.display());
+        Memory::default()
+    })
+}
+
 /// Looks once, starting every watched session that died, one at a time,
 /// and says what it did.
 ///
@@ -59,10 +69,8 @@ pub fn revive(
         return Ok(Vec::new());
     }
     let path = folder.join("revive.json");
-    let mut memory: Memory = fs::read(&path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
+    let read = fs::read(&path).ok();
+    let mut memory = read.map_or_else(Memory::default, |bytes| remembered(&path, &bytes));
     let seen = seen(mesh, now);
     let windows = windows();
     let node = node_holders(revive::realm_of(&reviving.restart));
@@ -108,7 +116,7 @@ pub fn revive(
         let line = match revive::gate(&memory, &s.session, now) {
             Gate::Go => {
                 revive::started(&mut memory, &s.session, now);
-                fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
+                write_whole(&path, &serde_json::to_string_pretty(&memory)?)?;
                 let closed = close_dead(&s.session, &hold, node.as_deref().unwrap_or_default());
                 let mut line = start(
                     reviving,
@@ -139,7 +147,7 @@ pub fn revive(
         };
         said.push(line);
     }
-    fs::write(&path, serde_json::to_vec_pretty(&memory)?)?;
+    write_whole(&path, &serde_json::to_string_pretty(&memory)?)?;
     // What was done this look is said in the journal whether or not its
     // peers could be told.
     let watcher = reviving.watcher.as_deref();
