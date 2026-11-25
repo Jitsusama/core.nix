@@ -264,8 +264,8 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
 /// a trial standing as the usual ended early.
 fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) -> Vec<String> {
     let mut said = Vec::new();
-    if let Some(unreached) = chooser.unreached() {
-        said.push(kept_off(on, &unreached));
+    if let Some((unreached, lasts)) = chooser.unreached() {
+        said.push(kept_off(on, &unreached, lasts));
     }
     if let Some(narrower) = chooser.began_keeping_wide() {
         said.push(kept_wide(on, measured, signal, &narrower));
@@ -297,13 +297,14 @@ fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) 
 
 /// Why a card keeps off an access point it was moved to: it's somewhere
 /// else since, whether the move failed or something moved it on, and the
-/// chooser can't tell which.
-fn kept_off(on: &Joined, unreached: &str) -> String {
+/// chooser can't tell which. A keep-off longer than the hour a miss holds
+/// was there before it, and runs on.
+fn kept_off(on: &Joined, unreached: &str, lasts: Duration) -> String {
     format!(
         "{} keeps off {unreached} for {}, as it's on {} rather than there since it was \
          moved",
         on.card,
-        how_long(choose::SPURNED),
+        how_long(lasts),
         on.point
     )
 }
@@ -1155,7 +1156,8 @@ mod tests {
 
     #[test]
     fn a_card_keeping_off_a_point_it_was_moved_to_says_where_it_is() {
-        let why = kept_off(&joined(HALL), DESK);
+        let why = kept_off(&joined(HALL), DESK, choose::SPURNED);
+        let longer = kept_off(&joined(HALL), DESK, choose::SPURNED * 6);
 
         assert!(
             why.ends_with(&format!(
@@ -1163,6 +1165,10 @@ mod tests {
                  than there since it was moved"
             )),
             "a point kept off says how long and where the card is: {why}"
+        );
+        assert!(
+            longer.contains(&format!("keeps off {DESK} for 6 hours,")),
+            "a miss through a longer keep-off didn't say what runs on: {longer}"
         );
     }
 

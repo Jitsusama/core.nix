@@ -292,8 +292,8 @@ pub struct Chooser {
     /// it was tried from, for the journal to say the keep-off ended early.
     freed: Option<(String, String)>,
     /// The access point a move on trial never reached, kept off from the
-    /// last choice, for the journal to say so.
-    unreached: Option<String>,
+    /// last choice, and for how long, for the journal to say so.
+    unreached: Option<(String, Duration)>,
     /// When a move judged last never stood. Another within `SPURNED` of it
     /// holds a whole settle, not a span: a stranger in radio range sending
     /// the network's name from point after point, none of which answers,
@@ -725,8 +725,8 @@ impl Chooser {
     }
 
     /// The access point the last choice kept off as a move never reached,
-    /// if it did, said once.
-    pub fn unreached(&mut self) -> Option<String> {
+    /// if it did, and for how long, said once.
+    pub fn unreached(&mut self) -> Option<(String, Duration)> {
         self.unreached.take()
     }
 
@@ -818,7 +818,10 @@ impl Chooser {
     /// it stands carrying well: as the point left usually does, or not
     /// badly at all. One that stands only for carrying better than a
     /// failing, lossy or slow link says nothing of it, as 390 ms beating
-    /// 400 ms isn't a point come good.
+    /// 400 ms isn't a point come good. The keep-off itself ends early only
+    /// as the usual frees it (`judge`), which a trial off a failing link
+    /// with no usual can't, so it runs on; the next back starts at an
+    /// hour.
     fn stood(&mut self, point: &str, measured: &Measured, as_usual: bool) {
         if as_usual || !badly(measured) {
             self.struck.remove(point);
@@ -828,8 +831,8 @@ impl Chooser {
     /// Keeps off an access point a move never reached for `SPURNED`, firm
     /// against a failing link, or as long as it was already kept off if
     /// longer, so a miss through a keep-off that gave way doesn't shorten
-    /// it.
-    fn keep_off_unreached(&mut self, point: &str, now: Instant) {
+    /// it, and how long that is.
+    fn keep_off_unreached(&mut self, point: &str, now: Instant) -> Duration {
         let until = now + SPURNED;
         let kept = self.spurned.entry(point.to_owned()).or_insert(Kept {
             until,
@@ -838,6 +841,7 @@ impl Chooser {
         });
         kept.until = kept.until.max(until);
         kept.firm = kept.firm.max(until);
+        kept.until.duration_since(now)
     }
 
     /// Whether the card keeps off this access point now, which the tests
@@ -919,8 +923,8 @@ impl Chooser {
                 }
                 self.missed = Some(now);
             }
-            self.keep_off_unreached(&trial.to, now);
-            self.unreached = Some(trial.to);
+            let lasts = self.keep_off_unreached(&trial.to, now);
+            self.unreached = Some((trial.to, lasts));
             return None;
         }
         trial.stood = true;
@@ -2735,7 +2739,11 @@ pub(crate) mod tests {
         let short = chooser.choose(nearly, (DESK, &badly, -50, CH52), &near, false);
         let hour = chooser.choose(spent, (DESK, &badly, -50, CH52), &near, false);
 
-        assert_eq!(said, Some(HALL.into()), "the hall's kept off, and said so");
+        assert_eq!(
+            said,
+            Some((HALL.into(), SPURNED)),
+            "the hall's kept off an hour, and said so"
+        );
         assert_eq!(again, None, "it's said once");
         assert_eq!(settled, Choice::Stay, "the hall wasn't reached from here");
         assert_eq!(short, Choice::Stay, "an hour from its judgement");
@@ -3193,7 +3201,11 @@ pub(crate) mod tests {
         let judged = chooser.choose(start + TRIAL, on, &near, false);
 
         assert_eq!(judged, Choice::Stay, "a third's figures judge nothing");
-        assert_eq!(chooser.unreached(), Some(HALL.into()), "unreached");
+        assert_eq!(
+            chooser.unreached(),
+            Some((HALL.into(), SPURNED)),
+            "unreached"
+        );
     }
 
     #[test]
@@ -5315,41 +5327,48 @@ pub(crate) mod tests {
 
     #[test]
     fn a_trial_standing_only_for_beating_a_failing_link_forgets_nothing() {
-        let (mut chooser, second) = found_worse_twice(Instant::now());
-        let third = second + HOUR * 2;
-        chooser.badly_on = Some(NEAR.into());
-        let failing = carried(400, 15.0);
-        let ch52 = [desk_at(-48, None)];
-        let tried = chooser.choose(third, (NEAR, &failing, -50, CH6), &ch52, false);
-        assert_eq!(
-            tried,
-            Choice::Try(DESK.into()),
-            "ch52 wasn't tried off a failing link"
-        );
-        let slow = carried(300, 2.0);
-        let stood = chooser.choose(third + TRIAL, (DESK, &slow, -48, CH52), &[], false);
-        assert!(
-            !matches!(stood, Choice::Back(_)),
-            "ch52 carrying better than the failing link went back: {stood:?}"
-        );
+        // Slow, at exactly `LOSSY`, or quick but losing past it: each
+        // beats 400 ms with 15% lost, and neither carries well.
+        for stand in [carried(300, 2.0), carried(15, 5.0)] {
+            let (mut chooser, second) = found_worse_twice(Instant::now());
+            let third = second + HOUR * 2;
+            chooser.badly_on = Some(NEAR.into());
+            let failing = carried(400, 15.0);
+            let ch52 = [desk_at(-48, None)];
+            let tried = chooser.choose(third, (NEAR, &failing, -50, CH6), &ch52, false);
+            assert_eq!(
+                tried,
+                Choice::Try(DESK.into()),
+                "ch52 wasn't tried off a failing link"
+            );
+            let stood = chooser.choose(third + TRIAL, (DESK, &stand, -48, CH52), &[], false);
+            assert!(
+                !matches!(stood, Choice::Back(_)),
+                "ch52 carrying {stand:?}, better than the failing link, went back: {stood:?}"
+            );
 
-        let later = tried_ch52_and_back(&mut chooser, third + TRIAL + SETTLE);
+            let later = tried_ch52_and_back(&mut chooser, third + TRIAL + SETTLE);
 
-        assert_eq!(
-            chooser.kept_for(DESK, later),
-            Some(HOUR * 4),
-            "ch52, standing only for beating a failing link, was forgiven its two backs"
-        );
+            assert_eq!(
+                chooser.kept_for(DESK, later),
+                Some(HOUR * 4),
+                "ch52, standing on {stand:?} only for beating a failing link, was forgiven \
+                 its two backs"
+            );
+        }
     }
 
     /// How long ch52 is kept off when found worse once more, after a
     /// third trial of it off the 2.4 GHz radio's 201 ms stood carrying
-    /// this.
-    fn kept_off_after_standing(stood_carrying: &Measured) -> Option<Duration> {
+    /// this, where that radio usually carries `usual`, if learned.
+    fn kept_off_after_standing(
+        stood_carrying: &Measured,
+        usual: Option<Measured>,
+    ) -> Option<Duration> {
         let (mut chooser, second) = found_worse_twice(Instant::now());
         let third = second + HOUR * 2;
         chooser.badly_on = Some(NEAR.into());
-        let ch52 = [desk_at(-48, None)];
+        let ch52 = [desk_at(-48, None), near_at(-50, usual)];
         let tried = chooser.choose(third, (NEAR, &carried(201, 0.0), -50, CH6), &ch52, false);
         assert_eq!(
             tried,
@@ -5369,9 +5388,20 @@ pub(crate) mod tests {
     #[test]
     fn a_trial_standing_carrying_well_forgets_how_often_its_point_was_found_worse() {
         assert_eq!(
-            kept_off_after_standing(&carried(15, 0.0)),
+            kept_off_after_standing(&carried(15, 0.0), None),
             Some(HOUR),
             "ch52 found worse after a trial stood wasn't kept off an hour, as at first"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_as_the_usual_forgets_how_often_its_point_was_found_worse() {
+        // 44 ms is slow, but no slower than the 2.4 GHz radio's usual
+        // 35 ms allows, so the point carries as the one left usually does.
+        assert_eq!(
+            kept_off_after_standing(&carried(44, 0.0), Some(carried(35, 0.0))),
+            Some(HOUR),
+            "ch52 standing as the usual wasn't forgiven its two backs"
         );
     }
 
@@ -5380,19 +5410,63 @@ pub(crate) mod tests {
         let (mut chooser, fourth) = found_worse(4, Instant::now());
         let missed = fourth + HOUR * 2;
 
-        chooser.keep_off_unreached(DESK, missed);
+        let lasts = chooser.keep_off_unreached(DESK, missed);
         let mut fresh = Chooser::default();
-        fresh.keep_off_unreached(DESK, missed);
+        let fresh_lasts = fresh.keep_off_unreached(DESK, missed);
 
         assert_eq!(
-            chooser.kept_for(DESK, missed),
-            Some(HOUR * 6),
+            (chooser.kept_for(DESK, missed), lasts),
+            (Some(HOUR * 6), HOUR * 6),
             "a move missing ch52 two hours into eight shortened its keep-off"
         );
         assert_eq!(
-            fresh.kept_for(DESK, missed),
-            Some(SPURNED),
+            (fresh.kept_for(DESK, missed), fresh_lasts),
+            (Some(SPURNED), SPURNED),
             "a move missing a point kept off by nothing didn't keep it off an hour"
+        );
+    }
+
+    #[test]
+    fn a_failing_link_missing_a_point_through_its_keep_off_is_held_off_it_an_hour() {
+        let (mut chooser, fourth) = found_worse(4, Instant::now());
+        chooser.badly_on = Some(NEAR.into());
+        let failing = carried(400, 15.0);
+        let ch52 = [desk_at(-48, None)];
+        let tried = fourth + HOUR;
+        let through = chooser.choose(tried, (NEAR, &failing, -50, CH6), &ch52, false);
+        assert_eq!(
+            through,
+            Choice::Try(DESK.into()),
+            "a failing link didn't leave for ch52 past its keep-off's first hour"
+        );
+        // The card is still on the 2.4 GHz radio: the move missed.
+        let missed = tried + SPAN;
+        let judged = chooser.choose(missed, (NEAR, &failing, -50, CH6), &ch52, false);
+        let said = chooser.unreached();
+
+        let firm = missed + SPURNED.saturating_sub(Duration::from_secs(1));
+        let short = chooser.choose(firm, (NEAR, &failing, -50, CH6), &ch52, false);
+        let hour = chooser.choose(missed + SPURNED, (NEAR, &failing, -50, CH6), &ch52, false);
+
+        assert_eq!(
+            said,
+            Some((DESK.into(), (HOUR * 7).saturating_sub(SPAN))),
+            "the miss didn't say ch52's keep-off runs on as long as it did"
+        );
+        assert_ne!(
+            judged,
+            Choice::Try(DESK.into()),
+            "a failing link tried ch52 again the moment its move missed"
+        );
+        assert_ne!(
+            short,
+            Choice::Try(DESK.into()),
+            "a failing link tried ch52 again within an hour of missing it"
+        );
+        assert_eq!(
+            hour,
+            Choice::Try(DESK.into()),
+            "a failing link was held off ch52 past the hour a miss holds"
         );
     }
 
@@ -5401,7 +5475,7 @@ pub(crate) mod tests {
         // No worse than the 201 ms left, so it stands, but slow all the
         // same: a point no better than a bad link hasn't come good.
         assert_eq!(
-            kept_off_after_standing(&carried(205, 0.0)),
+            kept_off_after_standing(&carried(205, 0.0), None),
             Some(HOUR * 4),
             "ch52, standing only as slow as the link it left, was forgiven its two backs"
         );

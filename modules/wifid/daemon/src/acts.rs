@@ -118,12 +118,21 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
 /// write a journal line of its own, at a priority it chose, that reads as
 /// wifid's. An ask saying neither way is said so, as it's refused.
 pub fn wanted(said: &Value) -> String {
-    let named = |name: &str| match said.get(name).and_then(Value::as_str) {
-        Some(named) => quoted(named),
+    let named = |name: &str| match said.get(name).map(Value::as_str) {
+        Some(Some(named)) => quoted(named),
+        Some(None) => format!("a {name} that isn't text"),
         None => format!("no {name}"),
     };
     let on = |name: &str| said.get(name).and_then(Value::as_bool);
-    match said.get("act").and_then(Value::as_str).unwrap_or("") {
+    let Some(act) = said.get("act").and_then(Value::as_str) else {
+        let what = if said.get("act").is_some() {
+            "an act that isn't text"
+        } else {
+            "no act"
+        };
+        return what.to_owned();
+    };
+    match act {
         "roam" => format!("to roam to {}", named("bssid")),
         act @ ("join" | "leave" | "forget") => format!("to {act} {}", named("network")),
         "trust" => match on("trusted") {
@@ -448,6 +457,20 @@ mod tests {
             ],
             "an act's want is misread"
         );
+        assert_eq!(
+            [
+                json!({"act": 5}),
+                json!({}),
+                json!({"act": "roam", "bssid": 5})
+            ]
+            .map(|said| wanted(&said)),
+            [
+                "an act that isn't text",
+                "no act",
+                "to roam to a bssid that isn't text"
+            ],
+            "an ask naming what isn't text, or nothing, reads as naming something"
+        );
     }
 
     #[test]
@@ -475,6 +498,26 @@ mod tests {
             said.iter().all(|said| said.len() < 100),
             "a 100,000 character name was said whole, for journald to cut: {:?}",
             said.map(|said| said.len())
+        );
+    }
+
+    #[test]
+    fn what_an_act_wants_says_an_ssid_whole_and_cuts_past_64_characters() {
+        let widest = "S".repeat(32);
+        let longest = "é".repeat(64);
+        let past = "é".repeat(65);
+
+        let wants = [&widest, &longest, &past]
+            .map(|network| wanted(&json!({"act": "join", "network": network})));
+
+        assert_eq!(
+            wants,
+            [
+                format!("to join \"{widest}\""),
+                format!("to join \"{longest}\""),
+                format!("to join \"{longest}\"..."),
+            ],
+            "a name of up to 64 characters wasn't said whole, or one past wasn't cut to 64"
         );
     }
 
