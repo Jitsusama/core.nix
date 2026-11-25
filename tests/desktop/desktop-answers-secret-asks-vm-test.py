@@ -27,6 +27,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,7 +54,8 @@ DOCKER = "~/.docker/config.json"
 DOCKER_LOGIN = '{"auths": {"registry.example": {"auth": "ZG9ja2VyLW1hZGUtdXA="}}}'
 EMPTIED = "{}"
 # Past the key language's wait (300 ms) and the daemon's least time a line is shown (500 ms), so
-# a second Return is neither taken for the first doubled nor refused as unread.
+# a second Return is neither taken for the first doubled nor refused as unread. It's slept, not
+# waited for, so past_the_reading paces it by hand, as the driver paces only its own waits.
 PAST_THE_READING = 1.0
 # How long the daemon may take to write an ask's answer on a quiet host.
 ANSWER_WRITTEN = dt.timedelta(seconds=30)
@@ -140,11 +142,19 @@ def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, 
     except Exception as unanswered:
         if since is None:
             raise
-        # Its showings hold the ask's row too, so only the shell's words of it are kept. grep
-        # finding no line ends 1, which reads as nothing said rather than a read that failed.
+        # Its showings hold the ask's row too, so only the shell's words of it are kept. They're
+        # sorted here rather than by a pipe, whose status would be its last grep's alone, so a
+        # journal that couldn't be read says how it ended rather than reading as nothing said:
+        # diagnosis puts that, or what the read raised, on a line of its own opening "(".
         journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
-        words = f"grep -a -F {shlex.quote(f'ask:{ask}')} | grep -a -v -F 'report[showing '"
-        said = desktop.diagnosis(f"{journal} | {words} || test $? -eq 1")
+        named = f"ask:{ask}"
+        words = [
+            line
+            for line in desktop.diagnosis(journal).splitlines()
+            if (named in line and "report[showing " not in line) or line.startswith("(un")
+            or line.startswith("(ended with ")
+        ]
+        said = "\n".join(words)
         never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
         raise AssertionError(never) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
@@ -178,6 +188,11 @@ def selected_or_told(desktop: Desktop, ask: str, why: str) -> None:
         raise AssertionError(message) from unselected
 
 
+def past_the_reading() -> None:
+    """Sleep past the key language's wait and the least time shown, paced as a wait is."""
+    time.sleep(PAST_THE_READING * vm_helpers.pace(vm_helpers.busyness()))
+
+
 def say_yes(desktop: Desktop) -> str:
     """Press Return twice on the selected line, as Joel says yes: the first arms it.
 
@@ -185,7 +200,7 @@ def say_yes(desktop: Desktop) -> str:
     """
     desktop.machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
-    time.sleep(PAST_THE_READING)
+    past_the_reading()
     since = desktop.mark()
     desktop.machine.send_key("ret")
     return since
@@ -271,7 +286,7 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
     why = "To wind the clock."
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
-    time.sleep(PAST_THE_READING)
+    past_the_reading()
     refused_unread(desktop, ask, say_yes(desktop))
 
 
@@ -324,7 +339,7 @@ def test_a_yes_walked_through_the_ipc_releases_nothing(desktop: Desktop) -> None
     why = "To light the forge."
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
-    time.sleep(PAST_THE_READING)
+    past_the_reading()
     since = desktop.mark()
     walked = json.dumps({"steps": ["Passwords", "Asks", RELEASED, "Release It"], "sure": True})
     said = desktop.as_account(f"qs ipc call launcher doing {shlex.quote(walked)}")
@@ -386,7 +401,7 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     desktop.machine.send_chars("k")
     desktop.launcher_until(lambda shown: selects(shown, why))
     # Past the reading, so a move wrongly taken as his would have timed the line long enough.
-    time.sleep(PAST_THE_READING)
+    past_the_reading()
     refused_unread(desktop, ask, say_yes(desktop))
 
 
