@@ -4,9 +4,10 @@
 //! minute and by far more in an incident, so the search asks from an hour
 //! before the last whole one, and a stop it indexed that late is still
 //! heard. A stop of his that a read finds from the hour before then stops
-//! nothing, and the journal says so once a run, so a stop lost to a later
-//! index still is said rather than lost unsaid. How far it reached is
-//! kept across a restart (src/progress.rs).
+//! nothing, and the journal says so once a run, so one indexed up to two
+//! hours late is said rather than lost unsaid; later still, on a thread
+//! nothing else changes, it's missed. How far it reached is kept across a
+//! restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
@@ -20,7 +21,7 @@ use super::{GitHub, Unread, searched};
 /// and read, in seconds. A stop heard an hour late beats one never heard,
 /// while one older than that he may have moved past. What that finds
 /// again is known by its key, so nothing is judged twice.
-pub(super) const OWN_LAG: u64 = 60 * 60;
+const OWN_LAG: u64 = 60 * 60;
 
 /// The words that stop, as the journal names them.
 const SAFE_WORD: &str = "pineapple override";

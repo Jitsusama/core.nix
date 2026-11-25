@@ -54,8 +54,9 @@ fn only_joel_spoke_ago(line: &str, now: u64, ago: u64, late: bool) -> Value {
 static SEARCHED: AtomicU64 = AtomicU64::new(0);
 
 /// Where Joel spoke ninety minutes back on example/shop#12, saying the
-/// safe word and quoting it, and said it three hours back, which someone
-/// changes before every search, so each round reads it again.
+/// safe word as the judge reads it, though no plain phrase, and quoting
+/// it, and said it three hours back, which someone changes before every
+/// search, so each round reads it again.
 fn busy_thread(line: &str, now: u64) -> Value {
     if line.contains(" /search/issues?") {
         let round = SEARCHED.fetch_add(1, Ordering::SeqCst);
@@ -67,7 +68,7 @@ fn busy_thread(line: &str, now: u64) -> Value {
         return json!([]);
     }
     let ago = (now, 90 * 60);
-    let his = commented(5, LOGIN, "OWNER", "pineapple override", ago);
+    let his = commented(5, LOGIN, "OWNER", "Pineapple-Override", ago);
     let quoted = commented(6, LOGIN, "OWNER", "> pineapple override\n\nis it", ago);
     let long_ago = commented(7, LOGIN, "OWNER", "pineapple override", (now, 3 * 60 * 60));
     answer_with(line, now, &[his, quoted, long_ago])
@@ -166,14 +167,34 @@ fn github_joels_stop_older_than_the_hour_stops_nothing_and_is_told_of_once() {
         .filter(|line| line.contains(" /repos/example/shop/issues/12/comments?"))
         .collect();
     assert!(
-        !comments.is_empty()
-            && comments
-                .iter()
-                .all(|line| asked_since(line).is_some_and(|since| since <= said_then)),
+        comments.len() >= 2,
+        "the busy thread is read each round it changes: {comments:?}"
+    );
+    assert!(
+        comments
+            .iter()
+            .all(|line| asked_since(line).is_some_and(|since| since <= said_then)),
         "what a search found is read from an hour before what it reaches, so his stop \
          from then is seen: {comments:?}"
     );
     drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_first_start_judges_joels_stop_from_inside_its_look_back() {
+    let (origin, _) = answering(|line, now| only_joel_spoke_ago(line, now, 15 * 60, false));
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 2);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop", "stop-asked"],
+        "a first start judges Joel's stop from fifteen minutes before it ran"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

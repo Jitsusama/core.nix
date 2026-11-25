@@ -4,8 +4,9 @@
 //! minute, with Joel's own sign-in (gh's, printed by the program
 //! `SIGN_IN_KEYRING` names, only read), which pull requests and issues he
 //! takes part in changed, and, since GitHub never notifies him of his own
-//! words, which of those name the word, as a search finds them (own.rs). It reads
-//! what was said on each since it last asked: its opening, comments,
+//! words, which of those name the word, as a search finds them (own.rs). It
+//! reads what was said on each since it last asked, or on one the search
+//! found from an hour before the search reaches: its opening, comments,
 //! review comments and reviews. Whatever holds "pineapple" or tags him
 //! is judged with the pull request it was said on as its place
 //! (src/github.rs, then judging.rs), and the decision goes in
@@ -596,10 +597,10 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     // read from an hour before what it reaches, so his stop from then is
     // told of. Each thread is judged from one time and read from another.
     let mine = how.authored_by.is_none();
-    let found = mine.then(|| own.search(github, &how.site, &login));
+    let hits = mine.then(|| own.search(github, &how.site, &login));
     let reach = own.reach();
     let mut threads: Vec<(Thread, u64, u64)> = Vec::new();
-    for thread in found.iter().flat_map(|found| found.threads.iter()) {
+    for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {
         threads.push((thread.clone(), reach, own.read_from()));
     }
     for thread in notified {
@@ -651,8 +652,8 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         judged.keys.push(said.key);
     }
     judged.since = began;
-    if let Some(found) = found.filter(|found| found.whole) {
-        own.moved_on(began, found.seen);
+    if let Some(hits) = hits.filter(|hits| hits.whole) {
+        own.moved_on(began, hits.seen);
     }
     judged.own = Some(own.kept());
     let over = judged.keys.len().saturating_sub(KEPT);

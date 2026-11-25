@@ -394,7 +394,7 @@ fn github_joels_own_stop_nobody_was_notified_of_is_found_by_searching_for_the_wo
 }
 
 #[test]
-fn github_a_pull_request_notified_and_searched_is_read_as_the_search_reads_it() {
+fn github_a_pull_request_notified_and_searched_is_judged_as_far_back_as_the_search_reaches() {
     let (origin, asked) = answering(|line, now| {
         if line.contains(" /notifications?") {
             return answer_with(line, now, &[]);
@@ -412,7 +412,7 @@ fn github_a_pull_request_notified_and_searched_is_read_as_the_search_reads_it() 
     assert_eq!(
         each(&decisions(&home), "verdict"),
         ["stop", "stop-asked"],
-        "named by both, it's read from the farther back of the two, and read \
+        "named by both, it's judged from the farther back of the two, and read \
          again as notified, nothing is judged twice"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
