@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::hash::{Oid, Sha256, to_hex};
 use crate::index::Entry;
 use crate::odb::Odb;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::sync::Arc;
 
@@ -81,55 +81,74 @@ pub(super) fn conversion_of(
     }
 }
 
-/// The filters git runs on a file's way in, by name: those config gives a
-/// clean or a process command, since one with a smudge alone, or none,
-/// leaves a file as it is.
-pub fn filters_git_runs(config: &Config) -> BTreeSet<String> {
+/// What git does with a filter driver on a file's way in, for one that
+/// does anything: a driver neither running nor required leaves the file
+/// as it is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Driver {
+    /// Its process or clean command runs.
+    Runs,
+    /// It has neither, but is required, so git refuses the file.
+    Refuses,
+}
+
+/// The filter drivers that do anything on a file's way in, by name, as
+/// convert.c's `apply_filter` has it: a process command, where one is set,
+/// runs in place of the clean one, so an empty one runs neither, and a
+/// required driver that runs nothing makes git refuse the file.
+pub fn filter_drivers(config: &Config) -> BTreeMap<String, Driver> {
     config
         .subsections("filter")
         .into_iter()
-        .filter(|name| {
-            ["clean", "process"].iter().any(|step| {
-                config
-                    .get(&format!("filter.{name}.{step}"))
-                    .is_some_and(|command| !command.is_empty())
-            })
+        .filter_map(|name| {
+            let step = |step: &str| config.get(&format!("filter.{name}.{step}"));
+            let runs = match step("process") {
+                Some(process) => !process.is_empty(),
+                None => step("clean").is_some_and(|clean| !clean.is_empty()),
+            };
+            let driver = if runs {
+                Driver::Runs
+            } else if config.get_bool(&format!("filter.{name}.required")) == Some(true) {
+                Driver::Refuses
+            } else {
+                return None;
+            };
+            Some((name.to_owned(), driver))
         })
-        .map(str::to_owned)
         .collect()
 }
 
 /// What runs on a file's way in before its line endings, as convert.c
-/// has it: the filter its attributes name, where git has a clean step for
-/// it, since one it has none for leaves the file as it is, or else a
-/// change of encoding from any but UTF-8.
+/// has it: the filter its attributes name, then a change of encoding from
+/// any but UTF-8, made to the filter's output. Since neither an LFS pointer
+/// nor any other file can be matched once an encoding would be changed,
+/// that, or one git refuses, counts first.
 fn filter_of(attrs: &HashMap<String, State>, settings: &Settings) -> Filter {
+    match attrs.get("working-tree-encoding") {
+        Some(State::Value(encoding))
+            if encoding.is_empty()
+                || encoding.eq_ignore_ascii_case("utf-8")
+                || encoding.eq_ignore_ascii_case("utf8") => {}
+        // git refuses an encoding set or unset with no name, so no answer
+        // of its can be matched.
+        Some(_) => return Filter::Other,
+        None => {}
+    }
     match attrs.get("filter") {
-        Some(State::Value(name)) if settings.filters.contains(name) => {
-            if name == "lfs" {
-                Filter::Lfs
-            } else {
-                Filter::Other
-            }
-        }
-        _ => match attrs.get("working-tree-encoding") {
-            Some(State::Value(encoding))
-                if encoding.is_empty()
-                    || encoding.eq_ignore_ascii_case("utf-8")
-                    || encoding.eq_ignore_ascii_case("utf8") =>
-            {
-                Filter::None
-            }
-            // git refuses an encoding set or unset with no name, so no
-            // answer of its can be matched.
+        Some(State::Value(name)) => match settings.filters.get(name) {
+            Some(Driver::Runs) if name == "lfs" => Filter::Lfs,
             Some(_) => Filter::Other,
             None => Filter::None,
         },
+        _ => Filter::None,
     }
 }
 
 fn attributes_of(path: &[u8], paths: &Paths, cache: &mut Cache) -> HashMap<String, State> {
     let mut files: Vec<(Vec<u8>, Arc<attrs::File>)> = Vec::new();
+    if let Some(system) = &paths.system_attributes {
+        files.push((Vec::new(), cache.attributes_file(system, true)));
+    }
     if let Some(global) = &paths.attributes_file {
         files.push((Vec::new(), cache.attributes_file(global, true)));
     }
@@ -158,35 +177,49 @@ fn attributes_of(path: &[u8], paths: &Paths, cache: &mut Cache) -> HashMap<Strin
     attrs::resolve(&borrowed, path)
 }
 
+/// What happens to a file's CRLF line endings on the way in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Crlf {
+pub enum Crlf {
+    /// They stay.
     Binary,
+    /// They become LF.
     Text,
+    /// They become LF unless the file reads as binary.
     Auto,
 }
 
-/// convert.c's choice of what to do with line endings on the way in.
+/// What core.autocrlf makes of a file no attribute speaks for: input asks
+/// for CRLF to become LF as true does, and a bare key is true.
+pub fn autocrlf(config: &Config) -> Crlf {
+    if config
+        .get("core.autocrlf")
+        .is_some_and(|value| value.eq_ignore_ascii_case("input"))
+        || config.get_bool("core.autocrlf") == Some(true)
+    {
+        Crlf::Auto
+    } else {
+        Crlf::Binary
+    }
+}
+
+/// convert.c's choice of what to do with line endings on the way in: the
+/// text attribute, or crlf where text says nothing it knows, then an eol
+/// of lf or crlf, which makes a file text, then core.autocrlf. Any other
+/// eol, set or unset, says nothing.
 fn converts_crlf(attrs: &HashMap<String, State>, settings: &Settings) -> Crlf {
-    let text = attrs.get("text").or_else(|| attrs.get("crlf"));
-    match text {
-        Some(State::Unset) => Crlf::Binary,
-        Some(State::Set) => Crlf::Text,
-        Some(State::Value(v)) if v == "auto" => Crlf::Auto,
-        Some(State::Value(v)) if v == "input" => Crlf::Text,
-        _ => {
-            if attrs.contains_key("eol") {
-                return Crlf::Text;
-            }
-            match settings
-                .autocrlf
-                .as_deref()
-                .map(str::to_ascii_lowercase)
-                .as_deref()
-            {
-                Some("input" | "true" | "yes" | "on" | "1") => Crlf::Auto,
-                _ => Crlf::Binary,
-            }
-        }
+    let said = |name: &str| match attrs.get(name)? {
+        State::Unset => Some(Crlf::Binary),
+        State::Set => Some(Crlf::Text),
+        State::Value(v) if v == "auto" => Some(Crlf::Auto),
+        State::Value(v) if v == "input" => Some(Crlf::Text),
+        State::Value(_) => None,
+    };
+    if let Some(crlf) = said("text").or_else(|| said("crlf")) {
+        return crlf;
+    }
+    match attrs.get("eol") {
+        Some(State::Value(eol)) if eol == "lf" || eol == "crlf" => Crlf::Text,
+        _ => settings.autocrlf,
     }
 }
 
@@ -311,16 +344,26 @@ mod tests {
              [filter \"unset\"]\n clean = cat\n clean =\n\
              [filter \"twice\"]\n clean = cat\n smudge = cat\n\
              [filter \"a.b\"]\n clean = cat\n\
+             [filter \"emptied\"]\n clean = cat\n process =\n\
+             [filter \"must\"]\n smudge = cat\n required\n\
+             [filter \"loose\"]\n smudge = cat\n required = false\n\
+             [filter \"sure\"]\n clean = cat\n required\n\
              [filters]\n x = y\n",
         );
+        let runs = |name: &str| (name.to_owned(), Driver::Runs);
         assert_eq!(
-            filters_git_runs(&config),
-            ["Crypt", "a.b", "lfs", "twice"]
-                .map(str::to_string)
-                .into_iter()
-                .collect::<BTreeSet<_>>(),
-            "took a filter only smudging, with an empty or emptied command, or another \
-             section's keys, or missed one with a dot or a capital in its name"
+            filter_drivers(&config),
+            BTreeMap::from([
+                runs("Crypt"),
+                runs("a.b"),
+                runs("lfs"),
+                ("must".to_owned(), Driver::Refuses),
+                runs("sure"),
+                runs("twice"),
+            ]),
+            "took a filter only smudging, with an empty or emptied command, an empty \
+             process over a clean one, or another section's keys; missed one with a dot \
+             or a capital in its name; or misjudged a required one"
         );
     }
 
@@ -335,23 +378,27 @@ mod tests {
         State::Value(text.to_string())
     }
 
-    fn settings(autocrlf: Option<&str>, filters: &[&str]) -> Settings {
+    fn settings(autocrlf: bool, filters: &[(&str, Driver)]) -> Settings {
         Settings {
-            autocrlf: autocrlf.map(str::to_string),
+            autocrlf: if autocrlf { Crlf::Auto } else { Crlf::Binary },
             filemode: true,
             trust_ctime: true,
             show_untracked: true,
             filters: filters
                 .iter()
-                .map(|name| (*name).to_string())
-                .collect::<BTreeSet<_>>(),
+                .map(|(name, driver)| ((*name).to_string(), *driver))
+                .collect(),
         }
     }
 
     #[test]
     fn a_filter_counts_only_where_git_has_a_clean_step_for_it() {
-        let none = settings(None, &[]);
-        let both = settings(None, &["lfs", "crypt"]);
+        let none = settings(false, &[]);
+        let both = settings(false, &[("lfs", Driver::Runs), ("crypt", Driver::Runs)]);
+        let refusing = settings(
+            false,
+            &[("lfs", Driver::Refuses), ("must", Driver::Refuses)],
+        );
         for (filter, settings, wanted) in [
             (value("crypt"), &none, Filter::None),
             (value("lfs"), &none, Filter::None),
@@ -360,6 +407,9 @@ mod tests {
             (value("Crypt"), &both, Filter::None),
             (State::Set, &both, Filter::None),
             (State::Unset, &both, Filter::None),
+            // git refuses these files, so they count as changed.
+            (value("must"), &refusing, Filter::Other),
+            (value("lfs"), &refusing, Filter::Other),
         ] {
             let attrs = attrs(&[("filter", filter.clone())]);
             assert_eq!(
@@ -373,7 +423,7 @@ mod tests {
 
     #[test]
     fn only_an_encoding_other_than_utf8_counts() {
-        let settings = settings(None, &[]);
+        let settings = settings(false, &[]);
         for (encoding, wanted) in [
             (value("UTF-8"), Filter::None),
             (value("utf-8"), Filter::None),
@@ -399,41 +449,62 @@ mod tests {
     }
 
     #[test]
-    fn a_filter_git_runs_wins_over_the_encoding() {
-        let attrs = attrs(&[
-            ("filter", value("lfs")),
-            ("working-tree-encoding", value("UTF-16")),
-        ]);
-        assert_eq!(
-            filter_of(&attrs, &settings(None, &["lfs"])),
-            Filter::Lfs,
-            "an LFS file with an encoding wasn't read as LFS"
-        );
-        assert_eq!(
-            filter_of(&attrs, &settings(None, &[])),
-            Filter::Other,
-            "an encoding beside a filter git doesn't run was dropped"
-        );
+    fn an_encoding_counts_over_any_filter() {
+        let lfs = settings(false, &[("lfs", Driver::Runs)]);
+        for (encoding, settings, wanted) in [
+            ("UTF-16", &lfs, Filter::Other),
+            ("UTF-16", &settings(false, &[]), Filter::Other),
+            ("utf-8", &lfs, Filter::Lfs),
+        ] {
+            let attrs = attrs(&[
+                ("filter", value("lfs")),
+                ("working-tree-encoding", value(encoding)),
+            ]);
+            assert_eq!(
+                filter_of(&attrs, settings),
+                wanted,
+                "an LFS file with encoding {encoding} and filters {:?}: git re-encodes what \
+                 the filter gives, so no pointer can be matched",
+                settings.filters
+            );
+        }
     }
 
     #[test]
     fn line_endings_follow_the_attributes_then_autocrlf() {
         for (pairs, autocrlf, wanted) in [
-            (vec![("text", State::Unset)], Some("true"), Crlf::Binary),
-            (vec![("text", State::Set)], None, Crlf::Text),
-            (vec![("text", value("auto"))], None, Crlf::Auto),
-            (vec![("crlf", value("input"))], None, Crlf::Text),
-            (vec![("crlf", State::Unset)], Some("true"), Crlf::Binary),
+            (vec![("text", State::Unset)], true, Crlf::Binary),
+            (vec![("text", State::Set)], false, Crlf::Text),
+            (vec![("text", value("auto"))], false, Crlf::Auto),
+            (vec![("crlf", value("input"))], false, Crlf::Text),
+            (vec![("crlf", State::Unset)], true, Crlf::Binary),
             (
                 vec![("text", State::Set), ("crlf", State::Unset)],
-                None,
+                false,
                 Crlf::Text,
             ),
-            (vec![("eol", value("lf"))], None, Crlf::Text),
-            (vec![], Some("Input"), Crlf::Auto),
-            (vec![], Some("true"), Crlf::Auto),
-            (vec![], Some("false"), Crlf::Binary),
-            (vec![], None, Crlf::Binary),
+            // A text git doesn't know says nothing, so crlf is read.
+            (
+                vec![("text", value("foo")), ("crlf", State::Set)],
+                false,
+                Crlf::Text,
+            ),
+            (
+                vec![("text", value("foo")), ("crlf", State::Unset)],
+                true,
+                Crlf::Binary,
+            ),
+            (vec![("text", value("foo"))], true, Crlf::Auto),
+            (vec![("eol", value("lf"))], false, Crlf::Text),
+            (vec![("eol", value("crlf"))], false, Crlf::Text),
+            // An eol other than lf or crlf says nothing either.
+            (vec![("eol", value("foo"))], false, Crlf::Binary),
+            (vec![("eol", value("foo"))], true, Crlf::Auto),
+            (vec![("eol", State::Set)], false, Crlf::Binary),
+            (vec![("eol", State::Unset)], false, Crlf::Binary),
+            (vec![("eol", State::Unset)], true, Crlf::Auto),
+            (vec![], true, Crlf::Auto),
+            (vec![], false, Crlf::Binary),
         ] {
             let attrs = attrs(&pairs);
             assert_eq!(
@@ -441,6 +512,21 @@ mod tests {
                 wanted,
                 "attributes {pairs:?} with autocrlf {autocrlf:?}"
             );
+        }
+    }
+
+    #[test]
+    fn autocrlf_reads_as_git_reads_it() {
+        for (text, wanted) in [
+            ("", Crlf::Binary),
+            ("[core]\n autocrlf\n", Crlf::Auto),
+            ("[core]\n autocrlf = Input\n", Crlf::Auto),
+            ("[core]\n autocrlf = yes\n", Crlf::Auto),
+            ("[core]\n autocrlf = false\n", Crlf::Binary),
+            ("[core]\n autocrlf = true\n autocrlf = off\n", Crlf::Binary),
+            ("[core]\n autocrlf = maybe\n", Crlf::Binary),
+        ] {
+            assert_eq!(autocrlf(&Config::parsed(text)), wanted, "config {text:?}");
         }
     }
 
@@ -455,6 +541,7 @@ mod tests {
             (b"\x01\x02", true),
             (b"\x7f", true),
             (b"ends in a DOS end of file\x1a", false),
+            (b"a DOS end of file\x1a mid-way", true),
             (b"", false),
         ] {
             assert_eq!(
@@ -474,6 +561,24 @@ mod tests {
         assert!(
             is_binary(&long),
             "two control bytes in 128 printable ones read as text"
+        );
+        long.truncate(129);
+        long.push(0x1a);
+        assert!(
+            !is_binary(&long),
+            "a DOS end of file counted against a file at the threshold"
+        );
+        let mut nul = vec![b'x'; 200];
+        nul.insert(100, 0);
+        assert!(
+            is_binary(&nul),
+            "a NUL among 200 printable bytes read as text"
+        );
+        let mut high = vec![0x80; 200];
+        high.push(1);
+        assert!(
+            !is_binary(&high),
+            "bytes past 0x7f weren't counted printable, as convert.c counts them"
         );
     }
 

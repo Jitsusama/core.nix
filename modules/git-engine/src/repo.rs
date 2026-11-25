@@ -2,7 +2,7 @@
 //! folders are, and what it has read of its config, refs, objects, commit
 //! graph and index, each kept until the files it came from change.
 
-use crate::config::{Config, Context};
+use crate::config::{self, Config, Context};
 use crate::fsmonitor::{Monitor, Since};
 use crate::graph::{Graph, Known, ahead_behind};
 use crate::hash::Oid;
@@ -117,7 +117,14 @@ pub struct Repo {
 }
 
 fn config_files(location: &Location, home: Option<&Path>) -> Vec<PathBuf> {
-    let mut files = Vec::new();
+    let mut files: Vec<PathBuf> = config::system_file(
+        |name| std::env::var(name).ok(),
+        "GIT_CONFIG_NOSYSTEM",
+        Some("GIT_CONFIG_SYSTEM"),
+        "/etc/gitconfig",
+    )
+    .into_iter()
+    .collect();
     if let Ok(global) = std::env::var("GIT_CONFIG_GLOBAL") {
         files.push(PathBuf::from(global));
     } else {
@@ -142,10 +149,11 @@ fn load_config(location: &Location, home: Option<&Path>, branch: Option<&str>) -
         home,
     };
     let mut files = config_files(location, home);
-    let first = Config::load(&files, &context);
+    let parameters = config::parameters(|name| std::env::var(name).ok());
+    let first = Config::load(&files, &parameters, &context);
     if first.get_bool("extensions.worktreeconfig") == Some(true) {
         files.push(location.git_dir.join("config.worktree"));
-        return Config::load(&files, &context);
+        return Config::load(&files, &parameters, &context);
     }
     first
 }
@@ -648,10 +656,10 @@ impl Repo {
             return Ok(());
         }
         let settings = Settings {
-            autocrlf: self.config.get("core.autocrlf").map(str::to_string),
+            autocrlf: status::autocrlf(&self.config),
             filemode: self.config.get_bool("core.filemode").unwrap_or(true),
             trust_ctime: self.config.get_bool("core.trustctime").unwrap_or(true),
-            filters: status::filters_git_runs(&self.config),
+            filters: status::filter_drivers(&self.config),
             show_untracked: !matches!(
                 self.config
                     .get("status.showuntrackedfiles")
@@ -688,6 +696,14 @@ impl Repo {
             workdir: &self.location.workdir,
             common: &self.location.common,
             excludes_file,
+            // git has no variable moving the system attributes file, as
+            // GIT_CONFIG_SYSTEM moves the config's.
+            system_attributes: config::system_file(
+                |name| std::env::var(name).ok(),
+                "GIT_ATTR_NOSYSTEM",
+                None,
+                "/etc/gitattributes",
+            ),
             attributes_file,
             monitored: self.monitor.is_some(),
             changed: match &since {

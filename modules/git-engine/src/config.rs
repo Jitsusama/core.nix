@@ -1,8 +1,11 @@
 //! git's configuration, read as config.c reads it: sections with optional
 //! quoted subsections, quoted values with escapes and continued lines, and
-//! the includes, unconditional or on the repository's folder or branch.
-//! The system file is left out: it sits wherever git was built to look, and
-//! nothing the engine asks is set there.
+//! the includes, unconditional or on the repository's folder or branch,
+//! then what a parent git passed on as `-c` or `GIT_CONFIG_COUNT`.
+//! The system file is read where git's environment names it, or else at
+//! `/etc/gitconfig`: asking git where it was built to look would start a
+//! program, which the engine never does, so a git built to look elsewhere
+//! has its system file left unread.
 
 use crate::stamp::{Stamp, Stamps};
 use crate::wildmatch;
@@ -39,7 +42,13 @@ impl Config {
         }
     }
 
-    pub fn load(files: &[PathBuf], context: &Context) -> Config {
+    /// Each of `files` in turn, then `parameters`, which git reads after
+    /// every file.
+    pub fn load(
+        files: &[PathBuf],
+        parameters: &[(String, Option<String>)],
+        context: &Context,
+    ) -> Config {
         let mut config = Config {
             branch: context.branch.map(str::to_string),
             ..Config::default()
@@ -47,6 +56,7 @@ impl Config {
         for file in files {
             config.read(file, context, 0);
         }
+        config.entries.extend_from_slice(parameters);
         config
     }
 
@@ -137,6 +147,111 @@ pub fn parse_bool(value: Option<&str>) -> Option<bool> {
         "false" | "no" | "off" | "" => Some(false),
         number => number.parse::<i64>().ok().map(|n| n != 0),
     }
+}
+
+/// The system-wide file git reads, from its environment as `var` gives it:
+/// none where `nosystem` is true, else where `system` names, where git
+/// has such a variable, none where it is empty, else `default`.
+pub fn system_file(
+    var: impl Fn(&str) -> Option<String>,
+    nosystem: &str,
+    system: Option<&str>,
+    default: &str,
+) -> Option<PathBuf> {
+    if var(nosystem).is_some_and(|value| parse_bool(Some(&value)) == Some(true)) {
+        return None;
+    }
+    match system.and_then(&var) {
+        Some(path) if path.is_empty() => None,
+        Some(path) => Some(PathBuf::from(path)),
+        None => Some(PathBuf::from(default)),
+    }
+}
+
+/// What a parent git passed on to the commands it runs, from its
+/// environment as `var` gives it, in the order config.c reads them:
+/// `GIT_CONFIG_COUNT`'s pairs, then each `-c`, which `GIT_CONFIG_PARAMETERS`
+/// holds shell-quoted, as `'key'='value'`, `'key'` for a bare key, or
+/// `'key=value'` as older gits wrote it. A pair git would die on is left
+/// out.
+pub fn parameters(var: impl Fn(&str) -> Option<String>) -> Vec<(String, Option<String>)> {
+    let mut pairs = Vec::new();
+    let count = var("GIT_CONFIG_COUNT").and_then(|count| count.parse::<usize>().ok());
+    for i in 0..count.unwrap_or(0) {
+        if let (Some(key), Some(value)) = (
+            var(&format!("GIT_CONFIG_KEY_{i}")),
+            var(&format!("GIT_CONFIG_VALUE_{i}")),
+        ) && let Some(key) = canonical(&key)
+        {
+            pairs.push((key, Some(value)));
+        }
+    }
+    let Some(text) = var("GIT_CONFIG_PARAMETERS") else {
+        return pairs;
+    };
+    let mut rest = text.as_str();
+    loop {
+        rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace());
+        if rest.is_empty() {
+            return pairs;
+        }
+        let Some((word, after)) = unquoted(rest) else {
+            return pairs;
+        };
+        let (key, value, after) = if let Some(after) = after.strip_prefix('=') {
+            let Some((value, after)) = unquoted(after) else {
+                return pairs;
+            };
+            (word, Some(value), after)
+        } else {
+            match word.split_once('=') {
+                Some((key, value)) => (key.to_owned(), Some(value.to_owned()), after),
+                None => (word, None, after),
+            }
+        };
+        if let Some(key) = canonical(&key) {
+            pairs.push((key, value));
+        }
+        rest = after;
+    }
+}
+
+/// The shell-quoted word `text` opens with, as git's `sq_quote` writes
+/// one: quoted runs, with each `'` or `!` between them as `\'` or `\!`.
+fn unquoted(text: &str) -> Option<(String, &str)> {
+    let mut word = String::new();
+    let mut rest = text.strip_prefix('\'')?;
+    loop {
+        let (run, after) = rest.split_once('\'')?;
+        word.push_str(run);
+        let mut chars = after.chars();
+        if chars.next() != Some('\\') {
+            return Some((word, after));
+        }
+        word.push(chars.next()?);
+        rest = chars.as_str().strip_prefix('\'')?;
+    }
+}
+
+/// A key as the files' are kept: its section and name in lower case, any
+/// subsection as given; none where it lacks either.
+fn canonical(key: &str) -> Option<String> {
+    let (section, rest) = key.split_once('.')?;
+    let (subsection, name) = match rest.rsplit_once('.') {
+        Some((subsection, name)) => (Some(subsection), name),
+        None => (None, rest),
+    };
+    if section.is_empty() || name.is_empty() {
+        return None;
+    }
+    let mut canonical = section.to_ascii_lowercase();
+    if let Some(subsection) = subsection {
+        canonical.push('.');
+        canonical.push_str(subsection);
+    }
+    canonical.push('.');
+    canonical.push_str(&name.to_ascii_lowercase());
+    Some(canonical)
 }
 
 /// An include's path: `~/` from home, relative to the file naming it.
@@ -453,12 +568,123 @@ mod tests {
             branch: Some("work/one"),
             home: None,
         };
-        let config = Config::load(&[dir.join("main")], &context);
+        let config = Config::load(&[dir.join("main")], &[], &context);
         assert_eq!(config.get("x.a"), Some("last"));
         assert_eq!(config.get("x.b"), Some("here"));
         assert_eq!(config.get("x.c"), None);
         assert_eq!(config.get("x.d"), Some("branch"));
         assert_eq!(config.stamps.len(), 4);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// What `parameters` reads from an environment holding `vars`.
+    fn passed(vars: &[(&str, &str)]) -> Vec<(String, Option<String>)> {
+        parameters(|name| {
+            vars.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_owned())
+        })
+    }
+
+    #[test]
+    fn parameters_read_as_config_c_reads_them() {
+        let bare = ("core.bare".to_owned(), None);
+        assert_eq!(
+            passed(&[(
+                "GIT_CONFIG_PARAMETERS",
+                "'Core.AutoCRLF'='input' 'core.bare' \t 'Filter.LFS.Clean=c=d'",
+            )]),
+            [
+                one("core.autocrlf", "input"),
+                bare.clone(),
+                one("filter.LFS.clean", "c=d"),
+            ],
+            "the new form, a bare key and the old form weren't each read, keys kept as \
+             the files' are"
+        );
+        assert_eq!(
+            passed(&[("GIT_CONFIG_PARAMETERS", "'a.b'='it'\\''s'\\!'' 'a.c'=''")]),
+            [one("a.b", "it's!"), one("a.c", "")],
+            "a quote, an exclamation or an empty value was misread"
+        );
+        assert_eq!(
+            passed(&[
+                ("GIT_CONFIG_PARAMETERS", "'a.x'='last'"),
+                ("GIT_CONFIG_COUNT", "3"),
+                ("GIT_CONFIG_KEY_0", "A.X"),
+                ("GIT_CONFIG_VALUE_0", "first"),
+                ("GIT_CONFIG_KEY_1", "nodot"),
+                ("GIT_CONFIG_VALUE_1", "v"),
+                ("GIT_CONFIG_KEY_2", "a.y"),
+            ]),
+            [one("a.x", "first"), one("a.x", "last")],
+            "the counted pairs weren't read before the -c ones, or one git dies on was kept"
+        );
+        assert_eq!(
+            passed(&[("GIT_CONFIG_PARAMETERS", "'a.x'='1' unquoted 'a.y'='2'")]),
+            [one("a.x", "1")],
+            "what followed a word git can't read was kept"
+        );
+        assert_eq!(passed(&[]), [], "an environment passing nothing gave pairs");
+    }
+
+    #[test]
+    fn parameters_come_after_every_file() {
+        let dir = std::env::temp_dir().join(format!("git-engine-params-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("the temp folder takes a folder");
+        std::fs::write(dir.join("config"), "[core]\n autocrlf = false\n")
+            .expect("the temp folder takes a file");
+        let context = Context {
+            git_dir: &dir,
+            branch: None,
+            home: None,
+        };
+        let config = Config::load(
+            &[dir.join("config")],
+            &[one("core.autocrlf", "input")],
+            &context,
+        );
+        std::fs::remove_dir_all(&dir).expect("the temp folder gives its folder back");
+        assert_eq!(
+            config.get("core.autocrlf"),
+            Some("input"),
+            "a file's value stood over one passed on the command line"
+        );
+    }
+
+    #[test]
+    fn the_system_file_is_where_the_environment_says() {
+        let in_env = |vars: &[(&str, &str)], system: Option<&str>| {
+            let vars: Vec<(String, String)> = vars
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+                .collect();
+            system_file(
+                move |name| {
+                    vars.iter()
+                        .find(|(key, _)| key == name)
+                        .map(|(_, value)| value.clone())
+                },
+                "NOSYSTEM",
+                system,
+                "/etc/default",
+            )
+        };
+        let at = |vars: &[(&str, &str)]| in_env(vars, Some("SYSTEM"));
+        assert_eq!(
+            in_env(&[("SYSTEM", "/x")], None),
+            Some(PathBuf::from("/etc/default")),
+            "a file with no variable to move it was moved"
+        );
+        assert_eq!(in_env(&[("NOSYSTEM", "yes")], None), None);
+        assert_eq!(at(&[]), Some(PathBuf::from("/etc/default")));
+        assert_eq!(at(&[("SYSTEM", "/x")]), Some(PathBuf::from("/x")));
+        assert_eq!(at(&[("SYSTEM", "")]), None, "an empty path was read");
+        assert_eq!(at(&[("NOSYSTEM", "1"), ("SYSTEM", "/x")]), None);
+        assert_eq!(
+            at(&[("NOSYSTEM", "false"), ("SYSTEM", "/x")]),
+            Some(PathBuf::from("/x")),
+            "a false NOSYSTEM left the system file out"
+        );
     }
 }

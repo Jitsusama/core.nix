@@ -12,9 +12,15 @@ setopt err_return no_unset pipe_fail extended_glob
 
 local plugin=$1 gitstatusd=$2 engine=$3 work=$4
 typeset -g GITSTATUS_AUTO_INSTALL=0
-export GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=a@b \
+# git's system config is the script's own, empty but where a case writes to
+# it, so the machine's is never read; the daemons start knowing it. git has
+# no such way to move the system attributes, so none are read.
+export GIT_CONFIG_SYSTEM=$work/system-config GIT_ATTR_NOSYSTEM=1 \
+  GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=a@b \
   GIT_COMMITTER_NAME=a GIT_COMMITTER_EMAIL=a@b HOME=$work/home XDG_CACHE_HOME=$work/cache
-mkdir -p $HOME
+unset GIT_CONFIG_NOSYSTEM
+mkdir -p $HOME $work
+: > $GIT_CONFIG_SYSTEM
 git config --global init.defaultBranch main
 git config --global advice.detachedHead false
 git config --global protocol.file.allow always
@@ -453,6 +459,9 @@ for r in $work/moved $work/moved-watched; do
   like_git "${r:t}: the moved file read as text by its attributes" $r
   rm $r/.gitattributes
   like_git "${r:t}: the moved file without its attributes" $r
+  print 'lines eol=foo' > $r/.gitattributes
+  like_git "${r:t}: the moved file with an eol git doesn't know" $r
+  rm $r/.gitattributes
   [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
 done
 
@@ -465,6 +474,10 @@ for r in $work/converted $work/converted-watched; do
   like_git "${r:t}: a filter that only smudges" $r
   git -C $r config filter.nothing.clean 'tr o O'
   like_git "${r:t}: a filter git runs" $r
+  git -C $r config --unset filter.nothing.clean
+  git config --system filter.nothing.clean 'tr o O'
+  like_git "${r:t}: a filter git runs by the system config" $r
+  : > $GIT_CONFIG_SYSTEM
   [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
 done
 
