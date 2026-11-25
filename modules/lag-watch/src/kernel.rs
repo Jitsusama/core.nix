@@ -92,7 +92,12 @@ pub fn sched(text: &str) -> Option<Sched> {
 /// its `sched`: asleep where nothing but the kernel could wake it, on a
 /// lock, a page read back or reclaim, which no wait for a CPU shows. The
 /// kernel keeps it only while `kernel.sched_schedstats` is on, and prints
-/// it in milliseconds; none where it isn't kept.
+/// it in milliseconds; none where it isn't kept. It's added to when a
+/// block ends, so one still going isn't in it. The kernel marks when one
+/// began (`block_start`), but on the scheduler's own clock, which on
+/// 24 November sat 1.76 s behind the monotonic one and drifted, and which
+/// nothing readable without root says the time on, so a block still going
+/// isn't timed from it.
 pub fn blocked(text: &str) -> Option<u64> {
     let ms: f64 = text.lines().find_map(|line| {
         let (key, value) = line.split_once(':')?;
