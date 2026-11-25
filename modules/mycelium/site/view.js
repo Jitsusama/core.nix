@@ -584,10 +584,11 @@ import {
     if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
     // A network the node sets within none grows out of the network whose
     // cells started more of its cells than any other, as a hypha branches
-    // from another: who started each cell comes from its forage, and which
-    // grows out of which is lineage.ts's to say. A starter is known only
-    // while it is drawn, since its network is where it is drawn.
-    const startedBy = new Map((now.started || []).map((x) => [x.cell, x.by]));
+    // from another: who started each cell comes from its own record, else
+    // its forage, and which grows out of which is lineage.ts's to say. A
+    // starter is known only while it is drawn, since its network is where
+    // it is drawn.
+    const startedBy = new Map(now.started.map((x) => [x.cell, x.by]));
     const cellNamed = new Map(cells.map((s) => [s.address, s]));
     const hubOf = new Map(cells.filter((s) => s.hub).map((s) => [s.address, s.hub.key]));
     const networks = [...hubs.values()].map((h) => ({ key: h.key, name: h.name, within: h.within, cells: h.cells.map((s) => s.address) }));
@@ -3321,7 +3322,7 @@ import {
     const u = s.usage || {};
     const facts = [
       ["Repository", s.repo],
-      // Who started it, as its forage says, by name where it is drawn.
+      // Who started it, as its record or forage says, by name where it is drawn.
       ["Started", [s.since ? atWords(s.since) : "", m.startedBy.has(s.address) ? `by ${m.byAddress.get(m.startedBy.get(s.address))?.short || m.startedBy.get(s.address)}` : ""].filter(Boolean).join(", ")],
       ["Last turn", u.last_turn ? agoWords(u.last_turn) : ""],
     ].filter(([, v]) => v);

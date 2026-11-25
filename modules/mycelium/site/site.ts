@@ -18,8 +18,8 @@
 // old to serve them draws its talk from the latest messages, as before.
 // What each receptor fed is watched apart too, since only a node new enough
 // serves it, and a map without it draws no feeding at all. So are the
-// forages, which say who started each of this machine's cells: a map without
-// them grows no network out of another.
+// forages, which say who started each of this machine's cells where the
+// cell's own record doesn't, as an older node's doesn't.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";

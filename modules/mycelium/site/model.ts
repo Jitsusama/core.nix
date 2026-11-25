@@ -20,7 +20,7 @@
 // messages each end sent and of what kinds, never what they said, with a
 // strength the map fades to now. A feeding (its `fed` kind) is who fed
 // whom, when and the kind in a word, never the change itself; who started
-// each cell is read off its forage (lineage.ts).
+// each cell is read off its record, else its forage (lineage.ts).
 
 import {
   type Fields,
@@ -67,9 +67,8 @@ const TIE_SEPARATOR = "~";
  * the balance service's latest reading, which a node serves only where the
  * service runs, so a map without it draws as before; the builders are
  * watched the same way, so a node too old to serve them draws none. What waits on the
- * mesh, and who started each cell, is there only once its watch has
- * answered, since a node too old to serve it would otherwise read as one
- * with nothing waiting, or no cell started by another.
+ * mesh is there only once its watch has answered, since a node too old to
+ * serve it would otherwise read as one with nothing waiting.
  */
 interface Heard {
   readonly network: Held;
@@ -146,7 +145,7 @@ interface Now {
   readonly waits: readonly Wait[] | null;
   readonly ties: readonly Tie[] | null;
   readonly fed: readonly Fed[] | null;
-  readonly started: readonly Started[] | null;
+  readonly started: readonly Started[];
   /** Every cell the forage page lists, by its address. */
   readonly foraged: readonly string[] | null;
 }
@@ -479,7 +478,7 @@ function nowOf(heard: Heard, at: number): Now {
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
-    started: startedOf(heard.forage),
+    started: startedOf(heard.cell, heard.forage),
     foraged: foragedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
