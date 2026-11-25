@@ -83,6 +83,27 @@ onLinux {
         && !(service ? MemoryMax)
         && (service.TimeoutStartSec or null) == "30min"
       );
+  # The hour asks nix-store for the closure of the build each service's unit
+  # names, so its PATH holds the account's Nix: without it every service
+  # would read as one cadence can't judge, and every merge reaching one
+  # would wait.
+  cadence-hour-finds-nix-store =
+    let
+      user = exampleLaptop.config.home-manager.users.joel;
+      nix = if user.nix.package != null then user.nix.package else pkgs.nix;
+      # The path alone, since a check's condition may not name a derivation.
+      bin = builtins.unsafeDiscardStringContext "${pkgs.lib.getBin nix}/bin";
+      environment = user.systemd.user.services.cadence-hour.Service.Environment or [ ];
+    in
+    holds "cadence-hour-finds-nix-store"
+      "cadence-hour's PATH holds no Nix, so it can't list the closure of the build any service's unit names, and every service reads as unread."
+      (
+        pkgs.lib.any (
+          entry:
+          pkgs.lib.hasPrefix "PATH=" entry
+          && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
+        ) environment
+      );
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or
