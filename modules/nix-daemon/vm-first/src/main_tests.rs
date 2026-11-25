@@ -92,10 +92,14 @@ fn a_build_s_first_process_counts_only_while_in_its_cgroup_or_one_under_it() {
 #[test]
 fn reads_when_a_process_started_past_a_name_with_spaces() {
     let stat = "4242 (a b) c) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2";
-    assert_eq!(parse_started(stat), Some(98765));
-    assert_eq!(parse_started("4242 (cc1) S 1"), None);
-    // A name that isn't UTF-8 is read as a stand-in, as Proc::text reads
-    // it, and the fields past it still read.
+    assert_eq!(
+        (parse_started(stat), parse_started("4242 (cc1) S 1")),
+        (Some(98765), None),
+        "a start wasn't read past a name with spaces, or was read from too few fields"
+    );
+    // A name that isn't UTF-8, decoded with stand-ins, still leaves the
+    // fields past it to read; that Proc::text decodes it so is pinned on
+    // Linux, below.
     let lossy = [
         b"4242 (a\xff\xfe) S 1 4242 4242 0 -1 4194560".as_slice(),
         b" 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2",
@@ -157,6 +161,8 @@ fn a_flag_asked_wrongly_is_a_usage_failure() {
         "--cgroup /sys/fs/cgroup/../build.slice",
         "--cgroup /run/build.slice",
         "--cgroup /sys/fs/cgroupx/build.slice",
+        "--cgroup /sys/fs/cgroup",
+        "--cgroup /sys/fs/cgroup/",
     ] {
         let exit = settings(&words(line)).err().map(|failure| failure.exit);
         assert_eq!(
@@ -440,29 +446,33 @@ fn finds_every_process_under_a_build_its_containers_too() {
 #[test]
 fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
-    // `a` sorts first but holds its process a cgroup further down than `b`.
-    let (a, deep, b) = (root.join("a"), root.join("a/deep"), root.join("b"));
+    // `c` sorts first, though APFS lists `m` first by its names' hashes,
+    // and tmpfs by `m` made last; then, emptied, `c` holds its process a
+    // cgroup further down than `m`.
+    let (c, deep, m) = (root.join("c"), root.join("c/deep"), root.join("m"));
     fs::create_dir_all(&deep).expect("the temp folder takes a folder");
-    fs::create_dir_all(&b).expect("the temp folder takes a folder");
+    fs::create_dir_all(&m).expect("the temp folder takes a folder");
     let procs = |cgroup: &Path, pids: &str| {
         fs::write(cgroup.join("cgroup.procs"), pids).expect("the temp folder takes a file");
     };
     procs(&root, "10\n11\n");
-    procs(&a, "");
+    procs(&c, "30\n");
     procs(&deep, "50\n");
-    procs(&b, "40\n");
+    procs(&m, "40\n");
     let own = first_process(&root);
     procs(&root, "");
+    let sorted = first_process(&root);
+    procs(&c, "");
     let nearest = first_process(&root);
-    procs(&b, "");
+    procs(&m, "");
     let deeper = first_process(&root);
     procs(&deep, "");
     let none = first_process(&root);
     fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(
-        (own, nearest, deeper, none),
-        (Some(10), Some(40), Some(50), None),
-        "a build's first process wasn't its own, else the nearest under it"
+        (own, sorted, nearest, deeper, none),
+        (Some(10), Some(30), Some(40), Some(50), None),
+        "a build's first process wasn't its own, else the nearest under it, by name"
     );
 }
 
@@ -476,9 +486,12 @@ fn a_cgroup_under_the_cgroup_root_is_kept_as_asked() {
         let kept = settings(&words(&format!("--cgroup {asked}")))
             .ok()
             .map(|settings| settings.cgroup);
+        let within = kept
+            .as_deref()
+            .is_some_and(|kept| in_cgroup("0::/build.slice/x\n", kept));
         assert_eq!(
-            (kept, in_cgroup("0::/build.slice/x\n", Path::new(asked))),
-            (Some(PathBuf::from(asked)), true),
+            (kept.as_deref(), within),
+            (Some(Path::new(asked)), true),
             "{asked} wasn't kept, or a process under it wasn't read as in it"
         );
     }

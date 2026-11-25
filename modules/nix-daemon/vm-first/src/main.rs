@@ -247,11 +247,17 @@ impl Proc {
 /// pass for one, but read before, the command line of a process gone by
 /// then won't read.
 ///
-/// The walk starts at the build's first process, opened only while its
-/// cgroup is still the build's or one under it, since by then its pid
-/// could be another's.
 fn client_of_build(build: &Path) -> Option<Proc> {
-    let mut process = Proc::open(first_process(build)?)?;
+    client_from(first_process(build)?, build)
+}
+
+/// The client that asked for a build, found from `first`, the build's
+/// first process, for a caller that has already looked for it.
+///
+/// The walk starts at `first`, opened only while its cgroup is still the
+/// build's or one under it, since by then its pid could be another's.
+fn client_from(first: u32, build: &Path) -> Option<Proc> {
+    let mut process = Proc::open(first)?;
     if !in_cgroup(&process.text("cgroup")?, build) {
         return None;
     }
@@ -297,9 +303,11 @@ fn first_process(build: &Path) -> Option<u32> {
 
 /// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
 /// would, from the file system's root down and never back up it, without
-/// which every client would be taken for out of its build's cgroup.
+/// which every client would be taken for out of its build's cgroup. The
+/// root itself is refused, since every process on the machine is in it.
 fn under_cgroup_root(cgroup: &Path) -> bool {
     cgroup.starts_with(CGROUP_ROOT)
+        && cgroup != Path::new(CGROUP_ROOT)
         && !cgroup
             .components()
             .any(|part| part == std::path::Component::ParentDir)
