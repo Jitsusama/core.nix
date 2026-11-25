@@ -168,31 +168,7 @@ let
   ];
   sources = import ./sources.nix;
   name = lib.types.strMatching "[a-z0-9-]+";
-  # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
-  # by its absolute path, since a Mac's agent runs the node with PATH
-  # /usr/bin:/bin and Linux's PATH isn't one to count on, and the place it
-  # names. Neither takes whitespace, `%` or `$`, which systemd expands even
-  # inside quotes, and the place doesn't start with `-`, so the program
-  # can't read it as a flag.
-  via = lib.types.strMatching "/[^:[:space:]%$]+:[^-:[:space:]%$][^[:space:]%$]*";
-  viasDescription = ''
-    The machines of the realm this machine dials and keeps linked through a
-    provider's program, as `PROGRAM:PLACE` with the program by its absolute
-    path, for a machine SSH can't reach, such as one a provider lent.
-    mycelium's PROTOCOL.md says what the program is asked.
-  '';
-  viasExample = lib.literalExpression ''[ "''${cistern-link}/bin/cistern-link:sandbox-1" ]'';
-  # A provider's program by its absolute path, for the reason a via's is;
-  # it takes no words of its own, since the node adds what it asks.
-  provider = lib.types.strMatching "/[^:[:space:]%$]+";
-  providersDescription = ''
-    The programs of providers that may make this realm's machines, each by
-    its absolute path. The node asks each what it offers, and makes a
-    machine from an offer only for a start no machine of the realm takes,
-    and from one that costs money only where the start allows it.
-    mycelium's PROTOCOL.md says what the program is asked.
-  '';
-  providersExample = lib.literalExpression ''[ "''${cistern-cell}/bin/cistern-cell" ]'';
+  reaches = import ./reaches.nix { inherit lib; };
   lend = import ./lend.nix { inherit lib; };
   further = lib.types.submodule (
     { name, ... }:
@@ -203,18 +179,7 @@ let
           default = [ ];
           description = "The machines of this realm this machine dials, as `links` names them.";
         };
-        vias = lib.mkOption {
-          type = lib.types.listOf via;
-          default = [ ];
-          example = viasExample;
-          description = viasDescription;
-        };
-        providers = lib.mkOption {
-          type = lib.types.listOf provider;
-          default = [ ];
-          example = providersExample;
-          description = providersDescription;
-        };
+        inherit (reaches) vias providers;
         kit = lib.mkOption {
           type = lib.types.listOf lib.types.package;
           description = kitDescription;
@@ -313,6 +278,7 @@ let
   builders = import ./builders.nix;
   # What the home realm's node may do to ease the machine (eases.nix).
   eases = import ./eases.nix { inherit config lib mycelium; };
+  agentsSocket = import ./agents-socket.nix { inherit config lib isLinux; };
   # The home realm's node alone eases the machine, since a further realm's
   # sessions aren't its to move, and alone lends, since the machines it
   # lends to are the ones it made.
@@ -320,20 +286,10 @@ let
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ eases.args
     ++ lendArgs
-    ++ workerArgs
+    ++ agentsSocket.args
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
-  # The socket a worker's sessions reach the home realm's node through,
-  # answering only the worker's account. It is outside the node's runtime
-  # folder, which a worker's account can't enter, in the folder the
-  # machine's NixOS module makes for the node's account (nixos.nix).
-  workerArgs = lib.optionals (cfg.workerUid != null) [
-    "--worker-socket"
-    "/run/mycelium/${cfg.realm}-worker.sock"
-    "--worker-uid"
-    (toString cfg.workerUid)
-  ];
   # Where the harness and mycelium keep a realm that isn't the home one.
   apartIn = realm: [
     "--state"
@@ -509,18 +465,7 @@ in
         nothing.
       '';
     };
-    vias = lib.mkOption {
-      type = lib.types.listOf via;
-      default = [ ];
-      example = viasExample;
-      description = viasDescription;
-    };
-    providers = lib.mkOption {
-      type = lib.types.listOf provider;
-      default = [ ];
-      example = providersExample;
-      description = providersDescription;
-    };
+    inherit (reaches) vias providers;
     flows = lib.mkOption {
       type = lib.types.listOf flow;
       default = [ ];
@@ -604,21 +549,6 @@ in
         socket nobody answers reads as health unknown.
       '';
     };
-    workerUid = lib.mkOption {
-      type = lib.types.nullOr lib.types.ints.unsigned;
-      default = null;
-      example = 1001;
-      description = ''
-        The account whose sessions the home realm's node answers through a
-        worker socket of its own, at `/run/mycelium/<realm>-worker.sock`,
-        or null for none. A worker machine, such as a cloud VM, runs its
-        agents' sessions as an account apart from the node's, which can't
-        reach the node's own socket; the node refuses a process of any
-        other account there. Linux only, on a machine whose NixOS module
-        names this account in `jitsusama.mycelium.account`, which makes the
-        folder.
-      '';
-    };
     agents = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
@@ -659,10 +589,12 @@ in
       '';
     };
   }
-  // eases.options;
+  // eases.options
+  // agentsSocket.options;
 
   config = lib.mkMerge [
     { inherit (eases) warnings; }
+    { inherit (agentsSocket) assertions; }
     {
       assertions = [
         {
@@ -723,10 +655,6 @@ in
               lib.all (one: lib.all (apart one) places) places
             );
           message = "jitsusama.mycelium.lend.vms has two prefixes where one starts the other, so every machine both match is refused.";
-        }
-        {
-          assertion = cfg.workerUid != null -> (isLinux && cfg.realm != null);
-          message = "jitsusama.mycelium.workerUid needs Linux, whose NixOS module makes /run/mycelium, and jitsusama.mycelium.realm, the realm whose node answers the worker.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

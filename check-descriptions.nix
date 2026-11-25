@@ -2380,11 +2380,11 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
-  mycelium-serves-a-worker-its-own-socket = ''
-    a workstation naming a worker account gives its home realm's node a worker socket in
+  mycelium-serves-agents-of-another-account = ''
+    a workstation naming the account its agents run as gives its home realm's node a socket in
     /run/mycelium answering that account alone, which NixOS makes at boot for the node's account
-    alone to write; a further realm's node and a machine naming none serve no worker, and a Mac
-    naming one is refused
+    alone to write; a further realm's node and a machine naming none serve no such socket, and a
+    Mac naming one is refused
   '';
   mycelium-takes-its-link-key-s-words = ''
     the words a link key pins mycelium to, read from the line a machine's system writes, are ones

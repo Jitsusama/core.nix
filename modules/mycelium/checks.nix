@@ -105,12 +105,12 @@ let
   carryingNode = toString easingLinux.systemd.user.services.mycelium.Service.ExecStart;
   macEasing = (mac easing).launchd.agents.mycelium.config.ProgramArguments;
   # A machine whose agents run as an account apart from the node's, as a
-  # cloud worker's do, in two realms so only the home one's answers it.
-  working = both // {
-    workerUid = 1001;
+  # cloud VM's do, in two realms so only the home one's answers it.
+  apartAgents = both // {
+    agentsUid = 1001;
   };
-  workingLinux = (linux working).systemd.user.services;
-  workerNode = toString workingLinux.mycelium.Service.ExecStart;
+  apartAgentsLinux = (linux apartAgents).systemd.user.services;
+  apartAgentsNode = toString apartAgentsLinux.mycelium.Service.ExecStart;
   # Whether a node built from `mycelium` may make carries, by
   # carry-guards.nix's own rule, what the switch warns of an account
   # setting it anyway, and whether its node is told to carry.
@@ -821,7 +821,7 @@ in
           sleepingNode
           carryingNode
           carryingAloneNode
-          workerNode
+          apartAgentsNode
           (viaNode "/bin/cell:cell-1")
           (providerNode "/bin/cell")
           (toString bothFlowing.mycelium.Service.ExecStart)
@@ -2215,17 +2215,18 @@ in
         named != [ ] && sorted (import ./sources.nix) == sorted named
       );
 
-  # A worker's sessions reach the home realm's node through a socket of
-  # their own, in a folder made at boot for the node's account alone to
-  # write, since the node refuses one another account could change; a
-  # further realm's node answers no worker, a machine naming no worker
-  # serves none, and a Mac, whose system makes no such folder, is refused.
-  mycelium-serves-a-worker-its-own-socket =
-    holds "mycelium-serves-a-worker-its-own-socket"
-      "A workstation naming a worker account doesn't give the home realm's node the worker socket in /run/mycelium with that account, gives one to a further realm's node or a machine naming none, a Mac takes one, or NixOS doesn't make /run/mycelium for the node's account alone."
+  # Agents of an account apart from the node's reach the home realm's node
+  # through a socket of their own, in a folder made at boot for the node's
+  # account alone to write, since the node refuses one another account
+  # could change; a further realm's node answers no such agents, a machine
+  # naming no account serves none, and a Mac, whose system makes no such
+  # folder, is refused.
+  mycelium-serves-agents-of-another-account =
+    holds "mycelium-serves-agents-of-another-account"
+      "A workstation naming its agents' account doesn't give the home realm's node their socket in /run/mycelium with that account, gives one to a further realm's node or a machine naming none, a Mac takes one, or NixOS doesn't make /run/mycelium for the node's account alone."
       (
         let
-          worker = lib.escapeShellArgs [
+          socket = lib.escapeShellArgs [
             "--worker-socket"
             "/run/mycelium/home-worker.sock"
             "--worker-uid"
@@ -2238,11 +2239,11 @@ in
               { jitsusama.mycelium = settings; }
             ]).config.systemd.tmpfiles.rules;
         in
-        lib.hasInfix " ${worker} " " ${workerNode} "
-        && !lib.hasInfix "--worker" (toString workingLinux.mycelium-other.Service.ExecStart)
+        lib.hasInfix " ${socket} " " ${apartAgentsNode} "
+        && !lib.hasInfix "--worker" (toString apartAgentsLinux.mycelium-other.Service.ExecStart)
         && !lib.hasInfix "--worker" linuxNode
-        && evaluates (linux working)
-        && !evaluates (mac working)
+        && evaluates (linux apartAgents)
+        && !evaluates (mac apartAgents)
         && lib.elem "d /run/mycelium 0755 someone root -" (folderOn {
           account = "someone";
         })

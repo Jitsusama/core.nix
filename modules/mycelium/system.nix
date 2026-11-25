@@ -37,8 +37,8 @@ in
       example = "someone";
       description = ''
         The account whose node the machines in `linkedFrom` link to, and on
-        NixOS the account /run/mycelium is made for, the folder its node's
-        worker socket goes in.
+        NixOS the account /run/mycelium is made for, the folder of the
+        socket its node answers agents of another account through.
       '';
     };
 
