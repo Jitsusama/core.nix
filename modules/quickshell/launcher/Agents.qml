@@ -1990,23 +1990,22 @@ Provider {
     // answers, which leaves the quests' folders; where it can't, the last
     // list stays, why journalled once as each new why comes rather than at
     // every opening. An answer to an earlier ask, come after a later one's,
-    // is passed over.
+    // is passed over (Wheres.heard).
     property var startPlaces: []
     property string startPlacesUnlisted: ""
     property int startPlacesAsked: 0
     function askPlaces() {
         const asked = ++provider.startPlacesAsked;
         rowsKind?.ask({ ask: "places" }, answer => {
-            if (asked !== provider.startPlacesAsked)
+            const heard = Wheres.heard(provider.startPlacesAsked, asked,
+                provider.startPlacesUnlisted, answer);
+            if (heard === null)
                 return;
-            const why = String(answer?.error?.message ?? "");
-            if (Array.isArray(answer?.places)) {
-                provider.startPlaces = Wheres.listable(answer.places);
-                provider.startPlacesUnlisted = "";
-            } else if (why !== "" && why !== provider.startPlacesUnlisted) {
-                provider.startPlacesUnlisted = why;
-                console.info(`launcher: no places to start in: ${why}`);
-            }
+            if (heard.places !== null)
+                provider.startPlaces = heard.places;
+            provider.startPlacesUnlisted = heard.unlisted;
+            if (heard.journal !== null)
+                console.info(`launcher: no places to start in: ${heard.journal}`);
         });
     }
     // Start New Work's In rows (Wheres.wheres): his quests' folders, then the

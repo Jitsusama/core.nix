@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::asker;
 use crate::sprout::{self, Unanswered};
 
 /// The launcher's ask for them.
@@ -21,9 +22,13 @@ pub const ASK: &str = "places";
 /// say only the launcher starts new work, which isn't this ask's.
 pub const REFUSED: &str = "only the launcher lists places here";
 
+/// The most places passed on, as the launcher lists no more
+/// (Wheres.js's MOST_PLACES), so a node naming more sends no more.
+const MOST_PLACES: usize = 2000;
+
 /// How long the node may take to list them: it reads its folders from
-/// disk, well within a second, and the launcher lists its quests' folders
-/// alone until it answers.
+/// disk, well within a second, and the launcher keeps the list it last
+/// had, or its quests' folders alone, until it answers.
 const PATIENCE: Duration = Duration::from_secs(5);
 
 /// The places the node at `node` lists, `{"places": [...]}` in its own
@@ -37,17 +42,22 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
         return unlisted("this machine runs no node to list places on");
     };
     if let Err(why) = asker() {
-        eprintln!("agents: places weren't listed: {why}");
-        return unlisted(REFUSED);
+        // Another's ask is refused in this ask's own words; where who
+        // asked couldn't be told, why is said as it is.
+        return unlisted(if why == asker::REFUSED { REFUSED } else { &why });
     }
     match sprout::asked(node, &json!({"Places": {}}), PATIENCE) {
         Ok(reply) => match (
             &reply["Ok"]["Places"],
             &reply["Err"],
-            &reply["Refused"]["why"],
+            sprout::refusal_of(&reply),
         ) {
-            (Value::Array(places), _, _) => json!({"places": places}),
-            (_, Value::String(why), _) | (_, _, Value::String(why)) => unlisted(&start_of(why)),
+            (Value::Array(places), _, _) => {
+                json!({"places": places.iter().take(MOST_PLACES).collect::<Vec<_>>()})
+            }
+            (_, Value::String(why), _) | (_, _, Some((_, why))) => unlisted(&start_of(why)),
+            // What sprout::asked reads of a line that isn't JSON.
+            _ if reply.is_null() => unlisted("the node's answer couldn't be read: not JSON"),
             _ => unlisted(&format!(
                 "the node's answer couldn't be read: {}",
                 start_of(&reply.to_string())
@@ -82,7 +92,8 @@ mod tests {
 
     /// A node at a socket of its own, answering one line with `reply`,
     /// and what it was asked.
-    fn node(name: &str, reply: &'static str) -> (std::path::PathBuf, thread::JoinHandle<String>) {
+    fn node(name: &str, reply: &str) -> (std::path::PathBuf, thread::JoinHandle<String>) {
+        let reply = reply.to_owned();
         let socket =
             std::env::temp_dir().join(format!("agents-places-{name}-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
@@ -133,11 +144,20 @@ mod tests {
                 "not yours",
             ),
             (
+                "refused-ok",
+                r#"{"Ok": {"Refused": {"code": "unheard", "why": "not yours"}}}"#,
+                "not yours",
+            ),
+            (
                 "unknown",
                 r#"{"Ok": {"Other": 1}}"#,
                 "the node's answer couldn't be read",
             ),
-            ("garbled", "not json", "the node's answer couldn't be read"),
+            (
+                "garbled",
+                "not json",
+                "the node's answer couldn't be read: not JSON",
+            ),
         ] {
             let (socket, asked) = node(name, reply);
             let answer = answer(|| Ok(()), Some(&socket));
@@ -157,50 +177,67 @@ mod tests {
         }
     }
 
+    /// What the launcher is told when the node answers `reply`.
+    fn told(name: &str, reply: &str) -> String {
+        let (socket, asked) = node(name, reply);
+        let said = answer(|| Ok(()), Some(&socket));
+        let _ = asked.join();
+        let _ = std::fs::remove_file(&socket);
+        said["error"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    }
+
     #[test]
     fn an_unread_answer_says_only_its_start() {
-        let (socket, asked) = node(
+        let said = told(
             "long",
             concat!(
                 r#"{"Ok": {"Other": ["/home/j/src/one", "/home/j/src/two", "#,
                 r#""/home/j/src/three", "/home/j/src/four", "/home/j/src/five"]}}"#,
             ),
         );
-        let answer = answer(|| Ok(()), Some(&socket));
-        let _ = asked.join();
-        let _ = std::fs::remove_file(&socket);
-        let said = answer["error"]["message"].as_str().unwrap_or_default();
-        assert!(
-            said.starts_with("the node's answer couldn't be read: ") && !said.contains("five"),
+        let unread = "the node's answer couldn't be read: ";
+        assert_eq!(
+            said.strip_prefix(unread).map(|cut| cut.chars().count()),
+            Some(80),
             "only its first 80 characters: {said}"
         );
-        let (socket, asked) = node(
-            "long-err",
-            concat!(
-                r#"{"Err": "none of /home/j/src/one, /home/j/src/two, /home/j/src/three, "#,
-                r#"/home/j/src/four or /home/j/src/five is here"}"#,
-            ),
-        );
-        let answer = answer(|| Ok(()), Some(&socket));
-        let _ = asked.join();
-        let _ = std::fs::remove_file(&socket);
-        let said = answer["error"]["message"].as_str().unwrap_or_default();
-        assert!(
-            said.starts_with("none of /home/j/src/one") && !said.contains("five"),
-            "the node's own words, cut as an unread answer is: {said}"
-        );
+    }
+
+    #[test]
+    fn the_nodes_words_are_cut_at_80_characters() {
+        // Of a character two bytes long, so a cut by bytes, or one before
+        // or past the most, shows.
+        for (shape, length, kept) in [("Err", 80, 80), ("Err", 81, 80), ("Refused", 81, 80)] {
+            let words = "\u{e9}".repeat(length);
+            let reply = if shape == "Err" {
+                json!({"Err": words})
+            } else {
+                json!({"Refused": {"why": words}})
+            };
+            let name = format!("{shape}-{length}");
+            let said = told(&name, &reply.to_string());
+            assert_eq!(said, "\u{e9}".repeat(kept), "{name}");
+        }
     }
 
     #[test]
     fn places_not_the_shells_or_with_no_node_arent_asked() {
         let gone = std::env::temp_dir().join("agents-places-no-node.sock");
         assert_eq!(
-            answer(
-                || Err("only the launcher starts new work here".to_owned()),
-                Some(&gone)
-            ),
+            answer(|| Err(asker::REFUSED.to_owned()), Some(&gone)),
             json!({"error": {"code": "unlisted", "message": REFUSED}}),
             "anyone but the shell is refused before the node is asked"
+        );
+        assert_eq!(
+            answer(
+                || Err("the kernel names no peer by pidfd".to_owned()),
+                Some(&gone)
+            )["error"]["message"],
+            json!("the kernel names no peer by pidfd"),
+            "who asked that couldn't be told is said as it is"
         );
         assert!(
             answer(|| Ok(()), Some(&gone))["error"]["message"]
