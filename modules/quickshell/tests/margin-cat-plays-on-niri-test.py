@@ -206,7 +206,8 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     except AssertionError as failed:
         said, _ = shell.said_since(asking)
         # The wait's own failure, its log tail with it, is printed once as this one's cause.
-        raise AssertionError(f"what the cat did since the ask:\n{story(said)}") from failed
+        told = f"what the cat did since the ask:\n{story(said)}"
+        raise AssertionError(told) from failed
     began = shell.mark()
     shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, PLAYS)
     said, _ = shell.said_since(since)
