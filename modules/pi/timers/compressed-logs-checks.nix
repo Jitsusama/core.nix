@@ -59,8 +59,10 @@ onLinux {
   # The rewrite's own rules, which decide what it touches and what it
   # reports, run over a folder of logs with stand-ins for btrfs, since a
   # build's sandbox has none. The script runs bare, as the built program
-  # puts its own tools ahead of the stand-ins. What btrfs itself writes to
-  # disk isn't proven here; its own checksums guard that.
+  # puts its own tools ahead of the stand-ins. It proves each log is
+  # written out and its pages dropped before the read back, not that the
+  # read then comes from disk, since nothing here is stored compressed;
+  # what btrfs writes, btrfs's own checksums guard.
   pi-log-compression-keeps-its-rules =
     pkgs.runCommandLocal "pi-log-compression-keeps-its-rules" { }
       ''

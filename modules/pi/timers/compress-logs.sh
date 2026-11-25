@@ -92,7 +92,8 @@ used() {
 # pressure file to read, is taken as never waiting.
 disk_waits() {
   [ -r "$pressure" ] || return 1
-  awk -v busy="$busy_disk" '/^full/ { split($2, avg, "="); exit !(avg[2] + 0 >= busy) }' "$pressure"
+  awk -v busy="$busy_disk" \
+    '/^full/ { split($2, avg, "="); exit !(avg[2] + 0 >= busy) }' "$pressure"
 }
 
 # Whether the log at $1 is still untouched long enough to be closed.
@@ -112,14 +113,17 @@ seen() {
   echo "$said $sum"
 }
 
-# Whether a session wrote to the log between the two readings $1 and $2 of
-# it, as seen gives them: it grew and its modification time moved on, since
-# pi only appends. Anything else that differs is the rewrite's doing.
+# Whether a session wrote to the log at $1 between the two readings $2 and
+# $3 of it, as seen gives them: it grew, its modification time moved on,
+# and what it held before still reads the same, since pi only appends.
+# Anything else that differs is the rewrite's doing.
 written_since() {
-  local was_length was_time now_length now_time
-  read -r was_length was_time _ <<< "$1"
-  read -r now_length now_time _ <<< "$2"
-  [ -n "${now_length:-}" ] && [ "$now_length" -gt "$was_length" ] && [ "$now_time" -gt "$was_time" ]
+  local was_length was_time was_sum now_length now_time kept
+  read -r was_length was_time was_sum <<< "$2"
+  read -r now_length now_time _ <<< "$3"
+  [ "$now_length" -gt "$was_length" ] && [ "$now_time" -gt "$was_time" ] || return 1
+  kept=$(head -c "$was_length" -- "$1" | cksum) || return 1
+  [ "$kept" = "$was_sum" ]
 }
 
 # The logs to look at, found once before any is rewritten, so the walk
@@ -160,19 +164,32 @@ while IFS= read -r -d '' log; do
     continue
   fi
   # Written out now, a log at a time, rather than all at once later. A log
-  # gone since its rewrite is passed over.
-  sync -- "$log" || continue
+  # gone since its rewrite is passed over, wherever it went.
+  if ! sync -- "$log"; then
+    [ -e "$log" ] || continue
+    echo "couldn't write $log out after its rewrite" >&2
+    failed=$((failed + 1))
+    continue
+  fi
   # The written pages stay in memory, where a read would find them; asked
   # to drop them, the kernel reads the log back from disk. One that won't
-  # leaves the read to memory, which still sees a write meanwhile.
-  dd if="$log" iflag=nocache count=0 status=none || :
-  now=$(seen "$log") || now=
-  if written_since "$was" "$now"; then
+  # leaves the read to memory, which still sees a write meanwhile, and
+  # says so.
+  if ! dd if="$log" iflag=nocache count=0 status=none; then
+    echo "couldn't drop $log's pages, so it's read back from memory" >&2
+  fi
+  if ! now=$(seen "$log"); then
+    [ -e "$log" ] || continue
+    echo "couldn't read $log back after its rewrite" >&2
+    failed=$((failed + 1))
+    continue
+  fi
+  if written_since "$log" "$was" "$now"; then
     echo "$log was written to during its rewrite; it's left for a night it's closed"
     continue
   fi
   if [ "$now" != "$was" ]; then
-    echo "$log read $was before its rewrite and ${now:-nothing} after" >&2
+    echo "$log read $was before its rewrite and $now after" >&2
     failed=$((failed + 1))
     continue
   fi
