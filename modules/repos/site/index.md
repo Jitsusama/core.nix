@@ -74,9 +74,10 @@ so a suspend leaves it as it was. A build the Nix daemon runs
 for one works as its own user in its own folder, so it's counted
 nowhere, and a Mac says none of it. Where the daemon can't say, the page
 says nothing of it, and the rest of the page stands as it was; until its
-reading of `/proc` first answers, and once it misses three paces in a
-row, each repository says its processes are unread rather than that
-nothing works in it.
+reading of `/proc` first answers, and once its last reading is three
+minutes old with none newer, each repository says its processes are
+unread rather than that nothing works in it. So does a repository with a
+tree newer than the last reading, until the next looks in it.
 
 ## Keys
 

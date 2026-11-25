@@ -6,11 +6,13 @@ use std::time::{Duration, Instant};
 
 use repos::read;
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use repos::using::{Process, Sample};
 
-use super::{Disk, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, health, ready, settle};
+use super::{
+    Disk, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, folders_of, health, ready, settle,
+};
 
 fn of(name: &str) -> Of {
     Of::Checkout(PathBuf::from(name))
@@ -160,42 +162,107 @@ fn what_works_is_read_at_its_own_pace_however_long_the_disk_takes() {
     // A whole reading of a busy disk took over three minutes on 25 Nov,
     // longer than two readings of /proc may be apart and still measure a
     // share, so they keep a clock of their own rather than waiting on it.
-    // Each reading here says a pace of waking time passed, in which the
-    // process worked all of it.
+    // Each reading here is more than half the longest apart from the one
+    // before, so only neighbours measure a share; the process works more
+    // each pace, so the last pace's share is told from any longer span's;
+    // and its memory says which call read it.
+    const STEP: u64 = 10_000;
     let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let counting = std::sync::Arc::clone(&calls);
     let folder = PathBuf::from("/home/someone/trees/fix");
     let mut working = Working::start(BRISK, vec![folder.clone()], move |folders: &[PathBuf]| {
         let call = counting.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Sample {
-            at: 100 + call * 2,
-            awake: Some(100 + call * 2),
+            at: 100 + call * STEP,
+            awake: Some(100 + call * STEP),
             processes: vec![Process {
                 pid: 1,
                 parent: 0,
                 folder: folders.first().cloned(),
                 started: 1,
-                own: call * 2,
+                own: call * call * 100,
                 children: 0,
-                memory: Some(4_096),
+                memory: Some(4_096 * (call + 1)),
             }],
         }
     });
     working.read(vec![folder.clone()]);
-    // The disk's whole reading takes ten paces.
-    std::thread::sleep(BRISK * 10);
-    working.read(vec![folder.clone()]);
+    // The disk's whole reading goes on while /proc is read four times,
+    // which reading only as the disk is read never would.
+    let until = Instant::now() + BRISK * 10 + LATE;
+    while calls.load(std::sync::atomic::Ordering::Relaxed) < 4 && Instant::now() < until {
+        std::thread::sleep(BRISK);
+    }
     let read = calls.load(std::sync::atomic::Ordering::Relaxed);
     assert!(
         read >= 4,
-        "/proc was read {read} times in ten paces, so only as the disk was"
+        "/proc was read {read} times while the disk was, so only as the disk was"
+    );
+    working.read(vec![folder.clone()]);
+    // The fourth call began only once the third's reading was held.
+    let newest = working
+        .used
+        .get(&folder)
+        .map(|used| used.memory / 4_096 - 1)
+        .expect("the folder's use went unsaid");
+    assert!(
+        newest >= 2,
+        "the reading taken was call {newest}'s, not the newest"
     );
     assert!(working.measured, "a share went unmeasured");
+    let newest = u32::try_from(newest).expect("a call count");
     assert_eq!(
         working.used.get(&folder).and_then(|used| used.cpu),
-        Some(1.0),
+        Some(f64::from(100 * (2 * newest - 1)) / 10_000.0),
         "the share wasn't of the pace before the newest reading"
     );
+}
+
+#[test]
+fn a_folder_found_after_a_reading_is_said_unread_until_the_next_reads_it() {
+    // Each reading of the disk hands the folders it holds to the next
+    // reading of /proc, which places processes only in those it holds.
+    let (at, record) = one_checkout("later");
+    let mut working = Working::start(BRISK, Vec::new(), |folders: &[PathBuf]| Sample {
+        at: 100,
+        awake: None,
+        processes: folders
+            .iter()
+            .map(|folder| Process {
+                pid: 1,
+                parent: 0,
+                folder: Some(folder.clone()),
+                started: 1,
+                own: 0,
+                children: 0,
+                memory: Some(4_096),
+            })
+            .collect(),
+    });
+    working.read(Vec::new());
+    let processes = |working: &Working| {
+        let said = working.said(&record);
+        let using = said.into_iter().find(|said| said["kind"] == "using");
+        using.map(|using| using["processes"].clone())
+    };
+    assert_eq!(
+        processes(&working),
+        Some(Value::Null),
+        "a folder no reading looked in reads as idle"
+    );
+    let found = folders_of(&record);
+    let until = Instant::now() + BRISK * 10 + LATE;
+    working.read(found.clone());
+    while processes(&working) == Some(Value::Null) && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.read(found.clone());
+    }
+    assert_eq!(
+        processes(&working),
+        Some(json!(1)),
+        "a folder handed on was never read"
+    );
+    let _ = fs::remove_dir_all(&at);
 }
 
 #[test]
@@ -255,14 +322,19 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     working.read(folders.clone());
     assert_eq!(working.used.len(), 1, "the first reading wasn't taken");
 
-    let began = Instant::now();
-    for _ in 0..STALE {
+    // Only the first is waited on: each after takes what's there, or
+    // nothing, until the last grows STALE paces old.
+    let until = Instant::now() + BRISK * STALE + LATE;
+    let mut slowest = Duration::ZERO;
+    while !working.used.is_empty() && Instant::now() < until {
+        let began = Instant::now();
         working.read(folders.clone());
+        slowest = slowest.max(began.elapsed());
+        std::thread::sleep(Duration::from_millis(10));
     }
     assert!(
-        began.elapsed() < SAMPLED + LATE,
-        "a stuck reading held up the loop {:?}",
-        began.elapsed()
+        slowest < SAMPLED / 2,
+        "a stuck reading held up the loop {slowest:?}"
     );
     assert!(
         working.used.is_empty() && !working.measured,

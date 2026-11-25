@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
@@ -250,6 +250,19 @@ fn github_answers_once_a_refresh_has_asked_it_saying_what_it_couldnt_see() {
     );
 }
 
+/// Every folder `record()` holds, as a reading that placed processes in
+/// each knows them.
+fn placed() -> BTreeSet<PathBuf> {
+    [
+        "/home/joel/src/core.nix",
+        "/home/joel/trees/say-trees",
+        "/home/joel/trees/pinned",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .collect()
+}
+
 fn used(processes: usize, memory: u64, cpu: f64) -> Use {
     Use {
         processes,
@@ -272,7 +285,7 @@ fn what_works_in_a_repository_is_summed_over_its_checkouts_and_trees() {
         // A folder no repository holds counts for none.
         (PathBuf::from("/home/joel/elsewhere"), used(9, 9_000, 9.0)),
     ]);
-    let said = using(&record(), &used, true);
+    let said = using(&record(), &used, true, &placed());
     assert_eq!(
         said,
         [json!({
@@ -308,7 +321,7 @@ fn what_works_unread_is_said_unknown_rather_than_none() {
 
 #[test]
 fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_reading() {
-    let idle = &using(&record(), &BTreeMap::new(), true)[0];
+    let idle = &using(&record(), &BTreeMap::new(), true, &placed())[0];
     assert_eq!(
         (
             &idle["processes"],
@@ -318,10 +331,28 @@ fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_re
         ),
         (&json!(0), &json!(0), &json!(0.0), &json!([]))
     );
-    let first = &using(&record(), &BTreeMap::new(), false)[0];
+    let first = &using(&record(), &BTreeMap::new(), false, &placed())[0];
     assert_eq!(
         first["cpu"],
         Value::Null,
         "one reading can't say a share of time"
+    );
+}
+
+#[test]
+fn a_repository_with_a_tree_newer_than_the_reading_is_said_unread_not_idle() {
+    // The reading placed processes in the folders the disk held before the
+    // tree pinned was made, so whatever works there wasn't looked for.
+    let mut before = placed();
+    before.remove(&PathBuf::from("/home/joel/trees/pinned"));
+    let used = BTreeMap::from([(
+        PathBuf::from("/home/joel/src/core.nix"),
+        used(2, 3_000, 0.25),
+    )]);
+    let said = &using(&record(), &used, true, &before)[0];
+    assert_eq!(
+        said,
+        &unread(&record())[0],
+        "a tree the reading never looked in reads as idle"
     );
 }
