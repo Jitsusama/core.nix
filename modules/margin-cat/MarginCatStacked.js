@@ -134,9 +134,8 @@ function comesIn(from, at) {
     const seen = side > 0 ? from.x < at.across : from.x + at.wide > 0;
     const peeked = side > 0 ? at.across - PEEKS * at.cell : PEEKS * at.cell - at.wide;
     // The window past the edge it comes in on, where niri lays one there.
-    const nearest = seen ? null : Routes.columnAt(cols, peeked, at.wide);
-    const past = nearest && (side > 0 ? nearest.right > at.across : nearest.left < 0)
-        ? nearest : null;
+    const under = seen ? null : Routes.columnAt(cols, peeked, at.wide);
+    const past = under && (side > 0 ? under.right > at.across : under.left < 0) ? under : null;
     const y = past ? Routes.stands(past.top, at) : from.y;
     const way = Ways.begun(at, { x: seen ? from.x : side > 0 ? at.across : -at.wide, y });
     way.facing = -side;
