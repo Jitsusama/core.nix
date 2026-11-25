@@ -173,15 +173,25 @@ QtObject {
             Places.whereKept(twins[1], twins, panelThere,
                 { given: panelFirst, inUse: "Virtual-1" }).output, "Virtual-4");
         // Nor to a session of its twin's given no connector: kept away, on
-        // the screen in use, or left as kept, with no screen said or none in use.
+        // the screen in use, or left as kept, with no screen said or none in
+        // use, though last boot's connector is another screen's now.
         const tookFirst = [{ at: twins[1], output: "Virtual-3" }];
-        const givenNone = (screens, inUse) => Reopening.givenBy([twins[1]],
-            Places.placed([twins[1]], screens, inUse, [twins]), tookFirst, screens);
-        expect("nor gives way to its twin's session given no connector",
-            [givenNone({ "eDP-1": panel }, "eDP-1"), givenNone({}, "Virtual-3"),
-                givenNone({ "eDP-1": panel }, null)].map(given => Places.whereKept(twins[0],
-                twins, bothBack, { given, inUse: "Virtual-3" }).output),
-            ["Virtual-4", "Virtual-4", "Virtual-4"]);
+        const givenNone = (why, screens, inUse) => {
+            const given = Reopening.givenBy([twins[1]],
+                Places.placed([twins[1]], screens, inUse, [twins]), tookFirst, screens);
+            expect(`nor gives way to its twin's session ${why}`,
+                [given.map(one => one.output ?? "none"), Places.whereKept(twins[0], twins,
+                    bothBack, { given, inUse: "Virtual-3" }).output],
+                [["none", "Virtual-3"], "Virtual-4"]);
+        };
+        givenNone("kept away", { "eDP-1": panel }, "eDP-1");
+        givenNone("left as kept with no screen said", {}, "Virtual-3");
+        givenNone("left as kept with none in use", { "eDP-1": panel }, null);
+        givenNone("left as kept on another screen's connector", { "Virtual-2": panel }, null);
+        // A window put back with no screen said is given none either.
+        expect("a window put back with no screen said is given no connector",
+            Reopening.givenOn(twin, Places.whereKept(twins[1], twins, {}, { given: [] }), {})
+                ?? "none", "none");
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early, {}), inUse: "eDP-1" }).output,

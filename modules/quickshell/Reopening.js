@@ -211,18 +211,28 @@ function inUseFor(placed, now, screens) {
     return typeof placed === "string" && placed in (screens ?? {}) ? placed : now;
 }
 
+// The connector a place found now (`place`, of one kept on `screen`) was given, or undefined.
+// It must be connected now (`screens`, Places.js's connected) and show that screen, and the place
+// must not be away. A place left as kept, with no screen said or none in use, keeps last boot's
+// connector, which may be gone or another screen's now, so it was given none.
+function givenOn(screen, place, screens) {
+    const output = place?.output;
+    // Own keys alone, so a prototype's name is never connected, as Sprouting.js's untold.
+    const shows = Object.keys(screens).includes(output)
+        && (!screen || screens[output] === screen);
+    return place?.away || !shows ? undefined : output;
+}
+
 // The connectors Reopen Them All's sessions were given (`places`, Places.js's placed, of the
 // places `kept`), as whereKept's `given`, so its windows put back after take the same twin
-// connectors as their sessions, whatever order they come back in. A session is given a connector
-// only when its place is on one connected now (`screens`, Places.js's connected) and not away;
-// one kept away, or left as kept with no screen said or none in use, is given none. An earlier
-// window's entry (`before`) stays unless a session kept on the same screen and connector was given
-// a connector, or a session was given the connector it took, so those windows never contradict
-// the sessions nor leave the other twin's windows none to go to.
+// connectors as their sessions, whatever order they come back in. A session counts as given a
+// connector only by givenOn, with `screens` connected now. An earlier window's entry (`before`)
+// stays unless a session kept on the same screen and connector was given a connector, or a
+// session was given the connector it took. So those windows never contradict the sessions, nor
+// leave the other twin's windows none to go to.
 function givenBy(kept, places, before, screens) {
-    const on = place => (place?.away || !(place?.output in (screens ?? {})) ? undefined
-        : place.output);
-    const given = kept.map((at, index) => ({ at, output: on(places[index]) }))
+    const given = kept
+        .map((at, index) => ({ at, output: givenOn(at?.screen, places[index], screens) }))
         .filter(one => one.at);
     const keptOn = one => JSON.stringify([one.at.screen, one.at.output]);
     const placed = given.filter(one => one.output !== undefined);

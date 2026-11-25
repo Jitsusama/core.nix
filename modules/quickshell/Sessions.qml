@@ -2431,9 +2431,11 @@ Singleton {
         const there = root.screensThere();
         const inUse = Reopening.inUseFor(going.inUse, Niri.workspace()?.output ?? null, there);
         // Each window put back gives its twins' connectors, after its
-        // sessions', so twin monitors on new connectors take one each.
+        // sessions', so twin monitors on new connectors take one each:
+        // only one connected now showing its screen (givenOn), not last
+        // boot's, kept while no screen is said.
         const kept = Places.whereKept(at, going.kept, there, { given: going.given, inUse });
-        going.given.push({ at, output: kept.output });
+        going.given.push({ at, output: Reopening.givenOn(at.screen, kept, there) });
         const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
