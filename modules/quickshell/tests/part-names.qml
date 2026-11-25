@@ -191,6 +191,7 @@ ShellRoot {
             !clock.some(name => calendar.includes(name)),
             clock.filter(name => calendar.includes(name)).join(", "));
         asNowShows();
+        asZoneDrawn();
         asKept();
         asUnkept();
         asAsked();
@@ -634,6 +635,29 @@ ShellRoot {
     // ("14 Mar 2027 03:00"), then what it turns to after a middle dot; the
     // zone's plate with an eyebrow, as every plate has; and a day's number
     // copied as a figure to paste, with nothing grouping it.
+    // The zone's drawer at fixed moments, as Zones.changesSaid's cases in
+    // answers/times.js hold them: a zone that never changes says so once,
+    // leaving After That out, and past the last change kept After That
+    // says the years end, with nothing joined to it.
+    function asZoneDrawn() {
+        const table = clocks.loaded();
+        const never = clocks.timeWord("time:zone", "never");
+        const facts = (id, when) => {
+            const zone = clocks.zoneThing({ rows: [] }, table.zones[id], Date.parse(when));
+            return typeof zone.drawer === "function" ? zone.drawer().facts : zone.drawer.facts;
+        };
+        const fact = (drawn, id) => drawn.find(one => one.label === Words.name(`time:zone:${id}`));
+        const tokyo = facts("Asia/Tokyo", "2026-01-15T12:00:00Z");
+        expect("a zone that never changes says so once, with no After That",
+            never !== "" && fact(tokyo, "next")?.value === never && !fact(tokyo, "after"),
+            JSON.stringify(tokyo));
+        const late = facts("America/Toronto", "2045-04-01T12:00:00Z");
+        expect("past the last change kept, After That says the years end",
+            /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2} \u00b7 .+$/.test(fact(late, "next")?.value)
+                && fact(late, "after")?.value === never,
+            JSON.stringify(late));
+    }
+
     function asNowShows() {
         const time = clocks.answer("time");
         const date = today.answer("date");
@@ -665,10 +689,11 @@ ShellRoot {
                 && !!standing && turnsBack(after) && !turnsBack(next),
             JSON.stringify(plate.facts));
         // No field is shown twice between Time and Date (Joel), read from
-        // the drawers the launcher draws.
+        // the drawers and the rows the launcher draws.
         const fields = said => {
             const drawn = said.drawer();
-            return drawn.facts.concat(drawn.nerd ?? []).map(fact => fact.label);
+            return drawn.facts.concat(drawn.nerd ?? []).map(fact => fact.label)
+                .concat(said.rows.map(row => row.name));
         };
         const timeFields = fields(time);
         expect("no field is both Time's and Date's",
