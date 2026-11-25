@@ -1096,6 +1096,32 @@ fn a_listing_that_failed_slowly_rests_before_it_is_tried_again() {
 }
 
 #[test]
+fn a_listing_that_failed_slowly_rests_however_full_the_store() {
+    // On 24 November a nearly full laptop's listing ran past its half hour
+    // three times running, from 16:46 to 18:16, each holding Nix's lock for
+    // all of it and freeing almost nothing, while every build waited.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-broken"), "").unwrap();
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 300.0, &CALM);
+    fs::remove_file(store.root.join("listing-broken")).unwrap();
+    step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "a nearly full store's failed listing was tried again before it rested: {:?}",
+        store.log()
+    );
+    listed_later(&store, &mut guard, 300.0 + 9.0 * 300.0 + 60.0, &CALM);
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
 fn a_filesystem_a_user_daemon_speaks_for_is_collected_when_it_asks() {
     let store = Store::new();
     let old = store.dead("aaa-old", 10.0 * DAY, 4096);

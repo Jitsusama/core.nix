@@ -252,9 +252,9 @@ const DELETE_REST: f64 = 4.0;
 /// nearly full: on 8 November one at 75% listed back to back, five to six
 /// minutes of a core each with the machine's processors 45 to 55% stalled,
 /// and each pass found nothing more to clear. Nearly full and past, none.
-/// A listing that failed rests the same before it's tried again: on 9
-/// November one failing on Nix's own temporary paths, five minutes of a
-/// core each time, was tried again six times in two hours.
+/// A listing that failed rests the same before it's tried again, nearly
+/// full too: on 9 November one failing on Nix's own temporary paths, five
+/// minutes of a core each time, was tried again six times in two hours.
 const LISTING_REST: f64 = 9.0;
 
 /// The longest a filling store's listing that's due waits for the machine
@@ -400,6 +400,9 @@ pub struct Guard {
     listing_out: Option<(f64, Listening)>,
     /// When the last listing ended, and how long it took.
     listing_ended: Option<(f64, f64)>,
+    /// Whether the last listing failed, which rests however full the store:
+    /// it freed nothing, and the locked one held Nix's lock all along.
+    listing_failed: bool,
     /// Since when a listing that's due has waited for the machine to have
     /// room.
     room_awaited: Option<f64>,
@@ -860,6 +863,7 @@ impl Guard {
             stepped: Instant::now(),
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
+            listing_failed: false,
             room_awaited: None,
             reached_short: BTreeMap::new(),
             listing,
@@ -1728,6 +1732,7 @@ impl Guard {
         let begun = *begun;
         self.listing_out = None;
         self.listing_ended = Some((now, (now - begun).max(0.0)));
+        self.listing_failed = heard.is_err();
         match heard {
             Ok(dead) => {
                 let listing = Listing {
@@ -1997,7 +2002,10 @@ impl Guard {
             LISTING_RETRY
         };
         let since = age(self.listing_begun);
-        let rested = band >= Band::NearlyFull
+        // A listing that failed rests at any band: on 24 November a nearly
+        // full laptop's ran past its half hour three times running, each
+        // holding Nix's lock for all of it while every build waited.
+        let rested = band >= Band::NearlyFull && !self.listing_failed
             || self
                 .listing_ended
                 .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
