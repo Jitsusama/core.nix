@@ -264,7 +264,11 @@ feed speaks.
   is mended by `systemctl --user restart spend-watch`, which forgets what's
   settled at the price of one whole walk. It runs at
   most every 30 seconds while the logs grow and every five minutes while
-  they don't; the heartbeat alone is written every 30 seconds, so the shell
+  they don't. A slow pass waits four times as long as it took before the
+  next, since a pass reads its hours from the history, and once the
+  machine drops them from memory each pass reads them from the disk again:
+  about 60 MB and 40 seconds a pass on 24 November, near 3 MB a second at
+  the busy pace. The heartbeat alone is written every 30 seconds, so the shell
   can tell a stopped daemon from a quiet one. Every pi session asks
   `budgets --json` as it starts, all of them at once when an update
   reloads them, so without a session it answers with the last pass's

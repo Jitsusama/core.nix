@@ -42,6 +42,14 @@ enum Wake {
 
 /// The fewest seconds between passes, while things keep changing.
 const BUSY: Duration = Duration::from_secs(30);
+/// How many times as long as a pass took the next one waits, at the
+/// least. A pass reads its hours from the history, and once the machine has
+/// dropped them from memory, as it did within 30 seconds on 24 November,
+/// each read takes them from the disk again: about 60 MB and 40 seconds a
+/// pass, near 3 MB a second with passes 30 seconds apart. Waiting four
+/// times as long keeps the daemon reading for a fifth of the time at most,
+/// and a quick pass keeps the 30 seconds.
+const PACE: u32 = 4;
 /// The most, while nothing does: the clocks and the day move regardless.
 const IDLE: Duration = Duration::from_secs(300);
 const HEARTBEAT: Duration = Duration::from_secs(30);
@@ -933,6 +941,7 @@ pub fn run(config: &Config) -> Result<(), String> {
         .checked_sub(IDLE)
         .unwrap_or_else(Instant::now);
     let mut last_harness = Instant::now();
+    let mut took = Duration::ZERO;
     let mut dirty = true;
     let mut refresh = Refresh {
         waiting: Vec::new(),
@@ -952,10 +961,11 @@ pub fn run(config: &Config) -> Result<(), String> {
             dirty = true;
         }
         let answered = refresh.owed.is_empty() || Instant::now() >= refresh.until;
-        let due = (dirty && last_pass.elapsed() >= BUSY)
+        let due = (dirty && last_pass.elapsed() >= between_passes(took))
             || last_pass.elapsed() >= IDLE
             || (!refresh.waiting.is_empty() && answered);
         if due {
+            let began = Instant::now();
             read_logs(&history, config, &mut walks, watches.as_deref());
             match pass(
                 &history,
@@ -970,6 +980,7 @@ pub fn run(config: &Config) -> Result<(), String> {
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
+            took = began.elapsed();
             dirty = false;
             refresh.owed.clear();
             for reply in refresh.waiting.drain(..) {
@@ -982,7 +993,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             beat(config, status, now);
             *at = Instant::now();
         }
-        let timeout = wait_for(&feeds, &refresh, dirty, last_pass);
+        let timeout = wait_for(&feeds, &refresh, dirty, last_pass, took);
         let first = match inbox.recv_timeout(timeout) {
             Ok(first) => Some(first),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
@@ -1091,11 +1102,24 @@ fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
     paced
 }
 
+/// How long after a pass that took `took` the next waits while the logs
+/// grow: the busy pace, or `PACE` times as long as it took, never past the
+/// idle wait.
+fn between_passes(took: Duration) -> Duration {
+    took.saturating_mul(PACE).clamp(BUSY, IDLE)
+}
+
 /// How long to wait for something, but never past when a pass or a feed
 /// is due, or a refresh has waited long enough.
-fn wait_for(feeds: &[Feed], refresh: &Refresh, dirty: bool, last_pass: Instant) -> Duration {
+fn wait_for(
+    feeds: &[Feed],
+    refresh: &Refresh,
+    dirty: bool,
+    last_pass: Instant,
+    took: Duration,
+) -> Duration {
     let until_pass = if dirty {
-        BUSY.saturating_sub(last_pass.elapsed())
+        between_passes(took).saturating_sub(last_pass.elapsed())
     } else {
         IDLE.saturating_sub(last_pass.elapsed())
     };
@@ -1518,6 +1542,27 @@ mod tests {
         );
         // With no cap watched, the meter is all there is to go on.
         assert_eq!(heard(&findings, None)[1].severity, Severity::Warning);
+    }
+
+    // A quick pass keeps the busy pace, a slow one waits four times as
+    // long as it took, and none waits past the idle one.
+    #[test]
+    fn a_slow_pass_waits_longer_before_the_next() {
+        assert_eq!(
+            between_passes(Duration::from_secs(3)),
+            BUSY,
+            "a quick pass waited longer"
+        );
+        assert_eq!(
+            between_passes(Duration::from_secs(40)),
+            Duration::from_secs(160),
+            "a slow pass didn't wait four times as long"
+        );
+        assert_eq!(
+            between_passes(Duration::from_secs(600)),
+            IDLE,
+            "a pass waited past idle"
+        );
     }
 
     // Five seconds first, as the contract says, doubling while a feed
