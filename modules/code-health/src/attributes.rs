@@ -1,8 +1,9 @@
 //! Whether a line of Rust turns a lint off, read as Rust reads its
 //! attributes: across lines to each one's close, past comments, strings and
 //! characters, and into a `cfg_attr`'s attributes, for the suppressions
-//! measure. It's apart from measure.rs because it changes only with how
-//! Rust writes an attribute.
+//! measure, with the gaps `turns_a_rust_lint_off` names. It's apart from
+//! measure.rs so it changes only with how Rust writes an attribute, though
+//! its cases are read through `measure`, as the figure is.
 
 /// Whether a line of Rust opens with an attribute turning a lint off:
 /// `allow` or `expect`, inner or outer, or a `cfg_attr` holding one among
@@ -10,8 +11,11 @@
 /// is the file from the line on, since rustfmt breaks a long `cfg_attr`
 /// across lines, and each attribute opening on the line is read to its
 /// close. A lint turned off part way through a line, as on a parameter,
-/// isn't seen, nor one named rawly, as `r#allow`, nor a byte raw string's
-/// words inside an attribute.
+/// isn't seen, nor one named rawly, as `r#allow`, and a byte or C raw
+/// string inside an attribute is read as a plain one, so a quote inside it
+/// is misread. A line is read without what came before it, so one inside
+/// a multi-line string or block comment that opens with such an attribute
+/// is counted.
 pub fn turns_a_rust_lint_off(rest: &str) -> bool {
     let mut tokens = Tokens { text: rest, at: 0 };
     std::iter::from_fn(|| tokens.attribute_on_its_line()).any(|inner| holds_a_lint_off(&inner))
@@ -20,7 +24,8 @@ pub fn turns_a_rust_lint_off(rest: &str) -> bool {
 /// Whether an attribute, read as its words inside the brackets with
 /// whitespace, comments and what its strings say gone, turns a lint off.
 /// A `cfg_attr`'s attributes are each read so, its condition among them,
-/// since no condition opens as a lint level does.
+/// since no condition opens as a lint level does. They're split only at
+/// commas outside any of their own brackets, of whatever shape.
 fn holds_a_lint_off(inner: &str) -> bool {
     if ["allow(", "expect("]
         .iter()
@@ -35,12 +40,12 @@ fn holds_a_lint_off(inner: &str) -> bool {
     let (mut depth, mut from) = (0_usize, 0);
     for (at, c) in given.char_indices() {
         match c {
-            '(' => depth += 1,
+            '(' | '[' | '{' => depth += 1,
             ')' if depth == 0 => {
                 attributes.push(&given[from..at]);
                 break;
             }
-            ')' => depth -= 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
             ',' if depth == 0 => {
                 attributes.push(&given[from..at]);
                 from = at + 1;
@@ -278,6 +283,38 @@ mod tests {
              with Rust's whitespace or a comment in its attribute was missed, or an \
              attribute turning none off, a comment, a string or a lint inside another \
              attribute was counted"
+        );
+    }
+
+    #[test]
+    fn an_attribute_holding_brackets_closes_at_its_own() {
+        let files = [file("g.rs", "#[my_attr[x]] #[allow(y)]\n")];
+        let health = measure(&["g.rs".to_owned()], &files, &[]);
+        assert_eq!(
+            health.named["suppressions"],
+            ["g.rs:1"],
+            "a bracket inside an attribute closed it, so the lint turned off past it was missed"
+        );
+    }
+
+    #[test]
+    fn a_cfg_attr_splits_only_at_commas_outside_its_brackets() {
+        let files = [file(
+            "h.rs",
+            concat!(
+                "#[cfg_attr(test, doc[a, allow(x)])]\n",
+                "#[cfg_attr(test, doc{a, allow(x)})]\n",
+                "#[cfg_attr(test, doc[a], allow(y))]\n",
+                "#[cfg_attr(test, doc{a}, allow(y))]\n",
+                "#[cfg_attr(test, a}, allow(y))]\n",
+            ),
+        )];
+        let health = measure(&["h.rs".to_owned()], &files, &[]);
+        assert_eq!(
+            health.named["suppressions"],
+            ["h.rs:3", "h.rs:4", "h.rs:5"],
+            "a cfg_attr was split inside an attribute's brackets, or not read on past their \
+             close, or a close it never opened stopped its reading"
         );
     }
 }
