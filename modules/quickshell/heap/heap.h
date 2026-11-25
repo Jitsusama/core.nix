@@ -29,7 +29,8 @@ public:
     // `held` by a little, or -1 when the kernel won't say; and `outside`,
     // what its strings and objects hold beyond the heap; and `free`, of what
     // it holds, the resident pages with nothing in them, which could go
-    // back to the kernel without moving anything; `chunks`, what its
+    // back to the kernel without moving anything, or -1 as `resident` is;
+    // `chunks`, what its
     // chunks hold, large items aside; `collectsAt`, what they may hold
     // before a miss in the free lists starts the collector; and
     // `collectsOutsideAt`, what may be held outside before the collector

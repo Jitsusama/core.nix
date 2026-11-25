@@ -23,7 +23,9 @@ the kernel needs them, rather than giving them back, is the heap test's lendsBac
 What the heap holds resident must not climb round on round either, as live mustn't: Joel's shell
 held 149 MB at 23:09 and 252 MB at 00:13 with live flat at 60 to 65 MB (2026-11-25), and each
 closing's line says how much of what's held is resident, which counts what a page the kernel took
-no longer costs.
+no longer costs. A lent page counts as resident until the kernel takes it, so a round the kernel
+took lent pages in, which a builder short of memory may, leaves resident unjudged, as the heap
+test's lendsBack leaves what it holds lent.
 """
 
 from __future__ import annotations
@@ -100,16 +102,25 @@ def live_after_closings(shell: Shell) -> list[int]:
 
 
 def resident_after_closings(shell: Shell) -> list[int]:
-    """Give the MB each closing said the heap held resident, in order."""
+    """Give the MB each closing said the heap held resident, in order, -1 where unknown."""
     said = shell.log.read_text(errors="replace")
-    return [int(each) for each in re.findall(r" MB held, (\d+) MB of it resident,", said)]
+    return [
+        int(each.split()[0]) if each[0].isdigit() else -1
+        for each in re.findall(r" MB held, (\d+ MB|an unknown amount) of it resident,", said)
+    ]
+
+
+def lent_pages_taken() -> int:
+    """Give the lent pages the kernel has taken since it started, or -1 when it doesn't say."""
+    found = re.search(r"^pglazyfreed (\d+)$", Path("/proc/vmstat").read_text(), re.MULTILINE)
+    return int(found.group(1)) if found else -1
 
 
 def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture[str]) -> None:
     """Open every place and type at home, three rounds, each after the first landing level."""
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
-        rounds, residents = rounds_kept(shell)
+        rounds, residents, taken = rounds_kept(shell)
         said = shell.log.read_text(errors="replace")
         jemalloc = re.search(r"collected after closing.*; jemalloc \d+ MB in use", said)
         assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
@@ -150,6 +161,17 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         f"a round's closings didn't each say what's held resident as this check reads it:"
         f" {residents}"
     )
+    assert all(each >= 0 for said in residents for each in said), (
+        f"the kernel wouldn't say which of the heap's pages are resident: {residents}"
+    )
+    if taken[1] or taken[2]:
+        with capsys.disabled():
+            print(
+                f"note: the kernel took lent pages during the rounds judged ({taken}), so what's"
+                f" held resident goes unjudged",
+                flush=True,
+            )
+        return
     assert resident[2] <= resident[1] * GROWTH, (
         f"a round of every place held {resident[2]} MB resident against {resident[1]} MB the"
         f" round before (medians by round, in MB: {resident}), so the heap keeps pages it no"
@@ -157,14 +179,20 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     )
 
 
-def rounds_kept(shell: Shell) -> tuple[list[list[int]], list[list[int]]]:
-    """Give the bytes left live, and the MB held resident, at each closing of three rounds."""
+def rounds_kept(shell: Shell) -> tuple[list[list[int]], list[list[int]], list[bool]]:
+    """Give the bytes left live, and the MB held resident, at each closing of three rounds.
+
+    And whether the kernel took lent pages anywhere during each round; one that doesn't say what
+    it takes is taken as taking none, so resident is judged rather than never.
+    """
     rounds: list[list[int]] = []
     residents: list[list[int]] = []
+    taken: list[bool] = []
     seen = len(live_after_closings(shell))
     for _ in range(3):
         # Said in the shell's own log as each closing's collection is waited for, so never behind.
         before = len(resident_after_closings(shell))
+        took = lent_pages_taken()
         for place in PLACES:
             opened_and_closed(shell, place)
         for text in TYPED:
@@ -178,5 +206,6 @@ def rounds_kept(shell: Shell) -> tuple[list[list[int]], list[list[int]]]:
             live = live_after_closings(shell)
         rounds.append(live[seen:])
         residents.append(resident_after_closings(shell)[before:])
+        taken.append(took >= 0 and lent_pages_taken() != took)
         seen = len(live)
-    return rounds, residents
+    return rounds, residents, taken

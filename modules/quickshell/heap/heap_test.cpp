@@ -461,8 +461,9 @@ ReadBack readBack(QJSEngine &engine, const QJSValue &few) {
 
 // Whether giving a thinned heap's free pages back takes them, says so, and
 // leaves what's kept, and what's made after, as it was made; and whether
-// what's held resident falls by more than half of what was given, so a
-// count that ignored which pages are in memory fails.
+// what's held resident covered what was free before and falls by more than
+// half of what was given, so a count that ignored which pages are in memory
+// fails.
 bool givesBack() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -843,8 +844,8 @@ bool expect(const char *what, bool holds, const Weight &before, const Weight &af
 constexpr int SHAPED = 50000;
 constexpr int KEYED = 20000;
 
-// How many numbers the one huge array kept holds, so its store, about 2.4
-// MB, is a huge item of its own outside the heap's chunks.
+// How many numbers the one huge array kept holds, so its store, past 2 MB,
+// is a huge item with a segment of its own outside the heap's chunks.
 constexpr int HUGE_LENGTH = 300000;
 
 // Whether the census counts what weigh() calls live, to a rounding, the
@@ -894,22 +895,33 @@ bool namesWhatsKept() {
 
 // How many objects of a shape of their own are kept, each needing an
 // internal class from the shapes' own allocator; and how many large items
-// of LARGE_VALUES numbers, about 1.2 MB each, which the chunk allocator
-// makes, beside one of HUGE_LENGTH, with a segment of its own.
+// of LARGE_VALUES numbers, whose stores stay under 2 MB as an array's grows
+// by doubling, so the chunk allocator makes them, beside one of
+// HUGE_LENGTH, with a segment of its own. On 25 November 150000 numbers
+// grew past 2 MB, and every large item had a segment of its own.
 constexpr int OWN_SHAPES = 50000;
 constexpr int LARGE_ITEMS = 6;
-constexpr int LARGE_VALUES = 150000;
+constexpr int LARGE_VALUES = 100000;
 
 double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
 
-// Whether what's held resident covers what's live once a heap keeps items
-// in every allocator it has: objects in its chunks, their shapes' internal
-// classes in the shapes' own, and large items of both kinds. Each item
-// live was written, so its pages are in memory, and a count that left out
-// an allocator, or the end of a large item's chunk, falls short of it.
+// Whether what's held resident covers what's live, and passes what's held
+// by no more than its headers, once a heap keeps items in every allocator
+// it has: objects in its chunks, their shapes' internal classes in the
+// shapes' own, and large items of both kinds, which it checks it made.
+// Each item live was written, so its pages are in memory, and a count that
+// left out an allocator falls short of it; one that read a chunk twice, or
+// a chunk past a large item's own, passes what's held. What's held counts
+// a chunk less its header, and a large item the chunk allocator made at its
+// size, short of its header and the page it ends in, so those are let
+// over. A read a page or less past a large item's chunk isn't caught, and
+// nor is one stopping short of its end, since the item's own bytes, which
+// live counts, come first. A machine swapping while the heap is read may
+// take written pages, so then whether it covers what's live goes unjudged.
 bool residentCoversWhatsLive() {
     QJSEngine engine;
     Heap heap(&engine);
+    const double swappedBefore = pagesCounted("pswpout");
     const QJSValue kept = engine.evaluate(
         QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) kept.push({ "
                        "['own' + i]: i }); for (let i = 0; i < %2; i++) kept.push(new "
@@ -920,16 +932,43 @@ bool residentCoversWhatsLive() {
             .arg(LARGE_VALUES)
             .arg(HUGE_LENGTH));
     const Weight weight = weighed(engine, heap);
+    const double swappedAfter = pagesCounted("pswpout");
+    const bool calm = swappedBefore < 0 || swappedAfter == swappedBefore;
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
     const double shapes = megabytesOf(manager->icAllocator.usedMem());
     const double large = megabytesOf(manager->getLargeItemsMem());
-    const bool covers = weight.resident >= weight.live;
-    if (kept.isError() || !covers)
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    int chunked = 0;
+    int segmented = 0;
+    std::size_t over = (manager->blockAllocator.chunks.size() +
+                        manager->icAllocator.chunks.size()) *
+                       QV4::Chunk::HeaderSize;
+    for (const auto &huge : manager->hugeItemAllocator.chunks) {
+        if (huge.segment != nullptr) {
+            ++segmented;
+            continue;
+        }
+        ++chunked;
+        over += QV4::Chunk::HeaderSize + page +
+                (huge.size < QV4::Chunk::ChunkSize ? QV4::Chunk::ChunkSize - huge.size : 0);
+    }
+    const bool made = shapes > 1 && chunked >= LARGE_ITEMS && segmented >= 1;
+    const bool covers = !calm || weight.resident >= weight.live;
+    const bool bounded = weight.resident <= weight.held + megabytesOf(over);
+    if (!calm)
+        std::fprintf(stderr,
+                     "note: the machine swapped %.0f pages out while the heap was read, so "
+                     "whether what's resident covers the %.1f MB live goes unjudged\n",
+                     swappedAfter - swappedBefore, weight.live);
+    if (kept.isError() || !made || !covers || !bounded)
         std::fprintf(stderr,
                      "FAIL what's held resident covers the %.1f MB live, %.1f MB of it shapes "
-                     "and %.1f MB large items: %.1f MB resident of %.1f MB held\n",
-                     weight.live, shapes, large, weight.resident, weight.held);
-    return !kept.isError() && covers;
+                     "and %.1f MB large items, %d made by the chunk allocator and %d with a "
+                     "segment, and passes the %.1f MB held by at most %.2f MB: %.1f MB "
+                     "resident\n",
+                     weight.live, shapes, large, chunked, segmented, weight.held,
+                     megabytesOf(over), weight.resident);
+    return !kept.isError() && made && covers && bounded;
 }
 
 // How many closures the place test keeps, each from a call of its own.
