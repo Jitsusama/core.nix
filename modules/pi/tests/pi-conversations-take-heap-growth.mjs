@@ -1,7 +1,8 @@
 // Shows that node, started with the word a realm's conversation is given
-// for its heap growth, sets every heap limit V8 traces at the factor that
-// word means, and that the same program without the word sets another,
-// so the factor is the word's doing and not V8's own choice.
+// for its heap growth, grows every heap limit V8 traces by the factor that
+// word means, and that the same program without the word grows by another,
+// so the factor is the word's doing and not V8's own choice. It reads the
+// factor, not the limit, which V8 also floors and caps.
 import { spawnSync } from "node:child_process";
 
 const [, , node, word, factor] = process.argv;
@@ -27,7 +28,9 @@ gc();
 process.stdout.write(String(kept.length + churned > 0));
 `;
 
-// The factor of each limit V8 traced, as it prints it.
+// The factor each heap limit V8 traced was grown by. Node 22's V8 prints it
+// on the limit's line, after its own choice on the line before; node 24's
+// prints it only on the line before, already the word's.
 function factorsOf(flags) {
   const run = spawnSync(node, [...flags, HEAP, "--trace-gc-verbose", "--expose-gc", "-e", program], {
     encoding: "utf8",
@@ -39,9 +42,21 @@ function factorsOf(flags) {
   if (run.status !== 0) {
     throw new Error(`node ${node} ${flags.join(" ")} exited ${run.status ?? run.signal}: ${run.stderr}`);
   }
-  return [...run.stdout.matchAll(/Limit: old size: \d+ KB, new limit: \d+ KB \(([\d.]+)\)/g)].map(
-    (found) => found[1],
-  );
+  const factors = [];
+  let chosen;
+  for (const line of run.stdout.split("\n")) {
+    const choice = /\[HeapController\] factor ([\d.]+) based on/.exec(line);
+    if (choice !== null) {
+      chosen = choice[1];
+    }
+    const limit = /\[HeapController\] Limit: old size: \d+ KB, new limit: \d+ KB(?: \(([\d.]+)\))?$/.exec(
+      line,
+    );
+    if (limit !== null) {
+      factors.push(limit[1] ?? chosen);
+    }
+  }
+  return factors;
 }
 
 const given = factorsOf([word]);

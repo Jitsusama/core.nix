@@ -258,18 +258,23 @@ in
         && lib.hasSuffix "/scripts/pi-host.ts --child" start;
       grows =
         unit: services ? ${unit} && !(lib.hasInfix "--heap-growing-percent" (startOf services unit));
-      # Whether a realm naming this percent evaluates its conversation's
-      # command, which is taken when it holds the percent's word.
-      taken =
+      # How a realm naming this percent evaluates its conversation's command.
+      tried =
         percent:
         let
           start = startOf (growingServicesOf { one = percent; }) "pi-conversation-one-attended@";
-          tried = builtins.tryEval (builtins.deepSeq start start);
         in
-        tried.success && lib.hasInfix " '--heap-growing-percent=${toString percent}' /" tried.value;
+        builtins.tryEval (builtins.deepSeq start start);
+      # Taken when the command evaluates and holds the percent's word.
+      taken =
+        percent:
+        (tried percent).success
+        && lib.hasInfix " '--heap-growing-percent=${toString percent}' /" (tried percent).value;
+      # Refused when the command doesn't evaluate at all.
+      refused = percent: !(tried percent).success;
     in
     holds "pi-conversations-set-heap-growth"
-      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, or it reaches its hosts or a realm that names none, or 1 or 100 percent is refused, or 0 or 101 is taken."
+      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, or it reaches its hosts or a realm that names none, or 1 or 100 percent isn't taken, or 0 or 101 isn't refused."
       (
         lib.all
           (
@@ -285,13 +290,14 @@ in
           ]
         && taken 1
         && taken 100
-        && !(taken 0)
-        && !(taken 101)
+        && refused 0
+        && refused 101
       );
 
   # The word a realm's conversation is given for a growth of 30 percent, run
-  # on node 22 as pi is built with: V8 sets each heap limit at 1.3 times
-  # what is live, in place of a factor of its own.
+  # on node 22, which pi is built with, and on this tree's own node, which
+  # stands in for the next pi may be built with: V8 grows each heap limit by
+  # a factor of 1.3, in place of one of its own.
   pi-conversations-take-heap-growth =
     let
       start = startOf (growingServicesOf { one = 30; }) "pi-conversation-one-attended@";
@@ -302,7 +308,9 @@ in
       word = if words == null then "" else lib.head words;
     in
     pkgs.runCommandLocal "pi-conversations-take-heap-growth" { } ''
-      ${lib.getExe pkgs.nodejs_22} ${./tests/pi-conversations-take-heap-growth.mjs} ${lib.getExe pkgs.nodejs_22} ${lib.escapeShellArg word} 1.3
+      for node in ${lib.getExe pkgs.nodejs_22} ${lib.getExe pkgs.nodejs}; do
+        ${lib.getExe pkgs.nodejs_22} ${./tests/pi-conversations-take-heap-growth.mjs} "$node" ${lib.escapeShellArg word} 1.3
+      done
       touch $out
     '';
 }

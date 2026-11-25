@@ -3608,12 +3608,12 @@
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
     attended and background, as V8's --heap-growing-percent after their heap and before the
     harness's program, while its hosts and every process of a realm that names none keep V8's
-    own growth, and 1 and 100 percent are taken while 0 and 101 are refused
+    own growth, and 1 and 100 percent are taken while 0 and 101 are refused outright
   '';
   pi-conversations-take-heap-growth = ''
-    node 22, which pi is built with, started with the word a realm's conversation is given for a
-    growth of 30 percent, sets every heap limit it traces at 1.3 times what is live, while the
-    same program without it sets another factor of its own
+    node 22, which pi is built with, and the tree's own node, each started with the word a realm's
+    conversation is given for a growth of 30 percent, grow every heap limit they trace by a
+    factor of 1.3, while the same program without it grows by a factor of V8's own
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the

@@ -533,8 +533,11 @@ in
               How far each conversation's own process lets its heap grow past
               what it held live after a full collection before it collects in
               full again, in percent, as node's --heap-growing-percent: V8 then
-              sets each limit at one plus the percent over a hundred times what
-              is live, in place of the factor it would pick. Unset, with a heap
+              grows each limit by one plus the percent over a hundred, in place
+              of the factor it would pick. It still grows a limit by at least a
+              few megabytes past what is live, adds room for the young
+              generation and stops halfway to the heap limit, so a small heap
+              grows by more than the percent. Unset, with a heap
               limit of 2048 MB or more, as conversationHeapMb's default is, V8
               lets the heap reach up to four times what is live while
               collections keep up, and carries that growth as resident memory
