@@ -347,6 +347,31 @@ impl Mesh {
     /// named on either side of midnight here.
     #[must_use]
     pub fn sent_since(&self, from_ms: i64) -> Vec<Message> {
+        self.files_since(from_ms)
+            .iter()
+            .filter_map(|p| read_json::<Message>(p))
+            .collect()
+    }
+
+    /// Who sent each message sent at `from_ms` or later whose short id,
+    /// the last part of its id, is among `ids`, by that short id. A file's
+    /// name is its message's id, so only those messages are opened.
+    #[must_use]
+    pub fn senders(&self, from_ms: i64, ids: &BTreeSet<String>) -> BTreeMap<String, String> {
+        self.files_since(from_ms)
+            .iter()
+            .filter_map(|p| {
+                let id = p.file_stem()?.to_str()?.rsplit('-').next()?;
+                ids.contains(id).then_some(p)
+            })
+            .filter_map(|p| read_json::<Message>(p))
+            .filter_map(|m| Some((m.id.rsplit('-').next()?.to_owned(), m.from)))
+            .collect()
+    }
+
+    /// Every message's file whose id is stamped at `from_ms` or later, as
+    /// [`Mesh::sent_since`] reads them.
+    fn files_since(&self, from_ms: i64) -> Vec<PathBuf> {
         let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
             .map(|at| at.strftime("%Y-%m-%d").to_string())
             .unwrap_or_default();
@@ -358,7 +383,6 @@ impl Mesh {
                     .and_then(|n| stamped_at(&n.to_string_lossy()))
                     .is_some_and(|at| at >= from_ms)
             })
-            .filter_map(|p| read_json::<Message>(&p))
             .collect()
     }
 
