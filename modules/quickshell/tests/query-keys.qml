@@ -1322,16 +1322,16 @@ QtObject {
             ["never past them", "here   ", []],
             ["nor from them into the next paragraph", "here  next", []],
             ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
-            ["across a wrap into the spaces its last line ends with", "s here ",
-                [[0, 3], [3, 4]]]
+            ["across a wrap into the spaces its last line ends with", "ps here ", [[3, 3]]]
         ];
         for (const [what, pattern, want] of endedOn)
             holds(`the drawer's search reads ${what}`,
                 Page.matchesIn(ended, pattern).map(match => [match.line, match.letter]), want);
         // Two spaces a line ends with land on one letter, so the foot
-        // counts them once, as the cursor can stand there only once.
+        // counts them once, as the cursor can stand there only once: from a
+        // cursor past them, a second count would show in both numbers.
         holds("the drawer's foot counts a line's trailing matches once",
-            Page.found(ended, " ", 0, 8), { at: 2, of: 6 });
+            Page.found(ended, " ", 1, 3), { at: 3, of: 6 });
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
