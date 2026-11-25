@@ -5,11 +5,13 @@
 # from its third, a busy mDNSResponder only from its fifth, by its path or
 # its name, and a check well again once; a server answering only a CNAME,
 # only an IPv6 address, nothing or failing gave no IPv4 address; a probe
-# out of time or unable to run says so; a state file with a blank line, a
-# count that isn't a number or a zero before other digits is read past; and
-# a round ending early says so. dscacheutil, dig, ps and logger are
-# stand-ins answering as the test sets, and the slow mark is set to 0 ms
-# rather than a lookup made to wait, so no round sleeps.
+# out of time, unable to run, ending on an error of its own or ending
+# otherwise says so, dig's no reply by name; a state file with a blank
+# line, a count that isn't a number or a zero before other digits is read
+# past; and a round ending early, before any name or at its save, says so.
+# dscacheutil, dig, ps and logger are stand-ins answering as the test sets,
+# and the slow mark is set to 0 ms rather than a lookup made to wait, so no
+# round sleeps.
 # usage: lookups-say-a-name-that-fails-or-takes-long.sh <lookups.sh>
 set -euo pipefail
 
@@ -23,16 +25,22 @@ mkdir -p "${stand}" "${work}/answers"
 
 # Each stand-in answers from the answers folder: a name's file holds "fails"
 # for a name it can't find, "late" or "missing" for timeout's exit when
-# the lookup ran out of time or couldn't run, or for a server "cname" for
-# an alias whose name has no address, "aaaa" for one with only an IPv6
-# address and "nothing" for no answer; mDNSResponder's holds its share of
-# a core. dig fails as the real one does, saying why on stdout.
+# the lookup ran out of time or couldn't run, "ends" for an address printed
+# beside an exit of 1, or for a server "cname" for an alias whose name has
+# no address, "aaaa" for one with only an IPv6 address, "nothing" for no
+# answer and "broken" for dig's own error; mDNSResponder's holds its share
+# of a core. dig fails as the real one does, saying why on stdout. timeout
+# is the system's own, so its -k is taken as it is.
 cat >"${stand}/dscacheutil" <<EOF
 #!${BASH}
 case "\$(cat "${work}/answers/\$5" 2>/dev/null)" in
   fails) exit 0 ;;
   late) exit 124 ;;
   missing) exit 127 ;;
+  ends)
+    printf 'name: %s\nip_address: 192.0.2.1\n\n' "\$5"
+    exit 1
+    ;;
   *) ;;
 esac
 printf 'name: %s\nip_address: 192.0.2.1\n\n' "\$5"
@@ -44,6 +52,10 @@ case "\$(cat "${work}/answers/\${server}-\$6" 2>/dev/null)" in
   fails)
     printf ';; communications error to %s#53: timed out\n' "\${server}"
     exit 9
+    ;;
+  broken)
+    printf ';; error: something of its own\n'
+    exit 10
     ;;
   cname) printf '%s.\t60\tIN\tCNAME\tgone.invalid.\n' "\$6" ;;
   aaaa) printf '%s.\t60\tIN\tAAAA\t2001:db8::1\n' "\$6" ;;
@@ -121,7 +133,8 @@ quiet "a lookup well for two rounds said something"
 # A lookup out of time says so, and one that couldn't run says it wasn't
 # a lookup, rather than reading as the name failing.
 for answer in late:"no answer within 20 s" \
-  missing:"timeout or dscacheutil couldn't run (exit 127), so this wasn't a lookup"; do
+  missing:"timeout or dscacheutil couldn't run (exit 127), so this wasn't a lookup" \
+  ends:"dscacheutil ended 1"; do
   echo "${answer%%:*}" >"${work}/answers/example.net"
   round 5000
   round 5000
@@ -130,12 +143,16 @@ for answer in late:"no answer within 20 s" \
   round 5000
 done
 
-for answer in fails cname aaaa nothing; do
+for answer in fails:", no reply from the server)" \
+  broken:", dig failed on its own (exit 10), so this wasn't a lookup)" \
+  cname:" ms)" aaaa:" ms)" nothing:" ms)"; do
+  words=${answer#*:}
+  answer=${answer%%:*}
   echo "${answer}" >"${work}/answers/192.0.2.53-example.net"
   round 5000
   round 5000
   says "a server answering with ${answer}" "-p user.err" \
-    "192.0.2.53 gave no IPv4 address for example.net"
+    "192.0.2.53 gave no IPv4 address for example.net" "${words}"
   rm "${work}/answers/192.0.2.53-example.net"
   round 5000
   says "a server answering again after ${answer}" "-p user.notice" \
@@ -229,16 +246,25 @@ done
 says "mDNSResponder busy five rounds running, named alone" "-p user.err" \
   "mDNSResponder uses 80% of a core, past 50% 5 rounds running"
 
-# A round that ends early, here on a state it can't read, says so, since
-# quiet would read as well.
+# A round that ends early says so, since quiet would read as well: here
+# at its save, on a state whose counts are a folder it can't write over,
+# and before any name, on a state folder it can't make below a file.
 rm -f "${state}/running"
 mkdir "${state}/running"
-: >"${said}"
-ended=0
-bash "${lookups}" "${state}" 5000 example.org,example.net 192.0.2.53 2>/dev/null || ended=$?
-if [[ ${ended} -ne 1 ]]; then
-  echo "a round on a state it can't read ended ${ended}, not 1" >&2
+: >"${state}/running/blocked"
+for at in "${state}" "${state}/running/blocked/below"; do
+  : >"${said}"
+  ended=0
+  bash "${lookups}" "${at}" 5000 example.org,example.net 192.0.2.53 2>/dev/null || ended=$?
+  if [[ ${ended} -ne 1 ]]; then
+    echo "a round on ${at}, which it can't keep, ended ${ended}, not 1" >&2
+    exit 1
+  fi
+  says "a round ending early on ${at}" "-p user.err" \
+    "name-lookups: a round ended early (exit 1)" "before it had said and kept all it found"
+done
+# The second round ended at its state folder, before any name was asked.
+if grep -q 'example' "${said}"; then
+  echo "a round that couldn't make its state folder looked a name up: $(<"${said}")" >&2
   exit 1
 fi
-says "a round ending early" "-p user.err" "name-lookups: a round ended early (exit 1)" \
-  "its names went unchecked"

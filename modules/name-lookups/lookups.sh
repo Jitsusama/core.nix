@@ -15,11 +15,18 @@
 set -euo pipefail
 
 # A round that ends early says so as an error too, since quiet means well
-# and bash's own words go only to the log file, which health never reads.
-trap 'ended=$?; if [[ ${ended} -ne 0 ]]; then
-  logger -p user.err -t name-lookups "name-lookups: a round ended early (exit ${ended})," \
-    "so its names went unchecked; ~/Library/Logs/name-lookups.log says why" || true
-fi' EXIT
+# and bash's own words go only to the job's log, which health never reads.
+# It may end before any name is looked up or after every one, at the save,
+# so it says neither. A round launchd stops, as at a switch or a logout,
+# isn't said: bash runs this with the status it had before the signal.
+ended() {
+  local ended=$1
+  if [[ ${ended} -ne 0 ]]; then
+    logger -p user.err -t name-lookups "name-lookups: a round ended early (exit ${ended})," \
+      "before it had said and kept all it found; the job's log says why" || true
+  fi
+}
+trap 'ended "$?"' EXIT
 
 state=$1
 slow=$2
@@ -27,8 +34,11 @@ IFS=, read -r -a names <<<"$3"
 IFS=, read -r -a servers <<<"${4-}"
 
 # How long one lookup may take before it counts as failed, in seconds: under
-# the minute between rounds, and past the 17 s the worst storm took.
+# the minute between rounds, and past the 17 s the worst storm took. A probe
+# that outlives timeout's TERM is killed this many seconds on, so a round
+# can't hang on one.
 within=20
+killed=5
 # mDNSResponder's share of a core past which it's busy, in percent, and the
 # rounds running it may be.
 busy=50
@@ -115,14 +125,20 @@ since() {
   echo $(((ended - started) / 1000))
 }
 
-# What a probe's exit says when it gave no address, as `why`: timeout's
-# 124 is no answer in time, and 125 to 127 a program that couldn't run,
-# which is no lookup at all, so it's never said as the name failing.
+# What a probe's exit, $1, says of probe $2 when it gave no address, as
+# `why`: timeout's 124 is no answer in time, and 125 to 127 a program that
+# couldn't run, which is no lookup at all, so it's never said as the name
+# failing. dig ends 9 when the server never replied, within its own five
+# seconds, and 10 on an error of its own. Any other end but 0 is said as it
+# is, an address printed beside it included.
 why() {
-  case $1 in
-    124) why="no answer within ${within} s" ;;
-    125 | 126 | 127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;
-    *) why="" ;;
+  case $2:$1 in
+    *:0) why="" ;;
+    *:124) why="no answer within ${within} s" ;;
+    *:125 | *:126 | *:127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;
+    dig:9) why="no reply from the server" ;;
+    dig:10) why="dig failed on its own (exit 10), so this wasn't a lookup" ;;
+    *) why="$2 ended $1" ;;
   esac
 }
 
@@ -140,7 +156,8 @@ for name in ${names[@]+"${names[@]}"}; do
   # dscacheutil asks the system's resolver, as getaddrinfo does, and prints
   # an address line for each address, or nothing for a name it can't find.
   ran=0
-  answer=$(timeout "${within}" dscacheutil -q host -a name "${name}" 2>/dev/null) || ran=$?
+  answer=$(timeout -k "${killed}" "${within}" dscacheutil -q host -a name "${name}" \
+    2>/dev/null) || ran=$?
   took=$(since "${started}")
   check="system:${name}"
   if [[ ${ran} -eq 0 ]] && grep -qE '^ipv?6?_address:' <<<"${answer}"; then
@@ -154,8 +171,8 @@ for name in ${names[@]+"${names[@]}"}; do
   for server in ${servers[@]+"${servers[@]}"}; do
     started=${EPOCHREALTIME}
     ran=0
-    answer=$(timeout "${within}" dig +tries=1 +time=5 +noall +answer "@${server}" "${name}" A \
-      2>/dev/null) || ran=$?
+    answer=$(timeout -k "${killed}" "${within}" dig +tries=1 +time=5 +noall +answer \
+      "@${server}" "${name}" A 2>/dev/null) || ran=$?
     took=$(since "${started}")
     check="${server}:${name}"
     # An IPv4 address record, not only a CNAME pointing at a name that has
