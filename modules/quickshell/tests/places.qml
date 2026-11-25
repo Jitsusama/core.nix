@@ -876,6 +876,15 @@ QtObject {
         Reopening.foundGone(still, { id: "fresh", afreshFor: "y" });
         expect("begun and still looked for, or queued afresh, it counts once found gone",
             heard.slice(-2), ["1 gone, 2 reopened", "2 gone, 1 reopened"]);
+        // Joining a tally still counting, so too: the harness hands one over,
+        // the walk begins it and looks for its folder while the tally's own
+        // waits its turn, and a press then gives it.
+        const counting = Reopening.tallyOf(null, ["b"], hear);
+        const handedOver = Reopening.tallyOf(walkOf(counting, [asked("b")], asked("y"), ["y"]),
+            ["y"], hear);
+        Reopening.foundGone(counting, { id: "y" });
+        expect("joined while it counts, one begun and still looked for counts once found gone",
+            [handedOver === counting, heard[heard.length - 1]], [true, "1 gone, 1 reopened"]);
         // A walk the harness began counts nothing, and a list given during
         // it counts the sessions both hold, whichever list queued them.
         const harness = walkOf(null, [asked("h"), asked("a")], null);

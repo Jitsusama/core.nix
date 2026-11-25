@@ -754,9 +754,8 @@ ShellRoot {
     property var unopened: []
     // What Reopen Them All's walk said it found, reading by reading.
     property var tallied: []
-    // Whether s-counted, its folder gone, was found so, and s-uncounted,
-    // whose walk counts nothing.
-    property bool countedGone: false
+    // Whether s-uncounted, its folder gone, was found so, though its walk
+    // counts nothing; s-counted found so is the walk's first reading.
     property bool uncountedGone: false
     function tally(now) {
         tallied = tallied.concat([`${now.gone} gone, ${now.reopened} reopened`]);
@@ -831,11 +830,13 @@ ShellRoot {
         // it would, Sessions joins each list to the one walk after, and
         // they count as one. s-counted, its folder gone, is found so as
         // s-unkept is begun, before s-patient, whose window niri never
-        // opens; s-patient follows by the walk's pace.
-        Sessions.reopenAll([{ id: "s-counted", cwd: "/gone/s-counted" }], () => {
-            root.countedGone = true;
-            Qt.callLater(root.check);
-        }, id => null, undefined, root.tally);
+        // opens; s-patient follows by the walk's pace. s-counted is given
+        // as Agents' row gives its list, through reopenThemAll, which
+        // hands its own words to reopenAll in another order; s-patient
+        // isn't, since it would open told to carry on, and its spawn is
+        // known by ending at its id.
+        Sessions.reopenThemAll([{ id: "s-counted", cwd: "/gone/s-counted" }], root.tally,
+            id => null);
         Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null,
             undefined, root.tally);
         patience.start();
@@ -882,7 +883,7 @@ ShellRoot {
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
             || !("UNSAID" in root.asleep) && !Niri.spawns.some(one => one.includes("s-unsaid"))
-            || !Niri.spawns.some(one => one.includes("s-unkept")) || !countedGone
+            || !Niri.spawns.some(one => one.includes("s-unkept")) || tallied.length === 0
             || !uncountedGone)
             return;
         // Chosen as each list was given, before niri said its screens,

@@ -5004,11 +5004,12 @@
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
-    ahead of the step back, after a frame, and one told while already there, making no row on the
-    step back, though none as an opening fills in at home or in another place, under a viewer's
-    command line, or shut with a step held, and sees one made since, remaking only the quests a change
-    names and none a list written again leaves the same, and breaking each title into the pieces
-    A to Z reads once, again only when it changes
+    ahead of the step back, after a frame, and one told while already there once its sources have
+    woken, a turn's worth a frame, making no row on the step back, though none as an opening fills
+    in at home, holds another place's step or wakes its sources, under a viewer's command line,
+    shut with a step held, or as a close runs a batch waiting on its frame, and sees one made
+    since, remaking only the quests a change names and none a list written again leaves the
+    same, and breaking each title into the pieces A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
