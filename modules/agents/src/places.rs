@@ -23,7 +23,7 @@ pub const ASK: &str = "places";
 pub const REFUSED: &str = "only the launcher lists places here";
 
 /// The most places passed on, as the launcher lists no more
-/// (Wheres.js's MOST_PLACES), so a node naming more sends no more.
+/// (Wheres.js's `MOST_PLACES`), so a node naming more sends no more.
 const MOST_PLACES: usize = 2000;
 
 /// How long the node may take to list them: it reads its folders from
