@@ -35,9 +35,12 @@
 //! own CAKE holds its class hard: after four megabits a second straight it
 //! falls to his least in about eight seconds, leaving about a second of a
 //! ten-megabit line unused, and more after more. That's at a steady rate.
-//! The controller climbs only while the line carries three quarters of
-//! its rate (src/oneway.rs's `FULL`), so it doesn't while more than a
-//! quarter is held unused; held as a share, the hold falls in kbit/s by
+//! The controller's climb from a cut (src/oneway.rs's `CLIMB` and
+//! `FAST_CLIMB`) runs only while the line carries three quarters of its
+//! rate (`FULL`), so it doesn't while more than a quarter is held unused,
+//! though a probe, a climb back to where it last held, a drift toward a
+//! line it learned, and letting go when it has learned none don't wait
+//! on `FULL`. Held as a share, the hold falls in kbit/s by
 //! about a sixth a second while it climbs, and not at all while it climbs
 //! fast (`FAST_CLIMB`), so the line goes unused that much longer. Moving
 //! his upload into the VPN then finds it kept only what he carried there
@@ -1203,12 +1206,15 @@ mod tests {
         let agents = (Agents::default(), waiting(30));
         let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
         let dipped = lanes.split(&seen((200.0, 0.0), agents), 1.0).joel;
-        // Between three tenths of the rate and 0.34, what's spare binds and
-        // the VPN's agents get their quarter exactly, so the hold comes back
-        // a smaller share than it was, and stored it would bring less back
-        // at the whole rate. Under three tenths Joel's least takes part of
-        // their quarter; past 0.34 nothing binds and storing changes
-        // nothing. 0.32 sits 200 kbit/s from either edge.
+        // Between three tenths of the rate and about 0.35, what's spare
+        // binds and the VPN's agents get their quarter exactly, so the hold
+        // comes back a smaller share than it was, and stored it would bring
+        // less back at the whole rate. Under three tenths they keep their
+        // quarter still, and both of Joel's lanes shrink to fit what's
+        // left. Past about 0.35, where his hold and his least inside the VPN
+        // fill three quarters of the rate, nothing binds and storing changes
+        // nothing. 0.32 sits 200 kbit/s above the lower edge and about 300
+        // under the upper.
         let cut_rate = RATE * 0.32;
         let cut = lanes.at(cut_rate);
         assert!(
@@ -1217,7 +1223,7 @@ mod tests {
              {cut:?}"
         );
         assert!(
-            cut.joel < dipped * 0.32 - 1.0,
+            cut.joel < dipped * cut_rate / RATE - 1.0,
             "at {cut_rate} kbit/s what's spare didn't bind Joel's lane, at {}, so storing it \
              would change nothing",
             cut.joel
@@ -1291,11 +1297,15 @@ mod tests {
             held.vpn - need(4_000.0),
             RATE * AGENTS_FLOOR
         );
+        // Free, the VPN's agents get what's left past Joel's two needs,
+        // more than the quarter they were held to the second before.
         let free = moved_after(20);
+        let left = RATE - need(0.0) - need(4_000.0) - free.agents;
         assert!(
-            near(free.vpn, RATE - need(0.0) - free.agents),
-            "twenty seconds after a drop inside the VPN Joel's move was still held back: \
-             {free:?}"
+            left > RATE * AGENTS_FLOOR + 1.0 && near(free.vpn - need(4_000.0), left),
+            "twenty seconds after a drop inside the VPN Joel's move left its agents {}, \
+             not the {left} past his needs: {free:?}",
+            free.vpn - need(4_000.0)
         );
     }
 
