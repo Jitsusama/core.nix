@@ -55,15 +55,14 @@ for program in kitten systemd-run qs; do
       "$program" "$work" >> "$stand_ins/$program"
   fi
   if [ "$program" = kitten ]; then
-    printf '[ ! -f "%s/kitten-warns" ] || echo "kitten: a warning" >&2\n' "$work" \
-      >> "$stand_ins/$program"
-    printf '[ ! -f "%s/kitten-times-out" ] || { echo . >> "%s/waits"; %s; exit 1; }\n' \
-      "$work" "$work" "echo '$timed_out' >&2" >> "$stand_ins/$program"
-    printf '[ ! -f "%s/kitten-repeats" ] || %s\n' "$work" \
-      "echo 'kitten: kitty said: $timed_out' >&2" >> "$stand_ins/$program"
-  fi
-  if [ "$program" = kitten ]; then
-    printf '[ -f "%s/kitten-fails" ] || { echo 42; exit; }\n' "$work" >> "$stand_ins/$program"
+    {
+      printf '[ ! -f "%s/kitten-warns" ] || echo "kitten: a warning" >&2\n' "$work"
+      printf '[ ! -f "%s/kitten-times-out" ] || { echo . >> "%s/waits"; %s; exit 1; }\n' \
+        "$work" "$work" "echo '$timed_out' >&2"
+      printf '[ ! -f "%s/kitten-repeats" ] || %s\n' "$work" \
+        "echo 'kitten: kitty said: $timed_out' >&2"
+      printf '[ -f "%s/kitten-fails" ] || { echo 42; exit; }\n' "$work"
+    } >> "$stand_ins/$program"
   else
     printf '[ ! -f "%s/%s-fails" ] && exit\n' "$work" "$program" >> "$stand_ins/$program"
   fi
