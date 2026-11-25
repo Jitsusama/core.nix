@@ -109,13 +109,12 @@ let
   written = namedMac.environment.launchDaemons.${label} or { };
   fromText = namedSystem.pkgs.writeText label written.text or "";
   # Each way the plist could differ from the job held below is told apart,
-  # so a failure says which: turned off, which launchd never loads (nix-
-  # darwin's modules/system/launchd.nix links only plists enabled); text
-  # other than what the job's options lower to, as text forced beside
-  # them; or a source other than that text. The lowering is nix-darwin's
-  # own, from modules/launchd/default.nix's toEnvironmentText, so a bump
-  # that renders differently fails here as other text, and that line says
-  # what it now is.
+  # so a failure says which: turned off, which launchd never loads, since
+  # nix-darwin links only plists enabled; text other than what the job's
+  # options lower to, as text forced beside them; or a source other than
+  # that text. The lowering is nix-darwin's own, its launchd module's
+  # toEnvironmentText, so a bump that renders differently fails here as
+  # other text, and that function says what it now is.
   itsEnabled = written.enable or false;
   itsText = (written.text or null) == lib.generators.toPlist { escape = true; } job;
   itsSource = "${written.source or ""}" == "${fromText}";
