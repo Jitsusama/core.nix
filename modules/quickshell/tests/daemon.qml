@@ -103,6 +103,8 @@ ShellRoot {
         kind: "person"
     }
     property bool letGo: false
+    // What its ask in flight was given as it went: undefined until then.
+    property var letGoGiven: undefined
 
     // Letting what it held go while the daemon isn't answering.
     Daemon {
@@ -382,6 +384,8 @@ ShellRoot {
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
             + `, answered ${JSON.stringify(root.answered)}`
+            + `, letting go ${lettingGo.state} ${root.letGo} ${root.letGoGiven}`
+            + ` awaiting ${Object.keys(lettingGo.awaited).length}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
@@ -501,16 +505,21 @@ ShellRoot {
             // log. It comes before the daemon stops, while the link holds
             // the connection it made in the first steps: after the restart,
             // when it connects again rests on its watch of a symlinked
-            // socket or on its tries, which no step waits on.
+            // socket or on its tries, which no step waits on. It asks for
+            // Grace, whom the step before held as a step-in, since a get is
+            // a step-in told to the daemon at once, and one for Ada would
+            // turn the way she's held, which the next step reads.
             what: "a connection the shell lets go with an ask in flight goes, its ask given none",
             holds: () => {
                 if (!root.letGo && lettingGo.wire !== null) {
-                    lettingGo.get([root.ada], 5000, () => {});
+                    lettingGo.get([root.grace], 5000, answer => {
+                        root.letGoGiven = answer;
+                    });
                     lettingGo.connects = false;
                     root.letGo = true;
                 }
                 return root.letGo && lettingGo.wire === null
-                    && Object.keys(lettingGo.awaited).length === 0;
+                    && Object.keys(lettingGo.awaited).length === 0 && root.letGoGiven === null;
             }
         },
         {
