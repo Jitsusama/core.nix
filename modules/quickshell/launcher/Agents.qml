@@ -48,6 +48,7 @@ import "CarryBack.js" as CarryBack
 import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
+import "Openings.js" as Openings
 import "Order.js" as Order
 import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
@@ -1826,8 +1827,10 @@ Provider {
         const act = newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"));
         // Fresh words, so how the last start ended is no longer theirs to show,
         // unless one is still starting.
-        if (sprouting !== act.key)
+        if (sprouting !== act.key) {
+            sproutPressed = Object.assign({}, sproutPressed, { [act.key]: Date.now() });
             sproutSays(act.key, "");
+        }
         return {
             act: act,
             words: offer.words,
@@ -2173,8 +2176,10 @@ Provider {
         if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
         openings = stood.waiting;
-        stood.late.forEach(one => Report.say(`new work on ${one.machine} is still coming up`));
-        stood.gone.forEach(one => Report.say(`new work on ${one.machine} wasn't up in time`));
+        stood.late.forEach(one => Report.say(
+            `new work held ${one.held} on ${one.machine} is still coming up`));
+        stood.gone.forEach(one => Report.say(
+            `new work held ${one.held} on ${one.machine} wasn't up in time`));
         const told = stood.late.map(one => said(one, "unopened"))
             .concat(stood.gone.map(one => said(one, "lost")));
         stood.up.forEach(one => {
@@ -2189,16 +2194,13 @@ Provider {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
     }
     // Says `word` of `one` on its act, unless the act was pressed again
-    // since, and gives the words for the foot, its session named where it's
-    // up (footName). Each is filled by a function, so a title's `$&` is
-    // only text.
+    // since (Openings.saysOnAct), and gives the words for the foot, its
+    // session named where it's up (footName).
     function said(one, word) {
-        const fills = { machine: one.machine,
+        const text = Openings.filled(sproutWords(), word, { machine: one.machine,
             title: one.session ? footName(one.session) : "",
-            minutes: String(openingPatience.watch / 60000) };
-        const text = String(sproutWords()[word] ?? "")
-            .replace(/\{(machine|title|minutes)\}/gu, (_, name) => String(fills[name] ?? ""));
-        if ((sproutPressed[one.key] ?? 0) <= one.since)
+            minutes: String(openingPatience.watch / 60000) });
+        if (Openings.saysOnAct(sproutPressed, one.key, one.since))
             sproutSays(one.key, text);
         return text;
     }
@@ -2212,9 +2214,11 @@ Provider {
             return said(one, one.late === true ? "upLater" : "up");
         }
         said(one, "opening");
-        // Its window answers what the foot said of it, so shutting the
-        // launcher for it notices none of that (sproutShut).
-        sproutFooted = null;
+        // Its window answers the foot's "still coming up" of it, so shutting
+        // the launcher for it notices only what the foot told of others
+        // (sproutShut).
+        sproutFooted = Openings.footedWithout(sproutFooted,
+            Openings.filled(sproutWords(), "unopened", { machine: one.machine }));
         launcher.open = false;
         Sessions.goTo(one.session);
         Report.say(`opening new work's session ${one.session.address}`);

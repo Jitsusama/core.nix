@@ -5,6 +5,7 @@
 // words, as words.json, beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
+import "launcher/Openings.js" as Openings
 import "launcher/Sprouting.js" as Sprouting
 
 QtObject {
@@ -220,6 +221,8 @@ QtObject {
         Expect.same("each up opens, with its session, the slow one after its minute too",
             stood.up.map(one => [one.key, one.session.address]),
             [["slow", "h1"], ["quick", "h2"], ["unmarked", "h7"], ["watched", "h8"]]);
+        Expect.same("each up keeps its late mark, which picks the words said of it",
+            stood.up.map(one => one.late === true), [true, false, false, true]);
         Expect.same("one past the minute is late", stood.late.map(one => one.key), ["late"]);
         Expect.same("one watched a quarter hour is gone", stood.gone.map(one => one.key),
             ["gone"]);
@@ -397,9 +400,30 @@ QtObject {
             opened.filter(key => String(written[key] ?? "").trim() === ""), []);
         Expect.same("each said once it's up names its session",
             ["up", "upLater"].filter(key => !String(written[key]).includes("{title}")), []);
-        Expect.same("none fills more than machine, title and minutes", opened.filter(key =>
-            String(written[key]).replace(/\{(machine|title|minutes)\}/gu, "").includes("{")),
-            []);
+        const full = { machine: "kestrel", title: "Olga's access", minutes: "15" };
+        Expect.same("each is filled whole", opened.filter(key =>
+            Openings.filled(written, key, full).includes("{")), []);
+
+        // How an opening's words are filled and where they're said.
+        Expect.same("a title is only text, its $ patterns kept", Openings.filled(
+            { up: "{title} is up on {machine}" }, "up", { machine: "k", title: "a $& b $$" }),
+            "a $& b $$ is up on k");
+        Expect.same("a name not given is filled with nothing",
+            Openings.filled({ lost: "{minutes} min" }, "lost", {}), " min");
+        Expect.same("an act unpressed since says", Openings.saysOnAct({ a: 100 }, "a", 200),
+            true);
+        Expect.same("an act never pressed says", Openings.saysOnAct({}, "a", 200), true);
+        Expect.same("an act pressed since, or given fresh words, doesn't",
+            Openings.saysOnAct({ a: 300 }, "a", 200), false);
+        const tells = { told: ["late on k", "lost on m", "late on k"], keys: 3, at: 9 };
+        Expect.same("an opening takes back only its own tell, once",
+            Openings.footedWithout(tells, "late on k"),
+            { told: ["lost on m", "late on k"], keys: 3, at: 9 });
+        Expect.same("a tell it never had leaves the foot as it was",
+            Openings.footedWithout(tells, "up on q"), tells);
+        Expect.same("none is left once its own was the only tell",
+            Openings.footedWithout({ told: ["late on k"], keys: 1, at: 2 }, "late on k"), null);
+        Expect.same("no foot stays none", Openings.footedWithout(null, "late on k"), null);
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };

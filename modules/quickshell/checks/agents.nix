@@ -111,8 +111,8 @@
   # Start New Work asks the realm's node only a sprout of what Joel said, in no
   # window, in one of the repositories his quests work in, and says how it ended
   # in the node's or sprout's own words, as
-  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js to
-  # it in Qt's own engine.
+  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js and
+  # launcher/Openings.js to it in Qt's own engine.
   start-new-work-asks-only-a-sprout =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -120,7 +120,10 @@
     pkgs.runCommandLocal "start-new-work-asks-only-a-sprout" { } ''
       cp ${../tests/start-new-work.qml} start-new-work.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
-      ${copied [ "launcher/Sprouting.js" ]}
+      ${copied [
+        "launcher/Openings.js"
+        "launcher/Sprouting.js"
+      ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
