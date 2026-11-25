@@ -94,13 +94,19 @@ fn version_1(names: &[[u8; 20]]) -> Vec<u8> {
 }
 
 pub(crate) fn version_2(names: &[[u8; 20]]) -> Vec<u8> {
+    version_2_at(names, &offsets(names))
+}
+
+/// A version 2 index saying each of `names`, sorted, lies at its offset
+/// in `at`.
+pub(crate) fn version_2_at(names: &[[u8; 20]], at: &[u64]) -> Vec<u8> {
     let mut bytes = b"\xfftOc".to_vec();
     bytes.extend(be32(2));
     bytes.extend(fanout(names));
     bytes.extend(names.concat());
     bytes.extend(vec![0; 4 * names.len()]);
     let mut large: Vec<u64> = Vec::new();
-    for offset in offsets(names) {
+    for &offset in at {
         if let Ok(small) = u32::try_from(offset)
             && small & 0x8000_0000 == 0
         {

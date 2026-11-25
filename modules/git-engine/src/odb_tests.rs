@@ -47,7 +47,7 @@ fn a_multi_pack_index_refused_leaves_each_pack_found_through_its_own_index() {
 
 /// An objects folder holding `midx` and, for each of `packs`, its own
 /// index and an empty pack.
-fn objects_over(midx: Vec<u8>, packs: Vec<(&str, Vec<u8>)>) -> PathBuf {
+pub(super) fn objects_over(midx: Vec<u8>, packs: Vec<(&str, Vec<u8>)>) -> PathBuf {
     use crate::pack_index::tests::unique;
     let objects = unique("objects");
     let pack = objects.join("pack");
@@ -64,7 +64,7 @@ fn objects_over(midx: Vec<u8>, packs: Vec<(&str, Vec<u8>)>) -> PathBuf {
 
 /// Folders a test made, removed once it ends, whether its asserts held or
 /// not, so a failing run leaves none in the temp folder.
-struct Removed(Vec<PathBuf>);
+pub(super) struct Removed(pub(super) Vec<PathBuf>);
 
 impl Drop for Removed {
     fn drop(&mut self) {
@@ -468,7 +468,10 @@ fn a_packed_copy_that_wont_unpack_is_kept_as_refused_and_the_places_after_it_rea
 }
 
 /// What `objects` reads for `oid`, its data or its refusal.
-fn read_from(objects: &std::path::Path, oid: [u8; 20]) -> Result<Option<Vec<u8>>, String> {
+pub(super) fn read_from(
+    objects: &std::path::Path,
+    oid: [u8; 20],
+) -> Result<Option<Vec<u8>>, String> {
     Odb::open(objects)
         .read(&Oid(oid))
         .map(|object| object.map(|object| object.data))
@@ -521,57 +524,24 @@ fn a_refusal_kept_before_a_copy_that_wont_unpack_is_the_one_that_stands() {
         short,
         vec![("pack-a", version_2(&names))],
     )]);
+    let mut odb = Odb::open(&folders.0[0]);
+    let read = odb
+        .read(&Oid(names[last]))
+        .map(|object| object.map(|object| object.data))
+        .map_err(|error| error.to_string());
     assert_eq!(
-        read_from(&folders.0[0], names[last]),
+        read,
         Err("multi-pack-index large offset past its chunk".into()),
         "a copy that wouldn't unpack stood in the index's refusal's place"
     );
-}
-
-#[test]
-fn a_delta_whose_base_is_at_last_itself_is_refused() {
-    use crate::pack_index::tests::{sorted, version_2};
-    let names = sorted();
-    // An index of four names says the first two lie at 12 and 112.
-    let index = version_2(&names[1..5]);
-    // names[1] a delta over itself, and over names[2] whose base is
-    // names[1]: a cycle of one, and of two, which only a base remembered
-    // past the one just read finds.
-    for (bases, what) in [
-        (vec![names[1]], "itself"),
-        (vec![names[2], names[1]], "another delta over it"),
-    ] {
-        let mut pack = b"PACK".to_vec();
-        pack.extend(2u32.to_be_bytes());
-        pack.extend(
-            u32::try_from(bases.len())
-                .expect("two entries")
-                .to_be_bytes(),
-        );
-        for (at, base) in bases.iter().enumerate() {
-            pack.resize(12 + 100 * at, 0);
-            // A delta naming its base, type 7, of 4 bytes, over a base of
-            // one byte to a result of one: insert "x".
-            pack.push(0x70 | 4);
-            pack.extend(base);
-            pack.extend(miniz_oxide::deflate::compress_to_vec_zlib(
-                &[1, 1, 1, b'x'],
-                1,
-            ));
-        }
-        pack.extend([0; 20]);
-        let folders = Removed(vec![objects_over(
-            Vec::new(),
-            vec![("pack-a", index.clone())],
-        )]);
-        std::fs::write(folders.0[0].join("pack/pack-a.pack"), pack)
-            .expect("the temp folder takes a file");
-        assert_eq!(
-            read_from(&folders.0[0], names[1]),
-            Err("delta base cycle".into()),
-            "a delta whose base is, at last, {what} wasn't refused"
-        );
-    }
+    assert_eq!(
+        odb.bad
+            .values()
+            .map(|(_, said)| said.as_str())
+            .collect::<Vec<_>>(),
+        ["pack entry"],
+        "pack-a's copy was never found and tried, so its refusal was never in question"
+    );
 }
 
 #[test]
@@ -637,8 +607,12 @@ fn a_refusal_stands_only_once_the_loose_objects_lack_the_object_too() {
     let last = names.len() - 1;
     let whole = midx(&["pack-a.idx"], 1, None);
     let short = moved(whole.clone(), 4, whole.len() as u64 - 28);
-    let objects = objects_over(short, vec![("pack-a", version_2(&names[..last]))]);
-    let refused = Odb::open(&objects)
+    let folders = Removed(vec![objects_over(
+        short,
+        vec![("pack-a", version_2(&names[..last]))],
+    )]);
+    let objects = &folders.0[0];
+    let refused = Odb::open(objects)
         .read(&Oid(names[last]))
         .err()
         .map(|error| error.to_string());
@@ -655,11 +629,10 @@ fn a_refusal_stands_only_once_the_loose_objects_lack_the_object_too() {
         miniz_oxide::deflate::compress_to_vec_zlib(b"blob 2\0hi", 1),
     )
     .expect("the temp folder takes a file");
-    let read = Odb::open(&objects)
+    let read = Odb::open(objects)
         .read(&Oid(names[last]))
         .expect("a loose object is read past a broken entry")
         .map(|object| object.data);
-    std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
     assert_eq!(
         read.as_deref(),
         Some(&b"hi"[..]),

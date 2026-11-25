@@ -378,9 +378,19 @@ pub struct Odb {
     /// they hold.
     trees: HashMap<Oid, Vec<u8>>,
     tree_bytes: usize,
-    /// The bases being read for the deltas above them, by name.
-    resolving: Vec<Oid>,
+    /// The copies that wouldn't unpack, and what each said, passed over
+    /// from then on as git passes over a copy it has marked bad for as
+    /// long as it runs. Each copy is unpacked to its failure once, so a
+    /// chain of failing deltas, each with several copies, costs one
+    /// unpacking a copy rather than one for every path down to it.
+    bad: HashMap<Place, (io::ErrorKind, String)>,
 }
+
+/// The most deltas a chain may run through to its base, its bases named
+/// and placed alike, before it's refused rather than read: more than the
+/// 4095 git's pack-objects writes at most, so a chain an older git wrote
+/// deeper reads too.
+const CHAIN_LIMIT: usize = 10_000;
 
 /// How many bytes of trees are kept before starting again.
 const TREE_BUDGET: usize = 32 << 20;
@@ -424,148 +434,51 @@ impl Odb {
             bases: HashMap::new(),
             trees: HashMap::new(),
             tree_bytes: 0,
-            resolving: Vec::new(),
+            bad: HashMap::new(),
         }
     }
 
     /// The object, or None when no store here has it (a partial clone's
     /// promised object, say).
     pub fn read(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
-        if let Some(data) = self.trees.get(oid) {
-            return Ok(Some(Object {
-                kind: Kind::Tree,
-                data: data.clone(),
-            }));
+        match self.tree(oid) {
+            Some(tree) => Ok(Some(tree)),
+            None => self.find(oid),
         }
-        let object = self.find(oid)?;
-        if let Some(object) = &object
-            && object.kind == Kind::Tree
-        {
-            if self.tree_bytes + object.data.len() > TREE_BUDGET {
-                self.trees.clear();
-                self.tree_bytes = 0;
-            }
-            self.tree_bytes += object.data.len();
-            self.trees.insert(*oid, object.data.clone());
-        }
-        Ok(object)
     }
 
-    fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
-        // What a store's indexes, packs or loose objects refuse stands only
-        // once every other place the object may lie has been read. A copy
-        // that won't unpack is passed over and its store asked again, as
-        // git marks the copy bad and looks again, so a sound copy in another
-        // of its packs is read. Each asking passes over one more pack, so
-        // the asking ends.
-        let mut refused = None;
-        for store in 0..self.stores.len() {
-            let mut bad = Vec::new();
-            while let Some((pack, offset)) = self.stores[store].locate(oid, &bad, &mut refused) {
-                match self.unpack(store, pack, offset, 0) {
-                    Ok((kind, data)) => return Ok(Some(Object { kind, data })),
-                    Err(error) => {
-                        refused.get_or_insert(error);
-                        bad.push(pack);
-                    }
-                }
-            }
-        }
-        for store in &self.stores {
-            match store.loose(oid) {
-                Ok(Some(object)) => return Ok(Some(object)),
-                Ok(None) => {}
-                Err(error) => {
-                    refused.get_or_insert(error);
-                }
-            }
-        }
-        refused.map_or(Ok(None), Err)
+    /// The tree `oid`, if it's one already read.
+    fn tree(&self, oid: &Oid) -> Option<Object> {
+        self.trees.get(oid).map(|data| Object {
+            kind: Kind::Tree,
+            data: data.clone(),
+        })
     }
 
-    fn unpack(
-        &mut self,
-        store: usize,
-        pack: usize,
-        offset: u64,
-        depth: usize,
-    ) -> io::Result<(Kind, Vec<u8>)> {
-        if depth > 10_000 {
-            return Err(invalid("delta chain too long"));
+    /// Keeps `object`, read as `oid`, should it be a tree.
+    fn keep_tree(&mut self, oid: &Oid, object: &Object) {
+        if object.kind != Kind::Tree {
+            return;
         }
-        if let Some(base) = self.bases.get(&(store, pack, offset)) {
-            return Ok((base.0, base.1.clone()));
+        if self.tree_bytes + object.data.len() > TREE_BUDGET {
+            self.trees.clear();
+            self.tree_bytes = 0;
         }
-        let file = &self.stores[store].packs[pack].data;
-        let head = {
-            let mut buf = [0; 32];
-            let got = file.read_at(&mut buf, offset)?;
-            buf[..got].to_vec()
-        };
-        let mut at = 0;
-        let byte = *head.first().ok_or_else(|| invalid("pack entry"))?;
-        let code = (byte >> 4) & 7;
-        let mut size = usize::from(byte & 15);
-        let mut shift = 4;
-        let mut more = byte & 0x80 != 0;
-        at += 1;
-        while more {
-            let byte = *head.get(at).ok_or_else(|| invalid("pack entry size"))?;
-            at += 1;
-            size |= usize::from(byte & 0x7f) << shift;
-            shift += 7;
-            more = byte & 0x80 != 0;
+        self.tree_bytes += object.data.len();
+        self.trees.insert(*oid, object.data.clone());
+    }
+
+    /// Keeps `object`, read at `place` as a delta's base, should it be one
+    /// deltas build on most: trees and commits.
+    fn keep_base(&mut self, place: Place, object: &Object) {
+        if object.kind == Kind::Blob {
+            return;
         }
-        let result = match code {
-            6 => {
-                let mut byte = *head.get(at).ok_or_else(|| invalid("delta offset"))?;
-                at += 1;
-                let mut back = u64::from(byte & 0x7f);
-                while byte & 0x80 != 0 {
-                    byte = *head.get(at).ok_or_else(|| invalid("delta offset"))?;
-                    at += 1;
-                    back = ((back + 1) << 7) | u64::from(byte & 0x7f);
-                }
-                let base_at = offset
-                    .checked_sub(back)
-                    .ok_or_else(|| invalid("delta base offset"))?;
-                let delta = inflate_at(file, offset + at as u64, size)?;
-                let (kind, base) = self.unpack(store, pack, base_at, depth + 1)?;
-                (kind, apply_delta(&base, &delta)?)
-            }
-            7 => {
-                let base_oid =
-                    Oid::from_slice(head.get(at..at + 20).ok_or_else(|| invalid("delta base"))?)
-                        .ok_or_else(|| invalid("delta base"))?;
-                let delta = inflate_at(file, offset + at as u64 + 20, size)?;
-                // A delta whose base is, at last, itself would read it
-                // again with no end, so a base already being read for a
-                // delta above it is refused.
-                if self.resolving.contains(&base_oid) {
-                    return Err(invalid("delta base cycle"));
-                }
-                self.resolving.push(base_oid);
-                let base = self.read(&base_oid);
-                self.resolving.pop();
-                let base = base?.ok_or_else(|| invalid("delta base missing"))?;
-                (base.kind, apply_delta(&base.data, &delta)?)
-            }
-            code => {
-                let kind = Kind::from_pack(code).ok_or_else(|| invalid("pack entry kind"))?;
-                (kind, inflate_at(file, offset + at as u64, size)?)
-            }
-        };
-        // Trees and commits are what deltas build on most; keep a few.
-        if depth > 0 && result.0 != Kind::Blob {
-            if self.bases.len() > 4096 {
-                self.bases.clear();
-            }
-            self.bases.insert(
-                (store, pack, offset),
-                Arc::new((result.0, result.1.clone())),
-            );
+        if self.bases.len() > 4096 {
+            self.bases.clear();
         }
-        Ok(result)
+        self.bases
+            .insert(place, Arc::new((object.kind, object.data.clone())));
     }
 }
 
@@ -659,6 +572,12 @@ pub fn parse_commit(data: &[u8]) -> io::Result<Commit> {
     })
 }
 
+mod chain;
+
 #[cfg(test)]
 #[path = "odb_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "odb_delta_tests.rs"]
+mod delta_tests;
