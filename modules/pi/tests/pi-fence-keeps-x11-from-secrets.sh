@@ -35,6 +35,8 @@ pace=${X11_PACE:-1}
 paced() {
   echo $(($1 * pace))
 }
+# How long one fenced read may take.
+read_wait=$(paced 10)
 
 fail() {
   echo "FAIL: $*" >&2
@@ -71,13 +73,21 @@ cp "$XAUTHORITY" "$cookie"
 xlogo -display "$display" &
 logo=$!
 
-# Whether what a reader said is X refusing the connection: xclip's one
-# line saying so and nothing else, so no read that got through and then
+# Whether what a reader said is X refusing the connection, in Xlib's and
+# xclip's words alone: xclip's line that it can't open the display, after
+# Xlib's that the cookie was wanted where the socket was reached without
+# one. Nothing else may be said, so no read that got through and then
 # failed passes for one, whatever its text held.
 unreached() {
-  case $1 in
-  *$'\n'*) return 1 ;;
-  "Error: Can't open display"*) return 0 ;;
+  local lines=() line
+  while IFS= read -r line; do
+    [ -z "$line" ] || lines+=("$line")
+  done <<< "$1"
+  local refusal="Error: Can't open display"
+  local unauthorised="Authorization required, but no authorization protocol specified"
+  case ${#lines[@]} in
+  1) [[ ${lines[0]} == "$refusal"* ]] ;;
+  2) [ "${lines[0]}" = "$unauthorised" ] && [[ ${lines[1]} == "$refusal"* ]] ;;
   *) return 1 ;;
   esac
 }
@@ -114,7 +124,7 @@ fenced_read() {
   fi
   # env by its full path: landrun 0.1.17, given --env, finds no bare
   # command named env, and the read would fail without reaching X.
-  timeout "$(paced 10)" "${fence[@]}" -- "${landlock[@]}" \
+  timeout "$read_wait" "${fence[@]}" -- "${landlock[@]}" \
     "$env" DISPLAY="$display" XAUTHORITY="$auth" xclip -o -selection clipboard
 }
 env=$(command -v env)
@@ -132,7 +142,7 @@ refused() {
   fi
   # A read cut off says nothing, so its cause is told apart from X's refusal.
   [ "$ended" -ne 124 ] ||
-    fail "the fenced read ($1, $2 cookie) ran past $(paced 10) s: a slow fence, or one that let it reach an X that never answered"
+    fail "the fenced read ($1, $2 cookie) ran past $read_wait s: a slow fence, or one that let it reach an X that never answered"
   # Only X refusing the connection counts, never a reader that didn't run.
   # shellcheck disable=SC2310 # unreached is a test, read in a condition.
   unreached "$said" ||
