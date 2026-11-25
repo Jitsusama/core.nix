@@ -2343,8 +2343,9 @@
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
-    opened since, and at most once a minute for a reset, and say an error with its causes, cut to
-    a line
+    opened since, and at most once a minute for a reset, have the kernel probe a connection still
+    open after a sleep within seconds but not one let go, nor hold that one open, and say an
+    error with its causes, cut to a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests
