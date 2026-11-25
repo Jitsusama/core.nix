@@ -273,6 +273,33 @@ pub struct Keeping {
 }
 
 impl Keeping {
+    /// The windows a sorter before this one kept, as each scope's
+    /// memory.low reads: at an orchestrator's floor or a pi's. Its floors are
+    /// the user manager's runtime properties, so they outlive it, and a
+    /// sorter that took up none would fit its first looks as though nothing
+    /// kept them. Each is changed, as any kept window is, once what it holds
+    /// wants another floor.
+    pub fn left(
+        scopes: impl IntoIterator<Item = std::path::PathBuf>,
+        floor: impl Fn(&Path) -> Option<u64>,
+    ) -> Self {
+        let kept = scopes
+            .into_iter()
+            .filter_map(|scope| {
+                let kept = match floor(&scope)? {
+                    FLOOR => Floor::Orchestrator,
+                    PI_FLOOR => Floor::Pi,
+                    _ => return None,
+                };
+                Some((scope.file_name()?.to_str()?.to_owned(), kept))
+            })
+            .collect();
+        Self {
+            kept,
+            failed: false,
+        }
+    }
+
     /// The windows to change, each with its floor, from each window's unit
     /// and the floor it wants. One never kept and holding none is left as
     /// it is.
@@ -315,6 +342,36 @@ mod tests {
     use super::*;
 
     const BOOT: &str = "3c4d23d2";
+
+    #[test]
+    fn the_floors_a_sorter_before_kept_are_taken_up_by_their_memory_low() {
+        let scopes = ["kitty-1-1.scope", "kitty-1-2.scope", "kitty-1-3.scope"]
+            .map(|name| std::path::PathBuf::from("/agents.slice").join(name));
+        let floor = |scope: &Path| match scope.file_name()?.to_str()? {
+            "kitty-1-1.scope" => Some(FLOOR),
+            "kitty-1-2.scope" => Some(PI_FLOOR),
+            _ => Some(2 << 30),
+        };
+        let keeping = Keeping::left(scopes, floor);
+        let mut floors: Vec<_> = keeping.floors().collect();
+        floors.sort_unstable();
+        assert_eq!(
+            floors,
+            [("kitty-1-1.scope", FLOOR), ("kitty-1-2.scope", PI_FLOOR)],
+            "a floor keep.rs sets wasn't taken up, or another floor was"
+        );
+        assert!(
+            keeping
+                .changes(&[("kitty-1-2.scope".to_owned(), Floor::Pi)])
+                .is_empty(),
+            "a pi's window taken up at its floor was kept again"
+        );
+        assert_eq!(
+            keeping.changes(&[("kitty-1-1.scope".to_owned(), Floor::Nothing)]),
+            [("kitty-1-1.scope".to_owned(), Floor::Nothing)],
+            "a window taken up as kept that holds no pi now wasn't given back"
+        );
+    }
 
     fn session(address: &str, by: Option<&str>, pid: u32, boot: &str) -> Presence {
         Presence {

@@ -888,6 +888,22 @@ fn held_before(under: &[PathBuf], prefixes: &[String], pis: &[String]) -> holds:
     holding
 }
 
+/// The windows a sorter before this one kept at a floor under `under`, as
+/// their memory.low reads, said once; none unless this one keeps windows
+/// too, as `--orchestrators` has it do, since only that gives them back.
+fn left_kept(keeps: bool, under: &[PathBuf], prefixes: &[String]) -> keep::Keeping {
+    if !keeps {
+        return keep::Keeping::default();
+    }
+    let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
+    let keeping = keep::Keeping::left(scopes, memory_low);
+    let kept = keeping.floors().count();
+    if kept > 0 {
+        eprintln!("Took up {kept} windows' floors kept by the sorter before.");
+    }
+    keeping
+}
+
 /// The windows a sorter before this one kept in memory, as their
 /// writeback off says, to give back those not wanted now
 /// ([`focus::KEEP`]); a held window's is off too, and is wanted while it's
@@ -3567,6 +3583,7 @@ fn run(settings: &Settings) -> Result<(), String> {
     let mut ranks = Ranks {
         holding: left_held(following.as_ref(), &under, &windows, &settings.weigh),
         in_memory: left_in_memory(following.as_ref(), &under, &windows),
+        keeping: left_kept(settings.orchestrators.is_some(), &under, &windows),
         ..Ranks::default()
     };
     let mut doorway = Doorway::new(settings.calls.as_deref());
