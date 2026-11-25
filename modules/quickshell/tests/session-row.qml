@@ -222,11 +222,13 @@ QtObject {
             failures.push(`For You's own marks: ${kept}`);
         // A why the shell gives a press that tells of its viewer opening or
         // viewed is said plainly in the foot; every other, a press that
-        // viewed nothing, in the alert's colour.
+        // viewed nothing, in the alert's colour, as is one it has no tone
+        // for, a name every object answers included.
         const plainWhys = typeof SessionRow.viewedWhy !== "function" ? "none read"
             : ["opening", "startedOpening", "cameAfter", "startedCameAfter", "ownAfterAll",
                 "startedOwnAfterAll", "disowned", "startedDisowned", "untaken",
-                "startedUntaken", "unowned", "hosted", "", undefined]
+                "startedUntaken", "unowned", "hosted", "hostless", "unnamed", "unviewable",
+                "unviewableHost", "bogus", "toString", "", undefined]
                 .filter(why => SessionRow.viewedWhy(why)).join(" ");
         if (plainWhys !== "opening startedOpening cameAfter startedCameAfter ownAfterAll "
             + "startedOwnAfterAll")

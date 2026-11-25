@@ -1403,10 +1403,11 @@ ShellRoot {
         const keptHeld = keptSpawns() === 1
             && Sessions.keptPlaces["s-kept-untaken"] !== undefined;
         // Written as a kitty started again writes it, in a folder made
-        // anew, which no watch hears and nothing else reads meanwhile.
+        // anew, which no watch hears, its unit then saying it started
+        // (kittyStarted), as niri may say nothing while Joel is away.
         kittyPidFile.setText("4343\n");
         Niri.acted = null;
-        Sessions.viewKept();
+        Sessions.kittyStarted?.();
         const keptAskedAgain = keptSpawns() === 2 && keptAskedAt.includes(keptNamed)
             && JSON.stringify(Niri.acted) === keptAskedAt;
         expect("a kept viewer no kitty took keeps its place as it was, under the kitty's pid",
@@ -1446,10 +1447,10 @@ ShellRoot {
         Sessions.viewKept();
         const downHeld = spawnsOf(downNamed, downFrom) === 1;
         kittyPidFile.setText("5353\n");
-        Sessions.viewKept();
+        Sessions.kittyStarted?.();
         expect("a kitty down as it's asked keeps the place under the pid last read, held so",
             downUnder === "4242" && downHeld, `${downUnder} ${spawnsOf(downNamed, downFrom)}`);
-        expect("and a kitty come back, its pid read by nothing else, is asked for it",
+        expect("and a kitty come back, as its unit says it started, is asked for it",
             spawnsOf(downNamed, downFrom) === 2, String(spawnsOf(downNamed, downFrom)));
         Sessions.untaken(downNamed, String(Sessions.attaching[downNamed]));
         Sessions.forgetAsk(downNamed);
@@ -1638,6 +1639,28 @@ ShellRoot {
         Sessions.goingTo = goingBeforeRaised;
         Sessions.forgetAsk(ownRaised);
         Niri.windows = listedBeforeAfter;
+        // And as a row's Reopen raises it, waiting for its host
+        // (reopenWaiting), as Go To does.
+        const ownWaiting = "pi-hosted.s-own-waiting";
+        Sessions.viewWith(view.slice(0, -1).concat(["s-own-waiting"]), ownWaiting, null,
+            "Reef", { address: "OWNWAITING" });
+        const misreadWaiting = { id: 113, pid: 880, opened: ownWaiting };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "113": misreadWaiting });
+        Sessions.windowHeard(misreadWaiting);
+        kittyPidFile.setText("880\n");
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Niri.acted = null;
+        Sessions.reopenWaiting({ id: "s-own-waiting" });
+        const ownWaitingSaid = `${root.unhosted} ${root.unhostedWhy}`;
+        const waitingFocused = focused(113);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("and so as a row's Reopen raises it, waiting for its host",
+            waitingFocused && ownWaitingSaid === "OWNWAITING ownAfterAll",
+            `${waitingFocused} ${ownWaitingSaid}`);
+        Sessions.forgetAsk(ownWaiting);
+        Niri.windows = listedBeforeAfter;
         // A press whose ask came refused long ago, its window seen as the
         // kitty's only now, isn't told: the script long done with that ask,
         // its words would meet Joel's next open of the launcher, whatever
@@ -1659,7 +1682,7 @@ ShellRoot {
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         expect("a press refused past the script's answer isn't told its window was its own",
-            ownStaleSaid === " " && !(ownStale in Sessions.disownedSaid), ownStaleSaid);
+            ownStaleSaid === " ", ownStaleSaid);
         Sessions.forgetAsk(ownStale);
         Niri.windows = listedBeforeAfter;
         // A stray come long after an ask that never came isn't taken for
@@ -1760,7 +1783,9 @@ ShellRoot {
         const goneOnUntaken = Sessions.reopening?.waiting === null
             && Sessions.reopening?.late.includes(waitedUntaken) === false
             && Sessions.reopening?.begun.includes("s-untaken-walk") === false;
-        const wentOn = Sessions.reopening?.queue.length === 0;
+        // Begun at once, the pace before it moot, no pace stands to hold
+        // the walk's settling (reopenPaced).
+        const wentOn = Sessions.reopening?.queue.length === 0 && Sessions.reopenPaced === false;
         Sessions.reopening = null;
         Sessions.forgetAsk(refusedWalk.opened);
         // The script waits a minute for the kitty's answer, past the walk's
@@ -1868,17 +1893,21 @@ ShellRoot {
                 && !going.begun.includes(given.id)
                 && others.every(one => going.late.includes(one) && going.begun.includes(one.id));
             let ends = null;
+            let parts = "";
             if (locked || lettingGo) {
                 Sessions.behindTheLock = false;
                 // No pace stands: the walk's, begun by the cases above, ended
-                // as its next was begun (reopenSoon), so the lock's end
-                // settles the walk itself (placeBehind).
+                // as its next was begun (reopenSoon, which the walk's pace
+                // case proves), so the lock's end settles the walk itself
+                // (placeBehind). Each part is said, so a failure says which.
                 const paced = Sessions.reopenPaced === true;
                 Sessions.lockGone();
                 const letGoBehind = Sessions.reopening?.behind.length === 0;
                 const settling = Sessions.reopening?.settling === true;
                 Sessions.settleNextReopened();
-                ends = !paced && letGoBehind && settling && Sessions.reopening === null;
+                const ended = Sessions.reopening === null;
+                ends = !paced && letGoBehind && settling && ended;
+                parts = JSON.stringify({ paced, letGoBehind, settling, ended });
             }
             // Let go with no walk left for it, and at once, as the cases
             // after it place what they open.
@@ -1886,7 +1915,7 @@ ShellRoot {
             Sessions.behindTheLock = false;
             Sessions.lockLetGo = true;
             Sessions.forgetAsk(named);
-            return { on, left, ends };
+            return { on, left, ends, parts };
         };
         const stillLate = { id: "s-still-late", classed: "pi-hosted.s-still-late", opened: null };
         const besideLate = lateGoesOn("pi-hosted.s-late-beside", [stillLate], false);
@@ -1897,7 +1926,8 @@ ShellRoot {
         expect("nor on one no kitty took, which a press asks for again", goneOnUntaken,
             JSON.stringify(waitedUntaken));
         expect("the next waits out the walk's pace", paced, "begun at once");
-        expect("and once it has passed, is begun", wentOn, "left queued");
+        expect("and once it has passed, is begun, no pace left standing", wentOn,
+            "left queued or paced");
         expect("nor keeps one its patience gave up on, so the walk ends", endedOnLate,
             lateLeft);
         expect("nor one whose window came refused once its patience gave up, so it ends",
@@ -1913,10 +1943,10 @@ ShellRoot {
         expect("nor behind the lock, the walk left for the lock's end to settle",
             lockedLate.on, lockedLate.left);
         expect("and the lock's end settles it, the walk ending", lockedLate.ends === true,
-            String(lockedLate.ends));
+            lockedLate.parts);
         expect("nor as the lock lets go, niri not yet given the keys, the lock's end settling it",
             lettingGoLate.on && lettingGoLate.ends === true,
-            `${lettingGoLate.left} ${lettingGoLate.ends}`);
+            `${lettingGoLate.left} ${lettingGoLate.parts}`);
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.

@@ -9,9 +9,9 @@ pragma ComponentBehavior: Bound
 // in its host, nine are started on quests: the one hosted opens only a
 // viewer, the ones kept out open their windows, four hosted under an id or
 // host no viewer could carry open neither, and are said, and of two the
-// host answers with one session, the second is said opening while the
-// first's viewer comes; started again once its viewer is listed, the first
-// raises it. Once the config says nothing, one opens its window never
+// host answers with one session, the second is said opening, as started,
+// while the first's viewer comes; started again once its viewer is listed,
+// the first raises it. Once the config says nothing, one opens its window never
 // asked. It exits 0 once that holds, and otherwise 1, saying what didn't.
 import qs
 import Quickshell
@@ -184,15 +184,16 @@ ShellRoot {
             root.unhostedNames["QEST-DOTTED"] === "Dotted Reef",
             JSON.stringify(root.unhostedNames));
         // The host answers both with one session: the first's viewer opens
-        // and, while niri is slow to list it, the second is said opening.
+        // and, while niri is slow to list it, the second is said opening, as
+        // a start rather than a press.
         Expect.expect("of two started on one session, one viewer opens and the second says so",
-            late.filter(quest => root.unhosted[quest] === "opening").length === 1
+            late.filter(quest => root.unhosted[quest] === "startedOpening").length === 1
             && Niri.spawns.filter(command => command.includes("/kitty.sock pi-hosted.s-late "))
                 .length === 1, `${JSON.stringify(root.unhosted)}\n${Niri.spawns.join("\n")}`);
         // Held back, it's said by its quest's name too, never its id.
         const titled = { "QEST-LATE": "Late Reef", "QEST-LATER": "Later Reef" };
         Expect.expect("the one held back is said by its quest's name",
-            late.every(quest => root.unhosted[quest] !== "opening"
+            late.every(quest => root.unhosted[quest] !== "startedOpening"
                 || root.unhostedNames[quest] === titled[quest]),
             JSON.stringify(root.unhostedNames));
         const viewer = Niri.spawns.filter(command => command.includes(

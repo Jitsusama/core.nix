@@ -58,15 +58,22 @@ in
       );
 
   # The sessions' kitty writes its pid beside its socket, which names none,
-  # so the shell finds a session's window among those that kitty draws.
+  # so the shell finds a session's window among those that kitty draws,
+  # and then tells the shell it started, as a watch on the file misses one
+  # written in a folder made anew, and a kitty started again draws nothing
+  # till asked, so a viewer kept for one would wait on what never comes.
   the-sessions-kitty-says-its-pid =
     let
       service = (account graphical).systemd.user.services.sessions-kitty.Service;
       written = lib.concatStringsSep " " (lib.toList (service.ExecStartPost or [ ]));
     in
     holds "the-sessions-kitty-says-its-pid"
-      "The sessions' kitty writes no pid beside its socket, so the shell can't tell which windows it draws."
-      (lib.hasInfix "$$MAINPID" written && lib.hasInfix "%t/pi-sessions/kitty.pid" written);
+      "The sessions' kitty writes no pid beside its socket, or never tells the shell it started, so the shell can't tell which windows it draws, or waits on a kitty come back."
+      (
+        lib.hasInfix "$$MAINPID" written
+        && lib.hasInfix "%t/pi-sessions/kitty.pid" written
+        && lib.hasInfix "ipc call sessions kittyStarted" written
+      );
 
   # A session's window is asked of the sessions kitty over its socket, or of
   # the unit's own kitty from before it listened, waiting for one starting
