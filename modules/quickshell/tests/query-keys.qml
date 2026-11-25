@@ -29,6 +29,8 @@ import "Search.js" as Search
 import "launcher/Headings.js" as Headings
 
 QtObject {
+    id: root
+
     // What failed, said as the test ends, or as it throws.
     property var failures: []
 
@@ -1937,6 +1939,19 @@ QtObject {
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, true), " ");
         holds("and with none at another text's break",
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, false), null);
+        // The break those are read at is the one Qt gives: a title's "\n"
+        // goes into its reader, a rich text, as <br>, and the reader gives
+        // it back as a line separator, not a newline (Drawer.qml's words).
+        const titleReader = Qt.createQmlObject(
+            "import QtQuick; TextEdit { textFormat: TextEdit.RichText }", root);
+        titleReader.text = `<div style="white-space:pre-wrap">`
+            + `${Search.escaped("Drawing 2026-11-09\n10.12.03.svg")}</div>`;
+        const atBreak = titleReader.getText(0, 19);
+        holds("a title's reader gives its break back as a line separator", atBreak,
+            "Drawing 2026-11-09\u2028");
+        holds("which a search runs on across with the space it stood for",
+            Lines.runsOn(atBreak, 18, true), " ");
+        titleReader.destroy();
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
