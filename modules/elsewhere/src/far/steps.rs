@@ -255,9 +255,12 @@ cleared() {
 /// Each archive is taken from the handover by renaming it to the copy's
 /// own `.tar`, once, so the archive checked is the very one unpacked:
 /// a share writes a file by renaming a new one over its name, which
-/// leaves the one taken as it was. The near side writes only ustar
-/// archives, so one that isn't a plain file of at least one header, or
-/// whose first header's magic isn't ustar's, byte for byte, is refused
+/// leaves the one taken as it was, and where the two lie on different
+/// disks the rename copies it, and what's read after is the copy. The
+/// near side writes only ustar archives, each once, so one listed twice,
+/// one that isn't a plain file of at least one header and of the size
+/// its list gives, or whose first header's magic isn't ustar's, byte for
+/// byte, is refused
 /// before tar reads it, as a compressed one is: tar unpacks those too,
 /// to far more than a share carries. That catches an archive no near
 /// side of ours wrote, not one built to pass: a compressed archive can
@@ -268,10 +271,10 @@ cleared() {
 /// The near side writes only files and folders, each named within the
 /// tree, so an archive naming a member from the root or through `..`
 /// came from no near side of ours and is refused before it's unpacked.
-/// So is a tree holding anything else, a link of either kind, a pipe, a socket or a device, checked as each
-/// archive is unpacked, before the next, so no archive writes through
-/// what one before it made, and none takes away what one before it made
-/// before it's seen. Past that, the fence around the far line writes
+/// So is a tree holding anything else, a link of either kind, a pipe, a
+/// socket or a device, checked as each archive is unpacked, before the
+/// next, so no archive writes through what one before it made, and none
+/// takes away what one before it made before it's seen. Past that, the fence around the far line writes
 /// only the quest's scratch. A file under two names is found as one that
 /// isn't a folder yet has more than one link, not by its type, so this
 /// find reads apart from the bring-back step's. Each folder is made the
@@ -288,30 +291,34 @@ pub(super) fn copying() -> String {
   left=$(cat "$job/{LEFT}") || return 2
   # Each pass runs in a subshell of its own, so it ends by exit, and its
   # answer is the pipe's.
-  printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
+  printf '%s\n' "$left" | (seen=; while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
     case $number in
       ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; exit 1 ;;
     esac
+    case " $seen " in
+      *" $part "*) printf "elsewhere: the job's list names %s twice\n" "$part" >&2; exit 1 ;;
+    esac
+    seen="$seen $part"
   done) || return
   printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
     # Taken once, so what a share puts at its name after is never read.
     cleared "$work.tar" && mv -f "$job/{TREE}/$part" "$work.tar" || exit 2
-    # A plain file holding a whole header, with ustar's magic in it,
-    # "ustar" and a NUL, then its version, "00". One that can't be read
-    # is this machine's fault.
+    # A plain file of the size the list gives, holding a whole header,
+    # with ustar's magic in it, "ustar" and a NUL, then its version,
+    # "00". One that can't be read is this machine's fault.
     plain=
     if [ -f "$work.tar" ] && [ ! -L "$work.tar" ]; then
       length=$(wc -c < "$work.tar") || exit 2
-      if [ $(($length)) -ge 512 ]; then
+      if [ $(($length)) -ge 512 ] && [ $(($length)) -eq $(($size)) ]; then
         magic=$(od -An -v -tx1 -j257 -N8 "$work.tar") || exit 2
         [ "$(echo $magic)" = '75 73 74 61 72 00 30 30' ] && plain=1
       fi
     fi
     [ -n "$plain" ] || {{
-      printf "elsewhere: the job's archive %s isn't a plain one, as the near side writes\n" "$part" >&2
+      printf "elsewhere: the job's archive %s isn't a plain one of the size its list gives, as the near side writes\n" "$part" >&2
       exit 1
     }}
     rm -f "$work.names" && (set -C && tar -tf "$work.tar" > "$work.names") || exit 2

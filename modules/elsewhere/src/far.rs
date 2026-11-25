@@ -326,7 +326,7 @@ if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
   cleared "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 # What was taken as an archive may be a folder the job named as one.
-[ -z "$mine" ] || {{ rm -f "$work.names" && cleared "$work.tar"; }}
+[ -z "$mine" ] || {{ rm -f "$work.names"; cleared "$work.tar"; }}
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
     cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
