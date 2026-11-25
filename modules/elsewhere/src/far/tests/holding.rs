@@ -144,6 +144,10 @@ fn anything_but_a_folder_of_its_own_at_the_job_s_tree_is_refused_as_the_job_s_do
     // try would meet again. Above the tree, the list's read meets such a
     // thing first.
     let aside = r#"mv "$t" "$HOME/aside""#;
+    // Root enters a folder closed to all, so the closed one is no fault
+    // there and is left out.
+    let id = std::process::Command::new("id").arg("-u").output();
+    let as_root = id.is_ok_and(|id| String::from_utf8_lossy(&id.stdout).trim() == "0");
     for (put, swapped, kept) in [
         (
             "a link pointing nowhere at the tree",
@@ -161,6 +165,9 @@ fn anything_but_a_folder_of_its_own_at_the_job_s_tree_is_refused_as_the_job_s_do
             None,
         ),
     ] {
+        if as_root && put.contains("closed") {
+            continue;
+        }
         let swapping = format!(
             r#"case " $* " in *"/.s/1 "*)
   PATH=${{PATH#*:}} at='{FIRST}' && t="$HOME/${{at%/*}}"
