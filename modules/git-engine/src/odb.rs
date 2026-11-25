@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -70,6 +70,9 @@ struct Store {
     /// order.
     packs: Vec<Pack>,
     midx_packs: usize,
+    /// The own indexes of the packs the multi-pack-index covers, in its
+    /// order, read only once it can't answer a lookup.
+    covered: OnceLock<Vec<Option<Index>>>,
 }
 
 impl Store {
@@ -122,6 +125,7 @@ impl Store {
             midx,
             packs,
             midx_packs,
+            covered: OnceLock::new(),
         }
     }
 
@@ -157,18 +161,57 @@ impl Store {
             midx: None,
             packs,
             midx_packs: 0,
+            covered: OnceLock::new(),
         }
     }
 
     fn locate(&self, oid: &Oid) -> io::Result<Option<(usize, u64)>> {
-        if let Some(midx) = &self.midx
-            && let Some((pack, offset)) = midx.locate(oid)?
-            && pack < self.midx_packs
+        // An entry the multi-pack-index refuses, or one naming a pack past
+        // those it covers, can't say where the object is. Its packs' own
+        // indexes are read instead, and its error stands only when they
+        // and the other packs hold the object nowhere, so a broken entry
+        // neither hides an object nor passes for a missing one.
+        let mut refused = None;
+        if let Some(midx) = &self.midx {
+            match midx.locate(oid) {
+                Ok(Some((pack, offset))) if pack < self.midx_packs => {
+                    return Ok(Some((pack, offset)));
+                }
+                Ok(None) => {}
+                Ok(Some(_)) => {
+                    refused = Some(invalid("multi-pack-index pack past its count"));
+                }
+                Err(error) => refused = Some(error),
+            }
+        }
+        if refused.is_some()
+            && let Some(found) = self.in_covered(oid)?
         {
-            return Ok(Some((pack, offset)));
+            return Ok(Some(found));
         }
         for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
             if let Some(index) = &pack.index
+                && let Some(offset) = index.offset(oid)?
+            {
+                return Ok(Some((at, offset)));
+            }
+        }
+        refused.map_or(Ok(None), Err)
+    }
+
+    /// Where `oid` lies by the own indexes of the packs the
+    /// multi-pack-index covers, a pack whose index won't open passed over.
+    fn in_covered(&self, oid: &Oid) -> io::Result<Option<(usize, u64)>> {
+        let indexes = self.covered.get_or_init(|| {
+            let pack_dir = self.dir.join("pack");
+            self.midx
+                .iter()
+                .flat_map(|midx| &midx.packs)
+                .map(|name| Index::open(&pack_dir.join(name)).ok())
+                .collect()
+        });
+        for (at, index) in indexes.iter().enumerate() {
+            if let Some(index) = index
                 && let Some(offset) = index.offset(oid)?
             {
                 return Ok(Some((at, offset)));
@@ -605,6 +648,65 @@ mod tests {
                 .expect("the pack's own index reads"),
             Some((0, offsets(&names)[0])),
             "the pack's own index wasn't read in the refused index's place"
+        );
+    }
+
+    /// A store over `midx`, its one pack's own index holding `own`.
+    fn store_over(midx: Vec<u8>, own: &[[u8; 20]]) -> Store {
+        use crate::pack_index::tests::{unique, version_2};
+        let objects = unique("objects");
+        let pack = objects.join("pack");
+        std::fs::create_dir_all(&pack).expect("the temp folder takes a folder");
+        for (name, bytes) in [
+            ("multi-pack-index", midx),
+            ("pack-a.idx", version_2(own)),
+            ("pack-a.pack", b"PACK".to_vec()),
+        ] {
+            std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
+        }
+        Store::open(&objects)
+    }
+
+    #[test]
+    fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes() {
+        use crate::pack_index::tests::{midx, moved, offsets, sorted};
+        let names = sorted();
+        let last = names.len() - 1;
+        let whole = midx(&["pack-a.idx"], 1, None);
+        // Its large offsets moved to the last 8 bytes before its checksum
+        // hold one, so the last name's, its second, lies past its chunk.
+        let short = moved(whole.clone(), 4, whole.len() as u64 - 28);
+        let store = store_over(short.clone(), &names);
+        assert!(store.midx.is_some(), "a short LOFF was refused at open");
+        assert_eq!(
+            store
+                .locate(&Oid(names[last]))
+                .expect("the pack's own index reads"),
+            Some((0, offsets(&names)[last])),
+            "a large offset past its chunk wasn't read from the pack's own index"
+        );
+        // With the pack's own index not holding it either, the refusal
+        // stands rather than passing for a missing object.
+        let store = store_over(short, &names[..last]);
+        assert_eq!(
+            store
+                .locate(&Oid(names[last]))
+                .err()
+                .map(|e| e.to_string())
+                .as_deref(),
+            Some("multi-pack-index large offset past its chunk"),
+            "a broken entry no index answers passed for a missing object"
+        );
+        // Its names alternate between two packs, but it counts one, so
+        // every other name is said to lie in a pack it doesn't name.
+        let store = store_over(midx(&["pack-a.idx", "pack-b.idx"], 1, None), &names);
+        assert_eq!(store.midx_packs, 1, "the index's count wasn't kept");
+        assert_eq!(
+            store
+                .locate(&Oid(names[1]))
+                .expect("the pack's own index reads"),
+            Some((0, offsets(&names)[1])),
+            "a name in a pack past the index's count wasn't read from its packs' indexes"
         );
     }
 
