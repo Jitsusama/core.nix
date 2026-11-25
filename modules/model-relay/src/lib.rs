@@ -803,6 +803,10 @@ enum Unreachable {
     Late,
     /// It was refused, or failed on the way.
     Refused,
+    /// The origin's name couldn't be looked up, as when the network the
+    /// machine looks names up through is down, so pi's person reads that,
+    /// not the origin, as what failed.
+    Unnamed,
     /// It was reached, but not as this relay can carry a request to it:
     /// its certificate isn't one the relay trusts, or it doesn't speak
     /// HTTP/2. pi reaches it directly instead, as it would with no relay.
@@ -821,6 +825,10 @@ impl Unreachable {
             Unreachable::Refused => said(
                 StatusCode::BAD_GATEWAY,
                 "this relay couldn't reach its origin\n",
+            ),
+            Unreachable::Unnamed => said(
+                StatusCode::BAD_GATEWAY,
+                "this relay couldn't look up its origin's name\n",
             ),
             Unreachable::Unfit => said(StatusCode::MISDIRECTED_REQUEST, CANT_CARRY),
         }
@@ -1933,7 +1941,12 @@ impl Relay {
         let within = self.clocks.connect_within;
         let opening = async {
             let on_the_way = |why: io::Error| {
-                let unreachable = if why.kind() == io::ErrorKind::TimedOut {
+                let unreachable = if why
+                    .get_ref()
+                    .is_some_and(<dyn std::error::Error + Send + Sync>::is::<Unnamed>)
+                {
+                    Unreachable::Unnamed
+                } else if why.kind() == io::ErrorKind::TimedOut {
                     Unreachable::Late
                 } else {
                     Unreachable::Refused
@@ -2158,12 +2171,47 @@ fn with_causes(why: &dyn std::error::Error) -> String {
     said
 }
 
+/// A name that couldn't be looked up, and why, if the lookup said.
+#[derive(Debug)]
+struct Unnamed {
+    /// The name looked up.
+    host: String,
+    /// What the lookup failed with; none when it found no address.
+    why: Option<io::Error>,
+}
+
+impl fmt::Display for Unnamed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.why {
+            Some(_) => write!(f, "{} couldn't be looked up", self.host),
+            None => write!(f, "{} resolved to no address", self.host),
+        }
+    }
+}
+
+impl std::error::Error for Unnamed {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.why
+            .as_ref()
+            .map(|why| why as &(dyn std::error::Error + 'static))
+    }
+}
+
 /// A TCP connection to `host`'s `port`, from the first address the name
 /// resolves to that answers.
 async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream> {
-    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await?.collect();
+    let unnamed = |why| {
+        io::Error::other(Unnamed {
+            host: host.to_owned(),
+            why,
+        })
+    };
+    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|why| unnamed(Some(why)))?
+        .collect();
     if addresses.is_empty() {
-        return Err(io::Error::other(format!("{host} resolved to no address")));
+        return Err(unnamed(None));
     }
     let tcp = reach_any(&addresses, within).await?;
     fit(&tcp)?;

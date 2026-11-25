@@ -38,7 +38,7 @@ use std::io::{self, Read};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -81,6 +81,10 @@ const PROBED_AFTER_THE_STOP: Duration = Duration::from_millis(250);
 /// How long a relay takes to hear a stop, or to take a connection, before
 /// the next step of a test leans on it having done so.
 const HEARD_WITHIN: Duration = Duration::from_millis(500);
+/// How long a test waits to hear a relay say something of its own accord,
+/// such as leaving idle, before it stops the relay and fails with what it
+/// said: far past the seconds any of them takes.
+const SAYS_WITHIN: Duration = Duration::from_secs(10);
 /// How long a stopped relay gives those it sends direct once its answers
 /// have ended, as its own constant has it.
 const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
@@ -629,10 +633,18 @@ impl Relay {
             if started.elapsed() >= LISTENS_WITHIN {
                 let state = match child.try_wait() {
                     Ok(Some(status)) => format!("it left with {status}"),
-                    _ => "it's still running".to_owned(),
+                    Ok(None) => "it was still running, so it's stopped".to_owned(),
+                    Err(unread) => format!("its state couldn't be read: {unread}"),
                 };
+                // Stopped, its log has an end, so it can be read whole.
+                let _ = child.kill();
+                let _ = child.wait();
+                let mut said = String::new();
+                if let Some(mut stderr) = child.stderr.take() {
+                    let _ = stderr.read_to_string(&mut said);
+                }
                 panic!(
-                    "the relay never listened at {}: {why}, and {state}",
+                    "the relay never listened at {}: {why}; {state}, saying: {said}",
                     socket.display()
                 );
             }
@@ -647,8 +659,21 @@ impl Relay {
     }
 
     /// What the relay has said up to `mark`, read as it says it, so a test
-    /// can act the moment it does; all it said, should it leave first.
-    fn heard_by(&mut self, mark: &str) -> &str {
+    /// can act the moment it does; all it said, should it leave first, or
+    /// once it's stopped for not saying it `within`.
+    fn heard_by(&mut self, mark: &str, within: Duration) -> &str {
+        let done = Arc::new(AtomicBool::new(false));
+        let watching = Arc::clone(&done);
+        let pid = self.child.id().to_string();
+        std::thread::spawn(move || {
+            // The read below waits on the relay's log, which a relay that
+            // never says the mark leaves open for ever; stopping it closes
+            // the log, which ends the read, so the test fails, not hangs.
+            std::thread::sleep(within);
+            if !watching.load(Ordering::SeqCst) {
+                let _ = Command::new("kill").arg("-KILL").arg(&pid).status();
+            }
+        });
         if let Some(stderr) = self.child.stderr.as_mut() {
             let mut piece = [0; 1024];
             while !self.heard.contains(mark) {
@@ -660,6 +685,7 @@ impl Relay {
                 }
             }
         }
+        done.store(true, Ordering::SeqCst);
         &self.heard
     }
 
@@ -2532,7 +2558,11 @@ async fn a_request_waiting_on_its_first_connection_as_a_drain_ends_is_cut() {
     );
     let (mut pi, _connection) = pi_asks(&relay.socket).await;
 
-    let asked = pi.send_request(request(&host, "/v1/messages", b""));
+    // Bounded, so a relay that never cuts it fails the test, not hangs it.
+    let asked = tokio::time::timeout(
+        WAITS_WITHIN + HEARD_WITHIN + DRAINS_WITHIN + CUT_WITHIN,
+        pi.send_request(request(&host, "/v1/messages", b"")),
+    );
     let (answered, late) = tokio::join!(asked, async {
         tokio::time::sleep(WAITS_WITHIN).await;
         relay.stop();
@@ -2549,8 +2579,8 @@ async fn a_request_waiting_on_its_first_connection_as_a_drain_ends_is_cut() {
         "a request during the drain wasn't sent direct"
     );
     assert!(
-        answered.is_err(),
-        "a request still waiting on a connection when its drain ended was answered: \
+        matches!(answered, Ok(Err(_))),
+        "a request still waiting on a connection when its drain ended wasn't cut in time: \
          {answered:?}"
     );
     let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
@@ -2739,7 +2769,7 @@ async fn a_stop_as_it_leaves_idle_cuts_a_body_still_being_read() {
     // Another origin's request holds no idle leave back, even while its
     // body is read, so the relay leaves idle with it in hand.
     let _pi = half_a_body(&relay.socket, "example.com").await;
-    let heard = relay.heard_by("so it leaves; its socket starts it again");
+    let heard = relay.heard_by("so it leaves; its socket starts it again", SAYS_WITHIN);
     assert!(
         heard.contains("so it leaves; its socket starts it again"),
         "the relay didn't leave idle: {heard}"
@@ -2755,6 +2785,44 @@ async fn a_stop_as_it_leaves_idle_cuts_a_body_still_being_read() {
     assert!(
         said_once_after(&said, "stopped as it left"),
         "a body it was reading when stopped as it left wasn't counted cut, once: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_late_pi_leaving_while_a_stop_as_it_leaves_idle_waits_is_its_cancel() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "2"],
+    );
+    // Taken before the leave, so the stop cuts it.
+    let _held = half_a_body(&relay.socket, "example.com").await;
+    let heard = relay.heard_by("so it leaves; its socket starts it again", SAYS_WITHIN);
+    assert!(
+        heard.contains("so it leaves; its socket starts it again"),
+        "the relay didn't leave idle: {heard}"
+    );
+    // Taken while it leaves, so the stop waits on it, and pi hangs up in
+    // that wait: its cancel, said beside the one the stop cuts.
+    let late = half_a_body(&relay.socket, "example.com").await;
+    tokio::time::sleep(HEARD_WITHIN).await;
+
+    relay.stop();
+    tokio::time::sleep(HEARD_WITHIN).await;
+    drop(late);
+    let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    let said = relay.said();
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave once stopped as it left: {left:?}, saying: {said}"
+    );
+    assert!(
+        said.contains("2 asked, 0 refused, 0 failed")
+            && said.contains("pi cancelled 1; 1 cut as it was stopped;"),
+        "a late pi leaving while the stop waited wasn't its cancel beside one cut: {said}"
     );
 }
 
@@ -3001,6 +3069,30 @@ async fn an_origin_out_of_reach_is_said_as_a_502() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn an_origin_whose_name_cant_be_looked_up_is_said_as_such() {
+    let origin = origin().await;
+    // A name no lookup finds, as `.invalid` is kept for.
+    let host = "model-relay.invalid";
+    let relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+
+    let got = ask(&relay.socket, request(host, "/v1/messages", b"")).await;
+
+    let said = relay.said();
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (
+            StatusCode::BAD_GATEWAY,
+            &b"this relay couldn't look up its origin's name\n"[..]
+        ),
+        "an origin whose name can't be looked up wasn't said as such: {said}"
+    );
+    assert!(
+        said.contains("model-relay.invalid couldn't be looked up"),
+        "the relay didn't log what lookup failed: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn a_failure_lasts_no_longer_than_the_origin_is_away() {
     let away = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = away.local_addr().expect("its address");
@@ -3124,10 +3216,19 @@ async fn its_socket_is_the_accounts_alone_and_kept_while_it_answers() {
         .permissions()
         .mode();
     let folder = relay.socket.parent().expect("its folder");
-    let held: Vec<_> = std::fs::read_dir(folder)
-        .expect("the folder")
-        .map(|entry| entry.expect("an entry").file_name())
-        .collect();
+    // It answers once its socket is linked, and only then clears the
+    // folder it made it in, so that has a moment to go.
+    let started = Instant::now();
+    let held = loop {
+        let held: Vec<_> = std::fs::read_dir(folder)
+            .expect("the folder")
+            .map(|entry| entry.expect("an entry").file_name())
+            .collect();
+        if held == ["agents.sock"] || started.elapsed() >= LISTENS_WITHIN {
+            break held;
+        }
+        std::thread::sleep(LOOK_EVERY);
+    };
     let second = relay_at(&relay.socket, &host);
     let still = ask(&relay.socket, request(&host, "/echo", b"")).await;
 
