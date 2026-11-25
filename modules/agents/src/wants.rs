@@ -6,8 +6,9 @@
 //! answers it offers to a single question (harness #1394), the one it
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
-//! too (`answer_of`), which finds the want by the session's address, so
-//! the shell never names a want's id. Each says too whether it rings the
+//! too (`answer_of`), which finds the want by the session's address; the
+//! shell names the want it was shown, and one the session no longer asks
+//! is refused. Each says too whether it rings the
 //! shell's bell (`rings`) and who it is (`known`), by which the shell
 //! rings once for each (Sessions.qml's stopped), so the shell judges no
 //! want itself (KRINS0 item 4, ending #3853's stopgap). Joel may put one

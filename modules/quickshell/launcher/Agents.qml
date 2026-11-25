@@ -195,6 +195,11 @@ Provider {
             return null;
         if (provider.isVoid(one.ask.address))
             return provider.lineOpened(one.key);
+        // One asking Joel something he can answer here gets the tree's own Talk, which shows
+        // what it asks and answers it, as its inbox goes unread until its ask ends.
+        const asking = provider.sessionAt(one.ask.address);
+        if (asking && provider.answerable(asking))
+            return provider.sessionAct(asking, "talk");
         const talk = provider.talking(one.ask.address, row.name ?? "");
         return thing({
             key: one.key,
@@ -1194,6 +1199,12 @@ Provider {
         return { want: wantOf(session.address), asking };
     }
 
+    // Whether `session` asks Joel something his words in a Talk answer (TalkAnswers.asked).
+    function answerable(session) {
+        const now = answersOf(session);
+        return TalkAnswers.asked(now.want, now.asking) !== null;
+    }
+
     // What a Talk to `session` shows before its talks: what it asks in full while it asks, first
     // so it has the first exchange's eight lines (TalkSpoken.qml), then Joel's answers to it,
     // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
@@ -1213,7 +1224,9 @@ Provider {
         const now = answersOf(session);
         const asked = TalkAnswers.question(now, session.title, words, dayOf);
         const answers = TalkAnswers.asked(now.want, now.asking);
-        answersShown[to] = answers;
+        // His Return answers only a question the Talk drew; where it drew none, his words go
+        // as a talk.
+        answersShown[to] = TalkAnswers.drawn(asked, answers);
         // While it asks, only answers to what it asks show, and those not delivered in the last
         // quarter hour.
         const want = TalkAnswers.shownWant(now, answers);
@@ -1601,20 +1614,20 @@ Provider {
                     if (text === "")
                         return;
                     // What the Talk showed it asking when he pressed Return, while that Talk is
-                    // the one held; a walk from a terminal, which draws none, answers what it
-                    // asks now.
-                    const answers = TalkAnswers.answering(provider.launcher?.asking?.draft,
-                        draft, provider.answersShown, asks());
-                    // An answer goes as Joel's, so only his own Return gives one: a walk from
-                    // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
-                    if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
+                    // the one held, else what it asks now. An answer goes as Joel's, so only
+                    // his own Return gives one: a walk from outside, which any program of his
+                    // may ask, is refused (TalkAnswers.onReturn).
+                    const ret = TalkAnswers.onReturn(TalkAnswers.answering(
+                        provider.launcher?.asking?.draft, draft, provider.answersShown, asks()),
+                        Sprouting.fromJoel(provider.launcher));
+                    if (ret.act === "refused") {
                         provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",
                             { name: session.title });
                         provider.launcher?.walkRefused?.(provider.told);
                         return;
                     }
-                    if (answers !== null) {
-                        provider.answerIn(current(), text, answers);
+                    if (ret.act === "answer") {
+                        provider.answerIn(current(), text, ret.answers);
                         return;
                     }
                     provider.actOn(session, "talk", { text });
@@ -2718,6 +2731,15 @@ Provider {
     // the session's inbox, which Sessions says as it does any act's. Not
     // `answer`, which the launcher asks of every source for what's typed.
     function answerWant(address, fields, then) {
+        // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
+        // (Sprouting.fromJoel): a walk from outside is refused and told so.
+        if (!Sprouting.fromJoel(launcher)) {
+            const why = TalkAnswers.filled(Words.of("verb:agent:talk").said?.answerWalked ?? "",
+                { name: sessionAt(address)?.title ?? String(address) });
+            launcher?.walkRefused?.(why);
+            then(false, why, false);
+            return;
+        }
         const said = Object.assign({ ask: "answer", address: String(address) }, fields);
         if (!rowsKind) {
             then(Sessions.steered(address, null));
