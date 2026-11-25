@@ -15,7 +15,7 @@ use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::slack::{Message, micros};
 use pineapple::vocabulary::Words;
-use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
+use pineapple::{Context, Decision, Heard, Joel, Platform, Target, Verdict, decide};
 use slack_people::Account;
 
 use super::{LOOK_BACK, MICROS, MILLIS, SLACK_RESUMES_LIVE, millis, seconds};
@@ -260,14 +260,8 @@ fn judge(
         edited: message.edited,
         age: read_at.saturating_sub(said_at),
     };
-    // Said before a resume of Joel's that names it, and heard only after,
-    // a stop is kept as he left it, ended, and no reply says it stands.
-    let stop = decision.stops().then(|| {
-        let stop = record::stop(&source, &decision, now, reader.shadow);
-        resume::as_left(&state.join("stops"), stop)
-    });
-    let late = stop.as_ref().is_some_and(resume::ended);
-    let gated = reply_gate(&asked, &sent, read_at, state, late);
+    let stop = stop_of(state, &source, &decision, (now, reader.shadow));
+    let gated = reply_gate(&asked, &sent, read_at, state, stop.as_ref());
     let entry = record::line(&source, &decision, gated, now, reader.shadow);
     if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
@@ -310,12 +304,35 @@ fn judge(
     }
 }
 
-/// What the gate says of a decision's reply at `read_at`, as
-/// [`gate`] does, but held for a stop Joel resumed before it was heard
-/// (`late`), as no reply may say it stands.
-fn reply_gate(asked: &Asked<'_>, sent: &[Sent], read_at: u64, state: &Path, late: bool) -> Gate {
+/// The record of the stop `decision` says, heard at `now` in shadow or
+/// not, as Joel left it: said before a resume of his that names it and
+/// heard only after, it's kept ended (src/resume.rs). None for a
+/// decision that stops nothing.
+fn stop_of(
+    state: &Path,
+    source: &Source<'_>,
+    decision: &Decision,
+    heard: (u64, bool),
+) -> Option<serde_json::Value> {
+    let (now, shadow) = heard;
+    decision.stops().then(|| {
+        let stop = record::stop(source, decision, now, shadow);
+        resume::as_left(&state.join("stops"), stop)
+    })
+}
+
+/// What the gate says of a decision's reply at `read_at`, as [`gate`]
+/// does, but held for a `stop` Joel resumed before it was heard, as no
+/// reply may say it stands.
+fn reply_gate(
+    asked: &Asked<'_>,
+    sent: &[Sent],
+    read_at: u64,
+    state: &Path,
+    stop: Option<&serde_json::Value>,
+) -> Gate {
     match gate(asked, sent, read_at, replies_off(state)) {
-        Gate::Through(_) if late => Gate::Held(RESUMED_BEFORE_HEARD),
+        Gate::Through(_) if stop.is_some_and(resume::ended) => Gate::Held(RESUMED_BEFORE_HEARD),
         gated => gated,
     }
 }
