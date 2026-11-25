@@ -1954,7 +1954,7 @@ works the same way everywhere.
   Put It Back leads
   what's inside, holding the zone it kept until the laptop is somewhere
   else. The time here holds the clock and never the date: its Zone, a
-  thing saying its offset, abbreviation, next change and tzdata's
+  thing saying its offset, abbreviation, next two changes and tzdata's
   version, then UTC, Unix time, TAI, GPS time and sidereal time, each to
   the second and counting while it's shown, then how the clock is kept.
   The date holds the calendar alone: the ISO date, ISO week date and
