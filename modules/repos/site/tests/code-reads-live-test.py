@@ -13,7 +13,7 @@ drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
 Tab reach the head's keys once, open on a headline and lede taking the lines
-the live ones take, not shift as its feeds arrive on a reload, nor
+the live ones take when nothing waits, not shift as its feeds arrive on a reload, nor
 hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, draw a thread for
 each cell joining two repositories on the map under the work and walk it by
@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import HEAD_HEIGHTS, LOOKS, SIZES, WIDE_DESK, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -697,24 +697,12 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.nth(1), "Tab back didn't come to the key last left").to_be_focused()
 
 
-# A desk as wide as the laptop's monitor shows the page, past SIZES' desk.
-WIDE_DESK = (1920, 1080)
-# The height in pixels each of the head's parts takes with the words index.html opens with and
-# with those the feeds wrote, by its id. The opening words are put back for a moment to be
-# measured, so both are laid out in the same box with the room let go.
-OPENING_AND_LIVE = """async (ids) => {
-  const opening = new DOMParser().parseFromString(
-    await (await fetch(location.href)).text(), "text/html");
-  return Object.fromEntries(ids.map((id) => {
-    const part = document.getElementById(id);
-    const live = part.innerHTML;
-    const liveHeight = part.getBoundingClientRect().height;
-    part.innerHTML = opening.getElementById(id).innerHTML;
-    const openingHeight = part.getBoundingClientRect().height;
-    part.innerHTML = live;
-    return [id, [Math.round(openingHeight), Math.round(liveHeight)]];
-  }));
-}"""
+# The room index.html holds from the last visit, which a first visit has none of.
+HELD_ROOM = """() => [...document.documentElement.style]
+  .filter((property) => property.startsWith("--room-"))"""
+# The lede when nothing waits, the one form whose lines the opening words are matched to: a
+# phone's lede runs two to five lines with what's worth a look, and only this one takes two.
+STILL_AIR = "Still air: nothing waits on you."
 
 
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
@@ -730,10 +718,11 @@ def test_the_opening_words_take_the_lines_the_head_will(
         page = opened.page
         says_it_stands(page, "live")
         expect(row(page, "github:owl/core"), "Code drew no row for core").to_be_visible()
-        # Past the time the room is held, so the head is laid out by its words alone.
-        page.wait_for_timeout(ROOM_HELD_MS)
-        heights = page.evaluate(OPENING_AND_LIVE, ["title", "lede"])
-        moved = {part: each for part, each in heights.items() if each[0] != each[1]}
+        expect(page.locator("#lede"), "the lede wasn't the still air's").to_contain_text(STILL_AIR)
+        held = page.evaluate(HELD_ROOM)
+        assert held == [], f"a first visit held {held}, so its head wasn't laid out by its words"
+        heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], {}])
+        moved = {part: said for part, said in heights.items() if said["live"] != said["opening"]}
         assert not moved, f"at {size} the head's opening and live heights differ: {moved}"
     finally:
         opened.close()

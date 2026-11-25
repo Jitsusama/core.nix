@@ -133,7 +133,7 @@ it("the headline turns when none or all have settled, and when nothing was said"
   const says = (one: ReturnType<typeof headline>): string => `${one.lead} ${one.turn}`;
   assert.equal(says(headline(settledAll)), "One murmured, all come to roost.", "all settled");
   assert.equal(says(headline(openAll)), "Two murmured, all still in the air.", "none settled");
-  assert.equal(says(headline([])), "Nothing murmured yet.", "nothing said");
+  assert.equal(says(headline([])), "Nothing murmured, nothing in the air.", "nothing said");
 });
 
 it("the lede quotes the newest still in the air, cut on a word", () => {
@@ -147,6 +147,23 @@ it("the lede quotes the newest still in the air, cut on a word", () => {
     `the lede should quote osprey's murmur, not kestrel's settled one: ${line}`,
   );
   assert.ok(line.endsWith("over the..."), `the quote should end on a whole word: ${line}`);
+});
+
+it("the lede keeps room for the murmur however long its quest's name runs", () => {
+  // A purpose with no colon is a quest's whole name, which its author may make any length.
+  const purpose = `${"the nightly audit, which found everything in order ".repeat(4)}end`;
+  const long = `${"gulls wheel over the cistern ".repeat(8)}end`;
+  const { murmurs } = murmursOf(holding([murmur("OSPREY", 200, { purpose, text: long })]));
+  const line = lede(murmurs);
+  assert.ok(
+    line.startsWith(
+      "Newest in the air, from the nightly audit, which found everything in...: gulls",
+    ),
+    `the quest's name should be cut on a word before the murmur: ${line}`,
+  );
+  // What four lines hold on a phone, which the page's live test measures.
+  const most = "Newest in the air, from : ".length + 48 + 84 + 2 * "...".length;
+  assert.ok([...line].length <= most, `the lede ran past what its box holds: ${line}`);
 });
 
 it("a murmur's words are cut on a word, without a stop before the ellipsis", () => {

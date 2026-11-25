@@ -85,6 +85,33 @@ MOST_DRAWN = """() => {
 }"""
 # The web-design skill's checks a published page passes, each answering [] when it does.
 PAGE_CHECKS = ["gate.js", "layout.js", "svgtext.js"]
+# A desk as wide as the laptop's monitor, past SIZES' desk, for a page whose head is still
+# fluid there.
+WIDE_DESK = (1920, 1080)
+# Each of the head's parts, by its id, laid out with the words index.html opens with, with the
+# words drawn live, and with each of `forms`: their heights in pixels and the part's line
+# height. Each is put in for a moment and the live words put back, so all are laid out in the
+# same box, and only once the webfonts are in, so no fallback face is measured.
+HEAD_HEIGHTS = """async ([ids, forms]) => {
+  await document.fonts.ready;
+  const opening = new DOMParser().parseFromString(
+    await (await fetch(location.href)).text(), "text/html");
+  return Object.fromEntries(ids.map((id) => {
+    const part = document.getElementById(id);
+    const live = part.innerHTML;
+    const tall = (words) => {
+      part.innerHTML = words;
+      return Math.round(part.getBoundingClientRect().height);
+    };
+    const said = {
+      opening: tall(opening.getElementById(id).innerHTML),
+      forms: (forms[id] ?? []).map(tall),
+      live: tall(live),
+      line: parseFloat(getComputedStyle(part).lineHeight),
+    };
+    return [id, said];
+  }));
+}"""
 
 type Served = tuple[str, subprocess.Popen[bytes]]
 

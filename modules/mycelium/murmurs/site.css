@@ -82,13 +82,11 @@ code {
   text-decoration-color: currentColor;
 }
 
-/* The lede quotes the newest murmur in the air, and nearly every murmur runs past the words it
-   quotes, so how many lines it takes turns on where they wrap. Its box is held at the four lines
-   the quote takes at a desk, and a longer one, as on a phone, is cut there: the head stays still
-   as the node answers and as murmurs settle, and the murmur's row says it whole. */
+/* The lede quotes the newest murmur in the air, so how many lines it takes turns on where its
+   words wrap. The model trims the quote and its quest's name to what four lines hold on a
+   phone, and the box is held at those four, so the head stays still as the node answers and as
+   murmurs settle, and nothing in it is cut away. */
 .lede {
-  display: -webkit-box;
-  overflow: hidden;
   min-block-size: 4lh;
   max-inline-size: 33rem;
   margin: 0;
@@ -100,8 +98,6 @@ code {
   font-variation-settings: "SOFT" var(--voice-soft), "WONK" var(--voice-wonk);
   line-height: 1.4;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
 }
 
 .standing {

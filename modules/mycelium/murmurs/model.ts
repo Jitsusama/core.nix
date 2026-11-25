@@ -60,8 +60,13 @@ const WORDS: readonly string[] = [
 /** A stop that would sit before the ellipsis a cut murmur ends with. */
 const TRAILING_STOP = /[,;:.]$/u;
 
-/** How many characters of a murmur the lede quotes before it trims. */
-const QUOTED = 140;
+/**
+ * How many characters of a murmur the lede quotes, and of its quest's name, before each is
+ * trimmed: the most that keeps the whole lede inside the four lines its box holds on a phone,
+ * so nothing in it is ever cut away. The murmur's row says both whole.
+ */
+const QUOTED = 84;
+const NAMED = 48;
 
 /** A quest's short id, from its whole id or the short one itself. */
 function short(quest: string): string {
@@ -127,7 +132,8 @@ function headline(murmurs: readonly Murmur[]): Headline {
   const open = inTheAir(murmurs).length;
   const said = murmurs.length;
   if (said === 0) {
-    return { lead: "Nothing murmured", turn: "yet.", said, open };
+    // As long as a count's, so the head keeps the lines it opens on.
+    return { lead: "Nothing murmured,", turn: "nothing in the air.", said, open };
   }
   const lead = `${counted(said)} murmured,`;
   if (open === 0) {
@@ -164,7 +170,8 @@ function lede(murmurs: readonly Murmur[]): string {
   if (newest === undefined) {
     return "Every murmur has been settled; the newest says how on its row.";
   }
-  return `Newest in the air, from ${newest.quest}: ${trimmed(newest.words, QUOTED)}`;
+  const quest = trimmed(newest.quest, NAMED);
+  return `Newest in the air, from ${quest}: ${trimmed(newest.words, QUOTED)}`;
 }
 
 /** How long ago `at` was, from `now`, both in seconds, said short. */

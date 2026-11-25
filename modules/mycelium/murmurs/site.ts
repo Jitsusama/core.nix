@@ -92,7 +92,8 @@ function sayWhen(): void {
   // A broken node the page never heard live has said nothing, whatever empty
   // list the server held for it.
   if (!fromLive && murmurs.length === 0 && standing?.state === "broken") {
-    title.textContent = "Nothing to hear yet.";
+    // Beside the "Listening to the mycelium node." it opens on, in as many lines.
+    title.textContent = "Not hearing the mycelium node.";
     ledeLine.textContent =
       "The mycelium node didn't say what its sessions murmur; the line below says why.";
   }

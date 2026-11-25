@@ -10,7 +10,7 @@ sky, never call a node it never heard quiet, say what it couldn't read, say
 broken when the node stops while keeping what it drew and live once it's back,
 say stale when the server goes, draw a murmur's words as words and never as
 markup, step its cursor by the keys and by a tap on the keys its head shows,
-open on a headline and lede taking the lines the live ones take, and pass
+keep its headline and lede to the lines they open on whatever it says, and pass
 the web-design skill's page checks at a phone's width and a desk's in both
 looks. Anything the page logs fails it. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's, which opens once more a tab whose
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import HEAD_HEIGHTS, LOOKS, SIZES, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Error, Page, expect
 from stand_in_daemon import StandIn
 
@@ -54,30 +54,37 @@ BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
 # The newest murmur still in the air, which the lede quotes. Nearly every murmur a cell says
-# runs past the 140 characters the lede quotes before it trims, as this one does, so the lede
-# this draws runs past the four lines its box holds on a phone, as a real one's does.
+# runs past the characters the lede quotes before it trims, as this one does.
 NEWEST = (
     "Gulls are back on the breakwater, a week before the almanac said they would be, and "
     "they're nesting low on the seaward side where the spring tides reach the rocks."
 )
-# A desk as wide as the laptop's monitor shows the page, past SIZES' desk.
-WIDE_DESK = (1920, 1080)
-# The height in pixels each of the head's parts takes with the words index.html opens with and
-# with those the feed wrote, by its id. The opening words are put back for a moment to be
-# measured, so both are laid out in the same box.
-OPENING_AND_LIVE = """async (ids) => {
-  const opening = new DOMParser().parseFromString(
-    await (await fetch(location.href)).text(), "text/html");
-  return Object.fromEntries(ids.map((id) => {
-    const part = document.getElementById(id);
-    const live = part.innerHTML;
-    const liveHeight = part.getBoundingClientRect().height;
-    part.innerHTML = opening.getElementById(id).innerHTML;
-    const openingHeight = part.getBoundingClientRect().height;
-    part.innerHTML = live;
-    return [id, [Math.round(openingHeight), Math.round(liveHeight)]];
-  }));
-}"""
+# Every other headline the page writes, as site.ts writes it, which must take the lines the
+# one it opens on does: a node never reached, nothing said, all settled, none settled, and
+# counts past ten, which are said in numerals.
+HEADLINES = [
+    "Not hearing the mycelium node.",
+    "Nothing murmured, <em>nothing in the air.</em>",
+    '<a href="#all">Seven murmured,</a> <em>all come to roost.</em>',
+    '<a href="#all">110 murmured,</a> <em>all come to roost.</em>',
+    '<a href="#all">Seven murmured,</a> <em>all still in the air.</em>',
+    '<a href="#all">110 murmured,</a> <em><a href="#air">seven still in the air.</a></em>',
+    '<a href="#all">1204 murmured,</a> <em><a href="#air">117 still in the air.</a></em>',
+]
+# The longest ledes the model writes, a quest's name cut at its 48 characters and a murmur's
+# words at their 84, which must fit the four lines the lede's box holds.
+LEDES = [
+    (
+        "Newest in the air, from Keep Optimus Fast and Whole Through Every Switch: the forage "
+        "page's title now holds the lines its count takes on a phone, so nothing..."
+    ),
+    (
+        "Newest in the air, from Make the nightly audit find everything in order...: Gulls are "
+        "back on the breakwater, a week before the almanac said they would be, and..."
+    ),
+]
+# The lines the lede's box holds, which every lede the model writes fits.
+LEDE_LINES = 4
 
 
 def murmur(writer: str, at: int, words: str, **more: object) -> dict[str, object]:
@@ -429,7 +436,7 @@ def quiet_node(tmp_path: Path) -> Iterator[StandIn]:
 def heard_nothing(page: Page) -> None:
     """Read the page live with nothing murmured, its first reading."""
     the_page_stands(page, "live")
-    the_page_counts(page, "Nothing murmured yet.", "the quiet page miscounted")
+    the_page_counts(page, "Nothing murmured, nothing in the air.", "the quiet page miscounted")
 
 
 def said_quiet(page: Page, why: str) -> None:
@@ -533,7 +540,9 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
 def never_reached(page: Page) -> None:
     """Read the page broken with nothing heard, as a node never reached leaves it."""
     the_page_stands(page, "broken")
-    the_page_counts(page, "Nothing to hear yet.", "a node never reached wasn't said unheard")
+    the_page_counts(
+        page, "Not hearing the mycelium node.", "a node never reached wasn't said unheard"
+    )
 
 
 def test_a_node_never_reached_is_said_unheard_and_never_quiet(
@@ -555,7 +564,9 @@ def test_a_node_never_reached_is_said_unheard_and_never_quiet(
             for page in (first.page, second.page):
                 quiet = page.locator("#quiet")
                 expect(quiet, "a node never reached was called quiet").to_be_hidden()
-                the_page_counts(page, "Nothing to hear yet.", "the unheard page changed its word")
+                the_page_counts(
+                    page, "Not hearing the mycelium node.", "the unheard page changed its word"
+                )
         finally:
             if second is not None:
                 second.close()
@@ -573,20 +584,31 @@ def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: 
         opened.close()
 
 
-@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
-def test_the_opening_words_take_the_lines_the_head_will(
+# Past SIZES' desk the head lays out as it does there, its type no longer fluid and its parts
+# capped in width, so a wider desk would only repeat it.
+@pytest.mark.parametrize("size", SIZES)
+def test_the_head_keeps_the_lines_it_opens_on(
     browser: Browser, murmurs_served: Served, size: tuple[int, int]
 ) -> None:
-    # The words the page opens with must take the lines its headline and lede will once the
-    # node answers, or everything under them moves as it does.
+    # Every headline the page writes must take the lines the one it opens on does, and every
+    # lede must fit whole in the box it opens in, or everything under them moves as the node
+    # answers and as murmurs settle.
     root, _ = murmurs_served
     opened = Opened(browser, f"{root}web/", size, "light")
     try:
         opened.first(drawn)
-        opened.page.wait_for_timeout(REDRAWN_MS)
-        heights = opened.page.evaluate(OPENING_AND_LIVE, ["headline", "lede"])
-        moved = {part: each for part, each in heights.items() if each[0] != each[1]}
-        assert not moved, f"at {size} the head's opening and live heights differ: {moved}"
+        heights = opened.page.evaluate(
+            HEAD_HEIGHTS, [["headline", "lede"], {"headline": HEADLINES, "lede": LEDES}]
+        )
+        for part, said in heights.items():
+            taken = [said["live"], *said["forms"]]
+            assert all(each == said["opening"] for each in taken), (
+                f"at {size} the {part} opens {said['opening']} px tall, then takes {taken}"
+            )
+        box = round(LEDE_LINES * heights["lede"]["line"])
+        assert heights["lede"]["opening"] == box, (
+            f"at {size} the lede's box is {heights['lede']['opening']} px, not {LEDE_LINES} lines"
+        )
     finally:
         opened.close()
 

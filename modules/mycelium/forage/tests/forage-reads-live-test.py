@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Budget, Opened, Served, serving
+from live_page import LOOKS, SIZES, WIDE_DESK, Budget, Opened, Served, serving
 from playwright.sync_api import Browser, Locator, Page, expect
 from stand_in_daemon import StandIn, standing_in
 
@@ -561,11 +561,10 @@ DRAWN = """() => ({
 })"""
 # The least a word may be drawn at, the kit's floor for text.
 LEAST_WORD_PX = 12
-# A desk wide enough for the floor's words, which site.css hides at a phone's width and at
-# SIZES' desk, where they'd draw under LEAST_WORD_PX.
-WIDE_DESK = (1920, 1080)
 
 
+# WIDE_DESK is wide enough for the floor's words, which site.css hides at a phone's width and
+# at SIZES' desk, where they'd draw under LEAST_WORD_PX.
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
 def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
     browser: Browser, forage_served: Served, mycelium_node: StandIn, size: tuple[int, int]
