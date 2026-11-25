@@ -54,10 +54,14 @@
 //! on a busy machine does, since a switch can start a night job's timer,
 //! and the timer its job, by day (src/hours.rs says when it did).
 //!
+//! With `--away-stop`, a slice's bar eases while Joel is away from the
+//! machine, and holds again the moment he's back (src/away.rs says how).
+//!
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (src/commands.rs); a failed job's run ends with the job's own code.
 
 mod ahead;
+mod away;
 mod cgroup;
 mod commands;
 mod holding;
@@ -66,6 +70,7 @@ mod pause;
 mod pressure;
 mod turn;
 
+use away::Away;
 use cgroup::Limits;
 use hours::Hours;
 use pause::{Hold, Sharing};
@@ -96,6 +101,7 @@ struct Job {
     every: Duration,
     grace: Duration,
     limits: Limits,
+    away: Away,
     command: Vec<String>,
 }
 
@@ -134,6 +140,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
         every: Duration::from_secs(5),
         grace: Duration::from_secs(60),
         limits: Limits::default(),
+        away: Away::default(),
         command,
     };
     let mut options = args[2..split].iter();
@@ -178,9 +185,11 @@ fn parse(args: &[String]) -> Result<Job, String> {
                 })?;
                 job.limits.reads.push((PathBuf::from(disk), bytes));
             }
+            _ if job.away.take(option, value, number)? => {}
             _ => return Err(format!("{option} isn't an option of run")),
         }
     }
+    job.away.check(&job.stops)?;
     Ok(job)
 }
 
@@ -485,6 +494,10 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
     Ok(Some((lock, now.avg60)))
 }
 
+/// What the log says as Joel goes and as he comes back.
+const EASED: &str = "Joel is away, so its eased bars hold";
+const BACK: &str = "Joel is back, so its own bars hold again";
+
 /// Samples the pressures until the job ends, giving its status, or until
 /// one passes its bar or the job has run its most, giving None once it
 /// has said which. Meanwhile it shares the turn, pausing the job for a
@@ -500,6 +513,9 @@ fn watch(
 ) -> Option<ExitStatus> {
     let began = Instant::now();
     let mut last_sample: Option<Instant> = None;
+    // Whether Joel is away, looked at only when a bar eases while he is.
+    let mut presence = job.away.eases().then(|| job.away.watch());
+    let mut was_away = false;
     loop {
         if ASKED_TO_STOP.load(Ordering::Relaxed) {
             say(job, "stopping: it was asked to stop");
@@ -553,25 +569,37 @@ fn watch(
             began.elapsed().as_secs(),
             machine.avg10
         );
+        let away = presence.as_mut().is_some_and(away::Watch::is_away);
+        if away != was_away {
+            was_away = away;
+            say(job, if away { EASED } else { BACK });
+        }
         let mut past = None;
         for (slice, file, bar) in watched {
             let reading = pressure::read(file).unwrap_or_default();
             let _ = write!(line, " {slice} {:.2}", reading.avg10);
-            if reading.avg10 > *bar && past.is_none() {
+            let bar = job.away.slice_bar(slice, *bar, away);
+            if reading.avg10 > bar && past.is_none() {
                 past = Some(format!(
                     "{slice}'s memory full avg10 is {:.2}%, past {bar}%",
                     reading.avg10
                 ));
             }
         }
-        if past.is_none() && machine.avg10 > job.stop_machine {
+        let machine_bar = job.away.machine_bar(job.stop_machine, away);
+        if past.is_none() && machine.avg10 > machine_bar {
             past = Some(format!(
-                "memory full avg10 is {:.2}%, past {}%",
-                machine.avg10, job.stop_machine
+                "memory full avg10 is {:.2}%, past {machine_bar}%",
+                machine.avg10
             ));
         }
         let paused = if sharing.is_paused() { " paused" } else { "" };
-        let _ = writeln!(samples, "{line} own {:.2}{paused}", own_now.avg10);
+        let away_mark = if away { " away" } else { "" };
+        let _ = writeln!(
+            samples,
+            "{line} own {:.2}{paused}{away_mark}",
+            own_now.avg10
+        );
         if let Some(why) = past {
             say(
                 job,

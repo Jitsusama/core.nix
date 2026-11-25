@@ -16,7 +16,11 @@ onLinux {
   # job runs at a time, a stall in a watched slice or past the machine's
   # backstop stops it and kills what ignores TERM, a job stalling only
   # itself runs on, and its failure fails the run. A start outside its
-  # hours, or a wait for the turn they outlast, runs nothing.
+  # hours, or a wait for the turn they outlast, runs nothing. An eased bar
+  # holds only while Joel is away: not while he's marked there, seen
+  # lately, on a call, or on a call it can't tell about, nor with no
+  # minutes to say when he left, and his coming back brings the job's own
+  # bar back.
   night-shift-stops-for-joel = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in night-shift, its tests included.
   night-shift-passes-clippy = passesClippy "night-shift-passes-clippy" (
@@ -141,5 +145,51 @@ onLinux {
         && !(none.systemd.user.services ? night-shift-repack)
         && !(none.systemd.user.timers ? night-shift-repack)
         && pkgs.lib.any (package: package.pname or "" == "night-shift") none.home.packages
+        && !(says "--away")
+      );
+
+  # A job easing its bars while Joel is away tells he is from
+  # swayidle-away's mark, rhythm's minutes and a call on this machine,
+  # their paths left to systemd to expand, and gives each eased bar; one
+  # easing a slice it has no stop for is refused.
+  night-shift-eases-its-bars-only-while-joel-is-away =
+    let
+      withJob =
+        job:
+        account (bareNixos [
+          self.nixosModules.workstation
+          {
+            home-manager.users.someone.jitsusama.night-shift.jobs.eased = {
+              description = "Eases its bars while Joel is away";
+              command = [ "true" ];
+            }
+            // job;
+          }
+        ]);
+      declared = withJob {
+        stopsWhileAway."app.slice" = 10;
+        stopMachineWhileAway = 12;
+      };
+      wrong = withJob { stopsWhileAway."agents-only.slice" = 10; };
+      words = toString declared.systemd.user.services.night-shift-eased.Service.ExecStart;
+      says = text: pkgs.lib.hasInfix text words;
+      # night-shift's own, apart from what the rest of the account asserts.
+      ours =
+        user: builtins.filter (rule: pkgs.lib.hasPrefix "night-shift job " rule.message) user.assertions;
+    in
+    holds "night-shift-eases-its-bars-only-while-joel-is-away"
+      "A job easing its bars while Joel is away escapes the specifiers in its mark's or minutes' paths, asks about calls beyond this machine or none at all, drops an eased bar or the wait before one, or eases a slice it has no stop for."
+      (
+        says "--stop app.slice=1 "
+        && says "--away-mark %t/someone-at-the-machine "
+        && says "--away-seen %S/rhythm/seen "
+        && says "--away-after 1800 "
+        && builtins.match ".*--away-call '/nix/store/[^ ]*/bin/a-call-is-on --here'.*" words != null
+        && says "--away-stop app.slice=10 "
+        && says "--away-stop-machine 12 "
+        && says " -- true"
+        && pkgs.lib.any (rule: !rule.assertion) (ours wrong)
+        && pkgs.lib.all (rule: rule.assertion) (ours declared)
+        && ours declared != [ ]
       );
 }
