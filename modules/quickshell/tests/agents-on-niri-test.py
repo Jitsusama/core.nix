@@ -4479,3 +4479,74 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         (PRESENCE / "asking.json").unlink(missing_ok=True)
         shell.close_launcher()
         left_the_node("s-asking")
+
+
+def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
+    shell: Shell,
+) -> None:
+    """A Talk opened from a link on a cell asking Joel shows its ask and answers it from Return.
+
+    Joel opened a Talk on a cell asking him from the realm's map and found nothing of its
+    question there, and nothing said after he typed (13:15 on 2026-11-24: "no feedback at
+    all"). The Talk now leads with what it asks and the choices it takes; words naming none
+    are let go, the foot saying what it takes, and a choice reaches its inbox as Joel's answer
+    to the want he was shown, then reads answered.
+    """
+    since = datetime.now(UTC).isoformat()
+    choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+    ask = {"question": "Which way?", "choices": choices, "allowOther": False}
+    wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
+    lay("CHOOSE", "Choosing Quest", {"state": "listening", "busy": False, "wants": wants})
+    inbox = STEER / "CHOOSE"
+    inbox.mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    try:
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Choosing Quest" in shown["rows"])
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "CHOOSE")
+        assert did["done"], did
+
+        def first(shown: Json) -> Json:
+            return cast("Json", (shown["talks"] or [{}])[0])
+
+        shell.launcher_until(
+            lambda shown: (
+                shown["asking"]
+                and first(shown).get("line") == "Choosing Quest asks you"
+                and "Which way?" in "".join(first(shown).get("answers") or [])
+                and first(shown).get("stands") == "Left \u00b7 Right"
+            )
+        )
+        # Words naming none of its choices answer nothing, and aren't kept to answer a later ask.
+        shell.send_chars("up")
+        shell.launcher_until(lambda shown: shown["typed"] == "up")
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: "it takes only Left \u00b7 Right" in shown["footer"].replace("\xa0", " ")
+        )
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+        shell.launcher_until(lambda shown: shown["typed"] == "")
+        shell.send_chars("right")
+        shell.launcher_until(lambda shown: shown["typed"] == "right")
+        shell.send_key("ret")
+        deadline = time.monotonic() + 10
+        while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+            assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
+            time.sleep(0.1)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
+        assert str(said["want"]).startswith("question@"), said
+        shell.launcher_until(
+            lambda shown: any(
+                (one.get("line"), one.get("stands")) == ("right", "answered")
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        )
+    finally:
+        (PRESENCE / "choose.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-choose")
