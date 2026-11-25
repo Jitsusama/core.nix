@@ -197,8 +197,9 @@ Provider {
             utc: Moment.utcClock(now).slice(0, 5),
             clock: keptAs.clock,
             clockSide: keptAs.side,
-            // The moment as the two clocks beside UTC keep it, as Time's
-            // own rows say it, the drawer gathering them as it does UTC.
+            // The moment as the two clocks beside UTC keep it, Unix's
+            // seconds and TAI's time to the second, as Time's own rows say
+            // it, the drawer gathering them beside UTC's minute.
             // The Julian Day is Date's, so Time never says it too (Joel: no
             // field shown twice between Time and Date).
             unix: String(Moment.unix(now)),

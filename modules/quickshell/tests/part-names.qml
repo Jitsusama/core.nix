@@ -628,13 +628,6 @@ ShellRoot {
             offsetFact?.value === offset?.note, JSON.stringify(offsetFact));
     }
 
-    // The time here and the date as Now shows them: each wearing its own
-    // place's glyph, as every row of Now does; the zone a figure copying
-    // its name, never a step of copies alone (Joel, 2026-11-11), its
-    // drawer's next change said as the launcher says a day with its time
-    // ("14 Mar 2027 03:00"), then what it turns to after a middle dot; the
-    // zone's plate with an eyebrow, as every plate has; and a day's number
-    // copied as a figure to paste, with nothing grouping it.
     // The zone's drawer at fixed moments, as Zones.changesSaid's cases in
     // answers/times.js hold them: a zone that never changes says so once,
     // leaving After That out, and past the last change kept After That
@@ -642,6 +635,11 @@ ShellRoot {
     function asZoneDrawn() {
         const table = clocks.loaded();
         const never = clocks.timeWord("time:zone", "never");
+        // A zone missing from the table would read as one that never
+        // changes, so each is first found there.
+        expect("the zone table holds the zones the drawer is asked of",
+            !!table.zones["Asia/Tokyo"] && !!table.zones["America/Toronto"],
+            JSON.stringify(Object.keys(table.zones ?? {}).length));
         const facts = (id, when) => {
             const zone = clocks.zoneThing({ rows: [] }, table.zones[id], Date.parse(when));
             return typeof zone.drawer === "function" ? zone.drawer().facts : zone.drawer.facts;
@@ -658,6 +656,13 @@ ShellRoot {
             JSON.stringify(late));
     }
 
+    // The time here and the date as Now shows them: each wearing its own
+    // place's glyph, as every row of Now does; the zone a figure copying
+    // its name, never a step of copies alone (Joel, 2026-11-11), its
+    // drawer's next change said as the launcher says a day with its time
+    // ("14 Mar 2027 03:00"), then what it turns to after a middle dot; the
+    // zone's plate with an eyebrow, as every plate has; and a day's number
+    // copied as a figure to paste, with nothing grouping it.
     function asNowShows() {
         const time = clocks.answer("time");
         const date = today.answer("date");

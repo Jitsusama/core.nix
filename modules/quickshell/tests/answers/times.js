@@ -104,7 +104,8 @@ function run(failures, fromRoot) {
 // no case depends on the day it runs: one a year ahead, a southern zone's
 // order, a zone with none, and one past whose next change the years kept
 // hold no more. That last case's year is zones.nix's last, 2045, which
-// time.json's "none before 2046" names too: move all three together.
+// time.json's "none before 2046" and part-names.qml's asZoneDrawn name
+// too: move all four together.
 function twoChanges(failures, zones) {
     const quoted = Common.quoted;
     const at = Common.at;
