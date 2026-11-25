@@ -19,6 +19,11 @@ a heap the kernel won't take lent (memory not anonymous refuses it, and a refusa
 The kernel must then say it holds some of the shell lent, a figure for the whole process, so it
 holds that the line reads it, not that the heap alone lent it. That lending keeps the pages until
 the kernel needs them, rather than giving them back, is the heap test's lendsBack to hold.
+
+What the heap holds resident must not climb round on round either, as live mustn't: Joel's shell
+held 149 MB at 23:09 and 252 MB at 00:13 with live flat at 60 to 65 MB (2026-11-25), and each
+closing's line says how much of what's held is resident, which counts what a page the kernel took
+no longer costs.
 """
 
 from __future__ import annotations
@@ -94,11 +99,17 @@ def live_after_closings(shell: Shell) -> list[int]:
     return live
 
 
+def resident_after_closings(shell: Shell) -> list[int]:
+    """Give the MB each closing said the heap held resident, in order."""
+    said = shell.log.read_text(errors="replace")
+    return [int(each) for each in re.findall(r" MB held, (\d+) MB of it resident,", said)]
+
+
 def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture[str]) -> None:
     """Open every place and type at home, three rounds, each after the first landing level."""
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
-        rounds = rounds_kept(shell)
+        rounds, residents = rounds_kept(shell)
         said = shell.log.read_text(errors="replace")
         jemalloc = re.search(r"collected after closing.*; jemalloc \d+ MB in use", said)
         assert jemalloc, f"no closing said what jemalloc holds:\n{shell.tail()}"
@@ -123,22 +134,37 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         memfds = [line for line in maps if "/memfd:JSGCHeap" in line]
         assert not memfds, f"the shell maps its heap from a memfd {len(memfds)} times"
     medians = [round(statistics.median(each) / 1024) for each in rounds]
+    resident = [float(statistics.median(each)) if each else 0.0 for each in residents]
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
         print(f"live after each round's closings, medians in kB: {medians}", flush=True)
+        print(f"resident after each round's closings, medians in MB: {resident}", flush=True)
     assert all(rounds), f"a round's closings weren't collected: {rounds}"
     second, third = medians[1], medians[2]
     assert third <= second * GROWTH, (
         f"a round of every place kept {third} kB live against {second} kB the round before"
         f" (medians by round, in kB: {medians}), so something each opening makes is never let go"
     )
+    closings = len(PLACES) + len(TYPED)
+    assert all(len(each) == closings for each in residents), (
+        f"a round's closings didn't each say what's held resident as this check reads it:"
+        f" {residents}"
+    )
+    assert resident[2] <= resident[1] * GROWTH, (
+        f"a round of every place held {resident[2]} MB resident against {resident[1]} MB the"
+        f" round before (medians by round, in MB: {resident}), so the heap keeps pages it no"
+        f" longer uses"
+    )
 
 
-def rounds_kept(shell: Shell) -> list[list[int]]:
-    """Give the bytes left live at each closing of three rounds of every place, by round."""
+def rounds_kept(shell: Shell) -> tuple[list[list[int]], list[list[int]]]:
+    """Give the bytes left live, and the MB held resident, at each closing of three rounds."""
     rounds: list[list[int]] = []
+    residents: list[list[int]] = []
     seen = len(live_after_closings(shell))
     for _ in range(3):
+        # Said in the shell's own log as each closing's collection is waited for, so never behind.
+        before = len(resident_after_closings(shell))
         for place in PLACES:
             opened_and_closed(shell, place)
         for text in TYPED:
@@ -151,5 +177,6 @@ def rounds_kept(shell: Shell) -> list[list[int]]:
             time.sleep(0.5)
             live = live_after_closings(shell)
         rounds.append(live[seen:])
+        residents.append(resident_after_closings(shell)[before:])
         seen = len(live)
-    return rounds
+    return rounds, residents

@@ -12687,8 +12687,10 @@ Scope {
         if (open || opening || parting !== "")
             return;
         // How far the opening went, against where the collector would have
-        // started, before this collection resets both.
-        const reached = Heap.weigh();
+        // started, before this collection resets both: what it stands at,
+        // since weighing walks every page of the heap to say what's free
+        // and resident, and only the collection's own weighing says those.
+        const reached = Heap.standing();
         const began = KeyTimes.now();
         gc();
         Heap.leaveRoom(openingRoom);
@@ -12715,7 +12717,8 @@ Scope {
         const held = Math.round(weight.held);
         // What's held in memory, since a lent page the kernel took stays
         // held but costs nothing (heap.h's weigh).
-        const resident = Math.round(weight.resident);
+        const resident = weight.resident < 0 ? "an unknown amount"
+            : `${Math.round(weight.resident)} MB`;
         const outside = Math.round(weight.outside);
         const free = Math.round(weight.free);
         const chunks = Math.round(weight.chunks);
@@ -12725,7 +12728,7 @@ Scope {
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
-            + ` held, ${resident} MB of it resident, ${free} MB of it in free pages,`
+            + ` held, ${resident} of it resident, ${free} MB of it in free pages,`
             + ` ${outside} MB outside, chunks`
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`

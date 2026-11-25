@@ -461,8 +461,8 @@ ReadBack readBack(QJSEngine &engine, const QJSValue &few) {
 
 // Whether giving a thinned heap's free pages back takes them, says so, and
 // leaves what's kept, and what's made after, as it was made; and whether
-// what's held is counted resident before it and not after, so a count that
-// ignored which pages are in memory fails.
+// what's held resident falls by more than half of what was given, so a
+// count that ignored which pages are in memory fails.
 bool givesBack() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -635,9 +635,11 @@ bool lendsBack() {
     if (!lending.calm)
         std::fprintf(stderr,
                      "note: the kernel took lent pages twice while lending was read, so what "
-                     "it held lent (%.1f, then %.1f MB) and what stayed resident (%.1f MB) "
-                     "go unjudged; it marked %.1f MB lent, or -1 if it doesn't say\n",
-                     lending.lentBefore, lending.lentAfter, lending.freeLent, lending.marked);
+                     "it held lent (%.1f, then %.1f MB), what stayed resident (%.1f MB) and "
+                     "how far what's held resident fell once taken (%.1f to %.1f MB) go "
+                     "unjudged; it marked %.1f MB lent, or -1 if it doesn't say\n",
+                     lending.lentBefore, lending.lentAfter, lending.freeLent,
+                     lending.residentLent, lending.residentTaken, lending.marked);
     if (!firstAsLent)
         std::fprintf(stderr,
                      "FAIL the first lending, taken from early, said %.1f MB of %.1f free, "
@@ -890,6 +892,46 @@ bool namesWhatsKept() {
                      hidden ? "hidden" : "not hidden",
                      census.value(QStringLiteral("ms")).toDouble(), qPrintable(line));
     return !kept.isError() && named && hidden && whole && timed;
+}
+
+// How many objects of a shape of their own are kept, each needing an
+// internal class from the shapes' own allocator; and how many large items
+// of LARGE_VALUES numbers, about 1.2 MB each, which the chunk allocator
+// makes, beside one of HUGE_LENGTH, with a segment of its own.
+constexpr int OWN_SHAPES = 50000;
+constexpr int LARGE_ITEMS = 6;
+constexpr int LARGE_VALUES = 150000;
+
+double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
+
+// Whether what's held resident covers what's live once a heap keeps items
+// in every allocator it has: objects in its chunks, their shapes' internal
+// classes in the shapes' own, and large items of both kinds. Each item
+// live was written, so its pages are in memory, and a count that left out
+// an allocator, or the end of a large item's chunk, falls short of it.
+bool residentCoversWhatsLive() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) kept.push({ "
+                       "['own' + i]: i }); for (let i = 0; i < %2; i++) kept.push(new "
+                       "Array(%3).fill(i)); kept.push(new Array(%4).fill(0.5)); return kept; "
+                       "})()")
+            .arg(OWN_SHAPES)
+            .arg(LARGE_ITEMS)
+            .arg(LARGE_VALUES)
+            .arg(HUGE_LENGTH));
+    const Weight weight = weighed(engine, heap);
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const double shapes = megabytesOf(manager->icAllocator.usedMem());
+    const double large = megabytesOf(manager->getLargeItemsMem());
+    const bool covers = weight.resident >= weight.live;
+    if (kept.isError() || !covers)
+        std::fprintf(stderr,
+                     "FAIL what's held resident covers the %.1f MB live, %.1f MB of it shapes "
+                     "and %.1f MB large items: %.1f MB resident of %.1f MB held\n",
+                     weight.live, shapes, large, weight.resident, weight.held);
+    return !kept.isError() && covers;
 }
 
 // How many closures the place test keeps, each from a call of its own.
@@ -1723,6 +1765,7 @@ int main(int argc, char **argv) {
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
     const bool census = namesWhatsKept();
+    const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
     const bool stands = standsAsWeighed();
     const bool underWay = saysOneUnderWay();
@@ -1735,8 +1778,8 @@ int main(int argc, char **argv) {
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && lent && fits && whole && census &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   swept && chained
+                   covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
+                   alone && swept && chained
                ? 0
                : 1;
 }
