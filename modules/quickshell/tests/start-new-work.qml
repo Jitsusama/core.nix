@@ -225,7 +225,7 @@ QtObject {
             stood.up.map(one => one.late === true), [true, false, false, true]);
         Expect.same("an up keeps the words said of it late, which it takes back",
             Sprouting.settled([{ key: "k", held: "h9", machine: "m", since: 0, late: true,
-                told: "late on m" }], found => ({ address: "h9" }), now, times).up[0].told,
+                told: "late on m" }], () => ({ address: "h9" }), now, times).up[0].told,
             "late on m");
         Expect.same("one past the minute is late", stood.late.map(one => one.key), ["late"]);
         Expect.same("one watched a quarter hour is gone", stood.gone.map(one => one.key),

@@ -1866,8 +1866,9 @@ Provider {
             console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
-        // Only Joel's own Return stops a start still coming up saying over
-        // its act, so no program outside quiets what he's told.
+        // A walk's Return, refused above, stamps nothing, so no program
+        // outside quiets a start still coming up by pressing for him; a link
+        // offer stamps its own act, which it gives fresh words (newWorkFor).
         sproutPressed = Openings.pressedAt(sproutPressed, key, Date.now());
         if (sprouting !== "") {
             sproutSays(key, words.busy);
@@ -2144,10 +2145,7 @@ Provider {
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
         sproutNoticed(footed.told);
-        if (launcher.toldOnOpen === footed.shown)
-            launcher.toldOnOpen = [];
-        if (launcher.saying === footed.shown)
-            launcher.say([]);
+        footCleared(launcher, footed.shown);
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
@@ -2180,10 +2178,13 @@ Provider {
             return;
         const late = stood.late.map(one => said(one, "unopened"));
         openings = Openings.toldOf(stood.waiting, stood.late, late);
-        stood.late.forEach(one => Report.say(
+        stood.late.forEach(one => sproutJournal(
             `new work held ${one.held} on ${one.machine} is still coming up`));
-        stood.gone.forEach(one => Report.say(
-            `new work held ${one.held} on ${one.machine} wasn't up in time`));
+        stood.gone.forEach(one => {
+            sproutJournal(`new work held ${one.held} on ${one.machine} wasn't up in time`);
+            // "Lost" answers its "still coming up", as an up word does.
+            takeBack(one);
+        });
         const told = late.concat(stood.gone.map(one => said(one, "lost")));
         stood.up.forEach(one => {
             const text = openOne(one);
@@ -2216,14 +2217,14 @@ Provider {
         // of it, so neither says it beside them nor notices it at the shut.
         takeBack(one);
         if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
-            Report.say(`new work held ${one.held} is up${late} as session `
+            sproutJournal(`new work held ${one.held} is up${late} as session `
                 + `${one.session.address}; left for Go To`);
             return said(one, one.late === true ? "upLater" : "up");
         }
         said(one, "opening");
         launcher.open = false;
         Sessions.goTo(one.session);
-        Report.say(`opening new work held ${one.held}${late} as session ${one.session.address}`);
+        sproutJournal(`opening new work held ${one.held}${late} as session ${one.session.address}`);
         return "";
     }
     // Takes back what the foot said of `one` late (Openings.takenBack),
@@ -2232,12 +2233,23 @@ Provider {
         const launcher = provider.launcher ?? null;
         const taken = Openings.takenBack(sproutFooted, one);
         sproutFooted = taken.footed;
-        if (launcher === null || taken.cleared === null)
-            return;
-        if (launcher.toldOnOpen === taken.cleared)
+        if (launcher !== null && taken.cleared !== null)
+            footCleared(launcher, taken.cleared);
+    }
+    // The launcher forgets the foot `shown` (sproutTell's), where it still
+    // holds it to say.
+    function footCleared(launcher, shown) {
+        if (launcher.toldOnOpen === shown)
             launcher.toldOnOpen = [];
-        if (launcher.saying === taken.cleared)
+        if (launcher.saying === shown)
             launcher.say([]);
+    }
+    // What becomes of a start, to the journal on any machine and as a report
+    // for the desktop test (Report), so a slow or lost one can be matched to
+    // the node's record by its hold.
+    function sproutJournal(what) {
+        console.info(`launcher: ${what}`);
+        Report.say(what);
     }
     Timer {
         interval: 5000
