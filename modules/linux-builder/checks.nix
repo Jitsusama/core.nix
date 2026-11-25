@@ -22,8 +22,8 @@ let
     settings:
     lib.splitString "," (
       builtins.elemAt (lib.splitString " "
-        (macOf settings).environment.etc."nix/linux-builder.conf".text
-      ) 7
+        (macOf settings).environment.etc."nix/linux-builder.line".text
+      ) 5
     );
 
   # The guest nixpkgs builds, which is the one its cache holds.
@@ -99,6 +99,35 @@ in
 
   # The collection does what each ask says and prints the store's free
   # bytes; anything else is refused before it runs a thing.
+  # The Mac's Nix reads its builders from the file the room job writes,
+  # which holds the builder's line only while the Mac has room: under the
+  # floor or swapping, it's emptied at once, and the line comes back only
+  # after the hold (room-test.sh). The job runs every 15 seconds with the
+  # floor and hold the options give.
+  linux-builder-is-offered-only-with-room =
+    let
+      mac = macOf {
+        room = {
+          floor = 40;
+          hold = 900;
+        };
+      };
+      job = mac.launchd.daemons.linux-builder-room.serviceConfig;
+    in
+    assert lib.assertMsg (lib.hasInfix "builders = @/var/lib/linux-builder-vz/offered"
+      mac.environment.etc."nix/linux-builder.conf".text
+    ) "The Mac's Nix reads the builder's line itself, not the file the room job writes.";
+    assert lib.assertMsg (
+      job.StartInterval == 15
+      && lib.elem "40" job.ProgramArguments
+      && lib.elem "900" job.ProgramArguments
+      && lib.elem "/etc/nix/linux-builder.line" job.ProgramArguments
+    ) "The room job doesn't run every 15 seconds with the floor, the hold and the builder's line.";
+    pkgs.runCommandLocal "linux-builder-is-offered-only-with-room" { } ''
+      $BASH ${./room-test.sh} ${./room.sh}
+      touch $out
+    '';
+
   linux-builder-collects-only-what-it-is-asked =
     pkgs.runCommandLocal "linux-builder-collects-only-what-it-is-asked" { }
       ''

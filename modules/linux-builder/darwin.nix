@@ -244,6 +244,18 @@ let
   # Not nix-darwin's /var/lib/linux-builder, which it empties at every switch
   # while its own builder is off.
   home = "/var/lib/linux-builder-vz";
+  # The builders Nix reads: the builder's line while the Mac has room, and
+  # nothing otherwise.
+  offered = "${home}/offered";
+  room = pkgs.writeShellApplication {
+    name = "linux-builder-room";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.diffutils
+      pkgs.gnused
+    ];
+    text = builtins.readFile ./room.sh;
+  };
 
   line = lib.concatStringsSep " " [
     "ssh-ng://linux-builder"
@@ -361,14 +373,34 @@ in
         another machine. None by default, which writes no sudo rule.
       '';
     };
+    room = {
+      floor = lib.mkOption {
+        type = lib.types.ints.between 0 100;
+        default = 35;
+        description = ''
+          The share of the Mac's memory, in percent as macOS reckons it free,
+          under which the builder isn't offered to the Mac's Nix, so no build
+          starts in the VM; nor is it while the Mac swaps pages out
+          (room.sh).
+        '';
+      };
+      hold = lib.mkOption {
+        type = lib.types.ints.unsigned;
+        default = 600;
+        description = ''
+          The seconds the Mac must stay above the floor, swapping nothing out,
+          before the builder is offered again.
+        '';
+      };
+    };
     nixDaemon = lib.mkOption {
       type = lib.types.str;
       default = "systems.determinate.nix-daemon";
       description = ''
         The launchd label of the Nix daemon the machine's own installer runs.
         Nix reads its settings only as it starts, so it's restarted when the
-        builder's line changes, and only then, since a restart ends the builds
-        it's running.
+        builder's settings change, and only then, since a restart ends the
+        builds it's running.
       '';
     };
   };
@@ -391,8 +423,10 @@ in
       mkdir -p ${home}
     '';
 
-    # After /etc is written: restart Nix only when the line it reads differs
-    # from the one it was last restarted for.
+    # After /etc is written: restart Nix only when the settings it reads
+    # differ from the ones it was last restarted for. The builder's line
+    # itself is read from the room job's file at each build, so a change to
+    # it needs no restart.
     system.activationScripts.postActivation.text = lib.mkAfter ''
       read=$(/usr/bin/shasum -a 256 /etc/nix/linux-builder.conf | /usr/bin/cut -d' ' -f1)
       if [ "$read" != "$(/bin/cat ${home}/read-by-nix 2>/dev/null)" ] &&
@@ -468,9 +502,33 @@ in
         ServerAliveCountMax ${toString answers.unanswered}
     '';
 
+    # Nix reads the builder's line from a file the room job writes, which
+    # holds the line only while the Mac has room (room.sh), so the line
+    # itself sits beside it for the job to copy.
     environment.etc."nix/linux-builder.conf".text = ''
-      builders = ${line}
+      builders = @${offered}
       builders-use-substitutes = true
     '';
+    environment.etc."nix/linux-builder.line".text = ''
+      ${line}
+    '';
+
+    # Every 15 seconds, so a Mac that starts swapping stops taking builds
+    # within that. It writes its log only when the offer changes.
+    launchd.daemons.linux-builder-room.serviceConfig = {
+      ProgramArguments = [
+        (lib.getExe room)
+        "/usr/sbin/sysctl"
+        "/usr/bin/vm_stat"
+        "/etc/nix/linux-builder.line"
+        offered
+        home
+        (toString cfg.room.floor)
+        (toString cfg.room.hold)
+      ];
+      StartInterval = 15;
+      RunAtLoad = true;
+      StandardErrorPath = "/var/log/linux-builder-room.log";
+    };
   };
 }

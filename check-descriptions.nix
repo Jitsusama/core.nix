@@ -2048,6 +2048,12 @@
     the Linux VM's collection, run for a collecting key, collects all that's dead, or at most the
     GiB asked, or nothing for free, prints the store's free bytes, and refuses anything else
   '';
+  linux-builder-is-offered-only-with-room = ''
+    the Mac's Nix reads its builders from the room job's file, which a job every 15 seconds with
+    the set floor and hold empties under the floor, as at 30% free, or on a page swapped out, as
+    30 s back, and gives the builder's line back only after the hold, saying each change once, and
+    empties when it can't read the room
+  '';
   linux-builder-gives-up-on-a-guest-that-stops-answering = ''
     the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
     up after four asks 15 seconds apart go unanswered, each setting said once in the entry in any
