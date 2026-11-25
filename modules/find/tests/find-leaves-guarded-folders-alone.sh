@@ -199,7 +199,7 @@ if [[ $(<"${said}") != "${unlisted}" ]] || grep -qxF ./Containers <<<"${found}" 
   exit 1
 fi
 # A primary's operand is never read as a primary: -name's -empty is a
-# pattern, so nothing is opened and the folders are still listed.
+# pattern, so the search says the usual note, not the one -empty gives.
 found=$(search "${home}" -name -empty)
 if [[ $(<"${said}") != "${note}" ]]; then
   echo "${who} read -name's -empty as a primary: $(<"${said}")" >&2
@@ -228,11 +228,34 @@ if [[ $(<"${said}") != "${unlisted}" ]]; then
   echo "${who} with -maxdepth 1 tested a guarded folder with -empty: $(<"${said}")" >&2
   exit 1
 fi
-search "${home}" -maxdepth 2 -name needle >/dev/null
-if [[ $(<"${said}") != "${note}" ]]; then
-  echo "${who} with -maxdepth 2 opened a guarded folder: $(<"${said}")" >&2
+found=$(search "${home}" -maxdepth 2 -name needle)
+if [[ $(<"${said}") != "${note}" ]] || grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
+  echo "${who} with -maxdepth 2 opened a guarded folder or went past it: ${found}" \
+    "$(<"${said}")" >&2
   exit 1
 fi
+# A -maxdepth counts from the start, so from above the home folder it
+# reaches the guarded folders deeper down, and still prunes them.
+rest=${home#"${work}"/}
+slashes=${rest//[^\/]/}
+named "${work}"
+found=$(search "${work}" -maxdepth $((${#slashes} + 3)) -name needle)
+if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF "${home}/src/needle" <<<"${found}"; then
+  echo "${who} with -maxdepth $((${#slashes} + 3)) opened a guarded folder or lost a match:" \
+    "${found} $(<"${said}")" >&2
+  exit 1
+fi
+named "${home}"
+# A depth is read as macOS's find reads it, the last given, a + or blanks
+# before its digits as well, which GNU's find refuses, so what this one
+# says is left out of what's read.
+for given in '+3' ' 3' '3x'; do
+  search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
+  if ! grep -qxF "${note}" "${said}"; then
+    echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
+    exit 1
+  fi
+done
 # An action of its own that opens nothing lists each guarded folder it
 # matches once, as it prints, with nothing added: NUL-ended, as -print0 asks.
 found=$(wrapped "${home}" . -type d -print0 2>"${said}" | tr '\n\0' '!\n')

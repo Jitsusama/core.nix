@@ -11,9 +11,8 @@ let
   '';
 in
 {
-  # Ahead of anything else named find the account installs, so it's every
-  # program's find that runs it by name from the account's profile, a
-  # script's as much as an agent's: each gets its note on stderr, and the
-  # guarded folders listed but unsearched.
+  # Ahead of anything else named find the account installs. Any program that
+  # runs find by name from the account's profile, a script or an agent, gets
+  # this one: a note on stderr, and the guarded folders left unsearched.
   home.packages = lib.mkIf pkgs.stdenv.hostPlatform.isDarwin [ (lib.hiPrio find) ];
 }

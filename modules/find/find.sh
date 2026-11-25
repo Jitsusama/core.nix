@@ -108,6 +108,16 @@ acts=false
 opens=false
 mindepth=0
 maxdepth=''
+# A depth as macOS's find reads it, by atoi (c_mXXdepth in its
+# function.c): past blanks and a +, its leading digits, or 0 with none, so
+# ` 2`, `+2` and `2x` are each 2, as find takes them, not left unread.
+depth_of() {
+  local word=$1 digits
+  word=${word#"${word%%[![:space:]]*}"}
+  word=${word#+}
+  digits=${word%%[!0-9]*}
+  depth=$((10#${digits:-0}))
+}
 for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}
   next=${expression[at + 1]-}
@@ -115,15 +125,13 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
     -depth) [[ ${next} =~ ^[-+]?[0-9]+$ ]] || depth=true ;;
     -d | -delete) depth=true ;;
     -mindepth)
-      if [[ ${next} =~ ^[0-9]+$ ]]; then
-        mindepth=${next}
-      fi
+      depth_of "${next}"
+      mindepth=${depth}
       at=$((at + 1))
       ;;
     -maxdepth)
-      if [[ ${next} =~ ^[0-9]+$ ]]; then
-        maxdepth=${next}
-      fi
+      depth_of "${next}"
+      maxdepth=${depth}
       at=$((at + 1))
       ;;
     -name | -iname | -path | -ipath | -wholename | -iwholename | -regex | -iregex | -lname \
