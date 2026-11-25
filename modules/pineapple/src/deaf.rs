@@ -129,6 +129,9 @@ pub struct Deaf {
     /// Whether a file this program didn't write may still stand, as one
     /// left by the reader before a restart may.
     left: bool,
+    /// Whether Slack is heard through a tool gateway, whose sign-in isn't
+    /// Slack's, so a row about it can't send Joel to sign in to Slack.
+    gateway: bool,
 }
 
 impl Default for Deaf {
@@ -150,6 +153,16 @@ impl Deaf {
             told: None,
             since: None,
             left: true,
+            gateway: false,
+        }
+    }
+
+    /// The same, for a reader hearing Slack through a tool gateway.
+    #[must_use]
+    pub fn through_gateway() -> Deaf {
+        Deaf {
+            gateway: true,
+            ..Deaf::new()
         }
     }
 
@@ -248,7 +261,11 @@ impl Deaf {
                 self.told = Some(why);
                 self.left = false;
                 let since = *self.since.get_or_insert(at);
-                Change::Tell(waits(why, since, at))
+                Change::Tell(if self.gateway {
+                    waits_on_gateway(why, since, at)
+                } else {
+                    waits(why, since, at)
+                })
             }
             Round::Unasked => Change::Keep,
         }
@@ -328,6 +345,29 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
             "steps": steps,
         }]
     })
+}
+
+/// What [`waits`] asks, for a reader hearing Slack through a tool gateway:
+/// a sign-in refused or missing is the gateway's, which no Slack sign-in
+/// mends and no signal says is mended, so it says so, sends Joel to the
+/// journal and is marked done by his word alone.
+#[must_use]
+pub fn waits_on_gateway(why: Deafness, since: u64, at: u64) -> Value {
+    let mut told = waits(why, since, at);
+    let said = match why {
+        Deafness::Refused => "The tool gateway refused the safe word's sign-in",
+        Deafness::NoSignIn => "The safe word has no tool gateway sign-in it can read",
+        Deafness::Unreadable | Deafness::Unread(_) => return told,
+    };
+    let item = &mut told["items"][0];
+    item["why"] = json!(format!(
+        "{said}, so a stop said in Slack isn't heard; one said elsewhere still is"
+    ));
+    item["steps"] = json!([
+        "Ask an agent to read the reader's journal, which says why the gateway's sign-in failed"
+    ]);
+    item["doneWhen"] = json!({"by": "person"});
+    told
 }
 
 /// Where For You's row is written, and a name passed over for it.

@@ -582,7 +582,7 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
     };
     let mut through = Through::new(Gateway::new(url, program), Box::new(record));
     let mut me: Option<String> = None;
-    let mut deaf = Deaf::new();
+    let mut deaf = Deaf::through_gateway();
     loop {
         let heard = match me.clone().map_or_else(|| through.me(), Ok) {
             Ok(user) => {

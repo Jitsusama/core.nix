@@ -6,7 +6,7 @@ use std::path::Path;
 
 use pineapple::deaf::{
     Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
-    refuses_the_sign_in, waiting, waits,
+    refuses_the_sign_in, waiting, waits, waits_on_gateway,
 };
 
 const AT: u64 = 1_795_000_000_000;
@@ -185,6 +185,46 @@ fn only_a_refusal_of_the_sign_in_is_joels_to_fix() {
             "{word} isn't fixed by signing in"
         );
     }
+}
+
+#[test]
+fn a_reader_through_a_gateway_never_sends_joel_to_sign_in_to_slack() {
+    let mut deaf = Deaf::through_gateway();
+    let refused = Round::Deaf(Deafness::Refused);
+    deaf.heard(refused, AT);
+    let told = deaf.heard(refused, AT + 30_000);
+    assert_eq!(
+        told,
+        Change::Tell(waits_on_gateway(
+            Deafness::Refused,
+            AT + 30_000,
+            AT + 30_000
+        )),
+        "told in the gateway's words"
+    );
+    for why in [Deafness::Refused, Deafness::NoSignIn] {
+        let item = &waits_on_gateway(why, AT, AT)["items"][0];
+        let said = item["why"].as_str().unwrap_or_default();
+        assert!(
+            said.contains("tool gateway") && !said.contains("keyring"),
+            "{why:?} names the gateway's sign-in: {said}"
+        );
+        assert_eq!(
+            item["doneWhen"],
+            serde_json::json!({"by": "person"}),
+            "{why:?} is marked done by Joel alone, since Slack's sign-in mends nothing"
+        );
+        assert!(
+            !item["steps"].to_string().contains("Sign in to Slack"),
+            "{why:?} sends him to no Slack sign-in: {}",
+            item["steps"]
+        );
+    }
+    assert_eq!(
+        waits_on_gateway(Deafness::Unreadable, AT, AT),
+        waits(Deafness::Unreadable, AT, AT),
+        "what Slack's answers say is the same either way"
+    );
 }
 
 #[test]

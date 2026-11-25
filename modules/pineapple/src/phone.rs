@@ -196,7 +196,12 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 /// mention, so `@here`, `@channel` and `@everyone` in what others wrote
 /// are said as `(at)here` and so on; any other refusal of what they wrote
 /// is met by sending it once more with the words left to the link, so
-/// the title and where still reach his phone.
+/// the title and where still reach his phone. A rate spent is no refusal
+/// of the words, so it's tried again whole the next round.
+///
+/// The tool's failing promises nothing of whether Slack took the message,
+/// so a second failing is counted as may have gone: two such rounds and
+/// it's given up on, rather than sent twice a round for ten minutes.
 ///
 /// # Errors
 ///
@@ -207,6 +212,7 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<(), Missed> {
         gateway.call(TO_SELF, &message).map(|_| ())
     };
     let sent = match ask(gateway, alert) {
+        Err(Called::Failed(why)) if spent(&why) => Err(Called::NotReached(why)),
         Err(Called::Failed(_)) if !alert.words.is_empty() => {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
@@ -218,23 +224,33 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<(), Missed> {
     };
     sent.map_err(|called| match called {
         Called::Unreachable(why) | Called::Unreadable(why) => Missed::Unsure(why),
-        Called::NotReached(why) | Called::Failed(why) => Missed::NotSent(why),
+        Called::Failed(why) if spent(&why) => Missed::NotSent(why),
+        Called::Failed(why) => Missed::Unsure(why),
+        Called::NotReached(why) => Missed::NotSent(why),
         Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
         Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
     })
 }
 
+/// Whether a tool's failing says Slack's rate was spent, which did nothing.
+fn spent(why: &str) -> bool {
+    let why = why.to_ascii_lowercase();
+    why.contains("ratelimited") || why.contains("rate limit")
+}
+
 /// The words that mention everyone said so they don't, as the gateway
-/// refuses to send a mention: `@` before `here`, `channel` or `everyone`,
-/// in any case, is said as `(at)`.
+/// refuses to send a mention: `@` before `here`, `channel` or `everyone`
+/// as a whole word, in any case, is said as `(at)`, while an address such
+/// as `ops@channel4.com` is left as written.
 fn unmentioned(text: &str) -> String {
     let mut said = String::with_capacity(text.len());
     for (at, character) in text.char_indices() {
         let everyone = || {
             let rest = text[at + character.len_utf8()..].to_ascii_lowercase();
-            ["here", "channel", "everyone"]
-                .iter()
-                .any(|word| rest.starts_with(word))
+            ["here", "channel", "everyone"].iter().any(|word| {
+                rest.strip_prefix(word)
+                    .is_some_and(|after| !after.starts_with(|next: char| next.is_alphanumeric()))
+            })
         };
         if character == '@' && everyone() {
             said.push_str("(at)");
@@ -379,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn a_mention_of_everyone_is_said_so_the_gateway_takes_it() {
+    fn a_mention_of_everyone_is_said_as_at() {
         assert_eq!(
             unmentioned("pineapple override @here and @Channel, @everyone; mail joel@example.com"),
             "pineapple override (at)here and (at)Channel, (at)everyone; mail joel@example.com",
@@ -390,6 +406,18 @@ mod tests {
             "ends with @",
             "an @ at the end is left"
         );
+        assert_eq!(
+            unmentioned("mail ops@channel4.com or @hereford, but @here."),
+            "mail ops@channel4.com or @hereford, but (at)here.",
+            "only the whole word, so an address or a longer name is left"
+        );
+    }
+
+    #[test]
+    fn only_a_rate_spent_is_said_as_spent() {
+        assert!(spent("Slack said: ratelimited"), "Slack's own word");
+        assert!(spent("Rate limit exceeded"), "in other words");
+        assert!(!spent("Slack said: not_allowed"), "a refusal is no rate");
     }
 
     #[test]
