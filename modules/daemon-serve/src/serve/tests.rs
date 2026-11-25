@@ -498,6 +498,28 @@ fn a_peered_ask_is_answered_knowing_who_asked() {
 }
 
 #[test]
+fn a_peered_ask_let_through_is_the_daemons_own() {
+    let own: Own = Box::new(|said| (said["ask"] == "say").then(|| json!({"said": "as ever"})));
+    let (shared, mut client, _folder) = served("let-through", own);
+    // As the agents daemon refuses what Joel says unless the shell says
+    // it, and leaves the shell's to the asks it always answered.
+    shared.peered(
+        &["say", "refused"],
+        Box::new(|said, _| (said["ask"] == "refused").then(|| json!({"refused": true}))),
+    );
+    assert_eq!(
+        client.ask(&json!({"id": 1, "ask": "say"})),
+        json!({"id": 1, "said": "as ever"}),
+        "a peered ask it lets through is answered by the plain own asks"
+    );
+    assert_eq!(
+        client.ask(&json!({"id": 2, "ask": "refused"})),
+        json!({"id": 2, "refused": true}),
+        "one it answers is answered as it says, never by the own asks too"
+    );
+}
+
+#[test]
 fn a_slow_ask_holds_up_no_ask_after_it() {
     let (letting, waiting) = channel::<()>();
     let waiting = Mutex::new(waiting);

@@ -75,7 +75,9 @@ pub type Own = Box<dyn Fn(&Value) -> Option<Value> + Send + Sync>;
 /// ask whole and the connection it came on, whose peer the kernel names
 /// (`SO_PEERPIDFD`), and its answer without its id, as [`Own`] answers.
 /// The jobs broker moves only the process asking, so it must know that
-/// process from the socket rather than from anything the ask says.
+/// process from the socket rather than from anything the ask says. None
+/// leaves the ask to [`Own`], so a daemon can refuse an ask by who asked
+/// and answer it as ever otherwise.
 pub type Peered = Box<dyn Fn(&Value, &UnixStream) -> Option<Value> + Send + Sync>;
 
 /// What's told as a watch begins or ends. It's told with every record
@@ -601,7 +603,9 @@ fn states(sources: &Value) -> Value {
 fn owned(shared: &Shared, id: &Value, said: &Value, stream: &UnixStream) -> Value {
     let asked = said["ask"].as_str().unwrap_or("");
     let answered = match shared.peered.get() {
-        Some((asks, answer)) if asks.contains(&asked) => answer(said, stream),
+        Some((asks, answer)) if asks.contains(&asked) => {
+            answer(said, stream).or_else(|| (shared.own)(said))
+        }
         _ => (shared.own)(said),
     };
     let Some(mut answer) = answered else {
