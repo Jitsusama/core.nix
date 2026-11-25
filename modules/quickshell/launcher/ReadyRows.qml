@@ -583,7 +583,7 @@ Scope {
 
     // How the search stands, for a check that fails waiting on it to say why: what's asked,
     // the words of the answer held, what waits for the daemon to come back or was asked again
-    // as it did, and the link's finds unanswered.
+    // as it did, the same of what's typed inside a row, and the link's finds unanswered.
     function searchState() {
         return {
             asking,
@@ -591,6 +591,9 @@ Scope {
             lostTwice,
             found: found.words,
             lost: lost?.words ?? null,
+            typedAsking,
+            typedReasked,
+            typedLost: typedLost === null ? null : `${typedLost.within}\n${typedLost.words}`,
             ended: searchesEnded,
             searchless,
             asked: link?.asked ?? null,
@@ -719,22 +722,24 @@ Scope {
 
     // An answer taken, and how long it took, unless typed over since. One that didn't come,
     // the daemon gone, is asked again once it's back (`typedLost`), while the rows are drawn,
-    // and only once (`typedReasked`).
+    // and only once (`typedReasked`), which stands till other words are typed: answered, its
+    // words are what's typed, never asked again till then. The line timing an answer asked
+    // again says so, as its time from the key holds the daemon's whole restart.
     function typedAnswered(within, words, answer) {
         const asked = `${within}\n${words}`;
         if (typedAsking !== asked)
             return;
         typedAsking = "";
         const typed = Presented.typedInSaid(words, within, Options.reports);
-        if (answer === null && drawn && typedReasked !== asked)
+        const again = typedReasked === asked;
+        if (answer === null && drawn && !again)
             typedLost = { within, words };
         else if (answer === null && drawn)
             console.warn(`launcher: ${place}'s ${typed} went unanswered again once asked `
                 + "again, left for the next key");
-        else if (answer !== null && typedReasked === asked)
-            typedReasked = "";
+        const saidAgain = again ? ", asked again at its hello" : "";
         console.info(`launcher: ${place} answered ${typed} `
-            + `${Date.now() - typedAt} ms after its key`);
+            + `${Date.now() - typedAt} ms after its key${saidAgain}`);
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
             console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `

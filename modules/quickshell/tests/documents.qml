@@ -478,8 +478,8 @@ ShellRoot {
             const typedAgainAsk = `find-${link.asked}`;
             link.awaited[typedAgainAsk](Object.assign(answer("thu 3"), { id: typedAgainAsk }));
             Expect.expect("its answer taken, what's typed is the daemon's rows",
-                borrower.typedIn(move, "thu 3")?.map(made => made.name).join(", ") === "Thursday"
-                    && borrower.typedReasked === "", typedState());
+                borrower.typedIn(move, "thu 3")?.map(made => made.name).join(", ") === "Thursday",
+                typedState());
             link.wire = null;
             borrower.typedIn(move, "thu 4");
             link.wire = { write: line => {}, flush: () => {} };

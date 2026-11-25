@@ -1970,7 +1970,7 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
     settled(shell)
     # How many the held answer lists, which the letter typed again lists in its own frame.
-    held = cast("int", shell.showing()["count"])
+    held_count = cast("int", shell.showing()["count"])
     shell.send_key("backspace")
     shell.launcher_until(lambda shown: shown["typed"] == "" and shown["count"] == whole)
     for _ in range(ROWS_DOWN):
@@ -1990,10 +1990,10 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     assert len(presented) > before, f"the letter was never presented: {presented}"
     letter = presented[before]
     # One that let the held answer go waits on its own, up to the launcher's bound, so a quick
-    # answer could list the same count; held says it waited.
-    assert letter["held"] is False, f"the letter waited on its answers: {letter}"
-    assert letter["listed"] == held, (
-        f"the letter's first frame listed {letter['listed']}, not the {held} held: {letter}"
+    # answer could list the same count; waited says it did, and is None where nothing said.
+    assert letter["waited"] is False, f"the letter waited on its answers: {letter}"
+    assert letter["listed"] == held_count, (
+        f"the letter's first frame listed {letter['listed']}, not the {held_count} held: {letter}"
     )
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     selection = laid["selection"]
