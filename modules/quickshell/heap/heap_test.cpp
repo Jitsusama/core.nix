@@ -59,6 +59,7 @@
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 namespace {
 
@@ -492,21 +493,31 @@ bool takenAsUnderPressure(QJSEngine &engine) {
     return took;
 }
 
-// How many lent pages the kernel has taken since it started, across the
-// whole machine, from /proc/vmstat's pglazyfreed; or -1 when it doesn't say.
-double lentPagesTaken() {
+// How many pages the kernel has counted in one of /proc/vmstat's events since
+// it started, across the whole machine, or -1 when it doesn't say.
+double pagesCounted(const char *event) {
     QFile vmstat(QStringLiteral("/proc/vmstat"));
     if (!vmstat.open(QIODevice::ReadOnly))
         return -1;
-    static const QRegularExpression taken(QStringLiteral("^pglazyfreed (\\d+)$"),
-                                          QRegularExpression::MultilineOption);
-    const QRegularExpressionMatch match = taken.match(QString::fromLatin1(vmstat.readAll()));
+    const QRegularExpression counted(
+        QStringLiteral("^%1 (\\d+)$").arg(QString::fromLatin1(event)),
+        QRegularExpression::MultilineOption);
+    const QRegularExpressionMatch match = counted.match(QString::fromLatin1(vmstat.readAll()));
     return match.hasMatch() ? match.captured(1).toDouble() : -1;
 }
 
-// What one lending of a thinned heap's free pages read, and whether the
+// The pages the kernel has marked lent (pglazyfree), and the lent pages it
+// has taken (pglazyfreed).
+double pagesMarkedLent() { return pagesCounted("pglazyfree"); }
+double lentPagesTaken() { return pagesCounted("pglazyfreed"); }
+
+// What one lending of a thinned heap's free pages read. It's calm when the
 // kernel took no lent page anywhere while the lending was being read, so
-// what it holds lent and what stays resident can be judged.
+// what it holds lent and what stays resident can be judged; a kernel that
+// doesn't count what it takes is taken as calm, so the case judges rather
+// than skips. And it says how many MB the kernel marked lent as the free
+// pages were lent, which a take afterwards can't undo, or -1 when it
+// doesn't count them.
 struct Lending {
     double free = 0;
     double lent = 0;
@@ -514,9 +525,19 @@ struct Lending {
     double lentAfter = 0;
     double freeLent = 0;
     double freeTaken = 0;
+    double marked = -1;
     bool took = false;
+    bool counted = false;
     bool calm = false;
     ReadBack read{};
+
+    // Whether it said about as much as was counted free, the kernel's take
+    // left next to none resident, and what's kept and made after reads back
+    // as made: what holds whether or not the kernel took lent pages early.
+    [[nodiscard]] bool asLent() const {
+        return lent > free / 2 && lent <= free + GIVEN_LEFT_MB && took &&
+               freeTaken < GIVEN_LEFT_MB && read.asMade();
+    }
 };
 
 // Thins a heap, lends its free pages back and reads what the kernel then
@@ -532,10 +553,17 @@ Lending lentOnce() {
     lending.free = weighed(engine, heap).free;
     const double takenBefore = lentPagesTaken();
     lending.lentBefore = heap.lent();
+    const double markedBefore = pagesMarkedLent();
     lending.lent = heap.lendBack();
+    const double markedAfter = pagesMarkedLent();
     lending.lentAfter = heap.lent();
     lending.freeLent = heap.weigh().value(QStringLiteral("free")).toDouble();
-    lending.calm = takenBefore >= 0 && lentPagesTaken() == takenBefore;
+    const double takenAfter = lentPagesTaken();
+    lending.counted = takenBefore >= 0 && takenAfter >= 0;
+    lending.calm = !lending.counted || takenAfter == takenBefore;
+    if (markedBefore >= 0 && markedAfter >= 0)
+        lending.marked = (markedAfter - markedBefore) * static_cast<double>(sysconf(_SC_PAGESIZE)) /
+                         (1024.0 * 1024.0);
     lending.took = takenAsUnderPressure(engine);
     lending.freeTaken = heap.weigh().value(QStringLiteral("free")).toDouble();
     lending.read = readBack(engine, few);
@@ -547,40 +575,59 @@ Lending lentOnce() {
 // resident, which giving them back would not; and whether, once the kernel
 // takes them as it would under pressure, they're no longer resident and
 // what's kept, and what's made after, still reads as it was made, so no
-// page lent held a live item. A builder short of memory may take lent
-// pages while they're read, as lending allows, so a lending the kernel
-// took from is tried once more, and if it takes again, what it holds lent
-// and what stays resident are left unjudged, with a note; the rest holds
-// either way.
+// page lent held a live item. Where it counts them, the kernel must also
+// have marked at least half as many pages lent, which giving them back
+// never does, and which holds even when it takes them at once. A builder short of memory may
+// take lent pages while they're read, as lending allows, so a lending the
+// kernel took from is tried once more, and if it takes again, what it
+// holds lent and what stays resident are left unjudged, with a note; what
+// it marked and the rest are judged on both tries.
 bool lendsBack() {
-    Lending lending = lentOnce();
-    if (!lending.calm)
-        lending = lentOnce();
+    const Lending first = lentOnce();
+    const Lending lending = first.calm ? first : lentOnce();
+    const bool firstAsLent = first.calm || first.asLent();
     const bool said =
         lending.lent > lending.free / 2 && lending.lent <= lending.free + GIVEN_LEFT_MB;
     const bool held = !lending.calm || (lending.lentBefore >= 0 &&
                                         lending.lentAfter - lending.lentBefore > lending.free / 2);
     const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
+    const bool marked = lending.marked < 0 || lending.marked > lending.free / 2;
     const bool taken = lending.took && lending.freeTaken < GIVEN_LEFT_MB;
     const ReadBack &read = lending.read;
+    if (!lending.counted)
+        std::fprintf(stderr,
+                     "note: the kernel doesn't say how many lent pages it took "
+                     "(/proc/vmstat's pglazyfreed), so the lending is judged as if no page "
+                     "were taken early\n");
+    if (lending.marked < 0)
+        std::fprintf(stderr, "note: the kernel doesn't say how many pages it marked lent "
+                             "(/proc/vmstat's pglazyfree), so that goes unjudged\n");
     if (!lending.calm)
         std::fprintf(stderr,
                      "note: the kernel took lent pages twice while lending was read, so what "
                      "it held lent (%.1f, then %.1f MB) and what stayed resident (%.1f MB) "
-                     "go unjudged\n",
-                     lending.lentBefore, lending.lentAfter, lending.freeLent);
-    if (!said || !held || !kept || !taken || !read.asMade())
+                     "go unjudged; it marked %.1f MB lent, or -1 if it doesn't say\n",
+                     lending.lentBefore, lending.lentAfter, lending.freeLent, lending.marked);
+    if (!firstAsLent)
+        std::fprintf(stderr,
+                     "FAIL the first lending, taken from early, said %.1f MB of %.1f free, "
+                     "%.1f MB free once taken (%s); the few summed %.0f of %.0f, and what was "
+                     "made after %.0f of %.0f\n",
+                     first.lent, first.free, first.freeTaken,
+                     first.took ? "taken" : "the kernel refused", first.read.kept,
+                     first.read.keptMade, first.read.after, first.read.afterMade);
+    if (!said || !held || !kept || !marked || !taken || !read.asMade())
         std::fprintf(stderr,
                      "FAIL lending %.1f MB of free pages back says so, keeps them resident "
                      "until the kernel takes them, and leaves what's kept: said %.1f MB; the "
-                     "kernel held %.1f, then %.1f MB lent; %.1f MB free once lent, and %.1f "
-                     "once taken (%s); the few summed %.0f of %.0f, and what was made after "
-                     "%.0f of %.0f\n",
+                     "kernel held %.1f, then %.1f MB lent, and marked %.1f MB; %.1f MB free once "
+                     "lent, and %.1f once taken (%s); the few summed %.0f of %.0f, and what was "
+                     "made after %.0f of %.0f\n",
                      lending.free, lending.lent, lending.lentBefore, lending.lentAfter,
-                     lending.freeLent, lending.freeTaken,
+                     lending.marked, lending.freeLent, lending.freeTaken,
                      lending.took ? "taken" : "the kernel refused", read.kept, read.keptMade,
                      read.after, read.afterMade);
-    return said && held && kept && taken && read.asMade();
+    return firstAsLent && said && held && kept && marked && taken && read.asMade();
 }
 
 // How many runs too small for what's made after are freed, each a store
