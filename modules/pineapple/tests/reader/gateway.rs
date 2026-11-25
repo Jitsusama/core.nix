@@ -701,8 +701,8 @@ fn a_first_page_blinking_beside_a_search_that_cant_be_read_leaves_the_row_as_it_
             read_at: None,
         },
     );
-    // A blink heard takes two rounds to narrow the row and a third to say
-    // so, so four blinks show it.
+    // A blink heard narrows the row in its second round, so four blinks
+    // leave it room to.
     assert!(
         BLINKS.load(Ordering::SeqCst) >= 4,
         "four rounds blinked after the row said both: {}",

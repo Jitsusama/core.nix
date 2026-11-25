@@ -40,15 +40,14 @@ const PAGES: usize = 5;
 /// seconds about five minutes when the page fails at once, and up to
 /// three times that when each ask waits out the gateway's 30 seconds, so
 /// it's counted in rounds; Joel's row comes the few rounds after that any
-/// gap's does. What that page showed
-/// before it failed is still judged for a stop, and only Joel's warning
-/// waits, while a gateway shedding a burst of pages has the time to
-/// answer them again. A round that never hears from that later page, its
-/// first page unanswered or unreadable or its sign-in refused, neither
-/// counts nor ends the row, so the row may outlast hours of those and
-/// make the next wait shorter, which errs toward telling Joel as the last
-/// read stays put; one that reads back to the last read, or on past the
-/// gap, ends it.
+/// gap's does. What that page showed before it failed is still judged
+/// for a stop, and only Joel's warning waits, while a gateway shedding a
+/// burst of pages has the time to answer them again. A round that never
+/// hears from that later page, its first page unanswered or unreadable
+/// or its sign-in refused or missing, neither counts nor ends the row, so
+/// the row may outlast hours of those and make the next wait shorter,
+/// which errs toward telling Joel as the last read stays put; one that
+/// reads back to the last read, or on past the gap, ends it.
 const UNANSWERED: u32 = 10;
 
 /// Why a search's pages don't reach back to the last read.

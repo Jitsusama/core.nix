@@ -1,11 +1,12 @@
 //! A search whose later page goes unanswered beside a first page that
 //! blinks: only a round that waited on a later page is heard beside a
-//! search that can't be read, either way round, and a blink between two
-//! waits neither counts nor ends their row.
+//! search that can't be read, the phrase's wait as the tag's is in
+//! pages.rs, and a blink between two waits neither counts nor ends their
+//! row, so the tenth still comes.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use super::super::cut::{nothing, opens, tags};
+use super::super::cut::{nothing, opens, tags, told_and_read_on};
 use super::super::{FAILS, Until, hearing, poisoned, said};
 use super::{began, bounded, in_pages, paged};
 
@@ -130,18 +131,28 @@ fn a_first_page_blinking_between_two_waits_neither_counts_nor_ends_their_row() {
                 _ => format!("{FAILS}Slack said: ratelimited"),
             }
         },
-        // Asks enough for the second wait and more.
+        // Until the row names the gap the tenth wait makes, two deaf
+        // rounds after it, about the twenty-second.
         &Until {
             judging: 0,
-            asks: 24,
+            asks: 0,
             read_at: None,
         },
     );
     assert!(
         came.journal.contains("2 of 10 rounds in a row"),
         "a blink between two waits neither counts nor ends their row, so the second wait is \
-         the second in a row, as a gateway whose pages take turns failing still reaches its \
-         tenth: {}",
+         the second in a row: {}",
+        came.journal
+    );
+    // Read from the journal, as the round after may read on past the gap
+    // and take the row away.
+    let tenth = came.journal.find("goes unanswered, 10 rounds in a row");
+    let (told, _) = told_and_read_on(&came.journal);
+    assert!(
+        tenth.is_some() && told > tenth,
+        "a gateway whose pages take turns failing still reaches its tenth, and Joel's row \
+         tells of the gap: {}",
         came.journal
     );
 }
