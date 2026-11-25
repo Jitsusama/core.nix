@@ -366,40 +366,50 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
     assert desktop.as_account("ls -A $XDG_RUNTIME_DIR/clipboard-history") == ""
 
 
-# The script's own line when no X11 window of Joel's took the focus, which
-# it needs before it can try the fence (modules/pi/tests).
-NO_X11_FOCUS = "niri focused no X11 window"
+# The script's own lines, each said once its phase holds
+# (modules/pi/tests): the walls before any window holds the focus, and
+# the focus the secret copy's phase needs.
+WALLS_HOLD = "WALLS HOLD: "
+FOCUSED = "FOCUSED: "
 
 
 @functools.cache
 def x11_fence_said(desktop: Desktop) -> str:
     """Run the X11 fence's script once, for both subtests that read what it said."""
-    # niri imports its X11 display as a session does, run as its child so
-    # it holds what niri set; the session's start here imports only the rest.
-    desktop.as_account("niri msg action spawn -- systemctl --user import-environment DISPLAY")
-    desktop.machine.wait_until_succeeds(
-        desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
-    )
-    # The script says each case it tried, and fails naming the one that
-    # let the secret through (modules/pi/tests); this area alone has it.
-    return desktop.as_account("pi-fence-keeps-x11-from-secrets 2>&1; echo ended $?")
+    # A raise is kept as words, since a cache keeps none, and both
+    # subtests judge the one run rather than the second running it again.
+    try:
+        # niri imports its X11 display as a session does, run as its child
+        # so it holds what niri set; the session's start imports the rest.
+        desktop.as_account("niri msg action spawn -- systemctl --user import-environment DISPLAY")
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session("systemctl --user show-environment | grep -q '^DISPLAY='")
+        )
+        # The script says each case it tried, and fails naming the one
+        # that let the secret through (modules/pi/tests); this area alone
+        # has it.
+        return desktop.as_account("pi-fence-keeps-x11-from-secrets 2>&1; echo ended $?")
+    except Exception as error:  # noqa: BLE001 # Said by the subtests that read it.
+        return f"the script didn't end: {error!r}"
 
 
 def test_an_x11_window_of_joels_takes_the_focus(desktop: Desktop) -> None:
     """An X11 window of Joel's takes the focus through the satellite."""
     said = x11_fence_said(desktop)
-    assert NO_X11_FOCUS not in said, f"no X11 window took the focus: {said}"
+    assert FOCUSED in said, f"no X11 window was seen to take the focus: {said}"
 
 
 def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
     """A fenced command reads no secret copy through X11, where Joel's own client does."""
     said = x11_fence_said(desktop)
-    # Its precondition, a focused X11 window, is the subtest above's to
-    # fail, so a quarantine of that one leaves this one guarding the fence
-    # in every run where the window took the focus.
-    if NO_X11_FOCUS in said:
-        return
-    assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+    # The walls are tried before any window takes the focus, so this
+    # proves them in every run, and fails in every run they let X through.
+    assert WALLS_HOLD in said, f"the fence's walls weren't shown to hold: {said}"
+    # Past the focus, the secret copy's phase is this one's too: only a
+    # run whose window never took the focus, the subtest above's failure,
+    # ends there untried.
+    if FOCUSED in said:
+        assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and

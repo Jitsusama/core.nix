@@ -16,7 +16,12 @@ vm-desktop-keeps-copies, 6 of 62 runs opened xlogo and saw no window
 for a minute, and in each the satellite's log met xlogo's window only
 as the test killed it, its pid already gone. The main loop now handles
 whatever xcb queued before it polls, and goes round again when there
-was any.
+was any. Going round starves no Wayland work: the loop's top dispatches
+Xwayland's requests, then server_state.run() reads the compositor's
+socket, polling it with no wait, and handle_clientside_events() at its
+end flushes what is queued for the compositor, a flush left pending
+included. So a steady stream of X11 events delays Wayland only as long
+as each turn takes.
 
 diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
