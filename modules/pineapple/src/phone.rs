@@ -151,12 +151,13 @@ pub enum Missed {
     Unsure(String),
 }
 
-/// Sends one alert to Joel's own IM, unfurling nothing under it.
+/// Sends one alert to Joel's own IM, unfurling nothing under it, and
+/// gives the text that went.
 ///
 /// # Errors
 ///
 /// Why it didn't go, and whether it may have all the same.
-pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Result<(), Missed> {
+pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Result<String, Missed> {
     let said = text(alert);
     let mut answer = agent()
         .post(format!("{origin}/api/{POST}"))
@@ -182,7 +183,8 @@ pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Resul
         .body_mut()
         .read_json()
         .map_err(|error| Missed::Unsure(format!("Slack answered {status}: {error}")))?;
-    refused(&took).map_err(|why| Missed::NotSent(format!("Slack answered {status}: {why}")))
+    refused(&took).map_err(|why| Missed::NotSent(format!("Slack answered {status}: {why}")))?;
+    Ok(said)
 }
 
 /// The gateway's tool that sends a message from Joel to himself, which
@@ -202,14 +204,18 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 /// The tool's failing promises nothing of whether Slack took the message,
 /// so a second failing is counted as may have gone: two such rounds and
 /// it's given up on, rather than sent twice a round for ten minutes.
+/// It gives the text that went, its mentions said otherwise or its words
+/// left to the link as they were.
 ///
 /// # Errors
 ///
 /// Why it didn't go, and whether it may have all the same.
-pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<(), Missed> {
+pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> {
     let ask = |gateway: &mut Gateway, alert| {
-        let message = json!({ "message": unmentioned(&text(alert)) });
-        gateway.call(TO_SELF, &message).map(|_| ())
+        let said = unmentioned(&text(alert));
+        gateway
+            .call(TO_SELF, &json!({ "message": &said }))
+            .map(|_| said)
     };
     let sent = match ask(gateway, alert) {
         Err(Called::Failed(why)) if spent(&why) => Err(Called::NotReached(why)),

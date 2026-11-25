@@ -3,7 +3,8 @@
 //! Joel's phone is told once, through the gateway's one tool that sends to
 //! him alone, and once more with the words left at the link if it refuses
 //! them; no reply is said and Slack's own API is never asked; and a search
-//! it reads on past is said in a row beside his row in For You.
+//! it reads on past is said in a row beside his row in For You. A second
+//! reader started on the folder it keeps ends at once.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -314,6 +315,48 @@ fn an_alert_naming_everyone_is_sent_with_the_mention_said_as_at() {
         sent.len() == 1 && sent[0].contains("Said: \"pineapple override (at)here\""),
         "the mention goes said as (at), so its words reach him at the first send: {sent:?}"
     );
+    let phoned = phoned(&home);
+    assert!(
+        phoned.len() == 1 && phoned[0]["text"] == sent[0].as_str(),
+        "what's kept as told is the text that went, its mention said as (at): {phoned:?}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_second_reader_on_a_folder_held_ends_at_once_saying_why() {
+    let (origin, _) = stand_in();
+    let (url, _) = gateway();
+    let home = home();
+    let mut first = live(&home, &origin, &url);
+    until_decided_in(&home.join("state/pineapple"), 1);
+    let mut second = live(&home, &origin, &url);
+    let began = Instant::now();
+    let ended = loop {
+        if let Some(status) = second.try_wait().expect("the second reader is asked after") {
+            break status;
+        }
+        assert!(
+            began.elapsed() < PATIENCE,
+            "a second reader on the folder held goes on: {}",
+            journal(&home)
+        );
+        thread::sleep(Duration::from_millis(20));
+    };
+    assert!(
+        !ended.success() && journal(&home).contains("another Slack reader keeps"),
+        "a second reader ends failing, saying another keeps its folder: {}",
+        journal(&home)
+    );
+    assert!(
+        first
+            .try_wait()
+            .expect("the first reader is asked after")
+            .is_none(),
+        "the first reader goes on: {}",
+        journal(&home)
+    );
+    drop(first);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

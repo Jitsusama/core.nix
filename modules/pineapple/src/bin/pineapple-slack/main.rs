@@ -45,7 +45,9 @@
 //! gateway's one tool that sends to him alone. Its rows saying what it
 //! never read go beside that row, in pineapple-missed.json, which its
 //! stop leaves. It says no reply, as the gateway sends to nobody else.
-//! The two never run live together, as both would keep the one folder.
+//! Two readers never keep one folder: each holds the folder it keeps
+//! while it runs, and one started on a folder already held ends at once,
+//! rather than judging, recording and telling his phone twice.
 //!
 //! Which messages it has judged is kept in judged.json beside the log
 //! (src/judged.rs), so a restart neither judges a message twice nor
@@ -53,6 +55,7 @@
 //! begins ten minutes back rather than judging Slack's whole history.
 
 use std::ffi::{OsStr, OsString};
+use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -287,6 +290,9 @@ fn env_dir(var: &str, fallback: &str) -> PathBuf {
 /// keeps all it writes in shadow, beside the live reader's `pineapple`.
 const GATEWAY_STATE: &str = "pineapple-gateway";
 
+/// The file in a reader's folder it holds locked while it runs.
+const HELD: &str = "slack-reader.lock";
+
 /// The file, beside the one holding For You's row of what waits on Joel,
 /// where a live reader over a gateway keeps its rows saying what it never
 /// read: For You reads each file there, and the reader's stop takes away
@@ -296,6 +302,33 @@ const MISSED_LIVE: &str = "pineapple-missed.json";
 /// Where it keeps its log, its stops and what it has judged.
 fn state() -> PathBuf {
     env_dir("XDG_STATE_HOME", ".local/state").join("pineapple")
+}
+
+/// The folder a reader keeps, held for as long as the file it gives
+/// stays open, or a failure saying another reader holds it already.
+fn hold(state: &Path) -> Result<File, Failure> {
+    let failed = |error: std::io::Error| {
+        Failure::new(Exit::Failed, format!("couldn't hold {}", state.display()))
+            .because(error.to_string())
+    };
+    std::fs::create_dir_all(state).map_err(failed)?;
+    let file = File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(state.join(HELD))
+        .map_err(failed)?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(TryLockError::WouldBlock) => Err(Failure::new(
+            Exit::Failed,
+            format!(
+                "another Slack reader keeps {}, so this one doesn't",
+                state.display()
+            ),
+        )),
+        Err(TryLockError::Error(error)) => Err(failed(error)),
+    }
 }
 
 /// The harness's old Slack sign-in file, read only when the keyring
@@ -468,6 +501,7 @@ fn tell_missed(file: &Path, search: Search, skipped: Skipped) -> bool {
 fn run(how: &Run) -> Result<(), Failure> {
     let credentials = credentials();
     let state = state();
+    let _held = hold(&state)?;
     let slack = Slack::new(&how.origin);
     let reader = Reader {
         origin: how.origin.clone(),
@@ -548,6 +582,7 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
     } else {
         state()
     };
+    let _held = hold(&state)?;
     let reader = Reader {
         origin: how.origin.clone(),
         words: Words::from_object(REPLIES).unwrap_or_default(),

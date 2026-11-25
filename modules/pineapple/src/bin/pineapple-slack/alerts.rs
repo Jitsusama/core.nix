@@ -80,13 +80,14 @@ fn untold(state: &Path) -> Vec<Value> {
 
 /// Tells each of `new` by `tell`, which says nothing where there's
 /// nowhere yet to send, and keeps a line in phoned.jsonl for each told,
-/// written down in shadow, or that may have gone, as `im` names where.
+/// written down in shadow, or that may have gone, as `im` names where:
+/// with the text that went, or for one unsent or unsure, its own form.
 fn tell_each(
     shadow: bool,
     state: &Path,
     new: Vec<Value>,
     im: Option<&str>,
-    mut tell: impl FnMut(Alert) -> Option<Result<(), Missed>>,
+    mut tell: impl FnMut(Alert) -> Option<Result<String, Missed>>,
 ) {
     let phoned = state.join("phoned.jsonl");
     for line in new {
@@ -98,22 +99,25 @@ fn tell_each(
             link: &link,
         };
         let shadow = shadow || line["shadow"] != false;
-        let sent = if shadow {
+        let (sent, text) = if shadow {
             eprintln!("<5>Joel's phone, in shadow: {link}");
-            json!(false)
+            (json!(false), phone::text(alert))
         } else {
             match tell(alert) {
-                Some(Ok(())) => {
+                Some(Ok(said)) => {
                     eprintln!("<5>Joel's phone was told: {link}");
-                    json!(true)
+                    (json!(true), said)
                 }
                 Some(Err(Missed::NotSent(why))) => {
-                    eprintln!("<3>Joel's phone alert didn't go, so it's tried again: {why}");
+                    eprintln!(
+                        "<3>Joel's phone alert didn't go; it's tried each round while \
+                         under ten minutes old: {why}"
+                    );
                     continue;
                 }
                 Some(Err(Missed::Unsure(why))) => {
                     eprintln!("<4>Joel's phone alert may have gone: {why}");
-                    json!(UNSURE)
+                    (json!(UNSURE), phone::text(alert))
                 }
                 None => continue,
             }
@@ -125,7 +129,7 @@ fn tell_each(
             "shadow": shadow,
             "sent": sent,
             "im": im,
-            "text": phone::text(alert),
+            "text": text,
         });
         if let Err(error) = record::append(&phoned, &one) {
             eprintln!("<3>couldn't keep a phone alert's line: {error}");
