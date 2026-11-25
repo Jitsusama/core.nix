@@ -21,6 +21,7 @@ mod lines;
 mod measures;
 mod moved;
 mod owing;
+mod parted;
 mod records;
 mod reviews;
 mod stuck;
@@ -300,6 +301,7 @@ fn gather(
     ];
     all.extend(measures::said_none(misses, now));
     all.push(measures::holds::read(state_home, &asks, now));
+    all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
     all.extend(per_merge);

@@ -12,6 +12,7 @@ use owner::first_owner;
 use crate::tracking::{self, Tracking};
 
 pub mod apps;
+pub mod at_risk;
 mod balanced;
 mod broken;
 mod card;
