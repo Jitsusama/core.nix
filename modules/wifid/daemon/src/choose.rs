@@ -58,12 +58,17 @@ pub const TRIAL: Duration = Duration::from_secs(300);
 
 /// How long after a move a minute must be taken to hold none of the card's
 /// first minute on the point: that minute, and a minute's reach past it
-/// (`measure::MINUTE`), less the second a choice can be held back by, so a
-/// move made on the minute is judged at its third minute even when its own
-/// choice ran later than the one two minutes on. Measured from when the move
-/// is asked, so wherever in the minute it fell, at most that second of its
-/// first minute is judged, and the seconds the roam itself takes, which the
-/// chooser doesn't see.
+/// (`measure::MINUTE`), less a second of slack, so a move made on the minute
+/// is judged at its third minute when its own choice ran up to a second later
+/// than the one two minutes on. A choice can wait up to about 2 s behind a
+/// measure (`measure::MINUTE`); a move whose own choice waited longer than the
+/// slack is judged at its fourth minute, still inside `TRIAL`. The slack isn't
+/// wider because each second of it can put one of the roam's lost echoes in
+/// a judged minute, and two of sixty is past `LOSSY`, which would send a good
+/// trial back for its arrival. Measured from when the move is asked, so
+/// wherever in the minute it fell, at most that second of its first minute is
+/// judged, and the seconds the roam itself takes, which the chooser doesn't
+/// see.
 const ARRIVED: Duration = Duration::from_secs(119);
 
 /// How many minutes past `ARRIVED` a trial is judged early by.
