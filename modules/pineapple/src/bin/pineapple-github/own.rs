@@ -9,13 +9,17 @@
 //! within the hour of it, and told of within two, as a search finds a
 //! thread by its last change and reads it back two hours; it must see
 //! that change, and the word already indexed there, in time, so on a
-//! thread nothing brings back by then it's missed unsaid. A search that
-//! gives fewer threads than it found keeps its reach, as what it leaves
-//! out may hold his stop. A thread given more than 30 pages of comments
-//! in the two hours a read covers, or a pull request more than 30 pages
-//! of reviews in its life, is read without its newest, so a stop there is
-//! missed, the journal saying only that the read was cut. How far it
-//! reached is kept across a restart (src/progress.rs).
+//! thread nothing brings back by then it's missed unsaid. GitHub gives a
+//! search at most a thousand threads, most lately changed first, so one
+//! it cuts short is followed by a search of what changed before the
+//! oldest it gave; past two thousand, the oldest are left unread, the
+//! journal naming from when to when. A thread given more than 30 pages
+//! of comments since an hour before what a read reaches (two hours while
+//! its search is whole, longer while a failing one holds it back), or a
+//! pull request more than 30 pages of reviews in its life, is read
+//! without its newest, so a stop there is missed, the journal saying only
+//! that the read was cut. How far it reached is kept across a restart
+//! (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
@@ -31,6 +35,14 @@ use super::{GitHub, Unread, searched};
 /// while one older than that he may have moved past. What that finds
 /// again is known by its key, so nothing is judged twice.
 const OWN_LAG: u64 = 60 * 60;
+
+/// How many searches a round makes for Joel's words: one cut short at
+/// GitHub's thousand is followed by one of what changed before the oldest
+/// it gave. Two take in a flood of two thousand in twenty pages, within
+/// the thirty a minute his search limit allows; a larger one leaves the
+/// oldest unread rather than hold every round back, as keeping the reach
+/// keeps the flood in every later search.
+const SEARCHES: usize = 2;
 
 /// The words that stop, as the journal names them.
 const SAFE_WORD: &str = "pineapple override";
@@ -97,68 +109,89 @@ impl Searched {
     /// The pull requests and issues where Joel takes part that name the
     /// word and changed since they were last read, as a search finds
     /// them. One that fails doesn't cost what notified him: it's searched
-    /// from as far back next round.
+    /// from as far back next round. One GitHub cuts short is followed by
+    /// one of what changed before the oldest it gave, up to [`SEARCHES`].
     pub(super) fn search(&self, github: &GitHub<'_>, site: &str, login: &str) -> Found {
-        let query = format!(
-            "pineapple involves:{login} updated:>={}",
-            github::stamp(self.reach())
-        );
+        let reach = github::stamp(self.reach());
         let mut found = Found {
             threads: Vec::new(),
             seen: HashMap::new(),
             whole: true,
         };
-        match searched(github, &query) {
-            Ok(answer) => {
-                // One read since and unchanged holds nothing new.
-                for (thread, at) in found_when(&answer, site) {
-                    let key = thread.key();
-                    if self.read.get(&key) != Some(&at) {
-                        found.threads.push(thread);
-                    }
-                    found.seen.insert(key, at);
-                }
-                // GitHub gives a search at most a thousand, leaving out
-                // the least lately changed, where his stop may be, so one
-                // that gives fewer than it found keeps its reach.
-                let gave = answer["items"].as_array().map_or(0, Vec::len);
-                if let Some(all) = answer["total_count"].as_u64()
-                    && u64::try_from(gave).is_ok_and(|gave| gave < all)
-                {
-                    eprintln!(
-                        "<4>{}'s search for what Joel said found {all} but gave {gave}, so it's \
-                         searched from {} again next round, as what it left out may hold his \
-                         stop",
-                        github.name,
-                        github::stamp(self.reach())
-                    );
-                    found.whole = false;
-                }
-            }
-            Err(Unread::Gone(why) | Unread::Failed(why)) => {
+        // Up to when the search before was cut short, none at first.
+        let mut before: Option<String> = None;
+        for searching in 1..=SEARCHES {
+            let changed = before.as_ref().map_or_else(
+                || format!(">={reach}"),
+                |before| format!("{reach}..{before}"),
+            );
+            let query = format!("pineapple involves:{login} updated:{changed}");
+            let answer = match searched(github, &query) {
+                Ok(answer) => answer,
                 // Its reach stays put, so the journal says how far back
                 // it has fallen.
-                eprintln!(
-                    "<4>couldn't search {} for what Joel said, so it's searched from {} \
-                     again next round: {why}",
-                    github.name,
-                    github::stamp(self.reach())
-                );
-                found.whole = false;
+                Err(Unread::Gone(why) | Unread::Failed(why)) if before.is_none() => {
+                    eprintln!(
+                        "<4>couldn't search {} for what Joel said, so it's searched from {reach} \
+                         again next round: {why}",
+                        github.name
+                    );
+                    found.whole = false;
+                    return found;
+                }
+                // A later one failing leaves what's older unread, as one
+                // cut short would, rather than hold every round back.
+                Err(Unread::Gone(why) | Unread::Failed(why)) => {
+                    eprintln!(
+                        "<4>couldn't search {} for what Joel said changed {changed}, so on \
+                         threads changed then what he said isn't heard: {why}",
+                        github.name
+                    );
+                    return found;
+                }
+            };
+            let given = found_when(&answer, site);
+            let oldest = given.iter().map(|(_, at)| at.clone()).min();
+            for (thread, at) in given {
+                // One read since and unchanged holds nothing new, and one
+                // a search before gave is read already.
+                let key = thread.key();
+                if self.read.get(&key) != Some(&at) && !found.seen.contains_key(&key) {
+                    found.threads.push(thread);
+                }
+                found.seen.insert(key, at);
+            }
+            let gave = answer["items"].as_array().map_or(0, Vec::len);
+            let all = answer["total_count"].as_u64().unwrap_or(0);
+            if u64::try_from(gave).is_ok_and(|gave| gave >= all) {
+                return found;
+            }
+            // More than a second's worth at its oldest can't be cut finer.
+            match oldest {
+                Some(oldest) if searching < SEARCHES && before.as_ref() != Some(&oldest) => {
+                    before = Some(oldest);
+                }
+                oldest => {
+                    let oldest = oldest.unwrap_or_else(|| reach.clone());
+                    eprintln!(
+                        "<4>{}'s search for what Joel said found {all} but gave {gave}, back to \
+                         {oldest}, so on threads it left out, changed from {reach} to then, what \
+                         he said isn't heard",
+                        github.name
+                    );
+                    return found;
+                }
             }
         }
         found
     }
 
     /// Moves on to a round begun at `began` once what it `found` was
-    /// whole; one cut short keeps its reach, though what it read is known
-    /// as read, so a flood of threads isn't read again every round.
+    /// whole, knowing what that read as read.
     pub(super) fn moved_on(&mut self, began: u64, found: Found) {
         if found.whole {
             self.from = began;
             self.read = found.seen;
-        } else {
-            self.read.extend(found.seen);
         }
     }
 
