@@ -19,6 +19,8 @@ const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
+// A digit, which goes on a word as a letter does (opensWith).
+const DIGIT = /[0-9]/u;
 // Where a verb's one line stops showing what follows: a line break, or two
 // spaces or more, past which the rest may run out of room.
 const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
@@ -133,7 +135,7 @@ function opensWith(read, each) {
         return false;
     }
     const next = read.charAt(each.length);
-    return next.toLowerCase() === next.toUpperCase() && !/[0-9]/u.test(next);
+    return next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
 }
 
 // What Explain It is told a look's row offers, by the names the row shows
