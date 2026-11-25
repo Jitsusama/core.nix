@@ -159,6 +159,75 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
 }
 
 #[test]
+fn a_covered_pack_whose_index_wont_open_keeps_its_place_in_the_multi_pack_index() {
+    use crate::pack_index::tests::{midx, moved, offsets, sorted, version_2};
+    let names = sorted();
+    let last = names.len() - 1;
+    let both = midx(&["pack-a.idx", "pack-b.idx"], 2, None);
+    // Its large offsets cut short, so the last name is read from the
+    // covered packs' own indexes, the first of which won't open.
+    let short = moved(both.clone(), 4, both.len() as u64 - 28);
+    let objects = objects_over(
+        short,
+        vec![("pack-a", b"nope".to_vec()), ("pack-b", version_2(&names))],
+    );
+    let (found, _) = located(&Store::open(&objects), names[last]);
+    std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+    assert_eq!(
+        found,
+        Some((1, offsets(&names)[last])),
+        "a covered index that won't open moved the packs after it out of their places"
+    );
+}
+
+/// A pack holding one blob, `data`, at offset 12, just past its header,
+/// where an index of names sorting first among three says it lies.
+fn one_blob_pack(data: &[u8]) -> Vec<u8> {
+    let mut bytes = b"PACK".to_vec();
+    bytes.extend(2u32.to_be_bytes());
+    bytes.extend(1u32.to_be_bytes());
+    // A blob, type 3, of fewer than 16 bytes says its size in one byte.
+    bytes.push(0x30 | u8::try_from(data.len()).expect("a short blob"));
+    bytes.extend(miniz_oxide::deflate::compress_to_vec_zlib(data, 1));
+    bytes.extend([0; 20]);
+    bytes
+}
+
+#[test]
+fn an_object_another_store_packs_is_read_past_a_refusal_in_the_first() {
+    use crate::pack_index::tests::{midx, sorted, version_2};
+    let names = sorted();
+    // The first store's index counts one pack of two, so names[1], said
+    // to lie in the second, is refused there.
+    let past = midx(&["pack-a.idx", "pack-b.idx"], 1, None);
+    let first = objects_over(past, vec![("pack-a", version_2(&names[..1]))]);
+    // The store its alternates name packs names[1] first of three.
+    let other = objects_over(Vec::new(), Vec::new());
+    let pack = other.join("pack");
+    std::fs::remove_file(pack.join("multi-pack-index")).expect("the empty index goes");
+    std::fs::write(pack.join("pack-z.idx"), version_2(&names[1..4]))
+        .expect("the temp folder takes a file");
+    std::fs::write(pack.join("pack-z.pack"), one_blob_pack(b"hi"))
+        .expect("the temp folder takes a file");
+    std::fs::create_dir_all(first.join("info")).expect("the temp folder takes a folder");
+    std::fs::write(
+        first.join("info/alternates"),
+        other.to_str().expect("a UTF-8 temp path"),
+    )
+    .expect("the temp folder takes a file");
+    let read = Odb::open(&first)
+        .read(&Oid(names[1]))
+        .map(|object| object.map(|object| object.data));
+    std::fs::remove_dir_all(&first).expect("the temp folder gives its folder back");
+    std::fs::remove_dir_all(&other).expect("the temp folder gives its folder back");
+    assert_eq!(
+        read.map_err(|error| error.to_string()),
+        Ok(Some(b"hi".to_vec())),
+        "a refusal in the first store hid the object another store packs"
+    );
+}
+
+#[test]
 fn a_pack_index_that_wont_read_is_kept_as_refused_and_the_packs_after_it_read() {
     use crate::pack_index::tests::{offsets, sorted, unique, version_2};
     let names = sorted();
