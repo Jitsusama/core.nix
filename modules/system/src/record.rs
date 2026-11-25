@@ -42,6 +42,16 @@ pub struct Deeper {
     pub launcher: &'static str,
 }
 
+/// Something in a thing worth a look, said as a side says it and with why
+/// it matters to the reader, so no look is made without its why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Look {
+    /// Its words for a side, as a thing's side holds them.
+    pub side: String,
+    /// Why it matters, as a whole sentence.
+    pub matters: String,
+}
+
 /// One thing in a part worth naming on its own: a machine, for now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thing {
@@ -55,6 +65,11 @@ pub struct Thing {
     /// side is but without its name or a leading "is" or "has": its
     /// worst first, and none when nothing is.
     pub side: Vec<String>,
+    /// Every look in it, its worst first, each with why it matters. The
+    /// side says the same looks, cut to a few for the command's line, so a
+    /// page that draws each one's why reads them here rather than pairing
+    /// two lists that could drift apart.
+    pub looks: Vec<Look>,
     /// Its home on the local sites, from their root, as the site that is
     /// home to it says (homes.rs); none when no site is.
     pub address: Option<String>,
@@ -183,6 +198,7 @@ impl System {
                     "health": thing.health.word(),
                     "says": thing.says,
                     "side": thing.side,
+                    "looks": looks_json(thing),
                     "address": thing.address,
                     "ties": thing.ties,
                 })
@@ -201,6 +217,15 @@ fn thing_key(thing: &Thing) -> Value {
     json!(format!("{}:{}", thing.kind, thing.name))
 }
 
+/// A thing's looks, each an object holding its side's words and its why.
+fn looks_json(thing: &Thing) -> Value {
+    thing
+        .looks
+        .iter()
+        .map(|look| json!({"side": look.side, "matters": look.matters}))
+        .collect()
+}
+
 fn part_json(part: &Part) -> Value {
     json!({
         "part": part.name,
@@ -214,6 +239,7 @@ fn part_json(part: &Part) -> Value {
             "health": thing.health.word(),
             "says": thing.says,
             "side": thing.side,
+            "looks": looks_json(thing),
             "address": thing.address,
             "ties": thing.ties,
         })).collect::<Vec<_>>(),
@@ -260,6 +286,7 @@ mod tests {
             health,
             says: format!("{name} says so"),
             side: Vec::new(),
+            looks: Vec::new(),
             address: None,
             ties: Value::Null,
         }
@@ -306,19 +333,27 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_record_carries_its_side() {
+    fn a_machine_record_carries_its_side_and_each_looks_why() {
         let mut machines = part("machines", Health::Watch);
         let mut studio = machine("studio", Health::Watch);
         studio.side = vec!["code wants a look".to_owned()];
+        studio.looks = vec![Look {
+            side: "code wants a look".to_owned(),
+            matters: "Its own check says so.".to_owned(),
+        }];
         machines.things = vec![studio, machine("laptop", Health::Good)];
         let system = system(vec![machines]);
         let records = system.records();
         assert_eq!(records[2]["side"], json!(["code wants a look"]));
         assert_eq!(records[3]["side"], json!([]), "a ready machine's is empty");
+        let looks = json!([{"side": "code wants a look", "matters": "Its own check says so."}]);
+        assert_eq!(records[2]["looks"], looks, "each look with its why");
+        assert_eq!(records[3]["looks"], json!([]), "a ready machine has none");
         assert_eq!(
             system.json()["parts"][0]["things"][0]["side"],
             json!(["code wants a look"])
         );
+        assert_eq!(system.json()["parts"][0]["things"][0]["looks"], looks);
     }
 
     #[test]

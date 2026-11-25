@@ -84,6 +84,30 @@ fn a_machine_names_a_disk_filling_before_one_reaching_nixs_floor() {
     );
 }
 
+/// A disk whose fill isn't worth telling, a forecast already passed or a
+/// month away, gives way to the store's time to Nix's floor, so a machine
+/// with only that to say still says it.
+#[test]
+fn a_machine_tells_nixs_floor_when_no_other_disk_fills_soon() {
+    let store = Room {
+        nix_floor: Some(50 * GIB),
+        ..room("/", Band::Healthy, 170 * GIB, Some(5.0 * 3600.0))
+    };
+    let floor = "The disk has 170.0 GiB free. At this rate it reaches the 50.0 GiB Nix keeps free \
+         in 5 h, where Nix collects its own garbage as it builds.";
+    for (builds_in, why) in [
+        (-3600.0, "a passed forecast"),
+        (30.0 * 86400.0, "a month away"),
+    ] {
+        let builds = room("/var/builds", Band::Healthy, 100 * GIB, Some(builds_in));
+        assert_eq!(
+            machine(&[store, builds], None),
+            floor,
+            "another disk with {why} leaves the floor to be told"
+        );
+    }
+}
+
 #[test]
 fn each_band_below_healthy_says_what_the_guard_is_doing() {
     let said = |band, free| filesystem(&room("/", band, free, None), None);

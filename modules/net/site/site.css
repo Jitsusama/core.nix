@@ -220,8 +220,11 @@ html:not(.js) .head .keys {
 }
 
 /* The zoom's buttons are a fieldset, named by its legend for a reader, so
-   the box a fieldset draws by itself is taken off. */
+   the box a fieldset draws by itself is taken off. It keeps its buttons'
+   width on a phone, where the caption beside it would otherwise squeeze it
+   and leave its 44 px buttons spilling out of it. */
 .zoom {
+  flex: none;
   display: flex;
   gap: var(--tie);
   margin: 0;
@@ -230,7 +233,9 @@ html:not(.js) .head .keys {
   min-inline-size: 0;
 }
 
+/* Each is 44 px, a finger's reach. */
 .zoom button {
+  flex: none;
   inline-size: 44px;
   block-size: 44px;
   display: grid;

@@ -27,7 +27,8 @@
     pkgs.callPackage ./package.nix { }
   );
 
-  # elsewhere's tests run as it builds, against a stand-in realm: a job
+  # elsewhere's tests run as it builds, against a stand-in realm: a job's
+  # placement prefers the machines already holding its quest, a job
   # mycelium places far goes by the quest's handover and mycelium's run,
   # never ssh or rsync, starts in the quest's scratch and runs in a copy
   # of its tracked files alone, those under a folder a share keeps home
@@ -78,13 +79,21 @@
             };
           }
         ]);
+      apart = account (bareNixos [
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.elsewhere ];
+            jitsusama.elsewhere.realm = "apart";
+          };
+        }
+      ]);
       taken = scratch: (builtins.tryEval (read (scratched scratch)).scratch).success;
       read = machine: builtins.fromJSON machine.xdg.configFile."elsewhere/settings.json".text;
       settings = read declared;
       check = settings.kinds.model-check;
     in
     holds "elsewhere-reads-what-a-machine-declares"
-      "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, an account declaring none sends somewhere or lacks the program, or a scratch elsewhere refuses builds."
+      "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, an account declaring none sends somewhere or lacks the program, the ledgers it reads aren't where mycelium keeps the realm's, or a scratch elsewhere refuses builds."
       (
         settings.machines == [ "far" ]
         && settings.scratch == ".elsewhere-runs"
@@ -98,6 +107,8 @@
         && pkgs.lib.hasPrefix "PATH=/far/bin" check.setup
         && (read none).machines == [ ]
         && (read none).kinds == { }
+        && pkgs.lib.hasSuffix "/.local/state/mycelium/shared" (read none).ledgers
+        && pkgs.lib.hasSuffix "/.local/state/mycelium/apart/shared" (read apart).ledgers
         && pkgs.lib.any (package: package.pname or "" == "elsewhere") none.home.packages
         && pkgs.lib.all taken [
           ".runs"

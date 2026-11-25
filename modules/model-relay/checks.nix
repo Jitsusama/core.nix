@@ -32,7 +32,8 @@ onLinux {
   # the requests pi gave up on counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a
-  # queue, a connection that won't open not
+  # queue, and one whose name can't be looked up said as that, a connection
+  # that won't open not
   # asked for on every request, a failure that ends as the origin comes
   # back, an origin it can't trust sending pi direct, a request answered
   # beside an answer longer than the idle time, the relay leaving once idle
