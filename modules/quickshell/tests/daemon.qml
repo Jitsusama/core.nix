@@ -11,8 +11,10 @@
 // once it's drawn; one whose pace is lifted, as the launcher opens, is
 // asked again once its frame is drawn; a search's answer is given to it and never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
-// held, asked ahead; a get is answered by id, asked as a step-in; the
-// daemon stopping is said, keeping what was held and giving a get none,
+// held, asked ahead; a get is answered by id, asked as a step-in; one
+// the shell lets go with an ask in flight goes, its ask given none, and
+// says so as let go, read from the log; the daemon stopping is said,
+// keeping what was held and giving a get none,
 // unless the client is one that lets what it held go in a gap; and once
 // it starts again, the client connects again by itself, asks ahead
 // again, and the one that let go holds again. A client of a daemon
@@ -36,8 +38,7 @@
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
 // said. A going says the asks it left unanswered, apart where the shell
-// let the connection go itself, which a client let go with an ask in
-// flight says as let go, read from the log. A client
+// let the connection go itself. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -491,6 +492,27 @@ ShellRoot {
                 && root.heldWay(root.grace) === "step"
         },
         {
+            // The socket's own handler may say its going before
+            // onConnectsChanged does: a going read from who called it was
+            // said as one gone wrong (#6513's F1). Which runs first isn't
+            // pinned here, since connectAgain sets the loader's `active`,
+            // which drops its binding. This step only lets it go: what its
+            // going said, and at what level, checks/shell.nix reads from the
+            // log. It comes before the daemon stops, while the link has had
+            // it since the first steps: once it starts again, the link tries
+            // only at its next turn, 14 s or more on, past a step's ten.
+            what: "a connection the shell lets go with an ask in flight goes, its ask given none",
+            holds: () => {
+                if (!root.letGo && lettingGo.wire !== null) {
+                    lettingGo.get([root.ada], 5000, () => {});
+                    lettingGo.connects = false;
+                    root.letGo = true;
+                }
+                return root.letGo && lettingGo.wire === null
+                    && Object.keys(lettingGo.awaited).length === 0;
+            }
+        },
+        {
             what: "the daemon stopping is said, and what was held stays unless let go",
             run: () => {
                 root.aheadToldBefore = root.aheadTold;
@@ -738,23 +760,6 @@ ShellRoot {
                 if (!watchesCounted.running)
                     watchesCounted.running = true;
                 return root.watches === 0;
-            }
-        },
-        {
-            // The loaders' bindings follow connects, so its socket may go
-            // and say so before onConnectsChanged runs: a going read from
-            // who called it was said as one gone wrong (#6513's F1). This
-            // step only lets it go: what its going said, and at what level,
-            // is read from the log by checks/shell.nix.
-            what: "a connection the shell lets go with an ask in flight goes, its ask given none",
-            holds: () => {
-                if (!root.letGo && lettingGo.wire !== null) {
-                    lettingGo.get([root.ada], 5000, () => {});
-                    lettingGo.connects = false;
-                    root.letGo = true;
-                }
-                return root.letGo && lettingGo.wire === null
-                    && Object.keys(lettingGo.awaited).length === 0;
             }
         },
         {
