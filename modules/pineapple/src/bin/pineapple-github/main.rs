@@ -77,8 +77,10 @@ use watch::Watched;
 
 /// How often GitHub is asked, unless a test says otherwise: a stop Joel
 /// writes himself is heard within a minute, and with the enforcer's few
-/// seconds after, anyone's lands well inside five.
+/// seconds after, anyone's lands well inside five. A site searched by
+/// author is asked every minute, the pace [`SEARCHED`] is set for.
 const EVERY: Duration = Duration::from_secs(30);
+const EVERY_SEARCHED: Duration = Duration::from_secs(60);
 
 /// How far back a first start looks, in seconds.
 const LOOK_BACK: u64 = 10 * 60;
@@ -173,7 +175,7 @@ fn help() -> Help {
             )
             .option(
                 "--every MS",
-                "how often it asks, half a minute unless given",
+                "how often it asks, half a minute unless given, a minute by author",
             ),
     )
 }
@@ -226,6 +228,7 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
         shadow: true,
     };
     let mut args = rest.iter();
+    let mut paced = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--verbose" | "-v" => {}
@@ -266,6 +269,7 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                 })?);
             }
             "--every" => {
+                paced = true;
                 how.every = args
                     .next()
                     .and_then(|given| given.parse().ok())
@@ -288,6 +292,9 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                 return Err(flags::unknown("option", other, &known));
             }
         }
+    }
+    if how.authored_by.is_some() && !paced {
+        how.every = EVERY_SEARCHED;
     }
     if how.authored_by.is_some() && (how.login.is_none() || how.repos.is_empty()) {
         return Err(
@@ -620,12 +627,8 @@ fn round(
     }
     // Where he spoke lately, his words are listed long before searched,
     // and only what's fresh is read there.
-    let spoken = if mine {
-        watched.listed(github, (&how.site, &login), reach, &judged.keys)
-    } else {
-        Vec::new()
-    };
-    for thread in spoken {
+    let spoken = mine.then(|| watched.listed(github, (&how.site, &login), reach, &judged.keys));
+    for thread in spoken.into_iter().flatten() {
         if !threads.iter().any(|(known, _, _)| *known == thread) {
             threads.push((thread, reach, reach));
         }

@@ -5,8 +5,11 @@
 //! request or issue where a comment of his worth judging isn't judged
 //! yet. His events feed itself lags by minutes, so it only names where to
 //! look. Each list is asked with the tag GitHub last gave it, so one
-//! unchanged is answered 304, which his rate limit doesn't count. Where a
-//! list can't be read, his words there wait on the search (own.rs).
+//! unchanged is answered 304, which his rate limit doesn't count; while
+//! his agents are busy most change, so a round costs up to seven of the
+//! 5,000 requests an hour his sign-in is allowed, 840 an hour at most.
+//! Where a list can't be read, the round lists no more, so a slow GitHub
+//! costs one wait, and his words wait on the search (own.rs).
 
 use std::collections::HashMap;
 
@@ -19,9 +22,11 @@ use super::GitHub;
 /// Each is one request a round, answered 304 while nothing changed.
 const WATCHED: usize = 6;
 
-/// How a repository's newest comments are listed, thirty of them: far
-/// more than are written there in a round.
-const NEWEST: &str = "sort=created&direction=desc&per_page=30";
+/// How a repository's newest comments are listed, a hundred of them, the
+/// most one page holds: far more than are written there in a round, so
+/// burying his stop takes a hundred comments in half a minute, and then
+/// it waits on the search.
+const NEWEST: &str = "sort=created&direction=desc&per_page=100";
 
 /// Where Joel's account was last active, and the answers GitHub gave each
 /// list asked, by what was asked, with the tag it gave each.
@@ -43,14 +48,19 @@ impl Watched {
         judged: &[String],
     ) -> Vec<Thread> {
         let feed = format!("/users/{login}/events?per_page={}", super::PAGE);
-        if let Some(events) = self.ask(github, &feed) {
-            self.repos = active_in(&events);
-        }
+        let newest = |repo: &str| format!("/repos/{repo}/issues/comments?{NEWEST}");
+        let Some(events) = self.ask(github, &feed) else {
+            return Vec::new();
+        };
+        self.repos = active_in(&events);
+        // Only what's still watched is kept, so the lists kept stay few.
+        let watched: Vec<String> = self.repos.iter().map(String::as_str).map(&newest).collect();
+        self.kept
+            .retain(|path, _| *path == feed || watched.contains(path));
         let mut threads = Vec::new();
         for repo in self.repos.clone() {
-            let newest = format!("/repos/{repo}/issues/comments?{NEWEST}");
-            let Some(comments) = self.ask(github, &newest) else {
-                continue;
+            let Some(comments) = self.ask(github, &newest(&repo)) else {
+                break;
             };
             for comment in comments.as_array().into_iter().flatten() {
                 let Some((thread, key, at)) = his(comment, &repo, (site, login)) else {
@@ -169,4 +179,32 @@ fn his(comment: &Value, repo: &str, (site, login): (&str, &str)) -> Option<(Thre
     let key = format!("{}:{}:{id}", thread.key(), Kind::Comment.name());
     let at = github::seconds(comment["created_at"].as_str()?)?;
     Some((thread, key, at))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{WATCHED, active_in};
+
+    #[test]
+    fn the_latest_repositories_are_watched_each_once_and_six_at_most() {
+        let event = |at: &str, repo: &str| json!({"created_at": at, "repo": {"name": repo}});
+        let events = json!([
+            event("2026-11-25T10:00:00Z", "a/oldest"),
+            event("2026-11-25T12:00:00Z", "a/one"),
+            event("2026-11-25T11:59:00Z", "a/two"),
+            event("2026-11-25T11:58:00Z", "a/one"),
+            event("2026-11-25T11:57:00Z", "a/three"),
+            event("2026-11-25T11:56:00Z", "a/four"),
+            event("2026-11-25T11:55:00Z", "a/five"),
+            event("2026-11-25T11:54:00Z", "a/six"),
+        ]);
+        assert_eq!(WATCHED, 6, "the count this case is written for");
+        assert_eq!(
+            active_in(&events),
+            ["a/one", "a/two", "a/three", "a/four", "a/five", "a/six"],
+            "the latest first, whatever order the feed gives, each once, the oldest left out"
+        );
+    }
 }
