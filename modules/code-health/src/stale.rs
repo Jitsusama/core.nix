@@ -37,7 +37,8 @@ mod shell;
 use shell::{Closers, Shell, ends_heredoc, shell_line};
 
 /// Every comment of `files` naming a path `paths` doesn't hold, as the
-/// file, its line and the path named.
+/// file, its line and the path named, and every file whose comments
+/// can't be known, as the file alone.
 pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
     let mut there: HashSet<&str> = HashSet::new();
     let mut tops: HashSet<&str> = HashSet::new();
@@ -78,7 +79,13 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
     };
     let mut gone = Vec::new();
     for file in files {
-        for (number, comment) in comments(file) {
+        // Said aloud, so the stale comments the file was known for aren't
+        // taken for fixed, and its entries dropped from a waiting list.
+        let Some(comments) = comments(file) else {
+            gone.push(format!("{}: its comments can't be known", file.path));
+            continue;
+        };
+        for (number, comment) in comments {
             for (named, prefix) in named(comment, &tops) {
                 // The folder under the top one the path names.
                 let below = named
@@ -104,14 +111,16 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
 /// heredoc, a string or a shell quote the file never closes is taken for
 /// a misreading, as a `/*` in a string or a `<<` the shell reads otherwise
 /// would be, and the file is read again as if its line opened nothing, so
-/// it hides nothing after it.
-fn comments(file: &File) -> Vec<(usize, &str)> {
+/// it hides nothing after it. None for a file whose comments can't be
+/// known, which only a reading that names no line it hasn't named before
+/// would leave.
+fn comments(file: &File) -> Option<Vec<(usize, &str)>> {
     let extension = extension(&file.path);
     let (mark, blocks) = match extension {
         "rs" | "js" | "ts" | "qml" | "c" | "h" => ("//", true),
         "nix" => ("#", true),
         "sh" | "bash" | "py" | "toml" | "yaml" | "yml" => ("#", false),
-        _ => return Vec::new(),
+        _ => return Some(Vec::new()),
     };
     // A byte-order mark opens a file as nothing at all.
     let content = file.text.strip_prefix('\u{feff}').unwrap_or(&file.text);
@@ -121,16 +130,24 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
     let mut unopened = HashSet::new();
     loop {
         match read(content, extension, (mark, blocks), &closers, &unopened) {
-            Ok(lines) => return lines,
+            Ok(lines) => return Some(lines),
             Err(openers) => {
                 let named = unopened.len();
                 unopened.extend(openers);
-                // Should a reading name only lines named already, the next
-                // would read as it did, so the file is taken for one whose
-                // comments can't be known rather than read forever, or
-                // taking down the measure of every repository.
+                // A line named opens nothing of its own, so it can't hold
+                // anything open, and a reading naming only lines named
+                // already is a misreading of this reader's own. The next
+                // would read as it did, so rather than read forever, or
+                // take down the measure of every repository, the file's
+                // comments are said to be unknown, and a debug build, the
+                // tests', stops at once.
+                debug_assert!(
+                    unopened.len() > named,
+                    "a reading of {} named only lines named before",
+                    file.path
+                );
                 if unopened.len() == named {
-                    return Vec::new();
+                    return None;
                 }
             }
         }

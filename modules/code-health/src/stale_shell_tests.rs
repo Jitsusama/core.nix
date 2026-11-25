@@ -441,7 +441,7 @@ fn each_line_leaves_open_what_bash_leaves_open() {
     use Shell::{
         Ansi, Arithmetic, Backtick, Case, Command, Double, Grouping, Parameter, Single, Subshell,
     };
-    let cases: [(&str, &[Shell]); 33] = [
+    let cases: [(&str, &[Shell]); 46] = [
         ("echo $'it\\'s", &[Ansi]),
         ("x=\"$(echo \"it's", &[Double, Command, Double]),
         ("y=\"${z:-\"it's", &[Double, Parameter, Double]),
@@ -470,12 +470,29 @@ fn each_line_leaves_open_what_bash_leaves_open() {
         ("x=$(while x; do case a in a)", &[Command, Case]),
         ("x=$({ case a in a)", &[Command, Case]),
         ("x=$(! case a in a)", &[Command, Case]),
+        ("x=$(if x; then y; else case a in a)", &[Command, Case]),
+        ("x=$(if x; then y; elif case a in a)", &[Command, Case]),
+        ("x=$(until case a in a)", &[Command, Case]),
+        ("x=$(time case a in a)", &[Command, Case]),
         ("x=$( (case a in a)", &[Command, Subshell, Case]),
         ("x=$(echo then case a in a)", &[]),
         ("x=$(thence case a in a)", &[]),
         ("x=$({case a in a)", &[]),
         ("x=$(echo case a in a)", &[]),
         ("x=$(cased a in a)", &[]),
+        // A redirection's word is its target, no command.
+        ("x=$(cat <case a in a)", &[]),
+        ("x=$(cat <<<case a in a)", &[]),
+        ("x=$(echo >then case a in a)", &[]),
+        // A word running on past `case` with no blank is a plain one.
+        ("x=$(case=1 a in a)", &[]),
+        ("x=$(case.sh a in a)", &[]),
+        // A pattern named case opens no case, though an esac an
+        // operator ends closes one.
+        ("x=$(case a in a) ;; case) echo ;; esac", &[Command]),
+        ("x=$(case a in a) ;; case|b) echo", &[Command, Case]),
+        ("x=$(case a in a) echo;; esac)", &[]),
+        ("x=$(case a in a) echo;; esac.sh", &[Command, Case]),
         ("x=`echo # it's`", &[]),
         ("x=`echo # it's", &[Backtick]),
     ];
@@ -550,21 +567,34 @@ fn what_never_closes_is_known_from_one_reading() {
             3000,
             "{opening:?} open on each line wasn't known from one reading"
         );
-        assert!(
-            read(&openers.into_iter().collect()).is_ok(),
-            "{opening:?} read as opening nothing still left something open"
+        assert_eq!(
+            read(&openers.into_iter().collect()).map(|lines| ended(&lines)),
+            Ok(true),
+            "{opening:?} read as opening nothing left something open, or hid the comment past it"
         );
     }
-    let heredocs = "cat <<A <<A\n".repeat(3000) + "A\n";
-    let blocks = "/*\n".repeat(3000);
+    // The first heredoc closes at the lone A, the second at none, so the
+    // comment past them is one; a block comment no line closes hides
+    // nothing.
+    let heredocs = "cat <<A <<A\n".repeat(3000) + "A\n# tests/kept/end.sh\n";
+    let blocks = "/*\n".repeat(3000) + "# tests/kept/end.nix\n";
     for (content, extension, comment) in [
         (&heredocs, "sh", ("#", false)),
         (&blocks, "nix", ("#", true)),
     ] {
         let closers = Closers::of(content, extension == "sh", comment.1);
-        assert!(
-            read(content, extension, comment, &closers, &HashSet::new()).is_ok(),
-            "openings in {extension} no line closes in turn weren't known at once"
+        assert_eq!(
+            read(content, extension, comment, &closers, &HashSet::new()).map(|lines| ended(&lines)),
+            Ok(true),
+            "openings in {extension} no line closes in turn weren't known at once, or hid the \
+             comment past them"
         );
     }
+}
+
+/// Whether the last comment read is the one ending these files.
+fn ended(lines: &[(usize, &str)]) -> bool {
+    lines
+        .last()
+        .is_some_and(|(_, comment)| comment.contains("tests/kept/end."))
 }

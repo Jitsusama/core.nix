@@ -71,13 +71,15 @@ pub(super) fn shell_line(
     // substitution begins, or past a blank or an operator.
     let mut word_starts = true;
     // Whether a command may begin here: where a word does, but not past a
-    // word and blanks, so `case` opens a case and `echo case` doesn't.
+    // word and blanks, so `case` opens a case and `echo case` doesn't, nor
+    // past a redirection, whose word is its target.
     let mut command_starts = true;
     let mut at = 0;
     while let Some(c) = line[at..].chars().next() {
         let rest = &line[at..];
         let mut step = c.len_utf8();
         let mut starts = false;
+        let mut redirects = false;
         let innermost = within.last().copied();
         if let Some(counted) = bracket(innermost, rest, within) {
             (step, starts) = counted;
@@ -107,7 +109,7 @@ pub(super) fn shell_line(
                 Some(Shell::Parameter) if c == '}' => {
                     within.pop();
                 }
-                Some(Shell::Case) if command_starts && whole_word(rest, "esac") => {
+                Some(Shell::Case) if command_starts && reserved(rest, "esac", true) => {
                     within.pop();
                     step = 4;
                 }
@@ -137,7 +139,7 @@ pub(super) fn shell_line(
                         innermost,
                         Some(Shell::Command | Shell::Subshell | Shell::Case)
                     )
-                    && whole_word(rest, "case") =>
+                    && reserved(rest, "case", false) =>
                 {
                     within.push(Shell::Case);
                     step = 4;
@@ -153,13 +155,14 @@ pub(super) fn shell_line(
                         (step, starts) = (length, true);
                     } else {
                         starts = c.is_whitespace() || ";&|()<>".contains(c);
+                        redirects = "<>".contains(c);
                     }
                 }
             }
         }
         kept = kept.min(within.len());
         if !c.is_whitespace() {
-            command_starts = starts;
+            command_starts = starts && !redirects;
         }
         word_starts = starts;
         at += step;
@@ -204,31 +207,24 @@ fn bracket(innermost: Option<Shell>, rest: &str, within: &mut Vec<Shell>) -> Opt
 /// or `!` or `{` ending at a blank, as bash reads them.
 fn leads_a_command(rest: &str) -> Option<usize> {
     const KEYWORDS: [&str; 8] = ["if", "then", "else", "elif", "do", "while", "until", "time"];
-    let ends = |past: &str, operator: bool| {
-        past.chars()
-            .next()
-            .is_none_or(|c| c.is_whitespace() || (operator && ";&|()<>".contains(c)))
-    };
     KEYWORDS
         .iter()
-        .find(|word| {
-            rest.strip_prefix(**word)
-                .is_some_and(|past| ends(past, true))
-        })
-        .or_else(|| {
-            ["!", "{"].iter().find(|word| {
-                rest.strip_prefix(**word)
-                    .is_some_and(|past| ends(past, false))
-            })
-        })
+        .find(|word| reserved(rest, word, true))
+        .or_else(|| ["!", "{"].iter().find(|word| reserved(rest, word, false)))
         .map(|word| word.len())
 }
 
-/// Whether `rest` opens with `word` whole, no letter, digit or underscore
-/// running on past it.
-fn whole_word(rest: &str, word: &str) -> bool {
-    rest.strip_prefix(word)
-        .is_some_and(|past| !past.starts_with(|c: char| c.is_alphanumeric() || c == '_'))
+/// Whether `rest` opens with the reserved `word`, ending at a blank or the
+/// line's end, or at an operator too where `operator` says, as bash ends
+/// one: `case=1` or `case.sh` is a plain word. A `case` an operator ends
+/// is a pattern, as `case)` is, or no command bash runs, so only a blank
+/// ends one.
+fn reserved(rest: &str, word: &str, operator: bool) -> bool {
+    rest.strip_prefix(word).is_some_and(|past| {
+        past.chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || (operator && ";&|()<>".contains(c)))
+    })
 }
 
 /// The substitution `rest` opens, pushed onto `within`: how long its
