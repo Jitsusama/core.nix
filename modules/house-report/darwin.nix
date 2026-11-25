@@ -54,12 +54,16 @@ let
   # ends nothing, a switch included, its cleanup too (round 3's F10,
   # round 4's F14), which takes away any run's leftover name too (round
   # 5's F9). A key another account owns, may read or write, or may read,
-  # write or take by an access list, is refused saying, after what it
-  # costs, to make it anew on both machines, since that account may
-  # know it and a new owner or mode leaves it known; one other accounts
-  # may only run, or reach by lesser rights, is refused without it (keys
-  # said plainly round 1's F2, F3, F10 and F14). Each run copies through
-  # a name of its own, so two runs
+  # write, take or change the rights of by an access list, is refused
+  # saying, after what it costs, to make it anew on both machines, since
+  # that account may know it and a new owner or mode leaves it known;
+  # one other accounts may only run, or reach by lesser rights, is
+  # refused without it (keys said plainly round 1's F2, F3, F10 and F14;
+  # round 2's F6 and F9). Only the first refusal that holds is said, so
+  # every test of a key another account may know comes before those
+  # that say nothing of it, and a key both runnable and readable is told
+  # to be made anew (keys said plainly round 2's F1, F8 and F10). Each
+  # run copies through a name of its own, so two runs
   # can't move the same file (round 4's F21), though a failing run may
   # take away the copy one beside it just made, or a slower one put back
   # a key just swapped; the watch job runs again each minute too, so
@@ -116,12 +120,12 @@ let
     elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +066)" ]; then
       houseReportWhy="may be read or written by an account other than root's"
       houseReportDo=$houseReportKnown
-    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +011)" ]; then
-      houseReportWhy="may be run by an account other than root's"
     elif /bin/ls -le "$houseReportRead" \
       | /usr/bin/grep -qE "$houseReportKnowing"; then
-      houseReportWhy="has an access list letting another account read, write or take it"
+      houseReportWhy="has an access list letting others read, write or take it or change its rights"
       houseReportDo=$houseReportKnown
+    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +011)" ]; then
+      houseReportWhy="may be run by an account other than root's"
     elif /bin/ls -le "$houseReportRead" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then
       houseReportWhy="has an access list letting another account in"
     elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportRead" "$houseReportNew" \

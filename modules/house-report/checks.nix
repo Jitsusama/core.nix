@@ -104,12 +104,18 @@ let
     "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +066)\" ]; then"
     "  houseReportWhy=\"may be read or written by an account other than root's\""
     "  houseReportDo=$houseReportKnown"
-    "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +011)\" ]; then"
-    "  houseReportWhy=\"may be run by an account other than root's\""
+    # Every refusal saying so comes before those that don't, as only the
+    # first that holds is said (keys said plainly round 2's F1, F8 and
+    # F10).
     "elif /bin/ls -le \"$houseReportRead\" \\"
     "  | /usr/bin/grep -qE \"$houseReportKnowing\"; then"
-    "  houseReportWhy=\"has an access list letting another account read, write or take it\""
+    (
+      "  houseReportWhy=\"has an access list letting others read, write or take it "
+      + "or change its rights\""
+    )
     "  houseReportDo=$houseReportKnown"
+    "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +011)\" ]; then"
+    "  houseReportWhy=\"may be run by an account other than root's\""
     "elif /bin/ls -le \"$houseReportRead\" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then"
     "  houseReportWhy=\"has an access list letting another account in\""
     (
@@ -176,8 +182,31 @@ let
   copied = "/var/db/house-report/house.key";
   watching = keyedMac.launchd.daemons.house-report-key.serviceConfig or { };
   watched = lib.last (watching.ProgramArguments or [ "" ]);
+  # The pattern the job tests a key's access list by, as its text sets
+  # it, so what it's run over below judges the job's own.
+  knowingPattern = lib.removeSuffix "'" (
+    lib.removePrefix "houseReportKnowing='" (
+      lib.findFirst (lib.hasPrefix "houseReportKnowing='") "" (lib.splitString "\n" watched)
+    )
+  );
+  # Access-list lines as a Mac's ls -le prints them, merged per account:
+  # those letting another account know a key, and those that don't.
+  leakingLists = [
+    " 1: group:everyone allow read,write,append"
+    " 0: user:someone inherited allow chown"
+    " 0: group:everyone allow delete,writesecurity"
+    " 0: group:staff allow append"
+    " 2: user:someone allow readattr,read"
+  ];
+  lesserLists = [
+    " 0: group:everyone allow readattr,readextattr,readsecurity"
+    " 0: group:everyone allow execute,writeattr"
+    " 0: user:someone allow writeextattr,delete"
+    " 0: group:everyone deny read"
+  ];
   # Whether `text` names the job's `said` only where `refusing` does:
-  # where the switch sets it and the job forgets and reads it.
+  # where the job's text sets, forgets and reads it (keys said plainly
+  # round 2's F7).
   namesSaidOnlyInRefusing =
     text:
     times "houseReportSaid" text == 5
@@ -280,9 +309,14 @@ in
         # The advice is set once, in the job's own text, before the
         # chain, and only the three refusals of a key another account
         # may know take it, each once, after what the refusal costs
-        # (keys said plainly round 1's F1, F2, F5, F6, F13 and F19).
+        # (keys said plainly round 1's F1, F2, F5, F6, F13 and F19), and
+        # is said last, joined after what the refusal costs (round 2's
+        # F2, F5 and F11).
+        && lib.hasInfix chained watched
+        && lib.hasInfix refusing watched
         && lib.hasInfix known watched
         && lib.hasInfix knowing watched
+        && lib.hasInfix "houseReportWhy=\nhouseReportDo=\n" watched
         && placed known < placed chained
         && placed knowing < placed chained
         && placed "houseReportDo=\n" < placed chained
@@ -316,6 +350,33 @@ in
           "/bin/rm -f \"$houseReportCopy\" \"$houseReportCopy\".*" + " 2>/dev/null || :"
         ) watched
       );
+
+  # The pattern a Mac's job tests a key's access list by takes a line
+  # granting another account read, write, append, writesecurity or chown,
+  # alone or among other rights, as letting it know the key, and not one
+  # granting lesser rights or denying any, run over lines as ls -le
+  # prints them (keys said plainly round 2's F3 and F4). GNU grep runs it
+  # here and BSD grep on the Mac; it uses only POSIX's extended syntax.
+  house-report-knows-which-lists-leak-a-key =
+    pkgs.runCommandLocal "house-report-knows-which-lists-leak-a-key"
+      {
+        pattern = knowingPattern;
+        leaking = lib.concatLines leakingLists;
+        lesser = lib.concatLines lesserLists;
+        passAsFile = [
+          "leaking"
+          "lesser"
+        ];
+      }
+      ''
+        while IFS= read -r line; do
+          grep -qE -- "$pattern" <<<"$line" || { echo "not taken as known: $line" >&2; exit 1; }
+        done <"$leakingPath"
+        while IFS= read -r line; do
+          if grep -qE -- "$pattern" <<<"$line"; then echo "taken as known: $line" >&2; exit 1; fi
+        done <"$lesserPath"
+        touch "$out"
+      '';
 
   # A Mac given a key copies it again, as root, whenever the key or its
   # folder changes, and each minute, by the same text activation runs,
