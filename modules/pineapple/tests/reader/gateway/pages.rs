@@ -336,6 +336,55 @@ fn a_page_unanswered_ten_rounds_in_a_row_is_a_gap_while_the_pages_before_it_are_
 }
 
 #[test]
+fn a_stop_on_a_page_whose_check_goes_unanswered_is_judged_while_the_search_waits() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            let stop = stop();
+            // The stop lies on the second page, past the first's three,
+            // and newer than the word the first round read last.
+            let found = [
+                (began - 60, "a newer word"),
+                (began - 200, "a word between"),
+                (began - 250, "another word"),
+                (began - 280, stop.as_str()),
+                (began - 330, "a word found late"),
+                (began - 400, "an older word"),
+            ];
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                nothing()
+            } else if asked.get("before").is_some() && asked["limit"] == 2 {
+                // The second page's ask for one fewer, in every round.
+                format!("{FAILS}Slack said: ratelimited")
+            } else {
+                in_pages(&TAGS, asked, began, &found, 3, true)
+            }
+        },
+        // Its stop judged with the rest, over rounds enough to wait twice.
+        &Until {
+            judging: 6,
+            asks: 64,
+            read_at: None,
+        },
+    );
+    let stopped = came.journal.find("<5>a stop, in shadow: ");
+    let waits = |rounds: u32| {
+        came.journal
+            .find(&format!("{rounds} of 10 rounds in a row"))
+    };
+    assert!(
+        waits(1).is_some() && stopped > waits(1) && stopped < waits(2),
+        "a stop the second page showed before its check went unanswered is judged in that \
+         round: {}",
+        came.journal
+    );
+}
+
+#[test]
 fn a_search_that_cant_be_read_is_told_while_the_other_waits_on_a_later_page() {
     static TAGS: AtomicUsize = AtomicUsize::new(0);
     static BEGAN: AtomicU64 = AtomicU64::new(0);
