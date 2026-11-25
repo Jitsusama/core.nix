@@ -137,6 +137,7 @@ fn a_landed_or_closed_piece_or_a_closed_parked_or_confirmed_ask_waits_on_nothing
         ask("put down", json!({"closed": "put down"})),
         ask("confirmed", json!({"confirmed": at(NOW - 60)})),
         ask("parked", json!({"parked": "b95ea57b"})),
+        ask("landed whole", json!({"landed": at(NOW - 60)})),
     ]);
     let m = read(&text);
     assert!(

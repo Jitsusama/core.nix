@@ -61,7 +61,10 @@ pub fn at_risk(
                 Ok(files) if files.is_empty() => {}
                 Ok(files) => risks.push(risk(ask, piece, (due, now), &files)),
                 Err(why) => {
-                    eprintln!("cadence: at risk: {why}");
+                    // The asks list and the gate's record are other
+                    // programs' text, so a newline in them can't write a
+                    // journal line that reads as cadence's own.
+                    eprintln!("cadence: at risk: {}", why.replace(char::is_control, "?"));
                     unread += 1;
                 }
             }
@@ -135,12 +138,15 @@ pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
 }
 
 /// Whether `ask` is of the kind `which` and still waits on anything: not
-/// [`parked`] on a ruling, put down, closed or confirmed.
+/// [`parked`] on a ruling, put down, closed, confirmed or landed, as the
+/// slips, holds and parked measures read a landed ask too, whatever its
+/// pieces still say.
 fn open(ask: &Value, which: Tracking) -> bool {
     tracking::of(ask) == Some(which)
         && parked::ruling(ask).is_none()
         && unset(&ask["closed"])
         && unset(&ask["confirmed"])
+        && unset(&ask["landed"])
 }
 
 /// Whether a field is missing, null or empty.
