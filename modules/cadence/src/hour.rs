@@ -299,14 +299,10 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::said_none(misses, now));
+    all.push(measures::holds::read(state_home, &asks, now));
     all.extend(found);
-    all.extend(rounds_per_merge(
-        state_home,
-        &core,
-        &core_log,
-        &harness_log,
-        now,
-    ));
+    let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
+    all.extend(per_merge);
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {

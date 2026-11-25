@@ -246,6 +246,13 @@ holding a space, as one broken across two lines does, is counted too.
 - Joel, 14 Nov: "delivering insane quality, both functionally, and by maintaining clean zones"
 - Over costs him: a test switched off for good without anyone saying so.
 
+## Holds Undated
+
+- Measures: `holds-undated`
+- Target: 0 live holds on the mesh with no ask dating the fix that ends them.
+- Joel, 24 Nov: "I need my agents to be able to get work done, they can't be neutered."
+- Over costs him: agents stopped from working with nobody saying when they start again.
+
 ## Budgets Billed Under Logged
 
 - Measures: `budgets-billed-under-logged`

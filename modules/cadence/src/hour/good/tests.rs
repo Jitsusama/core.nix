@@ -45,6 +45,7 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::unresolved::unresolved(None, None, NOW, "OWNER"),
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
+        measures::holds::holds(&[], "", NOW),
     ];
     shown.extend(measures::apps::apps(None, NOW));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
