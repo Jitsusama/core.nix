@@ -414,11 +414,11 @@ mod tests {
         );
         let mut mac = laptop();
         mac["updated"] = json!({"at": "2026-11-17T23:00:00Z", "step": "refused",
-                                "why": "the Mac is over its room"});
+                                "why": "the Mac is over its room; it waits."});
         assert_eq!(
             super::ties(&mac, None, None, None)["figures"]["update_why"],
-            json!("the Mac is over its room"),
-            "an update put off carries why"
+            json!("the Mac is over its room, it waits"),
+            "an update put off carries why, as one clause of the machine's line"
         );
         let bare = super::ties(
             &json!({"name": "spare", "state": "unreachable"}),

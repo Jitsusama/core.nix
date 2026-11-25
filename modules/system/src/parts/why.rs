@@ -213,14 +213,17 @@ fn cut_to(why: &str, at_most: usize) -> Option<String> {
     }
     let keep = at_most.saturating_sub(1);
     let cut: String = said.chars().take(keep).collect();
-    // A cut that ends a word whole, before a space or a clause's mark, keeps
-    // it; one inside a word, even before its apostrophe, dash or slash, goes
-    // back to the word before.
-    let word = if said
-        .chars()
-        .nth(keep)
-        .is_some_and(|next| next.is_whitespace() || CLAUSE_ENDS.contains(&next))
-    {
+    // A cut that ends a word whole, before a space or a clause's mark with a
+    // space after it, keeps it; one inside a word, even before its
+    // apostrophe, dash or slash, or a mark inside a name such as a unit's
+    // dot, goes back to the word before.
+    let mut rest = said.chars().skip(keep);
+    let ends = match (rest.next(), rest.next()) {
+        (Some(next), _) if next.is_whitespace() => true,
+        (Some(next), after) if CLAUSE_ENDS.contains(&next) => after.is_none_or(char::is_whitespace),
+        _ => false,
+    };
+    let word = if ends {
         cut.as_str()
     } else {
         cut.rfind(' ').map_or(cut.as_str(), |at| &cut[..at])
@@ -601,7 +604,7 @@ mod tests {
             json!(format!("b {word}\u{2026}")),
             "so is one a clause's mark ends"
         );
-        for inside in ['\'', '-', '/'] {
+        for inside in ['\'', '-', '/', '.', ':', ','] {
             assert_eq!(
                 why_of(&json!({"step": "refused", "why": format!("b {word}{inside}t rest")})),
                 json!("b\u{2026}"),
