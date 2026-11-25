@@ -392,8 +392,7 @@ def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     shell.answer("time")
     shell.launcher_until(
         lambda shown: (
-            shown["drawer"]["nerd"] == ["Unix Time", "Julian Day"]
-            and shown["drawer"]["folded"] is False
+            shown["drawer"]["nerd"] == ["Unix Time", "TAI"] and shown["drawer"]["folded"] is False
         )
     )
     shell.normal()
