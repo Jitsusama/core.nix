@@ -4,12 +4,17 @@
 //! changes here is how git lays out its indexes, not how objects are read.
 
 use crate::hash::Oid;
-use crate::odb::invalid;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+
+// Its own, as the commit-graph's and the index's are, so this module needs
+// nothing from the object store that reads through it.
+fn invalid(what: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, what.to_string())
+}
 
 fn read_exact_at(file: &File, len: usize, offset: u64) -> io::Result<Vec<u8>> {
     let mut buf = vec![0; len];

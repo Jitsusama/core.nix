@@ -52,7 +52,7 @@ pub struct Object {
     pub data: Vec<u8>,
 }
 
-pub fn invalid(what: &str) -> io::Error {
+fn invalid(what: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, what.to_string())
 }
 
