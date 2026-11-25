@@ -3525,6 +3525,11 @@
     the edit fails and refusing it in place when the host can't, and asks its host before a
     quit, at once, running on when the host says it doesn't hold
   '';
+  pi-hosted-draws-before-it-binds = ''
+    pi built with the host's patches, applied exactly, draws a hosted screen's conversation
+    before its extensions' session start settles, and only once, while plain pi still binds
+    before it draws
+  '';
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits
     or crashes, suspends only the viewer that asked when its host can and refuses otherwise,
