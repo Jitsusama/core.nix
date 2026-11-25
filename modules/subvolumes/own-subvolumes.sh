@@ -39,9 +39,9 @@ EXAMPLES
   own-subvolumes --writer slack.service 60 ~/.config/Slack
       the same, but not while slack.service runs, since a
       writer between writes holds nothing open
-  own-subvolumes --waiter slack-waits.service 60 ~/.config/Slack
-      the same, starting slack-waits.service when a process
-      holds the folder, to move it once that one quits
+  own-subvolumes --waiter waits.service 60 ~/.config/Slack
+      the same, starting waits.service when a process holds
+      the folder, to move it once that one quits
   own-subvolumes --after-quit move.service ~/.config/Slack
       wait until nothing holds the folder and no writer
       named runs, then start move.service again
