@@ -1814,7 +1814,7 @@ Provider {
             offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
             given: said => provider.sprout(key, said, start === undefined ? folder
-                : startWheres().find(one => one.folder === folder)?.start ?? start)
+                : Wheres.startAt(startWheres(), folder, start))
         });
     }
 

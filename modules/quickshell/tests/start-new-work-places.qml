@@ -49,6 +49,15 @@ QtObject {
                     name: "~/big/reef" }]), places).map(one => one.folder))
                 .map(folders => folders.length === new Set(folders).size
                     && folders.includes(unchecked.folder)), [true, true, true, true]);
+        // An In row's field entered before the places landed starts at Return as its
+        // row now says (Agents.qml's newWorkAct).
+        const reefQuest = [{ folder: unchecked.folder, name: "~/big/reef" }];
+        const before = Wheres.wheres(reefQuest, []);
+        Expect.same("a field entered before places land starts as its row says after",
+            Wheres.startAt(Wheres.wheres(reefQuest, [unchecked]), unchecked.folder,
+                Wheres.startAt(before, unchecked.folder, null)), "//system/reef");
+        Expect.same("and as made where its folder is no longer listed",
+            Wheres.startAt([], unchecked.folder, unchecked.folder), unchecked.folder);
         Expect.same("what the node calls it decides, not how its name opens",
             Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
                 Object.assign({}, harness, { kind: "zone" })])

@@ -141,6 +141,14 @@ function wheres(quests, places) {
     return listed;
 }
 
+// How the row at `folder`, of `listed` (as wheres gives them), starts now;
+// else `start`, as its act was made, where no row there is listed any more.
+// An act reads it at Return, so a field entered before places landed starts
+// as its row now says (a quest's folder found to be a zone, by its name).
+function startAt(listed, folder, start) {
+    return listed.find(one => one.folder === folder)?.start ?? start;
+}
+
 // A `folder`'s name by where it is: its checkout's name, of `checkouts`,
 // then the rest of the folder, or the folder whole where none holds it.
 function wherever(checkouts, folder) {
