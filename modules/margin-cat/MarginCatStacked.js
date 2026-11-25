@@ -167,15 +167,15 @@ function comesIn(from, at) {
     return { way, side };
 }
 
-// A ride on niri's scroll to `to`, which niri set off `behind` ms before
-// `now`, from where the cat was drawn as niri set it off: at `place`, short
+// A ride on niri's scroll to `to`, which niri set off at `told.at` on its
+// `told.spring`, from where the cat was drawn as niri set it off: at `place`, short
 // of it by what was left then of the ride `carry` under way, or by nothing
 // (MarginCatScreen.qml's rideTo). The scroll turned back mid-way carries
 // on from where the cat was as niri turned it, never from where it's drawn
 // now, which would count the time since twice and set it ahead of its
 // window.
-function rides(carry, place, to, now, behind, spring) {
-    const at = now - behind;
+function rides(carry, place, to, told) {
+    const { at, spring } = told;
     const left = carry === null ? { x: 0, y: 0 }
         : MarginCat.lags(carry.from, Math.min(at - carry.at, carry.ends), carry.spring);
     const from = { x: place.x + left.x - to.x, y: place.y + left.y - to.y };

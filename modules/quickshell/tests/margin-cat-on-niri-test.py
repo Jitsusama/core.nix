@@ -597,17 +597,26 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     so the cat can be still, carried off with its window, when the keys come back to its own
     column and niri scrolls the strip back. It comes back drawn with its window, never put
     down on its seat at once ahead of it (#6483's council, 2026-11-25).
+
+    Its own column is wide and the other's left of it, so niri scrolls its window along but
+    keeps its middle, where the cat sits, on the screen: carried off the screen, the cat comes
+    in from its edge to the keys at once, which is no ride back (2026-11-25, gates-6483b).
     """
-    first = three_columns(shell, "a ride back")
-    windows = {window["title"]: window for window in shell.windows()}
-    third = windows["a column a ride back sets off from"]
+    first = shell.opened("a column a ride back goes to")
+    since = shell.mark()
+    third = shell.opened("a column a ride back sets off from")
+    shell.as_account("niri msg action set-column-width 80%")
+    sits_over(shell, third, since)
+    time.sleep(LANDS)
     sat_at = laid_out(shell, third)["tile_pos_in_workspace_view"][0]
     wake(shell)
     since = shell.mark()
     shell.as_account(f"niri msg action focus-window --id {first['id']}")
     away = laid_out(shell, third)
     gone, width = away["tile_pos_in_workspace_view"][0], away["tile_size"][0]
+    across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
     assert gone != sat_at, f"niri left its window at {sat_at}: the case's own"
+    assert gone + width / 2 < across, f"niri scrolled its middle off at {gone}: the case's own"
 
     # Still over its window where niri scrolled it, drawn at its place, its ride done.
     def settled(report: str) -> bool:
