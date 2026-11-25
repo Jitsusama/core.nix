@@ -267,6 +267,15 @@ function ownKind(key) {
     return KeysSaid.keysOwn.find(kind => text.startsWith(kind));
 }
 
+// The key a served row is made with (ReadyRows.qml): its thing, else its key, as its daemon
+// wrote them. One claiming a kind of the launcher's own, as `place:`, is kept under `row:` as a
+// daemon's record is, since keyShown says a key of those kinds whole as the launcher's id, and a
+// daemon's may hold a name. Kept here beside ownKind, as ReadyRows.js is at biome's length.
+function keyMade(row, key) {
+    const made = row.thing ?? key;
+    return ownKind(made) === undefined ? made : `row:${made}`;
+}
+
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
 // shaped as an app's, and otherwise as app, since a program may give any words as its id; bare,
 // with what quoting escapes escaped, as actShown's, so a line break in it can't forge a line.
