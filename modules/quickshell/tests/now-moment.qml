@@ -957,7 +957,8 @@ ShellRoot {
     // reader gone quiet while watched has its reading let go; a refusal
     // said while watched isn't the timer's to clear; a wall clock stepped
     // back lets a reading go at once; and unwatched, a reading is kept only
-    // for what's left of its time. Each is read first, so a reading never
+    // for what's left of its time, and watched again it still goes in time
+    // while the reader says nothing. Each is read first, so a reading never
     // there can't pass for one let go. No socket is made,
     // so the sandbox's want of a reader can't answer in its place: it's
     // unwatched first, past the second a failed socket waits to try again,
@@ -1037,13 +1038,33 @@ ShellRoot {
             Timekeeping.watching = 0;
             keptStage.step = 2;
             keptStage.at = Date.now();
-        } else {
+        } else if (keptStage.step === 2) {
             if (Timekeeping.reading !== null && since < 1500)
                 return;
             if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
                 Timekeeping.reading === null, read)))
                 return;
+            // Stepped out and back within its time, with no answer after:
+            // a reader that takes the connection and says nothing, which
+            // only the timer the watch change set lets go.
+            Timekeeping.keptFor = 300;
+            Timekeeping.watching = 1;
+            answerTime();
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            if (!tried(() => expect("watched again within its time, it's still read",
+                Timekeeping.reading !== null, "null")))
+                return;
+            keptStage.step = 3;
+            keptStage.at = Date.now();
+        } else {
+            if (Timekeeping.reading !== null && since < 3000)
+                return;
+            if (!tried(() => expect("watched again, a reader quiet since has its reading let go",
+                Timekeeping.reading === null, read)))
+                return;
             waiting = "";
+            Timekeeping.watching = 0;
             Timekeeping.keptFor = 60000;
             Timekeeping.trying = true;
             answerLapses();
