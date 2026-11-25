@@ -14779,12 +14779,18 @@ Scope {
                         Item {
                             objectName: "startSays"
                             width: parent.width
-                            height: root.rowTall
+                            // Two bands at most, so what it says is read whole rather than cut
+                            // at its point, a long folder's name with it.
+                            height: root.rowTall * Math.max(1, startSaysText.lineCount)
                             visible: root.startSays !== ""
 
+                            // On the rows' glyph column, so the words under the path and the
+                            // start's own line both stand on the column the head's mark does.
                             Text {
-                                x: card.inset
-                                anchors.baseline: startSaysText.baseline
+                                x: card.inset + root.columns.mark
+                                width: Theme.level.name.pitch
+                                horizontalAlignment: Text.AlignHCenter
+                                y: startSaysText.y + startSaysText.baselineOffset - baselineOffset
                                 text: Theme.glyph[root.startMark] ?? ""
                                 color: root.startMark === "failed" ? Theme.alert
                                     : root.startMark === "done" ? Theme.success : Theme.muted
@@ -14796,10 +14802,14 @@ Scope {
                                 id: startSaysText
                                 x: card.inset + root.columns.text
                                 width: startWaited.x - x - Theme.space.rung.groups
-                                y: Bands.baseline(parent.height, startCaps.tightBoundingRect.height,
+                                y: Bands.baseline(root.rowTall, startCaps.tightBoundingRect.height,
                                     startSmalls.tightBoundingRect.height) - baselineOffset
                                 text: root.startSays
                                 textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                lineHeightMode: Text.FixedHeight
+                                lineHeight: root.rowTall
                                 elide: Text.ElideRight
                                 color: Theme.text
                                 font.family: Theme.level.figure.family
