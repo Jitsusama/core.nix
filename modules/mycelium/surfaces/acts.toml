@@ -113,8 +113,8 @@ due = "2026-11-25 12:00"
 why = "mesh_read gives a peer's question, not a want's whole text and choices"
 
 [act.map.has]
-file = "modules/mycelium/site/acts.ts"
-holds = 'typeof s.asked === "string"'
+file = "modules/mycelium/site/view.js"
+holds = "It Asks You"
 
 [act.launcher.owed]
 by = "42P0R4"
