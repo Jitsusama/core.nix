@@ -282,7 +282,7 @@ ShellRoot {
     }
 
     // Tells Tuple's stand-in to answer the camera command asked the time
-    // given (people.nix says how).
+    // given (tests/stand-ins/tuple-stand-in.sh says how).
     function letTupleAnswer(command, time) {
         root.write(`${root.runtime}/go-${command}-${time}`, "");
     }

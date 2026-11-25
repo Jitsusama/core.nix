@@ -126,14 +126,22 @@ struct Daemon {
     following: Option<Child>,
     /// Whether the stream followed was cut short to be followed afresh.
     cut: bool,
-    /// Joel's camera and mute as Tuple's stream last said them, apart
-    /// from the record, which an act sets ahead of the stream, and how
-    /// often the stream has said either turned.
-    camera_said: bool,
-    muted_said: bool,
+    /// What Tuple's stream last said of the call and Joel, apart from the
+    /// record, which an act sets ahead of the stream, and how often the
+    /// stream has said any of it turned.
+    stream_said: Said,
     joel_turns: u64,
     /// Tuple's commands for the acts running now.
     acting: Vec<Asked>,
+}
+
+/// Whether a call, Joel's camera and his mute were on, as Tuple's stream
+/// last said them.
+#[derive(Default)]
+struct Said {
+    calling: bool,
+    camera: bool,
+    muted: bool,
 }
 
 /// Everything the threads share: the call, woken as it changes, and
@@ -169,7 +177,7 @@ fn folder(variable: &str, default: &str) -> PathBuf {
 fn main() -> std::process::ExitCode {
     terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
         let asked = cli::asked(&context.args)?;
-        serve_calls(&asked.socket, &asked.tuple)
+        serve_calls(&asked)
     })
 }
 
@@ -178,7 +186,8 @@ fn main() -> std::process::ExitCode {
 /// # Errors
 ///
 /// Failed, 1, where its socket can't be listened on.
-fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
+fn serve_calls(asked: &cli::Asked) -> Result<(), Failure> {
+    let socket = &asked.socket;
     let listener = serve::listen(socket).map_err(|why| {
         Failure::new(
             Exit::Failed,
@@ -186,7 +195,7 @@ fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
         )
         .because(why.to_string())
     })?;
-    let tuple = tuple.to_owned();
+    let tuple = asked.tuple.clone();
     let runtime = folder("XDG_RUNTIME_DIR", "");
     let tuples = runtime.join("tuple-0");
     let log = folder("XDG_DATA_HOME", ".local/share").join("tuple/0");
@@ -212,8 +221,7 @@ fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
             recent,
             following: None,
             cut: false,
-            camera_said: false,
-            muted_said: false,
+            stream_said: Said::default(),
             joel_turns: 0,
             acting: Vec::new(),
         }),
@@ -223,6 +231,8 @@ fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
     let doing = Doing {
         tuple: tuple.clone(),
         room,
+        answers_within: asked.answers_within,
+        held_for: asked.held_for,
     };
     let serving = serve::Shared::new(DOMAIN, acts(&shared, doing));
     serving.slow(ask::ACTS);
@@ -373,22 +383,27 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
 /// find out. It keeps what the stream last said of his camera and his
 /// mute apart from the record, which an act sets ahead of the stream, so
 /// the stream's own off is journaled too, and counts each turn of either,
-/// which an act done late is weighed by (acts.rs); a call ending, or the
-/// stream, says nothing of the camera, though it counts as a turn where
-/// the camera was on or he was muted.
+/// and each call beginning or ending, which an act done late is weighed by
+/// (acts.rs), as two calls still connecting are told apart by nothing
+/// else; a call ending, or the stream, says nothing of the camera, though
+/// it counts as a turn where the camera was on or he was muted.
 fn says_joel(daemon: &mut Daemon, call: Option<&Live>) {
+    let said = &mut daemon.stream_said;
+    let mut turns = 0;
+    if call.is_some() != said.calling {
+        said.calling = call.is_some();
+        turns += 1;
+    }
     let muted = call.is_some_and(|live| live.joel.muted);
-    if muted != daemon.muted_said {
-        daemon.muted_said = muted;
-        daemon.joel_turns += 1;
+    if muted != said.muted {
+        said.muted = muted;
+        turns += 1;
     }
     let on = call.is_some_and(|live| live.joel.camera);
-    if on == daemon.camera_said {
-        return;
-    }
-    daemon.camera_said = on;
-    daemon.joel_turns += 1;
-    if call.is_some() {
+    let camera_turned = on != said.camera;
+    said.camera = on;
+    daemon.joel_turns += turns + u64::from(camera_turned);
+    if camera_turned && call.is_some() {
         let how = if on { "on" } else { "off" };
         eprintln!("<6>Tuple says Joel's camera is {how} in the call");
     }
