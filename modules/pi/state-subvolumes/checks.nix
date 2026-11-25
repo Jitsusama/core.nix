@@ -1,5 +1,5 @@
 # The check of pi's state folders' own subvolumes, which host-checks.nix
-# gathers beside the hosts': it changes with state-subvolumes.nix and the
+# gathers beside the hosts': it changes with home.nix beside it and the
 # hosts' names alone. That a named folder really moves is the subvolumes
 # VM test's to show (tests/vm/disks).
 {
@@ -49,18 +49,22 @@
         "pi-host-two-background.service"
         "mycelium.service"
       ];
+      sorted = names: lib.sort lib.lessThan (lib.toList names);
       movesBefore =
         home: expected: folder:
         let
           unit = home.systemd.user.services.${unitOf folder} or null;
         in
         unit != null
-        && lib.sort lib.lessThan (lib.toList (unit.Unit.Before or [ ])) == lib.sort lib.lessThan expected
+        && sorted (unit.Unit.Before or [ ]) == sorted expected
         && lib.elem "default.target" (lib.toList (unit.Install.WantedBy or [ ]));
       names = home: lib.attrNames home.systemd.user.services;
     in
     holds "pi-state-moves-before-its-hosts"
-      "pi's start-up state doesn't move into subvolumes of its own before the pi hosts and the node, or its worktrees move too."
+      (
+        "pi's start-up state doesn't move into subvolumes of its own before the pi hosts "
+        + "and the node, or its worktrees move too."
+      )
       (
         lib.all (movesBefore hosted writers) folders
         && lib.all (movesBefore bare [ ]) folders

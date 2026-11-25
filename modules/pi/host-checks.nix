@@ -733,10 +733,10 @@ in
       ;
   }
 )
-# The state folders' subvolumes change with state-subvolumes.nix and the
+# The state folders' subvolumes change with state-subvolumes/home.nix and the
 # hosts' names alone, so their check sits beside these.
 // onLinux (
-  import ./state-subvolume-checks.nix {
+  import ./state-subvolumes/checks.nix {
     inherit
       account
       bareNixos

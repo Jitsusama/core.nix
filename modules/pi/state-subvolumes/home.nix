@@ -1,5 +1,6 @@
 # Gives the harness's state that every pi reads as it starts and on each
-# turn Btrfs subvolumes of their own, beside home.nix rather than in it.
+# turn Btrfs subvolumes of their own, in a folder of its own beside pi's
+# home.nix.
 # A pi's screen waits for its extensions' handlers, and on 25 November,
 # with the disk serving 10,900 reads a second at 4 ms each, screens took
 # 24 s to 20 min to start, almost all of it in those handlers. Most of the
@@ -26,8 +27,9 @@
   ...
 }:
 let
-  launch = import ./host-launch.nix { inherit lib; };
-  state = lib.removePrefix "${config.home.homeDirectory}/" "${config.xdg.stateHome}/pi/agentic-harness.pi";
+  launch = import ../host-launch.nix { inherit lib; };
+  harness = "${config.xdg.stateHome}/pi/agentic-harness.pi";
+  state = lib.removePrefix "${config.home.homeDirectory}/" harness;
   folders = [
     "mesh-workflow"
     "quest-workflow"
@@ -45,7 +47,7 @@ let
   ) "mycelium.service";
 in
 {
-  imports = [ ../subvolumes/home.nix ];
+  imports = [ ../../subvolumes/home.nix ];
 
   config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
     jitsusama.subvolumes.folders = lib.genAttrs (map (folder: "${state}/${folder}") folders) (_: {

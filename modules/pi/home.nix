@@ -182,7 +182,7 @@ in
     ./fence.nix
     ./harness-settings.nix
     ./host.nix
-    ./state-subvolumes.nix
+    ./state-subvolumes/home.nix
     ./timers
     ./timers/compressed-logs.nix
     ../theme/home.nix
