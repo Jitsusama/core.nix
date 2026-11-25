@@ -28,8 +28,10 @@
 # launcher, since its command line goes stale once a link opens another
 # file in place, a space where a paragraph's line wraps in the file, which
 # it dropped, joining the words either side, and a zoom it opens at, which
-# Ctrl+0 goes back to. A seventh holds these keys to Vim's in its own
-# tests, as it's built.
+# Ctrl+0 goes back to. A seventh holds q, Escape, j, k, gg, G, the :q
+# sequences, ZZ, Space w, Space ?, F1 and the Ctrl chords to Vim's in its
+# own tests, as it's built; the arrows, Page keys, Home, End and Ctrl+C
+# aren't pressed there.
 #
 # It opens at one and a half times the screen's own scale. At its own size
 # Joel found its text too small to read (2026-11-01); a logical pixel is
@@ -407,7 +409,7 @@ let
   file = (pkgs.formats.toml { }).generate "inlyne.toml" settings;
 
   # The keys alone, which inlyne's own tests read as it's built, so a key
-  # bound here that inlyne would read otherwise fails its build
+  # those tests press that inlyne would read otherwise fails its build
   # (speaks-vim.patch).
   bindings.keybindings.base = lib.concatMap (
     key:
