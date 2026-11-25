@@ -1,12 +1,14 @@
 # Boots a machine whose /home is Btrfs, as a workstation's is, and checks an
 # account's folders are moved into subvolumes of their own as its manager
 # starts: one moves, its files all there and the folder as it was kept;
-# one a process holds open stays, and one it only maps; one whose writer runs, holding nothing
-# open, stays, as at a switch; and one that can't be copied is left
-# whole, its unit failing, with the writer it comes before started all the
-# same. Each turns on Btrfs's own answers, a subvolume's root, a reflink
-# across subvolumes and an account removing one it emptied, so only a
-# machine with Btrfs shows them. The test is subvolumes-vm-test.py, which
+# one a process holds open stays, and one it only maps; one whose writer
+# runs, holding nothing open, stays, as at a switch; one a program opens as
+# it's copied stays whole; each a process held moves once that process
+# quits; and one that can't be copied is left whole, its unit failing,
+# with the writer it comes before started all the same. Each turns on
+# Btrfs's own answers, a subvolume's root, a reflink across subvolumes and
+# an account removing one it emptied, so only a machine with Btrfs shows
+# them. The test is subvolumes-vm-test.py, which
 # pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
@@ -31,6 +33,22 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         unreadable.before = [ "writer.service" ];
         missing = { };
         busy.before = [ "busy.service" ];
+        quitting = { };
+        raced.seconds = 30;
+      };
+      # Stands in for Joel opening Slack as its folder is copied: the copy
+      # being made starts it, once, and it holds a file in the folder open.
+      systemd.user.paths.racer = {
+        Path.PathExists = "%h/raced.subvolume-new";
+        Install.WantedBy = [ "default.target" ];
+      };
+      systemd.user.services.racer = {
+        Unit.ConditionPathExists = "!%h/raced-once";
+        Service.ExecStart = pkgs.writeShellScript "racer" ''
+          touch ~/raced-once
+          exec 3< ~/raced/f1
+          exec ${pkgs.coreutils}/bin/sleep infinity
+        '';
       };
       # Stands in for a program that writes in its folder, as the node
       # does in its state, started by the account's manager.

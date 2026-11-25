@@ -2,8 +2,9 @@
 
 subvolumes.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The account's folders are made once a run, one
-held open by a process of its own, one it only maps, one whose writer runs and one with a file it
-can't read, then each folder's move runs as a login or a switch runs it, so any test runs alone
+held open by a process of its own, one it only maps, one whose writer runs, one with a file it
+can't read, one held by a process that quits later and one a racer opens as it's copied, then each
+folder's move runs as a login or a switch runs it, so any test runs alone
 with `-k`. The tests need no value from Nix.
 """
 
@@ -68,7 +69,24 @@ def moved(machine: BaseMachine) -> BaseMachine:
     as_account(machine, "systemctl --user restart " + " ".join(unit(f) for f in FREE))
     # The folder that can't be copied fails its unit, and says so.
     as_account(machine, f"systemctl --user restart {unit('unreadable')}", succeed=False)
+    # A process holds this one, as Chrome holds its folder at a switch, and quits later.
+    as_account(machine, "mkdir quitting && echo held > quitting/file")
+    as_account(
+        machine,
+        f"systemd-run --user --unit quitter bash -c 'exec 3< {HOME}/quitting/file; sleep infinity'",
+    )
+    holds = "test -e /proc/$(systemctl --user show -P MainPID quitter)/fd/3"
+    as_account(machine, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    # Enough files that the racer, started as the copy begins, opens one long before it ends.
+    as_account(machine, "mkdir raced && for i in $(seq 8000); do echo $i > raced/f$i; done")
+    as_account(machine, f"systemctl --user restart {unit('quitting')} {unit('raced')}")
     return machine
+
+
+def waited(machine: BaseMachine, folder: str) -> str:
+    """Give what a folder's waiter said in the journal."""
+    waiter = unit(folder).replace(".service", "-after-quit.service")
+    return as_account(machine, f"journalctl --user -u {waiter} -o cat")
 
 
 def nothing_beside(machine: BaseMachine, name: str) -> None:
@@ -141,6 +159,31 @@ def test_a_folder_that_cant_be_copied_is_left_whole_and_its_writer_starts(
     assert "couldn't copy" in said(moved, "unreadable")
     as_account(moved, "systemctl --user start writer.service")
     assert as_account(moved, "systemctl --user is-active writer.service").strip() == "active"
+
+
+def test_a_folder_a_program_opens_as_it_is_copied_stays_whole(moved: BaseMachine) -> None:
+    """A program that starts as its folder is copied keeps the folder, whole, where it was."""
+    assert inode(moved, f"{HOME}/raced") != "256", "the folder moved under the racer"
+    assert as_account(moved, "systemctl --user is-active racer").strip() == "active"
+    told = said(moved, "raced")
+    assert "raced/f1 open, as it" in told, f"the move didn't say the racer held it: {told}"
+    assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
+    nothing_beside(moved, "raced")
+
+
+def test_a_folder_moves_once_the_process_holding_it_quits(moved: BaseMachine) -> None:
+    """A folder left for a process holding it moves by itself, whole, once that one quits."""
+    for folder, holder in (("quitting", "quitter"), ("raced", "racer")):
+        assert inode(moved, f"{HOME}/{folder}") != "256", f"{folder} moved under {holder}"
+        # The racer starts once, but its trigger would go on firing at each copy.
+        as_account(moved, "systemctl --user stop racer.path")
+        as_account(moved, f"systemctl --user stop {holder}")
+        moves = f"test $(stat -c %i {HOME}/{folder}) = 256"
+        as_account(moved, f"timeout 60 sh -c 'until {moves}; do sleep 0.5; done'")
+        told = waited(moved, folder)
+        assert "so this waits for it to quit" in told, f"{folder}'s waiter said: {told}"
+    assert moved.succeed(f"cat {HOME}/quitting/file").strip() == "held"
+    assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
 
 
 def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:

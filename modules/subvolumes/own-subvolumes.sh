@@ -17,6 +17,13 @@
 # dated, for three days, then removed by a later run, since it holds the
 # data a second time once the two part ways.
 #
+# A folder left because a process held it is moved once that process
+# quits: the run starts its folder's waiter, named with --waiter, which
+# runs this with --after-quit to wait for each holder in turn, and for
+# the writers named, then starts the move again. So a switch that finds
+# Chrome or Slack running moves its folder the first time Joel quits it,
+# rather than at the next boot.
+#
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand.
 
@@ -32,6 +39,12 @@ EXAMPLES
   own-subvolumes --writer slack.service 60 ~/.config/Slack
       the same, but not while slack.service runs, since a
       writer between writes holds nothing open
+  own-subvolumes --waiter slack-waits.service 60 ~/.config/Slack
+      the same, starting slack-waits.service when a process
+      holds the folder, to move it once that one quits
+  own-subvolumes --after-quit move.service ~/.config/Slack
+      wait until nothing holds the folder and no writer
+      named runs, then start move.service again
 
 EXIT
   0   each folder moved, or left as it was, saying why
@@ -52,20 +65,42 @@ asked_wrongly() {
   exit 64
 }
 writers=()
-while [ "${1:-}" = --writer ]; do
-  [ $# -ge 2 ] || asked_wrongly
-  writers+=("$2")
-  shift 2
+waiter=''
+move=''
+while :; do
+  case ${1:-} in
+  --writer)
+    [ $# -ge 2 ] || asked_wrongly
+    writers+=("$2")
+    shift 2
+    ;;
+  --waiter)
+    [ $# -ge 2 ] || asked_wrongly
+    waiter=$2
+    shift 2
+    ;;
+  --after-quit)
+    [ $# -ge 2 ] || asked_wrongly
+    move=$2
+    shift 2
+    ;;
+  *) break ;;
+  esac
 done
-[ $# -ge 2 ] || asked_wrongly
-case $1 in
-'' | *[!0-9]*) asked_wrongly ;;
-*) ;;
-esac
-# timeout takes no time at all as no limit, so none is refused.
-[ "$1" -gt 0 ] || asked_wrongly
-seconds=$1
-shift
+# Waiting takes one folder and no seconds, since it copies nothing.
+if [ -n "$move" ]; then
+  [ $# -eq 1 ] || asked_wrongly
+else
+  [ $# -ge 2 ] || asked_wrongly
+  case $1 in
+  '' | *[!0-9]*) asked_wrongly ;;
+  *) ;;
+  esac
+  # timeout takes no time at all as no limit, so none is refused.
+  [ "$1" -gt 0 ] || asked_wrongly
+  seconds=$1
+  shift
+fi
 for folder in "$@"; do
   case $folder in
   /*) ;;
@@ -156,10 +191,37 @@ tidy() {
   done
 }
 
+# Says what of `$1`, a real path, is in use: a file in it changed since
+# the stamp `$2`, a writer named running, or a process holding it.
+in_use() {
+  local why
+  why=$(find "$1" -newer "$2" -print -quit 2> /dev/null)
+  [ -n "$why" ] || why=$(running)
+  [ -n "$why" ] || why=$(holding "$1")
+  echo "$why"
+}
+
+# Says why the folder `$1` stays where it is, `$2`, and when a process
+# holds it, starts the waiter that moves it once that process quits. A
+# writer named is left to the next start, since the node runs for days.
+left() {
+  local folder=$1 why=$2
+  case $why in
+  /proc/*)
+    if [ -n "$waiter" ] && systemctl --user restart --no-block -- "$waiter"; then
+      echo "$why, so $folder stays in the home's tree until that quits"
+      return 0
+    fi
+    ;;
+  *) ;;
+  esac
+  echo "$why, so $folder stays in the home's tree until the account's manager next starts"
+}
+
 # Moves `$1` into a subvolume of its own, or says why it's left as it was.
 # Returns 1 only when something failed.
 own() {
-  local folder=$1 real fs inode why new stamp aside
+  local folder=$1 real fs inode why late new stamp swapped aside
   if [ ! -d "$folder" ] || [ -L "$folder" ]; then
     echo "$folder isn't a folder here, so it's left as it is"
     return 0
@@ -180,7 +242,7 @@ own() {
   why=$(running)
   [ -n "$why" ] || why=$(holding "$real")
   if [ -n "$why" ]; then
-    echo "$why, so $folder stays in the home's tree until a login finds it free"
+    left "$folder" "$why"
     return 0
   fi
   new=$(making "$real")
@@ -197,22 +259,48 @@ own() {
   fi
   # Anything written, made or removed in it since the copy began, by a
   # process that opened and closed it meanwhile, would be lost.
-  why=$(find "$real" -newer "$stamp" -print -quit 2> /dev/null)
-  [ -n "$why" ] || why=$(running)
-  [ -n "$why" ] || why=$(holding "$real")
-  rm -f -- "$stamp"
+  why=$(in_use "$real" "$stamp")
   if [ -n "$why" ]; then
-    rm -rf -- "$new"
-    echo "$folder changed as it was copied ($why), so it's left as it is until the next login"
+    rm -rf -- "$new" "$stamp"
+    left "$folder" "$why, as it was copied"
     return 0
   fi
+  swapped=$(mktemp) || return 1
   # Two renames would leave no folder between them, for a run stopped there
   # or a writer to make afresh; an exchange either swaps both or neither.
   if ! mv --exchange -T -- "$new" "$real"; then
-    rm -rf -- "$new"
+    rm -rf -- "$new" "$stamp" "$swapped"
     echo "✕ couldn't put the subvolume in $folder's place, so it's left as it is" >&2
     return 1
   fi
+  # The look above takes seconds, and a program started meanwhile, as Joel
+  # opening Slack, isn't in it. The folder as it was now sits where the copy
+  # was made, a path no program opens it by, so one more look at it there
+  # finds whatever reached it before the exchange, and no later one can.
+  why=$(in_use "$new" "$stamp")
+  rm -f -- "$stamp"
+  if [ -n "$why" ]; then
+    if ! mv --exchange -T -- "$new" "$real"; then
+      rm -f -- "$swapped"
+      echo "✕ $folder was in use as it moved ($why), and couldn't be put back" >&2
+      return 1
+    fi
+    # Between the two exchanges the copy had the folder's path, so a
+    # program that wrote in it then wrote what the folder now lacks.
+    late=$(in_use "$new" "$swapped")
+    if [ -n "$late" ]; then
+      rm -f -- "$swapped"
+      aside="$real.split-$(date +%Y%m%d%H%M%S)"
+      mv -T -- "$new" "$aside"
+      echo "✕ $folder was in use as it moved, so it's back, and what was written" \
+        "in the copy meanwhile is kept at $aside" >&2
+      return 1
+    fi
+    rm -rf -- "$new" "$swapped"
+    left "$folder" "$why, as it moved"
+    return 0
+  fi
+  rm -f -- "$swapped"
   # The folder as it was now sits where the copy was made.
   aside=$(kept "$real")
   if ! mv -T -- "$new" "$aside"; then
@@ -222,6 +310,52 @@ own() {
   echo "$folder is a subvolume of its own now, the folder as it was kept at $aside"
 }
 
+# Waits until nothing holds the folder `$1` and no writer named runs, then
+# starts its move again. Each holder is waited for until it quits, as its
+# folder's move would find it, so Chrome's many processes are waited for
+# one at a time, though they mostly quit together.
+after_quit() {
+  local folder=$1 real inode why pid
+  while :; do
+    if [ ! -d "$folder" ] || [ -L "$folder" ]; then
+      echo "$folder isn't a folder here, so there's nothing to wait for"
+      return 0
+    fi
+    real=$(realpath -- "$folder") || return 1
+    inode=$(stat -c %i -- "$real") || return 1
+    if [ "$inode" = 256 ]; then
+      echo "$folder is a subvolume of its own already, so there's nothing to wait for"
+      return 0
+    fi
+    why=$(running)
+    if [ -n "$why" ]; then
+      echo "$why, so this waits for it to stop"
+      # systemd has no wait for a unit to stop, and a look every five
+      # seconds is one call, against the minute a writer such as Chrome's
+      # metrics move takes.
+      while [ -n "$why" ]; do
+        sleep 5
+        why=$(running)
+      done
+      continue
+    fi
+    why=$(holding "$real")
+    [ -n "$why" ] || break
+    pid=${why#/proc/}
+    pid=${pid%%/*}
+    echo "$why, so this waits for it to quit"
+    # tail looks for the process every two seconds, which is as soon after
+    # a quit as the move needs to start.
+    tail --pid="$pid" -s 2 -f /dev/null
+  done
+  echo "nothing holds $folder now, so its move starts again"
+  systemctl --user restart --no-block -- "$move"
+}
+
+if [ -n "$move" ]; then
+  after_quit "$1"
+  exit
+fi
 status=0
 for folder in "$@"; do
   own "$folder" || status=1
