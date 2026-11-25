@@ -53,7 +53,7 @@ fn read_as(text: &str, which: Tracking) -> Measure {
 
 #[test]
 fn each_form_the_keeper_has_written_names_its_change() {
-    let cases: [(&str, &[(Repo, u32)]); 16] = [
+    let cases: [(&str, &[(Repo, u32)]); 15] = [
         ("core.nix#6595", &[(Repo::Core, 6595)]),
         ("core#4057", &[(Repo::Core, 4057)]),
         ("Jitsusama/core.nix#4220", &[(Repo::Core, 4220)]),

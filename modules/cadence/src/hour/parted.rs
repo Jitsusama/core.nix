@@ -15,7 +15,7 @@ use crate::tracking::Tracking;
 
 /// How long the hour spends fetching changes before it says the rest
 /// unread, so a slow network can't hold it past its own hour.
-const FETCHING_AT_MOST: Duration = Duration::from_secs(5 * 60);
+const FETCHING_AT_MOST: Duration = Duration::from_mins(5);
 
 /// Joel's dates at risk and the list's own, from the asks list `asks` at
 /// `now`: a core change asked of cadence's clone `core` once however many
