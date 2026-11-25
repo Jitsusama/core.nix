@@ -2423,9 +2423,9 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
-        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, goes_again, goes_direct,
-        goes_once_more, reach, reach_any, read_whole, slept, with_causes,
+        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin, Retiring, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
+        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -2913,20 +2913,62 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
+        let looked_up = AtomicBool::new(false);
+
+        let failed = reach(
+            "model-relay.invalid",
+            443,
+            Duration::from_secs(2),
+            &looked_up,
+        )
+        .await;
+
+        let unnamed = failed
+            .err()
+            .and_then(std::io::Error::into_inner)
+            .is_some_and(|why| why.is::<Unnamed>());
+        assert!(unnamed, "a name no lookup finds wasn't said as unnamed");
+        assert!(
+            !looked_up.load(Ordering::Relaxed),
+            "a name no lookup finds was marked as looked up"
+        );
+    }
+
+    #[test]
+    fn a_connection_not_made_in_time_is_the_names_doing_until_it_resolves() {
+        let named = Named { at: 0, number: 0 };
+        let within = Duration::from_secs(10);
+
+        let unresolved = unmade(named, within, &AtomicBool::new(false));
+        let resolved = unmade(named, within, &AtomicBool::new(true));
+
+        assert!(
+            matches!(unresolved, Unreachable::Unnamed),
+            "a lookup outlasting the budget wasn't said as the name's"
+        );
+        assert!(
+            matches!(resolved, Unreachable::Late),
+            "a connection outlasting the budget once named wasn't said as late"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn a_connection_to_the_origin_holds_few_bytes_unsent() {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
         let port = origin.local_addr().expect("its address").port();
 
-        let tcp = reach(
-            "127.0.0.1",
-            port,
-            Duration::from_secs(2),
-            &AtomicBool::new(false),
-        )
-        .await
-        .expect("a connection");
+        let looked_up = AtomicBool::new(false);
+        let tcp = reach("127.0.0.1", port, Duration::from_secs(2), &looked_up)
+            .await
+            .expect("a connection");
+
+        assert!(
+            looked_up.load(Ordering::Relaxed),
+            "a name that resolved wasn't marked as looked up"
+        );
 
         assert_eq!(
             socket2::SockRef::from(&tcp)

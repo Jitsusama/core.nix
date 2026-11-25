@@ -34,7 +34,7 @@
 //! counters, which splitting would leave two files making alike.
 
 use std::convert::Infallible;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -675,15 +675,18 @@ impl Relay {
             std::thread::sleep(within);
             let finished = watching.lock().unwrap_or_else(PoisonError::into_inner);
             if !*finished {
-                match Command::new("kill").arg("-KILL").arg(&pid).status() {
-                    Ok(status) if status.success() => {}
-                    // The read then waits on as it did before this bound,
-                    // so this says why the test hangs.
-                    stopped => eprintln!(
-                        "the relay never said {awaited:?} within {within:?}, \
-                         and couldn't be stopped: {stopped:?}"
-                    ),
-                }
+                let then = match Command::new("kill").arg("-KILL").arg(&pid).status() {
+                    Ok(status) if status.success() => "so it was stopped".to_owned(),
+                    // The read then waits on as it did before this bound.
+                    stopped => format!("and couldn't be stopped: {stopped:?}"),
+                };
+                // Past libtest's capture, which holds what a test says until
+                // it ends, so a test that then fails or hangs says why. A
+                // stderr that can't be written leaves nowhere to say it.
+                let _ = writeln!(
+                    io::stderr(),
+                    "the relay never said {awaited:?} within {within:?}, {then}"
+                );
             }
         });
         if let Some(stderr) = self.child.stderr.as_mut() {
@@ -3029,13 +3032,21 @@ async fn an_origin_out_of_reach_is_said_as_a_502() {
     let got = ask(&relay.socket, asked).await;
     let again = ask(&relay.socket, request(&host, "/v1/messages", b"")).await;
 
-    assert_eq!(got.status, StatusCode::BAD_GATEWAY);
+    let said = relay.said();
+    // Its own words, so a lookup's 502 can't stand in for every refusal.
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (
+            StatusCode::BAD_GATEWAY,
+            &b"this relay couldn't reach its origin\n"[..]
+        ),
+        "an origin out of reach wasn't said as one: {said}"
+    );
     assert_eq!(
         again.status,
         StatusCode::BAD_GATEWAY,
         "the relay answers on after a failure"
     );
-    let said = relay.said();
     assert!(
         !said.contains("sekrit"),
         "the relay logged a header or a body: {said}"
