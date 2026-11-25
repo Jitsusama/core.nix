@@ -418,16 +418,24 @@ QtObject {
         const seated = Paths.frame(walk, walk.ends);
         expect("and walks the tops on to its seat", [seated.x, seated.y, seated.beat],
             [312, 7, "sits"]);
-        // The edge in the gap between the window inside it and one past it.
+        // The edge in the gap between the window inside it and one past it,
+        // drawn in the air below that window's top.
         const gapped = [strip[0], strip[1], { left: 1264, top: 40, width: 600, height: 744,
             column: 2, id: 3 }];
-        const across = Stacked.walkAlong({ x: 2000, y: 31 }, { x: 312, y: 7 },
+        const across = Stacked.walkAlong({ x: 2000, y: 100 }, { x: 312, y: 7 },
             world({ cols: Paths.columns(gapped, 0), pause: 300 }));
         const peeked = across.beats.find(beat => beat.name === "peeks");
         expect("the edge in a gap, it peeks from the top of the window past it, never the air",
             [peeked?.to.y, across.beats.slice(across.beats.indexOf(peeked) + 3,
                 across.beats.indexOf(peeked) + 6).map(beat => beat.name)],
             [31, ["crouches", "leaps", "lands"]]);
+        // No window past the edge at all, it peeks in at its own height.
+        const bare = Stacked.walkAlong({ x: 2000, y: 7 }, { x: 312, y: 7 },
+            world({ cols: Paths.columns(strip.slice(0, 2), 0), pause: 300 }));
+        const alone = Paths.frame(bare, bare.ends);
+        expect("with no window past the edge, it peeks in at its own height, then goes to its seat",
+            [bare.beats.find(beat => beat.name === "peeks")?.to.y, alone.x, alone.y, alone.beat],
+            [7, 312, 7, "sits"]);
     }
 
     // How niri's scroll carries it as it waits for the keys to rest: by
