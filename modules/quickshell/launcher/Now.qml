@@ -40,6 +40,7 @@ import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
+import "Sprouting.js" as Sprouting
 import "TalkAnswers.js" as TalkAnswers
 import "../pieces/Holding.js" as Holding
 
@@ -1379,6 +1380,18 @@ Provider {
     // going ends that wait, as every ask's (Daemon.qml's gone). A word for
     // an answer since replaced changes nothing (`sent`).
     function answerLook(one, choice) {
+        // An answer goes to the node as Joel's from the shell itself, so it goes only from his
+        // own Return, as a want's does (Agents.qml's answerKept): a walk from outside, which any
+        // process of his can ask, is told why and nothing is kept or sent.
+        const walked = TalkAnswers.walkRefused(Sprouting.fromJoel(provider.launcher),
+            (Words.of("verb:agent:talk").said ?? {}).answerWalked ?? "",
+            lookAsker(one) || String(one.title ?? ""));
+        if (walked !== null) {
+            console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
+                + ` ${JSON.stringify(one.id)} from a walk: ${walked}`);
+            provider.launcher?.walkRefused?.(walked);
+            return;
+        }
         if (Looks.awaiting(one, lookAnswers)) {
             console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
                 + ` ${JSON.stringify(one.id)}, whose answer may still reach its session`);

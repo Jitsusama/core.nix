@@ -253,12 +253,14 @@ fn only_the_shells_answer_reaches_the_node() {
         (
             &ask["address"],
             &ask["steer"]["act"],
+            &ask["steer"]["want"],
             &ask["steer"]["value"],
             &ask["steer"]["from"]
         ),
         (
             &json!("ASKER"),
             &json!("answer"),
+            &json!("question@2026-11-25T09:00:00.000Z"),
             &json!("push"),
             &json!("joel")
         ),

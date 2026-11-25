@@ -237,6 +237,14 @@ ShellRoot {
         property bool wanting: true
         // Nothing is held, so no step gathers the notices.
         property var held: []
+        // Whether a walk from outside runs what's pressed (Launcher.qml's), and why each it
+        // ran was refused (walkRefused), as a terminal's walk is told.
+        property bool cataloguing: false
+        property var walkTold: []
+
+        function walkRefused(why) {
+            walkTold = walkTold.concat([why]);
+        }
 
         function wants(source) {
             return wanting;
@@ -2020,6 +2028,24 @@ ShellRoot {
             steerOf([lister, movedOne], []), ["NNNNNN"]);
         expect("an answer, the one that left it parked, there too",
             steerOf([lister], [movedOne]), ["NNNNNN"]);
+        // An answer goes as Joel's from the shell itself, so a walk from outside, which any
+        // process of his can ask, sends none and keeps none, and is told why.
+        Sessions.running = [lister];
+        Sessions.parked = [movedOne];
+        theLauncher.cataloguing = true;
+        theLauncher.walkTold = [];
+        const walkedFrom = Sessions.steered.length;
+        now.answerLook(onQuestOne, queue);
+        const walkedSteers = Sessions.steered.slice(walkedFrom);
+        const walkedKept = now.lookAnswers[onQuestOne.id];
+        theLauncher.cataloguing = false;
+        now.lookAnswers = {};
+        expect("an answer a walk runs goes nowhere and is told why, naming who asks",
+            walkedSteers.length === 0 && walkedKept === undefined
+                && theLauncher.walkTold.length === 1
+                && theLauncher.walkTold[0].includes("only from your own Return")
+                && theLauncher.walkTold[0].includes("Moved"),
+            JSON.stringify([walkedSteers, walkedKept, theLauncher.walkTold]));
         Sessions.running = [lister, ownOne];
         Sessions.parked = [];
         expect("who asks, where the look names none, never a cell that didn't leave it",

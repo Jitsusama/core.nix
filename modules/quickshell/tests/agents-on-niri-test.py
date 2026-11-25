@@ -4496,7 +4496,9 @@ def no_words_come_back(shell: Shell, drawn: Callable[[Json], bool], why: str) ->
 
 # What the agents daemon says of an answer from anyone but the shell's own unit, as the shell
 # here runs outside it (modules/agents/src/main.rs's ONLY_THE_SHELL).
-ONLY_THE_SHELL = "only the launcher answers for Joel here"
+ONLY_THE_SHELL = (
+    "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it"
+)
 
 
 def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
@@ -4570,7 +4572,8 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
             lambda shown: (
                 ONLY_THE_SHELL in shown["footer"].replace("\xa0", " ")
                 and any(
-                    one.get("line") == "Right" and ONLY_THE_SHELL in str(one.get("stands"))
+                    (one.get("line"), one.get("stands"))
+                    == ("Right", f"not delivered \u00b7 {ONLY_THE_SHELL}")
                     for one in cast("list[Json]", shown["talks"] or [])
                 )
             )
