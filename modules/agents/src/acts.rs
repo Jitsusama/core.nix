@@ -33,7 +33,8 @@ const PATIENCE: Duration = Duration::from_secs(5);
 /// The node's ask for an act the shell asked for, or none for an ask
 /// that isn't a session's act, so the daemon's other asks are answered as
 /// they were, and why for an act it can't do. `now_ms` names a talk, so
-/// its answer can be followed as the harness takes it.
+/// its answer can be followed as the harness takes it, and dates a Park,
+/// which the harness drops when it's older than the session's start.
 pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
     let ask = said["ask"].as_str()?;
     let steer = if STEERED.contains(&ask) {
