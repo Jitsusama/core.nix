@@ -232,6 +232,20 @@ fn card_to<'a>(to: &'a str, keeper: Option<&'a str>) -> Vec<(&'a str, &'static s
     whom
 }
 
+/// The net's quarantine on core's main, or nothing when it can't be read.
+fn quarantine(core: &Path) -> String {
+    command(
+        "git",
+        &[
+            "-C",
+            &core.to_string_lossy(),
+            "show",
+            "main:tools/merge-net/quarantine.json",
+        ],
+    )
+    .unwrap_or_default()
+}
+
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the work system's findings on the mesh, the net's quarantine,
 /// reverts and results, the tick's card, the three mains, code health's
@@ -248,16 +262,7 @@ fn gather(
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
     let core = folder.join("core.git");
-    let quarantine = command(
-        "git",
-        &[
-            "-C",
-            &core.to_string_lossy(),
-            "show",
-            "main:tools/merge-net/quarantine.json",
-        ],
-    )
-    .unwrap_or_default();
+    let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let asks = text(&mission.join("asks.jsonl"));

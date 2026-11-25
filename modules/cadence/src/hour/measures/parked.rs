@@ -63,20 +63,14 @@ pub fn parked(text: &str, which: Tracking) -> Measure {
 
 #[cfg(test)]
 mod tests {
-    use jiff::Timestamp;
     use serde_json::json;
 
+    use super::super::slipped::at;
     use super::super::slips;
     use super::*;
 
     const NOW: i64 = 1_794_700_000;
     const DAY: i64 = 86_400;
-
-    fn at(seconds: i64) -> String {
-        Timestamp::from_second(seconds)
-            .map(|t| t.to_string())
-            .unwrap_or_default()
-    }
 
     /// An ask of Joel's due two days ago, by `owner`, with `more` fields.
     fn ask(words: &str, owner: &str, more: &Value) -> Value {
@@ -184,7 +178,7 @@ mod tests {
     #[test]
     fn a_derived_ask_is_parked_apart_from_joels() {
         let derived = json!({"parked": "5fa32250", "tracking": "derived"});
-        let text = list(&[ask("methuselah", "F", &derived)]);
+        let text = list(&[ask("a far builder", "F", &derived)]);
         assert_eq!(
             slips(&text, NOW, Tracking::Derived).behind,
             Vec::<String>::new(),
