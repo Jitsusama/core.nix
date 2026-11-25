@@ -285,8 +285,9 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
         )
 
     # A screen's rotation is a step inside the screen, inside Screens,
-    # inside Machine, since a screen is part of the machine; from the root it's found by its name, saying so,
-    # below the focused screen's answer. In normal, l goes nowhere, as a
+    # inside Machine, since a screen is part of the machine; from the root
+    # it's found by its name, saying so, below the focused screen's answer.
+    # In normal, l goes nowhere, as a
     # row has no line to move along, and says Vim's way in instead, the
     # foot naming Return and - by the keys that do them (Joel, 2026-11-05:
     # "where in vi does that step into shit?").
@@ -1094,8 +1095,9 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["desktop"]
-            # This window is there only while one is focused.
-            and [row for row in shown["rows"] if row != "This Window"][:2] == ["Windows", "Tabs"]
+            # This window is there only while one is focused, and this machine lists no Tabs.
+            and [row for row in shown["rows"] if row != "This Window"][:2]
+            == ["Windows", "Clipboard"]
         )
     )
     # And Return on Passwords steps into it, which is walked as far as a machine shows it.
