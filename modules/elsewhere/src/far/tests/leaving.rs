@@ -2,8 +2,11 @@
 //! names it takes, its archives, the list of them, and the bytes it says
 //! they take.
 
-use super::scratch;
-use crate::far::{Folders, LARGEST_FILE, LEFT, TREE, archive, leave, left, tracked};
+use super::{kind, scratch};
+use crate::far::{
+    Folders, LARGEST_FILE, LEFT, MOST_BYTES, TREE, archive, gathered, leave, left, tracked,
+};
+use std::path::Path;
 
 #[test]
 fn a_name_is_the_tree_s_own_only_through_folders_never_through_a_link() {
@@ -120,6 +123,96 @@ fn what_is_left_holds_each_file_to_what_a_shared_file_may_be() {
         "a file past the most a shared file may be wasn't refused as it was opened: {refused:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A repository at `root` tracking `files`, each sparse at its size, so
+/// none takes room on the disk, and tracked without git reading it.
+fn tracking(root: &Path, files: &[(String, u64)]) {
+    let git = |words: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(words)
+            .current_dir(root)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {words:?} failed");
+    };
+    git(&["init", "--quiet"]);
+    for (name, size) in files {
+        std::fs::File::create(root.join(name))
+            .unwrap()
+            .set_len(*size)
+            .unwrap();
+        // The empty file's blob, which nothing reads: only the names count.
+        let entry = format!("100644,e69de29bb2d1d6434b8b29ae775ad8c2e48c5391,{name}");
+        git(&["update-index", "--add", "--cacheinfo", &entry]);
+    }
+}
+
+#[test]
+fn a_file_is_gathered_while_its_archive_fits_a_shared_file_and_not_a_byte_past() {
+    // A file whose entry and close come to just the most a shared file
+    // may be, and one a byte larger, which takes another block.
+    let fits = LARGEST_FILE - archive::CLOSED - 512;
+    for (size, takes) in [(fits, true), (fits + 1, false)] {
+        let root = scratch("gathered-largest");
+        tracking(&root, &[("f".to_owned(), size)]);
+        let found = gathered(&root, &kind(""));
+        if takes {
+            assert_eq!(
+                found,
+                Ok(vec!["f".to_owned()]),
+                "a file that fits wasn't gathered"
+            );
+        } else {
+            assert!(
+                found
+                    .as_ref()
+                    .is_err_and(|error| error.starts_with("f is past the 64 MiB")),
+                "a file a byte past what fits was gathered: {found:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[test]
+fn files_are_gathered_while_their_archives_fit_a_shared_folder_and_not_a_byte_past() {
+    // Fifteen files each fill an archive's room, and a sixteenth takes
+    // what, with every archive's close, comes to just what a shared
+    // folder carries; a byte more takes another block.
+    let full = LARGEST_FILE - archive::CLOSED - 512;
+    let last = LARGEST_FILE - 18 * archive::CLOSED - 512;
+    let count = 16;
+    let taken = 15 * archive::taken("00", full) + archive::taken("15", last);
+    assert_eq!(
+        archive::archived(taken, LARGEST_FILE),
+        MOST_BYTES,
+        "the files no longer come to just what a shared folder carries"
+    );
+    for (size, takes) in [(last, true), (last + 1, false)] {
+        let root = scratch("gathered-most");
+        let files: Vec<_> = (0..count)
+            .map(|at| (format!("{at:02}"), if at + 1 < count { full } else { size }))
+            .collect();
+        tracking(&root, &files);
+        let found = gathered(&root, &kind(""));
+        if takes {
+            assert_eq!(
+                found.map(|found| found.len()),
+                Ok(count),
+                "files within what a shared folder carries weren't all gathered"
+            );
+        } else {
+            let past = format!("past the {MOST_BYTES} a shared folder carries");
+            assert!(
+                found.as_ref().is_err_and(|error| {
+                    error.starts_with(&format!("its {count} files")) && error.ends_with(&past)
+                }),
+                "files past what a shared folder carries were gathered: {found:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[test]
