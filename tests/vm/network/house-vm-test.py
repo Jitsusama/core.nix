@@ -49,6 +49,9 @@ READINGS = 10
 # to its cable's or a new lease, which the client's house names no more than
 # its first: its key alone says the reports are its.
 MOVED_TO = "192.168.1.12"
+# The client's one network, by its router's mac, whose house names no
+# address, so the moved reporter's reports are that house's alone.
+NETWORK = "52:54:00:12:01:03"
 # How long the client may take to boot to its first queues, the shaper to
 # hear the house and hold, the hold to let go once the reports stop (3 s
 # fresh, then the journal's next step), and the upload to climb back.
@@ -193,7 +196,7 @@ def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
     )
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat --no-pager"
-        f' | grep -q "the first report from {MOVED_TO} for the house on .* was heard"',
+        f' | grep -q "the first report from {MOVED_TO} for the house on {NETWORK} was heard"',
         timeout=QUIETING,
     )
     # The house's word from its first address goes stale, so a hold that

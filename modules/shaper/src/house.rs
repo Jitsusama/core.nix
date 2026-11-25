@@ -542,13 +542,13 @@ impl Said {
                     "the first report from {address} for {house} was heard"
                 ));
             }
+            // Each source is in `taken` once, so its end is said once
+            // (names its taker round 1's F1, F8 and F12).
             let kin = Some(source.clone());
-            let again = format!("the reports from {address} for {house} are taken again");
-            if !lately(&self.troubled, &kin)
-                && self.troubled.remove(&kin).is_some()
-                && !lines.contains(&again)
-            {
-                lines.push(again);
+            if !lately(&self.troubled, &kin) && self.troubled.remove(&kin).is_some() {
+                lines.push(format!(
+                    "the reports from {address} for {house} are taken again"
+                ));
             }
         }
         let owned = !heard.taken.is_empty()
@@ -1704,9 +1704,10 @@ mod tests {
     }
 
     // A house's refusal is said once a minute however often its reports
-    // fail, and its end once, naming the house, when the next report past
-    // the minute is taken for it, while the keyless address beside it says
-    // nothing more (every verdict round 1's F8).
+    // fail, and its end once, naming the house, when the first report past
+    // the minute is taken for it, not one taken within it, while the
+    // keyless address beside it says nothing more (every verdict round 1's
+    // F8; names its taker round 1's F2, F3, F7 and F16).
     #[test]
     fn a_house_s_refusal_is_said_once_a_minute_and_its_end_once() {
         let folder =
@@ -1737,28 +1738,70 @@ mod tests {
         let unread = hear(0);
         let still = hear(30);
         fs::write(&key, vector_key()).expect("a key");
-        let mended = hear(63);
+        let mended = hear(40);
+        let past = hear(63);
         let after = hear(64);
         let _ = fs::remove_dir_all(&folder);
         let house_one = format!("the house on {one}");
         assert_eq!(
-            [&unread, &still, &mended, &after].map(Vec::len),
-            [2, 0, 2, 0],
-            "a step said more or less than its lines: {unread:?} {still:?} {mended:?} {after:?}"
+            [&unread, &still, &mended, &past, &after].map(Vec::len),
+            [2, 0, 1, 1, 0],
+            "a step said more or less than its lines: \
+             {unread:?} {still:?} {mended:?} {past:?} {after:?}"
+        );
+        // The keyless address's first report, then the house's refusal.
+        assert_eq!(
+            unread[0],
+            format!("the first report from {from} for the house was heard"),
+            "the keyless address's first report went unsaid: {unread:?}"
         );
         assert!(
-            unread
-                .iter()
-                .any(|line| line.contains(&house_one) && line.contains("can't be read")),
+            unread[1].contains(&house_one) && unread[1].contains("can't be read"),
             "the house's unread key went unsaid: {unread:?}"
         );
         assert_eq!(
             mended,
-            [
-                format!("the first report from {from} for {house_one} was heard"),
-                format!("the reports from {from} for {house_one} are taken again"),
-            ],
+            [format!(
+                "the first report from {from} for {house_one} was heard"
+            )],
+            "the house's first report within the minute wasn't said alone"
+        );
+        assert_eq!(
+            past,
+            [format!(
+                "the reports from {from} for {house_one} are taken again"
+            )],
             "the house's mended key wasn't said to end its refusal, once and by name"
+        );
+    }
+
+    // Each house that takes one report says its first, not only the first
+    // house to take it (names its taker round 1's F6).
+    #[test]
+    fn each_house_taking_one_report_says_its_first() {
+        let folder = std::env::temp_dir().join(format!("shaper-both-take-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let key = folder.join("house.key");
+        fs::write(&key, vector_key()).expect("a key");
+        let one = "00:00:5e:00:53:01".to_owned();
+        let from: IpAddr = "192.0.2.12".parse().expect("an address");
+        let reporters = Reporters {
+            named: BTreeMap::from([(from, None)]),
+            unnamed: vec![(one.clone(), key)],
+        };
+        let at = Instant::now();
+        let report = sign("0 0", STAMP, &vector_key());
+        let verdicts = Ear::default().verdicts(&reporters, from, report.as_bytes(), at, STAMP);
+        let said = Said::default().of(from, &verdicts, at);
+        let _ = fs::remove_dir_all(&folder);
+        assert_eq!(
+            said,
+            [
+                format!("the first report from {from} for the house on {one} was heard"),
+                format!("the first report from {from} for the house was heard"),
+            ],
+            "a house taking the report beside another wasn't said to: {said:?}"
         );
     }
 
@@ -2046,6 +2089,10 @@ mod tests {
         // A mac that isn't 16 hex bytes is forged before any key is read,
         // and five words are no keyless report, so a keyless address
         // ignores it while no house took it (every verdict round 2's F4).
+        // It rests on the tab: the signed text is split at its last space,
+        // reading "ab\tcd" as one mac, and a keyless report at any
+        // whitespace, reading five words (names its taker round 1's F9 and
+        // F19).
         let misshapen = format!("0 0 {STAMP} ab\tcd");
         let stray = Ear::default().verdicts(&keyless, from, misshapen.as_bytes(), at, STAMP);
         let _ = fs::remove_dir_all(&folder);
