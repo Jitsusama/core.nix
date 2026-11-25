@@ -219,18 +219,18 @@ fn a_source_signed_out_or_refused_is_never_waited_on_and_one_started_again_is() 
         "Ada wasn't waiting on Slack alone, though it had started again and not yet answered"
     );
     assert_eq!(book.standings()["slack"].word(), "answering");
-    // One whose sign-in was refused, started again, is asked again.
-    book.stand("vault", Standing::Refused("no token".to_owned()));
+    // One refused, its program stopped, is asked again once restarted.
+    book.stand("vault", Standing::Refused("it stopped".to_owned()));
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
         ["slack"],
-        "Ada waited on Vault, though its sign-in was refused"
+        "Ada waited on Vault, though its program had stopped"
     );
     book.restarted("vault");
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
         ["slack", "vault"],
-        "Ada wasn't waiting on Vault once it started again after its sign-in was refused"
+        "Ada wasn't waiting on Vault once its stopped program started again"
     );
     assert_eq!(book.standings()["vault"].word(), "answering");
 }
@@ -263,7 +263,7 @@ fn a_source_that_says_its_a_roster_isnt_waited_on_and_knows_some_by_its_own_id()
             address: "ada@example.com".to_owned(),
         },
     );
-    // Slack is answering, but has said nothing of Ada yet.
+    // Slack is answering, and has said it will answer for Ada later.
     assert_eq!(book.standings()["slack"].word(), "answering");
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
