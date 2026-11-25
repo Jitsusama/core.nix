@@ -2809,6 +2809,11 @@ Singleton {
     // press and any refused window said of it.
     function forgetAsk(named) {
         forgetRefusal(named);
+        if (named in keptAsks) {
+            const asks = Object.assign({}, keptAsks);
+            delete asks[named];
+            keptAsks = asks;
+        }
         if (named in pressedFor) {
             const pressed = Object.assign({}, pressedFor);
             delete pressed[named];
@@ -2879,7 +2884,9 @@ Singleton {
         console.info(`sessions: no sessions kitty took ${named}, so window `
             + `${refusedAsks[named]}, come refused, was another program's, and a press asks `
             + "afresh");
+        const back = keptAsks[named];
         forgetAsk(named);
+        keepAgain(back);
     }
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
@@ -2905,7 +2912,9 @@ Singleton {
         if (attaching[named] > Number(asked))
             return;
         const said = pressedFor[named] ?? null;
+        const back = keptAsks[named];
         forgetAsk(named);
+        keepAgain(back);
         console.info(`sessions: no sessions kitty took ${named}, so it's no longer taken as `
             + "opening, and a press asks for it afresh"
             + (said !== null ? "; its press is told" : ""));
@@ -2983,6 +2992,18 @@ Singleton {
     function keepPlaces(kept) {
         keptPlaces = kept;
         reopenKind.ask({ ask: "keep-places", places: kept });
+    }
+    // The place viewKept let go as it asked for each viewer, by app id, so
+    // one no kitty took is kept again as it was (keepAgain), to open there
+    // once a kitty can, rather than wherever niri puts it next. Its time
+    // is kept with it, so it still lapses ASKED_FOR after Joel's ask
+    // (Viewers.viewersDue), which bounds how often it's asked again.
+    property var keptAsks: ({})
+    function keepAgain(back) {
+        if (!back || keptPlaces[back.id] !== undefined)
+            return;
+        keepPlaces(Object.assign({}, keptPlaces, { [back.id]: back.place }));
+        console.info(`sessions: ${back.id}'s kept place kept again, as no kitty took its viewer`);
     }
     // Keeps where the window of the session here that pi knows as `id`
     // sits, answering "kept", or "no window to keep" for one with no
@@ -3068,6 +3089,17 @@ Singleton {
                 console.info(`sessions: ${id}'s kept viewer kept, since one asked for is opening`);
             }
         }
+        // Each viewer asked for now, its place let go, is remembered with
+        // that place (keptAsks).
+        const asks = Object.assign({}, keptAsks);
+        for (const one of due.open) {
+            const id = String(one.id ?? one.session?.presence?.session ?? "");
+            const named = one.place?.named ?? viewerOf(one.session?.presence);
+            if (kept[id] === undefined && keptPlaces[id] !== undefined
+                && attaching[named] !== undefined)
+                asks[named] = { id, place: keptPlaces[id] };
+        }
+        keptAsks = asks;
         // What's let go is said, so a viewer Joel asked for that never
         // opens can be found in the journal.
         const opened = due.open.map(one => one.id ?? one.session?.presence?.session);
