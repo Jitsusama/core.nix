@@ -47,7 +47,7 @@ impl Default for Away {
             mark: None,
             seen: None,
             call: Vec::new(),
-            after: Duration::from_secs(30 * 60),
+            after: Duration::from_mins(30),
             stops: Vec::new(),
             stop_machine: None,
         }
