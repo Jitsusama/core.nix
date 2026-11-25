@@ -13,8 +13,8 @@
 //! stop paused (src/pause.rs).
 //!
 //! On a thread of its own, it gives each other machine running agents
-//! every live stop the readers keep here, and its resume
-//! (src/pause/carry.rs), so a stop said in Slack or on GitHub holds the
+//! every live stop the readers keep here, its resume, and its end once
+//! it is kept here no longer (src/pause/carry.rs), so a stop said in Slack or on GitHub holds the
 //! sessions there too; a machine slow to answer never holds up a row.
 //!
 //! While the safe word is in shadow, every stop and alert is too, and
@@ -95,8 +95,9 @@ const PAUSE: &str = "pause";
 const STEP: Duration = Duration::from_secs(6);
 
 /// How often the other machines are given the stops they lack: a stop
-/// heard reaches them within this and a run, well inside the five minutes
-/// a stop has to land in.
+/// heard reaches them within this and a run, and a run more for each
+/// machine that hangs, which then waits a minute, well inside the five
+/// minutes a stop has to land in.
 const CARRY_EVERY: Duration = Duration::from_secs(5);
 
 /// How long each machine is given to take a stop, longer than a pause's
@@ -226,14 +227,14 @@ fn carry_each(plan: &pause::Plan, state: &Path, host: &str) {
             unlisted = listing;
         }
         for one in gives {
-            let what = if one.resumed { "resume" } else { "stop" };
+            let what = one.gift.said();
             match one.failed {
-                None => eprintln!("gave {} the {what} {}", one.machine, one.name),
+                None => eprintln!("gave {} {what} {}", one.machine, one.name),
                 Some(why) if one.machine.is_empty() => {
-                    eprintln!("<4>gave the {what} {}, but {why}", one.name);
+                    eprintln!("<4>gave {what} {}, but {why}", one.name);
                 }
                 Some(why) => eprintln!(
-                    "<4>couldn't give {} the {what} {}, tried again in a minute: {why}",
+                    "<4>couldn't give {} {what} {}, tried again in a minute: {why}",
                     one.machine, one.name
                 ),
             }
