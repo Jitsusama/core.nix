@@ -41,13 +41,15 @@ fn github_joels_stop_no_search_finds_is_heard_where_he_was_last_active() {
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
+    // The thread's words are judged in the order they were said, so a
+    // colleague's earlier ask to stop comes first.
     let said = decisions(&home);
     assert_eq!(
         each(&said, "verdict"),
-        ["stop", "stop-asked"],
+        ["stop-asked", "stop"],
         "Joel's stop no search finds is heard from the newest comments where he was active"
     );
-    assert_eq!(said[0]["by_joel"], true, "his own words");
+    assert_eq!(said[1]["by_joel"], true, "his own words");
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
