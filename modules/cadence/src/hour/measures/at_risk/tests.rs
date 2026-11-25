@@ -28,23 +28,27 @@ fn ask_waiting(what: &str, owner: &str, (due, pr): (i64, &str), more: &Value) ->
     })
 }
 
-/// Main changed `README.md` beside core change 6595 and nothing beside
-/// any other.
-const CORE: fn(u32) -> Shared = |number| {
-    Ok(if number == 6595 {
+/// The files main changed beside core change `number`: `README.md`
+/// beside 6595, and nothing beside any other.
+fn beside(number: u32) -> Vec<String> {
+    if number == 6595 {
         vec!["README.md".to_owned()]
     } else {
         Vec::new()
-    })
-};
+    }
+}
 
-/// Every branch reads as sharing nothing with main.
-const WORLD: fn(&str) -> Shared = |_| Ok(Vec::new());
-
-/// Joel's dates at risk in `text`, with main's changes as [`CORE`] and
-/// [`WORLD`] give them.
+/// Joel's dates at risk in `text`, as [`read_as`] reads them.
 fn read(text: &str) -> Measure {
-    at_risk(text, NOW, Tracking::His, &CORE, &WORLD)
+    read_as(text, Tracking::His)
+}
+
+/// The dates at risk of the kind `which` in `text`, with main's changes
+/// as [`beside`] gives them and every branch sharing nothing.
+fn read_as(text: &str, which: Tracking) -> Measure {
+    let core = |number| -> Shared { Ok(beside(number)) };
+    let no_branch = |_: &str| -> Shared { Ok(Vec::new()) };
+    at_risk(text, NOW, which, &core, &no_branch)
 }
 
 #[test]
@@ -166,7 +170,7 @@ fn a_world_piece_is_asked_by_its_branch_and_one_with_none_is_unread() {
         ),
         ask_waiting("no branch", "B", (NOW + 600, "world#2536169"), &json!({})),
     ]);
-    let m = at_risk(&text, NOW, Tracking::His, &CORE, &world);
+    let m = at_risk(&text, NOW, Tracking::His, &|n| Ok(beside(n)), &world);
     assert_eq!(
         m.behind,
         ["the gate, due in 10 min, main changed README.md, a, b and 1 more since it parted · A"],
@@ -188,7 +192,7 @@ fn a_change_that_cannot_be_read_is_said_unread_not_safe() {
         (NOW + 600, "core.nix#6595"),
         &json!({}),
     )]);
-    let m = at_risk(&text, NOW, Tracking::His, &unreadable, &WORLD);
+    let m = at_risk(&text, NOW, Tracking::His, &unreadable, &|_| Ok(Vec::new()));
     assert!(m.behind.is_empty(), "an unread change counted at risk");
     assert!(
         m.says.ends_with("(1 unread)"),
@@ -258,7 +262,7 @@ fn an_ask_is_read_from_its_latest_line_and_the_list_s_own_apart() {
     derived["tracking"] = json!("derived");
     let text = list(&[waiting, landed, derived]);
     let his = read(&text);
-    let ours = at_risk(&text, NOW, Tracking::Derived, &CORE, &WORLD);
+    let ours = read_as(&text, Tracking::Derived);
     assert!(
         his.behind.is_empty(),
         "a piece landed on its latest line, or a derived ask, counted as Joel's: {:?}",
