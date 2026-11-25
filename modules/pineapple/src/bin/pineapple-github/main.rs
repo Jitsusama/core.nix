@@ -3,10 +3,12 @@
 //! `pineapple-github run`, as its service runs it, asks GitHub every
 //! minute, with Joel's own sign-in (gh's, printed by the program
 //! `SIGN_IN_KEYRING` names, only read), which pull requests and issues he
-//! takes part in changed, and reads what was said on each since it last
-//! asked: its opening, comments, review comments and reviews. Whatever
-//! holds "pineapple" or tags him is judged with the pull request it was
-//! said on as its place (src/github.rs), and the decision goes in
+//! takes part in changed, and, since GitHub never notifies him of his own
+//! words, which of those name the word, as a search finds them. It reads
+//! what was said on each since it last asked: its opening, comments,
+//! review comments and reviews. Whatever holds "pineapple" or tags him
+//! is judged with the pull request it was said on as its place
+//! (src/github.rs, then judging.rs), and the decision goes in
 //! `$XDG_STATE_HOME/pineapple/decisions.jsonl` beside the Slack reader's,
 //! a stop with a record of its own in stops/. The launcher's daemon, the
 //! harness and Joel's phone take them from there as they take Slack's.
@@ -25,9 +27,9 @@
 //! names no place, so it can't steer a stop elsewhere.
 //!
 //! A round spends Joel's rate limit, which gh and his agents share: two
-//! requests, two to four more for each pull request or issue that changed,
-//! one more for each repository where something on one is to be judged,
-//! and a page more for each hundred of a long list. One his limit
+//! requests and a search, two to four more for each pull request or
+//! issue that changed, one more for each repository where something on
+//! one is to be judged, and a page more for each hundred of a long list. One his limit
 //! refuses is tried again whole, so nothing it couldn't read is skipped.
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
@@ -53,16 +55,17 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pineapple::gate::Gate;
 use pineapple::github::{self, Kind, Said, Thread, add_page, found, notified, worth_judging};
 use pineapple::progress::{self, Judged};
-use pineapple::record::{self, Source};
-use pineapple::resume;
 use pineapple::sign_in::{self, SignIn};
-use pineapple::{Context, Heard, Joel, Platform, Reply, Target, Verdict, decide};
+use pineapple::{Context, Joel};
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 use ureq::Agent;
+
+mod judging;
+
+use judging::judge;
 
 /// How often GitHub is asked, unless a test says otherwise: with the
 /// enforcer's few seconds after, a stop lands well inside five minutes.
@@ -99,14 +102,6 @@ const GITHUB: &str = "https://api.github.com";
 /// isn't raised again each minute, short against a stop going unheard.
 const RAN_OVER_REST: Duration = Duration::from_mins(9);
 
-/// Whether Joel's resume said on GitHub may end a live stop. Not while his
-/// agents post as his GitHub account: a resume one forged would defeat
-/// the safe word (WCJQSG, 2026-11-14, as for Slack's).
-const GITHUB_RESUMES_LIVE: bool = false;
-
-/// The rule a reply is held by on GitHub, where none is said in public.
-const NO_REPLIES: &str = "no-replies-here";
-
 /// How many of a list one request asks for, GitHub's most.
 const PAGE: &str = "100";
 
@@ -123,9 +118,6 @@ const KEPT: usize = 1000;
 
 /// Milliseconds in a second.
 const MILLIS: u64 = 1000;
-
-/// Microseconds in a second.
-const MICROS: u128 = 1_000_000;
 
 /// What it says of itself, set as help and read by the check.
 fn help() -> Help {
@@ -536,14 +528,7 @@ fn changed(github: &GitHub<'_>, how: &Run, since: &str) -> Result<Vec<Thread>, U
         let mut threads = Vec::new();
         for repo in &how.repos {
             let query = format!("is:pr repo:{repo} author:{address} updated:>={since}");
-            let asked = [
-                ("q", query.as_str()),
-                ("sort", "updated"),
-                ("order", "desc"),
-                ("per_page", PAGE),
-            ];
-            let answer = github.all("/search/issues", &asked)?;
-            threads.extend(found(&answer, &how.site));
+            threads.extend(searched(github, &query, &how.site)?);
         }
         return Ok(threads);
     }
@@ -555,6 +540,17 @@ fn changed(github: &GitHub<'_>, how: &Run, since: &str) -> Result<Vec<Thread>, U
     ];
     let answer = github.all("/notifications", &asked)?;
     Ok(notified(&answer, &how.site))
+}
+
+/// The pull requests and issues a search of the site finds.
+fn searched(github: &GitHub<'_>, query: &str, site: &str) -> Result<Vec<Thread>, Unread> {
+    let asked = [
+        ("q", query),
+        ("sort", "updated"),
+        ("order", "desc"),
+        ("per_page", PAGE),
+    ];
+    Ok(found(&github.all("/search/issues", &asked)?, site))
 }
 
 /// One round: what changed since the last, judged oldest first, and how
@@ -572,27 +568,56 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
     };
     let from = judged.since.saturating_sub(back);
     let since = github::stamp(from);
-    let threads = match changed(github, how, &since) {
+    let notified = match changed(github, how, &since) {
         Ok(threads) => threads,
         Err(Unread::Gone(why) | Unread::Failed(why)) => {
             eprintln!("<4>couldn't ask {} what changed: {why}", github.name);
             return;
         }
     };
+    // GitHub never notifies Joel of what he says himself, so his own stop
+    // where nobody else said anything is found by searching for the word,
+    // from as far back as a search's index lags.
+    let mut threads = Vec::new();
+    if how.authored_by.is_none() {
+        let lagged = judged.since.saturating_sub(INDEX_LAG);
+        let query = format!(
+            "pineapple involves:{login} updated:>={}",
+            github::stamp(lagged)
+        );
+        match searched(github, &query, &how.site) {
+            Ok(own) => threads.extend(own.into_iter().map(|thread| (thread, lagged))),
+            Err(Unread::Gone(why) | Unread::Failed(why)) => {
+                eprintln!(
+                    "<4>couldn't search {} for what Joel said: {why}",
+                    github.name
+                );
+                return;
+            }
+        }
+    }
+    for thread in notified {
+        if !threads.iter().any(|(own, _)| *own == thread) {
+            threads.push((thread, from));
+        }
+    }
     // Where anyone may comment: GitHub's own, however its site is named.
     let open = how.authored_by.is_none()
         || how
             .origin
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
-    // What this round judges, which alone is worth asking about a repository.
-    let keeps = |said: &Said| {
-        said.at >= from && !judged.keys.contains(&said.key) && worth_judging(&said.text, &login)
-    };
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
-    for thread in &threads {
+    for (thread, from) in &threads {
+        // What this round judges, which alone is worth asking about a repository.
+        let keeps = |said: &Said| {
+            said.at >= *from
+                && !judged.keys.contains(&said.key)
+                && worth_judging(&said.text, &login)
+        };
+        let since = github::stamp(*from);
         match said_on(github, thread, &since, (open, &login), &keeps, &mut learned) {
-            Ok(found) => heard.extend(found),
+            Ok(found) => heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said))),
             Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
                 eprintln!("<4>couldn't read {}: {why}", thread.key());
@@ -600,7 +625,6 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
             }
         }
     }
-    heard.retain(|(said, _, _, _)| keeps(said));
     heard.sort_by_key(|(said, _, _, _)| said.at);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
@@ -709,78 +733,6 @@ fn joel_works_in(
 
 /// What a round hears: each saying, with where and whether by an outsider.
 type Sayings = Vec<(Said, Thread, Context, bool)>;
-
-/// One thing said, judged on the pull request or issue it was said on,
-/// and written down.
-fn judge(state: &Path, joel: &Joel, said: &Said, place: (&Thread, Context, bool), shadow: bool) {
-    let (thread, context, outsider) = place;
-    let decision = decide(
-        &Heard {
-            platform: Platform::Markdown,
-            author: said.author.clone(),
-            by_bot: said.by_bot,
-            outsider,
-            text: said.text.clone(),
-            context,
-        },
-        joel,
-    );
-    let thread_key = thread.key();
-    // As Slack writes its times, so a resume compares them alike.
-    let said_at = format!("{}.000000", said.at);
-    let source = Source {
-        key: &said.key,
-        thread: &thread_key,
-        link: &said.link,
-        author: &said.author,
-        text: &said.text,
-        said_at: &said_at,
-    };
-    let now = millis();
-    let gate = if decision.reply == Reply::Nothing {
-        Gate::Unasked
-    } else {
-        Gate::Held(NO_REPLIES)
-    };
-    let line = record::line(&source, &decision, gate, now, shadow);
-    if let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
-        eprintln!("<3>couldn't write a decision down: {error}");
-    }
-    if decision.stops() {
-        let stop = record::stop(&source, &decision, now, shadow);
-        match record::keep(&state.join("stops"), &said.key, &stop) {
-            Ok(true) if shadow => eprintln!("<5>a stop, in shadow: {}", said.link),
-            Ok(true) => eprintln!("<5>a stop: {}", said.link),
-            Ok(false) => {}
-            Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
-        }
-    }
-    if decision.verdict == Verdict::Resume && decision.by_joel {
-        let at = (now, u128::from(said.at) * MICROS);
-        resume_as_joel(&state.join("stops"), &decision.reaches, at, &said.link);
-    }
-}
-
-/// Ends the stops Joel's own "pineapple resume" names (src/resume.rs),
-/// only those written in shadow until GitHub resumes are let go live.
-/// `at` is when it's heard, in milliseconds, and when it was said, in
-/// microseconds.
-fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str) {
-    let (now, said) = at;
-    let shadow = !GITHUB_RESUMES_LIVE;
-    for reach in reaches {
-        let scope = match reach {
-            Target::Everything => "all".to_owned(),
-            named => named.to_string(),
-        };
-        match resume::as_joel(stops, &scope, now, said, shadow) {
-            Ok(ids) if ids.is_empty() => {}
-            Ok(ids) if shadow => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
-            Ok(ids) => eprintln!("<5>Joel resumed {}: {link}", ids.join(", ")),
-            Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
-        }
-    }
-}
 
 fn since_epoch() -> Duration {
     SystemTime::now()

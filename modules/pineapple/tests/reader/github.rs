@@ -5,7 +5,8 @@
 //! marks anything read, and a restart judges nothing twice. Joel's own
 //! resume said there ends only shadow stops, even let go live. A round
 //! GitHub's rate limit refuses is read again rather than skipped, and a
-//! list's later pages are read too. A site with no notifications is read
+//! list's later pages are read too. Joel's own words, which GitHub never
+//! notifies him of, are found by a search for the word. A site with no notifications is read
 //! by searching for what Joel opened, its keys its own, from far enough
 //! back that a search's lagging index misses nothing, and never for more
 //! repositories than its searches allow, and its journal names it, not
@@ -300,6 +301,62 @@ fn github_a_second_page_of_notifications_is_read_too() {
             .iter()
             .any(|line| line.contains("/repos/example/other/issues/5 ")),
         "the first page's issue is read too: {asked:?}"
+    );
+    drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// What GitHub would answer where only Joel has spoken since: no
+/// notification, since GitHub never notifies him of his own words, and a
+/// search for the word finding example/shop#12, where he said a stop
+/// five minutes ago.
+fn only_joel_spoke(line: &str, now: u64) -> Value {
+    if line.contains(" /notifications?") {
+        return json!([]);
+    }
+    if line.contains(" /search/issues?") {
+        return json!({"items": [{"number": 12, "pull_request": {},
+            "repository_url": "https://api.example.com/repos/example/shop"}]});
+    }
+    let own = commented(5, LOGIN, "OWNER", "pineapple override", (now, 300));
+    answer_with(line, now, &[own])
+}
+
+#[test]
+fn github_joels_own_stop_nobody_was_notified_of_is_found_by_searching_for_the_word() {
+    let (origin, asked) = answering(only_joel_spoke);
+    let home = home();
+    let last = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs()
+        - 30;
+    let state = home.join("state/pineapple");
+    std::fs::create_dir_all(&state).expect("the state folder");
+    let judged = json!({"since": last, "keys": []});
+    std::fs::write(state.join(MARK), judged.to_string()).expect("the mark");
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 2);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let said = decisions(&home);
+    assert_eq!(
+        each(&said, "verdict"),
+        ["stop", "stop-asked"],
+        "Joel's own stop is heard, though said before what notifications are read from"
+    );
+    assert_eq!(said[0]["by_joel"], true, "his own words");
+    assert_eq!(said[0]["reaches"], json!(["pr:example/shop#12"]));
+    let searched = format!(
+        "q=pineapple%20involves%3A{LOGIN}%20updated%3A%3E%3D{}",
+        stamp(last - 600).replace(':', "%3A")
+    );
+    let asked = asked.lock().expect("what was asked");
+    assert!(
+        asked.iter().any(|line| line.contains(&searched)),
+        "it searches for the word where Joel takes part, from as far back as \
+         a search's index lags: {asked:?}"
     );
     drop(asked);
     std::fs::remove_dir_all(&home).expect("the case's home goes");

@@ -3,7 +3,7 @@
 //! what was said on each, its opening, comments, review comments and
 //! reviews, with who said it, whether a bot did, and when. A tag is
 //! `@login` there. Only reading; the program asks
-//! (src/bin/pineapple-github.rs).
+//! (src/bin/pineapple-github/).
 //!
 //! What was said is judged once, by when it was first said: the word added
 //! later by editing an old comment or a description isn't heard, as an
