@@ -2366,7 +2366,7 @@ in
   # none authorizes nothing of mycelium's.
   mycelium-lets-a-link-key-only-link =
     holds "mycelium-lets-a-link-key-only-link"
-      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, a machine naming none authorizes a key, or a machine's name opening with a hyphen is taken."
+      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, a machine naming none authorizes a key, a realm or machine name opening with a hyphen is taken, or a key of two lines is."
       (
         let
           key = "ecdsa-sha2-nistp256 AAAAone";
@@ -2388,11 +2388,12 @@ in
             builtins.length given == 1
             && lib.hasPrefix ''restrict,pty,command="/nix/store/'' (lib.head given)
             && lib.hasSuffix ''/bin/mycelium --realm personal ssh --from one" ${key}'' (lib.head given);
-          # Whether the name's own assertion refuses a machine so named, read
-          # by its message so another assertion failing can't stand in. Only
-          # a failed one's message is read, since some are made only then.
+          # Whether the name's own assertion refuses a realm and machine so
+          # named, read by its message so another assertion failing can't
+          # stand in. Only a failed one's message is read, since some are
+          # made only then.
           misnamed =
-            machine:
+            realm: machine:
             lib.any
               (
                 check:
@@ -2404,7 +2405,7 @@ in
                 {
                   jitsusama.mycelium = {
                     account = "someone";
-                    linkedFrom.personal.${machine} = key;
+                    linkedFrom.${realm}.${machine} = key;
                   };
                 }
               ]).config.assertions;
@@ -2413,8 +2414,16 @@ in
         && pinnedOn bareDarwin self.darwinModules.workstation
         && keys bareNixos self.nixosModules.workstation { } == [ ]
         # A name opening with a hyphen would reach mycelium as a flag.
-        && misnamed "-h"
-        && !misnamed "one"
+        && misnamed "personal" "-h"
+        && misnamed "-h" "one"
+        && !misnamed "personal" "other-machine"
+        # A key's second line would be one of authorized_keys' own, unpinned;
+        # the same settings with a key of one line are taken above.
+        && !(builtins.tryEval (
+          builtins.deepSeq (keys bareNixos self.nixosModules.workstation (
+            pinning // { linkedFrom.personal.one = "${key}\nssh-ed25519 AAAAtwo"; }
+          )) true
+        )).success
       );
 
   # The words a link key is pinned to, read from the line a machine's system
@@ -2471,8 +2480,9 @@ in
         1) ;;
         0) echo "mycelium took a login on its link key's words"; cat said told; exit 1 ;;
         # timeout ends 124 on its TERM, and 137 once it kills a run that
-        # ignored that.
-        124 | 137) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
+        # ignored that, as a kill from outside, the builder's memory say, also
+        # ends.
+        124 | 137) echo "mycelium hung, or was killed, on a login on its link key's words"; cat told; exit 1 ;;
         *) echo "mycelium ended $ended on a login on its link key's words"; cat told; exit 1 ;;
       esac
       # Each refusal is a JSON object of its own line, read by its fields,

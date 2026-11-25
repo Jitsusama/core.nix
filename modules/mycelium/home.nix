@@ -167,7 +167,8 @@ let
     "${pkgs.writeText "mycelium-stimuli.json" (builtins.toJSON { say = cfg.stimuli; })}"
   ];
   sources = import ./sources.nix;
-  name = lib.types.strMatching "[a-z0-9-]+";
+  # Never opening with a hyphen, which mycelium's words would read as a flag.
+  name = lib.types.strMatching "[a-z0-9][a-z0-9-]*";
   # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
   # by its absolute path, since a Mac's agent runs the node with PATH
   # /usr/bin:/bin and Linux's PATH isn't one to count on, and the place it

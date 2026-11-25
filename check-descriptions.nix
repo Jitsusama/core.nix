@@ -2397,8 +2397,9 @@
   mycelium-lets-a-link-key-only-link = ''
     each link key a machine's system names, on NixOS or nix-darwin, is authorized only to run
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
-    the attach; a machine naming none authorizes nothing of mycelium's, and a machine's name
-    opening with a hyphen, which mycelium would read as a flag, is refused
+    the attach; a machine naming none authorizes nothing of mycelium's, a realm or machine name
+    opening with a hyphen, which mycelium would read as a flag, is refused, and so is a key of two
+    lines, whose second would be authorized unpinned
   '';
   mycelium-takes-its-link-key-s-words = ''
     the words a link key pins mycelium to, read from the line a machine's system writes, are ones
