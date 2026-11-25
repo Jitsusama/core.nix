@@ -45,11 +45,16 @@ const BUSY: Duration = Duration::from_secs(30);
 /// How many times as long as a pass took the next one waits, at the
 /// least. A pass reads its hours from the history, and once the machine has
 /// dropped them from memory, as it did within 30 seconds on 24 November,
-/// each read takes them from the disk again: about 60 MB and 40 seconds a
-/// pass, near 3 MB a second with passes 30 seconds apart. Waiting four
-/// times as long keeps the daemon reading for a fifth of the time at most,
-/// and a quick pass keeps the 30 seconds.
+/// each pass reads them from the disk again: about 60 MB, in passes of 8 to
+/// 40 seconds 30 seconds apart, reading 1.3 to 3.6 MB a second. Waiting four times as
+/// long keeps the daemon reading for a fifth of the time while a pass takes
+/// 7.5 to 30 seconds, and a quicker pass keeps the 30 seconds.
 const PACE: u32 = 4;
+/// The most a pass waits while things keep changing, however slow the last
+/// was. Warnings are told only in a pass, so this bounds how late one comes,
+/// and the shell trusts `budgets.json` for six minutes, which two passes of
+/// up to two minutes and this wait between them still keep inside.
+const BUSIEST: Duration = Duration::from_secs(120);
 /// The most, while nothing does: the clocks and the day move regardless.
 const IDLE: Duration = Duration::from_secs(300);
 const HEARTBEAT: Duration = Duration::from_secs(30);
@@ -961,8 +966,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             dirty = true;
         }
         let answered = refresh.owed.is_empty() || Instant::now() >= refresh.until;
-        let due = (dirty && last_pass.elapsed() >= between_passes(took))
-            || last_pass.elapsed() >= IDLE
+        let due = until_pass(dirty, took, last_pass.elapsed()).is_zero()
             || (!refresh.waiting.is_empty() && answered);
         if due {
             let began = Instant::now();
@@ -1102,11 +1106,18 @@ fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
     paced
 }
 
-/// How long after a pass that took `took` the next waits while the logs
-/// grow: the busy pace, or `PACE` times as long as it took, never past the
-/// idle wait.
-fn between_passes(took: Duration) -> Duration {
-    took.saturating_mul(PACE).clamp(BUSY, IDLE)
+/// How long until the next pass is due, `since` the last one ended after
+/// taking `took`: while the logs grow, the busy pace or `PACE` times as
+/// long as it took, at most `BUSIEST`; while they don't, the idle wait.
+/// The loop asks this both to start a pass and to sleep until one, so the
+/// two can't disagree and spin.
+fn until_pass(dirty: bool, took: Duration, since: Duration) -> Duration {
+    let between = if dirty {
+        took.saturating_mul(PACE).clamp(BUSY, BUSIEST)
+    } else {
+        IDLE
+    };
+    between.saturating_sub(since)
 }
 
 /// How long to wait for something, but never past when a pass or a feed
@@ -1118,11 +1129,7 @@ fn wait_for(
     last_pass: Instant,
     took: Duration,
 ) -> Duration {
-    let until_pass = if dirty {
-        between_passes(took).saturating_sub(last_pass.elapsed())
-    } else {
-        IDLE.saturating_sub(last_pass.elapsed())
-    };
+    let until_pass = until_pass(dirty, took, last_pass.elapsed());
     let until_feed = feeds
         .iter()
         .filter(|feed| feed.child.is_none())
@@ -1545,23 +1552,53 @@ mod tests {
     }
 
     // A quick pass keeps the busy pace, a slow one waits four times as
-    // long as it took, and none waits past the idle one.
+    // long as it took, none waits past two minutes while the logs grow,
+    // and a quiet spell waits the idle five whatever the last pass took.
     #[test]
     fn a_slow_pass_waits_longer_before_the_next() {
+        let after = |took: f64| until_pass(true, Duration::from_secs_f64(took), Duration::ZERO);
+        assert_eq!(after(0.0), BUSY, "the first pass waited past the busy pace");
+        assert_eq!(after(7.5), BUSY, "a pass at the edge of the pace moved it");
         assert_eq!(
-            between_passes(Duration::from_secs(3)),
-            BUSY,
-            "a quick pass waited longer"
-        );
-        assert_eq!(
-            between_passes(Duration::from_secs(40)),
-            Duration::from_secs(160),
+            after(16.0),
+            Duration::from_secs(64),
             "a slow pass didn't wait four times as long"
         );
+        assert_eq!(after(30.0), BUSIEST, "a pass at the cap's edge missed it");
         assert_eq!(
-            between_passes(Duration::from_secs(600)),
+            after(600.0),
+            BUSIEST,
+            "a very slow pass waited past the cap"
+        );
+        assert_eq!(
+            until_pass(true, Duration::MAX, Duration::ZERO),
+            BUSIEST,
+            "the longest pass there can be didn't saturate to the cap"
+        );
+        assert_eq!(
+            until_pass(false, Duration::from_secs(600), Duration::ZERO),
             IDLE,
-            "a pass waited past idle"
+            "a quiet spell didn't wait the idle pace"
+        );
+    }
+
+    // The time left shrinks as the wait goes by and stops at nothing, so
+    // the loop starts a pass exactly when it stops sleeping for one.
+    #[test]
+    fn a_pass_falls_due_as_its_wait_runs_out() {
+        let took = Duration::from_secs(16);
+        assert_eq!(
+            until_pass(true, took, Duration::from_secs(60)),
+            Duration::from_secs(4),
+            "the wait left didn't count down"
+        );
+        assert!(
+            until_pass(true, took, Duration::from_secs(64)).is_zero(),
+            "a pass wasn't due when its wait ran out"
+        );
+        assert!(
+            until_pass(true, took, Duration::from_mins(15)).is_zero(),
+            "a pass long overdue wasn't due"
         );
     }
 
