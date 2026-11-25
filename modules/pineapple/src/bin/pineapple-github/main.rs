@@ -373,8 +373,9 @@ fn run(how: &Run) -> Result<(), Failure> {
     let mut judged = kept.unwrap_or_else(|| Judged {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
+        own: None,
     });
-    let mut own = Searched::new(judged.since, first, INDEX_LAG);
+    let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
@@ -592,19 +593,26 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         }
     };
     // Joel's own stop where nobody else spoke is found by a search, and
-    // read whole, so his words from before what it reaches are told of.
+    // read from an hour before what it reaches, so his stop from then is
+    // told of. Each thread is judged from one time and read from another.
     let mine = how.authored_by.is_none();
     let found = mine.then(|| own.search(github, &how.site, &login));
     let reach = own.reach();
-    let mut threads: Vec<(Thread, u64, bool)> = Vec::new();
+    let mut threads: Vec<(Thread, u64, u64)> = Vec::new();
     for thread in found.iter().flat_map(|found| found.threads.iter()) {
-        threads.push((thread.clone(), reach, true));
+        threads.push((thread.clone(), reach, own.read_from()));
     }
     for thread in notified {
         if !threads.iter().any(|(listed, _, _)| *listed == thread) {
-            threads.push((thread, from, false));
+            threads.push((thread, from, from));
         }
     }
+    // Where logins are addresses, what Joel says is by his address.
+    let joel = Joel {
+        slack_ids: Vec::new(),
+        logins: vec![login.clone()],
+        emails: how.authored_by.iter().cloned().collect(),
+    };
     // Where anyone may comment: GitHub's own, however its site is named.
     let open = how.authored_by.is_none()
         || how
@@ -612,20 +620,19 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
-    for (thread, from, whole) in &threads {
+    for (thread, from, read_from) in &threads {
         // What this round judges, which alone is worth asking about a repository.
         let keeps = |said: &Said| {
             said.at >= *from
                 && !judged.keys.contains(&said.key)
                 && worth_judging(&said.text, &login)
         };
-        let since = (!whole).then(|| github::stamp(*from));
-        let asked = since.as_deref();
-        match said_on(github, thread, asked, (open, &login), &keeps, &mut learned) {
+        let since = github::stamp(*read_from);
+        match said_on(github, thread, &since, (open, &login), &keeps, &mut learned) {
             Ok(found) => {
                 if mine {
                     for (said, _, _, _) in &found {
-                        own.too_old(said, &login, &judged.keys);
+                        own.too_old(said, &joel, &judged.keys);
                     }
                 }
                 heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said)));
@@ -638,12 +645,6 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         }
     }
     heard.sort_by_key(|(said, _, _, _)| said.at);
-    // Where logins are addresses, what Joel says is by his address.
-    let joel = Joel {
-        slack_ids: Vec::new(),
-        logins: vec![login],
-        emails: how.authored_by.iter().cloned().collect(),
-    };
     for (said, thread, context, outsider) in heard {
         let place = (&thread, context, outsider);
         judge(state, &joel, &said, place, how.shadow);
@@ -653,13 +654,13 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     if let Some(found) = found.filter(|found| found.whole) {
         own.moved_on(began, found.seen);
     }
+    judged.own = Some(own.kept());
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
     progress::write(state, &how.site, judged, millis());
 }
 
-/// What was said on a pull request or issue since `since`, or ever with
-/// none, each with it,
+/// What was said on a pull request or issue since `since`, each with it,
 /// the place it's about and whether an outsider said it: where anyone may
 /// comment (`open`), a writer not the repository's own, or anyone on a
 /// repository Joel doesn't work in. Reviews can't be asked for by time,
@@ -670,7 +671,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
 fn said_on(
     github: &GitHub<'_>,
     thread: &Thread,
-    since: Option<&str>,
+    since: &str,
     who: (bool, &str),
     keeps: &dyn Fn(&Said) -> bool,
     learned: &mut HashMap<String, bool>,
@@ -686,10 +687,7 @@ fn said_on(
     let mut found = github::said(&opened, thread, Kind::Opening);
     // Its writer's standing alone, before anything said after it joins it.
     let opened_by_own = found.first().is_some_and(|it| it.own);
-    let recent = match since {
-        Some(since) => vec![("since", since), ("per_page", PAGE)],
-        None => vec![("per_page", PAGE)],
-    };
+    let recent = [("since", since), ("per_page", PAGE)];
     let comments = github.all(&format!("{base}/issues/{number}/comments"), &recent)?;
     found.extend(github::said(&comments, thread, Kind::Comment));
     if thread.pull {

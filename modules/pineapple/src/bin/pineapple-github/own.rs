@@ -3,13 +3,16 @@
 //! word. A search's index can fall behind what was said, by more than a
 //! minute and by far more in an incident, so the search asks from an hour
 //! before the last whole one, and a stop it indexed that late is still
-//! heard. Words of his naming the safe word that a read finds from before
-//! then stop nothing, and the journal says so once a run, so a stop lost
-//! to a late index is never lost unsaid.
+//! heard. A stop of his that a read finds from the hour before then stops
+//! nothing, and the journal says so once a run, so a stop lost to a later
+//! index still is said rather than lost unsaid. How far it reached is
+//! kept across a restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
 use pineapple::github::{self, Said, Thread, found_when};
+use pineapple::progress::Own;
+use pineapple::{Joel, Platform, Saying, Verdict, judge};
 
 use super::{GitHub, Unread, searched};
 
@@ -19,8 +22,7 @@ use super::{GitHub, Unread, searched};
 /// again is known by its key, so nothing is judged twice.
 pub(super) const OWN_LAG: u64 = 60 * 60;
 
-/// The words that stop, as Joel says them, for telling which of his
-/// words a read couldn't judge are worth a line in the journal.
+/// The words that stop, as the journal names them.
 const SAFE_WORD: &str = "pineapple override";
 
 /// Where Joel's own words were last searched from whole, which a failed
@@ -44,22 +46,42 @@ pub(super) struct Found {
 }
 
 impl Searched {
-    /// Searched from `since`, where the reader's rounds begin. A first
-    /// start reads no further back than its own look back and a search's
-    /// lag, so it judges nothing said long before the reader ran; a
-    /// restart reads the whole hour, so a stop said before it is heard.
-    pub(super) fn new(since: u64, first: bool, lag: u64) -> Self {
+    /// Searched from where it was `kept`, or with nothing kept from
+    /// `since`, where the reader's rounds begin. A first start reads no
+    /// further back than its own look back and a search's lag, so it
+    /// judges nothing said long before the reader ran, and a restart keeps
+    /// to that; one with nothing kept of it reads the whole hour, so a
+    /// stop said before it is heard.
+    pub(super) fn new(since: u64, kept: Option<Own>, first: bool, lag: u64) -> Self {
+        let floor = if first { since.saturating_sub(lag) } else { 0 };
+        let Own { from, floor } = kept.unwrap_or(Own { from: since, floor });
         Self {
-            from: since,
-            floor: if first { since.saturating_sub(lag) } else { 0 },
+            from,
+            floor,
             read: HashMap::new(),
             told: HashSet::new(),
+        }
+    }
+
+    /// How far it has searched, to keep across a restart.
+    pub(super) fn kept(&self) -> Own {
+        Own {
+            from: self.from,
+            floor: self.floor,
         }
     }
 
     /// The farthest back this round searches for and reads Joel's words.
     pub(super) fn reach(&self) -> u64 {
         self.from.saturating_sub(OWN_LAG).max(self.floor)
+    }
+
+    /// How far back a pull request or issue the search found is read: an
+    /// hour before what it reaches, for [`Searched::too_old`] to see a stop
+    /// a later index lost, rather than its whole life, whose pages would
+    /// cost Joel's rate limit on every change to a long thread.
+    pub(super) fn read_from(&self) -> u64 {
+        self.reach().saturating_sub(OWN_LAG)
     }
 
     /// The pull requests and issues where Joel takes part that name the
@@ -105,15 +127,25 @@ impl Searched {
         self.read = seen;
     }
 
-    /// Says in the journal, once a run, Joel's own safe word a read found
-    /// from before what this round reaches, nothing has judged, and
-    /// nothing will: a later search reaches no further back.
-    pub(super) fn too_old(&mut self, said: &Said, login: &str, judged: &[String]) {
+    /// Says in the journal, once a run, Joel's own stop a read found from
+    /// the hour before what this round reaches, as the judge would take
+    /// it, which nothing has judged and nothing will: a later search
+    /// reaches no further back. Older ones, as a review read whole may
+    /// hold, were judged long since or before the reader kept keys.
+    pub(super) fn too_old(&mut self, said: &Said, joel: &Joel, judged: &[String]) {
         let reach = self.reach();
-        let unjudged = said.at < reach
-            && said.author.eq_ignore_ascii_case(login)
-            && said.text.to_lowercase().contains(SAFE_WORD)
-            && !judged.contains(&said.key);
+        let stops = || {
+            let saying = Saying {
+                platform: Platform::Markdown,
+                author: &said.author,
+                by_bot: said.by_bot,
+                text: &said.text,
+            };
+            let judgement = judge(&saying, joel);
+            judgement.by_joel && judgement.verdict == Verdict::Stop
+        };
+        let unjudged =
+            (self.read_from()..reach).contains(&said.at) && !judged.contains(&said.key) && stops();
         if unjudged && self.told.insert(said.key.clone()) {
             eprintln!(
                 "<4>{} holds Joel's {SAFE_WORD} from {}, before {}, the farthest back \

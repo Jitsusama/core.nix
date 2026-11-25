@@ -1,6 +1,7 @@
 //! Joel's own stop where GitHub's search indexed it late: heard though an
 //! hour late, and past that, or before a first start's look back, told
-//! of in the journal once a run rather than lost unsaid.
+//! of in the journal once a run rather than lost unsaid, a restart keeping
+//! to what the first start judged.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,6 +18,13 @@ use crate::{PATIENCE, answering, decisions, each, home, until_decided};
 
 /// The key of Joel's comment in these cases, as the journal names it.
 const HIS: &str = "github:example/shop#12:comment:5";
+
+/// The key of Joel's comment quoting the safe word.
+const QUOTED: &str = "github:example/shop#12:comment:6";
+
+/// The key of Joel's stop from long before, as the stand-in gives it
+/// however far back it's asked from, as GitHub gives a review.
+const LONG_AGO: &str = "github:example/shop#12:comment:7";
 
 /// Where only Joel spoke, on example/shop#12, `ago` seconds back: no
 /// notification, and a search finding it, or where GitHub indexed it
@@ -45,7 +53,8 @@ fn only_joel_spoke_ago(line: &str, now: u64, ago: u64, late: bool) -> Value {
 /// How many times the busy thread's stand-in has been searched.
 static SEARCHED: AtomicU64 = AtomicU64::new(0);
 
-/// Where Joel spoke two hours back on example/shop#12, which someone
+/// Where Joel spoke ninety minutes back on example/shop#12, saying the
+/// safe word and quoting it, and said it three hours back, which someone
 /// changes before every search, so each round reads it again.
 fn busy_thread(line: &str, now: u64) -> Value {
     if line.contains(" /search/issues?") {
@@ -54,7 +63,30 @@ fn busy_thread(line: &str, now: u64) -> Value {
             "updated_at": stamp(now - 1000 + round),
             "repository_url": "https://api.example.com/repos/example/shop"}]});
     }
-    only_joel_spoke_ago(line, now, 2 * 60 * 60, false)
+    if line.contains(" /notifications?") {
+        return json!([]);
+    }
+    let ago = (now, 90 * 60);
+    let his = commented(5, LOGIN, "OWNER", "pineapple override", ago);
+    let quoted = commented(6, LOGIN, "OWNER", "> pineapple override\n\nis it", ago);
+    let long_ago = commented(7, LOGIN, "OWNER", "pineapple override", (now, 3 * 60 * 60));
+    answer_with(line, now, &[his, quoted, long_ago])
+}
+
+/// When `line` asks for what was said since, as its stamp reads.
+fn asked_since(line: &str) -> Option<String> {
+    line.split("since=")
+        .nth(1)
+        .and_then(|rest| rest.split(['&', ' ']).next())
+        .map(|since| since.replace("%3A", ":"))
+}
+
+/// The time now, in seconds since the epoch.
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs()
 }
 
 /// How many times the journal names Joel's comment as too old to judge.
@@ -111,7 +143,7 @@ fn github_joels_stop_older_than_the_hour_stops_nothing_and_is_told_of_once() {
     assert_eq!(
         each(&decisions(&home), "verdict"),
         ["stop-asked"],
-        "Joel's stop from two hours back is past what a round reaches"
+        "Joel's stop from ninety minutes back is past what a round reaches"
     );
     let said = journal(&home);
     assert_eq!(
@@ -119,14 +151,27 @@ fn github_joels_stop_older_than_the_hour_stops_nothing_and_is_told_of_once() {
         1,
         "the journal names his stop as too old once a run, read however often: {said}"
     );
+    assert!(
+        !said.contains(&format!("{QUOTED} holds")),
+        "his words quoting the safe word, which the judge waves off, aren't named: {said}"
+    );
+    assert!(
+        !said.contains(&format!("{LONG_AGO} holds")),
+        "nor his stop from before the hour it reads, judged long since: {said}"
+    );
+    let said_then = stamp(now() - 90 * 60);
     let asked = asked.lock().expect("what was asked");
     let comments: Vec<&String> = asked
         .iter()
         .filter(|line| line.contains(" /repos/example/shop/issues/12/comments?"))
         .collect();
     assert!(
-        !comments.is_empty() && comments.iter().all(|line| !line.contains("since=")),
-        "what a search found is read whole, so older words are seen: {comments:?}"
+        !comments.is_empty()
+            && comments
+                .iter()
+                .all(|line| asked_since(line).is_some_and(|since| since <= said_then)),
+        "what a search found is read from an hour before what it reaches, so his stop \
+         from then is seen: {comments:?}"
     );
     drop(asked);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
@@ -152,6 +197,16 @@ fn github_a_first_start_judges_none_of_joels_words_from_before_its_look_back() {
         told_of(&said),
         1,
         "the journal names his stop as too old: {said}"
+    );
+    let mut again = github_reader(&home, &origin, &[]);
+    another_round(&asked);
+    again.kill().expect("the reader stops again");
+    again.wait().expect("the reader is gone again");
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop-asked"],
+        "restarted, it keeps to what its first start reaches: {}",
+        journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
