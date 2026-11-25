@@ -1252,15 +1252,17 @@ Provider {
             { name: session.title });
         const fields = Object.assign({ want: answers.want }, answer.value !== undefined
             ? { value: answer.value } : { other: answer.other });
-        answerWant(session.address, fields, (put, why) => {
-            keep(TalkAnswers.put(one, put, why));
+        answerWant(session.address, fields, (put, why, unheard) => {
+            keep(TalkAnswers.put(one, put, why, unheard));
             // His words stay only for the ask they were meant for: once it asks something else,
             // given back they'd answer the new ask with words for the old one, so they show
             // only as not delivered, and the foot says why.
             const now = answersOf(sessionAt(session.address) ?? session);
             if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
                 launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
-            if (!put && (why ?? "") !== "")
+            if (unheard)
+                told = TalkAnswers.filled(said.unheardWhy ?? "", { name: session.title });
+            else if (!put && (why ?? "") !== "")
                 told = why;
         });
     }
@@ -2716,8 +2718,12 @@ Provider {
             then(Sessions.steered(address, null));
             return;
         }
+        // No reply where it was sent is the daemon gone while asked (Daemon.qml's gone), the
+        // answer put or not, so it's said unheard rather than not delivered; none where the
+        // daemon wasn't there to send to is not delivered.
+        const sent = rowsKind.wire !== null;
         rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
-            String(reply?.error?.message ?? "")));
+            String(reply?.error?.message ?? ""), sent && reply === null));
     }
 
     property string fedBack: ""
