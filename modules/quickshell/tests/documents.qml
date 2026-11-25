@@ -378,13 +378,15 @@ ShellRoot {
             unasked("nor one lost while they're undrawn", () => borrower.search("rides"));
             // A connection that goes with the search asked loses it to be
             // asked again, and a line that isn't JSON is said once a
-            // connection.
+            // connection: two here and one after it goes again are said
+            // twice in the log, which checks/documents.nix counts.
             borrower.drawn = true;
             borrower.search("ride");
             link.gone();
             Expect.expect("a connection gone with the search asked, it waits for the next",
                 borrower.asking === "" && borrower.searchState().lost === "ride",
                 JSON.stringify(borrower.searchState()));
+            link.said("{\"id\": \"find-");
             link.said("{\"id\": \"find-");
             Expect.expect("a line that isn't JSON is said", link.unreadSaid, "");
             link.wire = { write: line => {}, flush: () => {} };
@@ -396,6 +398,7 @@ ShellRoot {
             link.gone();
             Expect.expect("gone again, the next line that isn't JSON is said too",
                 !link.unreadSaid, "");
+            link.said("{\"id\": \"find-");
             // Lost again once it was asked again, it waits for the next key, so a search that
             // is what takes the daemon down isn't asked at every restart till systemd gives up.
             link.wire = { write: line => {}, flush: () => {} };
