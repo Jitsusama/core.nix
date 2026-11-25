@@ -120,7 +120,20 @@ function poses(name, taken) {
     const head = readAs(headOf(name));
     return taken.length > 0 && (TURNS.test(String(name))
         || taken.map(readAs).some(each => each !== ""
-            && (each === read || each === head || read.startsWith(`${each} `))));
+            && (each === read || each === head || opensWith(read, each))));
+}
+
+// Whether `read` opens with the words `each` and then a break between
+// words: a space, a stop or a mark, as "clear it, now" opens with "clear
+// it", where "clearance" doesn't open with "clear". A letter is one with
+// a case, so a letter of a script without one counts as a break, refusing
+// more rather than less.
+function opensWith(read, each) {
+    if (!read.startsWith(each) || read.length === each.length) {
+        return false;
+    }
+    const next = read.charAt(each.length);
+    return next.toLowerCase() === next.toUpperCase() && !/[0-9]/u.test(next);
 }
 
 // What Explain It is told a look's row offers, by the names the row shows
