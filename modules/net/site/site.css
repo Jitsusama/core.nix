@@ -185,8 +185,11 @@ body {
 }
 
 /* The zoom's buttons are a fieldset, named by its legend for a reader, so
-   the box a fieldset draws by itself is taken off. */
+   the box a fieldset draws by itself is taken off. It keeps its buttons'
+   width on a phone, where the caption beside it would otherwise squeeze it
+   and leave its 44 px buttons spilling out of it. */
 .zoom {
+  flex: none;
   display: flex;
   gap: var(--tie);
   margin: 0;
@@ -195,8 +198,7 @@ body {
   min-inline-size: 0;
 }
 
-/* Each holds its 44 px on a phone too, where the caption beside them would
-   otherwise squeeze them under a finger's reach. */
+/* Each is 44 px, a finger's reach. */
 .zoom button {
   flex: none;
   inline-size: 44px;

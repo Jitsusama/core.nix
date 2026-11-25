@@ -13,7 +13,8 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
 import { details } from "./device.ts";
 import { type Child, h } from "./elements.ts";
-import { ACROSS_LEAST, type Drawn, drawMap } from "./map.ts";
+import { ACROSS_LEAST } from "./grid.ts";
+import { type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
 import { type Context, found, overview } from "./panel.ts";
@@ -134,10 +135,13 @@ function fitFirst(at: Network): void {
 }
 
 // Where the room is too narrow for an eero with devices beside it, as on a
-// phone, each floor stacks; turning the phone draws the other way, fitted afresh.
-map.onCrossing(ACROSS_LEAST, () => {
-  fitted = false;
-  drawSoon();
+// phone, each floor stacks; turning the phone draws the other way, fitted
+// afresh. What was drawn is the measure, so a redraw between turns counts.
+map.onResize(() => {
+  if (drawn !== undefined && map.narrowerThan(ACROSS_LEAST) !== drawn.stacked) {
+    fitted = false;
+    drawSoon();
+  }
 });
 
 /** The page opens with the map holding the keys, so arrows walk it at once. */

@@ -5,124 +5,28 @@
 // read top to bottom rather than across. Everything is a role in the
 // stylesheet, so the drawing follows the look.
 
+import {
+  ACROSS,
+  acrossRight,
+  BOX,
+  FLOOR,
+  G,
+  INTERNET,
+  INTERNET_STACKED,
+  MODEM,
+  MODEM_STACKED,
+  type Plan,
+  RADIO,
+  ROW,
+  STACK,
+  STACKED,
+  SWITCH,
+} from "./grid.ts";
 import type { Channel, Device, Link, Network } from "./model.ts";
 import { endAt, type Floor, linkBetween, type Shape } from "./shape.ts";
 import { el, fitText, lookMark, text } from "./svg.ts";
-import { drawWires, type Looks, looksOf, type Wire } from "./wires.ts";
+import { drawWires, type Looks, laneRoom, looksOf, type Wire } from "./wires.ts";
 import { ago, dbm, lasted, linkSpeed, plural, rate, roleWords, v4 } from "./words.ts";
-
-/**
- * The drawing's grid, in pixels at zoom 1: a column for the floors' names,
- * one for the boxes, then the devices in columns of their own.
- */
-const G = {
-  left: 40,
-  box: 200,
-  boxW: 304,
-  gap: 40,
-  colW: 340,
-  row: 24,
-  bandTop: 24,
-  bandEnd: 40,
-  perColumn: 7,
-  /** The narrowest the drawing is, however little it holds. */
-  narrowest: 640,
-} as const;
-
-/**
- * Where the drawing puts its parts: the floors' rule and names, the boxes'
- * left edge, and whether a floor's switches, devices, modem and internet
- * sit beside its eero or under it.
- */
-interface Plan {
-  readonly left: number;
-  readonly box: number;
-  readonly stacked: boolean;
-}
-
-/** Across, on a desk: the floors' names in a column of their own. */
-const ACROSS: Plan = { left: G.left, box: G.box, stacked: false };
-
-/**
- * Stacked, on a phone: the floors' names over their eeros, which leave room
- * at their left only for the lanes of the links between them.
- */
-const STACKED: Plan = { left: 8, box: 40, stacked: true };
-
-/** In a stacked floor: where the eero's box starts under the floor's name, and the gap after it. */
-const STACK = { boxTop: 88, apart: 24, rowsBelow: 40 } as const;
-
-/**
- * The least room, at zoom 1, that the drawing across takes: an eero's box and
- * one column of devices beside it. Narrower, it stacks.
- */
-const ACROSS_LEAST = G.box + G.boxW + G.gap + G.colW;
-
-/** Inside a box: its words' left edge, its lines' baselines, its corners. */
-const BOX = {
-  pad: 16,
-  title: 28,
-  fact: 48,
-  firstRow: 76,
-  pitch: 20,
-  head: 72,
-  foot: 28,
-  footLine: 16,
-  round: 6,
-} as const;
-
-/** An eero's radio row: where each of its columns starts. */
-const RADIO = { channel: 112, mark: 172, busy: 184, count: 288 } as const;
-
-/** A switch's box, its eight ports as on its face, and its link's line. */
-const SWITCH = {
-  tall: 144,
-  apart: 40,
-  ports: 8,
-  portStep: 34,
-  portTop: 64,
-  portW: 26,
-  portH: 24,
-  portRound: 3,
-  lamp: { x: 7, y: 3, w: 12, h: 3, round: 1.5 },
-  portName: { x: 13, y: 20 },
-  linkLine: 112,
-} as const;
-
-/** A device's row: its ground, and where its name, address and signal sit. */
-const ROW = {
-  inset: 8,
-  rise: 17,
-  wide: 334,
-  round: 3,
-  nameRoom: 140,
-  address: 148,
-  mark: 282,
-  figure: 318,
-  headAbove: 22,
-} as const;
-
-/** The floor's name and count, and the modem and the internet below it. */
-const FLOOR = { name: 48, count: 70 } as const;
-const MODEM = {
-  below: 48,
-  wide: 480,
-  tall: 136,
-  columns: [16, 64, 216, 336],
-  room: 32,
-} as const;
-/**
- * The modem stacked, as wide as a device's row: each sweep on two lines, its
- * kinds on the first and its power and noise under them, and its foot's two
- * parts on a line each.
- */
-const MODEM_STACKED = { wide: 334, tall: 196, first: [16, 64], second: [64, 184] } as const;
-/**
- * The internet stacked, under the modem: how far below, its line's inset and
- * where the line stops above its name, and how tall it is.
- */
-const INTERNET_STACKED = { below: 40, inset: 24, reach: 6, tall: 112 } as const;
-const INTERNET = { ways: 56, mark: 4, markRoom: 14, ago: 100, line: 48, lineY: 22 } as const;
 
 /** Where one device is drawn, and its group. */
 interface Box {
@@ -133,12 +37,13 @@ interface Box {
   readonly g: SVGGElement;
 }
 
-/** What a drawing made: where each device is, its size, and its marks' layer. */
+/** What a drawing made: where each device is, its size, its marks' layer, whether it stacked. */
 interface Drawn {
   readonly at: ReadonlyMap<string, Box>;
   readonly width: number;
   readonly height: number;
   readonly marks: SVGGElement;
+  readonly stacked: boolean;
 }
 
 /** A link's speed, when its source gives one. */
@@ -180,8 +85,8 @@ class Pen {
   readonly now: number;
   readonly plan: Plan;
 
-  constructor(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawing) {
-    this.plan = how.stacked ? STACKED : ACROSS;
+  constructor(draw: SVGSVGElement, network: Network, shape: Shape, how: Laying) {
+    this.plan = how.plan;
     this.network = network;
     this.shape = shape;
     this.looks = looksOf(network);
@@ -452,13 +357,11 @@ class Pen {
     }
     const rows = this.deviceRows(floor.devices, x, boxY + BOX.title);
     low = Math.max(low, rows.low);
-    let { right } = rows;
     // The gateway's floor holds the modem and the internet below its box.
     if (this.shape.modem !== undefined && point.id === this.shape.gateway?.id) {
       low = this.modem(this.shape.modem, point, low + MODEM.below);
-      right = Math.max(right, G.box + MODEM.wide + MODEM.room);
     }
-    return { low, right };
+    return { low, right: acrossRight(this.shape, floor) };
   }
 
   /**
@@ -496,12 +399,16 @@ interface Drawing {
   readonly stacked: boolean;
 }
 
-/** Draws `network` into `draw`, laid out as `shape` says and drawn as `how` says. */
-function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawing): Drawn {
+/** How a map is laid out: at `now`, to `plan`. */
+interface Laying {
+  readonly now: number;
+  readonly plan: Plan;
+}
+
+/** Lays `shape`'s floors out into `draw`: the pen that drew them, and where they end. */
+function layOut(draw: SVGSVGElement, network: Network, shape: Shape, how: Laying) {
   draw.replaceChildren();
   const pen = new Pen(draw, network, shape, how);
-  const { plan } = pen;
-  const { stacked } = how;
   const marks = el("g", { class: "marks" }, draw);
   let y = 0;
   let width = 0;
@@ -510,14 +417,31 @@ function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawi
     width = Math.max(width, right);
     y = low + G.bandEnd;
   }
-  drawWires({ shape, looks: pen.looks, links: pen.links, at: pen.at }, pen.wires, plan.box);
-  width = (stacked ? width : Math.max(width, G.narrowest)) + plan.left;
-  for (const rule of draw.querySelectorAll("[data-rule]")) {
-    rule.setAttribute("x2", String(width - plan.left));
+  return { pen, marks, width, height: y };
+}
+
+/** Draws `network` into `draw`, laid out as `shape` says and drawn as `how` says. */
+function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawing): Drawn {
+  const { now, stacked } = how;
+  const plan = stacked ? STACKED : ACROSS;
+  let laid = layOut(draw, network, shape, { now, plan });
+  // Stacked, every box sits at one left edge, so every wire up but the
+  // modem's cable runs in a lane left of it; a house with more than the plan
+  // leaves room for is laid out again with its boxes moved right to fit them.
+  const room = laneRoom(laid.pen.wires);
+  if (stacked && room > plan.box) {
+    laid = layOut(draw, network, shape, { now, plan: { ...plan, box: room } });
   }
-  draw.setAttribute("viewBox", `0 0 ${width} ${y}`);
-  return { at: pen.at, width, height: y, marks };
+  const { pen, marks, height } = laid;
+  const { left, box } = pen.plan;
+  drawWires({ shape, looks: pen.looks, links: pen.links, at: pen.at }, pen.wires, box);
+  const width = (stacked ? laid.width : Math.max(laid.width, G.narrowest)) + left;
+  for (const rule of draw.querySelectorAll("[data-rule]")) {
+    rule.setAttribute("x2", String(width - left));
+  }
+  draw.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  return { at: pen.at, width, height, marks, stacked };
 }
 
 export type { Box, Drawn };
-export { ACROSS_LEAST, drawMap };
+export { drawMap };

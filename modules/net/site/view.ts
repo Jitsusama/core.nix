@@ -176,15 +176,9 @@ class MapView {
     return this.#view.clientWidth < least * SMALLEST;
   }
 
-  /** Calls `crossed` each time the room grows or shrinks across `least`, as `narrowerThan`. */
-  onCrossing(least: number, crossed: () => void): void {
-    let narrow = this.narrowerThan(least);
-    new ResizeObserver(() => {
-      if (this.narrowerThan(least) !== narrow) {
-        narrow = !narrow;
-        crossed();
-      }
-    }).observe(this.#view);
+  /** Calls `resized` each time the room changes size, as a phone turning does. */
+  onResize(resized: () => void): void {
+    new ResizeObserver(resized).observe(this.#view);
   }
 
   /** Moves the map by Shift and an arrow's way. */

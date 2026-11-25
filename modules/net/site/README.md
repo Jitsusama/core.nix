@@ -12,6 +12,7 @@ note behind.
 | `shape.ts`    | the network's shape: floors, who hangs from whom, the gateway  |
 | `words.ts`    | how figures and devices are said                               |
 | `map.ts`      | the floors drawn as SVG, stacked on a phone, with `wires.ts`   |
+| `grid.ts`     | where the map's parts sit, and the least room across takes     |
 | `svg.ts`      | drawing SVG: elements, words fitted to room, the look mark     |
 | `view.ts`     | the map's zoom, its edges, and walking it by arrow             |
 | `elements.ts` | the panel's HTML: facts, tables and the look mark              |
@@ -29,6 +30,8 @@ In `tests/`, `network-reads-live-test.py` is `network-site-reads-live`: the page
 Nix builds, read in a headless browser through the sites' server beside a
 stand-in net holding `net.json` and a stand-in node holding `node.json`, as
 the records change, stop and come back, every device within a phone's width,
-within its budget and passing the web-design skill's page checks.
+a house with switches and a full floor stacked within a phone's width and a
+laptop's, drawn across again as the room grows, within its budget and passing the
+web-design skill's page checks.
 
 [site]: ../../local-sites/site.nix

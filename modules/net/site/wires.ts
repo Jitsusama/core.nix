@@ -120,6 +120,19 @@ function cable(wiring: Wiring, wire: Wire, a: Reached, b: Reached): string {
   return `M${x} ${a.y + a.h}V${b.y}`;
 }
 
+/** The least a lane keeps from the drawing's left edge. */
+const LANE_EDGE = 2;
+
+/**
+ * How far right of the drawing's left edge the boxes must start for every
+ * lane `wires` may take to stay on it: one for each but the cable down, which
+ * counts a side link too, so the room is never short.
+ */
+function laneRoom(wires: readonly Wire[]): number {
+  const lanes = wires.filter((wire) => wire.down !== true).length;
+  return WIRE.laneStart + Math.max(0, lanes - 1) * WIRE.laneStep + LANE_EDGE;
+}
+
 /** Draws each of `wires`, its lanes starting left of the boxes at `boxX`. */
 function drawWires(wiring: Wiring, wires: readonly Wire[], boxX: number): void {
   const { shape, looks, links, at } = wiring;
@@ -156,4 +169,4 @@ function drawWires(wiring: Wiring, wires: readonly Wire[], boxX: number): void {
 }
 
 export type { Looks, Wire };
-export { drawWires, looksOf };
+export { drawWires, laneRoom, looksOf };
