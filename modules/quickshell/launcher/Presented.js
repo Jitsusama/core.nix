@@ -261,7 +261,6 @@ function intoKept(keyAt, into, whole) {
     return whole || keyAt - into < intoSoon ? into : undefined;
 }
 
-
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
 // shaped as an app's, and otherwise as app, since a program may give any words as its id; bare,
 // with what quoting escapes escaped, as actShown's, so a line break in it can't forge a line.
