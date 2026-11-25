@@ -202,17 +202,17 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 ///
 /// Why it didn't go, and whether it may have all the same.
 pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<(), Missed> {
-    let send = |gateway: &mut Gateway, alert| {
+    let ask = |gateway: &mut Gateway, alert| {
         let message = json!({ "message": unmentioned(&text(alert)) });
         gateway.call(TO_SELF, &message).map(|_| ())
     };
-    let sent = match send(gateway, alert) {
+    let sent = match ask(gateway, alert) {
         Err(Called::Failed(_)) if !alert.words.is_empty() => {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
                 ..alert
             };
-            send(gateway, plain)
+            ask(gateway, plain)
         }
         sent => sent,
     };
