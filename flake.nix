@@ -207,6 +207,7 @@
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         file-link-keys = ./modules/file-link-keys/home.nix;
+        find = ./modules/find/home.nix;
         firmware-notice = ./modules/firmware-notice/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;

@@ -20,6 +20,7 @@
     homeModules.curl
     homeModules.dig
     homeModules.fd
+    homeModules.find
     homeModules.gh
     homeModules.gnupg
     homeModules.jq

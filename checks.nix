@@ -617,6 +617,7 @@ gather {
     ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/file-link-keys/checks.nix
+    ./modules/find/checks.nix
     ./modules/firmware-errors/checks.nix
     ./modules/firmware-notice/checks.nix
     ./modules/firmware-settings/checks.nix
