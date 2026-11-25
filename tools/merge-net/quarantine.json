@@ -54,6 +54,19 @@
     "test": "vm-the-connection-stays-quick"
   },
   {
+    "at": 1795247801,
+    "commit": "ced2abf32fe44848f77d1d74b14dc14c7f63869b",
+    "due": "2026-11-29",
+    "due_why": "Its owner, Y2YBTS, which owns the shell's asks, since #6554, which has the test press Return only once the launcher says it took the j before it, the move a yes must follow. The yes waited on the answer in 2 of the net's 36 runs of it, and Asks could not count a j that came with the Return 10 ms after it. It comes off once twenty net runs in a row after #6554 merges exit 0, counted by exit code, since a failure only here is recorded as passed: at 2 in 36, twenty pass by luck about one time in three, so the count alone can't show the fix, and a failure's message names what the shell said of the ask and its act, verb:release. A failure whose words say becoming ask: and then no answer is the daemon's; one with no becoming line is the yes not leaving the launcher, and means the fix is wrong. Any other failure restarts the count. If twenty in a row haven't passed by 29 Nov, its owner moves the due and says why before this one passes. While it stands, nothing catches Joel's yes not releasing a value into the one command that asked for it; the ask's refusals and warnings, its other subtests, still run",
+    "owner_pr": 6554,
+    "owner_session": "Y2YBTS",
+    "reason": "failed, then passed, at ced2abf32fe4",
+    "subtests": [
+      "test_joels_yes_releases_the_value_into_the_one_command"
+    ],
+    "test": "vm-desktop-answers-secret-asks"
+  },
+  {
     "at": 1795335524,
     "commit": "a60435126103b2901210023deae7a9bda4bfe616",
     "due": "2026-11-24",
