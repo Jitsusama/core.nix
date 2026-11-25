@@ -5,10 +5,11 @@
 //! before the last whole one, and a stop it indexed that late is still
 //! heard. A stop of his that a read finds from the hour before then stops
 //! nothing, and the journal says so once a run. Indexed more than an hour
-//! late, it's said only when something else changes its thread after it,
-//! as a search finds a thread by its last change; on a thread nothing
-//! else changes, it's missed unsaid. How far it reached is kept across a
-//! restart (src/progress.rs).
+//! late, it's said only when something else changes its thread after it
+//! and within about two hours of it, as a search finds a thread by its
+//! last change and reads it back two hours; on a thread nothing else
+//! changes by then, it's missed unsaid. How far it reached is kept across
+//! a restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
@@ -31,7 +32,7 @@ const SAFE_WORD: &str = "pineapple override";
 /// Where Joel's own words were last searched from whole, which a failed
 /// search leaves where it was; when each pull request or issue that
 /// search found had last changed, so one is read again only once it has;
-/// how far back a first start may read; and which of his words too old
+/// how far back a first start may judge; and which of his words too old
 /// to judge the journal has already named.
 pub(super) struct Searched {
     from: u64,
@@ -50,10 +51,10 @@ pub(super) struct Found {
 
 impl Searched {
     /// Searched from where it was `kept`, or with nothing kept from
-    /// `since`, where the reader's rounds begin. A first start reads no
-    /// further back than its own look back and a search's lag, so it
-    /// judges nothing said long before the reader ran, and a restart keeps
-    /// to that; one with nothing kept of it reads the whole hour, so a
+    /// `since`, where the reader's rounds begin. A first start judges no
+    /// further back than its own look back and a search's lag, so nothing
+    /// said long before the reader ran stops anything, and a restart keeps
+    /// to that; one with nothing kept of it judges the whole hour, so a
     /// stop said before it is heard.
     pub(super) fn new(since: u64, kept: Option<Own>, first: bool, lag: u64) -> Self {
         let floor = if first { since.saturating_sub(lag) } else { 0 };
@@ -199,17 +200,17 @@ mod tests {
     }
 
     #[test]
-    fn what_was_kept_beats_a_first_start() {
+    fn a_restart_keeps_the_reach_a_failed_search_held_back() {
         let kept = Own {
             from: SINCE - 2 * OWN_LAG,
             floor: 0,
         };
-        let searched = Searched::new(SINCE, Some(kept), true, LAG);
+        let searched = Searched::new(SINCE, Some(kept), false, LAG);
         assert_eq!(searched.kept(), kept, "kept as it was");
         assert_eq!(
             searched.reach(),
             SINCE - 3 * OWN_LAG,
-            "an hour before the search it held back, not the first start's floor"
+            "an hour before the search it held back, not before the rounds begin"
         );
     }
 

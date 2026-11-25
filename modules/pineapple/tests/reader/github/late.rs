@@ -2,7 +2,8 @@
 //! hour late, and past that, on a thread something changes since, told of
 //! in the journal once a run, unless it was judged; a first start judges
 //! none from before its look back, and a restart keeps to what the first
-//! start judged and to how far back a failed search held it.
+//! start judged and to how far back a failed search held it, which a site
+//! read by what Joel opened never searches, so keeps nothing of.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -13,7 +14,8 @@ use pineapple::github::stamp;
 use serde_json::{Value, json};
 
 use super::{
-    LOGIN, MARK, answer_with, commented, github_reader, journal, read_lately, searches, until_asked,
+    CODE_SITE, LOGIN, MARK, answer_with, by_address, commented, github_reader, journal,
+    read_lately, searches, until_asked,
 };
 use crate::{PATIENCE, answering, decisions, each, home, until_decided};
 
@@ -285,6 +287,38 @@ fn github_a_search_that_keeps_failing_keeps_its_hour_across_a_restart() {
         searched[before].contains(&from),
         "restarted, it searches from the hour its failed search held back: {}",
         searched[before]
+    );
+    let warned = format!("so it's searched from {} again", stamp(last - 3600));
+    let said = journal(&home);
+    assert!(
+        said.contains(&warned),
+        "the journal says how far back it has fallen: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_site_read_by_what_joel_opened_keeps_no_reach_of_a_search() {
+    let (origin, _) = answering(by_address);
+    let home = home();
+    let mut reading = github_reader(&home, &origin, &CODE_SITE);
+    let mark = home.join("state/pineapple/judged-code.json");
+    let began = Instant::now();
+    let kept: Value = loop {
+        let kept = std::fs::read_to_string(&mark).ok();
+        if let Some(kept) = kept.and_then(|kept| serde_json::from_str(&kept).ok()) {
+            break kept;
+        }
+        assert!(began.elapsed() < PATIENCE, "it never kept how far it read");
+        thread::sleep(Duration::from_millis(50));
+    };
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    assert!(
+        kept.get("own").is_none(),
+        "a site that never searches for Joel's words keeps no reach, which would hold a \
+         later search back to its first start: {kept}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

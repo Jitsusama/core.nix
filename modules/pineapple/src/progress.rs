@@ -2,9 +2,10 @@
 //! judged-<site>.json beside the Slack reader's: from when, and the keys
 //! of what it judged, so a restart neither judges anything twice nor
 //! misses what was said while it was down; how far back Joel's own words
-//! were searched, so a restart neither reads past where a first start
-//! chose not to nor forgets a search held back; and when it last read the
-//! site whole, which `pineapple-github` says (src/bin/pineapple-github/).
+//! were searched, so a restart neither judges past where a first start
+//! chose not to nor forgets a search held back, which taking `own` out of
+//! the file lets go of; and when it last read the site whole, which
+//! `pineapple-github` says (src/bin/pineapple-github/).
 
 use std::path::Path;
 
@@ -25,12 +26,13 @@ pub struct Judged {
 
 /// How far a search for Joel's own words reached, in seconds since the
 /// epoch: where it was last whole from, and the farthest back it may
-/// read, which a first start sets and zero leaves open.
+/// judge, which a first start sets and zero leaves open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Own {
     /// Where the search was last whole from.
     pub from: u64,
-    /// The farthest back it reads, whatever `from` says.
+    /// The farthest back it judges, whatever `from` says; what it finds
+    /// is read an hour further back, for the journal to name.
     pub floor: u64,
 }
 
