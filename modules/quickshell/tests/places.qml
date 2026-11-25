@@ -172,9 +172,10 @@ QtObject {
         expect("nor gives way to another screen's session",
             Places.whereKept(twins[1], twins, panelThere,
                 { given: panelFirst, inUse: "Virtual-1" }).output, "Virtual-4");
-        // Nor to a session of its twin's given no connector: kept away, on
-        // the screen in use, or left as kept, with no screen said or none in
-        // use, though last boot's connector is another screen's now.
+        // Nor to a session of its twin's given no connector: sent to another
+        // screen in use, or left as kept, with no screen said or none in use,
+        // though last boot's connector is another screen's now. (One kept
+        // away on a screen showing its own is the twin gone's case below.)
         const tookFirst = [{ at: twins[1], output: "Virtual-3" }];
         const givenNone = (why, screens, inUse) => {
             const given = Reopening.givenBy([twins[1]],
@@ -184,14 +185,23 @@ QtObject {
                     bothBack, { given, inUse: "Virtual-3" }).output],
                 [["none", "Virtual-3"], "Virtual-4"]);
         };
-        givenNone("kept away", { "eDP-1": panel }, "eDP-1");
+        givenNone("sent to another screen in use", { "eDP-1": panel }, "eDP-1");
         givenNone("left as kept with no screen said", {}, "Virtual-3");
         givenNone("left as kept with none in use", { "eDP-1": panel }, null);
         givenNone("left as kept on another screen's connector", { "Virtual-2": panel }, null);
-        // A window put back with no screen said is given none either.
-        expect("a window put back with no screen said is given no connector",
-            Reopening.givenOn(twin, Places.whereKept(twins[1], twins, {}, { given: [] }), {})
-                ?? "none", "none");
+        // A window put back gives the connector it's found on only while
+        // that shows its screen: a twin's, one kept before screens were
+        // named, never last boot's with no screen said, nor one not heard
+        // yet, nor a prototype's name, nor any with no screens at all.
+        const windowOn = (at, screens, inUse) => Reopening.givenOn(at.screen,
+            Places.whereKept(at, twins, screens, { given: [], inUse }), screens) ?? "none";
+        const unnamed = { output: "Virtual-3", workspace: 1, column: 1, tile: 1 };
+        expect("a window put back gives only a connector showing its screen",
+            [windowOn(twins[1], bothBack, "Virtual-3"), windowOn(unnamed, bothBack, "Virtual-3"),
+                windowOn(twins[1], {}, null), windowOn(twins[1], { "Virtual-2": "" }, "Virtual-2"),
+                Reopening.givenOn("", { output: "constructor" }, {}) ?? "none",
+                Reopening.givenOn(twin, { output: "Virtual-3" }) ?? "none"],
+            ["Virtual-3", "Virtual-3", "none", "none", "none", "none"]);
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early, {}), inUse: "eDP-1" }).output,
