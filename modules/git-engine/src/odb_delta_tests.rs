@@ -8,7 +8,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 /// `count` names, sorted, none of them `sorted()`'s.
-fn names(count: usize) -> Vec<[u8; 20]> {
+pub(super) fn names(count: usize) -> Vec<[u8; 20]> {
     (0..count)
         .map(|at| {
             let mut name = [0xab; 20];
@@ -20,7 +20,7 @@ fn names(count: usize) -> Vec<[u8; 20]> {
 }
 
 /// A blob of fewer than 16 bytes, as a pack's entry.
-fn blob(data: &[u8]) -> Vec<u8> {
+pub(super) fn blob(data: &[u8]) -> Vec<u8> {
     let mut entry = vec![0x30 | u8::try_from(data.len()).expect("a short blob")];
     entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(data, 1));
     entry
@@ -45,7 +45,7 @@ fn delta_over(base: [u8; 20], base_size: u8) -> Vec<u8> {
 
 /// A delta's data over a base of `base_size` bytes, copying it whole and
 /// adding `c`.
-fn appending(base_size: u8, c: u8) -> [u8; 6] {
+pub(super) fn appending(base_size: u8, c: u8) -> [u8; 6] {
     [base_size, base_size + 1, 0x90, base_size, 1, c]
 }
 
@@ -59,20 +59,20 @@ fn named(base: [u8; 20], delta: &[u8]) -> Vec<u8> {
 
 /// A pack's entries in order, knowing how far past the first each starts,
 /// so a delta may place its base by offset as git writes one.
-struct Entries {
-    entries: Vec<Vec<u8>>,
-    starts: Vec<u64>,
+pub(super) struct Entries {
+    pub(super) entries: Vec<Vec<u8>>,
+    pub(super) starts: Vec<u64>,
 }
 
 impl Entries {
-    fn new() -> Entries {
+    pub(super) fn new() -> Entries {
         Entries {
             entries: Vec::new(),
             starts: vec![0],
         }
     }
 
-    fn push(&mut self, entry: Vec<u8>) {
+    pub(super) fn push(&mut self, entry: Vec<u8>) {
         let end = self.starts[self.entries.len()] + entry.len() as u64;
         self.starts.push(end);
         self.entries.push(entry);
@@ -80,7 +80,7 @@ impl Entries {
 
     /// Adds a delta over `delta` placing its base, the entry at `base`, by
     /// how far back it lies, in git's own sum of seven-bit groups.
-    fn place_over(&mut self, base: usize, delta: &[u8]) {
+    pub(super) fn place_over(&mut self, base: usize, delta: &[u8]) {
         let mut back = self.starts[self.entries.len()] - self.starts[base];
         let mut distance = vec![low_seven(back)];
         back >>= 7;
@@ -97,14 +97,14 @@ impl Entries {
     }
 }
 
-fn low_seven(value: u64) -> u8 {
+pub(super) fn low_seven(value: u64) -> u8 {
     u8::try_from(value & 0x7f).expect("seven bits fit a byte")
 }
 
 /// An objects folder of packs, each holding its `entries` in order, the
 /// one at each place named by `names` at that place, through an index of
 /// its own.
-fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
+pub(super) fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
     let listed: Vec<_> = packs
         .iter()
         .map(|entries| (names[..entries.len()].to_vec(), entries.clone()))
@@ -116,7 +116,7 @@ fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
 type Pack = (Vec<[u8; 20]>, Vec<Vec<u8>>);
 
 /// What reading an object answers: its data, or what refused it.
-type Read = Result<Option<Vec<u8>>, String>;
+pub(super) type Read = Result<Option<Vec<u8>>, String>;
 
 /// The same, each pack's entries named by the names beside them.
 fn packed_as(packs: &[Pack]) -> Removed {
@@ -157,7 +157,7 @@ fn packed_as(packs: &[Pack]) -> Removed {
 /// `seconds`. A panic's own message prints with the test's output, as the
 /// thread's does. A read that takes too long is left to run: a thread
 /// can't be stopped from outside, and the test's process ends it.
-fn within<T: Send + 'static>(
+pub(super) fn within<T: Send + 'static>(
     seconds: u64,
     read: impl FnOnce() -> T + Send + 'static,
 ) -> Result<T, &'static str> {
@@ -275,7 +275,7 @@ fn a_delta_over_a_base_named_is_read_as_often_as_asked() {
     assert_eq!(
         (first, second),
         (Ok(Some(b"x".to_vec())), Ok(Some(b"x".to_vec()))),
-        "a delta read again took its base, read before, for one being read"
+        "a delta read again wasn't read as the first time was, its base kept or marked wrongly"
     );
 }
 
@@ -398,7 +398,7 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
 
 /// What reading each of `names` from a store opened once answers, and how
 /// many copies it marked bad by the end.
-fn read_each(objects: &std::path::Path, names: &[[u8; 20]]) -> (Vec<Read>, usize) {
+pub(super) fn read_each(objects: &std::path::Path, names: &[[u8; 20]]) -> (Vec<Read>, usize) {
     let mut odb = Odb::open(objects);
     let read = names
         .iter()
@@ -442,10 +442,10 @@ fn a_base_whose_copies_were_passed_over_passes_over_the_next_copy_naming_it() {
     let objects = folders.0[0].clone();
     let (read, bad) = within(20, move || read_each(&objects, &names)).expect("the reads ended");
     assert_eq!(
-        (read.iter().all(Result::is_err), bad),
-        (true, 0),
-        "a chain coming round read an object no copy holds, or marked a copy \
-         whose base was passed over: {read:?}"
+        (read.clone(), bad),
+        (vec![Err("delta base cycle".into()); 2], 0),
+        "a chain coming round wasn't refused for coming round, or marked a copy whose \
+         base was passed over: {read:?}"
     );
 }
 
@@ -465,9 +465,41 @@ fn a_copy_passed_over_is_read_once_a_find_however_many_copies_name_its_object() 
     let objects = folders.0[0].clone();
     let (read, bad) = within(20, move || read_each(&objects, &names[..1])).expect("the read ended");
     assert_eq!(
-        (read.iter().all(Result::is_err), bad),
-        (true, 0),
-        "a chain coming round read an object no copy holds, or marked a copy: {read:?}"
+        (read.clone(), bad),
+        (vec![Err("delta base cycle".into())], 0),
+        "a chain coming round wasn't refused for coming round, or marked a copy: {read:?}"
+    );
+}
+
+#[test]
+fn a_base_spent_is_looked_up_once_a_find_however_many_copies_name_it() {
+    // Each name a delta over the next in every pack, the last over the
+    // first in one: each name's copies past its first name a base spent.
+    let (rungs, packs) = (20, 6);
+    let names = names(rungs);
+    let over_next: Vec<Vec<u8>> = (0..rungs).map(|at| over(names[(at + 1) % rungs])).collect();
+    let mut listed = vec![(names.clone(), over_next.clone())];
+    for _ in 1..packs {
+        listed.push((names[..rungs - 1].to_vec(), over_next[..rungs - 1].to_vec()));
+    }
+    let folders = packed_as(&listed);
+    let objects = folders.0[0].clone();
+    let (read, lookups) = within(20, move || {
+        super::chain::LOOKUPS.with(|lookups| lookups.set(0));
+        let read = read_from(&objects, names[0]);
+        (read, super::chain::LOOKUPS.with(std::cell::Cell::get))
+    })
+    .expect("the read ended");
+    // Once a find, each name's copies take one lookup each and one more
+    // to find there are no more; looked up again for each copy naming it,
+    // they'd take as many again for each of the packs.
+    assert_eq!(
+        (read, lookups),
+        (
+            Err("delta base cycle".into()),
+            (rungs - 1) * (packs + 1) + 2
+        ),
+        "a base spent was looked up again for a copy naming it"
     );
 }
 
@@ -540,27 +572,6 @@ fn a_chain_placed_or_mixed_is_read_to_its_limit_and_refused_past_it() {
             )),
             "a chain past its limit wasn't refused, marked a copy, or one at it wasn't read \
              (named bases among placed ones: {mixed})"
-        );
-    }
-}
-
-#[test]
-fn a_size_or_base_distance_past_64_bits_is_refused() {
-    let names = names(1);
-    // A blob whose size runs on past 64 bits, then a delta whose base
-    // lies further back than 64 bits can say.
-    let mut size = vec![0xbf];
-    size.extend([0xff; 10]);
-    size.push(1);
-    let mut distance = vec![0x64];
-    distance.extend([0xff; 10]);
-    distance.push(0x7f);
-    for (entry, refused) in [(size, "pack entry size"), (distance, "delta offset")] {
-        let folders = packed(&names, &[vec![entry]]);
-        assert_eq!(
-            read_from(&folders.0[0], names[0]),
-            Err(refused.into()),
-            "an entry past 64 bits wasn't refused as its {refused}"
         );
     }
 }

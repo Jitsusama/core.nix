@@ -272,26 +272,33 @@ impl Store {
 }
 
 /// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
+///
+/// What it inflates to is grown as the stream inflates rather than made
+/// at the size its header says, so a size no stream fills, however large,
+/// takes no more memory than the stream gives before it ends.
 fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
-    let mut out = vec![0; size];
-    let mut written = 0;
-    let mut chunk = vec![0; (size + 64).clamp(256, 1 << 16)];
+    let mut out = Vec::with_capacity(size.min(TRUSTED_SIZE));
+    let mut window = vec![0; size.min(1 << 16)];
+    let mut chunk = vec![0; size.saturating_add(64).clamp(256, 1 << 16)];
     loop {
         let got = file.read_at(&mut chunk, offset)?;
         if got == 0 {
             return Err(invalid("pack ends inside an object"));
         }
         let mut input = &chunk[..got];
-        while !input.is_empty() {
-            let result = inflate(&mut state, input, &mut out[written..], MZFlush::None);
-            written += result.bytes_written;
+        // Read on past the chunk's end too, while the stream still holds
+        // what it inflated past the window's.
+        loop {
+            let room = (size - out.len()).min(window.len());
+            let result = inflate(&mut state, input, &mut window[..room], MZFlush::None);
+            out.extend_from_slice(&window[..result.bytes_written]);
             input = &input[result.bytes_consumed..];
             offset += result.bytes_consumed as u64;
             match result.status {
-                Ok(MZStatus::StreamEnd) if written == size => return Ok(out),
+                Ok(MZStatus::StreamEnd) if out.len() == size => return Ok(out),
                 Ok(MZStatus::StreamEnd) => return Err(invalid("pack object's size")),
-                _ if written == size => return Ok(out),
+                _ if out.len() == size => return Ok(out),
                 Ok(_) | Err(MZError::Buf) => {}
                 Err(_) => return Err(invalid("pack object's stream")),
             }
@@ -303,6 +310,11 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
 }
 
 /// Applies a delta to its base.
+///
+/// Its sizes are refused once they'd run past a word, and a command
+/// writing past the size it says it makes is refused before it's written,
+/// as git's `patch_delta` refuses one, so a delta takes no more memory
+/// than the size it says, and the bytes its commands give.
 pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     let mut at = 0;
     let mut size = || -> io::Result<usize> {
@@ -310,6 +322,9 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
         let mut shift = 0;
         loop {
             let byte = *delta.get(at).ok_or_else(|| invalid("delta size"))?;
+            if shift > usize::BITS - 7 {
+                return Err(invalid("delta size"));
+            }
             at += 1;
             value |= usize::from(byte & 0x7f) << shift;
             shift += 7;
@@ -323,7 +338,7 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     if base_size != base.len() {
         return Err(invalid("delta's base size"));
     }
-    let mut out = Vec::with_capacity(out_size);
+    let mut out = Vec::with_capacity(out_size.min(TRUSTED_SIZE));
     while at < delta.len() {
         let cmd = delta[at];
         at += 1;
@@ -350,13 +365,13 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
             let piece = base
                 .get(offset..offset + len)
                 .ok_or_else(|| invalid("delta copy range"))?;
-            out.extend_from_slice(piece);
+            write_within(&mut out, piece, out_size)?;
         } else if cmd != 0 {
             let len = usize::from(cmd);
             let piece = delta
                 .get(at..at + len)
                 .ok_or_else(|| invalid("delta insert"))?;
-            out.extend_from_slice(piece);
+            write_within(&mut out, piece, out_size)?;
             at += len;
         } else {
             return Err(invalid("delta opcode"));
@@ -366,6 +381,16 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
         return Err(invalid("delta's result size"));
     }
     Ok(out)
+}
+
+/// Writes a delta's `piece` to `out`, refused should it run `out` past the
+/// size the delta says it makes.
+fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> {
+    if piece.len() > size - out.len() {
+        return Err(invalid("delta's result size"));
+    }
+    out.extend_from_slice(piece);
+    Ok(())
 }
 
 /// Every store a repository reads, its own first.
@@ -401,6 +426,10 @@ const TREE_BUDGET: usize = 32 << 20;
 /// How many bytes of bases are kept before starting again: git's own
 /// `core.deltaBaseCacheLimit` by default.
 const BASE_BUDGET: usize = 96 << 20;
+
+/// How much of a size a pack's header or a delta says is made room for
+/// before anything is written: past it, room grows only as bytes come.
+const TRUSTED_SIZE: usize = 1 << 20;
 
 /// Where an object sits in a pack: the store, the pack and its offset.
 type Place = (usize, usize, u64);
@@ -465,10 +494,16 @@ impl Odb {
 
     /// Keeps `object`, read as `oid`, should it be a tree.
     fn keep_tree(&mut self, oid: &Oid, object: &Object) {
-        if object.kind != Kind::Tree {
+        self.keep_tree_within(oid, object, TREE_BUDGET);
+    }
+
+    /// The same, keeping no more than `budget` bytes of trees, and no tree
+    /// larger.
+    fn keep_tree_within(&mut self, oid: &Oid, object: &Object, budget: usize) {
+        if object.kind != Kind::Tree || object.data.len() > budget {
             return;
         }
-        if self.tree_bytes + object.data.len() > TREE_BUDGET {
+        if self.tree_bytes + object.data.len() > budget {
             self.trees.clear();
             self.tree_bytes = 0;
         }
@@ -479,13 +514,16 @@ impl Odb {
     /// Keeps `object`, read at `place` as a delta's base, should it be one
     /// deltas build on most: trees and commits.
     fn keep_base(&mut self, place: Place, object: &Object) {
-        if object.kind == Kind::Blob {
+        self.keep_base_within(place, object, BASE_BUDGET);
+    }
+
+    /// The same, keeping no more than `budget` bytes of bases, and no base
+    /// larger.
+    fn keep_base_within(&mut self, place: Place, object: &Object, budget: usize) {
+        if object.kind == Kind::Blob || object.data.len() > budget {
             return;
         }
-        if object.data.len() > BASE_BUDGET {
-            return;
-        }
-        if self.base_bytes + object.data.len() > BASE_BUDGET {
+        if self.base_bytes + object.data.len() > budget {
             self.bases.clear();
             self.base_bytes = 0;
         }
@@ -598,3 +636,7 @@ mod tests;
 #[cfg(test)]
 #[path = "odb_delta_tests.rs"]
 mod delta_tests;
+
+#[cfg(test)]
+#[path = "odb_bound_tests.rs"]
+mod bound_tests;

@@ -14,6 +14,20 @@ use std::os::unix::fs::FileExt;
 /// The copies passed over for the rest of a find, and why each was.
 type Skipped = HashMap<Place, (io::ErrorKind, String)>;
 
+/// The bases a find spent every copy of, each with whether one was passed
+/// over and what refused it. Copies stay marked bad, and passed over, for
+/// the rest of the find, so a base spent once would be spent again just
+/// as it was: a copy naming it again ends as the first did, without its
+/// copies looked up again.
+type Spent = HashMap<Oid, (bool, io::ErrorKind, String)>;
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread's finds asked a store for a copy, which
+    /// the tests count to hold a find's work to the copies there are.
+    pub(super) static LOOKUPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// An object being found by name, the one asked for or a base a delta
 /// above it names, and how far the finding has got.
 struct Search {
@@ -102,11 +116,14 @@ impl Odb {
     /// way, so it's only passed over, for this find alone, and the next
     /// copy read; a base spent with a copy passed over passes over the
     /// copy that named it in turn. Each copy is passed over at most once a
-    /// find, so a find ends after reading each copy at most once.
+    /// find, so a find ends after reading each copy at most once, and a
+    /// base spent ends each copy naming it after as it ended the first, so
+    /// its copies are looked up once a find, however many copies name it.
     pub(super) fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
         let mut searches = vec![Search::new(*oid, 0)];
         let mut searching = HashSet::from([*oid]);
         let mut skipped = Skipped::new();
+        let mut spent = Spent::new();
         // The base a search above handed down, or a tree already read.
         let mut handed = None;
         loop {
@@ -120,14 +137,18 @@ impl Odb {
                     // A base no store holds ends the copy of the delta that
                     // named it, below.
                     Next::Spent => {
-                        let spent = end(&mut searches, &mut searching);
+                        let ended = end(&mut searches, &mut searching);
                         if searches.is_empty() {
-                            return spent.refused.map_or(Ok(None), Err);
+                            return ended.refused.map_or(Ok(None), Err);
                         }
-                        let refused = spent
+                        let refused = ended
                             .refused
                             .unwrap_or_else(|| invalid("delta base missing"));
-                        if spent.skipped {
+                        spent.insert(
+                            ended.oid,
+                            (ended.skipped, refused.kind(), refused.to_string()),
+                        );
+                        if ended.skipped {
                             Ok(Reached::Skipped(refused))
                         } else {
                             Err(refused)
@@ -149,6 +170,13 @@ impl Odb {
                 Ok(Reached::Named(base)) => {
                     if let Some(tree) = self.tree(&base) {
                         handed = Some(tree);
+                    } else if let Some((passed_over, kind, said)) = spent.get(&base) {
+                        let error = io::Error::new(*kind, said.clone());
+                        if *passed_over {
+                            skip(&mut searches[at], &mut skipped, &error);
+                        } else {
+                            self.fail(&mut searches[at], &error);
+                        }
                     } else if searching.insert(base) {
                         let above = searches[at].depth();
                         searches.push(Search::new(base, above));
@@ -182,6 +210,8 @@ impl Odb {
     /// since its base may be sound under another copy of a base on the way.
     fn next_copy(&self, search: &mut Search, skipped: &Skipped) -> Next {
         while let Some(store) = self.stores.get(search.store) {
+            #[cfg(test)]
+            LOOKUPS.with(|lookups| lookups.set(lookups.get() + 1));
             let Some((pack, offset)) =
                 store.locate(&search.oid, &search.passed, &mut search.refused)
             else {
@@ -314,7 +344,8 @@ impl Odb {
 
 /// A pack entry's kind, the size of what it inflates to, and how many of
 /// `head`'s bytes its header takes, refused as git's
-/// `unpack_object_header_buffer` refuses one whose size runs past a word.
+/// `unpack_object_header_buffer` refuses one whose size runs past a word:
+/// once a byte's seven bits would shift past it, before any are dropped.
 fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
     let byte = *head.first().ok_or_else(|| invalid("pack entry"))?;
     let code = (byte >> 4) & 7;
@@ -324,7 +355,7 @@ fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
     let mut at = 1;
     while more {
         let byte = *head.get(at).ok_or_else(|| invalid("pack entry size"))?;
-        if shift >= usize::BITS {
+        if shift > usize::BITS - 7 {
             return Err(invalid("pack entry size"));
         }
         at += 1;
