@@ -14,6 +14,13 @@
 # usage: lookups.sh <state folder> <slow, in ms> <names, by commas> [servers, by commas]
 set -euo pipefail
 
+# A round that ends early says so as an error too, since quiet means well
+# and bash's own words go only to the log file, which health never reads.
+trap 'ended=$?; if [[ ${ended} -ne 0 ]]; then
+  logger -p user.err -t name-lookups "name-lookups: a round ended early (exit ${ended})," \
+    "so its names went unchecked; ~/Library/Logs/name-lookups.log says why" || true
+fi' EXIT
+
 state=$1
 slow=$2
 IFS=, read -r -a names <<<"$3"
@@ -34,10 +41,10 @@ mkdir -p "${state}"
 # "<check> <rounds> <red> <outcome> <wrong rounds>". A count that isn't a
 # number is read as none, since bash's arithmetic would run what it holds,
 # and so is a zero before other digits, as in 09, which it reads as octal
-# and refuses past 7, dropping every check after it from the round while
-# the round still saves; a line naming no check is passed over, since
-# bash refuses an empty key and the round would end before it kept
-# anything.
+# and refuses past 7: in a round where that check is wrong, the refusal
+# drops it and the names after it, though mDNSResponder is still judged and
+# the round saves. A line naming no check is passed over, since bash
+# refuses an empty key and the round would end before it kept anything.
 declare -A running=() red=() kind=() bad=()
 if [[ -r "${state}/running" ]]; then
   while read -r check count was outcome any; do
@@ -108,6 +115,17 @@ since() {
   echo $(((ended - started) / 1000))
 }
 
+# What a probe's exit says when it gave no address, as `why`: timeout's
+# 124 is no answer in time, and 125 to 127 a program that couldn't run,
+# which is no lookup at all, so it's never said as the name failing.
+why() {
+  case $1 in
+    124) why="no answer within ${within} s" ;;
+    125 | 126 | 127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;
+    *) why="" ;;
+  esac
+}
+
 # Whether a lookup's time is past the slow mark.
 outcome() {
   if [[ $1 -gt ${slow} ]]; then
@@ -121,28 +139,35 @@ for name in ${names[@]+"${names[@]}"}; do
   started=${EPOCHREALTIME}
   # dscacheutil asks the system's resolver, as getaddrinfo does, and prints
   # an address line for each address, or nothing for a name it can't find.
-  answer=$(timeout "${within}" dscacheutil -q host -a name "${name}" 2>/dev/null) || answer=""
+  ran=0
+  answer=$(timeout "${within}" dscacheutil -q host -a name "${name}" 2>/dev/null) || ran=$?
   took=$(since "${started}")
   check="system:${name}"
-  if grep -qE '^ipv?6?_address:' <<<"${answer}"; then
+  if [[ ${ran} -eq 0 ]] && grep -qE '^ipv?6?_address:' <<<"${answer}"; then
     result=$(outcome "${took}")
     judge "${check}" "${result}" "the system looked up ${name} in ${took} ms"
   else
-    judge "${check}" failed "the system couldn't look up ${name} (${took} ms)"
+    why "${ran}" dscacheutil
+    judge "${check}" failed "the system couldn't look up ${name} (${took} ms${why:+, ${why}})"
   fi
   last+=("${check} ${took}")
   for server in ${servers[@]+"${servers[@]}"}; do
     started=${EPOCHREALTIME}
+    ran=0
     answer=$(timeout "${within}" dig +tries=1 +time=5 +noall +answer "@${server}" "${name}" A \
-      2>/dev/null) || answer=""
+      2>/dev/null) || ran=$?
     took=$(since "${started}")
     check="${server}:${name}"
-    # An address record, not only a CNAME pointing at a name that has none.
-    if grep -qE '[[:space:]]IN[[:space:]]+A[[:space:]]' <<<"${answer}"; then
+    # An IPv4 address record, not only a CNAME pointing at a name that has
+    # none; a server is asked for A alone, so one timing a name is one
+    # answer.
+    if [[ ${ran} -eq 0 ]] && grep -qE '[[:space:]]IN[[:space:]]+A[[:space:]]' <<<"${answer}"; then
       result=$(outcome "${took}")
       judge "${check}" "${result}" "${server} answered ${name} in ${took} ms"
     else
-      judge "${check}" failed "${server} gave no address for ${name} (${took} ms)"
+      why "${ran}" dig
+      judge "${check}" failed \
+        "${server} gave no IPv4 address for ${name} (${took} ms${why:+, ${why}})"
     fi
     last+=("${check} ${took}")
   done

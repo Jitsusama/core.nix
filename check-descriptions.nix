@@ -2178,13 +2178,14 @@
   lookups-say-a-name-that-fails-or-takes-long = ''
     a Mac's account times its names each minute through the system's resolver and each server
     named, at Standard, given the slow mark, names and servers in order, and a round over
-    stand-ins says a failed lookup, a server giving no address (a CNAME alone, or a failing dig)
-    or a slow lookup from its second round running, each kind counted apart so a failure then
-    one cold answer says nothing, one failing and lagging by turns from its third, and a busy
+    stand-ins says a failed lookup, one out of time or unable to run saying so, a server giving
+    no IPv4 address (a CNAME, an IPv6 address or nothing alone, or a dig that fails) or a slow
+    lookup from its second round running, each kind counted apart so a failure then one cold
+    answer says nothing, one failing and lagging by turns from its third, and a busy
     mDNSResponder, by its path or its name, from its fifth, as errors opening with name-lookups,
     each well again once, and nothing while all is well; a state file's blank line, a word for
-    a count or a zero before a count's other digits is read past, never run, ending the round
-    or dropping the checks after it
+    a count or a zero before a count's other digits is read past, never run, rather than ending
+    the round or dropping checks from it; and a round that ends early says so as an error
   '';
   looks-probe-finds-what-a-deploy-lost = ''
     the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a
