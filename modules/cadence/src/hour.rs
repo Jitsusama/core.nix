@@ -17,6 +17,7 @@
 
 mod card;
 mod good;
+mod ledger;
 mod lines;
 mod measures;
 mod moved;
@@ -266,7 +267,7 @@ fn gather(
     let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
-    let asks = text(&mission.join("asks.jsonl"));
+    let (asks, asks_unread) = ledger::whole(&mission.join("asks.jsonl"), folder);
     let switches = text(&state_home.join("integration/switches.jsonl"));
     // The work system's findings count against their owners, and one
     // naming none is the orchestrator's to assign.
@@ -350,6 +351,7 @@ fn gather(
         },
         now,
     ));
+    ledger::unless_whole(&mut all, asks_unread.as_deref());
     Ok(all)
 }
 
