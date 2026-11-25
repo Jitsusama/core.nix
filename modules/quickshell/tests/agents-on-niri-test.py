@@ -4481,46 +4481,9 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         left_the_node("s-asking")
 
 
-def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
-    """Wait for Joel's answer to reach the asking cell's inbox, the Talk reading it answered.
-
-    It takes his first answer, so a second Return while it still asks goes nowhere. Gives the
-    answer's steer, alone in the inbox beside what was there before.
-    """
-    deadline = time.monotonic() + 10
-    while not (told := sorted(set(inbox.glob("*.json")) - steered)):
-        assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
-        time.sleep(0.1)
-    # The Talk says the choice his words picked, by its label, so he sees which it took.
-    shell.launcher_until(
-        lambda shown: any(
-            (one.get("line"), one.get("stands")) == ("Right", "answered")
-            for one in cast("list[Json]", shown["talks"] or [])
-        )
-    )
-    shell.launcher_until(lambda shown: shown["typed"] == "")
-    shell.send_chars("left")
-    shell.launcher_until(lambda shown: shown["typed"] == "left")
-    shell.send_key("ret")
-    shell.launcher_until(
-        lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
-    )
-    # Refused, nothing is kept, so the Talk still held shows his first answer and no other.
-    shown = shell.showing()
-    talks = [(one.get("line"), one.get("stands")) for one in shown["talks"] or []]
-    assert shown["asking"], shown
-    assert ("Right", "answered") in talks, talks
-    assert not [one for one in talks if one[0] == "Left"], talks
-    assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
-    # And his words go: the field empties on any Return, so only a Talk opened again shows it.
-    shell.close_launcher()
-    did = followed(shell, "talkTo", inbox.name)
-    assert did["done"], did
-    shell.launcher_until(lambda shown: shown["asking"])
-    # Words kept would be put back as the Talk lays out; a second lets that pass first.
-    time.sleep(1)
-    assert shell.showing()["typed"] == "", "refused words came back"
-    return told
+# What the agents daemon says of an answer from anyone but the shell's own unit, as the shell
+# here runs outside it (modules/agents/src/main.rs's ONLY_THE_SHELL).
+ONLY_THE_SHELL = "only the launcher answers for Joel here"
 
 
 def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
@@ -4531,8 +4494,10 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
     Joel opened a Talk on a cell asking him from the realm's map and found nothing of its
     question there, and nothing said after he typed (13:15 on 2026-11-24: "no feedback at
     all"). The Talk now leads with what it asks and the choices it takes; words naming none
-    are let go, the foot saying what it takes, and a choice reaches its inbox as Joel's answer
-    to the want he was shown, then reads answered.
+    are let go, the foot saying what it takes, and a choice goes to the agents daemon as Joel's
+    answer to the want he was shown. The daemon takes an answer only from the shell's own unit,
+    so no agent answers as him; the shell here runs outside it, so the daemon refuses, and the
+    Talk and the foot say why. An answer delivered is the desktop VM's (answered_in_place).
     """
     # As the agents daemon writes a time (clock.rs's text_of), so the want it names is known.
     since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -4584,10 +4549,16 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         shell.send_chars("right")
         shell.launcher_until(lambda shown: shown["typed"] == "right")
         shell.send_key("ret")
-        told = answered_once(shell, inbox, steered)
-        said = json.loads(told[0].read_text())
-        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
-        assert said["want"] == f"question@{since}", said
+        shell.launcher_until(
+            lambda shown: (
+                ONLY_THE_SHELL in shown["footer"].replace("\xa0", " ")
+                and any(
+                    one.get("line") == "Right" and ONLY_THE_SHELL in str(one.get("stands"))
+                    for one in cast("list[Json]", shown["talks"] or [])
+                )
+            )
+        )
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
     finally:
         (PRESENCE / "choose.json").unlink(missing_ok=True)
         for one in set(inbox.glob("*.json")) - steered:

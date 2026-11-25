@@ -1,5 +1,6 @@
 use std::io::{BufRead, BufReader, ErrorKind, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::thread;
 
 use super::*;
 
@@ -24,9 +25,9 @@ fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         .change(|kept| kept.begun("a-0", clock::now_ms()))
         .expect("a start kept");
     let stood = Arc::new(starts_stopped::Told::new(told.clone()));
-    sprouts_for_the_shell(
+    for_the_shell_alone(
         &shared,
-        Some(at_node),
+        (Some(at_node), Wants::default()),
         keeping,
         told,
         (stood, Said::default()),
@@ -102,7 +103,13 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
     let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
     let words = Words::from_vocabulary(include_str!("../tests/words.json"))
         .expect("the launcher's words read");
-    sprouts_for_the_shell(&shared, Some(at_node), keeping, told, (stood, words.starts));
+    for_the_shell_alone(
+        &shared,
+        (Some(at_node), Wants::default()),
+        keeping,
+        told,
+        (stood, words.starts),
+    );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
     serve::accept(shared, listener);
@@ -130,6 +137,135 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
+/// What ASKER asks Joel, as the loop holds it, and Joel's answer to it.
+fn asking() -> (Wants, Value) {
+    let wants = Wants::default();
+    let want = json!({"kind": wants::KIND, "address": "ASKER",
+        "answers": {"want": "question@2026-11-25T09:00:00.000Z"}});
+    wants.hold([want].iter());
+    let said = json!({"ask": wants::ASK, "address": "asker",
+        "want": "question@2026-11-25T09:00:00.000Z", "value": "push"});
+    (wants, said)
+}
+
+/// An answer on the daemon's own socket, from a connection that isn't
+/// the shell's (this test's), asks the node nothing, so an agent can't
+/// answer its own ask as Joel by asking the daemon (ISXEG8's
+/// R-agent-answers-own-ask).
+#[test]
+fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
+    let folder = std::env::temp_dir().join(format!("agents-answer-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder for the sockets");
+    let at_node = folder.join("node.sock");
+    let node = UnixListener::bind(&at_node).expect("a node's socket");
+    node.set_nonblocking(true).expect("the node never waits");
+    let shared = Shared::new(DOMAIN, Box::new(|_| None));
+    let (told, _heard) = mpsc::channel();
+    let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+    let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+    let (wants, mut said) = asking();
+    for_the_shell_alone(
+        &shared,
+        (Some(at_node), wants),
+        keeping,
+        told,
+        (stood, Said::default()),
+    );
+    let socket = folder.join("agents.sock");
+    let listener = serve::listen(&socket).expect("the daemon's socket");
+    serve::accept(shared, listener);
+    let mut asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+    said["id"] = json!(1);
+    writeln!(asking, "{said}").expect("the answer is asked");
+    let mut line = String::new();
+    BufReader::new(&asking)
+        .read_line(&mut line)
+        .expect("an answer");
+    let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+    assert_eq!(
+        (&answer["error"]["code"], &answer["error"]["message"]),
+        (&json!("refused"), &json!(ONLY_THE_SHELL)),
+        "refused in its own words, whatever the kernel lets be told of who asked: {answer}"
+    );
+    assert!(
+        node.accept()
+            .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
+        "the node was never asked"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// An answer the shell asks reaches the node as Joel's answer to the
+/// want he was shown, and one any other asks never does, whatever it
+/// names.
+#[test]
+fn only_the_shells_answer_reaches_the_node() {
+    let (wants, said) = asking();
+    let socket = std::env::temp_dir().join(format!("agents-answered-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&socket);
+    let listener = UnixListener::bind(&socket).expect("a socket to stand in for the node");
+    listener
+        .set_nonblocking(true)
+        .expect("the node never waits");
+    let refused = answered(
+        Err("not the shell".to_owned()),
+        &wants,
+        &said,
+        Some(&socket),
+    );
+    assert_eq!(
+        refused,
+        json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}}),
+        "another's answer is refused"
+    );
+    assert!(
+        listener
+            .accept()
+            .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
+        "the node was never asked for another's answer"
+    );
+    listener.set_nonblocking(false).expect("the node waits now");
+    let node = thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("the answer asks the node");
+        let mut answering = stream.try_clone().expect("a stream to answer on");
+        let mut asks = BufReader::new(stream).lines();
+        asks.next().expect("a hello").expect("a line");
+        writeln!(answering, r#"{{"id": 1, "hello": {{}}}}"#).expect("the hello answered");
+        let ask = asks.next().expect("a steer").expect("a line");
+        writeln!(
+            answering,
+            r#"{{"id": 2, "steered": {{"machine": "skiff"}}}}"#
+        )
+        .expect("the steer answered");
+        ask
+    });
+    let taken = answered(Ok(()), &wants, &said, Some(&socket));
+    let ask: Value =
+        serde_json::from_str(&node.join().expect("the node stood in")).expect("the steer is JSON");
+    let _ = std::fs::remove_file(&socket);
+    assert_eq!(
+        taken,
+        json!({"steered": {"machine": "skiff"}}),
+        "the node's answer"
+    );
+    assert_eq!(
+        (
+            &ask["address"],
+            &ask["steer"]["act"],
+            &ask["steer"]["value"],
+            &ask["steer"]["from"]
+        ),
+        (
+            &json!("ASKER"),
+            &json!("answer"),
+            &json!("push"),
+            &json!("joel")
+        ),
+        "Joel's answer to the want he was shown: {ask}"
+    );
+}
+
 /// Places on the daemon's own socket, from a connection that isn't
 /// the shell's (this test's), asks the node nothing, so no agent reads
 /// the folders the node lists for Joel.
@@ -145,9 +281,9 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
     let (told, _heard) = mpsc::channel();
     let stood = Arc::new(starts_stopped::Told::new(told.clone()));
     let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
-    sprouts_for_the_shell(
+    for_the_shell_alone(
         &shared,
-        Some(at_node),
+        (Some(at_node), Wants::default()),
         keeping,
         told,
         (stood, Said::default()),

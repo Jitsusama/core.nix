@@ -6,7 +6,8 @@
 //! answers it offers to a single question (harness #1394), the one it
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
-//! too (`answer_of`), which finds the want by the session's address; the
+//! too, by the shell alone (`Wants::answer`), and `answer_of` finds the
+//! want by the session's address; the
 //! shell names the want it was shown, and one the session no longer asks
 //! is refused. Each says too whether it rings the
 //! shell's bell (`rings`) and who it is (`known`), by which the shell
@@ -33,6 +34,10 @@ pub const KIND: &str = "want";
 
 /// The place its keys are under, Agents'.
 const PLACE: &str = "agents";
+
+/// The ask that answers a want, which only the shell may make, since
+/// the node takes its answer as Joel's.
+pub const ASK: &str = "answer";
 
 /// The want records served last, for answering one: shared between the
 /// daemon's loop, which holds them, and its asks.
@@ -319,7 +324,7 @@ fn answers(wants: &Value) -> Value {
 /// naming no `want`, or another than it asks, so words given to what he
 /// was shown never answer a newer ask. None for any other ask.
 pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<Value, String>> {
-    if said["ask"] != "answer" {
+    if said["ask"] != ASK {
         return None;
     }
     let address = said["address"].as_str().unwrap_or("").to_uppercase();
