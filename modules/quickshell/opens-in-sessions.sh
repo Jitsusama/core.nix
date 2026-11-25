@@ -14,11 +14,14 @@
 # A kitty started before its unit listened has no socket until the next
 # login, so until then it's reached the old way, but only while it is the
 # unit's own main process, which nothing else can be. A kitty its unit is
-# starting again, 5 s after it ended, is waited on until 20 s past this
-# start, by the clock rather than by counting looks, since each look asks
-# systemd and can be slow under a cold boot's load, and the shell's
-# answerPatience counts on that bound. So a window asked of it meanwhile
-# opens once it's back rather than never;
+# starting again, 5 s after it ended, is waited on for up to 20 s from
+# this start, its last look included, which the shell's answerPatience
+# counts on: by the clock rather than by counting looks, since each look
+# asks systemd and can be slow under a cold boot's load, so each is cut
+# at 2 s and none begins past 17.8 s. A time sync stepping the clock back
+# meanwhile leaves a hundred looks to bound it; one stepping it forward
+# gives up early, and the next press asks again. So a window asked of it
+# meanwhile opens once it's back rather than never;
 # with neither by then, a kitty that turns the launch down or can't be
 # reached, or an old kitty that opens nothing, the journal says why, and
 # the shell is told, so it stops counting a viewer (pi-hosted) as coming
@@ -51,6 +54,13 @@ if [ -z "${OPENS_IN_SESSIONS_ASKED:-}" ] && [ /proc/self/fd/2 -ef /dev/null ] &&
 fi
 asked=${OPENS_IN_SESSIONS_ASKED:-$asked}
 unset OPENS_IN_SESSIONS_ASKED
+# Only digits are a time. Any other, inherited or from a date that has no
+# ms, gives way to the clock in whole seconds, so the arithmetic below
+# never evaluates it as code.
+case $asked in
+  '' | *[!0-9]*) asked=$(date +%s)000 ;;
+  *) ;;
+esac
 sock=$1
 class=$2
 shift 2
@@ -62,31 +72,42 @@ fi
 
 # Whether the unit's main process is a kitty from before it listened.
 old() {
-  pid=$(systemctl --user show --property=MainPID --value sessions-kitty.service)
+  pid=$(timeout 2 systemctl --user show --property=MainPID --value sessions-kitty.service)
   [ "${pid:-0}" -gt 0 ] &&
     tr "\0" " " < "/proc/$pid/cmdline" | grep -q -- "--instance-group pi-sessions"
 }
 
-until [ -S "$sock" ] || old; do
+reached=
+looks=0
+until [ -S "$sock" ]; do
+  if old; then
+    reached=old
+    break
+  fi
+  looks=$((looks + 1))
   now=$(date +%s%3N)
-  [ "$now" -lt $((asked + 20000)) ] || break
+  if [ "$now" -ge $((asked + 17800)) ] || [ "$looks" -ge 100 ]; then
+    break
+  fi
   sleep 0.2
 done
 
 if [ -S "$sock" ]; then
   # kitten's words are kept to tell its wait running out from a launch
-  # turned down, and still reach the journal.
+  # turned down, and reach the journal whether it opened the window or not.
   said=$(kitten @ --to "unix:$sock" launch --response-timeout 60 --type=os-window \
     --os-window-class "$class" --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" \
-    2>&1 > /dev/null) && exit 0
-  [ -z "$said" ] || echo "$said" >&2
+    2>&1 > /dev/null)
+  launched=$?
+  [ -z "$said" ] || printf '%s\n' "$said" >&2
+  [ "$launched" -ne 0 ] || exit 0
   case $said in
     *"Timed out waiting for a response from kitty"*)
       echo "sessions: the sessions kitty didn't answer for $class in a minute" >&2
       ;;
     *) echo "sessions: the sessions kitty opened no $class" >&2 ;;
   esac
-elif old; then
+elif [ "$reached" = old ]; then
   systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
     env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \
     --directory "$dir" "$@" && exit 0
