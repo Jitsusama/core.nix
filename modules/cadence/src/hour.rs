@@ -299,6 +299,7 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::said_none(misses, now));
+    all.push(measures::holds::read(state_home, &asks, now));
     all.extend(found);
     all.extend(rounds_per_merge(
         state_home,
