@@ -1931,7 +1931,7 @@ Provider {
                 lateEnded(how, late);
             else
                 // Its record ended it first (sproutsKept), and was told then.
-                sproutJournal(`answered after its record, ${Sprouting.reach(how,
+                sproutJournal(`heard after its record, ${Sprouting.reach(how,
                     sproutWords()).journal}`);
             sproutTold([token]);
         };
@@ -2054,10 +2054,13 @@ Provider {
     // (`{ key, asked }`): no act waits on it, so it's said on its act unless
     // that was pressed since, refused or unheld it's told as a notice, and
     // held it's watched as a kept one is, so Joel hears when it's up; its
-    // keys long given back, it's said as one that shows in Agents.
+    // keys long given back, it's said as one that shows in Agents. Ended
+    // unanswered again, it's journalled only: the patience said so.
     function lateEnded(how, act) {
         const reach = Sprouting.reach(how, sproutWords());
         sproutJournal(`late, ${reach.journal}`);
+        if (how.unanswered === true)
+            return;
         if (Openings.saysOnAct(sproutPressed, act.key, act.asked))
             sproutSays(act.key, Sprouting.told(Openings.promised(how, { keys: -1 }),
                 sproutWords()));
