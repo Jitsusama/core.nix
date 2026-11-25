@@ -85,7 +85,9 @@ let
           cache_read = 0.3;
           most_output = 64000;
         };
-        spend_watch = "models";
+        # The one budget spend-watch answers for where it declares none,
+        # so the lend names one this account's spend-watch knows.
+        spend_watch = "default";
       };
       keyless = {
         upstream = "other-relay/agents.sock";
@@ -1702,7 +1704,7 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a lend capping no spend and pricing no model isn't written without them and warned of, its prices aren't read as defaulted, a budget naming no spend-watch budget or pricing none isn't warned of, a priced one or a machine lending only a forge is warned of, a model priced at nothing is taken, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a lend capping no spend and pricing no model isn't written without them and warned of, its prices aren't read as defaulted, a budget naming no spend-watch budget, one its account's spend-watch doesn't declare, one where it runs no spend-watch, or pricing none isn't warned of, a lend warned of isn't taken by the type and every assertion, the lender doesn't refuse a model's request where its machine caps no spend, its budget names no spend-watch budget or its model has no price, a priced one, one watched by a budget its account's spend-watch declares, or a machine lending only a forge is warned of, a model priced at nothing is taken, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
       (
         let
           # The machine whole, for its own pkgs, and its account.
@@ -1760,6 +1762,29 @@ in
               "            .join(&budget.upstream)"
             ]
             && lib.hasInfix "crate::place::login_runtime())" source;
+          # The lender refuses a model's request where its machine caps no
+          # spend, its budget names no spend-watch budget or its model has
+          # no price, and asks spend-watch of the one it names, which is
+          # all that lets a lend lacking one be warned of rather than
+          # refused and lend no model uncapped.
+          refusesUncapped =
+            lib.hasInfix "        Kind::Models => Some(spending(" source
+            && reads 3 [
+              "    let most_a_day = usd_a_day.and_then(millionths).ok_or_else(|| {"
+              "            403,"
+            ]
+            && reads 3 [
+              "    let watched = budget.spend_watch.as_deref().ok_or_else(|| {"
+              "            403,"
+            ]
+            && reads 9 [
+              "    let price = budget"
+              "        .prices"
+              "        .get(model)"
+              "        .ok_or_else(|| {"
+              "                403,"
+            ]
+            && lib.hasInfix "    spend_watch_allows(lender.runtime.as_deref(), watched)?;" source;
           parsing = ".map_err(|error| unparsed(&error)))";
           parses = reads 3 [
             "    fn written(&self) -> Result<Written, Refusal> {"
@@ -2289,6 +2314,10 @@ in
               };
             };
           };
+          # A models budget naming a spend-watch budget this account's
+          # spend-watch doesn't declare, which mycelium refuses as it does
+          # one naming none.
+          misnamed = withModels { spend_watch = "elsewhere"; };
           # A lend whose every models budget is priced and watched, and whose
           # machine is capped.
           priced = lending // {
@@ -2341,6 +2370,41 @@ in
           budgetWarned = "jitsusama.mycelium.lend.budgets.models names no prices";
           vmWarned = "jitsusama.mycelium.lend.vms'";
           lendWarned = lend: lib.filter (lib.hasPrefix "jitsusama.mycelium.lend") (warnings lend);
+          # The lend's warnings where the account's own settings add EXTRA:
+          # its spend-watch declaring a budget of its own, which leaves
+          # `default` undeclared, or spend-watch not run at all.
+          lendWarnedWith =
+            extra: lend:
+            lib.filter (lib.hasPrefix "jitsusama.mycelium.lend")
+              (account (bareNixos [
+                self.nixosModules.workstation
+                {
+                  home-manager.users.someone = {
+                    imports = [ extra ];
+                    jitsusama.mycelium = both // {
+                      inherit lend;
+                    };
+                  };
+                }
+              ])).warnings;
+          declaresProxy.jitsusama.spend-watch.budgets.proxy = {
+            label = "Proxy";
+            kind = "cap";
+            whose = "employer";
+            default = true;
+          };
+          runsNoSpendWatch.disabledModules = [ self.homeModules.spend-watch ];
+          watchingProxy = priced // {
+            budgets = priced.budgets // {
+              models = priced.budgets.models // {
+                spend_watch = "proxy";
+              };
+            };
+          };
+          refusedThrough =
+            why:
+            "jitsusama.mycelium.lend.budgets.models names default in spend_watch, ${why}, "
+            + "so mycelium refuses every model lent through it.";
         in
         evaluates home
         && given home.systemd.user.services.mycelium == holding
@@ -2388,12 +2452,15 @@ in
         && warnsOf alsoModels "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
         && !warnsOf forgeOnly vmWarned
         && !warnsOf forgeOnly "jitsusama.mycelium.lend.budgets.forge"
-        # Each lend warned of still meets every assertion, so its machine
-        # builds and lends what it can.
-        && lib.all (lend: evaluates (linux (both // { inherit lend; }))) [
+        && warnsOf misnamed "jitsusama.mycelium.lend.budgets.models names elsewhere in spend_watch,"
+        && refusesUncapped
+        # Each lend warned of is still taken by the option's type and every
+        # assertion, so its machine evaluates.
+        && lib.all takes [
           uncapped
           unwatched
           unpriced
+          misnamed
           alsoModels
           forgeOnly
         ]
@@ -2405,6 +2472,15 @@ in
             )
           ]
         && lendWarned priced == [ ]
+        && lendWarnedWith declaresProxy watchingProxy == [ ]
+        &&
+          lendWarnedWith declaresProxy priced == [
+            (refusedThrough "which this account's spend-watch doesn't declare")
+          ]
+        &&
+          lendWarnedWith runsNoSpendWatch priced == [
+            (refusedThrough "but this account runs no spend-watch")
+          ]
         && writes cacheUnpriced cacheUnpriced
         && lib.all (price: typeRefuses (lending // freeOf price)) [
           "input"

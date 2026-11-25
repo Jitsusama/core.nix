@@ -72,6 +72,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -534,7 +535,8 @@ in
             auth_header = "authorization";
             key = [ "''${models-key}/bin/models-key" ];
             prices.a-model = { input = 3; output = 15; most_output = 64000; };
-            spend_watch = "models";
+            # The one budget spend-watch answers for where it declares none.
+            spend_watch = "default";
           };
         }
       '';
@@ -546,7 +548,12 @@ in
         means. Lending a machine model calls through a budget hands it no
         key: the node adds the key to each request it carries upstream. To
         stop lending at once, set it to null and switch, which restarts the
-        node.
+        node. A machine lending models through a budget with no prices or
+        spend_watch, or capping no machine's usd_a_day, still builds, with
+        a warning, and every model lent through it is refused; so a machine
+        that updates itself unattended, where nobody reads the warning,
+        takes its lend's caps in the same update as the core asking for
+        them.
       '';
     };
     healthSocket = lib.mkOption {
@@ -616,27 +623,8 @@ in
   config = lib.mkMerge [
     { inherit (eases) warnings; }
     { inherit (agentsSocket) assertions; }
-    # Warned of rather than refused, so a machine lending models before
-    # its lend caps their spend still evaluates; mycelium refuses each such
-    # model lend 403, so nothing is spent uncapped either way.
     (lib.mkIf (cfg.lend != null) {
-      warnings =
-        let
-          models = lib.filterAttrs (_: budget: budget.kind == "models") cfg.lend.budgets;
-          lendsModels = vm: lib.any (budget: models ? ${budget}) ([ vm.budget ] ++ vm.also);
-          missing =
-            budget:
-            lib.optional (budget.prices == null || budget.prices == { }) "prices"
-            ++ lib.optional (budget.spend_watch == null) "spend_watch";
-        in
-        lib.mapAttrsToList (
-          name: budget:
-          "jitsusama.mycelium.lend.budgets.${name} names no ${lib.concatStringsSep " and no " (missing budget)}, so mycelium refuses every model lent through it."
-        ) (lib.filterAttrs (_: budget: missing budget != [ ]) models)
-        ++ map (
-          vm:
-          "jitsusama.mycelium.lend.vms' ${vm.prefix} names no usd_a_day, so mycelium lends its machines no model."
-        ) (lib.filter (vm: lendsModels vm && vm.usd_a_day == null) cfg.lend.vms);
+      inherit (import ./lend-warnings.nix { inherit config lib options; }) warnings;
     })
     {
       assertions = [
