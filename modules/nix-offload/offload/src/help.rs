@@ -243,7 +243,10 @@ fn ask() -> Help {
     .exit(Exit::Bug, "it couldn't leave the gate's request")
     .exit(Exit::TryAgain, "no result came in time")
     .exit(Exit::Config, "neither --on nor gates-on names a machine")
-    .passes("the gate's own code, once the gate ran")
+    .passes(
+        "the gate's own code, once the gate ran, which changed-checks gives: 1 a check failed, \
+         65 one no longer evaluates, 70 the run was cut short, whatever they mean above",
+    )
 }
 
 fn answer() -> Help {
@@ -275,7 +278,10 @@ fn answer() -> Help {
         Exit::Refused,
         "its own state can't be trusted, holding a link it won't follow",
     )
-    .passes("the gate's own code, once the gate ran")
+    .passes(
+        "the gate's own code, once the gate ran, which changed-checks gives: 1 a check failed, \
+         65 one no longer evaluates, 70 the run was cut short, whatever they mean above",
+    )
 }
 
 fn passed() -> Help {

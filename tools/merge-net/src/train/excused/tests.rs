@@ -62,8 +62,20 @@ fn asks<'a>(
         known,
         again,
         asked,
+        named: &OWN,
     }
 }
+
+/// What a check's derivation is at the candidate, as `red` names it, its
+/// first nine parts among its inputs.
+const OWN: fn(&str) -> Option<Named> = |check| {
+    Some(Named {
+        own: format!("/nix/store/0x1c-{check}.drv"),
+        inputs: (1..10)
+            .map(|part| format!("/nix/store/0x1c-{check}-part-{part}.drv"))
+            .collect(),
+    })
+};
 
 fn nothing(_: &str) -> Option<AtBase> {
     None
@@ -154,7 +166,7 @@ fn every_run_at_the_base_must_fail_alike() {
 #[test]
 fn a_check_that_passes_run_again_at_the_candidate_is_a_flake() {
     let words = red(&[("cat-on-niri", &["drew 4 frames"])], &[]);
-    for known in [None, Some(AtBase::Passes), Some(fails(&["other"]))] {
+    for known in [None, Some(fails(&["other"]))] {
         let base = move |_: &str| known.clone();
         assert_eq!(
             excused(&words, &asks(&base, &PASSED_AGAIN, &nothing)),
@@ -162,6 +174,27 @@ fn a_check_that_passes_run_again_at_the_candidate_is_a_flake() {
             "a check that passed run again at the candidate held its riders"
         );
     }
+}
+
+/// A pass at the base says the failure is the riders', so a rerun that
+/// passes, as a check a rider made flaky does half the time, isn't asked.
+#[test]
+fn a_check_that_passes_at_the_base_holds_the_red_whatever_a_rerun_says() {
+    let words = red(&[("cat-on-niri", &["drew 4 frames"])], &[]);
+    let ran = AtomicBool::new(false);
+    let again = |_: &str| {
+        ran.store(true, Ordering::SeqCst);
+        Some(true)
+    };
+    let passes = |_: &str| Some(AtBase::Passes);
+    assert!(
+        excused(&words, &asks(&passes, &again, &nothing)).is_err(),
+        "a check that passed at its base was excused on a rerun's pass"
+    );
+    assert!(
+        !ran.load(Ordering::SeqCst),
+        "a check that passed at its base was run again"
+    );
 }
 
 #[test]
@@ -353,6 +386,8 @@ fn a_red_the_excuse_cant_read_asks_nothing() {
         red(&[("/home/u/notes", &["x"])], &[]),
         red(&[("../../notes", &["x"])], &[]),
         red(&[(".hidden", &["x"])], &[]),
+        // A name with a dot asks for an attribute inside another.
+        red(&[("cat.nested", &["x"])], &[]),
         red(&failed, &[]),
         red(&[("cat", &["x"]), ("quiet", &[])], &[]),
         red(&[("cat", &long)], &[]),
@@ -466,7 +501,10 @@ fn watch_of(folder: &Path, runs: &[(Ran, Option<&str>)]) -> State {
         if let Some(words) = words {
             fs::write(&log, words).unwrap();
         }
-        state.record("b1", "cat", *ran, Some(1), &log, 60).unwrap();
+        let code = if *ran == Ran::Passed { 0 } else { 1 };
+        state
+            .record("b1", "cat", *ran, Some(code), &log, 60)
+            .unwrap();
     }
     state
 }
@@ -523,6 +561,122 @@ fn a_pass_the_base_ever_had_wins() {
         "a kept pass lost to the watch's failure"
     );
     let _ = fs::remove_dir_all(&folder);
+}
+
+/// A run main's quarantine excused counted as passed for the watch, but
+/// failed, so the check main quarantines is read as failing at its base
+/// as it failed, never as passing there.
+#[test]
+fn a_run_main_s_quarantine_excused_failed_at_the_base() {
+    let folder = super::super::tests::root("excused-quarantined");
+    let failed = format!("cat> FAILED t.py::test_a\n{}\n", cannot_build("cat"));
+    let state = State::at(folder.join("state"));
+    state.make().unwrap();
+    let log = folder.join("cat-excused.log");
+    fs::write(&log, &failed).unwrap();
+    state
+        .record("b1", "cat", Ran::Passed, Some(1), &log, 60)
+        .unwrap();
+    assert_eq!(
+        known(&folder, &state, "b1", "cat"),
+        Some(fails(&["FAILED t.py::test_a"])),
+        "a quarantine-excused failure at the base read as a pass there"
+    );
+    let _ = fs::remove_dir_all(&folder);
+}
+
+/// A red's failed derivation must be its check's own at the candidate,
+/// or a part of it that it takes in: one named after a healthy check, a
+/// second alike, a part it doesn't take in, or a check that can't be
+/// evaluated, holds the red and asks of no run.
+#[test]
+fn a_derivation_that_isnt_its_check_s_holds_the_red() {
+    let forged = "error: Cannot build '/nix/store/7f7f-cat.drv'.\n       Reason: builder failed \
+                  with exit code 1.\n";
+    let part = format!(
+        "launcher-part> x\n{}\nerror: Cannot build '/nix/store/j5fh-launcher.drv'.\n       \
+         Reason: 1 dependency failed.\n",
+        cannot_build("launcher-part-12")
+    );
+    let elsewhere = |check: &str| {
+        Some(Named {
+            own: format!("/nix/store/9z9z-{check}.drv"),
+            inputs: BTreeSet::new(),
+        })
+    };
+    let unevaluated = |_: &str| None;
+    let cases: [(String, &(dyn Fn(&str) -> Option<Named> + Sync)); 4] = [
+        (red(&[("cat", &["x"])], &[]), &elsewhere),
+        (format!("{}{forged}", red(&[("cat", &["x"])], &[])), &OWN),
+        (part, &OWN),
+        (red(&[("cat", &["x"])], &[]), &unevaluated),
+    ];
+    for (words, named) in cases {
+        let asked = AtomicBool::new(false);
+        let ask = |_: &str| {
+            asked.store(true, Ordering::SeqCst);
+            Some(fails(&["x"]))
+        };
+        let again = |_: &str| {
+            asked.store(true, Ordering::SeqCst);
+            Some(true)
+        };
+        let asks = Asks {
+            known: &ask,
+            again: &again,
+            asked: &ask,
+            named,
+        };
+        assert!(
+            excused(&words, &asks).is_err(),
+            "a red whose derivation isn't its check's was excused"
+        );
+        assert!(
+            !asked.load(Ordering::SeqCst),
+            "a red whose derivation isn't its check's asked of a run"
+        );
+    }
+}
+
+/// A naming run's words say the check's derivation in one `own` line,
+/// and its inputs in `input` lines; anything else names none.
+#[test]
+fn a_check_s_derivation_is_read_from_its_own_line_alone() {
+    let own = "/nix/store/0x1c-cat.drv";
+    assert_eq!(
+        named_in(&format!(
+            "nix-offload: sent to a builder\nown {own}\ninput /nix/store/0x1c-cat-part-1.drv\n"
+        )),
+        Some(Named {
+            own: own.to_owned(),
+            inputs: BTreeSet::from(["/nix/store/0x1c-cat-part-1.drv".to_owned()]),
+        }),
+        "a check's derivation wasn't read"
+    );
+    for words in [
+        String::new(),
+        format!("own {own}\nown /nix/store/9z9z-cat.drv\n"),
+        "own /nix/store/0x1c-cat\n".to_owned(),
+        "own /home/u/cat.drv\n".to_owned(),
+        "own /nix/store/0x1c-../cat.drv\n".to_owned(),
+    ] {
+        assert_eq!(named_in(&words), None, "{words:?} named a derivation");
+    }
+}
+
+#[test]
+fn a_check_s_derivation_is_evaluated_on_a_builder_from_the_checkout() {
+    let args = naming("cat");
+    assert_eq!(
+        args[..6],
+        ["there", "--run", "--longest", NAMING_AT_MOST, "--", "sh"],
+        "a check's derivation was evaluated here, or unbounded"
+    );
+    assert!(
+        args[7].contains("nix eval --raw '.#checks.x86_64-linux.cat.drvPath'"),
+        "another attribute was evaluated: {}",
+        args[7]
+    );
 }
 
 #[test]
@@ -623,6 +777,19 @@ fn a_check_runs_again_from_the_candidate_s_checkout() {
     let _ = fs::remove_dir_all(&folder);
 }
 
+/// A runner that evaluates only `cat`'s derivation, as `red` names it,
+/// and is asked for no build.
+fn naming_cat(args: &[String], _: &str, log: &Path, _: &dyn Fn() -> bool) -> Option<i32> {
+    assert_eq!(
+        args,
+        naming("cat"),
+        "a run other than naming cat was asked for"
+    );
+    fs::create_dir_all(log.parent().unwrap()).unwrap();
+    fs::write(log, "own /nix/store/0x1c-cat.drv\n").unwrap();
+    Some(0)
+}
+
 /// A net whose base would excuse the red, given the candidate's log,
 /// its train folder and the red to excuse.
 fn excusable(name: &str) -> (PathBuf, PathBuf, PathBuf) {
@@ -646,15 +813,45 @@ fn a_net_told_no_excuse_excuses_nothing() {
         log: &log,
     };
     assert_eq!(
-        excuse(&red, &never),
-        Some(vec!["cat".to_owned()]),
+        excuse(&red, &naming_cat),
+        Ok(vec!["cat".to_owned()]),
         "a red its base excuses wasn't excused"
     );
     fs::write(train.join("no-excuse"), "").unwrap();
     assert_eq!(
         excuse(&red, &never),
-        None,
-        "a red was excused with excuses turned off"
+        Err("train/no-excuse turns excuses off".to_owned()),
+        "a red was excused with excuses turned off, or didn't say why not"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// A red whose gate didn't run whole asks nothing and is excused
+/// nothing, saying why in the net's log as every refusal does.
+#[test]
+fn a_red_that_didn_t_run_whole_is_excused_nothing_saying_so() {
+    let (root, _, log) = excusable("excused-not-whole");
+    fs::create_dir_all(root.join("logs")).unwrap();
+    let red = Red {
+        root: &root,
+        slug: "o/r",
+        checkout: &root,
+        base: "b1",
+        candidate: "c1",
+        log: &log,
+    };
+    assert!(
+        excuse_of(&red, false).is_err(),
+        "a red whose gate didn't run whole was excused"
+    );
+    let said = fs::read_to_string(root.join("logs/net.log")).unwrap_or_default();
+    assert!(
+        said.contains("ran to its end"),
+        "the net's log didn't say why a red that didn't run whole held: {said}"
+    );
+    assert!(
+        !super::super::folder(&root).join("again").exists(),
+        "a red that didn't run whole was run again"
     );
     let _ = fs::remove_dir_all(&root);
 }
@@ -668,7 +865,10 @@ fn excuses_turned_off_while_it_asks_let_its_runs_go() {
     // reads as an ask that failed, as this one is meant to end.
     let before = AtomicBool::new(true);
     let after = AtomicBool::new(false);
-    let run = |_: &[String], _: &str, _: &Path, dropped: &dyn Fn() -> bool| {
+    let run = |args: &[String], commit: &str, log: &Path, dropped: &dyn Fn() -> bool| {
+        if args == naming("cat") {
+            return naming_cat(args, commit, log, dropped);
+        }
         before.store(dropped(), Ordering::SeqCst);
         fs::write(train.join("no-excuse"), "").unwrap();
         after.store(dropped(), Ordering::SeqCst);
@@ -682,9 +882,8 @@ fn excuses_turned_off_while_it_asks_let_its_runs_go() {
         candidate: "c1",
         log: &log,
     };
-    assert_eq!(
-        excuse(&red, &run),
-        None,
+    assert!(
+        excuse(&red, &run).is_err(),
         "a red was excused after excuses were turned off"
     );
     assert!(

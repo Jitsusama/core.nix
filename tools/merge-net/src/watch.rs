@@ -517,11 +517,31 @@ fn confirmed_apart(world: &dyn World, state: &State, commit: &str, check: &str) 
         return None;
     }
     let lines: Vec<String> = crate::world::lines_of(&log).collect();
+    let failing = matches!(code, Some(code) if code != 0 && code != UNSENT && code != UNCOMPARED);
+    // Subtests that can't be built alone are built whole into the same
+    // log, after the refusal, so the code is the whole test's second run:
+    // a failure there is the whole test failing twice, and nothing of the
+    // subtests alone, rather than read as not failing for the refusal.
+    if failing && subtests::unbuildable(&lines) {
+        if let Err(why) = state.record(
+            commit,
+            check,
+            Ran::Failed,
+            code,
+            &log,
+            began.elapsed().as_secs(),
+        ) {
+            state.say(&why);
+        }
+        state.say(&format!(
+            "{check} failed at {} (2 of 2), whole, as its subtests couldn't be built alone",
+            short(commit)
+        ));
+        return Some(true);
+    }
     // One no builder took, or that compared nothing, didn't fail: it's
     // left to a whole run, which rests it rather than reverting the merge.
-    let failed = matches!(code, Some(code) if code != 0 && code != UNSENT && code != UNCOMPARED)
-        && !subtests::none_selected(&lines)
-        && !subtests::unbuildable(&lines);
+    let failed = failing && !subtests::none_selected(&lines) && !subtests::unbuildable(&lines);
     if !failed {
         // Kept as the subtests' pass, so a search on them needn't begin
         // where they already passed alone (`narrowed_at`).
@@ -2619,6 +2639,10 @@ mod tests {
         unbuilt: Vec<String>,
         /// Merges of heads whose gate skipped a Mac's comparison.
         mac_skipped: Vec<String>,
+        /// Whether subtests can't be built alone, so a failed run of them
+        /// logs the refusal and then the whole test's failure, as the real
+        /// build does in one log.
+        apart_refused: bool,
     }
 
     impl Stand {
@@ -2810,8 +2834,13 @@ mod tests {
                 .or(self.fails_in.as_ref())
                 .filter(|_| exit != 0)
             {
+                let refused = if self.apart_refused && check.contains("::") {
+                    "error: flake does not provide attribute 'subtests'\n"
+                } else {
+                    ""
+                };
                 let line = format!(
-                    "vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n\
+                    "{refused}vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n\
                      vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n"
                 );
                 let _ = fs::write(log, line);
@@ -4074,6 +4103,40 @@ mod tests {
             state.runs("h", "vm-a"),
             vec![Ran::Failed, Ran::Failed],
             "both runs count towards the whole test"
+        );
+    }
+
+    /// Subtests that can't be built alone are built whole into the second
+    /// run's log, after the refusal, so that run failing is the whole
+    /// test failing twice, never read as not failing for the refusal.
+    #[test]
+    fn a_whole_run_after_subtests_were_refused_alone_confirms_the_failure() {
+        let state = state("confirmed-whole-once-refused-apart");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            apart_refused: true,
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1])
+        .exits("h", "vm-a::test_b", &[1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into()),
+            "the whole test failing twice wasn't a failure"
+        );
+        let at_head: Vec<String> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| commit == "h")
+            .map(|(_, check)| check)
+            .collect();
+        assert_eq!(
+            at_head,
+            names("vm-a vm-a::test_b"),
+            "the whole test ran a third time, its second run's failure unread"
         );
     }
 

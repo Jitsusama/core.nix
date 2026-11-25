@@ -4,7 +4,7 @@
 use std::fs;
 
 use super::super::tests::root;
-use super::{Gated, MARKED, gated, words_of};
+use super::{Gated, MARKED, gate, gated, words_of};
 
 /// What nix-offload says once every part of a run ran to its end, as its
 /// own test pins it (`modules/nix-offload/offload/src/main.rs`).
@@ -253,6 +253,19 @@ fn only_lines_signed_with_the_gate_s_mark_are_nix_offload_s() {
         gated(Some(75), &words_of(&log)),
         Gated::Red { whole: false },
         "an unsigned replay line set aside the failure before it"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A gate whose log can't be made, as on a full disk, runs nothing and
+/// reads as unstarted, so no rider is told no builder took it.
+#[test]
+fn a_gate_that_cant_make_its_log_is_unstarted() {
+    let root = root("gate-unstarted");
+    let log = root.join("gone").join("candidate.log");
+    assert!(
+        matches!(gate(&root, &log), Gated::Unstarted(_)),
+        "a gate that couldn't make its log read as anything but unstarted"
     );
     fs::remove_dir_all(&root).unwrap();
 }

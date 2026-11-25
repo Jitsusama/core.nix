@@ -18,8 +18,16 @@
 //! differs still matches, but none at all, a new error, file or subtest,
 //! or a line fewer doesn't. A build that printed nothing is never excused.
 //!
+//! A red names a check by its derivation's name, which a rider chooses:
+//! it could break a derivation named after a healthy check, or after one
+//! main fails. So each derivation that failed must be its check's own at
+//! the candidate, evaluated on a lent builder, or a part the check takes
+//! in, and a check whose name isn't a plain attribute's, or that doesn't
+//! evaluate, holds the red.
+//!
 //! The base's word comes first from the watch's runs there and what the
-//! train keeps, a pass in any of them meaning the check isn't main's own.
+//! train keeps, a pass in any of them meaning the check isn't main's own;
+//! a run main's quarantine excused is read as the failure it was.
 //! The check runs again at the candidate next. Only when the base has
 //! said nothing is one lent run there asked, kept in
 //! `train/base/<base>/<check>.json` for the next candidate on that base.
@@ -124,6 +132,9 @@ pub(super) struct Asks<'a> {
     pub again: &'a (dyn Fn(&str) -> Option<bool> + Sync),
     /// What one lent run at the base says, kept for the next candidate.
     pub asked: &'a (dyn Fn(&str) -> Option<AtBase> + Sync),
+    /// Its derivation at the candidate, evaluated on a lent builder; none
+    /// when it couldn't be.
+    pub named: &'a (dyn Fn(&str) -> Option<Named> + Sync),
 }
 
 /// The checks a red gate's `words` say failed of themselves, each by its
@@ -132,8 +143,16 @@ pub(super) struct Asks<'a> {
 /// error no failed build explains, or a `Cannot build` for any other
 /// reason, so that nothing they say can be excused.
 pub(super) fn broken(words: &str) -> Option<Vec<String>> {
+    Some(failures(words)?.into_keys().collect())
+}
+
+/// The derivations a red gate's `words` say failed of themselves, by the
+/// check each is read as, as `broken` reads them: what the excuse holds
+/// to the check's own derivation at the candidate, since a rider can name
+/// any derivation after any check.
+fn failures(words: &str) -> Option<BTreeMap<String, BTreeSet<String>>> {
     let lines: Vec<&str> = words.lines().map(str::trim).collect();
-    let mut failed = BTreeSet::new();
+    let mut failed: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
     let mut following = BTreeSet::new();
     for (at, line) in lines.iter().enumerate() {
         if let Some(rest) = line.strip_prefix(CANNOT_BUILD) {
@@ -144,7 +163,10 @@ pub(super) fn broken(words: &str) -> Option<Vec<String>> {
             }
             let reason = lines.get(at + 1).copied().unwrap_or_default();
             if reason.starts_with(BUILDER_FAILED) {
-                failed.insert(name);
+                failed
+                    .entry(name)
+                    .or_default()
+                    .insert(format!("/nix/store/{path}.drv"));
             } else if reason.starts_with("Reason: ") && reason.contains("dependenc") {
                 following.insert(name);
             } else {
@@ -156,16 +178,61 @@ pub(super) fn broken(words: &str) -> Option<Vec<String>> {
             return None;
         }
     }
-    let checks: BTreeSet<String> = failed
-        .into_iter()
-        .map(|name| {
-            part_of(name)
-                .filter(|check| following.contains(check))
-                .unwrap_or(name)
-                .to_owned()
-        })
-        .collect();
-    Some(checks.into_iter().collect())
+    let mut checks: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (name, paths) in failed {
+        let check = part_of(name)
+            .filter(|check| following.contains(check))
+            .unwrap_or(name);
+        checks.entry(check.to_owned()).or_default().extend(paths);
+    }
+    Some(checks)
+}
+
+/// Whether `name` is one a check of the flake's `checks.<system>` can be
+/// asked by as it stands: letters, digits, dashes and underscores, never
+/// a dot, which would name an attribute inside another.
+fn attribute_named(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
+}
+
+/// A check's own derivation at the candidate, and the derivations it
+/// takes in, among them its parts when it is split in parts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Named {
+    /// The check's own derivation.
+    pub own: String,
+    /// The derivations it takes in.
+    pub inputs: BTreeSet<String>,
+}
+
+/// Why `failed`, the derivations a red said failed under `check`'s name,
+/// aren't `check`'s own at the candidate, as `asks` evaluates it: each
+/// must be its derivation, or a part of it that it takes in. A rider
+/// could otherwise break a derivation named after a healthy check, or one
+/// main fails, and have the red excused as that check's.
+fn stands_for(check: &str, failed: &BTreeSet<String>, asks: &Asks) -> Result<(), String> {
+    let named = (asks.named)(check)
+        .ok_or_else(|| format!("{check}'s derivation at the candidate couldn't be evaluated"))?;
+    let part = |path: &str| {
+        let name = path
+            .strip_prefix("/nix/store/")
+            .and_then(|rest| rest.split_once('-'))
+            .and_then(|(_, name)| name.strip_suffix(".drv"))
+            .unwrap_or_default();
+        part_of(name) == Some(check) && named.inputs.contains(path)
+    };
+    match failed
+        .iter()
+        .find(|path| **path != named.own && !part(path))
+    {
+        Some(path) => Err(format!(
+            "{path} failed under {check}'s name, but isn't its derivation at the candidate"
+        )),
+        None => Ok(()),
+    }
 }
 
 /// Whether `name` is one nix gives a derivation: only its store-name
@@ -339,7 +406,8 @@ fn alike(runs: &[Said], said: &Said) -> bool {
 /// why, as `asks` says of each; why not, when any isn't excused, or when
 /// the red can't be excused at all.
 pub(super) fn excused(words: &str, asks: &Asks) -> Result<Vec<(String, Excuse)>, String> {
-    let checks = broken(words).ok_or("its words hold an error no failed build explains")?;
+    let failed = failures(words).ok_or("its words hold an error no failed build explains")?;
+    let checks: Vec<String> = failed.keys().cloned().collect();
     if checks.is_empty() {
         return Err("no check failed of itself".to_owned());
     }
@@ -353,6 +421,9 @@ pub(super) fn excused(words: &str, asks: &Asks) -> Result<Vec<(String, Excuse)>,
         return Err(format!(
             "{test} is a VM test, whose derivation isn't named as its check is"
         ));
+    }
+    if let Some(name) = checks.iter().find(|check| !attribute_named(check)) {
+        return Err(format!("{name} isn't named as a check of the flake is"));
     }
     let mut said = Vec::with_capacity(checks.len());
     for check in &checks {
@@ -372,7 +443,12 @@ pub(super) fn excused(words: &str, asks: &Asks) -> Result<Vec<(String, Excuse)>,
         let asked: Vec<_> = checks
             .iter()
             .zip(&said)
-            .map(|(check, said)| scope.spawn(move || judge(check, said, asks)))
+            .zip(failed.values())
+            .map(|((check, said), paths)| {
+                scope.spawn(move || {
+                    stands_for(check, paths, asks).and_then(|()| judge(check, said, asks))
+                })
+            })
             .collect();
         asked
             .into_iter()
@@ -397,6 +473,14 @@ fn judge(check: &str, said: &Said, asks: &Asks) -> Result<Excuse, String> {
     let known = (asks.known)(check);
     if matches!(&known, Some(AtBase::Fails(runs)) if alike(runs, said)) {
         return Ok(Excuse::MainsOwn);
+    }
+    // A pass at the base says the failure is the riders', flaky or not:
+    // a check a rider made fail half the time would otherwise land half
+    // the time on one rerun's pass.
+    if known == Some(AtBase::Passes) {
+        return Err(format!(
+            "{check} passed at its base, so its failure is the riders'"
+        ));
     }
     if (asks.again)(check) == Some(true) {
         return Ok(Excuse::PassedAgain);
@@ -498,14 +582,24 @@ fn failure_of(words: &str, check: &str) -> Option<Said> {
 /// What the watch's runs of `check` at `base` say: that it passed there,
 /// once is enough, or that it failed there, the lines each failed run
 /// printed; nothing when it ended no run there whose words say the check
-/// itself failed, a run whose log is gone or says otherwise left out.
+/// itself failed, a run whose log is gone or says otherwise left out. A
+/// run main's quarantine excused counts as passed for the watch, but
+/// failed all the same, and is read as the failure it was: a check main
+/// quarantines fails at the base as it fails in the red.
 fn watched(state: &State, base: &str, check: &str) -> Option<AtBase> {
-    if state.runs(base, check).contains(&Ran::Passed) {
+    let excused = state.excused_logs(base, check);
+    let passed = state
+        .runs(base, check)
+        .iter()
+        .filter(|ran| **ran == Ran::Passed)
+        .count();
+    if passed > excused.len() {
         return Some(AtBase::Passes);
     }
     let runs: Vec<Said> = state
         .failed_logs(base, check)
         .into_iter()
+        .chain(excused)
         .filter_map(|log| {
             let words = crate::world::lines_of(&log).collect::<Vec<_>>().join("\n");
             failure_of(&words, check)
@@ -613,6 +707,85 @@ fn again(
     (!crate::watch::untaken(Some(code))).then_some(code == 0)
 }
 
+/// The arguments that print `check`'s derivation in the checkout `--run`
+/// is asked from, at its commit, a line `own` and its inputs a line
+/// `input` each, evaluated on a lent builder, the only kind `--run`
+/// sends to, rather than here: an evaluation holds most of a GB of the
+/// person's machine. `check` is
+/// read as a plain attribute name already, so it quotes as it stands.
+fn naming(check: &str) -> Vec<String> {
+    let script = format!(
+        "own=$(nix eval --raw '.#checks.{SYSTEM}.{check}.drvPath') && echo \"own $own\" && \
+         nix-store --query --references \"$own\" | sed 's/^/input /'"
+    );
+    [
+        "there",
+        "--run",
+        "--longest",
+        NAMING_AT_MOST,
+        "--",
+        "sh",
+        "-c",
+        &script,
+    ]
+    .map(str::to_owned)
+    .into()
+}
+
+/// The longest, in seconds, one check's derivation is given to evaluate.
+const NAMING_AT_MOST: &str = "600";
+
+/// What `words`, a naming run's, say `check`'s derivation is: none
+/// unless one line names its own, a store derivation, and the rest name
+/// its inputs.
+fn named_in(words: &str) -> Option<Named> {
+    let derivation =
+        |path: &str| path.starts_with("/nix/store/") && path.ends_with(".drv") && store_path(path);
+    let mut own = None;
+    let mut inputs = BTreeSet::new();
+    for line in words.lines() {
+        if let Some(path) = line.strip_prefix("own ") {
+            if own.is_some() || !derivation(path) {
+                return None;
+            }
+            own = Some(path.to_owned());
+        } else if let Some(path) = line.strip_prefix("input ") {
+            inputs.insert(path.to_owned());
+        }
+    }
+    Some(Named { own: own?, inputs })
+}
+
+/// Whether `path` is a store path with no more than a store name after
+/// its hash.
+fn store_path(path: &str) -> bool {
+    path.strip_prefix("/nix/store/")
+        .and_then(|rest| rest.split_once('-'))
+        .is_some_and(|(hash, name)| {
+            !hash.is_empty()
+                && hash.bytes().all(|byte| byte.is_ascii_alphanumeric())
+                && store_named(name)
+        })
+}
+
+/// `check`'s derivation at `candidate`, as `run` evaluates it on a lent
+/// builder from the train's checkout there; none when it couldn't.
+fn named(
+    folder: &Path,
+    candidate: &str,
+    check: &str,
+    run: &Runner<'_>,
+    dropped: &dyn Fn() -> bool,
+) -> Option<Named> {
+    let log = again_folder(folder, candidate).join(format!("{check}.named.log"));
+    fresh(&log)?;
+    let code = run(&naming(check), candidate, &log, dropped)?;
+    if code != 0 {
+        return None;
+    }
+    named_in(&crate::world::lines_of(&log).collect::<Vec<_>>().join("\n"))
+}
+
 /// Where the train's red is and runs: its net's state folder, the
 /// repository, the checkout it was cut in, its base and its candidate.
 pub(super) struct Red<'a> {
@@ -632,25 +805,29 @@ pub(super) struct Red<'a> {
 
 /// The checks a red candidate's riders didn't break, when its gate ran
 /// whole and each fails alike at main or passes alone; nothing when its
-/// gate didn't run whole, which it says, so a red that holds where
-/// main's own failure would be excused reads why (round 4's F5).
-pub(super) fn excuse_of(red: &Red, whole: bool) -> Option<Vec<String>> {
+/// gate didn't run whole. Why not is said in the net's log, as every
+/// refusal is, and given back for the riders that fall, so a red that
+/// holds where main's own failure would be excused reads why.
+pub(super) fn excuse_of(red: &Red, whole: bool) -> Result<Vec<String>, String> {
     if !whole {
-        println!(
-            "merge-net: the train excuses nothing in {}'s red, since nix-offload \
-             didn't say every part of its gate ran to its end",
-            short(red.candidate)
-        );
-        return None;
+        let why = "nix-offload didn't say every part of its gate ran to its end";
+        State::at(red.root.to_path_buf()).say(&format!(
+            "the candidate {}'s red isn't excused at main's {}: {why}",
+            short(red.candidate),
+            short(red.base)
+        ));
+        return Err(why.to_owned());
     }
-    excuse(red, &crate::world::bounded)
+    excuse(red, &|args, commit, log, dropped| {
+        crate::world::bounded(red.checkout, args, commit, log, dropped)
+    })
 }
 
 /// The checks that excuse `red`, each failing at its base alike or passing
 /// when run again at its candidate, `run` running each ask; said in the
-/// net's log as the train lands it, and none when they don't, with why
-/// said there too.
-pub(super) fn excuse(red: &Red, run: &Runner<'_>) -> Option<Vec<String>> {
+/// net's log as the train lands it, and why not when they don't, said
+/// there too.
+pub(super) fn excuse(red: &Red, run: &Runner<'_>) -> Result<Vec<String>, String> {
     let state = State::at(red.root.to_path_buf());
     let train = super::folder(red.root);
     let off = train.join("no-excuse");
@@ -660,7 +837,7 @@ pub(super) fn excuse(red: &Red, run: &Runner<'_>) -> Option<Vec<String>> {
             short(red.candidate),
             short(red.base)
         ));
-        None
+        Err(why.to_owned())
     };
     if off.exists() {
         return refused("train/no-excuse turns excuses off");
@@ -675,10 +852,12 @@ pub(super) fn excuse(red: &Red, run: &Runner<'_>) -> Option<Vec<String>> {
         keep(&train, red.base, check, &answer);
         Some(answer)
     };
+    let named = |check: &str| named(&train, red.candidate, check, run, &dropped);
     let asks = Asks {
         known: &known,
         again: &again,
         asked: &asked,
+        named: &named,
     };
     let checks = match excused(&super::gated::words_of(red.log), &asks) {
         Ok(checks) => checks,
@@ -700,7 +879,7 @@ pub(super) fn excuse(red: &Red, run: &Runner<'_>) -> Option<Vec<String>> {
         short(red.base),
         said.join("; ")
     ));
-    Some(checks.into_iter().map(|(check, _)| check).collect())
+    Ok(checks.into_iter().map(|(check, _)| check).collect())
 }
 
 #[cfg(test)]

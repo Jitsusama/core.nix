@@ -526,12 +526,19 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                     candidate: &candidate,
                     log: &log,
                 };
-                let Some(checks) = excused::excuse_of(&asked, whole) else {
-                    way(&root, &Ended::Otherwise);
-                    red(&root, &candidate, &log, &done.merged, &mut splitting);
-                    continue;
-                };
-                excused = checks;
+                match excused::excuse_of(&asked, whole) {
+                    Ok(checks) => excused = checks,
+                    Err(unexcused) => {
+                        way(&root, &Ended::Otherwise);
+                        let failed = Failed {
+                            candidate: &candidate,
+                            log: &log,
+                            unexcused: Some(&unexcused),
+                        };
+                        red(&root, &failed, &done.merged, &mut splitting);
+                        continue;
+                    }
+                }
             }
             Gated::Unsent => {
                 // The train stays in its ride rather than waiting for a
@@ -540,6 +547,18 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 if unsent(&root, &candidate, &log, &done.merged, &mut splitting, now) {
                     std::thread::sleep(UNTAKEN_PAUSE);
                 }
+                continue;
+            }
+            Gated::Unstarted(why) => {
+                // A full disk or a missing nix-offload is the machine's,
+                // not a builder's, so no rider falls for it: the net's
+                // log says why, and the train tries again after a pause.
+                crate::state::State::at(root.clone()).say(&format!(
+                    "the gate of the candidate {} couldn't start, as {why}, so it's tried \
+                     again",
+                    short(&candidate)
+                ));
+                std::thread::sleep(UNTAKEN_PAUSE);
                 continue;
             }
         }
@@ -713,10 +732,20 @@ fn unsent(
     false
 }
 
-/// After the candidate `candidate` of `merged` riders failed, its words in
-/// `log`: the next takes fewer riders, or the rider that rode it alone
-/// falls, or every rider does, as `splitting` says.
-fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+/// A candidate that failed: its commit, where its words are, and why its
+/// red wasn't excused as main's own, when it was asked.
+struct Failed<'a> {
+    candidate: &'a str,
+    log: &'a Path,
+    unexcused: Option<&'a str>,
+}
+
+/// After the candidate `failed` of `merged` riders failed: the next takes
+/// fewer riders, or the rider that rode it alone falls, or every rider
+/// does, as `splitting` says, told why its red wasn't excused, since
+/// while main is red a rider's fall otherwise reads as its own bug.
+fn red(root: &Path, failed: &Failed, merged: &[String], splitting: &mut Splitting) {
+    let (candidate, log) = (failed.candidate, failed.log);
     let (falling, why) = match splitting.red(merged.len()) {
         After::Falls => (merged.to_vec(), "the candidate it rode alone"),
         After::AllFall => (
@@ -742,11 +771,16 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
         falling.len()
     );
     for head in &falling {
-        let said = format!(
+        let mut said = format!(
             "{why}, {}, failed changed-checks; its words are in {}",
             short(candidate),
             log.display()
         );
+        if let Some(unexcused) = failed.unexcused {
+            said.push_str(&format!(
+                "; it wasn't excused as main's own, as {unexcused}"
+            ));
+        }
         let _ = fall(root, head, &said);
     }
 }
