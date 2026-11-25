@@ -13,7 +13,8 @@ the check held at each change are one rule, and its
 `comments-name-what-exists.sh` first sees that measure refuse a planted tree
 both ways, for a comment naming what isn't there and a waiting line nothing
 matches, each named.
-`checks.nix` runs all fourteen on core itself, and that reader's check.
+`checks.nix` runs all fourteen on core itself, and the check of the Rust
+reader `commands-agree` uses, below.
 Many entries because each rule keeps its three files side by side, where a
 reader opening one finds the others, rather than in a folder of its own.
 `every-script-finds-what-it-imports` first sees itself fail a planted tree

@@ -1269,7 +1269,8 @@
   '';
   rust-tests-are-read-as-declared = ''
     the reader commands-agree takes a command's code through tells what only a crate's tests read
-    from its own code as rustc finds modules, not by their names, in a planted crate
+    from its own code as rustc finds modules, not by their names, and cuts each inline test module
+    alone, in a planted crate
   '';
   every-ruff-exception-hides-a-finding = ''
     every per-file exception in ruff.toml hides a finding of its rule that ruff would raise without
