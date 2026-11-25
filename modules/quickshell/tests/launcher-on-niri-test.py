@@ -124,35 +124,43 @@ def copied(shell: Shell, typed: str, expected: str) -> None:
     assert shell.copied() == expected
 
 
-def y_told(shell: Shell, named: str = "", *, copied_by: str = "y copy") -> None:
-    """Wait for the copy yy makes to be told over the selected row, and still told after.
+def copy_told(shell: Shell, named: str = "", *, copy_key: str = "y copy") -> None:
+    """Wait for the key that copies the selected row to be told over it.
 
     An answer holding parts tells y once its acts are read, which waits on its parts and on
     the launcher reading the selected row's acts after a turn (Launcher.qml's selectedKeys
     and readSelectedActions). On a loaded builder that can be after normal has come, so it's
     waited for rather than read once. A row whose own act is the copy tells no y, only
-    Return's copy (operatorKeysOf), so its caller names that instead. Read again after, so
-    a copy told for one refresh and gone before yy is caught here, not as a missing yank.
+    Return's copy (operatorKeysOf), so its caller names that key instead. It's waited for
+    once: yy reads the row's acts as it's pressed, never the foot, and a row told again is
+    read again a turn later, when the foot tells nothing for that one turn.
     """
 
     def told(shown: Json) -> bool:
         selected = shown["selected"] or {}
-        return copied_by in selected.get("told", []) and named in selected.get("name", "")
+        return copy_key in selected.get("told", []) and named in selected.get("name", "")
 
-    shell.launcher_until(told)
-    assert told(shell.showing()), shell.showing()
+    try:
+        shell.launcher_until(told)
+    except AssertionError as missing:
+        over = named or "the selected row"
+        never = f"{copy_key!r} was never told over {over}: {missing}"
+        raise AssertionError(never) from missing
 
 
-def yanked(shell: Shell, typed: str, *, copied_by: str = "y copy") -> str:
+def yanked(shell: Shell, typed: str, *, copy_key: str = "y copy") -> str:
     """Ask the launcher, copy its answer by yy from normal, and give what was copied.
 
     An answer holding parts is gone into by Return, as every row holding more is, so y is
     what copies it, and the launcher stays until it's closed. A row whose own act copies
-    tells Return's copy rather than y, which copied_by names.
+    tells Return's copy rather than y, which copy_key names, and never tells y as well.
     """
     shell.answer(typed)
     shell.normal()
-    y_told(shell, copied_by=copied_by)
+    copy_told(shell, copy_key=copy_key)
+    if copy_key != "y copy":
+        told = (shell.showing()["selected"] or {}).get("told", [])
+        assert "y copy" not in told, f"a row whose own act copies told y too: {told}"
     since = shell.mark()
     shell.send_chars("yy")
     shell.reported("yanked 1", lambda rest: rest == "", since)
@@ -232,7 +240,7 @@ def test_units_zones_colours_and_whats_offline_are_answered(shell: Shell) -> Non
     # Slack takes its theme only by hand, so the launcher copies it,
     # in the theme's own colours.
     slack = ",".join(theme["colours"][c] for c in ["accent", "selection", "success", "warning"])
-    assert yanked(shell, "slack theme", copied_by="↵ copy") == slack
+    assert yanked(shell, "slack theme", copy_key="\u21b5 copy") == slack
     # The build has no network, so what has to ask one says it couldn't,
     # and nothing breaks. Each waits for its answer to settle, failed;
     # asked again while that failure stands, it says so at once. When a
@@ -288,7 +296,7 @@ def test_return_goes_into_an_answer_with_parts_and_y_copies_it(shell: Shell) -> 
     shell.answer("memory")
     shell.launcher_until(lambda shown: "B used" in (shown["selected"] or {}).get("name", ""))
     shell.normal()
-    y_told(shell, "B used")
+    copy_told(shell, "B used")
     since = shell.mark()
     shell.send_chars("yy")
     shell.reported("yanked 1", lambda rest: rest == "", since)
