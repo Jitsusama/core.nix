@@ -18,7 +18,9 @@ set -euo pipefail
 # and bash's own words go only to the job's log, which health never reads.
 # It may end before any name is looked up or after every one, at the save,
 # so it says neither. A round launchd stops, as at a switch or a logout,
-# isn't said: bash runs this with the status it had before the signal.
+# isn't said: bash runs this with the status of the last command before the
+# signal, and every command the round runs between its probes ends 0, so
+# only a TERM landing the moment a probe ends could be said.
 ended() {
   local ended=$1
   if [[ ${ended} -ne 0 ]]; then
@@ -92,15 +94,15 @@ judge() {
   case ${outcome} in
     failed)
       words="${words}, ${count} rounds running"
-      [[ ${count} -ge 2 || ${any} -ge 3 ]] && wrong=yes
+      if [[ ${count} -ge 2 || ${any} -ge 3 ]]; then wrong=yes; fi
       ;;
     slow)
       words="${words}, past ${slow} ms ${count} rounds running"
-      [[ ${count} -ge 2 || ${any} -ge 3 ]] && wrong=yes
+      if [[ ${count} -ge 2 || ${any} -ge 3 ]]; then wrong=yes; fi
       ;;
     busy)
       words="${words}, past ${busy}% ${count} rounds running"
-      [[ ${count} -ge ${rounds} ]] && wrong=yes
+      if [[ ${count} -ge ${rounds} ]]; then wrong=yes; fi
       ;;
     *) ;;
   esac
@@ -126,15 +128,17 @@ since() {
 }
 
 # What a probe's exit, $1, says of probe $2 when it gave no address, as
-# `why`: timeout's 124 is no answer in time, and 125 to 127 a program that
-# couldn't run, which is no lookup at all, so it's never said as the name
-# failing. dig ends 9 when the server never replied, within its own five
-# seconds, and 10 on an error of its own. Any other end but 0 is said as it
-# is, an address printed beside it included.
+# `why`: timeout's 124 is no answer in time, as is 137, a probe it killed
+# once it outlived its TERM, and 125 to 127 a program that couldn't run,
+# which is no lookup at all, so it's never said as the name failing. dig
+# ends 9 when the server never replied, within its own five seconds, and 10
+# on an error of its own. Any other end but 0 is said as it is, an address
+# printed beside it included.
 why() {
   case $2:$1 in
     *:0) why="" ;;
     *:124) why="no answer within ${within} s" ;;
+    *:137) why="no answer within ${within} s, killed ${killed} s on" ;;
     *:125 | *:126 | *:127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;
     dig:9) why="no reply from the server" ;;
     dig:10) why="dig failed on its own (exit 10), so this wasn't a lookup" ;;
