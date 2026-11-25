@@ -1259,7 +1259,8 @@
   emoji-keeps-a-lost-search-only-open = ''
     with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
     is open: shut, a search and one typed inside a group that went unanswered are let go; open,
-    each is kept to ask again once the history is back; and the launcher shutting lets both go
+    each is kept, and asked again at the history's hello, the answer to what was typed in the
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux

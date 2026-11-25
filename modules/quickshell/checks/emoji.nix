@@ -15,8 +15,10 @@
 {
   # The launcher's Emoji keeps a search the clipboard's history left
   # unanswered, and one typed inside a group, only while the launcher is open,
-  # so its rows follow the launcher's open (modules/quickshell/tests/emoji.qml),
-  # with nothing at the history's socket and niri stood in.
+  # so its rows follow the launcher's open, and asks each again at the history's
+  # hello, the typed one's answer not taken as its key's own
+  # (modules/quickshell/tests/emoji.qml), with nothing at the history's socket
+  # until a stand-in wire says hello, and niri stood in.
   emoji-keeps-a-lost-search-only-open =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.

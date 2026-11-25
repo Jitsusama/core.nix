@@ -7,8 +7,11 @@ pragma ComponentBehavior: Bound
 // open, each is kept to be asked again once the history says hello; and
 // the launcher closing lets both go. So Emoji's rows follow the launcher's
 // open, which the history's lost searches are kept by, rather than standing
-// undrawn as a place that never sets them. It exits 0 once every case
-// holds, and otherwise 1, saying which didn't.
+// undrawn as a place that never sets them. Lost again and the history back
+// a while on, each is asked again at its hello, and the answer to what was
+// typed in the group isn't taken as its key's own (foundMore's fresh), so
+// Emoji keeps its rows where they are. It exits 0 once every case holds,
+// and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import "Expect.js" as Expect
@@ -45,9 +48,16 @@ ShellRoot {
 
     // How the searches stand, for a failure to say.
     function said() {
-        const served = theEmoji.served;
-        return JSON.stringify({ drawn: served.drawn, lost: served.lost,
-            typedLost: served.typedLost, state: served.searchState() });
+        return JSON.stringify({ drawn: theEmoji.served.drawn, state: theEmoji.searchState() });
+    }
+
+    // Whether each answer Emoji told the launcher of was taken as its key's own.
+    property var fresh: []
+    Connections {
+        target: theEmoji
+        function onFoundMore(itsOwn) {
+            root.fresh = root.fresh.concat([itsOwn]);
+        }
     }
 
     // The cases run once ReadyRows' daemon is loaded, which its LazyLoader may do after the
@@ -73,8 +83,10 @@ ShellRoot {
         Qt.callLater(root.cases);
     }
 
+    // The cases before the history comes back, which go on to those after it (helloCases)
+    // rather than exiting, as Expect.run would once they return.
     function cases() {
-        Expect.run(() => {
+        try {
             const served = theEmoji.served;
             Expect.expect("shut, its rows aren't drawn", served.drawn === false, root.said());
             theEmoji.search("tu");
@@ -96,6 +108,42 @@ ShellRoot {
             Expect.expect("the launcher shut, its rows aren't drawn, and both are let go",
                 served.drawn === false && served.lost === null && served.typedLost === null,
                 root.said());
+
+            theLauncher.open = true;
+            theEmoji.search("turt");
+            theEmoji.typedInGroup(root.group, "smil");
+            Expect.expect("open again, both lost are kept",
+                served.lost?.words === "turt" && served.typedLost?.words === "smil", root.said());
+        } catch (error) {
+            Expect.fail(Expect.thrown(error));
+            return;
+        }
+        backAgain.start();
+    }
+
+    // The history back a while after the keys, as a restart takes, past the 50 ms Emoji takes
+    // an answer as its key's own in (freshFor).
+    Timer {
+        id: backAgain
+        interval: 100
+        onTriggered: root.helloCases()
+    }
+
+    function helloCases() {
+        Expect.run(() => {
+            const served = theEmoji.served;
+            const link = served.link;
+            link.wire = { write: line => {}, flush: () => {} };
+            const before = link.asked;
+            link.said(JSON.stringify({ id: "hello" }));
+            Expect.expect("the history back, each is asked again at its hello",
+                link.asked === before + 2 && served.asking === "turt"
+                    && served.typedAsking === `${root.group}\nsmil`, root.said());
+            // What's typed in the group is asked again first (ReadyRows' onTold).
+            root.fresh = [];
+            link.said(JSON.stringify({ id: `find-${before + 1}`, keys: [], rows: {} }));
+            Expect.expect("and what's typed in the group, answered, isn't its key's own",
+                root.fresh.length === 1 && root.fresh[0] === false, JSON.stringify(root.fresh));
         });
     }
 }
