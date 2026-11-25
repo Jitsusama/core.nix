@@ -328,14 +328,20 @@ pub(super) fn copying() -> String {
         exit 2
       }} ;; esac
       top=$(cd -P "${{job%/*/*/*}}" && pwd -P) || exit 2
-      [ -e "$job/{TREE}" ] || [ -L "$job/{TREE}" ] || {{
-        printf "elsewhere: the job's tree is gone from its handover\n" >&2
-        exit 2
-      }}
-      # Anything else at its name, a link, a file or a folder closed to
-      # this account, is the job's doing.
       [ ! -L "$job/{TREE}" ] && cd -P "$job/{TREE}" 2>/dev/null &&
         [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
+        # Judged once the tree couldn't be held, so one taken away
+        # meanwhile is gone too. A link at the tree or at a folder above
+        # it that `unlinked` walks, even one pointing nowhere, a file, or
+        # a folder closed to this account is the job's doing.
+        for at in "$job/{TREE}" "$job" "${{job%/*}}" "${{job%/*/*}}"; do
+          [ ! -L "$at" ] || at=
+          [ -n "$at" ] || break
+        done
+        [ -z "$at" ] || [ -e "$job/{TREE}" ] || {{
+          printf "elsewhere: the job's tree is gone from its handover\n" >&2
+          exit 2
+        }}
         printf '%s %s\n' "elsewhere: the job's tree in its handover is reached through a link," \
           "or isn't a folder of its own" >&2
         exit 1
@@ -546,8 +552,10 @@ fi
 /// Frees the job's copy, with what it made, and the tree it was made
 /// from, once nothing is brought back out of them, and then its run's
 /// file, once they went. The tree goes, in the same clearing as the copy,
-/// only once no link stands at the job's handover or above it, as
-/// `unlinked` makes sure; the copy goes either way.
+/// only where no link stood at the job's handover or above it as
+/// `unlinked` looked, which narrows a link put there after to the
+/// clearing's own instant rather than closing it; the copy goes either
+/// way.
 fn freed() -> String {
     format!(
         "cd \"$HOME\" && if unlinked; then cleared \"$job/{TREE}\" \"$work\"; \

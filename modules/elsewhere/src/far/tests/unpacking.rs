@@ -392,6 +392,59 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
 }
 
 #[test]
+fn anything_but_a_folder_of_its_own_at_the_job_s_tree_is_refused_as_the_job_s_doing() {
+    // A mkdir that, making the copy's folder, puts at the tree's name, or
+    // at the job's handover folder above it, a link pointing nowhere, a
+    // file, or a folder this account can't enter, each the job's doing
+    // rather than a tree gone, which another try would meet again.
+    let tree = r#"t="$HOME/${at%/*}""#;
+    let job = r#"t="$HOME/${at%/*/*}""#;
+    for (put, swap, kept) in [
+        ("a link pointing nowhere at the tree", tree, Some("0.tar")),
+        ("a file at the tree", tree, Some("0.tar")),
+        ("a folder closed at the tree", tree, None),
+        (
+            "a link pointing nowhere above the tree",
+            job,
+            Some("tree/0.tar"),
+        ),
+    ] {
+        let swapped = match (put.starts_with("a link"), kept) {
+            (true, _) => r#"mv "$t" "$HOME/aside" && ln -s "$HOME/nowhere" "$t""#,
+            (false, Some(_)) => r#"mv "$t" "$HOME/aside" && : > "$t""#,
+            (false, None) => r#"chmod 0 "$t""#,
+        };
+        let swapping = format!(
+            r#"case " $* " in *"/.s/1 "*)
+  PATH=${{PATH#*:}} at='{FIRST}'
+  {swap} && {swapped} && : > "$HOME/swapped" ;;
+esac
+PATH=${{PATH#*:}} exec mkdir "$@""#
+        );
+        let archive = archive_of("a", "inside");
+        let list = format!("{}\t0.tar\nend\n", archive.len());
+        let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[("mkdir", &swapping)]);
+        assert!(
+            home.join("swapped").exists(),
+            "the stand-in never put {put} ({code:?}): {err}"
+        );
+        assert!(
+            code == Some(77) && err.contains("or isn't a folder of its own"),
+            "{put} wasn't refused as the job's ({code:?}): {err}"
+        );
+        assert!(
+            kept.is_none_or(|kept| home.join("aside").join(kept).exists())
+                && !home.join("read").exists()
+                && !work(&home).join("ran").exists()
+                && !work(&home).join("1").exists()
+                && !work(&home).join("1.run").exists(),
+            "with {put}, an archive was taken, read, its job ran, or its copy stayed"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
 fn a_link_put_at_the_job_s_tree_after_an_archive_was_taken_redirects_no_later_one() {
     // A tar that, unpacking the first archive, moves the job's tree
     // aside and puts a link at its name to a folder holding a copy of
@@ -454,7 +507,9 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
         code == Some(75)
             && err.contains("tree is gone from its handover")
             && !home.join("read").exists()
-            && !work(&home).join("ran").exists(),
+            && !work(&home).join("ran").exists()
+            && !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists(),
         "a tree gone wasn't left for another try ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
