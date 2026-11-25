@@ -10,6 +10,8 @@ let
   # Dollars a million tokens. Mycelium refuses a price below nothing, as
   # it would reserve less than a request may cost; and one of nothing is
   # refused here, as a model priced so would spend past any daily cap.
+  # A price too small to be real, such as one a token rather than a
+  # million, isn't caught, and spends past the cap the same way.
   dollars = lib.types.numbers.positive;
   # What one model costs, as mycelium's lender reads it.
   price = lib.types.submodule {
@@ -99,7 +101,9 @@ lib.types.submodule {
                 cache write, isn't counted here. The cap is each machine's,
                 not the prefix's: the budget's spend_watch allowance is what
                 holds them all, once spend-watch's feeds say what was spent,
-                which may be some minutes after it was.
+                which is as late as the slowest of them, up to two days for
+                a warehouse's bill. A request whose most cost is above the
+                cap is refused however little was spent that day.
               '';
             };
           };

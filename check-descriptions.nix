@@ -2590,25 +2590,25 @@
     the worker machines it made as that file in the Nix store, rather than one in the account's
     config folder, its fields exactly those the locked mycelium's lender parses the file into, by
     name and type, from structs that derive Deserialize with only deny_unknown_fields over them
-    and no field attribute but default, which a scan shown to refuse eleven other layouts reads,
+    and no field attribute but default, which a scan shown to refuse other layouts reads,
     and the lender joins a relative upstream onto its runtime folder; the budget kinds the lend
     takes, and the one it writes where none is said, are the lowercased variants of the lender's
     Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
-    rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
-    leaving a machine's also and a budget's kind unsaid is written with them filled in as the
-    lender takes them, beside a forge budget a machine names; a lend capping no machine's dollars
-    and pricing no model is written without them, which mycelium's own tests show its lender
-    reads as lending no model,
-    its budget's prices among the fields the scan reads as defaulted, a scan shown to read as
-    defaulted only a field whose own line above, past its doc lines, is the attribute, and warned
-    of rather than refused, naming which it lacks, as is a models budget naming no spend-watch
-    budget or pricing none, and a machine lending models only beside a forge, each still meeting
-    every assertion; a lend whose every models budget is priced and watched and whose machines
-    are capped is warned of by neither warning, nor is a machine lending only a forge or its
-    forge budget; a price leaving its cache's prices unset is written without them, and a model
-    with any of its four prices at nothing is refused by the option's type; a
-    budget with no key is written with
-    none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
+    rename over it and plain variants, by a scan shown to refuse other layouts; a lend leaving a
+    machine's also and a budget's kind unsaid is written with them filled in as the lender takes
+    them, beside a forge budget a machine names; a lend capping no machine's dollars and pricing
+    no model is written without them (its budget's prices among the fields the scan reads as
+    defaulted, a scan shown to read as defaulted only a field whose own line above, past its doc
+    lines, is the attribute) and is warned of rather than refused, naming which it lacks; so is a
+    models budget naming no spend-watch budget, one the account's spend-watch doesn't declare or
+    pricing none, and a machine lending models only beside a forge, each still taken by the
+    option's type and every assertion, as the locked lender's source refuses a model's request
+    where its machine caps no spend, its budget names no spend-watch budget or its model has no
+    price, and asks spend-watch of the one it names; a lend whose every models budget is priced
+    and watched and whose machines are capped is warned of by neither warning, nor is a machine
+    lending only a forge or its forge budget; a price leaving its cache's prices unset is written
+    without them, and a model with any of its four prices at nothing is refused by the option's
+    type; a budget with no key is written with none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
     refused by a message naming it and its node given none, plain prefixes and dotted paths and
     key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that
     is empty, starts another, either way round, or is named twice, a key that is empty or whose
