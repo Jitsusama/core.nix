@@ -2405,19 +2405,35 @@ fn the_stores_filesystem_counts_to_the_floor_nix_says_it_keeps() {
     );
 }
 
-/// Each read of `min-free` can hold a step for its 30 s timeout, so a
-/// Nix that keeps failing to say is asked again in five minutes, then
-/// ten, rather than every five; and one that answers is read hourly.
+/// How many times the stand-in Nix was asked for `min-free`.
+fn min_free_asked(store: &Store) -> usize {
+    fs::read_to_string(store.root.join("min-free-asked"))
+        .unwrap_or_default()
+        .lines()
+        .count()
+}
+
+/// The floor the status file gives the store's filesystem.
+fn told_floor(store: &Store) -> Option<u64> {
+    let status = fs::read_to_string(store.root.join("status.json")).unwrap();
+    let status = serde_json::from_str::<serde_json::Value>(&status).unwrap();
+    status["filesystems"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|filesystem| filesystem["nix_floor"].as_u64())
+}
+
+/// Each read of `min-free` can hold a step for its 30 s timeout, so with a
+/// floor kept, a Nix that keeps failing to say is asked again in five
+/// minutes, then ten and twenty, rather than every five, and the floor it
+/// last said is kept meanwhile; one read that answers resets it.
 #[test]
-fn a_failing_min_free_read_is_asked_less_and_less() {
+fn a_failing_min_free_read_keeps_its_floor_and_is_asked_less_and_less() {
     let store = Store::new();
-    let asked = || {
-        fs::read_to_string(store.root.join("min-free-asked"))
-            .unwrap_or_default()
-            .lines()
-            .count()
-    };
-    let mut guard = store.guard(user_config(&store, "0%"));
+    let mut config = user_config(&store, "0%");
+    config.status_file = true;
+    let mut guard = store.guard(config);
     let start = tick();
     let mut step_at = |seconds: f64| {
         let at = Tick {
@@ -2427,28 +2443,79 @@ fn a_failing_min_free_read_is_asked_less_and_less() {
         };
         guard.step(&at, &CALM).unwrap();
     };
-    // No min-free file, so every read fails.
+    let min_free = store.root.join("min-free");
+    fs::write(&min_free, "1\n").unwrap();
     step_at(0.0);
-    assert_eq!(asked(), 1, "read on the first step");
-    step_at(299.0);
-    assert_eq!(asked(), 1, "asked again before five minutes passed");
-    step_at(301.0);
-    assert_eq!(asked(), 2, "not asked again after five minutes");
-    step_at(301.0 + 599.0);
+    assert_eq!(min_free_asked(&store), 1, "not read on the first step");
+    // From here every read fails, until min-free is written again.
+    fs::remove_file(&min_free).unwrap();
+    let mut failed = 3601.0;
+    step_at(failed);
+    assert_eq!(min_free_asked(&store), 2, "not read again after an hour");
     assert_eq!(
-        asked(),
-        2,
-        "a second failure asked again within ten minutes"
+        told_floor(&store),
+        Some(1),
+        "a read that failed dropped the floor read before it"
     );
-    fs::write(store.root.join("min-free"), "1\n").unwrap();
-    step_at(301.0 + 601.0);
-    assert_eq!(asked(), 3, "not asked again after ten minutes");
-    step_at(301.0 + 601.0 + 3599.0);
+    for (wait, asked) in [(300.0, 3), (600.0, 4), (1200.0, 5)] {
+        step_at(failed + wait - 1.0);
+        assert_eq!(
+            min_free_asked(&store),
+            asked - 1,
+            "asked again within {wait} s of a failure"
+        );
+        step_at(failed + wait + 1.0);
+        assert_eq!(
+            min_free_asked(&store),
+            asked,
+            "not asked again {wait} s after a failure"
+        );
+        failed += wait + 1.0;
+    }
+    fs::write(&min_free, "1\n").unwrap();
+    step_at(failed + 2400.0 + 1.0);
     assert_eq!(
-        asked(),
-        3,
-        "a read that answered was asked again within the hour"
+        min_free_asked(&store),
+        6,
+        "not asked again after forty minutes"
     );
+    let answered = failed + 2401.0;
+    fs::remove_file(&min_free).unwrap();
+    step_at(answered + 3601.0);
+    assert_eq!(
+        min_free_asked(&store),
+        7,
+        "a read that answered wasn't asked hourly"
+    );
+    step_at(answered + 3601.0 + 301.0);
+    assert_eq!(
+        min_free_asked(&store),
+        8,
+        "a failure after a read that answered waited past five minutes"
+    );
+}
+
+/// A guard that has read no floor yet, as after a switch restarts it on a
+/// loaded Mac, is told from its bands alone, so it asks every five minutes
+/// until Nix answers rather than backing off.
+#[test]
+fn a_min_free_never_read_is_asked_every_five_minutes() {
+    let store = Store::new();
+    let mut guard = store.guard(user_config(&store, "0%"));
+    let start = tick();
+    for (step, seconds) in [0.0, 301.0, 602.0, 903.0, 1204.0].into_iter().enumerate() {
+        let at = Tick {
+            wall: start.wall + seconds,
+            monotonic: start.monotonic + seconds,
+            ..start.clone()
+        };
+        guard.step(&at, &CALM).unwrap();
+        assert_eq!(
+            min_free_asked(&store),
+            step + 1,
+            "a guard with no floor wasn't asked again five minutes on, at {seconds} s"
+        );
+    }
 }
 
 #[test]

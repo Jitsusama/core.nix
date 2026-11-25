@@ -191,7 +191,8 @@ const GARBAGE: &str = "garbage";
 /// their `nix.conf` seldom and asking costs a process.
 const MIN_FREE_EVERY: f64 = 3600.0;
 /// How soon a `min-free` that couldn't be read is asked again, the first
-/// time; each failure after doubles it, up to `MIN_FREE_EVERY`.
+/// time, and every time while no read has answered; each failure after
+/// doubles it, up to `MIN_FREE_EVERY`, while a floor read before is kept.
 const MIN_FREE_AGAIN: f64 = 300.0;
 
 /// How soon `min-free` is asked again after `failures` reads in a row
@@ -2332,12 +2333,14 @@ impl Guard {
     }
 
     /// Reads Nix's own `min-free` once an hour. A read that fails keeps
-    /// the last one that didn't and is asked again sooner, from five
-    /// minutes on (`min_free_again`), since the floor decides what a
-    /// person is told: one slow `nix config show` on a loaded Mac would
-    /// otherwise tell its disk fills for an hour. The first failure of a
-    /// run of them is logged, so a guard telling from an old floor says
-    /// why.
+    /// the last one that didn't and is asked again sooner, since the
+    /// floor decides what a person is told: one slow `nix config show` on
+    /// a loaded Mac would otherwise tell its disk fills for an hour. With
+    /// a floor kept it backs off from five minutes on (`min_free_again`);
+    /// with none, as after a switch restarts the guard under load, it's
+    /// asked every five minutes until one answers. A run of failures is
+    /// logged where it starts and where it ends, so the journal says
+    /// whether the guard tells from an old floor, or none.
     fn read_min_free(&mut self, now: f64) {
         if self
             .min_free
@@ -2349,17 +2352,32 @@ impl Guard {
             .min_free
             .map_or((None, 0), |(_, kept, failures)| (kept, failures));
         self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
-            Ok(read) => (now, Some(read), 0),
+            Ok(read) => {
+                if failures > 0 {
+                    eprintln!("disk-guard: read Nix's min-free again after {failures} failed");
+                }
+                (now, Some(read), 0)
+            }
             Err(why) => {
                 if failures == 0 {
-                    eprintln!("disk-guard: reading Nix's min-free: {why}; keeping the last read");
+                    match kept {
+                        Some(floor) => eprintln!(
+                            "disk-guard: reading Nix's min-free: {why}; keeping the last read, \
+                             {floor} bytes"
+                        ),
+                        None => eprintln!(
+                            "disk-guard: reading Nix's min-free: {why}; telling without Nix's \
+                             floor until it answers"
+                        ),
+                    }
                 }
                 let failures = failures.saturating_add(1);
-                (
-                    now - MIN_FREE_EVERY + min_free_again(failures),
-                    kept,
-                    failures,
-                )
+                let again = if kept.is_some() {
+                    min_free_again(failures)
+                } else {
+                    MIN_FREE_AGAIN
+                };
+                (now - MIN_FREE_EVERY + again, kept, failures)
             }
         });
     }
@@ -3953,7 +3971,17 @@ impl Reclaimer for Pretending {
 // so this test doesn't cover it.
 #[cfg(test)]
 mod tests {
-    use super::{Band, Decision, Goal, Why, aim};
+    use super::{Band, Decision, Goal, Why, aim, min_free_again};
+
+    #[test]
+    fn a_failing_min_free_read_waits_twice_as_long_each_time_up_to_an_hour() {
+        let waits: Vec<f64> = (1..=7).map(min_free_again).collect();
+        assert_eq!(
+            waits,
+            [300.0, 600.0, 1200.0, 2400.0, 3600.0, 3600.0, 3600.0],
+            "failures in a row waited other than 5, 10, 20 and 40 minutes, then hourly"
+        );
+    }
 
     #[test]
     fn each_decision_aims_its_pass_with_its_why_and_the_survey_it_was_given() {
