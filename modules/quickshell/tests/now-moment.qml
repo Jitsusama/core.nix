@@ -2942,7 +2942,7 @@ ShellRoot {
             JSON.stringify([agents.answered, theLauncher.said]));
         // Kept among the session's answers by its label, as a Talk's is, so a Talk opened after
         // shows it and sends no second (Agents.qml's answerKept).
-        expect("it asks Agents to keep it among the session's answers, by its label, to the want shown",
+        expect("it asks Agents to keep it among the answers, by its label, to the want shown",
             answered.label === "Yes, push it"
                 && answered.want === "question@2026-11-12T07:00:00.000Z",
             JSON.stringify(answered));

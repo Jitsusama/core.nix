@@ -233,6 +233,20 @@ function walkRefused(fromJoel, template, name) {
     return fromJoel === true ? null : filled(template, { name });
 }
 
+// Why an answer to `want` from any row goes nowhere, in `said`'s words (verb:agent:talk's), or
+// null where it goes: a walk from outside (`fromJoel` not true) is refused, as an answer goes
+// as Joel's, and one to an ask he answered already (`list`, the session's answers) goes
+// nowhere, as the session takes only his first. Asked before his answer is kept, so neither
+// shows in its Talk as his.
+function answerRefused(fromJoel, list, want, nowMs, said, name) {
+    const walked = walkRefused(fromJoel, said?.answerWalked ?? "", name);
+    if (walked !== null) {
+        return walked;
+    }
+    return answeredAlready(list, want, nowMs) ? filled(said?.answeredAlready ?? "", { name })
+        : null;
+}
+
 // What Talk to It on a top row does: "line" on the void, whose Talk opens the talk line;
 // "answer" on one asking him what he can answer here (`answerable`), whose tree's Talk shows
 // it and answers it; else "talk", words to its inbox.

@@ -2739,17 +2739,8 @@ Provider {
     // steers it there, and `then(put)` hears whether the node put it in
     // the session's inbox, which Sessions says as it does any act's. Not
     // `answer`, which the launcher asks of every source for what's typed.
+    // Only answerKept sends one, having refused a walk or a second answer first.
     function answerWant(address, fields, then) {
-        // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
-        // (Sprouting.fromJoel): a walk from outside is refused and told so.
-        const why = TalkAnswers.walkRefused(Sprouting.fromJoel(launcher),
-            Words.of("verb:agent:talk").said?.answerWalked ?? "",
-            sessionAt(address)?.title ?? String(address));
-        if (why !== null) {
-            launcher?.walkRefused?.(why);
-            then(false, why, false);
-            return;
-        }
         const said = Object.assign({ ask: "answer", address: String(address) }, fields);
         if (!rowsKind) {
             then(Sessions.steered(address, null));
@@ -2778,6 +2769,17 @@ Provider {
     // `then(put, why, unheard)` hears the node, after it's kept.
     function answerKept(address, fields, chose, then) {
         const to = String(address).toUpperCase();
+        // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
+        // (Sprouting.fromJoel), and only his first to an ask, For You's choices too; refused,
+        // the foot says why and nothing is kept, so its Talk shows no words he didn't send.
+        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), answeredTo[to],
+            chose.answers.want, Date.now(), Words.of("verb:agent:talk").said ?? {},
+            sessionAt(address)?.title ?? to);
+        if (refused !== null) {
+            launcher?.walkRefused?.(refused);
+            then(false, refused, false);
+            return;
+        }
         const one = TalkAnswers.said(chose.label, Date.now(), chose.answers.want, chose.typed);
         const keep = changed => {
             answeredTo = Object.assign({}, answeredTo,

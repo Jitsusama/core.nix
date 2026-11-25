@@ -289,7 +289,23 @@ QtObject {
             Expect.same("and none where there was no daemon to send it to",
                 Answers.unheard(false, null), false);
 
-            // Whether an answer goes at all (Agents.qml's answerWant).
+            // Whether an answer goes at all, from any row, asked before it's kept (Agents.qml's
+            // answerKept), so a refused one never shows in its Talk as his.
+            const refusals = { answerWalked: "{name} is answered only by you",
+                answeredAlready: "you answered {name} already" };
+            const sentNow = [Answers.said("Yes", new Date(1000).toISOString(), "q@1")];
+            Expect.same("his first answer to an ask goes",
+                Answers.answerRefused(true, [], "q@1", 2000, refusals, "Skiff"), null);
+            Expect.same("a walk's is refused before anything else",
+                Answers.answerRefused(false, sentNow, "q@1", 2000, refusals, "Skiff"),
+                "Skiff is answered only by you");
+            Expect.same("a second to an ask he answered goes nowhere, For You's choices too",
+                Answers.answerRefused(true, sentNow, "q@1", 2000, refusals, "Skiff"),
+                "you answered Skiff already");
+            Expect.same("one to a newer ask goes",
+                Answers.answerRefused(true, sentNow, "q@2", 2000, refusals, "Skiff"), null);
+            Expect.same("one with no words for why still refuses",
+                Answers.answerRefused(false, [], "q@1", 2000, {}, "Skiff"), "");
             Expect.same("his own Return's answer goes",
                 Answers.walkRefused(true, "{name} is answered only by you", "Skiff"), null);
             Expect.same("a walk's is refused, saying why",
