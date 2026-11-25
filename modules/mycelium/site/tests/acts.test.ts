@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { ACT_WORDS, askedOf, cellActs, goLink } from "../acts.ts";
+import { ACT_WORDS, LINK_GAP_MS, askedOf, cellActs, goLink, linkGoesAhead } from "../acts.ts";
 
 const session = { address: "TERN02", host: "kestrel", receptor: false, foraged: true };
 
@@ -113,4 +113,25 @@ it("falls back to the short line where the session says nothing longer", () => {
     "a blank whole text should read as none",
   );
   assert.deepEqual(askedOf({ wants: null }), [], "a cell asking nothing should say nothing");
+});
+
+it("lets a link go within the desktop's gap of the last, as mycelium-link does", () => {
+  const last = 1_000_000;
+  assert.equal(linkGoesAhead(null, last), true, "the first link should go");
+  assert.equal(
+    linkGoesAhead(last, last + LINK_GAP_MS - 1),
+    false,
+    "a link just inside the gap should be let go, since the desktop would drop it",
+  );
+  assert.equal(linkGoesAhead(last, last), false, "a link at the same moment should be let go");
+  assert.equal(
+    linkGoesAhead(last, last + LINK_GAP_MS),
+    true,
+    "a link once the gap has passed should go",
+  );
+  assert.equal(
+    linkGoesAhead(last, last - 1),
+    true,
+    "a clock set back should let it go, as no gap is judged against a time to come",
+  );
 });

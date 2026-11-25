@@ -48,6 +48,24 @@ export const goLink = (address: string, host?: string | null): string | null => 
 };
 
 /**
+ * How long after a link the desktop follows it lets the next one go, as
+ * mycelium-link's own `GAP` does (modules/quickshell/mycelium-link), so a
+ * page can't open the launcher over Joel's work again and again. The page
+ * keeps to it as well, since it can't see a link the desktop let go, and
+ * would otherwise say it went.
+ */
+export const LINK_GAP_MS = 3000;
+
+/**
+ * Whether a link followed at `now` goes ahead after the last that went at
+ * `last`, as mycelium-link judges it: never within `LINK_GAP_MS` of it, and
+ * always where none went, or where the clock has been set back since, as
+ * no gap can be judged against a time to come. Both are in milliseconds.
+ */
+export const linkGoesAhead = (last: number | null, now: number): boolean =>
+  last === null || last > now || now - last >= LINK_GAP_MS;
+
+/**
  * What the drawer offers, first to last: Go to It, Talk to It and Start New
  * Work for a session whose address a link may carry, and What It Is For where
  * it has a forage. A receptor offers only its forage, since there is no

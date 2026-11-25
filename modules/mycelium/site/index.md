@@ -149,7 +149,9 @@ Nothing on it acts on the network.
   opening one, talk to it in the Launcher and start new work from it;
   one that asks you something leads with those acts, then says what it
   asks, whole, and one with a forage opens the forage page on it,
-  saying what it is for and how far its plans have come.
+  saying what it is for and how far its plans have come. The desktop
+  takes one link every three seconds, so one followed sooner waits,
+  and the map says so rather than that it went.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's
