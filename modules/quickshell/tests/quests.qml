@@ -771,48 +771,40 @@ ShellRoot {
     }
 
     // A row that throws as it's made ahead, the first owed, once it's
-    // made and before its clock is read, is let go for its step back,
-    // nothing of it kept, and the rest made still, none left waiting on a
-    // frame; its making is felt as Quests' ahead, as a frame it stalls
-    // says who held it.
+    // made, is let go for its step back, nothing of it kept, and the rest
+    // made still, none left waiting on a frame; its making is felt as
+    // Quests' ahead, as a frame it stalls says who held it.
     function aRowThrows() {
         const served = theQuests.served;
         const making = served.make;
         const owed = Object.keys(served.owedAhead);
         const [throwing, rest] = owed;
-        let broken = null;
-        const mend = () => {
-            if (broken !== null)
-                Object.defineProperty(broken.row, "side", { value: broken.side,
-                    writable: true, enumerable: true, configurable: true });
-            broken = null;
-        };
+        // Each time the row's key was read, and threw.
+        let threw = 0;
         try {
             expect("both owed", owed.length === 2, owed.join(", "));
-            // Its served row's side, read for its clock once it's made,
-            // throws, as a row the place can't say would.
+            // The row made of it throws as its key is read, which rowAt
+            // does once it's written it as made, to name it as made of
+            // its record, and which letting it go does too.
             served.make = (row, key) => {
                 const madeRow = making(row, key);
-                if (key === throwing) {
-                    broken = { row, side: row.side };
-                    Object.defineProperty(row, "side", { configurable: true,
-                        get: () => { throw new Error("a row broke"); } });
-                }
+                if (key === throwing)
+                    Object.defineProperty(madeRow, "key", { configurable: true, get: () => {
+                        threw += 1;
+                        throw new Error("a row broke");
+                    } });
                 return madeRow;
             };
             theLauncher.felt = [];
             theLauncher.drawFrame();
             served.make = making;
-            const thrown = broken?.row;
-            mend();
             expect("the rest made, though the first owed threw",
                 theQuests.tally.rows === root.counted + 2 && rest in served.made, rowsSince());
             expect("the one that threw let go for its step back, nothing of it kept",
-                thrown !== undefined && !(throwing in served.made)
+                threw > 0 && !(throwing in served.made)
                 && !Object.values(served.madeOf).includes(throwing)
                 && !(throwing in served.madeFrom),
-                JSON.stringify([thrown !== undefined, throwing in served.made,
-                    throwing in served.madeFrom]));
+                JSON.stringify([threw, throwing in served.made, throwing in served.madeFrom]));
             expect("and none left waiting on a frame", theLauncher.framed.length === 0
                 && Object.keys(served.owedAhead).length === 0,
                 `${theLauncher.framed.length} waiting, `
@@ -833,7 +825,6 @@ ShellRoot {
             laptopSession("running")] });
         } catch (error) {
             served.make = making;
-            mend();
             fail(error.message);
         }
     }
@@ -873,14 +864,17 @@ ShellRoot {
             expect("no row made shut, though a step stays held", theQuests.tally.rows === root.counted,
                 `${theQuests.tally.rows - root.counted} rows`);
             root.toldFor = "row:quests:QEST-20261003-PROMPT";
-            // Shut, an opening that ends unopened runs what waits on a
-            // frame then, as Launcher.qml's unopened does.
+            // The stand-in itself, which the cases' frames are drawn by:
+            // shut, an opening that ends unopened runs what waited on a
+            // frame then, as Launcher.qml's unopened does, so a case
+            // can't pass on work the stand-in never ran. Launcher.qml's
+            // own is out of this check's reach.
             let ran = false;
             theLauncher.opening = true;
             theLauncher.afterFrame(() => ran = true);
             const heldBack = !ran;
             theLauncher.opening = false;
-            expect("an opening holds what waits on a frame, and run once it ends unopened",
+            expect("the stand-in's opening holds what waits on a frame, run once it ends unopened",
                 heldBack && ran, JSON.stringify([heldBack, ran]));
             theLauncher.open = true;
             root.settleThen(root.reopenedElsewhere);

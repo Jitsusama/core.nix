@@ -400,13 +400,22 @@ Scope {
             unmade(key);
     }
     // What it made of a row let go, so the next to want it makes it afresh.
+    // Its made row's key is read last and in a try, since a row whose key throws is what rowAt
+    // was making when it threw, so letting it go throws nothing in turn; nothing names it then.
     function unmade(key) {
-        if (made[key])
-            delete madeOf[made[key].key];
+        const row = made[key];
         delete made[key];
         delete madeFrom[key];
         delete lending[key];
         delete clocked[key];
+        let named;
+        try {
+            named = row?.key;
+        } catch (unread) {
+            return;
+        }
+        if (named !== undefined && madeOf[named] === key)
+            delete madeOf[named];
     }
 
     // Which record each row made was made of, by the row's key, for its
