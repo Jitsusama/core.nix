@@ -3503,14 +3503,18 @@ pub fn in_turn_nearby(command: &str) -> String {
 /// run waiting there for room is never read as a hung one: on 8 November
 /// the net's VM test said nothing for 30 minutes on a busy VM builder and
 /// held main as a stall. A builder with room says nothing, so a hung build
-/// stays silent. Builds are counted by their users, a build user's or an
-/// allocated range of 65536 from Nix's first, and nothing is said where
-/// either can't be read.
+/// stays silent. Builds are counted by their users: a build user's, named
+/// `nixbld` and a number on Linux and `_nixbld` and one on a Mac, or an
+/// allocated range of 65536 from Nix's first. A Mac's build users have
+/// uids near 300, so counted by Linux's uids alone, from 30001, a Mac
+/// full of builds read as one with room: on 24 November a Mac at load 17
+/// to 88 took #6006's checks, and the run said nothing for half an hour
+/// until the net stopped it. Nothing is said where neither can be read.
 const ROOM_SAID: &str = "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
      said=$((said + 1)); [ \"$said\" -lt \"${NIX_OFFLOAD_ROOM_EVERY:-300}\" ] && continue; \
      said=0; most=$(nix config show max-jobs 2>/dev/null); \
-     running=$(ps -eo uid= 2>/dev/null | awk '$1 >= 872415232 \
-     { print int(($1 - 872415232) / 65536) } $1 > 30000 && $1 < 31000 { print \"b\" $1 }' \
+     running=$(ps -eo user=,uid= 2>/dev/null | awk '$1 ~ /^_?nixbld[0-9]+$/ \
+     { print \"b\" $1; next } $2 >= 872415232 { print int(($2 - 872415232) / 65536) }' \
      | sort -u | wc -l); \
      if [ -n \"$most\" ] && [ \"$running\" -ge \"$most\" ] 2>/dev/null; then \
      echo \"nix-offload: the builder runs $running builds, as many as it runs at once, \
@@ -8678,13 +8682,14 @@ mod tests {
     /// it took, on a builder whose `ps` names `uids` as running and whose
     /// Nix runs `most` builds at once, asked about every second.
     #[cfg(target_os = "linux")]
-    fn said_far(seconds: u32, uids: &str, most: &str) -> (String, Duration) {
+    // `users` is what `ps` says, a user and a uid to each process.
+    fn said_far(seconds: u32, users: &str, most: &str) -> (String, Duration) {
         let folder = tempfile::tempdir().unwrap();
         let bin = folder.path().join("bin");
         fs::create_dir(&bin).unwrap();
-        for (name, says) in [("ps", uids), ("nix", most)] {
+        for (name, line, says) in [("ps", "%s %s", users), ("nix", "%s", most)] {
             let fake = bin.join(name);
-            crate::testing::executable(&fake, &format!("#!/bin/sh\nprintf '%s\\n' {says}\n"));
+            crate::testing::executable(&fake, &format!("#!/bin/sh\nprintf '{line}\\n' {says}\n"));
         }
         let began = std::time::Instant::now();
         let ran = Command::new("sh")
@@ -8715,7 +8720,8 @@ mod tests {
         // many builds as it runs at once, two allocated and one build
         // user's here, says so; one with room says nothing, so a hung
         // build stays silent.
-        let full = "872415232 872415233 872480768 30001 0 1000";
+        let full = "872415232 872415232 872415233 872415233 872480768 872480768 \
+                    nixbld1 30001 root 0 joel 1000";
         let (said, took) = said_far(3, full, "3");
         assert!(
             said.contains(
@@ -8727,6 +8733,23 @@ mod tests {
         assert!(took < Duration::from_secs(6), "it ended late: {took:?}");
         let (said, _) = said_far(3, full, "4");
         assert_eq!(said, "");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_macs_build_users_are_counted_too() {
+        // A Mac's build users are _nixbld1 and on, with uids from about
+        // 300: on 24 November a Mac at load 17 to 88 took #6006's checks,
+        // and the run said nothing for half an hour, as a hung one does.
+        let full = "_nixbld1 351 _nixbld2 352 _nixbld2 352 root 0 joel 501";
+        let (said, _) = said_far(3, full, "2");
+        assert!(
+            said.contains(
+                "nix-offload: the builder runs 2 builds, as many as it runs at once, \
+                 so this may wait there for room"
+            ),
+            "{said}"
+        );
     }
 
     #[test]
