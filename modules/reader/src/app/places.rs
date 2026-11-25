@@ -177,6 +177,24 @@ impl App {
             .all(|index| incoming.textures.contains_key(&Key { zoom: key, index }))
     }
 
+    /// Lets go of everything the page shown held for itself: its textures,
+    /// what was asked or arrived for it, where it was held and settled, and
+    /// a jump under way, for a page set whole to take its place.
+    fn let_go_of_the_page(&mut self) {
+        if let Some(gl) = self.gl.as_ref() {
+            for (_, texture) in self.textures.drain() {
+                gl.forget(texture);
+            }
+        }
+        self.stale.clear();
+        self.fresh.clear();
+        self.asked.clear();
+        self.arrived.clear();
+        self.held_pt = None;
+        self.settled_pt = f64::NEG_INFINITY;
+        self.jump = None;
+    }
+
     /// The saved page takes the page's place, whole, with the view on the
     /// same words, and everything of the page before is let go.
     pub(crate) fn take_incoming(&mut self) {
@@ -208,21 +226,10 @@ impl App {
         if incoming.opens.is_some() && !self.measuring {
             self.keep_place();
         }
-        if let Some(gl) = self.gl.as_ref() {
-            for (_, texture) in self.textures.drain() {
-                gl.forget(texture);
-            }
-        }
-        self.stale.clear();
-        self.fresh.clear();
-        self.asked.clear();
-        self.arrived.clear();
-        self.held_pt = None;
-        self.settled_pt = f64::NEG_INFINITY;
+        self.let_go_of_the_page();
         // A saved or followed file's page is set whole.
         self.whole = true;
         self.reloaded = true;
-        self.jump = None;
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
         // The page shown holds its words from now, so a set after it is
