@@ -396,9 +396,10 @@ PanelWindow {
             under = column;
             if (reshaped)
                 walkFrom(true, saw);
-            else if (carry !== null)
+            else if (carry !== null || scrolled())
                 // Back on its own column while niri's spring still slides
-                // the strip, it goes back with its window from where it's
+                // the strip, or once it has settled with the cat off the
+                // screen, it goes back with its window from where it's
                 // drawn, never at once to where niri will have it.
                 rideTo(there);
             else
@@ -435,22 +436,41 @@ PanelWindow {
             return;
         rideTo({ x: place.x + by.x, y: place.y + by.y });
     }
-    // Its place set to `to` as niri's scroll sets off, drawn where it is
-    // now and closing on `to` on niri's spring.
+    // Whether niri scrolls its own column under it, where it sits, as niri
+    // says, or, where niri says nothing, from off the screen, where only a
+    // scroll leaves it at rest: never a drag, which niri doesn't animate.
+    function scrolled(): bool {
+        if (place === null || there === null || (Math.abs(place.x - there.x) < 0.5
+            && Math.abs(place.y - there.y) < 0.5))
+            return false;
+        return Tiles.animating(Niri.windows, space?.id, "ViewMove") !== null
+            || place.x + size <= 0 || place.x >= modelData.width;
+    }
+    // Its place set to `to` as niri's scroll sets off, drawn where it was
+    // as niri set it off and closing on `to` on niri's spring
+    // (MarginCatStacked.js's rides).
     function rideTo(to: var): void {
         const spring = Object.assign({}, Theme.motion.spring,
             { slowdown: Theme.motion.slowdown });
-        carry = {
-            from: { x: place.x + lag.x - to.x, y: place.y + lag.y - to.y },
-            // As far into the scroll as niri says, or a guess at how late
-            // it hears of one where niri says nothing.
-            at: Date.now() - MarginCat.behindTold(frameMs, "slide",
-                Tiles.animating(Niri.windows, space?.id, "ViewMove")),
-            ends: MarginCat.slides(spring),
-            spring
-        };
-        lag = MarginCat.lags(carry.from, Date.now() - carry.at, spring);
+        const now = Date.now();
+        // As far into the scroll as niri says, or a guess at how late it
+        // hears of one where niri says nothing.
+        carry = Stacked.rides(carry, place, to, now, MarginCat.behindTold(frameMs, "slide",
+            Tiles.animating(Niri.windows, space?.id, "ViewMove")), spring);
+        lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
+    }
+    // Where it's drawn: its place, short of it on a ride by its lag.
+    function drawnAt(): var {
+        return place === null ? null : { x: place.x + lag.x, y: place.y + lag.y };
+    }
+    // A ride ended where it's drawn, so whatever it does next, a walk, a
+    // move or a lift, sets off from there, never from its place a lag on.
+    function unride(): void {
+        if (carry !== null)
+            place = drawnAt();
+        carry = null;
+        lag = { x: 0, y: 0 };
     }
     // The scroll carrying it, while niri's spring runs, and how far from
     // its place that has it drawn now.
@@ -460,7 +480,9 @@ PanelWindow {
         running: window.carry !== null
         onTriggered: {
             const t = Date.now() - window.carry.at;
-            if (t >= window.carry.ends) {
+            // A clock stepped back ends it too, rather than holding it
+            // drawn off its place until the clock comes round again.
+            if (t >= window.carry.ends || t < 0) {
                 window.carry = null;
                 window.lag = { x: 0, y: 0 };
             } else {
@@ -529,7 +551,7 @@ PanelWindow {
         // far into it as it was, easing in again unless it was at its
         // pace; from a stride held on the spot, once it's seen.
         const setOff = Paths.setOffFrom(stepped);
-        const from = { x: place.x, y: place.y };
+        const from = drawnAt();
         const plan = Stacked.walkAlong(from, { x: to.x, y: to.y }, Object.assign({
             cell,
             ratio,
@@ -586,10 +608,9 @@ PanelWindow {
             steps = 0;
         }
         byHand = false;
-        // Set off before a scroll's spring settled, it walks from its
-        // place, a few pixels on from where that had it drawn.
-        carry = null;
-        lag = { x: 0, y: 0 };
+        // Set off before a scroll's spring settled, it walks from where
+        // that had it drawn, as its plan does.
+        unride();
         going = plan;
         if (fresh)
             begunAt = window.FramePresentation.framesBegun;
@@ -835,9 +856,7 @@ PanelWindow {
     }
 
     function halt(): void {
-        // Whatever it does next sets off from its place, a ride ended.
-        carry = null;
-        lag = { x: 0, y: 0 };
+        unride();
         walker.stop();
         going = null;
         // After `going`, whose handler fades the yarn as the play that

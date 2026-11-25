@@ -418,6 +418,16 @@ QtObject {
         const seated = Paths.frame(walk, walk.ends);
         expect("and walks the tops on to its seat", [seated.x, seated.y, seated.beat],
             [312, 7, "sits"]);
+        // The edge in the gap between the window inside it and one past it.
+        const gapped = [strip[0], strip[1], { left: 1264, top: 40, width: 600, height: 744,
+            column: 2, id: 3 }];
+        const across = Stacked.walkAlong({ x: 2000, y: 31 }, { x: 312, y: 7 },
+            world({ cols: Paths.columns(gapped, 0), pause: 300 }));
+        const peeked = across.beats.find(beat => beat.name === "peeks");
+        expect("the edge in a gap, it peeks from the top of the window past it, never the air",
+            [peeked?.to.y, across.beats.slice(across.beats.indexOf(peeked) + 3,
+                across.beats.indexOf(peeked) + 6).map(beat => beat.name)],
+            [31, ["crouches", "leaps", "lands"]]);
     }
 
     // How niri's scroll carries it as it waits for the keys to rest: by
@@ -435,5 +445,17 @@ QtObject {
         expect("drawn where it was as niri sets off, nearer as it slides, there as it stops",
             [lags[0], lags[1] < 1240 && lags[1] > lags[2], Math.abs(lags[3]) < 1240 * 0.01],
             [1240, true, true]);
+        // Set off 20 ms before it's heard, and turned back 10 ms before it's
+        // heard 120 ms on, so 110 ms into the first ride.
+        const first = Stacked.rides(null, { x: 100, y: 7 }, { x: -1140, y: 7 }, 1000, 20, spring);
+        expect("set off at rest, from where it sat, as far into the scroll as niri says",
+            [first.from, first.at, first.ends], [{ x: 1240, y: 0 }, 980, ends]);
+        const turned = Stacked.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 }, 1100, 10,
+            spring);
+        expect("turned back mid-way, from where it was drawn as niri turned it, not now",
+            [turned.from.x, turned.at], [-1240 + MarginCat.lags(first.from, 110, spring).x, 1090]);
+        const after = Stacked.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 }, 9000, 0, spring);
+        expect("set off again once the first has settled, from its place",
+            [Math.abs(after.from.x + 1240) < 1240 * 0.01, after.from.y], [true, 0]);
     }
 }

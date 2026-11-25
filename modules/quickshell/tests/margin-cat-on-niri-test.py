@@ -551,8 +551,9 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
             return False
         middle = at["x"] + at["size"] / 2
         stands = at["y"] + at["size"] + at["air"]
-        beyond = left >= across and middle >= across
-        return bool(beyond or (left <= middle <= left + width and abs(stands - top) < FLUSH))
+        # Past the edge with its window, over that window, wherever niri has its top.
+        on = left <= middle <= left + width
+        return bool(on and (left >= across or abs(stands - top) < FLUSH))
 
     try:
         shell.reported(SITS, carried, since, timedelta(seconds=RESTS))
@@ -587,6 +588,49 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
         > STEPS_ON * before["size"]
     ]
     assert not jumps, f"the cat jumped along the strip: {jumps[:3]}"
+
+
+def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> None:
+    """Keys back on its own column once niri's scroll away has settled, it rides back.
+
+    niri's spring settles in about a quarter of a second and the keys rest only after two,
+    so the cat can be still, carried off with its window, when the keys come back to its own
+    column and niri scrolls the strip back. It comes back drawn with its window, never put
+    down on its seat at once ahead of it (#6483's council, 2026-11-25).
+    """
+    first = three_columns(shell, "a ride back")
+    windows = {window["title"]: window for window in shell.windows()}
+    third = windows["a column a ride back sets off from"]
+    sat_at = laid_out(shell, third)["tile_pos_in_workspace_view"][0]
+    wake(shell)
+    since = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    away = laid_out(shell, third)
+    gone, width = away["tile_pos_in_workspace_view"][0], away["tile_size"][0]
+    assert gone != sat_at, f"niri left its window at {sat_at}: the case's own"
+
+    # Still over its window where niri scrolled it, drawn at its place, its ride done.
+    def settled(report: str) -> bool:
+        at = placed(report)
+        return bool(
+            at is not None
+            and not at.get("walk")
+            and at.get("window") == third["id"]
+            and abs(at["x"] - at["drawn"]["x"]) < FLUSH
+            and gone <= at["x"] + at["size"] / 2 <= gone + width
+        )
+
+    heard(shell, settled, since, timedelta(seconds=RESTS))
+    back = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {third['id']}")
+    sits_over(shell, third, back)
+    said, _ = shell.said_since(back)
+    rode = [
+        at
+        for at in (placed(report[len(SITS) :]) for report in said if report.startswith(SITS))
+        if at is not None and not at.get("walk") and abs(at["drawn"]["x"] - at["x"]) >= 1
+    ]
+    assert rode, "niri scrolled its window back and the cat was put on its seat at once"
 
 
 def walked_report(shell: Shell, since: int) -> Json:
