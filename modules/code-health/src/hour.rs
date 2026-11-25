@@ -30,8 +30,14 @@ pub const STRAY_OWNERS: &str = "stray-owners";
 
 /// The files whose comments the stale reader couldn't know, which only
 /// its own misreading leaves, so it's held to none where no target is set
-/// and goes to who keeps code-health where a machine names one.
+/// and goes to who keeps code-health where a machine names one. home.nix
+/// reads the name from this line, so it stays on one line as it is.
 pub const UNREAD_COMMENTS: &str = "unread-comments";
+
+/// The comments naming what's gone, which a day with files whose comments
+/// couldn't be known counts short of them, so such a day's figure is said
+/// but never ratchets the target down.
+pub const STALE_PATHS: &str = "stale-paths";
 
 /// The measures that are always a mistake, held to none unless a target
 /// is set for them.
@@ -70,7 +76,9 @@ pub struct Judged {
 /// A target ratchets down to the lowest figure `days`, the newest day
 /// records, held two in a row, so a gain is kept rather than lost back to
 /// the target set, which it then says as `set`; the merges' figures,
-/// which swing day to day, are held only to the target set.
+/// which swing day to day, are held only to the target set, and a stale
+/// figure isn't held from a day that couldn't read every file's comments,
+/// since it counted short of them.
 ///
 /// The worst is the measure most past its target for the target's size,
 /// so 22 tests past 21 outranks 227 lines past 7,000; a measure with no
@@ -141,7 +149,16 @@ pub fn hour(
 /// The lowest figure `days` held for a measure two records in a row, the
 /// higher of each two, so one odd read doesn't lower it.
 fn held(days: &[Value], repo: &str, measure: &str) -> Option<f64> {
-    let figures: Vec<Option<f64>> = days.iter().map(|day| day[repo][measure].as_f64()).collect();
+    let figures: Vec<Option<f64>> = days
+        .iter()
+        .map(|day| {
+            let misread = measure == STALE_PATHS
+                && day[repo][UNREAD_COMMENTS]
+                    .as_f64()
+                    .is_some_and(|unread| unread > 0.0);
+            day[repo][measure].as_f64().filter(|_| !misread)
+        })
+        .collect();
     figures
         .windows(2)
         .filter_map(|two| Some(two[0]?.max(two[1]?)))
@@ -608,19 +625,6 @@ mod tests {
     }
 
     #[test]
-    fn unread_files_are_counted_under_the_name_the_module_routes() {
-        // home.nix hands the keeper as `<repo>/unread-comments=<keeper>`,
-        // which code-health-reads-hourly-against-targets shows; renamed
-        // here alone, the flag would name a measure code-health no longer
-        // has, and every hourly read on a machine naming a keeper, or a
-        // repository naming that measure's owner, would be refused.
-        assert_eq!(
-            UNREAD_COMMENTS, "unread-comments",
-            "unread files are counted under another name than home.nix routes to the keeper"
-        );
-    }
-
-    #[test]
     fn with_no_counts_the_day_before_no_owner_is_given_entries() {
         let read = figures(&[("core", "suppressions", 1.0)]);
         let named = BTreeMap::from([(
@@ -662,6 +666,24 @@ mod tests {
                 "the lowest held two records running wasn't found in {given:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_day_with_comments_unread_holds_no_stale_figure_but_holds_the_rest() {
+        // Two days of 1 stale path, each with a file unread, then two of 4
+        // with every file read.
+        let day = |stale: f64, unread: f64| json!({"core": {STALE_PATHS: stale, UNREAD_COMMENTS: unread, "long-files": stale}});
+        let days = [day(1.0, 1.0), day(1.0, 2.0), day(4.0, 0.0), day(4.0, 0.0)];
+        assert_eq!(
+            (
+                held(&days, "core", STALE_PATHS),
+                held(&days, "core", "long-files"),
+                held(&days[..2], "core", STALE_PATHS)
+            ),
+            (Some(4.0), Some(1.0), None),
+            "a stale figure counted short of an unread file was held, a day with one unread \
+             held nothing else, or a fully read day wasn't held"
+        );
     }
 
     #[test]

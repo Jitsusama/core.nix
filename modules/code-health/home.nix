@@ -40,9 +40,19 @@ let
         "${name}/${measure}=${toString value}"
       ]) values
     );
+  # The measure code-health counts the files its own reader couldn't read
+  # under, read from hour.rs itself, so a rename there can't leave the
+  # keeper's flag naming a measure code-health no longer has, which would
+  # refuse every hourly read.
+  unreadComments = lib.pipe (builtins.readFile ./src/hour.rs) [
+    (lib.splitString "\n")
+    (map (builtins.match ''pub const UNREAD_COMMENTS: &str = "([^"]+)";''))
+    (lib.findFirst (named: named != null) (throw "hour.rs names no UNREAD_COMMENTS"))
+    builtins.head
+  ];
   # The files code-health's own reader couldn't read are its keeper's to
   # mend, wherever they lie, unless a repository names another for them.
-  kept = lib.optionalAttrs (cfg.owner != null) { unread-comments = cfg.owner; };
+  kept = lib.optionalAttrs (cfg.owner != null) { ${unreadComments} = cfg.owner; };
   judged = lib.concatLists (
     lib.mapAttrsToList (
       name: repo:

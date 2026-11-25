@@ -127,10 +127,11 @@ fn stale_by(paths: &[String], files: &[File], comments: Reader) -> Stale {
 /// docstrings included: none for a language this doesn't know the
 /// comments of. A docstring on a header's own line is read from its
 /// quotes on, past the code before it. A docstring, a block comment, a
-/// heredoc, a string or a shell quote the file never closes is taken for
-/// a misreading, as a `/*` in a string or a `<<` the shell reads otherwise
-/// would be, and the file is read again as if its line opened nothing, so
-/// it hides nothing after it. None for a file whose comments can't be
+/// string or a shell quote the file never closes is taken for a
+/// misreading, as a `/*` in a string would be, and the file is read again
+/// as if its line opened nothing, so it hides nothing after it; a heredoc
+/// no later line closes, as a `<<` the shell reads otherwise would be, is
+/// never opened at all. None for a file whose comments can't be
 /// known, which only a reading that names no line it hasn't named before
 /// would leave.
 fn comments(file: &File) -> Option<Vec<(usize, &str)>> {
