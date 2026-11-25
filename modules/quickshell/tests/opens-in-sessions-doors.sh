@@ -39,10 +39,11 @@ failed=0
 # minute, so the clock tells a time read as the script started from one
 # read once it has failed.
 # A kitty's launch says too whether what it opens would inherit the
-# script's first start, which it never should. While kitten-times-out is
-# there, kitten says its wait for the kitty's answer ran out, in its own
-# words, after a wait; while kitten-warns is there, it warns and opens the
-# window; a launch that opens one says the new window's id, as the real
+# script's first start, which it never should. While kitten-warns is
+# there, it warns first; while kitten-times-out is there, kitten then says
+# its wait for the kitty's answer ran out, in its own words, after a wait;
+# while kitten-repeats is there, it first repeats those words as the
+# kitty's; a launch that opens one says the new window's id, as the real
 # one does; and a launch it turns down says so in words of its own.
 for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" \
@@ -54,10 +55,12 @@ for program in kitten systemd-run qs; do
       "$program" "$work" >> "$stand_ins/$program"
   fi
   if [ "$program" = kitten ]; then
-    printf '[ ! -f "%s/kitten-times-out" ] || { echo . >> "%s/waits"; %s; exit 1; }\n' \
-      "$work" "$work" "echo '$timed_out' >&2" >> "$stand_ins/$program"
     printf '[ ! -f "%s/kitten-warns" ] || echo "kitten: a warning" >&2\n' "$work" \
       >> "$stand_ins/$program"
+    printf '[ ! -f "%s/kitten-times-out" ] || { echo . >> "%s/waits"; %s; exit 1; }\n' \
+      "$work" "$work" "echo '$timed_out' >&2" >> "$stand_ins/$program"
+    printf '[ ! -f "%s/kitten-repeats" ] || %s\n' "$work" \
+      "echo 'kitten: kitty said: $timed_out' >&2" >> "$stand_ins/$program"
   fi
   if [ "$program" = kitten ]; then
     printf '[ -f "%s/kitten-fails" ] || { echo 42; exit; }\n' "$work" >> "$stand_ins/$program"
@@ -130,13 +133,15 @@ cat "$work/main-pid"
 EOF
 # coreutils' timeout, running what it was given, but ending a hung
 # systemctl at its limit, as the real one does, so a case's clock moves by
-# the limit and not by the hang.
+# the limit and not by the hang; while systemctl-hangs-first is there, the
+# first look hangs too, and the rest answer at once.
 cat > "$stand_ins/timeout" << EOF
 #!$BASH
 limit=\$1
 shift
-if [ "\$1" = systemctl ] && [ -f "$work/systemctl-hangs" ] &&
-  [ "\$(wc -l < "$work/waits")" -ge 84 ]; then
+waits=\$(wc -l < "$work/waits")
+if [ "\$1" = systemctl ] && { { [ -f "$work/systemctl-hangs" ] && [ "\$waits" -ge 84 ]; } ||
+  { [ -f "$work/systemctl-hangs-first" ] && [ "\$waits" -eq 0 ]; }; }; then
   for _ in \$(seq \$((limit * 5))); do echo . >> "$work/waits"; done
   exit 124
 fi
@@ -321,6 +326,19 @@ $why"
   kill "$old"
   old=""
 done
+# Only the last look is said as cut: one cut early, with every look after
+# it answered, isn't, as systemd then said in time that no kitty runs.
+fresh
+"$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
+old=$!
+echo "$old" > "$work/main-pid"
+touch "$work/systemctl-hangs-first"
+opens pi-hosted.s-23 pi
+waited "with the first look cut, it waits out its 17 s" 84
+expect "with the first look cut and the rest answered, the journal says no kitty runs" \
+  "sessions: no sessions kitty to open pi-hosted.s-23 in" said
+kill "$old"
+old=""
 
 fresh
 "$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
@@ -372,29 +390,31 @@ unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited start a second earlier is taken, with its time" \
   "qs ipc call sessions untaken pi-hosted.s-17 1699999999000" asked
 waited "it waits from that start" 79
-kill "$old"
-old=""
-# One more than 5 s earlier, as left from a run long gone, is no run's
-# under the journal, which follows its first within moments: it gives way
-# to its own, so the unit's old kitty is still looked for and reached.
+# One as far back as its own 17 s is taken too, so a run under the journal
+# slow to start still tells the shell its first start, and looks once.
 fresh
-"$python" -c 'import time; time.sleep(300)' --instance-group pi-sessions > /dev/null 2>&1 &
-old=$!
-until tr '\0' ' ' < "/proc/$old/cmdline" | grep -q -- "--instance-group"; do
-  "$real_sleep" 0.05
-done
 echo "$old" > "$work/main-pid"
-export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=1232000
-opens pi-hosted.s-22 pi
+export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=1232828
+opens pi-hosted.s-17 pi
 unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
-expect "an inherited start long past gives way to its own, and the old kitty is reached" \
-  "systemd-run --user --scope --collect --quiet --slice=agents.slice -- env \
-MYCELIUM_APP_ID=pi-hosted.s-22 kitty -1 --instance-group pi-sessions --class pi-hosted.s-22 \
---directory /home/joel pi" asked
-kill "$old"
-old=""
-"$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
-old=$!
+expect "an inherited start 16.8 s earlier is taken, with its time" \
+  "qs ipc call sessions untaken pi-hosted.s-17 1699999999000" asked
+waited "it looks once, its 17 s gone" 0
+# One further back, as left from a run long gone, whose own 17 s are over,
+# is no run's under the journal: it gives way to its own, said so.
+for start in 1232827 1232000; do
+  fresh
+  echo "$old" > "$work/main-pid"
+  export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=$start
+  opens pi-hosted.s-22 pi
+  unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
+  expect "an inherited start of $start, long past, gives way to its own, the time with it" \
+    "qs ipc call sessions untaken pi-hosted.s-22 1700000000000" asked
+  waited "an inherited start of $start waits from its own" 84
+  expect "an inherited start of $start given way is said" \
+    "sessions: a first start's times weren't taken, so it waits from its own
+sessions: no sessions kitty to open pi-hosted.s-22 in" said
+done
 # Started as niri starts it, its run under the journal waits from its
 # first start, not from its own, which comes two of the journal's waits
 # later.
@@ -445,8 +465,10 @@ sessions: the shell didn't hear that no kitty took pi-hosted.s-12" said
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 # A kitty that doesn't answer within kitten's minute may still open the
-# window, so it's said as not answering, never as taking none, beside
-# kitten's own words; the shell's ask is over all the same.
+# window, as kitten's cancel of a launch does nothing (kitty/rc/launch.py),
+# so it's said as not answering, never as taking none, beside kitten's own
+# words. The shell is told all the same, as its own wait for the window
+# ended long before, and a window that comes later is still its viewer.
 touch "$work/kitten-times-out"
 opens pi-hosted.s-16 pi
 if [ "$status" -ne 1 ]; then
@@ -459,7 +481,8 @@ expect "a kitty that doesn't answer is asked once, and the shell is told" \
 qs ipc call sessions untaken pi-hosted.s-16 1700000000000" asked
 expect "the journal says it didn't answer, in kitten's words and its own" \
   "$timed_out
-sessions: the sessions kitty didn't answer for pi-hosted.s-16 in a minute" said
+sessions: the sessions kitty didn't answer for pi-hosted.s-16 in a minute; its window may \
+yet come" said
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
@@ -475,6 +498,27 @@ expect "a kitty that warns and opens it is asked once, and the shell told nothin
   "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-18 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-18 pi" asked
 expect "the journal hears kitten's warning" "kitten: a warning" said
+
+# kitten's wait running out is read from its last line only: after a
+# warning it's still said as not answering, and a launch turned down
+# after repeating those words as the kitty's is said as opening none.
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+touch "$work/kitten-warns" "$work/kitten-times-out"
+opens pi-hosted.s-24 pi
+expect "a kitty that warns, then doesn't answer, is said as not answering" \
+  "kitten: a warning
+$timed_out
+sessions: the sessions kitty didn't answer for pi-hosted.s-24 in a minute; its window may \
+yet come" said
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+touch "$work/kitten-repeats" "$work/kitten-fails"
+opens pi-hosted.s-25 pi
+expect "a launch turned down after kitten's words for its wait is said as opening none" \
+  "kitten: kitty said: $timed_out
+kitten: the launch was turned down
+sessions: the sessions kitty opened no pi-hosted.s-25" said
 
 # The packaged kitten, asking a socket that takes the launch and never
 # answers, ends failed and says its wait ran out in the words the script
