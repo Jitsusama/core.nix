@@ -337,7 +337,10 @@ or launchd, and [`home.nix`][2] the account's.
   kept path's deriver and its closure while `keep-derivations` is on, as
   Nix keeps them. A path added between the two readings is rooted by
   then or not listed, and deleting takes the lock and refuses one that
-  came alive. With `keep-outputs` on, or where Nix can't say, it asks
+  came alive. A reading naming no root in the store fails the listing,
+  since all of it would read dead, and a question about paths asks only
+  of those still valid, since a collection may delete one meanwhile.
+  With `keep-outputs` on, or where Nix can't say, it says so and asks
   Nix's own `--print-dead`, under the lock, with no experimental
   features, since content-addressed derivations made Nix parse and hash
   every derivation it met, five times the CPU; one that only a

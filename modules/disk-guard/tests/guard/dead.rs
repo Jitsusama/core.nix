@@ -7,11 +7,16 @@ use std::path::{Path, PathBuf};
 /// `nix-store` beside it. `nix` says Nix's `keep-outputs` and
 /// `keep-derivations` from files of those names, `false` unless a test
 /// writes otherwise, and describes each path it's asked about.
-/// `nix-store` prints the roots in `roots`, calls the paths in `invalid`
-/// not valid and refuses to say what they keep, says each path keeps
-/// itself and what `kept/<name>` lists, gives each path's deriver from
-/// `derivers/<name>`, fails its first question of what paths keep while
-/// `fail-once` stands, and marks a run of the locked listing in `locked`.
+/// `nix-store` prints the roots in `roots`, or fails while `roots-fail`
+/// stands, and as it reads them a path no root names arrives in the store,
+/// `zzzz-new`, which a listing reading the store first never sees. It
+/// calls the paths in `invalid` not valid and refuses to say what they
+/// keep or what built them, says each path keeps itself and what
+/// `kept/<name>` lists, gives each path's deriver from `derivers/<name>`,
+/// and marks a run of the locked listing in `locked`. While `fail-once`
+/// stands, its first question of what paths keep fails with the first
+/// of them gone, as a root a build let go of is; while `gone-after`
+/// names a path, that path goes once what paths keep has been said.
 fn unlocked_nix(dir: &Path, entries: &[&str]) -> (PathBuf, PathBuf) {
     let store = dir.join("store");
     for entry in entries {
@@ -32,18 +37,24 @@ fn unlocked_nix(dir: &Path, entries: &[&str]) -> (PathBuf, PathBuf) {
         &dir.join("nix-store"),
         &format!(
             "case \"$1 $2\" in\n\
-             '--gc --print-roots') cat {at}/roots ;;\n\
+             '--gc --print-roots') [ -e {at}/roots-fail ] && exit 1\n\
+               mkdir -p {at}/store/zzzz-new; cat {at}/roots ;;\n\
              '--check-validity --print-invalid') shift 2\n\
                for p in \"$@\"; do grep -qxF \"$p\" {at}/invalid && echo \"$p\"; done; true ;;\n\
              '--query --requisites') shift 2\n\
-               [ -e {at}/fail-once ] && {{ rm {at}/fail-once; echo 'error: gone' >&2; exit 1; }}\n\
+               [ -e {at}/fail-once ] && {{\n\
+                 rm {at}/fail-once; echo \"$1\" >> {at}/invalid\n\
+                 echo 'error: gone' >&2; exit 1; }}\n\
                for p in \"$@\"; do\n\
                  grep -qxF \"$p\" {at}/invalid &&\n\
                    {{ echo \"error: $p is not valid\" >&2; exit 1; }}\n\
                  echo \"$p\"; [ -f \"{at}/kept/${{p##*/}}\" ] && cat \"{at}/kept/${{p##*/}}\"\n\
-               done; true ;;\n\
+               done\n\
+               [ -f {at}/gone-after ] && cat {at}/gone-after >> {at}/invalid; true ;;\n\
              '--query --deriver') shift 2\n\
                for p in \"$@\"; do\n\
+                 grep -qxF \"$p\" {at}/invalid &&\n\
+                   {{ echo \"error: path '$p' is not valid\" >&2; exit 1; }}\n\
                  if [ -f \"{at}/derivers/${{p##*/}}\" ]; then cat \"{at}/derivers/${{p##*/}}\";\n\
                  else echo unknown-deriver; fi\n\
                done ;;\n\
@@ -139,10 +150,89 @@ fn a_root_gone_while_asking_what_it_keeps_is_asked_about_again() {
     )
     .unwrap();
     fs::write(dir.path().join("fail-once"), "").unwrap();
+    // Asked again, the root is no longer valid, so it keeps only itself.
+    assert_eq!(
+        listed_names(&nix, &store),
+        ["bbbb-needed", "cccc-dead"],
+        "a root gone mid-question is asked about again, its validity first"
+    );
+}
+
+#[test]
+fn a_root_reading_with_no_root_in_the_store_fails_the_listing() {
+    // Every entry would read dead: a Nix printing its roots another way,
+    // or a store named otherwise than Nix names it, finds none. A machine
+    // that runs always has some, its own system's at least.
+    let dir = tempfile::tempdir().unwrap();
+    let (nix, store) = unlocked_nix(dir.path(), &["aaaa-system", "cccc-dead"]);
+    fs::write(
+        dir.path().join("roots"),
+        "/proc/1/maps -> /elsewhere/tool\nsomething Nix said otherwise\n",
+    )
+    .unwrap();
+    let listed = list(&nix, &store, false);
+    assert!(
+        listed.as_ref().is_err_and(|why| why.contains("no root")),
+        "a store with no root read listed as dead: {listed:?}"
+    );
+    assert!(
+        !dir.path().join("locked").exists(),
+        "it fell back to Nix's locked collector instead of failing"
+    );
+}
+
+#[test]
+fn a_listing_fails_closed_when_the_store_or_its_roots_cant_be_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let (nix, store) = unlocked_nix(dir.path(), &["cccc-dead"]);
+    let s = store.display();
+    fs::write(dir.path().join("roots"), format!("/r -> {s}/cccc-dead\n")).unwrap();
+    fs::write(dir.path().join("roots-fail"), "").unwrap();
+    assert!(
+        list(&nix, &store, false).is_err(),
+        "a root reading that failed still listed"
+    );
+    let missing = dir.path().join("elsewhere");
+    let listed = list(&nix, &missing, false);
+    assert!(
+        listed
+            .as_ref()
+            .is_err_and(|why| why.contains(&missing.display().to_string())),
+        "a store folder that isn't there listed: {listed:?}"
+    );
+    assert!(
+        !dir.path().join("locked").exists(),
+        "a failure fell back to Nix's locked collector"
+    );
+}
+
+#[test]
+fn a_path_gone_before_its_deriver_is_asked_for_costs_the_listing_nothing() {
+    // With no lock held, Nix's own collection may delete what a finished
+    // build let go of while the walk goes on, and Nix refuses to say what
+    // built a path no longer valid.
+    let dir = tempfile::tempdir().unwrap();
+    let (nix, store) = unlocked_nix(
+        dir.path(),
+        &["aaaa-out", "bbbb-temp", "cccc-dead", "ffff-out.drv"],
+    );
+    let s = store.display();
+    fs::write(dir.path().join("keep-derivations"), "true\n").unwrap();
+    fs::write(
+        dir.path().join("roots"),
+        format!("/r -> {s}/aaaa-out\n{{temp:7}} -> {s}/bbbb-temp\n"),
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("derivers/aaaa-out"),
+        format!("{s}/ffff-out.drv\n"),
+    )
+    .unwrap();
+    fs::write(dir.path().join("gone-after"), format!("{s}/bbbb-temp\n")).unwrap();
     assert_eq!(
         listed_names(&nix, &store),
         ["cccc-dead"],
-        "a question that failed once is asked again, not the listing failed"
+        "a path gone mid-walk failed the listing or lost a deriver"
     );
 }
 
