@@ -22,8 +22,15 @@ in
 {
   home.packages = [ package ];
 
+  # A switch leaves a run under way be, and the next hour's starts the new
+  # build: restarting it mid-call made the switch wait on a run of up to
+  # ten minutes, and on 24 November one that began at :35 failed switch
+  # 1186 when it timed out. The camera check is left be for the same reason.
   systemd.user.services.call-under-load = {
-    Unit.Description = "Measures Joel's calls and apps under load";
+    Unit = {
+      Description = "Measures Joel's calls and apps under load";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
       Type = "oneshot";
       ExecStart = "${lib.getExe package} run";
@@ -72,7 +79,10 @@ in
   # first frame can take 40 s under memory pressure, so the read is given
   # two minutes.
   systemd.user.services.call-under-load-camera = {
-    Unit.Description = "Checks Joel's camera gives a picture before each meeting";
+    Unit = {
+      Description = "Checks Joel's camera gives a picture before each meeting";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
       Type = "oneshot";
       ExecStart = lib.escapeShellArgs (

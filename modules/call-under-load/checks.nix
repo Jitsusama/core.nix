@@ -1,6 +1,9 @@
 # The checks of call-under-load, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
 {
+  account,
+  graphical,
+  holds,
   onLinux,
   passesClippy,
   pkgs,
@@ -8,6 +11,17 @@
 }:
 # call-under-load drives Chrome on Linux, and builds only there.
 onLinux {
+  # A switch leaves the hourly run and the camera check be, so it never
+  # waits on a run under way, which failed switch 1186 on 24 November.
+  call-under-load-outlives-a-switch =
+    let
+      services = (account graphical).systemd.user.services;
+      kept = name: (services.${name}.Unit.X-SwitchMethod or null) == "keep-old";
+    in
+    holds "call-under-load-outlives-a-switch"
+      "A switch restarts call-under-load's hourly run or camera check, and waits on it."
+      (kept "call-under-load" && kept "call-under-load-camera");
+
   # call-under-load's tests run as it builds: the call's frame rates are
   # counted by frame slots, its freezes per ten minutes, whether its
   # sound was heard, the share made up, its jitter and packets lost, and

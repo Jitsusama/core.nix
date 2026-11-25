@@ -650,6 +650,10 @@
     only clicks, breathes, coughs, rings, chimes, plays a chord and hums, give no turn and no
     bracketed sound
   '';
+  call-under-load-outlives-a-switch = ''
+    a switch leaves call-under-load's hourly run and camera check be, rather than restarting one
+    under way and waiting on it
+  '';
   call-under-load-passes-clippy = ''
     clippy finds nothing in call-under-load or its tests
   '';
