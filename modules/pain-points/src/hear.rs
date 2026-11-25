@@ -701,7 +701,7 @@ fn note_for_keeper(
                 && pain.at < ears.at - FRESH_MS
         })
         .collect();
-    let (told, noted): (Vec<(usize, &Heard)>, Vec<(usize, &Heard)>) = kept
+    let (told, noted): (Vec<_>, Vec<_>) = kept
         .iter()
         .enumerate()
         .filter(|(n, h)| {
