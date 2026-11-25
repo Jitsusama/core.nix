@@ -39,9 +39,10 @@
 # so a sandboxed process whose maps can't be read doesn't stop it. A file
 # Chrome deleted is in no folder, so its map doesn't count. The files a
 # session left in its folder in memory, which nothing maps, go before it's
-# looked at, whatever holds the profile: nothing reads them where it is on
-# the disk, and going first they leave no time between the look that
-# clears the folder and its move for a Chrome to start in.
+# looked at, whatever holds the profile, since nothing reads them where it
+# is on the disk. Another host's lock is read again as the last thing
+# before it moves, since a Chrome there may take the profile while the
+# look through this host's processes runs, and only its lock says so.
 #
 # The folders in memory are made first, whatever the lock says, since the
 # runtime folder is empty after each boot and the links from the boot
@@ -160,7 +161,7 @@ held() {
     # Said once, to the log rather than the answer, so a pause is explained.
     if [ -n "$first" ]; then
       first=
-      echo "$chrome so this waits up to half a minute for it" >&2
+      echo "$chrome so this waits up to $((deadline - SECONDS)) s for it" >&2
     fi
     # A second between looks lets Chrome's last processes go.
     sleep 1
@@ -225,7 +226,7 @@ let_go() {
     # Said once, to the log rather than the answer, so a pause is explained.
     if [ -n "$first" ]; then
       first=
-      echo "$using as it quits, so this waits up to half a minute for it" >&2
+      echo "$using as it quits, so this waits up to $((deadline - SECONDS)) s for it" >&2
     fi
     # A second between looks lets Chrome's last processes go.
     sleep 1
@@ -279,6 +280,14 @@ while :; do
         [ -n "$lock" ] || kept+=("$folder")
         continue
       fi
+      lock=$(holder)
+      case $lock in
+      "Chrome on "*)
+        echo "$lock took the profile as this looked, so $folder stays on the disk"
+        continue
+        ;;
+      *) ;;
+      esac
     else
       # The profile is asked about once a pass, and a held one keeps every
       # cache where it is while the marked folders after them still move.
@@ -321,6 +330,8 @@ while :; do
     [ -n "$chrome" ] || gone=yes
   fi
   for folder in "${kept[@]}"; do
+    # Once it starts over, what else is kept is looked at again then.
+    [ -z "$gone" ] || break
     using=$(let_go "$real/$folder")
     [ -n "$using" ] || gone=yes
   done

@@ -126,7 +126,8 @@ waiting() {
 # minute.
 reached_caches() {
   local started=$SECONDS
-  until grep -q 'so this waits up to half a minute' run.log 2>/dev/null; do
+  # The caches' own line, which BrowserMetrics' wait doesn't share.
+  until grep -q 'still quitting, so this waits' run.log 2>/dev/null; do
     waiting "$1"
     if [ $((SECONDS - started)) -gt 60 ]; then
       echo "the command hadn't said it waits a minute into waiting for $1"
@@ -285,8 +286,15 @@ untouched "with Chrome running"
 # A Chrome on another host, sharing the profile, holds it too.
 fill
 ln -s "elsewhere.example-1" "$profile/SingletonLock"
+# What a session before left in memory goes whatever holds the profile.
+mkdir -p "$runtime/chrome/BrowserMetrics"
+echo left >"$runtime/chrome/BrowserMetrics/left.pma"
 run "other host's"
 metrics_kept "with Chrome running on another host, whose processes can't be seen"
+if [ -e "$runtime/chrome/BrowserMetrics/left.pma" ]; then
+  echo "a file a session left in memory stayed while another host's Chrome held the profile"
+  exit 1
+fi
 caches_untouched "with Chrome running on another host"
 # The caches' own reason, which BrowserMetrics' line doesn't share.
 said "Chrome on elsewhere.example holds the profile, so its caches stay on the disk" \
@@ -356,8 +364,6 @@ untouched "with Chrome started again as the old one quit"
 # minute, since that's what it proves.
 fill
 quit_later "$work/quit" BrowserMetrics
-# The last run's log says the same, so it can't be what's read.
-rm -f run.log
 started=$SECONDS
 run "long-quitting Chrome's" &
 running=$!
@@ -396,6 +402,38 @@ if ! grep -q 'starts over' run.log; then
   exit 1
 fi
 in_memory "once a Chrome that quit as the run ended had gone"
+
+# With the caches already in memory, as after any run before, a Chrome
+# still quitting from a BrowserMetrics it made again on the disk is the
+# only thing the run waits on, and when it quits as the run looks once
+# more, the run starts over and moves it. This case waits the half minute
+# too, since only the last look over BrowserMetrics sees that quit.
+fill
+run "kept histograms' first"
+rm -- "$profile/BrowserMetrics"
+mkdir "$profile/BrowserMetrics"
+echo old >"$profile/BrowserMetrics/index"
+quit_later "$work/quit" BrowserMetrics
+started=$SECONDS
+run "kept histograms'" &
+running=$!
+until grep -q 'BrowserMetrics stays on the disk until nothing' run.log 2>/dev/null; do
+  waiting "a Chrome still quitting from its histograms alone, ending before it gave up"
+  if [ $((SECONDS - started)) -gt 90 ]; then
+    echo "the command hadn't given up on a Chrome quitting from its histograms after 90 s"
+    exit 1
+  fi
+  # A tenth of a second between looks at the run's log, which takes half
+  # a minute to say it.
+  sleep 0.1
+done
+waiting "a Chrome still quitting from its histograms, to see it quit in the last look"
+metrics_kept "while a Chrome mapping only its histograms was still quitting"
+touch "$work/quit"
+wait "$quitting"
+wait "$running"
+said "starts over" "when a Chrome mapping only its histograms quit as the run looked once more"
+in_memory "once a Chrome that mapped only its histograms had gone"
 
 # A running Chrome mapping a file in BrowserMetrics, as its browser maps
 # its histograms, keeps it on the disk, and the run says why.
@@ -469,7 +507,8 @@ chrome=$!
 named "$chrome"
 ln -s "$here-$chrome" "$profile/SingletonLock"
 ordered=0
-"${command%% *}" "$profile" "$runtime/chrome" Default/GPUCache +BrowserMetrics \
+# Bounded as run bounds a run, so one that never ends fails, ending 124.
+timeout 120 "${command%% *}" "$profile" "$runtime/chrome" Default/GPUCache +BrowserMetrics \
   >run.log 2>&1 || ordered=$?
 kill "$chrome"
 if [ "$ordered" != 0 ]; then
@@ -502,7 +541,7 @@ metrics "with Chrome mapping a file beside BrowserMetrics"
 # BrowserMetrics is waited for, and the folder moves once it has gone.
 fill
 cp "$BASH" "$profile/BrowserMetrics/chrome"
-rm -f "$work/quit" run.log
+rm -f "$work/quit"
 # shellcheck disable=SC2016 # The stand-in expands its own argument.
 "$profile/BrowserMetrics/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$work/quit" &
 quitting=$!
@@ -510,7 +549,8 @@ named "$quitting"
 run "quitting histograms'" &
 running=$!
 started=$SECONDS
-until grep -q 'waits up to half a minute' run.log 2>/dev/null; do
+# BrowserMetrics' own line, which the caches' wait doesn't share.
+until grep -q 'as it quits, so this waits' run.log 2>/dev/null; do
   waiting "a quitting Chrome that still mapped its histograms"
   if [ $((SECONDS - started)) -gt 60 ]; then
     echo "the command hadn't said it waits for a quitting Chrome's histograms after a minute"
