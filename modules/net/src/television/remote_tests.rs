@@ -31,7 +31,9 @@ fn tv(opening: Vec<String>) -> (u16, thread::JoinHandle<Option<String>>) {
 /// The remote's end of the fake TV on `port`.
 fn remote(port: u16) -> WebSocket<TcpStream> {
     let stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).expect("it answers");
-    stream.set_read_timeout(Some(TICK)).expect("a timeout");
+    stream
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .expect("a timeout");
     let url = format!("ws://127.0.0.1:{port}{CHANNEL}?name=bmV0");
     tungstenite::client::client(url, stream)
         .expect("the channel opens")
@@ -80,11 +82,14 @@ fn the_tvs_own_news_before_it_connects_is_read_past() {
 
 #[test]
 fn a_tv_refusing_the_remote_or_giving_up_on_allow_takes_no_key() {
-    for event in ["ms.channel.unauthorized", "ms.channel.timeOut"] {
+    for (event, why) in [
+        ("ms.channel.unauthorized", Why::Refused),
+        ("ms.channel.timeOut", Why::Unanswered),
+    ] {
         let (port, heard) = tv(vec![json!({"event": event}).to_string()]);
         assert_eq!(
             talk(&mut remote(port), "KEY_POWER", soon()),
-            Err(Why::NotAllowed),
+            Err(why),
             "{event}"
         );
         assert_eq!(heard.join().expect("it ran"), None, "{event} heard a key");
@@ -96,7 +101,7 @@ fn a_tv_saying_nothing_before_the_deadline_takes_no_key() {
     let (port, heard) = tv(Vec::new());
     let until = Instant::now() + Duration::from_millis(1200);
     let mut socket = remote(port);
-    assert_eq!(talk(&mut socket, "KEY_POWER", until), Err(Why::NotAllowed));
+    assert_eq!(talk(&mut socket, "KEY_POWER", until), Err(Why::Unanswered));
     drop(socket);
     assert_eq!(heard.join().expect("it ran"), None, "a key was heard");
 }
@@ -154,6 +159,202 @@ fn a_pin_is_the_certificates_sha256() {
     assert_eq!(
         crate::television::kept::hex(&pin_of(b"abc")),
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
+}
+
+/// A box that answers one byte at a time, forever, each a little later:
+/// a frame that says it's long, then its body.
+struct Trickle {
+    sent: usize,
+}
+
+impl Read for Trickle {
+    fn read(&mut self, into: &mut [u8]) -> io::Result<usize> {
+        thread::sleep(Duration::from_millis(10));
+        let header = [0x81, 126, 0xff, 0xff];
+        into[0] = header.get(self.sent).copied().unwrap_or(b'a');
+        self.sent += 1;
+        Ok(1)
+    }
+}
+
+impl Write for Trickle {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Waits for Trickle {
+    fn wait_reads(&self, _longest: Duration) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn wait_writes(&self, _longest: Duration) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// A socket that never has anything, as one whose timeout passed.
+struct Silent;
+
+impl Read for Silent {
+    fn read(&mut self, _into: &mut [u8]) -> io::Result<usize> {
+        Err(io::ErrorKind::WouldBlock.into())
+    }
+}
+
+impl Waits for Silent {
+    fn wait_reads(&self, _longest: Duration) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn wait_writes(&self, _longest: Duration) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_box_trickling_a_frame_holds_the_remote_no_longer_than_its_deadline() {
+    let started = Instant::now();
+    let until = started + Duration::from_millis(300);
+    let socket = Due {
+        socket: Trickle { sent: 0 },
+        until,
+    };
+    let mut socket = WebSocket::from_raw_socket(socket, tungstenite::protocol::Role::Client, None);
+    assert_eq!(talk(&mut socket, "KEY_POWER", until), Err(Why::Unanswered));
+    let took = started.elapsed();
+    assert!(
+        took < Duration::from_secs(2),
+        "a trickle held the remote {took:?}"
+    );
+    assert!(
+        socket.get_ref().socket.sent > 4,
+        "the trickle wasn't read at all"
+    );
+}
+
+#[test]
+fn a_read_waiting_out_whats_left_fails_as_timed_out_and_none_runs_past_it() {
+    let mut due = Due {
+        socket: Silent,
+        until: soon(),
+    };
+    let mut into = [0; 1];
+    let waited = due
+        .read(&mut into)
+        .expect_err("a silent socket read something");
+    assert_eq!(waited.kind(), io::ErrorKind::TimedOut);
+    due.until = Instant::now();
+    let past = due
+        .read(&mut into)
+        .expect_err("a read ran past the deadline");
+    assert_eq!(past.kind(), io::ErrorKind::TimedOut);
+}
+
+#[test]
+fn a_retry_is_offered_only_where_the_socket_broke() {
+    let tls = io::Error::new(io::ErrorKind::InvalidData, "bad certificate");
+    assert!(
+        matches!(broke(tungstenite::Error::Io(tls)), Why::Unlike(_)),
+        "TLS spoken wrong is offered a retry"
+    );
+    let reset = io::Error::from(io::ErrorKind::ConnectionReset);
+    assert!(
+        matches!(broke(tungstenite::Error::Io(reset)), Why::Broke(_)),
+        "a reset isn't offered a retry"
+    );
+    assert!(
+        matches!(broke(tungstenite::Error::ConnectionClosed), Why::Broke(_)),
+        "a hang-up isn't offered a retry"
+    );
+    let protocol = tungstenite::Error::Protocol(tungstenite::error::ProtocolError::WrongHttpMethod);
+    assert!(
+        matches!(broke(protocol), Why::Unlike(_)),
+        "WebSocket spoken wrong is offered a retry"
+    );
+}
+
+fn shown(certificate: &[u8], pinned: &Pinned) -> Result<ServerCertVerified, rustls::Error> {
+    let name = ServerName::IpAddress(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 90)).into());
+    pinned.verify_server_cert(
+        &CertificateDer::from(certificate.to_vec()),
+        &[],
+        &name,
+        &[],
+        UnixTime::now(),
+    )
+}
+
+#[test]
+fn a_certificate_other_than_the_pinned_one_fails_the_handshake_as_not_the_tv() {
+    let pinned = Pinned::new(Some(pin_of(b"the TV")));
+    assert!(
+        shown(b"the TV", &pinned).is_ok(),
+        "the pinned certificate is refused"
+    );
+    assert!(
+        shown(b"another box", &pinned).is_err(),
+        "another certificate is taken"
+    );
+    assert_eq!(pinned.seen(), Some(pin_of(b"another box")));
+    let failed = io::Error::new(io::ErrorKind::InvalidData, "invalid peer certificate");
+    assert_eq!(
+        not_opened(&pinned, tungstenite::Error::Io(failed)),
+        Why::NotTheTv
+    );
+}
+
+#[test]
+fn the_first_certificate_shown_is_taken_and_a_failure_then_is_no_impostor() {
+    let first = Pinned::new(None);
+    assert!(
+        shown(b"the TV", &first).is_ok(),
+        "the first certificate is refused"
+    );
+    assert_eq!(first.seen(), Some(pin_of(b"the TV")));
+    let reset = io::Error::from(io::ErrorKind::ConnectionReset);
+    assert!(
+        matches!(
+            not_opened(&first, tungstenite::Error::Io(reset)),
+            Why::Broke(_)
+        ),
+        "a reset after the first certificate reads as an impostor"
+    );
+}
+
+#[test]
+fn a_key_handed_no_token_keeps_the_one_it_carried() {
+    let pin = pin_of(b"the TV");
+    assert_eq!(
+        kept_after(None, Some("12345678"), pin).token.as_deref(),
+        Some("12345678")
+    );
+    assert_eq!(
+        kept_after(Some("87654321".into()), Some("12345678"), pin)
+            .token
+            .as_deref(),
+        Some("87654321")
+    );
+    assert_eq!(kept_after(None, None, pin).token, None);
+    assert_eq!(kept_after(None, None, pin).pin, pin);
+}
+
+#[test]
+fn the_channel_closes_once_the_tv_answers_its_close() {
+    let (port, heard) = tv(vec![connected(None)]);
+    let mut socket = remote(port);
+    assert_eq!(talk(&mut socket, "KEY_MUTE", soon()), Ok(None));
+    let started = Instant::now();
+    close(&mut socket, started + Duration::from_secs(5));
+    assert!(heard.join().expect("it ran").is_some(), "no key was heard");
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "the close waited out its whole deadline"
     );
 }
 

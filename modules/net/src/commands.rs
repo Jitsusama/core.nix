@@ -87,20 +87,28 @@ fn press() -> Help {
         "the same for its power key, said as net.pressed/1",
     )
     .exit(Exit::Usage, "it isn't a TV, or it has no such key")
+    .exit(Exit::NotFound, "no device goes by that name or address")
     .exit(
         Exit::Refused,
-        "nobody pressed Allow on the TV, or what answered isn't the TV that allowed it",
+        "the TV refused or nobody pressed Allow, or what answered isn't the TV that allowed it",
     )
-    .exit(Exit::Unavailable, "the TV is asleep or off")
+    .exit(
+        Exit::Unavailable,
+        "the TV is asleep or off, or there's no record of the home network yet",
+    )
     .exit(Exit::TryAgain, "the TV broke off")
-    .exit(Exit::Failed, "what the TV allowed can't be opened")
+    .exit(
+        Exit::Failed,
+        "what the TV allowed can't be opened, or what answered doesn't speak as a TV",
+    )
+    .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
 }
 
 /// Wake a TV from standby with Wake-on-LAN.
 fn wake() -> Help {
     Help::new(
         "wake",
-        "wake a TV from standby, waiting up to 15 s for it to answer as on",
+        "wake a TV from standby, waiting about 15 s for it to answer as on",
     )
     .example("net devices Living wake", "the TV comes on from standby")
     .example(
@@ -108,11 +116,13 @@ fn wake() -> Help {
         "the same, said as net.woken/1",
     )
     .exit(Exit::Usage, "it isn't a TV")
+    .exit(Exit::NotFound, "no device goes by that name or address")
     .exit(
         Exit::Unavailable,
-        "the TV didn't wake: on Wi-Fi it needs Power On with Mobile",
+        "the TV didn't wake (on Wi-Fi it needs Power On with Mobile), or there's no record yet",
     )
     .exit(Exit::Failed, "the wake couldn't be sent")
+    .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
 }
 
 /// Who fills this machine's uplink: its own sockets, not the network's.
