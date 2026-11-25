@@ -22,6 +22,7 @@ case $how in
   fail) exit 2 ;;
   spin) while :; do :; done ;;
   die) kill -KILL $$ ;;
+  # A hang is a case that waits on nothing past the runner's wall limit, using no CPU.
   hang) exec sleep 60 ;;
 esac
 EOF
