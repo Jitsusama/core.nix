@@ -16,7 +16,11 @@
   --leaf: var(--success);
   --column: 46rem;
   --threshold: 58rem;
-  --crest: clamp(9rem, 22vw, 13rem);
+  /* The crest grows with the window's width, and gives way to a short one:
+     at a laptop's 800 px it is 7rem, so the first sites show whole under
+     the threshold rather than below the fold, and from 70rem tall it is
+     its full size again. */
+  --crest: max(5rem, min(clamp(9rem, 22vw, 13rem), 30dvh - 8rem));
   --gutter: 1.75rem;
 }
 
@@ -380,5 +384,41 @@ main {
   .what {
     grid-row: auto;
     grid-column: 1 / -1;
+  }
+}
+
+/* A wide screen that is short, as a laptop's is, keeps the threshold's
+   axis but tightens it: the gaps take a rung less, and the keys and the
+   switch share one line, so the first bed's sites stand in the first
+   screen (two of them whole at 1280 by 800 and at 1440 by 900). A taller screen keeps the
+   threshold as it was drawn, and a phone scrolls to its sites anyway. It
+   comes last, so it wins over the rules it tightens. */
+@media (width >= 34rem) and (height < 60rem) {
+  .threshold {
+    padding-block-start: var(--inset);
+  }
+
+  .crest {
+    margin-block-end: 0;
+  }
+
+  .threshold .page-head {
+    gap: var(--apart);
+    margin-block-end: 0;
+  }
+
+  .threshold .page-head .quiet {
+    flex-flow: row wrap;
+    justify-content: center;
+    align-items: center;
+    gap: var(--items);
+  }
+
+  .contents {
+    margin-block-start: 0;
+  }
+
+  .bed:first-of-type {
+    padding-block-start: var(--groups);
   }
 }
