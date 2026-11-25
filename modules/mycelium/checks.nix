@@ -1702,7 +1702,7 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a lend capping no spend and pricing no model isn't written without them and warned of, a priced one is warned of, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, the kind scan takes an enum serde reads otherwise, the budget kinds lend.nix takes or its default aren't the words serde takes for the lender's Kind, a lend leaving a machine's also and a budget's kind unsaid, beside a forge budget a machine names, isn't written with their defaults, a lend capping no spend and pricing no model isn't written without them and warned of, its prices aren't read as defaulted, a budget naming no spend-watch budget or pricing none isn't warned of, a priced one or a machine lending only a forge is warned of, a model priced at nothing is taken, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, a budget of a kind the lender has none of, or a path lending everything or nothing is taken."
       (
         let
           # The machine whole, for its own pkgs, and its account.
@@ -1830,6 +1830,19 @@ in
               fail "has a line in its body other than a doc line, a field or #[serde(default)]"
             else
               {
+                # Each field serde reads as its type's default where the
+                # file leaves it out: one whose nearest line above it, past
+                # its doc lines, is the one attribute a field may carry.
+                defaulted = lib.concatLists (
+                  lib.imap0 (
+                    at: line:
+                    let
+                      matched = field line;
+                      over = lib.filter (above: !lib.hasPrefix "    ///" above) (lib.take at body);
+                    in
+                    lib.optional (matched != null && over != [ ] && lib.last over == defaulted) (lib.head matched)
+                  ) body
+                );
                 read = lib.listToAttrs (
                   lib.concatMap (
                     line:
@@ -1850,6 +1863,7 @@ in
               };
           fields = scan lines;
           named = struct: lib.attrNames (fields struct);
+          defaults = struct: (structScan lines struct).defaulted or [ ];
           # A struct laid out as the lender's are, which the scan reads,
           # and with each change that has serde read it otherwise, or that
           # the scan can't read, in place of its line AT.
@@ -2258,7 +2272,53 @@ in
             };
           };
           warnings = lend: (linux (both // { inherit lend; })).warnings;
-          warns = start: lib.any (lib.hasPrefix start) (warnings uncapped);
+          warnsOf = lend: start: lib.any (lib.hasPrefix start) (warnings lend);
+          warns = warnsOf uncapped;
+          # A models budget pricing models but naming no spend-watch budget,
+          # and one pricing none, each refused by mycelium as one pricing
+          # nothing is.
+          unwatched = lending // {
+            budgets = lending.budgets // {
+              models = removeAttrs lending.budgets.models [ "spend_watch" ];
+            };
+          };
+          unpriced = lending // {
+            budgets = lending.budgets // {
+              models = lending.budgets.models // {
+                prices = { };
+              };
+            };
+          };
+          # A machine lending only a forge, whose spend no dollar caps.
+          forgeOnly = lending // {
+            vms = [ (removeAttrs vm [ "usd_a_day" ] // { budget = "forge"; }) ];
+            budgets = lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          # A model priced at nothing, refused as the machine builds, since
+          # it would spend past any daily cap.
+          free = lending // {
+            budgets = lending.budgets // {
+              models = lending.budgets.models // {
+                prices.a-model = lending.budgets.models.prices.a-model // {
+                  output = 0;
+                };
+              };
+            };
+          };
+          builds =
+            lend:
+            (builtins.tryEval (
+              let
+                node = (linux (both // { inherit lend; })).systemd.user.services.mycelium;
+              in
+              builtins.seq (given node) true
+            )).success;
+          budgetWarned = "jitsusama.mycelium.lend.budgets.models names no prices";
+          vmWarned = "jitsusama.mycelium.lend.vms'";
         in
         evaluates home
         && given home.systemd.user.services.mycelium == holding
@@ -2275,6 +2335,10 @@ in
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
         && named "Price" == lib.attrNames lending.budgets.models.prices.a-model
+        # The module leaves out a budget's prices where it has none, and
+        # serde reads every other field it leaves out, each an Option, as
+        # none without being told.
+        && lib.elem "prices" (defaults "Budget")
         && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
         && sorted kindOption.type.functor.payload.values == sorted kinds.words
         && kindOption.default == kinds.unwritten
@@ -2282,8 +2346,15 @@ in
         && writes unsaid filled
         && writes uncapped uncapped
         && warns "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
-        && warns "jitsusama.mycelium.lend.budgets.models names no prices"
-        && !lib.any (lib.hasInfix "lend.budgets.models ") (warnings lending)
+        && warns budgetWarned
+        && warnsOf unwatched budgetWarned
+        && warnsOf unpriced budgetWarned
+        && !warnsOf unwatched vmWarned
+        && !warnsOf forgeOnly vmWarned
+        && !warnsOf lending budgetWarned
+        && !warnsOf lending vmWarned
+        && builds lending
+        && !builds free
         && reading (kindScan plainKind) == plainKinds
         && lib.all (refusedFor kindScan) unreadKinds
         # A kind the type takes, beside one it refuses, so the refusal is

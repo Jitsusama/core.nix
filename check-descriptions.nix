@@ -2594,7 +2594,12 @@
     Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
     rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
     leaving a machine's also and a budget's kind unsaid is written with them filled in as the
-    lender takes them, beside a forge budget a machine names; a budget with no key is written with
+    lender takes them, beside a forge budget a machine names; a lend capping no machine's dollars
+    and pricing no model is written without them, which the lender reads as lending no model,
+    its budget's prices among the fields the scan reads as defaulted, and warned of rather than
+    refused, as is a models budget naming no spend-watch budget or pricing none, while a capped
+    and priced lend, and a machine lending only a forge, are warned of by neither warning, and a
+    model priced at nothing is refused by the option's type; a budget with no key is written with
     none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
     refused by a message naming it and its node given none, plain prefixes and dotted paths and
     key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that

@@ -7,9 +7,10 @@ let
   # A lend's upstream socket, relative to the node's runtime folder: no
   # part of it starts with a dot, so `..` can't climb out of it.
   socket = lib.types.strMatching "([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
-  # Dollars a million tokens, which mycelium refuses below nothing, as it
-  # would reserve less than a request may cost.
-  dollars = lib.types.numbers.nonnegative;
+  # Dollars a million tokens. Mycelium refuses a price below nothing, as
+  # it would reserve less than a request may cost; and one of nothing is
+  # refused here, as a model priced so would spend past any daily cap.
+  dollars = lib.types.numbers.positive;
   # What one model costs, as mycelium's lender reads it.
   price = lib.types.submodule {
     options = {

@@ -608,10 +608,16 @@ in
           models = lib.filterAttrs (_: budget: budget.kind == "models") cfg.lend.budgets;
           lendsModels = vm: lib.any (budget: models ? ${budget}) ([ vm.budget ] ++ vm.also);
         in
-        lib.mapAttrsToList (
-          name: _:
-          "jitsusama.mycelium.lend.budgets.${name} names no prices or no spend_watch, so mycelium refuses every model lent through it."
-        ) (lib.filterAttrs (_: budget: budget.prices == null || budget.spend_watch == null) models)
+        lib.mapAttrsToList
+          (
+            name: _:
+            "jitsusama.mycelium.lend.budgets.${name} names no prices or no spend_watch, so mycelium refuses every model lent through it."
+          )
+          (
+            lib.filterAttrs (
+              _: budget: budget.prices == null || budget.prices == { } || budget.spend_watch == null
+            ) models
+          )
         ++ map (
           vm:
           "jitsusama.mycelium.lend.vms' ${vm.prefix} names no usd_a_day, so mycelium lends its machines no model."
