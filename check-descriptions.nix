@@ -2178,8 +2178,9 @@
   lookups-say-a-name-that-fails-or-takes-long = ''
     a Mac's account times its names each minute through the system's resolver and each server
     named, at Standard, given the slow mark, names and servers in order, and a round over
-    stand-ins says a failed lookup, one out of time, killed past its TERM, unable to run,
-    failing on its own or ending otherwise saying so, an address beside a nonzero end not
+    stand-ins says a failed lookup, one out of time, one ignoring its TERM killed five seconds
+    on, one killed before its time, unable to run, failing on its own or ending otherwise
+    saying so, an address beside a nonzero end not
     believed, a server giving no IPv4 address (a CNAME, an IPv6 address or nothing alone, or a
     dig with no reply, said as that) or a slow lookup from its second round running, each kind
     counted apart so a failure then one cold answer says nothing, one failing and lagging by

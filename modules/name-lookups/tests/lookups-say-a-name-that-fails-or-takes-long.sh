@@ -5,15 +5,16 @@
 # from its third, a busy mDNSResponder only from its fifth, by its path or
 # its name, and a check well again once; a server answering only a CNAME,
 # only an IPv6 address, nothing or failing gave no IPv4 address; a probe
-# out of time, killed past its TERM, unable to run, ending on an error of
-# its own or ending otherwise says so, dig's no reply by name, and an
+# out of time, killed past its TERM, killed before its time, unable to run,
+# ending on an error of its own or ending otherwise says so, dig's no reply by name, and an
 # address beside a probe's nonzero end isn't believed; a state file with a
 # blank line, a count that isn't a number or a zero before other digits is
 # read past; a round ending early, before any name or at its save, says so;
 # and a round stopped by a TERM mid-lookup says nothing.
 # dscacheutil, dig, ps and logger are stand-ins answering as the test sets,
 # and the slow mark is set to 0 ms rather than a lookup made to wait, so no
-# round sleeps.
+# round sleeps but those where a probe ignores its TERM, which take the
+# script's own 25 s, since only a real wait shows timeout's -k ends it.
 # usage: lookups-say-a-name-that-fails-or-takes-long.sh <lookups.sh>
 set -euo pipefail
 
@@ -28,7 +29,8 @@ mkdir -p "${stand}" "${work}/answers"
 # Each stand-in answers from the answers folder: a name's file holds "fails"
 # for a name it can't find, "late" or "missing" for timeout's exit when
 # the lookup ran out of time or couldn't run, "killed" for a probe ended by
-# a KILL, as timeout's -k ends one, "stopped" for a round sent a TERM while
+# a KILL before its time, "ignores" for one that ignores timeout's TERM,
+# so only its -k ends it, "stopped" for a round sent a TERM while
 # it waits on the lookup, "ends" for an address printed beside an exit of
 # 1, or for a server "cname" for an alias whose name has
 # no address, "aaaa" for one with only an IPv6 address, "nothing" for no
@@ -44,6 +46,10 @@ case "\$(cat "${work}/answers/\$5" 2>/dev/null)" in
   late) exit 124 ;;
   missing) exit 127 ;;
   killed) kill -KILL "\$\$" ;;
+  ignores)
+    trap '' TERM
+    exec sleep 60
+    ;;
   stopped)
     kill -TERM "\$(<"${work}/round")"
     # Only so the round still waits on this lookup as its TERM lands; it
@@ -69,6 +75,10 @@ case "\$(cat "${work}/answers/\${server}-\$6" 2>/dev/null)" in
   broken)
     printf ';; error: something of its own\n'
     exit 10
+    ;;
+  ignores)
+    trap '' TERM
+    exec sleep 60
     ;;
   ends)
     printf '%s.\t60\tIN\tA\t192.0.2.1\n' "\$6"
@@ -149,7 +159,9 @@ quiet "a lookup well for two rounds said something"
 
 # A lookup out of time says so, and one that couldn't run says it wasn't
 # a lookup, rather than reading as the name failing.
-for answer in late:"no answer within 20 s" killed:"no answer within 20 s, killed 5 s on" \
+for answer in late:"no answer within 20 s)" \
+  killed:"dscacheutil was killed, exit 137, before its 20 s ran out)" \
+  ignores:"no answer within 20 s, killed 5 s on)" \
   missing:"timeout or dscacheutil couldn't run (exit 127), so this wasn't a lookup" \
   ends:"dscacheutil ended 1"; do
   echo "${answer%%:*}" >"${work}/answers/example.net"
@@ -162,6 +174,7 @@ done
 
 for answer in fails:", no reply from the server)" \
   broken:", dig failed on its own (exit 10), so this wasn't a lookup)" \
+  ignores:", no answer within 20 s, killed 5 s on)" \
   ends:", dig ended 1)" cname:" ms)" aaaa:" ms)" nothing:" ms)"; do
   words=${answer#*:}
   answer=${answer%%:*}
@@ -292,8 +305,10 @@ done
 rm -rf "${state}"
 
 # A round launchd stops mid-lookup, as at a switch or a logout, says
-# nothing, a check having failed ahead of it: example.org fails before
-# example.net's lookup is stopped.
+# nothing, though example.org failed before example.net's lookup is
+# stopped. bash hands the trap the status of the last command to end, the
+# probe's own `ran=0` here, so this shows a TERM is quiet, not what judge
+# ends.
 : >"${said}"
 echo fails >"${work}/answers/example.org"
 echo stopped >"${work}/answers/example.net"

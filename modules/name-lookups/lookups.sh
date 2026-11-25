@@ -127,9 +127,11 @@ since() {
   echo $(((ended - started) / 1000))
 }
 
-# What a probe's exit, $1, says of probe $2 when it gave no address, as
-# `why`: timeout's 124 is no answer in time, as is 137, a probe it killed
-# once it outlived its TERM, and 125 to 127 a program that couldn't run,
+# What a probe's exit, $1, says of probe $2 when it gave no address after
+# $3 ms, as `why`: timeout's 124 is no answer in time, as is 137, a probe
+# it killed once it outlived its TERM, but only past its time, since any
+# KILL, macOS's own under memory pressure among them, ends 137 too; 125
+# to 127 a program that couldn't run,
 # which is no lookup at all, so it's never said as the name failing. dig
 # ends 9 when the server never replied, within its own five seconds, and 10
 # on an error of its own. Any other end but 0 is said as it is, an address
@@ -138,7 +140,13 @@ why() {
   case $2:$1 in
     *:0) why="" ;;
     *:124) why="no answer within ${within} s" ;;
-    *:137) why="no answer within ${within} s, killed ${killed} s on" ;;
+    *:137)
+      if [[ $3 -ge $((within * 1000)) ]]; then
+        why="no answer within ${within} s, killed ${killed} s on"
+      else
+        why="$2 was killed, exit 137, before its ${within} s ran out"
+      fi
+      ;;
     *:125 | *:126 | *:127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;
     dig:9) why="no reply from the server" ;;
     dig:10) why="dig failed on its own (exit 10), so this wasn't a lookup" ;;
@@ -168,7 +176,7 @@ for name in ${names[@]+"${names[@]}"}; do
     result=$(outcome "${took}")
     judge "${check}" "${result}" "the system looked up ${name} in ${took} ms"
   else
-    why "${ran}" dscacheutil
+    why "${ran}" dscacheutil "${took}"
     judge "${check}" failed "the system couldn't look up ${name} (${took} ms${why:+, ${why}})"
   fi
   last+=("${check} ${took}")
@@ -186,7 +194,7 @@ for name in ${names[@]+"${names[@]}"}; do
       result=$(outcome "${took}")
       judge "${check}" "${result}" "${server} answered ${name} in ${took} ms"
     else
-      why "${ran}" dig
+      why "${ran}" dig "${took}"
       judge "${check}" failed \
         "${server} gave no IPv4 address for ${name} (${took} ms${why:+, ${why}})"
     fi
