@@ -7,6 +7,11 @@
 //! parking and holds) takes a record with `resumed` set for one that no
 //! longer stands. Resuming also clears its thread's reply, so a stop said
 //! again there after Joel resumed is answered as a new one.
+//!
+//! Each of Joel's resumes is also kept as a line in resumes.jsonl beside
+//! the stops' folder, whether or not it ended a stop, so a stop a search
+//! indexes only after he resumed is kept as resumed when it was said
+//! before a resume that names it: what he ended stays ended.
 
 use std::fs;
 use std::io;
@@ -18,6 +23,16 @@ use crate::slack::micros;
 
 /// Microseconds in a millisecond.
 const MICROS_A_MILLI: u128 = 1000;
+
+/// The file beside the stops' folder keeping each of Joel's resumes as a
+/// line: when, by what, and the scope it named. It's kept outside the
+/// folder, so nothing reading the folder's records meets it.
+const RESUMES: &str = "resumes.jsonl";
+
+/// Where the resumes are kept for the stops kept in `folder`.
+fn resumes(folder: &Path) -> PathBuf {
+    folder.with_file_name(RESUMES)
+}
 
 /// A stop standing, with the file it's kept in.
 #[derive(Clone, Debug)]
@@ -93,7 +108,65 @@ pub fn names(stop: &Standing, scope: &str) -> bool {
 ///
 /// Why a record couldn't be rewritten; those before it stay resumed.
 pub fn resume(folder: &Path, scope: &str, at: u64, by: &str) -> io::Result<Vec<String>> {
+    note(folder, scope, at, by)?;
     resume_only(folder, scope, at, by, |_| true)
+}
+
+/// Keeps one of Joel's resumes, of `scope` at `at` in milliseconds, in
+/// the resumes beside `folder`, before any stop is marked, so none ends
+/// without it.
+fn note(folder: &Path, scope: &str, at: u64, by: &str) -> io::Result<()> {
+    crate::record::append(
+        &resumes(folder),
+        &json!({ "at": at, "by": by, "scope": scope }),
+    )
+}
+
+/// How a stop about to be kept is marked when Joel already resumed it:
+/// the latest of his resumes kept beside it that names it and came at or
+/// after it was said, as a search can index a stop only after he resumed
+/// what he'd said. None for a stop no resume since names, or whose record
+/// says only when it was heard, which is now.
+#[must_use]
+pub fn resumed_since(folder: &Path, stop: &Value) -> Option<Value> {
+    let said = stop["said_at"].as_str().and_then(micros)?;
+    let id = stop.get("id").and_then(Value::as_str).unwrap_or_default();
+    let kept = Standing {
+        id: id.to_owned(),
+        file: PathBuf::new(),
+        record: stop.clone(),
+    };
+    fs::read_to_string(resumes(folder))
+        .unwrap_or_default()
+        .lines()
+        .rev()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|resume| {
+            resume["at"]
+                .as_u64()
+                .is_some_and(|at| u128::from(at) * MICROS_A_MILLI >= said)
+                && resume["scope"]
+                    .as_str()
+                    .is_some_and(|scope| names(&kept, scope))
+        })
+        .map(|resume| json!({ "at": resume["at"], "by": resume["by"] }))
+}
+
+/// A stop's record `stop`, about to be kept in `folder`, as Joel left it:
+/// marked resumed by [`resumed_since`] when he resumed it before it was
+/// heard, and otherwise as it is.
+#[must_use]
+pub fn as_left(folder: &Path, mut stop: Value) -> Value {
+    if let Some(resumed) = resumed_since(folder, &stop) {
+        stop["resumed"] = resumed;
+    }
+    stop
+}
+
+/// Whether a stop's record says it's been resumed, so it no longer stands.
+#[must_use]
+pub fn ended(stop: &Value) -> bool {
+    !stop.get("resumed").is_none_or(Value::is_null)
 }
 
 /// As [`resume`], but only the stops whose records `keep` picks, so a
@@ -146,6 +219,12 @@ pub fn as_joel(
     said: u128,
     only_shadow: bool,
 ) -> io::Result<Vec<String>> {
+    if !only_shadow {
+        // Kept as when it was said, which is what a stop said is
+        // weighed against.
+        let when = u64::try_from(said / MICROS_A_MILLI).unwrap_or(u64::MAX);
+        note(folder, scope, when, "joel")?;
+    }
     resume_only(folder, scope, at, "joel", |record| {
         (!only_shadow || record["shadow"] != false) && said_by(record).is_some_and(|by| by <= said)
     })
@@ -198,10 +277,13 @@ mod tests {
     use super::*;
     use crate::record;
 
+    /// A stops folder of its own, in a state folder of its own, as the
+    /// resumes are kept beside it.
     fn folder(name: &str, records: &[Value]) -> PathBuf {
-        let dir =
+        let state =
             std::env::temp_dir().join(format!("pineapple-resume-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&state);
+        let dir = state.join("stops");
         fs::create_dir_all(&dir).expect("a scratch folder is made");
         for (at, record) in records.iter().enumerate() {
             fs::write(dir.join(format!("{at}.json")), record.to_string())
@@ -283,6 +365,82 @@ mod tests {
         );
         let left: Vec<String> = standing(&dir).into_iter().map(|stop| stop.id).collect();
         assert_eq!(left, ["after", "unknown"], "later and unknown stops stand");
+    }
+
+    #[test]
+    fn a_stop_said_before_a_resume_naming_it_and_heard_after_is_kept_resumed() {
+        let dir = folder("late", &[]);
+        let said = |id: &str, reaches: &[&str], at: &str| {
+            let mut one = stop(id, reaches);
+            one["said_at"] = json!(at);
+            one
+        };
+        // At 1,700,000,050,000 ms, a resume of one pull request's stops,
+        // though none stood.
+        let at = 1_700_000_050_000;
+        assert!(
+            resume(&dir, "pr:example/shop#12", at, "joel")
+                .expect("resumes")
+                .is_empty(),
+            "nothing stood to end"
+        );
+        let before = said("before", &["pr:example/shop#12"], "1700000049.000000");
+        assert_eq!(
+            resumed_since(&dir, &before),
+            Some(json!({ "at": at, "by": "joel" })),
+            "said before the resume naming it, it's kept as that resume left it"
+        );
+        let after = said("after", &["pr:example/shop#12"], "1700000051.000000");
+        assert_eq!(resumed_since(&dir, &after), None, "said after, it stands");
+        let elsewhere = said("elsewhere", &["quest:QEST-A"], "1700000049.000000");
+        assert_eq!(
+            resumed_since(&dir, &elsewhere),
+            None,
+            "one the resume doesn't name stands"
+        );
+        let mut heard = stop("heard", &["pr:example/shop#12"]);
+        heard["heard_at"] = json!(1_700_000_049_000_u64);
+        assert_eq!(
+            resumed_since(&dir, &heard),
+            None,
+            "one saying only when it was heard stands"
+        );
+        resume(&dir, "all", at + 5_000, "launcher").expect("resumes");
+        assert_eq!(
+            resumed_since(&dir, &after),
+            Some(json!({ "at": at + 5_000, "by": "launcher" })),
+            "a later resume of everything names it too"
+        );
+        assert!(
+            standing(&dir).is_empty(),
+            "what's kept of the resumes is no stop"
+        );
+    }
+
+    #[test]
+    fn joels_typed_resume_is_kept_as_said_and_one_in_shadow_not_at_all() {
+        let dir = folder("typed", &[]);
+        let said = 1_700_000_050_000_000;
+        as_joel(&dir, "all", 1, said, true).expect("resumes");
+        assert!(
+            !resumes(&dir).exists(),
+            "a resume in shadow ends no live stop, so none is kept"
+        );
+        as_joel(&dir, "all", 1_700_000_099_000, said, false).expect("resumes");
+        let mut before = stop("before", &["everything"]);
+        before["said_at"] = json!("1700000049.000000");
+        let mut after = stop("after", &["everything"]);
+        after["said_at"] = json!("1700000060.000000");
+        assert_eq!(
+            resumed_since(&dir, &before),
+            Some(json!({ "at": 1_700_000_050_000_u64, "by": "joel" })),
+            "kept as when he said it"
+        );
+        assert_eq!(
+            resumed_since(&dir, &after),
+            None,
+            "a stop said after he said resume, though before it was heard, stands"
+        );
     }
 
     #[test]

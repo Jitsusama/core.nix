@@ -7,7 +7,7 @@ use std::path::Path;
 
 use pineapple::deaf::{Deafness, Round, Search};
 use pineapple::ears::{Ears, Unread};
-use pineapple::gate::{Asked, gate};
+use pineapple::gate::{Asked, Gate, Sent, gate};
 use pineapple::judged::{self, Judged};
 use pineapple::phone;
 use pineapple::record::{self, Source};
@@ -22,6 +22,10 @@ use super::{LOOK_BACK, MICROS, MILLIS, SLACK_RESUMES_LIVE, millis, seconds};
 
 /// The safe word, as its search asks for it.
 pub(super) const PHRASE: &str = "pineapple";
+
+/// The rule a stop's reply is held by when Joel resumed it before the
+/// stop was heard.
+const RESUMED_BEFORE_HEARD: &str = "resumed-before-heard";
 
 /// Joel's tag, as its search asks for it.
 pub(super) fn tag(me: &str) -> String {
@@ -256,7 +260,14 @@ fn judge(
         edited: message.edited,
         age: read_at.saturating_sub(said_at),
     };
-    let gated = gate(&asked, &sent, read_at, replies_off(state));
+    // Said before a resume of Joel's that names it, and heard only after,
+    // a stop is kept as he left it, ended, and no reply says it stands.
+    let stop = decision.stops().then(|| {
+        let stop = record::stop(&source, &decision, now, reader.shadow);
+        resume::as_left(&state.join("stops"), stop)
+    });
+    let late = stop.as_ref().is_some_and(resume::ended);
+    let gated = reply_gate(&asked, &sent, read_at, state, late);
     let entry = record::line(&source, &decision, gated, now, reader.shadow);
     if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
@@ -277,8 +288,7 @@ fn judge(
             }
         }
     }
-    if decision.stops() {
-        let mut stop = record::stop(&source, &decision, now, reader.shadow);
+    if let Some(mut stop) = stop {
         keep_stop(
             &state.join("stops"),
             &mut stop,
@@ -297,6 +307,16 @@ fn judge(
             &message.link,
             reader.shadow,
         );
+    }
+}
+
+/// What the gate says of a decision's reply at `read_at`, as
+/// [`gate`] does, but held for a stop Joel resumed before it was heard
+/// (`late`), as no reply may say it stands.
+fn reply_gate(asked: &Asked<'_>, sent: &[Sent], read_at: u64, state: &Path, late: bool) -> Gate {
+    match gate(asked, sent, read_at, replies_off(state)) {
+        Gate::Through(_) if late => Gate::Held(RESUMED_BEFORE_HEARD),
+        gated => gated,
     }
 }
 
@@ -323,6 +343,10 @@ fn keep_stop(
     };
     let kept = record::keep(records, key, stop);
     match &kept {
+        Ok(true) if resume::ended(stop) => eprintln!(
+            "<5>a stop{shadow}{unagreed}, said before Joel resumed it, kept as resumed: {}",
+            if agreed { message.link.as_str() } else { key }
+        ),
         // An unagreed stop is named by the key it's kept under, as its
         // link could point anywhere.
         Ok(true) => eprintln!(

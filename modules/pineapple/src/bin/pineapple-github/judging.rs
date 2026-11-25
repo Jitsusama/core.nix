@@ -67,8 +67,15 @@ pub(super) fn judge(
         eprintln!("<3>couldn't write a decision down: {error}");
     }
     if decision.stops() {
-        let stop = record::stop(&source, &decision, now, shadow);
-        match record::keep(&state.join("stops"), &said.key, &stop) {
+        let folder = state.join("stops");
+        // Said before a resume of Joel's that names it, and heard only
+        // after, it's kept as he left it: ended.
+        let stop = resume::as_left(&folder, record::stop(&source, &decision, now, shadow));
+        match record::keep(&folder, &said.key, &stop) {
+            Ok(true) if resume::ended(&stop) => eprintln!(
+                "<5>a stop said before Joel resumed it, kept as resumed: {}",
+                said.link
+            ),
             Ok(true) if shadow => eprintln!("<5>a stop, in shadow: {}", said.link),
             Ok(true) => eprintln!("<5>a stop: {}", said.link),
             Ok(false) => {}
