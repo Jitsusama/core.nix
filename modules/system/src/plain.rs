@@ -27,7 +27,11 @@ pub fn words(line: &str) -> String {
             // as characters; written as raw bytes, they were never UTF-8
             // and reach here as a replacement character, which is harmless.
             '\u{9b}' => control_sequence(&mut chars),
-            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => string(&mut chars),
+            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => {
+                if string(&mut chars) {
+                    escape(&mut chars);
+                }
+            }
             each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
                 if !kept.is_empty() && !kept.ends_with(' ') {
                     kept.push(' ');
@@ -43,15 +47,26 @@ pub fn words(line: &str) -> String {
 /// Passes over an escape sequence's rest, its escape already taken: a
 /// control sequence such as a colour, a string such as a title or a link,
 /// or one that runs through intermediates to its final character, such as
-/// a character set chosen; any other takes the one character after it.
+/// a character set chosen; any other takes the one character after it. A
+/// string ended by the escape of a sequence of its own goes on to that one
+/// here, in a loop, so text nesting a million of them costs no more stack
+/// than one: the text is a node's or an owner's, and a stack overflow ends
+/// the daemon reading it with no way to catch it.
 fn escape(chars: &mut Peekable<Chars>) {
-    match chars.next() {
-        Some('[') => control_sequence(chars),
-        Some(']' | 'P' | 'X' | '^' | '_') => string(chars),
-        Some(' '..='/') => {
-            chars.find(|end| ('0'..='~').contains(end));
+    loop {
+        match chars.next() {
+            Some('[') => control_sequence(chars),
+            Some(']' | 'P' | 'X' | '^' | '_') => {
+                if string(chars) {
+                    continue;
+                }
+            }
+            Some(' '..='/') => {
+                chars.find(|end| ('0'..='~').contains(end));
+            }
+            _ => {}
         }
-        _ => {}
+        return;
     }
 }
 
@@ -60,22 +75,18 @@ fn control_sequence(chars: &mut Peekable<Chars>) {
     chars.find(|end| ('@'..='~').contains(end));
 }
 
-/// Passes over a string's rest, to the bell or string terminator ending it.
-fn string(chars: &mut Peekable<Chars>) {
+/// Passes over a string's rest, to the bell or string terminator ending it,
+/// saying whether an escape ended it that isn't its terminator: that starts
+/// a sequence of its own, which its caller passes over as any other.
+fn string(chars: &mut Peekable<Chars>) -> bool {
     while let Some(each) = chars.next() {
         match each {
-            '\u{7}' | '\u{9c}' => return,
-            // An escape ends the string; one that isn't its terminator
-            // starts a sequence of its own, which goes as any other does.
-            '\u{1b}' => {
-                if chars.next_if_eq(&'\\').is_none() {
-                    escape(chars);
-                }
-                return;
-            }
+            '\u{7}' | '\u{9c}' => return false,
+            '\u{1b}' => return chars.next_if_eq(&'\\').is_none(),
             _ => {}
         }
     }
+    false
 }
 
 /// Whether `each` is a format character that turns, hides or breaks text:
@@ -156,5 +167,19 @@ mod tests {
         ] {
             assert_eq!(words(said), shown, "{what}");
         }
+    }
+
+    /// How many strings a node's text nests in the case below: past what a
+    /// test thread's stack holds were each a call deeper than the last.
+    const NESTED: usize = 1_000_000;
+
+    #[test]
+    fn strings_nested_without_end_cost_no_stack() {
+        let nested = "\u{1b}]".repeat(NESTED);
+        assert_eq!(words(&nested), "", "a string's nested escapes went whole");
+        let said = format!("{nested}\u{7}said");
+        assert_eq!(words(&said), "said", "the words after them stayed");
+        let short = "\u{9d}".to_owned() + &"\u{1b}]".repeat(NESTED) + "\u{9c}said";
+        assert_eq!(words(&short), "said", "so did a one-character string's");
     }
 }

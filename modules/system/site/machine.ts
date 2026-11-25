@@ -335,8 +335,11 @@ function power(charge: number, onBattery: boolean | undefined): string {
 
 /**
  * A machine's last update, as a sentence, when its node says one, with why
- * when it didn't all go ahead. The daemon ties a why only then, so it is
- * said as it comes; it may end in its own mark, so the sentence ends once.
+ * when it didn't all go ahead: beside a refusal, a failure or a done update
+ * whose system isn't the one it boots, as the system command says it
+ * (said.rs `updated`), so a why beside a step a newer node knows, which an
+ * earlier attempt may have left, is never said as this one's. A why may end
+ * in its own mark, so the sentence ends once.
  */
 function updated(figures: Figures, when: (at: string) => string): string | undefined {
   if (figures.updatedAt === undefined) {
@@ -353,10 +356,13 @@ function updated(figures: Figures, when: (at: string) => string): string | undef
     // which the daemon leaves out: either way, not known to have gone ahead.
     case undefined:
       return `Its last update was ${at}.`;
-    default:
+    case "refused":
+    case "failed":
       return why === undefined
         ? `Its update ${at} says ${figures.updateStep}.`
         : stopped(`Its update ${at} says ${figures.updateStep}: ${why}`);
+    default:
+      return `Its update ${at} says ${figures.updateStep}.`;
   }
 }
 

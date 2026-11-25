@@ -318,6 +318,11 @@ it("itself says its disk, then its processor, memory, power and update", () => {
     "an update with no why says how it stands",
   );
   assert.equal(
+    asideOf({ update_step: "building", update_why: "left over" }),
+    "Its update at 02:40 says building.",
+    "a why beside a step that carries none is left unsaid, as the system command leaves it",
+  );
+  assert.equal(
     asideOf({ update_step: "refused", update_why: "" }),
     "Its update at 02:40 says refused.",
     "an empty why is none",

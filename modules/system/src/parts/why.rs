@@ -53,20 +53,23 @@ fn refused_why(reason: &str) -> Option<String> {
 
 /// Why an update failed: its first error with words in it, else its
 /// reason. When going back failed too, or there was nothing to go back to,
-/// that is said beside the error, and kept whole however long the error,
-/// since only then is the machine left off the commit it ran and waiting
-/// on a person.
+/// the reason's own failure is said, with that beside it kept whole however
+/// long the failure, since only then is the machine left off the commit it
+/// ran and waiting on a person. Its lines then hold going back's after the
+/// switch's own, with nothing between to tell them apart (update-to-main's
+/// update.rs `going_back`), so a switch whose own lines hold no error would
+/// take going back's as its cause: the reason names the step that failed.
 fn failed_why(updated: &Value, reason: Option<&str>) -> Option<String> {
     let stranded = reason.and_then(|reason| {
         STRANDED
             .iter()
             .find_map(|left| reason.find(left).map(|at| reason.split_at(at)))
     });
-    match (first_error(updated).as_deref(), stranded) {
-        (Some(error), Some((_, left))) => beside(error, "; ", left),
-        (Some(error), None) => plain(error),
-        (None, Some((failure, left))) => beside(failure, "; ", left),
-        (None, None) => reason.and_then(plain),
+    match stranded {
+        Some((failure, left)) => beside(failure, "; ", left),
+        None => first_error(updated)
+            .as_deref()
+            .map_or_else(|| reason.and_then(plain), plain),
     }
 }
 
@@ -198,9 +201,13 @@ fn cut_to(why: &str, at_most: usize) -> Option<String> {
     }
     let keep = at_most.saturating_sub(1);
     let cut: String = said.chars().take(keep).collect();
-    // A cut that ends a word whole keeps it; one inside a word goes back
-    // to the word before.
-    let word = if said.chars().nth(keep) == Some(' ') {
+    // A cut that ends a word whole, before a space or a clause's mark, keeps
+    // it; one inside a word goes back to the word before.
+    let word = if said
+        .chars()
+        .nth(keep)
+        .is_some_and(|next| !next.is_alphanumeric())
+    {
         cut.as_str()
     } else {
         cut.rfind(' ').map_or(cut.as_str(), |at| &cut[..at])
@@ -292,18 +299,33 @@ mod tests {
         assert_eq!(
             why_of(&stranded),
             json!(
-                "unit nix-daemon.service failed, going back failed too: switching back failed \
+                "switching failed (exit status: 4), going back failed too: switching back failed \
                  (exit status: 4)"
             ),
-            "a machine left off what it ran says so beside its error"
+            "a machine left off what it ran says so beside the step that failed"
+        );
+        // Going back's lines follow the switch's with nothing between, so an
+        // error among them is never taken for the switch's own.
+        let backs = json!({"step": "failed",
+                           "why": "switching failed (exit status: 4); going back failed too: \
+                                   switching back failed (exit status: 4)",
+                           "lines": ["warning: the following units failed: a.service",
+                                     "error: b"]});
+        assert_eq!(
+            why_of(&backs),
+            json!(
+                "switching failed (exit status: 4), going back failed too: switching back failed \
+                 (exit status: 4)"
+            ),
+            "going back's error isn't said as the switch's cause"
         );
         let gone = json!({"step": "failed", "lines": ["error: the switch was cut off"],
                           "why": "switching failed (exit status: 4); there was no system to go \
                                   back to"});
         assert_eq!(
             why_of(&gone),
-            json!("the switch was cut off, there was no system to go back to"),
-            "a machine with nothing to go back to says so beside its error"
+            json!("switching failed (exit status: 4), there was no system to go back to"),
+            "a machine with nothing to go back to says so beside the step that failed"
         );
         let old = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
                          "lines": ["error: builder for '/nix/store/x.drv' failed with exit \
@@ -338,15 +360,15 @@ mod tests {
             "an error after a waiting piece is said"
         );
         let long = "x ".repeat(115);
-        let lost = json!({"step": "failed", "lines": [format!("error: {long}")],
-                          "why": "switching failed (exit status: 4); there was no system to go \
-                                  back to"});
+        let lost = json!({"step": "failed", "lines": ["error: going back's own"],
+                          "why": format!("switching failed: {long}; there was no system to \
+                                          go back to")});
         let lost = why_of(&lost);
-        let lost = lost.as_str().expect("a long error still says something");
+        let lost = lost.as_str().expect("a long failure still says something");
         assert!(
             lost.chars().count() <= WHY_AT_MOST
                 && lost.ends_with("x\u{2026}, there was no system to go back to"),
-            "a long error is cut before where the machine was left, which is kept: {lost}"
+            "a long failure is cut before where the machine was left, which is kept: {lost}"
         );
         let unsaid = json!({"step": "failed", "lines": [],
                             "why": format!("switching failed: {long}; going back failed too: \
@@ -379,7 +401,7 @@ mod tests {
                 json!({"step": "failed", "lines": ["error: the switch was cut off"],
                        "why": format!("switching failed (exit status: 4); going back failed \
                                        too: {back}")}),
-                "beside an error",
+                "beside an error going back may have left",
             ),
             (
                 json!({"step": "failed", "lines": [],
@@ -397,7 +419,7 @@ mod tests {
                 said.chars().count() <= WHY_AT_MOST
                     && !cause.is_empty()
                     && !cause.ends_with(',')
-                    && ending.chars().count() < WHY_AT_MOST / 2
+                    && "going back failed too".len() + ending.chars().count() <= WHY_AT_MOST / 2
                     && said.ends_with("y\u{2026}"),
                 "{what}, a long ending is cut to half the why after its cause: {said}"
             );
@@ -545,6 +567,11 @@ mod tests {
             why_of(&json!({"step": "refused", "why": why})),
             json!(format!("b {word}\u{2026}")),
             "a word ending just at the cut is kept whole"
+        );
+        assert_eq!(
+            why_of(&json!({"step": "refused", "why": format!("b {word}, rest")})),
+            json!(format!("b {word}\u{2026}")),
+            "so is one a clause's mark ends"
         );
     }
 }
