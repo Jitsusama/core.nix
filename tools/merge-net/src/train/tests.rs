@@ -407,7 +407,10 @@ fn a_first_rider_github_refuses_falls_alone() {
 
 #[test]
 fn a_run_is_clear_only_one_red_or_refusal_from_emptying_nothing() {
-    assert!(Splitting::default().clear(), "a train with nothing behind it wasn't clear");
+    assert!(
+        Splitting::default().clear(),
+        "a train with nothing behind it wasn't clear"
+    );
     let mut searching = Splitting::default();
     searching.red(4);
     assert!(!searching.clear(), "a train searching a red read as clear");
@@ -427,7 +430,10 @@ fn a_run_is_clear_only_one_red_or_refusal_from_emptying_nothing() {
     );
     let mut untaken = Splitting::default();
     assert!(untaken.untaken(0), "the first untaken candidate gave up");
-    assert!(!untaken.clear(), "a train waiting on a builder read as clear");
+    assert!(
+        !untaken.clear(),
+        "a train waiting on a builder read as clear"
+    );
     untaken.taken();
     assert!(untaken.clear(), "a taken candidate didn't end the wait");
 }
