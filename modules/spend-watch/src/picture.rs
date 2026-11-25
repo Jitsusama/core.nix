@@ -1226,6 +1226,38 @@ mod tests {
         assert_eq!(fresh.work.len(), 2, "a picture read alone keeps nothing");
     }
 
+    // A running daemon's picture, read from the hours it keeps, says what a
+    // picture read alone does after a turn arrives late for an hour gone
+    // and after a session is forgotten.
+    #[test]
+    fn a_kept_picture_says_what_a_fresh_one_does_as_hours_gone_move() {
+        let history = History::memory();
+        let mut kept = Kept::default();
+        let both = |kept: &mut Kept, now: f64| {
+            let kept = Picture::read_keeping(&history, &budgeted(), now, kept).unwrap();
+            let fresh = Picture::read(&history, &budgeted(), now).unwrap();
+            (kept.today.dollars, fresh.today.dollars)
+        };
+        turn(&history, "one", "proxy", NOW - 3.0 * HOUR, 10.0);
+        turn(&history, "two", "proxy", NOW - 60.0, 20.0);
+        let (before, _) = both(&mut kept, NOW);
+        turn(&history, "late", "proxy", NOW - 3.0 * HOUR + 60.0, 40.0);
+        let (late, fresh) = both(&mut kept, NOW + 60.0);
+        assert!(
+            (late - fresh).abs() < 1e-9 && late > before,
+            "a turn late for an hour gone was missed: {late} kept, {fresh} fresh"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'one'", [])
+            .unwrap();
+        let (forgot, fresh) = both(&mut kept, NOW + 120.0);
+        assert!(
+            (forgot - fresh).abs() < 1e-9 && forgot < late,
+            "a session forgotten was still counted: {forgot} kept, {fresh} fresh"
+        );
+    }
+
     fn store(history: &History, line: &serde_json::Value) {
         let record = crate::feed::parse(&line.to_string()).unwrap();
         crate::feed::store(history, "proxy", &record, NOW).unwrap();

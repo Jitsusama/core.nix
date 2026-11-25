@@ -157,6 +157,8 @@ pub struct Hours {
     names: HashSet<Rc<str>>,
     /// How many times every hour was read whole.
     whole: usize,
+    /// How many hours the last refresh read again.
+    reread: usize,
 }
 
 /// One row of `turn_hours`, but for its hour and turns.
@@ -176,7 +178,13 @@ impl Hours {
     /// hours that moved since the last read, or every one when none was
     /// kept from as early. The last move is read before the rows, so a turn
     /// added between the two is read again next time rather than missed.
+    ///
+    /// A move is the highest yet plus one, so a write rolled back hands its
+    /// numbers out again. Moves read inside a write not yet committed, as a
+    /// failed commit can leave open, are therefore not kept as read: the
+    /// next refresh reads every hour again.
     pub fn refresh(&mut self, db: &Connection, from: i64) -> Result<(), String> {
+        let settled = db.is_autocommit();
         let latest: i64 = db
             .query_row("SELECT COALESCE(MAX(move), 0) FROM hour_moves", [], |row| {
                 row.get(0)
@@ -193,6 +201,7 @@ impl Hours {
                         .map_err(fail)?;
                     rows.collect::<Result<_, _>>().map_err(fail)?
                 };
+                self.reread = moved.len();
                 for hour in moved {
                     let mut read = self.read_rows(db, hour, hour + 1)?;
                     match read.remove(&hour) {
@@ -201,13 +210,19 @@ impl Hours {
                     };
                 }
                 self.rows = self.rows.split_off(&from);
+                // Names only the dropped rows held go with them, so a
+                // forgotten session isn't kept for the daemon's whole life.
+                self.names.retain(|name| Rc::strong_count(name) > 1);
             }
             _ => {
                 self.whole += 1;
+                self.rows = BTreeMap::new();
+                self.names.clear();
                 self.rows = self.read_rows(db, from, i64::MAX)?;
+                self.reread = self.rows.len();
             }
         }
-        self.read = Some((from, latest));
+        self.read = settled.then_some((from, latest));
         Ok(())
     }
 
@@ -253,6 +268,11 @@ impl Hours {
                 cost,
             };
             out.entry(hour).or_default().push(row);
+        }
+        // They're kept for the daemon's life, so without the room pushing
+        // leaves spare.
+        for rows in out.values_mut() {
+            rows.shrink_to_fit();
         }
         Ok(out)
     }
@@ -1168,8 +1188,8 @@ mod tests {
 
     // A running daemon's hours are read whole once, then only the hours
     // a turn moved since, and hold what a fresh read finds whether a turn
-    // arrives late for an hour gone, an hour loses its last turn, or the
-    // first hour kept moves on.
+    // arrives late for an hour gone, an hour loses its last turn, a write
+    // is rolled back, or the first hour kept moves on.
     #[test]
     fn kept_hours_are_read_again_only_where_a_turn_moved_them() {
         let history = history();
@@ -1178,33 +1198,62 @@ mod tests {
             hours.refresh(&history.db, from).unwrap();
             hours.rows
         };
+        let sessions = |kept: &Hours| -> Vec<(i64, String)> {
+            let mut all: Vec<_> = kept
+                .between(i64::MIN, i64::MAX)
+                .map(|(hour, row)| (hour, row.session.to_string()))
+                .collect();
+            all.sort();
+            all
+        };
         budgeted(&history, "s1", H, "anthropic", None, 1.0);
         budgeted(&history, "s2", H + 1, "anthropic", Some("delta"), 2.0);
         let mut kept = Hours::default();
         kept.refresh(&history.db, H).unwrap();
-        assert_eq!(kept.rows, fresh(H), "the first read wasn't every hour");
+        assert_eq!(
+            sessions(&kept),
+            [(H, "s1".to_owned()), (H + 1, "s2".to_owned())],
+            "the first read missed an hour"
+        );
+        assert_eq!(kept.reread, 2, "the first read wasn't every hour");
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.reread, 0, "an hour no turn moved was read again");
         budgeted(&history, "s3", H, "anthropic", None, 4.0);
         budgeted(&history, "s1", H + 2, "anthropic", None, 8.0);
         kept.refresh(&history.db, H).unwrap();
         assert_eq!(kept.rows, fresh(H), "a late turn or a new hour was missed");
+        assert_eq!(kept.reread, 2, "more than the two hours moved were read");
+        assert!(
+            Rc::ptr_eq(&kept.rows[&H][0].model, &kept.rows[&(H + 1)][0].model),
+            "a model read again wasn't kept once with the hours not read"
+        );
         history
             .db
             .execute("DELETE FROM turns WHERE session = 's2'", [])
             .unwrap();
         kept.refresh(&history.db, H).unwrap();
         assert_eq!(kept.rows, fresh(H), "an hour with no turns left was kept");
+        assert_eq!(kept.reread, 1, "more than the hour emptied was read");
+        assert!(
+            !kept.names.contains("s2"),
+            "a session forgotten kept its name"
+        );
+        history.db.execute_batch("BEGIN").unwrap();
+        budgeted(&history, "s4", H + 1, "anthropic", None, 16.0);
+        kept.refresh(&history.db, H).unwrap();
+        history.db.execute_batch("ROLLBACK").unwrap();
+        budgeted(&history, "s5", H + 1, "anthropic", None, 32.0);
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "a move handed out again was missed");
+        assert_eq!(kept.whole, 2, "a write not committed was kept as read");
         kept.refresh(&history.db, H + 2).unwrap();
         assert_eq!(kept.rows, fresh(H + 2), "hours before the first were kept");
-        assert_eq!(kept.whole, 1, "the hours were read whole again");
+        assert_eq!(kept.whole, 2, "the hours were read whole again");
         kept.refresh(&history.db, H).unwrap();
         assert_eq!(kept.rows, fresh(H), "an earlier first hour wasn't read");
         assert_eq!(
-            kept.whole, 2,
+            kept.whole, 3,
             "an earlier first hour didn't read every hour"
-        );
-        assert!(
-            Rc::ptr_eq(&kept.rows[&H][0].model, &kept.rows[&(H + 2)][0].model),
-            "a model named in two hours was kept twice"
         );
     }
 

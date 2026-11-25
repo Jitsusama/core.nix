@@ -711,8 +711,8 @@ type ByMinute = BTreeMap<i64, (f64, String)>;
 /// pass on 7 November, so the hour under way is read every time, and the
 /// hours gone only once `hour_moves`, which every turn added or forgotten
 /// moves, says one of them changed. Summing their `turn_hours` to tell
-/// read those rows back off the disk each pass, 22 to 61 MB on 24 November,
-/// once the machine had dropped them from memory.
+/// whether one had changed read those rows back off the disk each pass, 22
+/// to 61 MB on 24 November, once the machine had dropped them from memory.
 #[derive(Debug, Default)]
 pub struct Minutes {
     gone: Option<Gone>,
@@ -764,7 +764,9 @@ impl Minutes {
             .map(|(minute, spent)| (*minute, spent.clone()))
             .collect();
         out.extend(minutes(history, crate::time::hour_start(split), f64::MAX)?);
-        self.gone = Some(kept);
+        // A write rolled back hands its moves out again, so hours read
+        // inside one not yet committed are read again next time.
+        self.gone = history.db.is_autocommit().then_some(kept);
         Ok(out)
     }
 }
@@ -2605,9 +2607,18 @@ mod tests {
             fresh(NOW + 2.0)
         );
         assert_eq!(kept.whole, 2, "a turn arriving late for an hour gone");
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'late'", [])
+            .unwrap();
+        assert_eq!(
+            kept.read(&history, from, NOW + 3.0).unwrap(),
+            fresh(NOW + 3.0)
+        );
+        assert_eq!(kept.whole, 3, "a turn forgotten from an hour gone");
         let next = crate::time::hour_start(crate::time::hour_of(NOW) + 1);
         assert_eq!(kept.read(&history, from, next).unwrap(), fresh(next));
-        assert_eq!(kept.whole, 3, "the next hour");
+        assert_eq!(kept.whole, 4, "the next hour");
     }
 
     #[test]

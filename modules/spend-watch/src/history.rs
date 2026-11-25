@@ -317,8 +317,13 @@ const UPGRADES: [&str; 11] = [
          GROUP BY hour, session, quest, model, kind, cause;"
     ),
     // Every hour already summed moved once, which a daemon reading them
-    // for the first time reads whole anyway.
+    // for the first time reads whole anyway. A history taken back to the
+    // eleventh shape by its schema alone still holds the table and its
+    // triggers, which would refuse this step and so the history, so they
+    // go first.
     concat!(
+        "DROP TRIGGER IF EXISTS hour_moves_add; DROP TRIGGER IF EXISTS hour_moves_take;
+         DROP TABLE IF EXISTS hour_moves;",
         moves!(),
         "INSERT INTO hour_moves SELECT hour, 1 FROM turn_hours GROUP BY hour;"
     ),
@@ -1730,6 +1735,41 @@ mod tests {
             moves(&history),
             vec![(0, 3), (1, 4), (2, 2)],
             "a turn forgotten didn't move its hour"
+        );
+        history
+            .db
+            .execute(
+                "INSERT OR IGNORE INTO turns SELECT * FROM turns WHERE session = 'a' AND at = 30.0",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            moves(&history),
+            vec![(0, 3), (1, 4), (2, 2)],
+            "a turn read again and ignored moved its hour"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE at < 9000.0", [])
+            .unwrap();
+        assert!(
+            moves(&history)
+                .iter()
+                .all(|(hour, moved)| *hour == 1 || *moved > 4),
+            "a forgetting across hours left one where it was: {:?}",
+            moves(&history)
+        );
+        drop(history);
+        // Taken back by its schema alone, the history is brought up again.
+        History::open(&path)
+            .unwrap()
+            .set_meta("schema", "11")
+            .unwrap();
+        let history = History::open(&path).unwrap();
+        assert_eq!(
+            history.meta("schema"),
+            Some(SCHEMA.to_string()),
+            "a history taken back by its schema alone wasn't brought up again"
         );
     }
 

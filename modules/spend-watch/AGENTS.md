@@ -218,7 +218,13 @@ feed speaks.
   of it then, so it tells the bill again. One a newer spend-watch keeps,
   as when an older system boots again, is never touched: the watch holds,
   says so in the margin and the collection, and carries on once it's a
-  shape it reads, or the newer one replaces it.
+  shape it reads, or the newer one replaces it. To take the history back
+  a shape for an older spend-watch, stop the watch and undo what that
+  shape's step made, then set its schema back: for the twelfth, `DROP
+  TRIGGER hour_moves_add; DROP TRIGGER hour_moves_take; DROP TABLE
+  hour_moves; UPDATE meta SET value = '11' WHERE key = 'schema';`. Its
+  step drops what it makes before making it, so a history taken back by
+  its schema alone is still brought up again.
 - **Strings.** Each finding carries a title for its row, a badge of a few
   words beside it, a note for the launcher's footer and a detail for what's
   copied and told. What asks for a look puts its note in the margin's
