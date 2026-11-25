@@ -270,25 +270,22 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     assert account.soft_floor(system) >= int(running) >= JOURNAL_FLOOR, running
 
 
-def test_work_in_jobs_is_slowed_never_ended(account: Account) -> None:
-    """Work in jobs is slowed past 26% of memory, and never ended."""
-    high = int(account.read(f"{JOBS}/memory.high"))
-    assert abs(high - account.memory() * JOBS_HIGH) <= MIB
-    assert account.read(f"{JOBS}/memory.max") == "max"
-
-
-def test_jobs_ceiling_rises_while_it_fills_it_and_goes_back_as_the_sorter_stops(
+def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
     jobs: Account,
 ) -> None:
-    """Jobs' ceiling rises while jobs fills it and nothing else waits, and goes back at a stop.
+    """Work in jobs is slowed past 26% of memory, never ended, and the ceiling follows room.
 
-    When it rises and falls is jobs-sorter's own tests' (src/ceiling.rs). This proves the sorter
-    sets it on the account's manager, and that its unit puts back the declared one as it stops,
-    since a ceiling it lifted would otherwise stay up with nothing to bring it down.
+    The ceiling rises while jobs fills it and nothing else waits, and goes back at a stop. When
+    it rises and falls is jobs-sorter's own tests' (src/ceiling.rs). This proves the sorter sets
+    it on the account's manager, and that its unit puts back the declared one as it stops,
+    since a ceiling it lifted would otherwise stay up with nothing to bring it down. It is one
+    subtest with the declared ceiling's, since both are about the one ceiling.
     """
     machine = jobs.machine
     coreutils = jobs.sleep.rsplit("/", 1)[0]
     declared = int(jobs.read(f"{JOBS}/memory.high"))
+    assert abs(declared - jobs.memory() * JOBS_HIGH) <= MIB, declared
+    assert jobs.read(f"{JOBS}/memory.max") == "max"
     # A file as large as the ceiling, read from inside jobs, fills it with page cache, which
     # still counts as available, so memory isn't short while it does.
     machine.succeed(

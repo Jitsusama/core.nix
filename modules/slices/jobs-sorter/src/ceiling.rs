@@ -331,7 +331,8 @@ mod tests {
         assert!(
             ceiling
                 .wanted(&roomy(base()), base(), now + QUIET_FOR * 2)
-                .is_some()
+                .is_some(),
+            "it didn't rise a quiet spell after the first quiet look"
         );
     }
 
@@ -364,7 +365,10 @@ mod tests {
     fn a_failed_set_waits_before_it_is_tried_again() {
         let now = Instant::now();
         let mut ceiling = Ceiling::default();
-        assert!(ceiling.wanted(&roomy(base()), base(), now).is_some());
+        assert!(
+            ceiling.wanted(&roomy(base()), base(), now).is_some(),
+            "a ceiling never set didn't want setting"
+        );
         ceiling.failed(now);
         assert_eq!(
             ceiling.wanted(&roomy(base()), base(), now + AGAIN / 2),
