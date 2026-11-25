@@ -338,6 +338,10 @@ in
         # journalctl and coredumpctl, as the account has them.
         Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
         Slice = "background.slice";
+        # A switch no longer ends a run, so this ends a hang, which would
+        # hold back the next day's; nothing timed a day's run, and an hour
+        # is many times what reading one day of records takes.
+        TimeoutStartSec = "1h";
       };
     };
     systemd.user.services.cadence-review = {
@@ -369,6 +373,8 @@ in
           }:/run/current-system/sw/bin"
         ];
         Slice = "background.slice";
+        # As the day's: a switch no longer ends a hung review, so this does.
+        TimeoutStartSec = "1h";
       };
     };
     # A daemon of its own, named cadence-spec, since every daemon's units

@@ -3,6 +3,7 @@
 {
   exampleLaptop,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -104,24 +105,24 @@ onLinux {
           && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
         ) environment
       );
-  # A switch leaves a running tick, day, review or hour run be, since
-  # waiting on its start would outlast home-manager's patience under load
-  # and send the whole switch back; each timer starts the new unit next.
+  # A switch leaves each of cadence's runs be, the tick, day, review and
+  # hour and any added, since waiting on its start would outlast
+  # home-manager's patience under load and send the whole switch back;
+  # each timer starts the new unit next. With no switch to end one, each
+  # has a timeout to end a hang.
   cadence-outlasts-a-switch =
     let
       services = exampleLaptop.config.home-manager.users.joel.systemd.user.services;
-      keeps = name: (services.${name}.Unit.X-SwitchMethod or null) == "keep-old";
+      runs = lib.filterAttrs (
+        name: service:
+        (name == "cadence" || lib.hasPrefix "cadence-" name) && (service.Service.Type or null) == "oneshot"
+      ) services;
+      kept =
+        service: (service.Unit.X-SwitchMethod or null) == "keep-old" && service.Service ? TimeoutStartSec;
     in
     holds "cadence-outlasts-a-switch"
-      "A switch restarts a running cadence, cadence-day, cadence-review or cadence-hour run and waits on it."
-      (
-        builtins.all keeps [
-          "cadence"
-          "cadence-day"
-          "cadence-review"
-          "cadence-hour"
-        ]
-      );
+      "A switch restarts one of cadence's runs and waits on it, or one has no timeout to end a hang, or fewer than its four runs were found."
+      (builtins.length (builtins.attrNames runs) >= 4 && builtins.all kept (builtins.attrValues runs));
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or
