@@ -43,6 +43,12 @@ def moved(machine: BaseMachine) -> BaseMachine:
     machine.wait_for_unit("multi-user.target")
     machine.succeed("loginctl enable-linger joel")
     machine.wait_for_unit("user@1000.service")
+    # The moves the manager starts find no folder yet, and a target is reached only after what
+    # it wants, so none of them can still be running as the folders are made.
+    as_account(
+        machine,
+        "timeout 60 sh -c 'until systemctl --user is-active -q default.target; do sleep 0.2; done'",
+    )
     as_account(
         machine,
         "mkdir -p moved/deep held mapped unreadable busy && echo kept > moved/deep/file"
@@ -166,7 +172,8 @@ def test_a_folder_a_program_opens_as_it_is_copied_stays_whole(moved: BaseMachine
     assert inode(moved, f"{HOME}/raced") != "256", "the folder moved under the racer"
     assert as_account(moved, "systemctl --user is-active racer").strip() == "active"
     told = said(moved, "raced")
-    assert "raced/f1 open, as it" in told, f"the move didn't say the racer held it: {told}"
+    # The look before the exchange names the folder, and the look after it the copy's path.
+    assert "f1 open, as it" in told, f"the move didn't say the racer held it: {told}"
     assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
     nothing_beside(moved, "raced")
 
