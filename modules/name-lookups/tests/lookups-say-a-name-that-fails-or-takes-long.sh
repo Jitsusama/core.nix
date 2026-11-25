@@ -5,8 +5,8 @@
 # from its third, a busy mDNSResponder only from its fifth, by its path or
 # its name, and a check well again once; a server answering only a CNAME,
 # or failing, gave no address, and a state file with a blank line, a count
-# that isn't a number or one opening with a zero is read past. dscacheutil, dig, ps and logger
-# are stand-ins answering as the test sets, and the slow mark is set to 0 ms
+# that isn't a number or a zero before other digits is read past. dscacheutil, dig, ps and
+# logger are stand-ins answering as the test sets, and the slow mark is set to 0 ms
 # rather than a lookup made to wait, so no round sleeps.
 # usage: lookups-say-a-name-that-fails-or-takes-long.sh <lookups.sh>
 set -euo pipefail
@@ -161,15 +161,15 @@ if [[ -e ${work}/ran ]] || ! grep -q '^system:example.net 1 no failed 1$' "${sta
   exit 1
 fi
 
-# A count opening with a zero, which bash's arithmetic reads as octal and
-# refuses past 7, is read as none too: the round runs, and keeps the check
-# failing again afresh.
+# A zero before other digits, as in 09, which bash's arithmetic reads as
+# octal and refuses past 7, is read as none too: the round judges this check
+# and every one after it, and keeps the check failing again afresh.
 echo "system:example.net 09 no failed 09" >"${state}/running"
 echo fails >"${work}/answers/example.net"
 ended=0
 bash "${lookups}" "${state}" 5000 example.org,example.net 192.0.2.53 2>/dev/null || ended=$?
 if [[ ${ended} -ne 0 ]] || ! grep -q '^system:example.net 1 no failed 1$' "${state}/running"; then
-  echo "a state file with a count opening with a zero ended the round (${ended}) or was kept:" \
+  echo "a state file with a count of 09 dropped its check (${ended}) or was kept:" \
     "$(<"${state}/running")" >&2
   exit 1
 fi
