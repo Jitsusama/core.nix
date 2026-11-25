@@ -1537,7 +1537,7 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
             and at.get("window") == window["id"]
             and at.get("walk") is None
             and at.get("move") is None
-            and at.get("resting")
+            and at.get("restBegun")
         )
 
     deadline = time.monotonic() + SETTLES_BY
@@ -1562,7 +1562,7 @@ def settled(shell: Shell, window: Json, away_from: float, since: int) -> Json:
             and at["x"] != away_from
             and at.get("walk") is None
             and at.get("move") is None
-            and at.get("resting")
+            and at.get("restBegun")
         )
 
     heard(shell, still_elsewhere, since)
