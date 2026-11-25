@@ -1478,6 +1478,46 @@ def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shel
     assert now == selected, f"the notices came in and the selection went from {selected} to {now}"
 
 
+# How long a case holds the notices daemon after the launcher closed, in seconds, so a late
+# answer to a key typed before the closing says at least this long after it.
+HELD_PAST_CLOSING = 1.5
+# A notices' answer come after its key was listed without it, with how late (Presented.js's
+# answeredLateSaid).
+NOTICES_LATE = re.compile(r"launcher: notices answered .+? (\d+) ms after its key")
+
+
+def test_a_closing_ends_the_keys_its_answers_came_late_for(shell: Shell) -> None:
+    """A key listed without the notices' answer is let go when the launcher closes.
+
+    Its answer, come after the closing, is no key's being late: nobody waits on it. Kept, the
+    launcher would say it came late whenever the notices next answered unheld, as they do when
+    a notice arrives with what's typed shown, however many hours on.
+    """
+    with shell.told("shows card Windows of the past"):
+        shell.as_account("notify-send --expire-time=1000 'Windows of the past' 'a late notice'")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    with launcher_on_niri.notices_stopped():
+        shell.type_in("windows", selecting="windows")
+        shell.reported("listed without answers", lambda rest: rest == "", since)
+        closed = shell.mark()
+        shell.close_launcher()
+        time.sleep(HELD_PAST_CLOSING)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("windows", selecting="windows")
+    shell.as_account("notify-send --expire-time=1000 'Windows anew' 'a notice since'")
+    shell.launcher_until(lambda shown: "Windows anew" in shown["rows"])
+    shell.close_launcher()
+    shell.notices_gone()
+    logged = launcher_on_niri.logged_since(shell, closed)
+    lates = [int(late) for late in NOTICES_LATE.findall(logged)]
+    held = [late for late in lates if late >= HELD_PAST_CLOSING * 1000]
+    assert not held, f"the notices came late for a key typed before the closing: {held} ms"
+
+
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
     """In For You, :filter look steps into its looks, the head naming it, and - comes back out.
 
