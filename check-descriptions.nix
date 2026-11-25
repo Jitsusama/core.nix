@@ -2373,6 +2373,13 @@
     and how, rather than refusing the machine, and a machine that doesn't carry or runs no node
     is never warned
   '';
+  mycelium-eases-onto-only-the-named = ''
+    a workstation's node is named each worker its machine names for easing, on Linux and a Mac,
+    only where the mycelium it is built from declares --eases-onto, since a flag it doesn't know
+    stops it starting; from one without it or naming it only in a line comment it is named none
+    and the switch warns once, naming that mycelium and the workers, a machine naming none is
+    told none and never warned, and a name no machine could have doesn't evaluate
+  '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
     keeping each reading in mycelium's state, in the agents' slice on Linux and as an agent on a

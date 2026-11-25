@@ -1,6 +1,6 @@
 # What the home realm's node may do to ease the machine when it's over its
-# room and another has some (home.nix's `easesSleep` and `easesCarry`), and
-# the arguments that tell the node so. It changes only when what easing may
+# room and another has some (home.nix's `easesSleep`, `easesCarry` and
+# `easesOnto`), and the arguments that tell the node so. It changes only when what easing may
 # act on does, apart from how the node is run.
 {
   config,
@@ -13,6 +13,22 @@ let
   # The node carries only where the source it's built from keeps the
   # person's and the leading sessions (carry-guards.nix).
   carries = cfg.easesCarry && carryGuards.keepsTheLed mycelium;
+  # What declares `--eases-onto` in mycelium's src/main.rs from its #441 on,
+  # as a pattern a whole line matches, read as carry-guards.nix reads its
+  # guards. A node given a flag its source doesn't know refuses to start,
+  # so one built from a source without it is named no worker.
+  ontoField = "[[:space:]]*eases_onto: Vec<String>,.*";
+  namesWorkers =
+    let
+      path = "${mycelium}/src/main.rs";
+      lines = lib.splitString "\n" (builtins.readFile path);
+    in
+    mycelium ? outPath
+    && builtins.pathExists path
+    && lib.any (line: builtins.match ontoField line != null) lines;
+  # Read only where a worker is named, so a machine naming none reads
+  # nothing of the source.
+  onto = lib.optionals (cfg.easesOnto != [ ] && namesWorkers) cfg.easesOnto;
 in
 {
   options = {
@@ -53,6 +69,21 @@ in
         stay where they went.
       '';
     };
+    easesOnto = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[a-z0-9][a-z0-9-]*");
+      default = [ ];
+      description = ''
+        The workers, by machine name, that the home realm's node may carry
+        to while it eases this machine. A worker's word that it takes
+        carries is only its own, so the node carries to no worker this
+        doesn't name; the person's own machines need no naming. A worker
+        named still takes a carry only while it says it takes carries and
+        says no time it leaves, since a carried session lasts. Empty, no
+        worker takes one. Mycelium took `--eases-onto` in its #441: where
+        the source the node is built from lacks it, the node is named no
+        worker and the switch warns, since the flag would stop it starting.
+      '';
+    };
   };
 
   # The node always writes, as it judges the machine, what it would do to
@@ -68,13 +99,26 @@ in
   ++ lib.optionals cfg.easesSleep [
     "--eases-sleep"
     "${config.xdg.stateHome}/pi/agentic-harness.pi/park-workflow/ease"
-  ];
+  ]
+  ++ lib.concatMap (worker: [
+    "--eases-onto"
+    worker
+  ]) onto;
 
   # A warning rather than a refusal, since a refusal would stop the whole
   # machine updating, kernel and fixes too, over one flag the node can go
   # without. Only where a home realm runs a node, since elsewhere no node
   # is told anything.
-  warnings = lib.optional (cfg.realm != null && cfg.easesCarry && !carries) (
-    carryGuards.missing mycelium
-  );
+  warnings =
+    lib.optional (cfg.realm != null && cfg.easesCarry && !carries) (carryGuards.missing mycelium)
+    ++ lib.optional (cfg.realm != null && cfg.easesOnto != [ ] && onto == [ ]) (
+      "jitsusama.mycelium.easesOnto names "
+      + lib.concatStringsSep ", " cfg.easesOnto
+      + ", but the mycelium the node is built from ("
+      + (mycelium.rev or mycelium.dirtyRev or "a source with no revision")
+      + ") has no line of src/main.rs matching "
+      + ontoField
+      + ", as mycelium's #441 brought. So the node is named no worker to carry to. Take a "
+      + "mycelium with it, or where it says it in other words, change eases.nix."
+    );
 }

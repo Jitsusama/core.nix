@@ -20,3 +20,11 @@ And one it keeps, so a pattern made too strict refuses its case:
 - `reshaped/`: after #381, with both lines in forms the patterns still
   accept, a `pub(crate)` field and a `fn leads` with a lifetime, so a node
   built from it carries.
+
+Two more hold only the `main.rs` that `eases.nix` reads for the flag
+mycelium's #441 brought, `--eases-onto`, and `older/` stands for a source
+without it. A node is named the workers its machine names only from the
+first:
+
+- `names-workers/`: after #441, declaring the flag's field.
+- `commented-onto/`: naming that field only in a line comment.

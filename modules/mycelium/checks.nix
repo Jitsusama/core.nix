@@ -654,6 +654,71 @@ in
           }) == [ ]
       );
 
+  # A machine's node is named the workers its machine names for easing
+  # only where the mycelium it is built from takes the flag, since a flag
+  # it doesn't know stops the node starting: from the stand-in declaring
+  # it, each as its own `--eases-onto`, on Linux and a Mac alike; from one
+  # without it or naming it only in a line comment, none, with one warning
+  # naming that mycelium and the workers. A machine naming none is told
+  # none and warned of nothing, and a name no machine could have doesn't
+  # evaluate.
+  mycelium-eases-onto-only-the-named =
+    let
+      onto = links // {
+        easesOnto = [
+          "kestrel"
+          "osprey"
+        ];
+      };
+      from =
+        bare: role: name: settings:
+        account (machineFrom bare role (standIn name) settings);
+      onLinux = name: from bareNixos self.nixosModules.workstation name onto;
+      nodeOf = one: toString one.systemd.user.services.mycelium.Service.ExecStart;
+      warnedOfOnto = one: lib.filter (lib.hasInfix "easesOnto") one.warnings;
+      named = onLinux "names-workers";
+      macNamed = from bareDarwin self.darwinModules.workstation "names-workers" onto;
+      # Whether a node built from the stand-in `name`, which lacks the
+      # flag, is named no worker, and the switch warns once of it.
+      namesNone =
+        name:
+        let
+          without = onLinux name;
+          warning = lib.concatStrings (warnedOfOnto without);
+        in
+        !(lib.hasInfix "--eases-onto" (nodeOf without))
+        && lib.length (warnedOfOnto without) == 1
+        && lib.hasInfix "(stand-in-${name})" warning
+        && lib.hasInfix "names kestrel, osprey," warning;
+      evaluates =
+        name:
+        (builtins.tryEval (
+          nodeOf (
+            from bareNixos self.nixosModules.workstation "names-workers" (links // { easesOnto = [ name ]; })
+          )
+        )).success;
+    in
+    holds "mycelium-eases-onto-only-the-named"
+      "A machine's node isn't named each worker its machine names, on Linux or a Mac, from a mycelium declaring --eases-onto, or is named one from a mycelium without it or naming it only in a line comment, or the switch doesn't warn of that once, naming that mycelium and the workers, or a machine naming none is told one or warned, or a name no machine could have evaluates."
+      (
+        lib.hasInfix "--eases --eases-onto kestrel --eases-onto osprey" (nodeOf named)
+        && warnedOfOnto named == [ ]
+        && lib.hasInfix "--eases-onto kestrel --eases-onto osprey" (
+          toString macNamed.launchd.agents.mycelium.config.ProgramArguments
+        )
+        && namesNone "older"
+        && namesNone "commented-onto"
+        && !(lib.hasInfix "--eases-onto" linuxNode)
+        && warnedOfOnto (linux links) == [ ]
+        && evaluates "wren"
+        && lib.all (name: !(evaluates name)) [
+          "--eases"
+          "Kestrel"
+          "two words"
+          ""
+        ]
+      );
+
   # A machine in a realm reads each minute how evenly the home realm's
   # machines carry its work, on Linux in the agents' slice, on a Mac as an
   # agent; only the home realm is read, and a machine in none reads nothing.
