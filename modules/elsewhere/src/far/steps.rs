@@ -257,12 +257,14 @@ cleared() {
 /// a share writes a file by renaming a new one over its name, which
 /// leaves the one taken as it was, and where the two lie on different
 /// disks the rename copies it, and what's read after is the copy. The
-/// near side writes only ustar archives, each once, so one listed twice,
-/// one that isn't a plain file of at least one header and of the size
-/// its list gives, or whose first header's magic isn't ustar's, byte for
-/// byte, is refused
+/// near side writes only ustar archives, each once, at a size in plain
+/// digits, so one listed twice or at a size that isn't, one that isn't a
+/// plain file of at least one header and of the size its list gives, or
+/// whose first header's magic isn't ustar's, byte for byte, is refused
 /// before tar reads it, as a compressed one is: tar unpacks those too,
-/// to far more than a share carries. That catches an archive no near
+/// to far more than a share carries. A size is read as digits, never as
+/// arithmetic, which would run what a list rewritten after its arrival
+/// put there. That catches an archive no near
 /// side of ours wrote, not one built to pass: a compressed archive can
 /// carry those bytes where a header's magic sits and still unpack. Such
 /// a near side gains nothing by it, since the job it sends runs here
@@ -300,6 +302,9 @@ pub(super) fn copying() -> String {
     case " $seen " in
       *" $part "*) printf "elsewhere: the job's list names %s twice\n" "$part" >&2; exit 1 ;;
     esac
+    case $size in
+      ''|*[!0-9]*) printf "elsewhere: the job's list gives %s a size that isn't a number\n" "$part" >&2; exit 1 ;;
+    esac
     seen="$seen $part"
   done) || return
   printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
@@ -312,7 +317,7 @@ pub(super) fn copying() -> String {
     plain=
     if [ -f "$work.tar" ] && [ ! -L "$work.tar" ]; then
       length=$(wc -c < "$work.tar") || exit 2
-      if [ $(($length)) -ge 512 ] && [ $(($length)) -eq $(($size)) ]; then
+      if [ $(($length)) -ge 512 ] && [ $(($length)) -eq "$size" ]; then
         magic=$(od -An -v -tx1 -j257 -N8 "$work.tar") || exit 2
         [ "$(echo $magic)" = '75 73 74 61 72 00 30 30' ] && plain=1
       fi

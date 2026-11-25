@@ -4,7 +4,7 @@
 
 use super::crossing::refusing;
 use super::{Left, far_line, far_run, handover, kind, said, scratch, work};
-use crate::far::{BACK, Heard, LEFT, TREE, archive, relay};
+use crate::far::{BACK, END, Heard, LEFT, TREE, archive, relay};
 use std::path::{Path, PathBuf};
 
 #[test]
@@ -342,6 +342,39 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
             "the stand-in never put {what} at the archive's name ({code:?}): {err}"
         );
         refused_as_not_plain(code, &err, &home, "0.tar", what, 0);
+    }
+}
+
+#[test]
+fn a_size_rewritten_into_the_list_after_it_arrived_is_read_as_digits_never_run() {
+    // A cat that, as the copy reads the list, first gives its archive a
+    // size that, read as arithmetic, runs a command or marks it plain.
+    for size in [r#"a[$(touch "$HOME/ran-it")]"#, "plain=1"] {
+        let rewriting = format!(
+            r#"case $1 in */{LEFT})
+  [ -e "$HOME/rewrote" ] || {{
+    printf '%s\t0.tar\n{END}\n' '{size}' > "$1" && : > "$HOME/rewrote"; }} ;;
+esac
+PATH=${{PATH#*:}} exec cat "$@""#
+        );
+        let archive = archive_of("a", "inside");
+        let list = format!("{}\t0.tar\n{END}\n", archive.len());
+        let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[("cat", &rewriting)]);
+        assert!(
+            home.join("rewrote").exists(),
+            "the stand-in never rewrote the list for {size} ({code:?}): {err}"
+        );
+        assert!(
+            code == Some(77) && err.contains("gives 0.tar a size that isn't a number"),
+            "a size of {size} wasn't refused ({code:?}): {err}"
+        );
+        assert!(
+            !home.join("ran-it").exists()
+                && !home.join("read").exists()
+                && !work(&home).join("ran").exists(),
+            "a size of {size} ran, or its archive was read, or its job ran"
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 }
 
