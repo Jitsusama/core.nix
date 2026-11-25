@@ -810,9 +810,8 @@
       patchedWarnings = crossMachine.config.warnings;
       # Unheld, saying so, and evaluated whole, so one that throws past what
       # it offers beside fails here rather than on a machine.
-      unheld =
-        run:
-        !run.held && noHold run && lib.hasInfix "isn't held" run.unheld && lib.isString run.drvPath;
+      unheld = run: !run.held && noHold run && saysSo run && lib.isString run.drvPath;
+      saysSo = run: lib.hasInfix "isn't held" run.unheld;
       # Neither asked for by the wrapper's build nor offered beside it.
       noHold = run: !(run.drvAttrs ? holds) && !(run ? holds);
       # A systemd-run that can't list its options, for the hold to refuse.
