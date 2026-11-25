@@ -317,7 +317,7 @@ fn a_hard_link_a_job_puts_at_its_handover_folder_s_name_is_never_opened() {
 
 /// A stand-in for `rm` that never clears the job's handover folder, as
 /// where a link stands at it that the far line isn't allowed to clear.
-fn pinning() -> (&'static str, String) {
+pub(super) fn pinning() -> (&'static str, String) {
     refusing("rm", &format!("*\"/{HANDOVER}/1 \"*"), "exit 1")
 }
 
@@ -399,6 +399,47 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
         assert!(
             !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
             "a stopped far line kept its copy or its run's file {pinned}: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
+    // A job that moves the copies' folder aside and puts at its name a
+    // link to a folder holding a copy and a run's file at its own number,
+    // then ends, or is stopped, or leaves a link the far line can't clear.
+    let swapping = "s=$(cd ../.. && pwd)/.s && mv \"$s\" \"$HOME/aside\" &&
+         mkdir -p \"$HOME/decoy/1\" && : > \"$HOME/decoy/1/kept\" && : > \"$HOME/decoy/1.run\" &&
+         ln -s \"$HOME/decoy\" \"$s\"";
+    let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
+    let cases: [(&str, &[(&str, &str)]); 3] = [
+        ("ended", &[]),
+        ("stopped", &[]),
+        ("ended past a link it can't clear", &[(rm, pinned.as_str())]),
+    ];
+    for (how, programs) in cases {
+        let stop = if how == "stopped" {
+            " && kill -TERM $PPID"
+        } else {
+            ""
+        };
+        let job = format!("{swapping}{stop}");
+        let (code, err, home) =
+            far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, programs);
+        let decoy = home.join("decoy");
+        assert!(
+            home.join("aside").exists()
+                && decoy.join("1").join("kept").exists()
+                && decoy.join("1.run").exists(),
+            "a far line {how} cleared through the link at its copies' folder ({code:?}): {err}"
+        );
+        let linked = std::fs::symlink_metadata(work(&home)).is_ok_and(|at| at.is_symlink());
+        assert!(
+            linked == !programs.is_empty()
+                && err.contains("so its copy stays") == !programs.is_empty(),
+            "a far line {how} kept the link it may clear, or didn't say the copy stays \
+             ({code:?}): {err}"
         );
         let _ = std::fs::remove_dir_all(&home);
     }

@@ -1,8 +1,10 @@
 //! The far line holding the job's tree while it takes the archives: a
 //! link at the tree or above it, anything but a folder of its own there,
-//! and a tree gone, each judged before an archive is taken, and a link
-//! put there later redirecting none.
+//! and a tree gone, each judged before an archive is taken, a link put
+//! there later redirecting none, and one that can't be cleared keeping
+//! the tree as the refusal clears the copy.
 
+use super::handing::pinning;
 use super::unpacking::{FIRST, archive_of, reading};
 use super::{Left, far_line, handover, kind, work};
 use crate::far::TREE;
@@ -51,6 +53,42 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_link_at_the_job_s_handover_that_can_t_be_cleared_keeps_its_tree_but_not_its_copy() {
+    // As above, the handover folder moved aside with a link at its name,
+    // but one the far line isn't allowed to clear: the refusal says the
+    // tree stays and clears the copy alone.
+    let swapping = format!(
+        r#"case " $* " in *"/.s/1 "*)
+  PATH=${{PATH#*:}} at='{FIRST}'
+  moved="$HOME/${{at%/*/*}}"
+  mv "$moved" "$HOME/aside" && ln -s "$HOME/aside" "$moved" && : > "$HOME/swapped" ;;
+esac
+PATH=${{PATH#*:}} exec mkdir "$@""#
+    );
+    let (rm, pinned) = pinning();
+    let archive = archive_of("a", "inside");
+    let list = format!("{}\t0.tar\nend\n", archive.len());
+    let (code, err, home) = reading(
+        &list,
+        &[("0.tar", &archive)],
+        &[("mkdir", &swapping), (rm, &pinned)],
+    );
+    assert!(
+        home.join("swapped").exists() && code == Some(77) && err.contains("so its tree stays"),
+        "a link at the handover it can't clear wasn't refused, saying the tree stays \
+         ({code:?}): {err}"
+    );
+    assert!(
+        home.join("aside").join(TREE).join("0.tar").exists()
+            && std::fs::symlink_metadata(handover(&home)).is_ok_and(|at| at.is_symlink())
+            && !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists(),
+        "the tree past the link was cleared, or the copy or its run's file stayed: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
