@@ -36,6 +36,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::net::Ipv4Addr;
+use std::time::SystemTime;
 
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
@@ -45,6 +46,7 @@ use crate::air::Heard;
 use crate::calling::Calling;
 use crate::choose::{self, Chooser};
 use crate::echo::{Class, Echoer, LOST, Late};
+use crate::kept_off::KeptOff;
 use crate::learn::{self, Here, Learned};
 use crate::moves;
 use crate::nl80211::{Nl80211, Station};
@@ -293,15 +295,17 @@ const TOLD: Duration = Duration::from_secs(60);
 /// and logs each one's figures every minute, saying when a call was on,
 /// learning from them what each carries at each hour. A card is chosen for
 /// each minute, and again as soon as a look its chooser asked for ends, so
-/// what the look heard is gone to without waiting out the minute.
+/// what the look heard is gone to without waiting out the minute. Each
+/// card's chooser is of the network it's on, begun with what a trusted
+/// one's access points were kept off for before (kept_off.rs).
 pub async fn follow(
     state: watch::Receiver<State>,
     calling: watch::Receiver<Calling>,
     asks: mpsc::Sender<Ask>,
-    mut learned: Learned,
+    (mut learned, mut kept_off): (Learned, KeptOff),
 ) {
     let mut echoers: HashMap<String, Echoers> = HashMap::new();
-    let mut choosers: HashMap<String, Chooser> = HashMap::new();
+    let mut choosers: HashMap<String, (String, Chooser)> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
     let (looked, mut ended) = mpsc::channel(1);
@@ -321,8 +325,10 @@ pub async fn follow(
                 let (now, hour) = (Instant::now(), learn::hour_here());
                 let joined = state.borrow().joined();
                 let call = calling.borrow().on(now);
-                choosers.retain(|card, _| joined.iter().any(|on| on.card == *card));
-                forget_the_forgotten(&mut learned, &state.borrow().saved_names());
+                choosers.retain(|card, (network, _)| {
+                    joined.iter().any(|on| on.card == *card && on.network == *network)
+                });
+                forget_the_forgotten(&mut learned, &mut kept_off, &state.borrow().saved_names());
                 for on in joined {
                     let carried = measures.of(&on.point, now);
                     let best = measures.best_effort_of(&on.point, now);
@@ -333,7 +339,7 @@ pub async fn follow(
                     println!("<6>{}", said(&on, (&best, &carried), video, call));
                     let around = state.borrow().around(&on.card);
                     learn_from(&mut learned, &on, &carried, &around, hour);
-                    let chooser = choosers.entry(on.card.clone()).or_default();
+                    let chooser = chooser_of(&mut choosers, &on, &kept_off, now);
                     if let Some(minute) = measures.minute_of(&on.point, now) {
                         chooser.took_minute(now, &on.point, &minute);
                     }
@@ -346,6 +352,7 @@ pub async fn follow(
                         (&asks, &state, &looked),
                         call,
                     );
+                    keep_kept_off(&mut kept_off, &on, chooser, now);
                 }
             }
             Some(card) = ended.recv() => {
@@ -359,7 +366,7 @@ pub async fn follow(
                     continue;
                 };
                 let around = state.borrow().around(&on.card);
-                let chooser = choosers.entry(on.card.clone()).or_default();
+                let chooser = chooser_of(&mut choosers, &on, &kept_off, now);
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
@@ -370,6 +377,7 @@ pub async fn follow(
                     (&asks, &state, &looked),
                     call,
                 );
+                keep_kept_off(&mut kept_off, &on, chooser, now);
             }
         }
     }
@@ -593,15 +601,48 @@ fn learn_from(learned: &mut Learned, on: &Joined, carried: &Measured, around: &[
     }
 }
 
-/// Forgets what the access points of networks no longer saved carried.
-/// None saved is taken as none read yet, since nothing can be learned of a
-/// network that isn't.
-fn forget_the_forgotten(learned: &mut Learned, saved: &[String]) {
+/// The card's chooser, begun where it has none, or none of the network
+/// it's on, with what that network's access points were kept off for
+/// before where it's trusted.
+fn chooser_of<'a>(
+    choosers: &'a mut HashMap<String, (String, Chooser)>,
+    on: &Joined,
+    kept_off: &KeptOff,
+    now: Instant,
+) -> &'a mut Chooser {
+    let (_, chooser) = choosers.entry(on.card.clone()).or_insert_with(|| {
+        let mut chooser = Chooser::default();
+        if on.trusted {
+            chooser.carry_in(&kept_off.of(&on.network), now, SystemTime::now());
+        }
+        (on.network.clone(), chooser)
+    });
+    chooser
+}
+
+/// Keeps what the card's chooser keeps off where it changed, on the disk
+/// where its network is trusted.
+fn keep_kept_off(kept_off: &mut KeptOff, on: &Joined, chooser: &mut Chooser, now: Instant) {
+    let Some(spurns) = chooser.kept_off_lately(now, SystemTime::now()) else {
+        return;
+    };
+    if let Err(error) = kept_off.keep(&on.network, on.trusted, spurns) {
+        eprintln!("<4>can't keep what {} keeps off: {error}", on.network);
+    }
+}
+
+/// Forgets what the access points of networks no longer saved carried, and
+/// what they were kept off for. None saved is taken as none read yet, since
+/// nothing can be learned of a network that isn't.
+fn forget_the_forgotten(learned: &mut Learned, kept_off: &mut KeptOff, saved: &[String]) {
     if saved.is_empty() {
         return;
     }
     if let Err(error) = learned.keep_only(saved) {
         eprintln!("<4>can't forget what forgotten networks carried: {error}");
+    }
+    if let Err(error) = kept_off.keep_only(saved) {
+        eprintln!("<4>can't forget what forgotten networks kept off: {error}");
     }
 }
 

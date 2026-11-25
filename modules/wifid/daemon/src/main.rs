@@ -36,6 +36,7 @@ mod detail;
 mod echo;
 mod face;
 mod frequencies;
+mod kept_off;
 mod learn;
 mod link;
 mod lookup;
@@ -89,6 +90,7 @@ use check::{Checker, Settings, Verdict};
 use detail::Polled;
 use face::Face;
 use frequencies::Avoided;
+use kept_off::KeptOff;
 use learn::Learned;
 use link::Link;
 use network::{Account, Address, Inner, Method, Network, Security};
@@ -321,12 +323,16 @@ async fn serve(
     }
     // How well each access point carries, measured from where the machine
     // is, and the card moved to one carrying better (moves.rs), with what
-    // each carried at each hour kept for a trusted network (learn.rs).
+    // each carried at each hour kept for a trusted network (learn.rs), and
+    // what each is kept off for (kept_off.rs).
     tokio::spawn(measure::follow(
         state.subscribe(),
         calling.subscribe(),
         asks.clone(),
-        Learned::kept_in(&Path::new(STATE).join(learn::FILE)),
+        (
+            Learned::kept_in(&Path::new(STATE).join(learn::FILE)),
+            KeptOff::kept_in(&Path::new(STATE).join(kept_off::FILE)),
+        ),
     ));
     let watching = watch::Sender::new(0);
     let wifi = Wifi {
