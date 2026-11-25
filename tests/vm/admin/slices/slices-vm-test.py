@@ -297,9 +297,7 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
         f"{JOBS}/jobs.service",
         f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1008; }}",
     )
-    machine.wait_until_succeeds(
-        f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
-    )
+    machine.wait_until_succeeds(f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING)
     said = machine.succeed("journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service")
     assert "memory ceiling to" in said, said
     assert "nothing it spares waiting on memory" in said, said
