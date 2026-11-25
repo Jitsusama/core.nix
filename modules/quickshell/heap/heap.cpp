@@ -175,18 +175,23 @@ double megabytes(std::size_t bytes) { return static_cast<double>(bytes) / BYTES_
 // header, given to `each` as its start, its length and how many of its
 // bytes are resident, as mincore says. A chunk's first page holds its
 // bitmaps, and a run's header is its first slot, so a page counts when
-// every slot in it, and the one just before it, is free.
-template <typename Each> void eachFreeSpan(const QV4::BlockAllocator &allocator, Each each) {
+// every slot in it, and the one just before it, is free. Says whether the
+// kernel said which pages are resident for every chunk; one it won't is
+// passed over.
+template <typename Each> bool eachFreeSpan(const QV4::BlockAllocator &allocator, Each each) {
     using QV4::Chunk;
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
     const std::size_t words = page / Chunk::SlotSize / Chunk::Bits;
     if (words == 0 || Chunk::ChunkSize % page != 0)
-        return;
+        return true;
     const std::size_t pages = Chunk::ChunkSize / page;
     std::vector<unsigned char> resident(pages);
+    bool answered = true;
     for (Chunk *chunk : allocator.chunks) {
-        if (mincore(chunk, Chunk::ChunkSize, resident.data()) != 0)
+        if (mincore(chunk, Chunk::ChunkSize, resident.data()) != 0) {
+            answered = false;
             continue;
+        }
         const auto used = [chunk](std::size_t word) {
             return chunk->objectBitmap[word] | chunk->extendsBitmap[word];
         };
@@ -211,15 +216,18 @@ template <typename Each> void eachFreeSpan(const QV4::BlockAllocator &allocator,
             }
         }
     }
+    return answered;
 }
 
-// The resident bytes in an allocator's free pages.
-std::size_t freePages(const QV4::BlockAllocator &allocator) {
+// The resident bytes in an allocator's free pages, or nothing when the
+// kernel won't say which pages of one of its chunks are resident.
+std::optional<std::size_t> freePages(const QV4::BlockAllocator &allocator) {
     std::size_t bytes = 0;
-    eachFreeSpan(allocator, [&bytes](char *, std::size_t, std::size_t resident) {
-        bytes += resident;
-    });
-    return bytes;
+    const bool answered =
+        eachFreeSpan(allocator, [&bytes](char *, std::size_t, std::size_t resident) {
+            bytes += resident;
+        });
+    return answered ? std::optional<std::size_t>(bytes) : std::nullopt;
 }
 
 // The resident bytes in `length` bytes from `start`, as mincore says, or
@@ -325,6 +333,8 @@ QVariantMap Heap::weigh() const {
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
     const std::optional<std::size_t> resident = residentHeld(*manager);
+    const std::optional<std::size_t> freeObjects = freePages(manager->blockAllocator);
+    const std::optional<std::size_t> freeShapes = freePages(manager->icAllocator);
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
@@ -333,12 +343,9 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
-        // A chunk the kernel won't say the pages of has none free, so free is
-        // unknown whenever resident is, rather than nothing.
-        {QStringLiteral("free"),
-         resident ? megabytes(freePages(manager->blockAllocator) +
-                              freePages(manager->icAllocator))
-                  : -1.0},
+        // A chunk the kernel won't say the pages of makes free unknown, rather
+        // than nothing, as it does resident.
+        {QStringLiteral("free"), freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0},
     };
 }
 

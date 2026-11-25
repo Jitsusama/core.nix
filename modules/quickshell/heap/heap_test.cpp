@@ -905,23 +905,37 @@ constexpr int LARGE_VALUES = 100000;
 
 double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
 
+// The MB of this process's pages the kernel has swapped out, zswap's pool
+// included, since each is left a swap entry wherever it's kept, or -1 when
+// it doesn't say.
+double swappedOut() {
+    QFile status(QStringLiteral("/proc/self/status"));
+    if (!status.open(QIODevice::ReadOnly))
+        return -1;
+    const QRegularExpressionMatch match =
+        QRegularExpression(QStringLiteral("^VmSwap:\\s+(\\d+) kB$"),
+                           QRegularExpression::MultilineOption)
+            .match(QString::fromLatin1(status.readAll()));
+    return match.hasMatch() ? match.captured(1).toDouble() / 1024.0 : -1;
+}
+
 // Whether what's held resident covers what's live, and passes what's held
 // by no more than its headers, once a heap keeps items in every allocator
 // it has: objects in its chunks, their shapes' internal classes in the
 // shapes' own, and large items of both kinds, which it checks it made.
 // Each item live was written, so its pages are in memory, and a count that
-// left out an allocator falls short of it; one that read a chunk twice, or
-// a chunk past a large item's own, passes what's held. What's held counts
-// a chunk less its header, and a large item the chunk allocator made at its
-// size, short of its header and the page it ends in, so those are let
-// over. A read a page or less past a large item's chunk isn't caught, and
-// nor is one stopping short of its end, since the item's own bytes, which
-// live counts, come first. A machine swapping while the heap is read may
-// take written pages, so then whether it covers what's live goes unjudged.
+// left out an allocator falls short of it; one that read a chunk twice
+// passes what's held, and one past a large item's own may, where the pages
+// after it are resident. What's held counts a chunk less its header, and a
+// large item the chunk allocator made at its size, short of its header, the
+// page it ends in and the rest of a whole chunk, so those are let over. A
+// read a page or less past a large item's chunk isn't caught, and nor is
+// one stopping short of its end, since the item's own bytes, which live
+// counts, come first. A page of this process the kernel swapped out is no
+// longer resident, so what's live is judged less what it has swapped.
 bool residentCoversWhatsLive() {
     QJSEngine engine;
     Heap heap(&engine);
-    const double swappedBefore = pagesCounted("pswpout");
     const QJSValue kept = engine.evaluate(
         QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) kept.push({ "
                        "['own' + i]: i }); for (let i = 0; i < %2; i++) kept.push(new "
@@ -932,12 +946,13 @@ bool residentCoversWhatsLive() {
             .arg(LARGE_VALUES)
             .arg(HUGE_LENGTH));
     const Weight weight = weighed(engine, heap);
-    const double swappedAfter = pagesCounted("pswpout");
-    const bool calm = swappedBefore < 0 || swappedAfter == swappedBefore;
+    const double swapped = std::max(swappedOut(), 0.0);
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
     const double shapes = megabytesOf(manager->icAllocator.usedMem());
     const double large = megabytesOf(manager->getLargeItemsMem());
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    // Only the stores of LARGE_VALUES numbers, not `kept`'s own, which the
+    // chunk allocator makes too.
     int chunked = 0;
     int segmented = 0;
     std::size_t over = (manager->blockAllocator.chunks.size() +
@@ -948,25 +963,21 @@ bool residentCoversWhatsLive() {
             ++segmented;
             continue;
         }
-        ++chunked;
+        if (huge.size >= static_cast<std::size_t>(LARGE_VALUES) * sizeof(QV4::Value))
+            ++chunked;
         over += QV4::Chunk::HeaderSize + page +
                 (huge.size < QV4::Chunk::ChunkSize ? QV4::Chunk::ChunkSize - huge.size : 0);
     }
     const bool made = shapes > 1 && chunked >= LARGE_ITEMS && segmented >= 1;
-    const bool covers = !calm || weight.resident >= weight.live;
+    const bool covers = weight.resident >= 0 && weight.resident + swapped >= weight.live;
     const bool bounded = weight.resident <= weight.held + megabytesOf(over);
-    if (!calm)
-        std::fprintf(stderr,
-                     "note: the machine swapped %.0f pages out while the heap was read, so "
-                     "whether what's resident covers the %.1f MB live goes unjudged\n",
-                     swappedAfter - swappedBefore, weight.live);
     if (kept.isError() || !made || !covers || !bounded)
         std::fprintf(stderr,
-                     "FAIL what's held resident covers the %.1f MB live, %.1f MB of it shapes "
-                     "and %.1f MB large items, %d made by the chunk allocator and %d with a "
-                     "segment, and passes the %.1f MB held by at most %.2f MB: %.1f MB "
-                     "resident\n",
-                     weight.live, shapes, large, chunked, segmented, weight.held,
+                     "FAIL what's held resident covers the %.1f MB live, less %.1f MB swapped, "
+                     "%.1f MB of it shapes and %.1f MB large items, %d made by the chunk "
+                     "allocator and %d with a segment, and passes the %.1f MB held by at most "
+                     "%.2f MB: %.1f MB resident\n",
+                     weight.live, swapped, shapes, large, chunked, segmented, weight.held,
                      megabytesOf(over), weight.resident);
     return !kept.isError() && made && covers && bounded;
 }
