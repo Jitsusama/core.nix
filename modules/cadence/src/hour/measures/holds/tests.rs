@@ -4,7 +4,7 @@ use std::fs;
 
 use serde_json::Value;
 
-use super::super::slipped::at;
+use super::super::slipped::{at, list};
 use super::*;
 
 const NOW: i64 = 1_795_600_000;
@@ -43,13 +43,6 @@ fn ask(hold: &str, expected: Option<i64>) -> Value {
         "at": at(NOW - 3000), "words": "end it", "owner": "HOLDER",
         "hold": hold, "expected": expected.map(at),
     })
-}
-
-fn list(asks: &[Value]) -> String {
-    asks.iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 /// On 24 November a hold on tree cuts held for hours with no ask dating
