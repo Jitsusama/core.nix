@@ -220,7 +220,7 @@ fn a_change_that_cannot_be_read_is_said_unread_not_safe() {
     assert!(m.behind.is_empty(), "an unread change counted at risk");
     assert!(
         m.says
-            .ends_with("(1 unread; the first, a fix: the fetch failed)"),
+            .ends_with("(1 unread; the first, a fix: core.nix#6595 unread: the fetch failed)"),
         "an unread change passed for none at risk, or went unnamed: {}",
         m.says
     );
