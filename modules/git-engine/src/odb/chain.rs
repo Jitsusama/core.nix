@@ -333,9 +333,13 @@ impl Odb {
 
     /// Ends the copy `search` was reading, which won't read for `error`:
     /// marks it bad, keeps the refusal should it be the first, and leaves
-    /// the next copy to be read.
+    /// the next copy to be read. Memory the allocator wouldn't give says
+    /// nothing of the copy, so a copy refused for it is left to be read
+    /// again rather than passed over until its pack folder changes.
     fn fail(&mut self, search: &mut Search, error: &io::Error) {
-        if let Some(copy) = search.copy.take() {
+        if let Some(copy) = search.copy.take()
+            && error.kind() != io::ErrorKind::OutOfMemory
+        {
             self.bad.insert(copy, (error.kind(), error.to_string()));
         }
         refuse(search, error);

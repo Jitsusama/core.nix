@@ -253,9 +253,14 @@ fn a_base_found_or_missed_for_one_copy_answers_the_same_for_the_next() {
         ),
     ] {
         let folders = packed(&names, &packs);
+        // A miss reads the same however often it's looked for, so the
+        // lookups say whether the next copy looked for it again.
+        super::chain::LOOKUPS.with(|lookups| lookups.set(0));
+        let read = read_from(&folders.0[0], names[0]);
+        let lookups = super::chain::LOOKUPS.with(std::cell::Cell::get);
         assert_eq!(
-            read_from(&folders.0[0], names[0]),
-            found,
+            (read, lookups),
+            (found, 4),
             "a base {what} for one copy didn't answer the same for the next"
         );
     }
@@ -498,8 +503,10 @@ fn a_base_spent_is_looked_up_once_a_find_however_many_copies_name_it() {
         Err("delta base cycle".into()),
         "a chain coming round wasn't refused for coming round"
     );
+    // Each name is looked up at least once, so fewer than that is a
+    // count that stopped counting.
     assert!(
-        lookups <= (rungs - 1) * (packs + 1) + 2,
+        (rungs..=(rungs - 1) * (packs + 1) + 2).contains(&lookups),
         "a base spent was looked up again for a copy naming it: {lookups} lookups"
     );
 }

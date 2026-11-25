@@ -113,19 +113,17 @@ fn a_base_distance_is_refused_once_its_bits_would_pass_a_word() {
     // doesn't, then one far past a word. A distance that fits a word yet
     // lies before the pack is refused for where it lies instead.
     let near = [0x80, 0xfe, 0xfe, 0xfe, 0xfe, 0xfe, 0xfe, 0xfe];
-    for (last, refused) in [
-        (vec![0xfe, 0x00], "delta base offset"),
-        (vec![0xff, 0x00], "delta offset"),
+    let ending = |last: [u8; 2]| near.iter().chain(&last).copied().collect::<Vec<u8>>();
+    for (distance, refused) in [
+        (ending([0xfe, 0x00]), "delta base offset"),
+        (ending([0xff, 0x00]), "delta offset"),
         (
             [0xff; 10].iter().copied().chain([0x7f]).collect(),
             "delta offset",
         ),
     ] {
         let mut entry = vec![0x64];
-        if last.len() == 2 {
-            entry.extend(near);
-        }
-        entry.extend(last);
+        entry.extend(distance);
         let folders = packed(&names, &[vec![entry]]);
         assert_eq!(
             read_from(&folders.0[0], names[0]),
@@ -159,6 +157,82 @@ fn a_delta_past_a_word_saying_more_than_it_gives_or_writing_past_its_size_is_ref
             "a delta past a word, short of its size or writing past it wasn't refused: {delta:?}"
         );
     }
+}
+
+#[test]
+fn an_object_is_taken_only_where_its_stream_ends_at_its_size() {
+    let name = names(1)[0];
+    let stream = |data: &[u8]| miniz_oxide::deflate::compress_to_vec_zlib(data, 1);
+    let entry = |head: u8, stream: Vec<u8>| [vec![head], stream].concat();
+    // The sound stream with its checksum spoilt, so it fills the object
+    // yet doesn't end as a stream should.
+    let mut spoilt = stream(b"x");
+    *spoilt.last_mut().expect("a stream ends in its checksum") ^= 1;
+    let size = || Err("pack object's size".to_string());
+    for (entry, read, what) in [
+        (entry(0x31, stream(b"x")), Ok(Some(b"x".to_vec())), "sound"),
+        (entry(0x30, stream(b"x")), size(), "of no bytes giving one"),
+        (
+            entry(0x31, stream(b"xy")),
+            size(),
+            "giving more than its size",
+        ),
+        (
+            entry(0x31, spoilt),
+            Err("pack object's stream".into()),
+            "spoilt",
+        ),
+    ] {
+        let folders = packed(&[name], &[vec![entry]]);
+        assert_eq!(
+            read_from(&folders.0[0], name),
+            read,
+            "an object {what} wasn't taken only where its stream ends at its size"
+        );
+    }
+}
+
+/// A delta's size, in as many bytes as it takes.
+fn delta_size(mut size: usize) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    loop {
+        let low = u8::try_from(size & 0x7f).expect("seven bits fit a byte");
+        size >>= 7;
+        if size == 0 {
+            bytes.push(low);
+            return bytes;
+        }
+        bytes.push(low | 0x80);
+    }
+}
+
+#[test]
+fn a_delta_grows_toward_its_size_and_copies_from_where_it_says() {
+    // A 1.5 MiB base, copied whole and then 1 MiB of it from its second
+    // byte: past the room first made, then past twice what's held.
+    let base = noise(3 << 19);
+    let made = base.len() + (1 << 20);
+    let delta = [
+        delta_size(base.len()),
+        delta_size(made),
+        vec![0xf0, 0x00, 0x00, 0x18],
+        vec![0xf1, 0x01, 0x00, 0x00, 0x10],
+    ]
+    .concat();
+    let read = apply_delta(&base, &delta).expect("the delta applies");
+    assert_eq!(
+        (
+            read.len(),
+            read.capacity() <= made,
+            &read[..base.len()] == base.as_slice()
+        ),
+        (made, true, true),
+        "a delta made room past its size, or didn't copy its base whole"
+    );
+    assert!(
+        read[base.len()..] == base[1..=1 << 20],
+        "a delta's copy didn't start at the offset it says"
+    );
 }
 
 #[test]

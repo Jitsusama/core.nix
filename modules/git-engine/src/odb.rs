@@ -275,10 +275,16 @@ impl Store {
 ///
 /// What it inflates to is grown as the stream fills it rather than made
 /// at the size its header says, so a size no stream fills, however large,
-/// takes at most twice what the stream gives before it ends, and memory
-/// that isn't there is refused rather than ending the program.
+/// takes at most twice what the stream gives, or 64 KiB, before it ends,
+/// and memory the allocator won't give is refused rather than ending the
+/// program. As git's `unpack_compressed_entry` does, it makes room for
+/// one byte past the size, and takes the object only where its stream
+/// ends there, so a stream giving more, or ending wrongly, is refused.
 fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
+    let room = size
+        .checked_add(1)
+        .ok_or_else(|| invalid("pack object's size"))?;
     let mut out = Vec::new();
     let mut filled = 0;
     let mut chunk = vec![0; size.saturating_add(64).clamp(256, 1 << 16)];
@@ -292,18 +298,19 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
         // what it inflated past the room made for it.
         loop {
             if filled == out.len() {
-                grow_toward(&mut out, size)?;
+                grow_toward(&mut out, room)?;
             }
             let result = inflate(&mut state, input, &mut out[filled..], MZFlush::None);
             filled += result.bytes_written;
             input = &input[result.bytes_consumed..];
             offset += result.bytes_consumed as u64;
-            // Room never grows past `size`, so once it's filled, `out`
-            // holds exactly the object.
             match result.status {
-                Ok(MZStatus::StreamEnd) if filled == size => return Ok(out),
+                Ok(MZStatus::StreamEnd) if filled == size => {
+                    out.truncate(size);
+                    return Ok(out);
+                }
                 Ok(MZStatus::StreamEnd) => return Err(invalid("pack object's size")),
-                _ if filled == size => return Ok(out),
+                _ if filled > size => return Err(invalid("pack object's size")),
                 Ok(_) | Err(MZError::Buf) => {}
                 Err(_) => return Err(invalid("pack object's stream")),
             }
@@ -321,7 +328,7 @@ fn grow_toward(out: &mut Vec<u8>, size: usize) -> io::Result<()> {
     let len = out.len();
     let to = size.min(len.saturating_mul(2).max(len.saturating_add(1 << 16)));
     out.try_reserve_exact(to - len)
-        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "pack object's size"))?;
+        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "no memory for a pack object"))?;
     out.resize(to, 0);
     Ok(())
 }
@@ -407,8 +414,13 @@ fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> 
     if piece.len() > size - out.len() {
         return Err(invalid("delta's result size"));
     }
-    out.try_reserve(piece.len())
-        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "delta's result size"))?;
+    if out.capacity() - out.len() < piece.len() {
+        // Twice what it holds, never past `size`, as `grow_toward` grows,
+        // rather than the doubling of what it was made with.
+        let more = piece.len().max(out.len()).min(size - out.len());
+        out.try_reserve_exact(more)
+            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "no memory for a delta"))?;
+    }
     out.extend_from_slice(piece);
     Ok(())
 }
@@ -447,8 +459,8 @@ const TREE_BUDGET: usize = 32 << 20;
 /// `core.deltaBaseCacheLimit` by default.
 const BASE_BUDGET: usize = 96 << 20;
 
-/// How much of a size a pack's header or a delta says is made room for
-/// before anything is written: past it, room grows only as bytes come.
+/// How much of the size a delta says it makes is made room for before
+/// anything is written: past it, room grows only as bytes come.
 const TRUSTED_SIZE: usize = 1 << 20;
 
 /// Where an object sits in a pack: the store, the pack and its offset.
