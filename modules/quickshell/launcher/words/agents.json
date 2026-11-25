@@ -249,6 +249,12 @@
       },
       "said": {
         "starting": "starting",
+        "startingCloud": "starting in the cloud; making a machine there can take minutes",
+        "startingOn": "starting on {machine}",
+        "unnamed": "that place has no name another machine knows it by; start it In a checkout or a zone",
+        "unmachined": "that link names no machine by one plain word",
+        "inTheCloud": "in the Cloud",
+        "onMachine": "on {machine}",
         "started": "started on {machine}; its window opens once it's up",
         "unheld": "started on {machine}; it shows in Agents once it's up",
         "opening": "started on {machine}; opening it",
@@ -285,6 +291,28 @@
       "command": "new",
       "argument": "here",
       "in": "agents:start-new-work",
+      "name": "In {folder}",
+      "verb": "start",
+      "glyph": "agent",
+      "ask": "what's the work? a link or a few words"
+    },
+    {
+      "id": "agents:start-new-work:cloud",
+      "in": "agents:start-new-work",
+      "name": "In the Cloud",
+      "verb": "more",
+      "glyph": "elsewhere",
+      "also": "cloud remote machine vm",
+      "tells": {
+        "holding": "New work on a machine that costs money: one already up with room, or one made for it. The node picks which.",
+        "costs": "New work on a machine that costs money: one already up with room, or one made for it, from {hourly} {currency} an hour. The node picks which."
+      }
+    },
+    {
+      "id": "verb:agents:start-new-work:cloud",
+      "command": "new",
+      "argument": "cloud",
+      "in": "agents:start-new-work:cloud",
       "name": "In {folder}",
       "verb": "start",
       "glyph": "agent",
