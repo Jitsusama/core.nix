@@ -293,8 +293,10 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
 
 #[test]
 fn a_stop_the_phrase_finds_is_judged_while_slack_rate_limits_the_tag_search() {
+    static TAGGED: AtomicUsize = AtomicUsize::new(0);
     let (origin, _) = answering_whole(|line, now| {
         if line.contains("search.messages") && !line.contains("query=pineapple") {
+            TAGGED.fetch_add(1, Ordering::SeqCst);
             Answered::ok(json!({"ok": false, "error": "ratelimited"}))
         } else {
             Answered::ok(answer(line, now))
@@ -310,8 +312,11 @@ fn a_stop_the_phrase_finds_is_judged_while_slack_rate_limits_the_tag_search() {
             .and_then(|kept| serde_json::from_str(&kept).ok())
             .unwrap_or_default()
     };
+    // Rounds past those a row waits for, so one told wrongly would show.
+    let rounds = || TAGGED.load(Ordering::SeqCst);
     let began = Instant::now();
-    while !kept()["newest"]["pineapple"].is_string() && began.elapsed() < PATIENCE {
+    while (rounds() < 4 || !kept()["newest"]["pineapple"].is_string()) && began.elapsed() < PATIENCE
+    {
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");
@@ -325,13 +330,19 @@ fn a_stop_the_phrase_finds_is_judged_while_slack_rate_limits_the_tag_search() {
         journal(&home)
     );
     let kept = kept();
+    let only_the_phrase = kept["newest"]
+        .as_object()
+        .is_some_and(|newest| newest.keys().all(|query| query == "pineapple"));
     assert!(
-        kept["newest"]["pineapple"].is_string() && marked(&home, "judged.json").is_none(),
-        "the phrase's search has read as far as it judged, and Slack isn't read whole: {kept}"
+        kept["newest"]["pineapple"].is_string()
+            && only_the_phrase
+            && marked(&home, "judged.json").is_none(),
+        "the phrase's search has read as far as it judged, the tag's as it was, and Slack \
+         isn't read whole: {kept}"
     );
     assert!(
-        !waiting(&home).exists(),
-        "a rate limit is nothing Joel can mend"
+        rounds() >= 4 && !waiting(&home).exists(),
+        "a rate limit is nothing Joel can mend, for rounds past what a row waits for"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

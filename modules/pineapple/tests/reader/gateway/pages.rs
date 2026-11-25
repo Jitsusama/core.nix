@@ -364,14 +364,18 @@ fn a_stop_on_a_page_whose_check_goes_unanswered_is_judged_while_the_search_waits
                 in_pages(&TAGS, asked, began, &found, 3, true)
             }
         },
-        // Its stop judged with the rest, over rounds enough to wait twice.
+        // Its first round's two words and page one's three, over rounds
+        // enough to wait twice; a stop no second ask agreed with is
+        // journaled, not decided.
         &Until {
-            judging: 6,
+            judging: 5,
             asks: 64,
             read_at: None,
         },
     );
-    let stopped = came.journal.find("<5>a stop, in shadow: ");
+    let stopped = came
+        .journal
+        .find("<5>a stop, in shadow, in an answer no second ask agreed with: ");
     let waits = |rounds: u32| {
         came.journal
             .find(&format!("{rounds} of 10 rounds in a row"))
@@ -409,11 +413,13 @@ fn a_search_that_cant_be_read_is_told_while_the_other_waits_on_a_later_page() {
         },
     );
     let told = came.journal.find("<5>wrote Joel's row in ");
+    let began_waiting = came.journal.find("1 of 10 rounds in a row");
     let waiting = came.journal.find("3 of 10 rounds in a row");
     assert!(
         came.why
             .contains("search of Slack for pineapple can't be read")
-            && told.is_some()
+            && began_waiting.is_some()
+            && told > began_waiting
             && (waiting.is_none() || told < waiting),
         "the phrase's search, unreadable, is told in its rounds, not held back while the \
          tag's waits on its second page: {}",

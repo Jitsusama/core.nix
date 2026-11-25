@@ -37,8 +37,10 @@ const PAGES: usize = 5;
 
 /// The round in a row whose unanswered later page makes a search's gap,
 /// the nine before it each counted neither way: at the reader's 30
-/// seconds about five minutes when the page fails at once, and twice that
-/// when each times out, so it's counted in rounds. What that page showed
+/// seconds about five minutes when the page fails at once, and up to
+/// three times that when each ask waits out the gateway's 30 seconds, so
+/// it's counted in rounds; Joel's row comes the few rounds after that any
+/// gap's does. What that page showed
 /// before it failed is still judged for a stop, and only Joel's warning
 /// waits, while a gateway shedding a burst of pages has the time to
 /// answer them again. A round whose first page goes unanswered neither
@@ -75,6 +77,13 @@ pub trait Ears {
     /// none unless these ears can give part of an answer.
     fn unread(&mut self, _query: &str) -> Unread {
         Unread::default()
+    }
+
+    /// Whether the search for `query` waits on a later page it left
+    /// unanswered, as one whose first page goes unanswered doesn't: never
+    /// unless these ears read in pages.
+    fn waiting(&self, _query: &str) -> bool {
+        false
     }
 }
 
@@ -644,6 +653,12 @@ impl Ears for Through {
 
     fn unread(&mut self, query: &str) -> Unread {
         self.unread.remove(query).unwrap_or_default()
+    }
+
+    fn waiting(&self, query: &str) -> bool {
+        self.unanswered
+            .get(query)
+            .is_some_and(|rounds| *rounds < UNANSWERED)
     }
 }
 
