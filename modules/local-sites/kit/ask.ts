@@ -57,9 +57,10 @@
 // answer and writes it resolved, and only the shell knows it was answered.
 // In that window a page asks again, so a page drops its row's choices once
 // one is pressed, as For You does, and whatever carries a page's answer must
-// refuse a second answer to the same look. And the sites share their origin
-// with documents sessions write, so an answer can't say it's from Joel:
-// whatever carries it must know he pressed it, and only then says so.
+// refuse a second answer to the same look. And an answer a page sends can't
+// say it's from Joel, since any script could send the same: the sites'
+// server carries it only from a page of its own and says so only then
+// (modules/local-sites/src/answer.rs), and answer.ts is how a page posts it.
 //
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.

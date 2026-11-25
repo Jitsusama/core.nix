@@ -118,11 +118,14 @@ def serving(
     feeds: Mapping[str, object],
     *,
     home: Path | None = None,
+    answers: Mapping[str, str] | None = None,
 ) -> Iterator[Served]:
     """Run the sites' server on `mounts` and `feeds`, giving its root and its process.
 
     The home's own folder is `home` where it's given, which the server serves
-    ahead of the documents as the sites' own, as a machine's serves it.
+    ahead of the documents as the sites' own, as a machine's serves it. An
+    answer pressed on a page is checked against the looks socket `answers`
+    names and sent through its node socket, where it's given.
     """
     port = a_free_port()
     documents = folder / "documents"
@@ -138,6 +141,7 @@ def serving(
         "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
         "feeds": feeds,
         "home": None if home is None else str(home),
+        "answers": None if answers is None else dict(answers),
     }
     (folder / "config.json").write_text(json.dumps(config))
     server = subprocess.Popen([os.environ["LOCAL_SITES"], "--config", str(folder / "config.json")])

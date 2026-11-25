@@ -2,8 +2,10 @@
 
 A page's test runs the real sites' server beside this, in place of the daemon
 its feed reads, so the page is read as it will be on the machine without the
-daemon or its machine. It answers hello, list, watch and health on a unix
-socket from records it is handed by kind, and the test moves it as a real
+daemon or its machine. It answers hello, list, watch, get and health on a
+unix socket from records it is handed by kind, and takes a steer as the node
+does, keeping each in `steered`, so it stands in for the to-do daemon and the
+node an answer goes through as well. The test moves it as a real
 daemon moves: `tell` sends a change to every watch of a kind, `leave` closes
 every connection and the socket, as a daemon stopping does, and `start` opens
 it again. docs/daemons.md says what each answer holds.
@@ -38,6 +40,7 @@ class StandIn:
         self.records = {kind: {str(r["key"]): r for r in rs} for kind, rs in records.items()}
         self.lock = threading.Lock()
         self.watches: list[tuple[socket.socket, object, str]] = []
+        self.steered: list[dict[str, object]] = []
         self.connections: list[socket.socket] = []
         self.server: socket.socket | None = None
 
@@ -120,9 +123,27 @@ class StandIn:
                 if verb == "watch":
                     self.watches.append((conn, ask_id, kind))
             self._send(conn, {"id": ask_id, "records": records})
+        elif verb == "get":
+            self._get(conn, ask)
+        elif verb == "steer":
+            self._steer(conn, ask)
         else:
             refused = {"code": "unknown-kind", "message": f"no {kind} here"}
             self._send(conn, {"id": ask_id, "error": refused})
+
+    def _get(self, conn: socket.socket, ask: dict[str, object]) -> None:
+        """Answer the records of every kind the get's keys name."""
+        keys = ask.get("keys")
+        wanted = set(keys) if isinstance(keys, list) else set()
+        with self.lock:
+            held = [r for rs in self.records.values() for k, r in rs.items() if k in wanted]
+        self._send(conn, {"id": ask.get("id"), "records": held})
+
+    def _steer(self, conn: socket.socket, ask: dict[str, object]) -> None:
+        """Keep the steer, as the node writes one to a session's inbox, and say it went."""
+        with self.lock:
+            self.steered.append(ask)
+        self._send(conn, {"id": ask.get("id"), "steered": {"machine": "here"}})
 
     def _send(self, conn: socket.socket, answer: Mapping[str, object]) -> None:
         try:

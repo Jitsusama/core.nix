@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="/local-sites/web/base.css">
 <link rel="stylesheet" href="/local-sites/kit/switch.css">
 <link rel="stylesheet" href="/local-sites/kit/head.css">
+<link rel="stylesheet" href="/local-sites/kit/ask.css">
 <link rel="stylesheet" href="home.css">
 <link rel="alternate" type="text/markdown" href="index.md">
 </head>
@@ -77,6 +78,12 @@
 <main id="main">
   <!-- the sites: home.py writes these -->
 </main>
+
+<!-- The looks waiting on you, drawn and answered here by home.js; shown while one waits. -->
+<section class="waiting" aria-labelledby="waiting-h" hidden>
+  <h2 id="waiting-h">Waiting on <em>You</em></h2>
+  <div id="asks"></div>
+</section>
 
 <footer class="close">
   <svg class="sprig" viewBox="0 0 64 24" aria-hidden="true">
