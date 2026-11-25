@@ -1429,9 +1429,9 @@ ShellRoot {
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         Sessions.forgetAsk(keptNamed);
-        // A kitty down at the give-up, its pid file gone with its folder,
-        // keeps the place under the pid its ask went to, held while the
-        // file says none, and asked for again once a kitty writes another.
+        // A kitty down as it's asked, its pid file gone with its folder,
+        // keeps the place under the pid last read, held while the file
+        // says none, and asked for again once a kitty writes another.
         const keptOne = (id, marks) => Object.assign({}, keptPlace,
             { waiting: view.slice(0, -1).concat([id]), named: `pi-hosted.${id}` }, marks ?? {});
         const spawnsOf = (named, from) => Niri.spawns.slice(from)
@@ -1439,15 +1439,15 @@ ShellRoot {
         const downNamed = "pi-hosted.s-kept-down";
         Sessions.keepPlaces({ "s-kept-down": keptOne("s-kept-down") });
         const downFrom = Niri.spawns.length;
-        Sessions.viewKept();
         kittyPidFile.setText("\n");
+        Sessions.viewKept();
         Sessions.untaken(downNamed, String(Sessions.attaching[downNamed]));
         const downUnder = Sessions.keptPlaces["s-kept-down"]?.keptUnder;
         Sessions.viewKept();
         const downHeld = spawnsOf(downNamed, downFrom) === 1;
         kittyPidFile.setText("5353\n");
         Sessions.viewKept();
-        expect("a kitty down at the give-up keeps the place under the pid asked, held meanwhile",
+        expect("a kitty down as it's asked keeps the place under the pid last read, held so",
             downUnder === "4242" && downHeld, `${downUnder} ${spawnsOf(downNamed, downFrom)}`);
         expect("and a kitty come back, its pid read by nothing else, is asked for it",
             spawnsOf(downNamed, downFrom) === 2, String(spawnsOf(downNamed, downFrom)));

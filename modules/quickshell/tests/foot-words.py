@@ -422,6 +422,14 @@ def refuses_what_it_should() -> list[str]:
         ),
         (
             passes_on(
+                "function onUnhosted(session, why) {\n    // it's said as given\n"
+                "    tell(elsewhere(why, session)); /* plainly */ }"
+            ),
+            True,
+            "a comment in the handler, taken as a regex, its handler none",
+        ),
+        (
+            passes_on(
                 "function onUnhosted(session, why) { /* } elsewhere(why, session) */\n"
                 '    tell(elsewhere("x", session)); }'
             ),
