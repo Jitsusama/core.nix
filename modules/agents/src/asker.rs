@@ -158,7 +158,9 @@ pub fn tells(
 }
 
 /// The agent's unit a process runs in, as its `cgroup` file tells it, by
-/// the unit's own name, or none for any other.
+/// the unit's own name, or none for any other. Mycelium's node reads a
+/// unit by its own `agents_unit` in src/node/asker.rs, which this is word
+/// for word, as agents-tells-an-agent-as-the-node-does holds it.
 fn agents_unit(cgroup: &str) -> Option<String> {
     cgroup.lines().find_map(|line| {
         // Control groups v2 tell one line, its hierarchy 0 and no
