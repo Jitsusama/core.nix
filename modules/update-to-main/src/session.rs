@@ -30,8 +30,12 @@ const WITHIN: Duration = Duration::from_hours(1);
 /// How often root looks whether the job has ended.
 const EVERY: Duration = Duration::from_millis(250);
 
-/// How much of the end of a job's file root reads to tell why it failed.
+/// How much of the end of a job's file root reads: to tell why it failed,
+/// and of what it printed when it ended well, which neither caller reads.
 const KEPT: u64 = 64 * 1024;
+
+/// How much of a job's status root reads: a number and its line's end.
+const STATUS_KEPT: u64 = 64;
 
 /// What a job's folder holds: the command, the job launchd is given, and
 /// what the command printed, said and ended with.
@@ -101,83 +105,93 @@ fn in_session(
     );
     let ended = start(launchctl, account, command, &folder, &label)
         .and_then(|()| wait(&folder, what, WITHIN));
+    // Read before the job is stopped, so a job that ran out its hour is told
+    // by what it was doing, not by Nix's own word on being stopped.
+    let (out, err) = (kept(&folder.join(OUT), KEPT), kept(&folder.join(ERR), KEPT));
     let _ = launchctl_as(launchctl, account)
         .args(["bootout", &format!("{}/{label}", domain(account))])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();
-    // A job that ended well gives back all it printed; any other is told by
-    // the end of what it said.
-    let most = if matches!(ended, Ok(0)) {
-        u64::MAX
-    } else {
-        KEPT
-    };
-    let (out, err) = (kept(&folder.join(OUT), most), kept(&folder.join(ERR), KEPT));
     let _ = fs::remove_dir_all(&folder);
-    said_by(ended, what, &out, &err)
+    said_by(ended, what, out.as_deref(), err.as_deref())
 }
 
-/// The last `most` bytes a job wrote to one of its files, as text. The
-/// account owns the job's folder and may have put anything there, so root
-/// opens the file without following a link or waiting on a pipe, and reads
-/// only a plain file. Bytes that aren't UTF-8 are read as replacements
-/// rather than losing the file, since a job stopped after its hour may
-/// have stopped in the middle of a character. A file that isn't there is
-/// nothing; one that can't be read says so in its place.
-fn kept(path: &Path, most: u64) -> String {
+/// The last `most` bytes of one of a job's files. The account owns the
+/// job's folder and may have put anything there, so root opens the file
+/// without following a link or waiting on a pipe, and reads only a plain
+/// file with no other name, since a hard link would let the account have
+/// root read a file it can't.
+fn read_end(path: &Path, most: u64) -> std::io::Result<Vec<u8>> {
     use std::io::{Read, Seek, SeekFrom};
     use std::os::unix::fs::OpenOptionsExt;
-    let read = || -> std::io::Result<Vec<u8>> {
-        let mut file = fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-            .open(path)?;
-        let found = file.metadata()?;
-        if !found.is_file() {
-            return Err(std::io::Error::other("it isn't a plain file"));
-        }
-        file.seek(SeekFrom::Start(found.len().saturating_sub(most)))?;
-        let mut bytes = Vec::new();
-        file.take(most).read_to_end(&mut bytes)?;
-        Ok(bytes)
-    };
-    match read() {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(e) => format!(
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)?;
+    let found = file.metadata()?;
+    if !found.is_file() {
+        return Err(std::io::Error::other("it isn't a plain file"));
+    }
+    if found.nlink() > 1 {
+        return Err(std::io::Error::other("it has another name"));
+    }
+    file.seek(SeekFrom::Start(found.len().saturating_sub(most)))?;
+    let mut bytes = Vec::new();
+    file.take(most).read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+/// The last `most` bytes a job wrote to one of its files, as text, read as
+/// `read_end` reads. Bytes that aren't UTF-8 are read as replacements
+/// rather than losing the file, since a job stopped after its hour may
+/// have stopped in the middle of a character. A file that isn't there is
+/// none, since the job may never have started; one that can't be read
+/// says so in its place.
+fn kept(path: &Path, most: u64) -> Option<String> {
+    match read_end(path, most) {
+        Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => Some(format!(
             "the job's {} was left unread: {e}\n",
             path.file_name().unwrap_or_default().to_string_lossy()
-        ),
+        )),
     }
 }
 
 /// What a job's end gives back: its output alone when it ended well, and
-/// otherwise the failure with what the job said. A job that failed is told
-/// from Nix's first error, as any command is. Any other failure that
-/// brought no lines of its own, a job that didn't end above all, is told
-/// with the last lines the job had said by then, the newest nearest what
-/// it waited on, or that it had written nothing, which points to a prompt
-/// rather than Nix: on 24 November three that waited an hour each left
-/// only "didn't end", and whether they waited on a prompt or on Nix
-/// couldn't be read afterwards. A failure with lines of its own, as
-/// launchctl's refusal to start the job, keeps them.
+/// otherwise the failure with what the job said, each file read only to
+/// its last `KEPT` bytes. A job that failed is told from Nix's first error
+/// in those bytes, as any command is. Any other failure that brought no
+/// lines of its own, a job that didn't end above all, is told with the
+/// last lines the job had said by then, the newest nearest what it waited
+/// on; or that it had written nothing, which points to a prompt rather
+/// than Nix; or, when neither of its files is there, that it may never
+/// have started. On 24 November three that waited an hour each left only
+/// "didn't end", and whether they waited on a prompt or on Nix couldn't be
+/// read afterwards. A failure with lines of its own, as launchctl's
+/// refusal to start the job, keeps them.
 fn said_by(
     ended: Result<i32, Failure>,
     what: &str,
-    out: &str,
-    err: &str,
+    out: Option<&str>,
+    err: Option<&str>,
 ) -> Result<String, Failure> {
-    let said = format!("{out}{err}");
+    let said = format!("{}{}", out.unwrap_or_default(), err.unwrap_or_default());
     match ended {
-        Ok(0) => Ok(out.trim().to_owned()),
+        Ok(0) => Ok(out.unwrap_or_default().trim().to_owned()),
         Ok(status) => Err(Failure {
             why: format!("{what} failed (exit status: {status})"),
             lines: run::tail(&said),
         }),
         Err(failure) if failure.lines.is_empty() => {
             let lines = last(&said);
-            let why = if lines.is_empty() {
+            let why = if out.is_none() && err.is_none() {
+                format!(
+                    "{}, the job having left no files, so it may never have started",
+                    failure.why
+                )
+            } else if lines.is_empty() {
                 format!("{}, the job having written nothing", failure.why)
             } else {
                 failure.why
@@ -270,16 +284,27 @@ fn give(path: &Path, account: &Account) -> std::io::Result<()> {
 }
 
 /// Waits for the job to write down how it ended, giving its status, for
-/// at most `within`.
+/// at most `within`. The status is read as the job's other files are, and
+/// only to its last few bytes, so one the account made a link, a pipe or a
+/// large file is refused rather than followed, waited on or read whole.
 fn wait(folder: &Path, what: &str, within: Duration) -> Result<i32, Failure> {
     let since = Instant::now();
     loop {
-        if let Ok(status) = fs::read_to_string(folder.join(STATUS)) {
-            return status.trim().parse().map_err(|_| {
-                Failure::new(format!(
-                    "{what} in the login session ended saying {status:?}"
-                ))
-            });
+        match read_end(&folder.join(STATUS), STATUS_KEPT) {
+            Ok(bytes) => {
+                let status = String::from_utf8_lossy(&bytes);
+                return status.trim().parse().map_err(|_| {
+                    Failure::new(format!(
+                        "{what} in the login session ended saying {status:?}"
+                    ))
+                });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(Failure::new(format!(
+                    "{what} in the login session left its status unread: {e}"
+                )));
+            }
         }
         if since.elapsed() > within {
             return Err(Failure::new(format!(
@@ -426,7 +451,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let waited = wait(folder.path(), "fetching the input secrets", Duration::ZERO);
         let out = "waiting for lock on /nix/store/x.lock\n";
-        let told = said_by(waited, "fetching", out, "error: interrupted by the user\n");
+        let err = "error: interrupted by the user\n";
+        let told = said_by(waited, "fetching", Some(out), Some(err));
         let told = told.unwrap_err();
         assert_eq!(
             (told.why.as_str(), told.lines),
@@ -446,7 +472,12 @@ mod tests {
             .map(|n| format!("line {n}"))
             .collect::<Vec<_>>()
             .join("\n");
-        let told = said_by(Err(Failure::new("didn't end")), "fetching", "", &said);
+        let told = said_by(
+            Err(Failure::new("didn't end")),
+            "fetching",
+            None,
+            Some(&said),
+        );
         let told = told.unwrap_err().lines;
         assert_eq!(
             (told.len(), told.first(), told.last()),
@@ -460,10 +491,35 @@ mod tests {
 
     #[test]
     fn a_job_that_didnt_end_having_written_nothing_says_so() {
-        let told = said_by(Err(Failure::new("didn't end")), "fetching", "", "\n").unwrap_err();
+        let told = said_by(
+            Err(Failure::new("didn't end")),
+            "fetching",
+            Some(""),
+            Some("\n"),
+        );
+        let told = told.unwrap_err();
         assert_eq!(
             (told.why.as_str(), told.lines),
             ("didn't end, the job having written nothing", Vec::new())
+        );
+    }
+
+    #[test]
+    fn a_job_that_didnt_end_having_left_no_files_may_never_have_started() {
+        let folder = tempfile::tempdir().unwrap();
+        let (out, err) = (
+            kept(&folder.path().join(OUT), KEPT),
+            kept(&folder.path().join(ERR), KEPT),
+        );
+        let told = said_by(
+            Err(Failure::new("didn't end")),
+            "fetching",
+            out.as_deref(),
+            err.as_deref(),
+        );
+        assert_eq!(
+            told.unwrap_err().why,
+            "didn't end, the job having left no files, so it may never have started"
         );
     }
 
@@ -472,7 +528,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join(STATUS), "x\n").unwrap();
         let ended = wait(folder.path(), "fetching", WITHIN);
-        let told = said_by(ended, "fetching", "", "said\n").unwrap_err();
+        let told = said_by(ended, "fetching", Some(""), Some("said\n")).unwrap_err();
         assert_eq!(
             (told.why.as_str(), told.lines),
             (
@@ -488,7 +544,8 @@ mod tests {
             why: "starting a job in the login session failed".to_owned(),
             lines: lines(&["Bootstrap failed: 5"]),
         };
-        let told = said_by(Err(refused), "fetching", "left over\n", "left over\n").unwrap_err();
+        let left = Some("left over\n");
+        let told = said_by(Err(refused), "fetching", left, left).unwrap_err();
         assert_eq!(
             (told.why.as_str(), told.lines),
             (
@@ -500,13 +557,27 @@ mod tests {
 
     #[test]
     fn a_job_that_ends_well_gives_its_output_alone() {
-        let given = said_by(Ok(0), "fetching", "out\n", "warning: noise\n");
+        let given = said_by(Ok(0), "fetching", Some("out\n"), Some("warning: noise\n"));
         assert_eq!(given.unwrap(), "out");
     }
 
     #[test]
+    fn a_job_that_ends_well_is_read_only_to_the_end_of_what_it_printed() {
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join(OUT);
+        let printed = usize::try_from(KEPT).unwrap();
+        fs::write(&file, format!("{}{}", "o".repeat(printed), "newest\n")).unwrap();
+        let read = kept(&file, KEPT).unwrap();
+        assert!(
+            read.len() == printed && read.ends_with("newest\n"),
+            "a good job's output was read past its last {KEPT} bytes: {} bytes",
+            read.len()
+        );
+    }
+
+    #[test]
     fn a_job_that_fails_gives_its_status_and_what_it_printed_then_said() {
-        let failed = said_by(Ok(3), "fetching", "printed\n", "said\n").unwrap_err();
+        let failed = said_by(Ok(3), "fetching", Some("printed\n"), Some("said\n")).unwrap_err();
         assert_eq!(
             (failed.why.as_str(), failed.lines),
             (
@@ -521,7 +592,10 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let file = folder.path().join(ERR);
         fs::write(&file, b"cut \xe2\x80\nwaiting for lock\n").unwrap();
-        assert_eq!(kept(&file, KEPT), "cut \u{fffd}\nwaiting for lock\n");
+        assert_eq!(
+            kept(&file, KEPT).as_deref(),
+            Some("cut \u{fffd}\nwaiting for lock\n")
+        );
     }
 
     #[test]
@@ -529,7 +603,7 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let file = folder.path().join(ERR);
         fs::write(&file, "older\nnewest\n").unwrap();
-        assert_eq!(kept(&file, 7), "newest\n");
+        assert_eq!(kept(&file, 7).as_deref(), Some("newest\n"));
     }
 
     #[test]
@@ -539,10 +613,52 @@ mod tests {
         fs::write(&secret, "root's own\n").unwrap();
         let file = folder.path().join(ERR);
         std::os::unix::fs::symlink(&secret, &file).unwrap();
-        let read = kept(&file, KEPT);
+        let read = kept(&file, KEPT).unwrap_or_default();
         assert!(
             read.starts_with("the job's err was left unread:") && !read.contains("root's own"),
             "a link in the job's folder was followed: {read}"
+        );
+    }
+
+    #[test]
+    fn a_jobs_file_that_is_another_files_hard_link_is_left_unread() {
+        let folder = tempfile::tempdir().unwrap();
+        let secret = folder.path().join("secret");
+        fs::write(&secret, "root's own\n").unwrap();
+        let file = folder.path().join(ERR);
+        fs::hard_link(&secret, &file).unwrap();
+        assert_eq!(
+            kept(&file, KEPT).as_deref(),
+            Some("the job's err was left unread: it has another name\n")
+        );
+    }
+
+    #[test]
+    fn a_jobs_status_that_is_a_link_is_refused_rather_than_followed() {
+        let folder = tempfile::tempdir().unwrap();
+        let elsewhere = folder.path().join("elsewhere");
+        fs::write(&elsewhere, "0\n").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, folder.path().join(STATUS)).unwrap();
+        let told = wait(folder.path(), "fetching", WITHIN).unwrap_err();
+        assert!(
+            told.why
+                .starts_with("fetching in the login session left its status unread:"),
+            "a status that is a link was read as the job's end: {}",
+            told.why
+        );
+    }
+
+    #[test]
+    fn a_jobs_status_that_is_a_pipe_is_refused_at_once() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = CString::new(folder.path().join(STATUS).as_os_str().as_bytes()).unwrap();
+        // SAFETY: `path` is a C string this frame owns.
+        let made = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
+        assert_eq!(made, 0, "no pipe made");
+        let told = wait(folder.path(), "fetching", WITHIN).unwrap_err();
+        assert_eq!(
+            told.why,
+            "fetching in the login session left its status unread: it isn't a plain file"
         );
     }
 
@@ -554,17 +670,16 @@ mod tests {
         // SAFETY: `path` is a C string this frame owns.
         let made = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
         assert_eq!(made, 0, "no pipe made");
-        let read = kept(&file, KEPT);
         assert_eq!(
-            read,
-            "the job's out was left unread: it isn't a plain file\n"
+            kept(&file, KEPT).as_deref(),
+            Some("the job's out was left unread: it isn't a plain file\n")
         );
     }
 
     #[test]
-    fn a_jobs_file_that_isnt_there_is_nothing() {
+    fn a_jobs_file_that_isnt_there_is_none() {
         let folder = tempfile::tempdir().unwrap();
-        assert_eq!(kept(&folder.path().join(OUT), KEPT), "");
+        assert_eq!(kept(&folder.path().join(OUT), KEPT), None);
     }
 
     #[test]
