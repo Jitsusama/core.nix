@@ -293,9 +293,14 @@ fn refused_as_not_plain(
     let _ = std::fs::remove_dir_all(home);
 }
 
-/// An archive the near side writes of one file, `name` holding `text`.
+/// An archive the near side writes of one file, `name` holding `text`,
+/// each made in a folder of its own, since tests run at once.
 pub(super) fn archive_of(name: &str, text: &str) -> String {
-    let made = scratch(&format!("archive-of-{name}"));
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let made = scratch(&format!(
+        "archive-of-{name}-{}",
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     std::fs::write(made.join(name), text).unwrap();
     archive::write(&made, [name], &made, 1 << 20, u64::MAX).unwrap();
     let archive = std::fs::read_to_string(made.join("0.tar")).unwrap();
