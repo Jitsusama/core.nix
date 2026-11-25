@@ -60,7 +60,7 @@ in
       # The meetings last said, so a restart while the calendar can't be
       # read still knows the meeting under way.
       StateDirectory = "camera-guard";
-      # They hold Joel's meetings' titles, which are his alone.
+      # They hold Joel's meetings' titles, kept from other accounts.
       StateDirectoryMode = "0700";
       # bpf(2) to load the program and put it on a cgroup, and to find an
       # earlier run's by its id; reading past the account's own runtime

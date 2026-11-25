@@ -146,18 +146,23 @@ fn now() -> u64 {
 /// known still puts the guard up on time. An ask still out when the next is
 /// due is heard as the calendar not answering, so the meetings last said
 /// stand, and no other is sent until it ends, so a stalled daemon holds one
-/// thread, not one a minute.
+/// thread, not one a minute. Until it ends, a meeting the calendar adds is
+/// unheard. Each stall and each failure to keep is said once.
 fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
+    // Why the meetings heard are still to be kept, after a read or write of
+    // the kept file failed, so the next answer writes them afresh.
+    let mut unkept: Option<String> = None;
     let mut watch = guard::Watch::from(meetings::kept(kept).unwrap_or_else(|why| {
         println!(
             "<4>the meetings kept can't be read, so none stand until the calendar says: {why}"
         );
+        unkept = Some(why);
         Vec::new()
     }));
     let mut asked: Option<Instant> = None;
     let mut out: Option<mpsc::Receiver<Result<Vec<meetings::Meeting>, String>>> = None;
-    // Whether the meetings heard are still to be kept, after a write failed.
-    let mut unkept = false;
+    // Whether the ask still out has been heard as unanswered.
+    let mut stalled = false;
     loop {
         let answer = match out.as_ref().map(mpsc::Receiver::try_recv) {
             Some(Ok(answer)) => {
@@ -168,22 +173,33 @@ fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
                 out = None;
                 Some(Err("the calendar's ask ended with no answer".to_owned()))
             }
-            Some(Err(mpsc::TryRecvError::Empty)) => asked
-                .is_some_and(|at| at.elapsed() >= ASK_EVERY)
-                .then(|| Err(format!("{} hasn't answered in a minute", socket.display()))),
-            None => None,
+            Some(Err(mpsc::TryRecvError::Empty))
+                if !stalled && asked.is_some_and(|at| at.elapsed() >= ASK_EVERY) =>
+            {
+                stalled = true;
+                Some(Err(format!(
+                    "{} hasn't answered in a minute",
+                    socket.display()
+                )))
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) | None => None,
         };
         if let Some(answer) = answer {
+            let answered = answer.is_ok();
             let (said, changed) = watch.heard(answer);
             for line in said {
                 println!("{line}");
             }
-            if changed || unkept {
-                unkept = meetings::keep(kept, &watch.meetings)
-                    .map_err(|why| {
-                        println!("<4>the meetings couldn't be kept for the next run: {why}");
-                    })
-                    .is_err();
+            if answered && (changed || unkept.is_some()) {
+                match meetings::keep(kept, &watch.meetings) {
+                    Ok(()) => unkept = None,
+                    Err(why) => {
+                        if unkept.as_ref() != Some(&why) {
+                            println!("<4>the meetings couldn't be kept for the next run: {why}");
+                        }
+                        unkept = Some(why);
+                    }
+                }
             }
         }
         if out.is_none() && asked.is_none_or(|at| at.elapsed() >= ASK_EVERY) {
@@ -195,6 +211,7 @@ fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
             });
             out = Some(hear);
             asked = Some(Instant::now());
+            stalled = false;
         }
         for line in watch.look(program, paths, now()) {
             println!("{line}");
@@ -223,12 +240,18 @@ mod tests {
 
     #[test]
     fn its_unit_s_words_are_read_as_the_account_and_its_slices() {
-        let unit = ["joel", "jobs.slice", "agents.slice"];
+        // As nixos.nix's ExecStart gives them, since a start it refuses now
+        // fails the unit rather than restarting it.
+        let unit = ["joel", "jobs.slice", "agents.slice", "shared.slice"];
         let (account, slices) = words(&unit.map(String::from)).unwrap();
         assert_eq!(account, "joel", "the account wasn't the first word");
         assert_eq!(
             slices,
-            vec![PathBuf::from("jobs.slice"), PathBuf::from("agents.slice")],
+            vec![
+                PathBuf::from("jobs.slice"),
+                PathBuf::from("agents.slice"),
+                PathBuf::from("shared.slice")
+            ],
             "the slices weren't the words after it"
         );
         assert_eq!(

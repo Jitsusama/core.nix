@@ -86,8 +86,10 @@ pub fn near(meetings: &[Meeting], now: u64) -> Option<&Meeting> {
 ///
 /// # Errors
 ///
-/// The socket can't be reached, or its answer isn't one line of JSON
-/// within ten seconds.
+/// The socket can't be reached, a read or write waits past ten seconds,
+/// or its answer isn't one line of JSON. Only each read and write has that
+/// bound, not the connect or the whole answer, so its caller bounds the
+/// ask (main.rs's watch).
 pub fn ask(socket: &Path) -> Result<Value, String> {
     let seen = |error: std::io::Error| format!("{}: {error}", socket.display());
     let mut stream = UnixStream::connect(socket).map_err(seen)?;
