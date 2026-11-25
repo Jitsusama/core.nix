@@ -8,39 +8,80 @@
   ...
 }:
 let
-  # The example laptop imports every module Linux has, so its account has
-  # every timer core writes, the delivery cycle's among them.
-  home = exampleLaptop.config.home-manager.users.joel;
-  services = map (lib.removeSuffix ".service") (
-    lib.filter (lib.hasSuffix ".service") (
-      lib.mapAttrsToList (name: timer: timer.Timer.Unit or "${name}.service") home.systemd.user.timers
-    )
+  # The example laptop's account with `extra` added to it. The laptop
+  # imports every module Linux has, so its account has every timer core
+  # writes, the delivery cycle's among them.
+  account =
+    extra:
+    (exampleLaptop.extendModules { modules = [ { home-manager.users.joel = extra; } ]; })
+    .config.home-manager.users.joel;
+  home = account { };
+  services = lib.unique (
+    map
+      (
+        name:
+        let
+          parts = lib.splitString "@" (lib.removeSuffix ".service" name);
+        in
+        if lib.length parts == 2 then "${lib.head parts}@" else lib.head parts
+      )
+      (
+        lib.filter (lib.hasSuffix ".service") (
+          lib.mapAttrsToList (name: timer: timer.Timer.Unit or "${name}.service") home.systemd.user.timers
+        )
+      )
   );
-  service = name: home.systemd.user.services.${name} or { };
+  method = home: name: (home.systemd.user.services.${name} or { }).Unit.X-SwitchMethod or null;
   # A service may say its own X-SwitchMethod; one that says none is
   # restarted by a switch, which waits on its run. home-manager gives
   # every service the key, null until something sets it.
-  unsaid = lib.filter (name: ((service name).Unit.X-SwitchMethod or null) == null) services;
-  kept = lib.filter (name: ((service name).Unit.X-SwitchMethod or null) == "keep-old") services;
-  # Only home.nix's own assertion, so another module's can't fail this.
-  failed = lib.filter (
-    assertion: lib.hasPrefix "These timers run" assertion.message && !assertion.assertion
-  ) home.assertions;
+  unsaid = lib.filter (name: method home name == null) services;
+  cadenceKeeps = method home "cadence" == "keep-old";
+
+  # home.nix's assertion as an account with `extra` says it, or null.
+  refusal =
+    extra:
+    lib.findFirst (
+      assertion: !assertion.assertion && lib.hasInfix "the switch's setting would hide" assertion.message
+    ) null (account extra).assertions;
+  # A timer whose service nothing writes.
+  stray = {
+    systemd.user.timers.stray-probe.Timer.OnCalendar = "daily";
+  };
+  strayRefused = refusal stray;
+  # The same timer, its service named as one the account doesn't write.
+  strayExcused = account (stray // { jitsusama.timedRuns.unwritten = [ "stray-probe" ]; });
+  # A timer running a template's instance, the template written.
+  instance = account {
+    systemd.user.timers."probe@one".Timer.OnCalendar = "daily";
+    systemd.user.services."probe@".Service.ExecStart = "/run/current-system/sw/bin/true";
+  };
+  holdsFor = {
+    "a timer whose service nothing writes is refused, by name" =
+      strayRefused != null && lib.hasInfix "stray-probe" strayRefused.message;
+    "a service named in jitsusama.timedRuns.unwritten is left out" =
+      refusal (stray // { jitsusama.timedRuns.unwritten = [ "stray-probe" ]; }) == null
+      && !(strayExcused.systemd.user.services ? stray-probe);
+    "a template's instance keeps its run on the template" =
+      method instance "probe@" == "keep-old" && !(instance.systemd.user.services ? "probe@one");
+  };
+  broken = lib.attrNames (lib.filterAttrs (_: held: !held) holdsFor);
 in
 onLinux {
-  # Every timed service says how a switch treats it, and the delivery
-  # cycle's, whose restart held a switch past its time, keeps its run.
+  # Every timed service has a switch method, and the delivery cycle's,
+  # whose restart held a switch past its time, keeps its run.
   a-switch-leaves-timed-runs-be =
     holds "a-switch-leaves-timed-runs-be"
-      "These timed services say nothing of a switch, so one restarts them and waits on each run, or the delivery cycle's doesn't keep its run: ${lib.concatStringsSep ", " unsaid}"
-      (lib.elem "cadence" kept && unsaid == [ ]);
+      "The delivery cycle's service keeps its run: ${lib.boolToString cadenceKeeps}. These timed services have no switch method, so a switch restarts them and waits on each run: ${
+        if unsaid == [ ] then "none" else lib.concatStringsSep ", " unsaid
+      }"
+      (cadenceKeeps && unsaid == [ ]);
 
-  # home.nix's assertion that every timer runs a service the account writes
-  # holds on the laptop that has every timer.
+  # home.nix's assertion refuses a timer whose service the account doesn't
+  # write, lets a machine name such a service, and finds a template's
+  # instance on its template.
   every-timer-runs-a-written-service =
     holds "every-timer-runs-a-written-service"
-      "The example laptop's account fails home.nix's assertion: ${
-        lib.concatMapStringsSep "; " (assertion: assertion.message) failed
-      }"
-      (failed == [ ]);
+      "home.nix's timers don't hold: ${lib.concatStringsSep "; " broken}"
+      (broken == [ ]);
 }
