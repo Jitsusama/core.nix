@@ -26,10 +26,11 @@ use serde_json::{Value, json};
 
 /// Tuple's command, in the shell the tests run in: `state follow` says
 /// each line of `stream` in its folder as it's written there, until the
-/// file `ends` appears or the folder goes; any other command is written to `asked`, a line
-/// each, `new` printing the room's link, `call accept` failing as Tuple
-/// does with nothing ringing, and any command stalling while the file
-/// `stalls-<its words>` is there, as `stalls-webcam-stop` stalls a stop.
+/// file `ends` appears or the folder goes; any other command is written
+/// to `asked`, a line each, `new` printing the room's link, `call accept`
+/// failing as Tuple does with nothing ringing, and any command stalling
+/// while the file `stalls-<its first two words>` is there, as
+/// `stalls-webcam-stop` stalls a stop.
 /// The daemon's journal is kept in `journal`.
 const TUPLE: &str = r#"
 here=$(dirname "$0")
@@ -49,7 +50,8 @@ if [ "$3 $4" = "state follow" ]; then
   exit 3
 fi
 echo "$*" >> "$here/asked"
-# A command Tuple is slow on waits while the test holds stalls-<its words>.
+# A command Tuple is slow on waits while the test holds
+# stalls-<its first two words>.
 while [ -e "$here/stalls-$1-$2" ]; do sleep 0.05; done
 case "$*" in
   new) echo "Joining https://tuple.app/c/joels-room"; sleep 5 ;;
