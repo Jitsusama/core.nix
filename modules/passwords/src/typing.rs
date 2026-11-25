@@ -602,10 +602,16 @@ pub fn fit(
 pub fn journal_line(title: &str, app: &str, outcome: &str, why: &str) -> String {
     let plain = |value: &str| value.replace(|c: char| c.is_control(), " ");
     let (title, app, why) = (plain(title), plain(app), plain(why));
-    let message = if why.is_empty() {
-        format!("{outcome} {title:?} into {app}")
+    // A type refused before any window was read has no app to name.
+    let into = if app.is_empty() {
+        String::new()
     } else {
-        format!("{outcome} {title:?} into {app}: {why}")
+        format!(" into {app}")
+    };
+    let message = if why.is_empty() {
+        format!("{outcome} {title:?}{into}")
+    } else {
+        format!("{outcome} {title:?}{into}: {why}")
     };
     [
         ("SYSLOG_IDENTIFIER", "passwords".to_owned()),

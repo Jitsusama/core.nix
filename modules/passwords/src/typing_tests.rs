@@ -172,6 +172,15 @@ fn a_journal_line_names_the_entry_and_window_on_one_line_each() {
 }
 
 #[test]
+fn a_type_refused_before_a_window_was_read_names_none() {
+    let line = journal_line("GitHub", "", "didn't type", "a type is already under way");
+    assert!(
+        line.contains("MESSAGE=didn't type \"GitHub\": a type is already under way\n"),
+        "{line}"
+    );
+}
+
+#[test]
 fn an_x11_window_is_known_by_what_speaks_for_every_x_program() {
     for name in ["xwayland-satell", "xwayland-satellite", "Xwayland"] {
         assert!(x11s(name), "{name} wasn't taken for X11's");

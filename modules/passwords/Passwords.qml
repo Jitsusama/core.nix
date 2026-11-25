@@ -773,13 +773,11 @@ Provider {
         const typing = provider.typed?.key === key
             ? Passwords.typeTold(provider.typed, said) : "";
         const typedLast = provider.typed?.key === key
-            && (provider.typed.asked ?? 0) >= provider.copyAsked;
+            && (Clearing.copied?.key !== key || (provider.typed.asked ?? 0) >= provider.copyAsked);
         if (typedLast)
             return typing !== "" ? typing : otherwise;
         const copy = Clearing.copied?.key === key ? Clearing.copied : null;
-        if (Passwords.speaks(copy))
-            return Passwords.told(copy, Clearing.now, said);
-        return typing !== "" ? typing : otherwise;
+        return Passwords.speaks(copy) ? Passwords.told(copy, Clearing.now, said) : otherwise;
     }
 
     // The row leading the place while a manager can't read: a thing, the

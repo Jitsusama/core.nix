@@ -13,7 +13,8 @@
 //! its end. Each manager in MANAGERS, a JSON file
 //! `{"managers": [{"name", "command"}]}`, runs as a child on the passwords
 //! line protocol: a JSON line in for each ask, `{"id", "ask"}` with `list`,
-//! `get`, `reveal`, `code`, `audit` or `let-in`, and a JSON line out answering it by
+//! `get`, `copy`, `type`, `audit` or `let-in`, `reveal` and `code` refused, and a JSON
+//! line out answering it by
 //! its id, or `{"state", "reason"}` unasked as how it stands changes. A
 //! manager that stops is started again. How each manager stands goes to
 //! the shell as the interface's `sources`, the word every daemon's client
@@ -24,8 +25,9 @@
 //! manager that has to ask Joel's leave, as 1Password's command does, only
 //! ever asks it in answer to his own key. What's held is each entry
 //! without its secrets (lib.rs); a secret goes from its manager to the
-//! ask that wanted to see it, or to the clipboard, marked sensitive and
-//! cleared after CLEARS, and is never kept, written or logged here. Copying
+//! clipboard, marked sensitive and cleared after CLEARS, or is typed into
+//! the window with the keys, never back to an ask, and is never kept,
+//! written or logged here. Copying
 //! is off while `$PASSWORDS_COPIER` names no copier, which nothing names
 //! until agents are fenced off the clipboard any of them can read.
 //!
@@ -1441,6 +1443,12 @@ fn typed(
         }
     };
     let failed = |why: String| (app.clone(), format!("couldn't type it: {why}"));
+    // The typist types each character as a key, so a line break or a tab
+    // in a stored secret would press Return or Tab where Joel is, as past a
+    // terminal's password prompt.
+    if secret.value.chars().any(char::is_control) {
+        return Err((app, KEYS_IN_IT.to_owned()));
+    }
     let mut child = Command::new(program)
         .arg("-")
         .stdin(Stdio::piped())
@@ -1453,12 +1461,33 @@ fn typed(
             .write_all(secret.value.as_bytes())
             .map_err(|why| failed(why.to_string()))?;
     }
-    let ended = child.wait().map_err(|why| failed(why.to_string()))?;
+    // A typist that never ends would hold TYPING for the daemon's life,
+    // every later type refused as one under way, so it's given a time.
+    let typed_by = Instant::now() + TYPIST_PATIENCE;
+    let ended = loop {
+        match child.try_wait().map_err(|why| failed(why.to_string()))? {
+            Some(ended) => break ended,
+            None if Instant::now() < typed_by => std::thread::sleep(Duration::from_millis(20)),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(failed("the typist didn't end in time".to_owned()));
+            }
+        }
+    };
     if !ended.success() {
         return Err(failed(format!("the typist ended {ended}")));
     }
     Ok((app, secret.label))
 }
+
+/// How long the typist may take to type a secret, well past wtype's
+/// time for the longest a manager holds.
+const TYPIST_PATIENCE: Duration = Duration::from_secs(10);
+
+/// Why a secret holding a control character, such as a line break, isn't
+/// typed.
+const KEYS_IN_IT: &str = "it holds a line break or tab, which would be typed as a key";
 
 /// How long a manager may take to give every password: 1Password asks
 /// Joel to let it in first where its leave has lapsed, as letting in does.
