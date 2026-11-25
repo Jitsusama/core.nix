@@ -54,6 +54,10 @@ LEAST_RATIO = 2.5
 MOST_RATIO = 6.5
 # How long a unit, a scope or a weight may take to appear.
 APPEARING = dt.timedelta(seconds=30)
+# How long jobs' ceiling may take to rise once jobs fills it: the 30 s nothing else must have
+# waited on memory, from the sorter's first quiet look, and the minute a loaded host may take to
+# read the file in.
+RISING = dt.timedelta(seconds=90)
 # The scopes held below jobs.slice by work an agent writes there, as the sorter names them.
 WORK_SCOPE = "jobs-work.slice/work-.*\\.scope$"
 # How many heavy starts come at once, as about thirteen sessions' builds did when a hold ended
@@ -271,6 +275,43 @@ def test_work_in_jobs_is_slowed_never_ended(account: Account) -> None:
     high = int(account.read(f"{JOBS}/memory.high"))
     assert abs(high - account.memory() * JOBS_HIGH) <= MIB
     assert account.read(f"{JOBS}/memory.max") == "max"
+
+
+def test_jobs_ceiling_rises_while_it_fills_it_and_goes_back_as_the_sorter_stops(
+    jobs: Account,
+) -> None:
+    """Jobs' ceiling rises while jobs fills it and nothing else waits, and goes back at a stop.
+
+    When it rises and falls is jobs-sorter's own tests' (src/ceiling.rs). This proves the sorter
+    sets it on the account's manager, and that its unit puts back the declared one as it stops,
+    since a ceiling it lifted would otherwise stay up with nothing to bring it down.
+    """
+    machine = jobs.machine
+    coreutils = jobs.sleep.rsplit("/", 1)[0]
+    declared = int(jobs.read(f"{JOBS}/memory.high"))
+    # A file as large as the ceiling, read from inside jobs, fills it with page cache, which
+    # still counts as available, so memory isn't short while it does.
+    machine.succeed(
+        f"head -c {declared} /dev/urandom > /var/tmp/filler && sync"
+        " && echo 1 > /proc/sys/vm/drop_caches"
+    )
+    jobs.write_into_jobs(
+        "fills",
+        f"{JOBS}/jobs.service",
+        f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1008; }}",
+    )
+    machine.wait_until_succeeds(
+        f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
+    )
+    said = machine.succeed("journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service")
+    assert "memory ceiling to" in said and "nothing it spares waiting on memory" in said, said
+    machine.succeed("systemctl -M alice@ --user stop jobs-sorter.service")
+    try:
+        put_back = int(jobs.read(f"{JOBS}/memory.high"))
+        assert abs(put_back - declared) <= MIB, (put_back, declared)
+    finally:
+        machine.succeed(f"kill {jobs.sleeping(1008)}; rm -f /var/tmp/filler")
+        machine.succeed("systemctl -M alice@ --user start jobs-sorter.service")
 
 
 def test_timed_work_is_inside_idle_jobs(jobs: Account) -> None:

@@ -64,6 +64,11 @@
 //! person's machines too, which `--calls-elsewhere`' mycelium hears, as
 //! `src/elsewhere.rs` says.
 //!
+//! With `--ceiling` and `--spare`, a slice's memory ceiling rises from the
+//! share it declares while the spared slices don't wait on memory, and comes
+//! back at a wait, a call or memory short, as `src/ceiling.rs` says why and
+//! how.
+//!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
 //!
@@ -102,6 +107,7 @@
 mod brake;
 mod budget;
 mod calls;
+mod ceiling;
 mod cli;
 mod door;
 mod elsewhere;
@@ -163,6 +169,11 @@ struct Settings {
     revive: Option<String>,
     orchestrators: Option<PathBuf>,
     door: Option<String>,
+    /// The slice whose memory ceiling follows the room, and the ceiling it
+    /// declares, as a percentage of memory (src/ceiling.rs).
+    ceiling: Option<(String, u64)>,
+    /// The slices whose wait on memory brings that ceiling down.
+    spare: Vec<String>,
     calls: Option<PathBuf>,
     /// The folder of mycelium nodes' sockets, and the mycelium to ask them.
     calls_elsewhere: Option<(PathBuf, PathBuf)>,
@@ -2814,6 +2825,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         revive: None,
         orchestrators: None,
         door: None,
+        ceiling: None,
+        spare: Vec::new(),
         calls: None,
         calls_elsewhere: None,
         niri: None,
@@ -2856,6 +2869,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
+            "--ceiling" => settings.ceiling = Some(ceiling_from(&value()?)?),
+            "--spare" => settings.spare.push(value()?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
             "--calls-elsewhere" => settings.calls_elsewhere = Some(elsewhere_from(&value()?)?),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
@@ -2915,7 +2930,36 @@ fn paired(settings: Settings) -> Result<Settings, Failure> {
             "--conversations ranks a host's conversations' units beside --hosts, by --slots",
         ));
     }
+    // A ceiling that nothing's wait could bring down would only ever rise.
+    if settings.ceiling.is_some() == settings.spare.is_empty() {
+        return Err(wrongly(
+            "--ceiling lifts a slice's memory ceiling while the --spare slices don't wait",
+        ));
+    }
     Ok(settings)
+}
+
+/// `--ceiling`'s value, a slice and the ceiling it declares as a
+/// percentage of memory under the most it's ever given, or the refusal
+/// saying what it is.
+fn ceiling_from(given: &str) -> Result<(String, u64), Failure> {
+    let refused = || {
+        cli::wrongly(
+            "jobs-sorter",
+            format!(
+                "--ceiling is a slice, =, then its ceiling as a percentage under {}",
+                ceiling::TOP
+            ),
+        )
+    };
+    let (slice, percent) = given.split_once('=').ok_or_else(refused)?;
+    let percent = percent.strip_suffix('%').unwrap_or(percent);
+    match percent.parse::<u64>() {
+        Ok(percent) if (1..ceiling::TOP).contains(&percent) && !slice.is_empty() => {
+            Ok((slice.to_owned(), percent))
+        }
+        _ => Err(refused()),
+    }
 }
 
 /// `--calls-elsewhere`'s value, the nodes' sockets' folder and the
@@ -2956,6 +3000,29 @@ mod settings_tests {
                     "jobs-sorter's help names {flag}, but it refuses it as unknown"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn a_ceiling_takes_its_slice_and_percentage_and_needs_a_slice_to_spare() {
+        let parsed = |words: &str| settings(words.split_whitespace().map(str::to_owned));
+        let got = parsed("--ceiling jobs.slice=26% --spare app.slice --spare agents.slice")
+            .expect("a ceiling and what it spares");
+        assert_eq!(got.ceiling, Some(("jobs.slice".to_owned(), 26)));
+        assert_eq!(got.spare, ["app.slice", "agents.slice"]);
+        assert!(
+            parsed("--ceiling jobs.slice=26 --spare app.slice").is_ok(),
+            "a bare percentage is taken too"
+        );
+        for wrong in [
+            "--ceiling jobs.slice=26",
+            "--spare app.slice",
+            "--ceiling jobs.slice --spare app.slice",
+            "--ceiling jobs.slice=0 --spare app.slice",
+            "--ceiling jobs.slice=50 --spare app.slice",
+            "--ceiling =26 --spare app.slice",
+        ] {
+            assert!(parsed(wrong).is_err(), "{wrong} was taken");
         }
     }
 
@@ -3437,6 +3504,7 @@ fn run(settings: &Settings) -> Result<(), String> {
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         brake_for_calls(&mut doorway, &root);
+        follow_room(&mut doorway, &root, settings);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
@@ -3451,9 +3519,14 @@ struct Doorway {
     elsewhere: Option<elsewhere::Elsewhere>,
     /// Where builds and jobs stand braked for a call (src/brake.rs).
     brake: brake::Brake,
+    /// Where jobs' memory ceiling stands (src/ceiling.rs).
+    ceiling: ceiling::Ceiling,
     /// Whether memory's pressure couldn't be read when last looked at, so
     /// the pace's stall gate going off is said once, not every look.
     unstalled: bool,
+    /// Whether a spared slice's pressure couldn't be read when last looked
+    /// at, so the ceiling held down for it is said once.
+    unspared: bool,
 }
 
 impl Doorway {
@@ -3464,7 +3537,9 @@ impl Doorway {
             calls: pw_dump.map(calls::Calls::follow),
             elsewhere: None,
             brake: brake::Brake::default(),
+            ceiling: ceiling::Ceiling::default(),
             unstalled: false,
+            unspared: false,
         }
     }
 }
@@ -3476,11 +3551,7 @@ impl Doorway {
 /// mid-call is set again; `account` is the account's manager's cgroup.
 fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
     let now = std::time::Instant::now();
-    let here = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
-    let there = doorway
-        .elsewhere
-        .as_ref()
-        .is_some_and(|elsewhere| elsewhere.on(now));
+    let (here, there) = calling(doorway, now);
     let calling = here || there;
     let processors = std::thread::available_parallelism().map_or(1, usize::from);
     let lost = if calling {
@@ -3538,6 +3609,111 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
                 "Let go of builds and jobs, no call on"
             }
         );
+    }
+}
+
+/// Whether a call is on `now`, here and on another of the person's
+/// machines.
+fn calling(doorway: &mut Doorway, now: std::time::Instant) -> (bool, bool) {
+    let here = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    let there = doorway
+        .elsewhere
+        .as_ref()
+        .is_some_and(|elsewhere| elsewhere.on(now));
+    (here, there)
+}
+
+/// Lifts the `--ceiling` slice's memory ceiling while the `--spare` slices
+/// don't wait on memory, and brings it back once one does, as
+/// src/ceiling.rs says; `account` is the account's manager's cgroup.
+fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
+    let Some((slice, percent)) = &settings.ceiling else {
+        return;
+    };
+    let meminfo = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let (Some(total), Some(available)) = (door::total(&meminfo), door::available(&meminfo)) else {
+        return;
+    };
+    let Some(current) = fs::read_to_string(account.join(slice).join("memory.current"))
+        .ok()
+        .and_then(|text| text.trim().parse().ok())
+    else {
+        return;
+    };
+    // A spared slice whose wait can't be read counts as waiting, so the
+    // ceiling never rises on what it can't see.
+    let waits: Vec<(&String, Option<f64>)> = settings
+        .spare
+        .iter()
+        .map(|spared| {
+            let pressure = fs::read_to_string(account.join(spared).join("memory.pressure"));
+            (spared, pressure.ok().as_deref().and_then(ceiling::waited))
+        })
+        .collect();
+    let unread: Vec<&String> = waits
+        .iter()
+        .filter(|(_, waited)| waited.is_none())
+        .map(|(spared, _)| *spared)
+        .collect();
+    if !unread.is_empty() && !doorway.unspared {
+        eprintln!(
+            "Can't read how long {} waited on memory, so {slice}'s ceiling doesn't rise.",
+            unread
+                .iter()
+                .map(|spared| spared.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    doorway.unspared = !unread.is_empty();
+    let waiting = waits
+        .iter()
+        .any(|(_, waited)| waited.is_none_or(|waited| waited >= ceiling::WAITING));
+    let now = std::time::Instant::now();
+    let (here, there) = calling(doorway, now);
+    let look = ceiling::Look {
+        total,
+        available,
+        current,
+        waiting,
+        calling: here || there,
+    };
+    let least = ceiling::least(total, *percent);
+    let stood = doorway.ceiling.stands();
+    let Some(high) = doorway.ceiling.wanted(&look, least, now) else {
+        return;
+    };
+    let why = if stood.is_none() {
+        "as it declares"
+    } else if stood.is_some_and(|stood| high > stood) {
+        "nothing it spares waiting on memory"
+    } else if waiting {
+        "a slice it spares waiting on memory"
+    } else if look.calling {
+        "a call on"
+    } else {
+        "memory short"
+    };
+    let set = Command::new("busctl")
+        .args(ceiling::high_call(slice, high))
+        .stdout(Stdio::null())
+        .output();
+    match set {
+        Ok(output) if output.status.success() => {
+            doorway.ceiling.set(high);
+            eprintln!("Set {slice}'s memory ceiling to {} MiB, {why}.", high >> 20);
+        }
+        Ok(output) => {
+            doorway.ceiling.failed(now);
+            eprintln!(
+                "Couldn't set {slice}'s memory ceiling: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Err(error) => {
+            doorway.ceiling.failed(now);
+            eprintln!("Couldn't run busctl to set {slice}'s memory ceiling: {error}");
+        }
     }
 }
 
@@ -4364,6 +4540,8 @@ mod tests {
             revive: None,
             orchestrators: None,
             door: None,
+            ceiling: None,
+            spare: Vec::new(),
             calls: None,
             calls_elsewhere: None,
             niri: None,
