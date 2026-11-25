@@ -148,6 +148,15 @@ impl Proxy {
     fn os_login_key(&self) -> (PublicKey, Vec<u8>) {
         let text = fs::read_to_string(self.dir.join("os-login.pub")).expect("the key is written");
         let key = PublicKey::from_openssh(text.trim()).expect("the key reads");
+        // os-login.sh knows the proxy's own key by this comment alone.
+        let made = key
+            .comment()
+            .strip_prefix("pi-agent-proxy OS Login ")
+            .expect("the file names the key as os-login.sh reads it");
+        assert!(
+            !made.is_empty() && made.bytes().all(|byte| byte.is_ascii_digit()),
+            "the file's comment ends in the time it was made: {made}"
+        );
         let blob = key.to_bytes().expect("the key encodes");
         (key, blob)
     }
@@ -1089,7 +1098,7 @@ fn signs_an_os_login_hosts_login_with_a_key_only_it_holds() {
         let text = fs::read(file.expect("an entry").path()).unwrap_or_default();
         assert!(
             !String::from_utf8_lossy(&text).contains("PRIVATE KEY"),
-            "no private key is written anywhere"
+            "no OpenSSH private key lands in the key's folder or the log"
         );
     }
 }
@@ -1400,7 +1409,8 @@ fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
         "a fifo is made"
     );
     // The host's own line waits in the fifo, so a proxy that opened it
-    // would read the host as known; only not opening it refuses.
+    // would read the host as known; a check before opening it or after
+    // refuses it, each alone.
     let _reader = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NONBLOCK)

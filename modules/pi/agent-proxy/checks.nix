@@ -76,7 +76,10 @@
         && !(plain.systemd.user.sockets ? pi-agent-proxy)
         && !(mac.systemd.user.services ? pi-agent-proxy)
       );
-
+}
+# The OS Login route's check builds an x86_64-linux machine's script and
+# its stand-in gcloud reads /proc, so a Mac neither builds nor evaluates it.
+// onLinux {
   # Where the proxy runs, it makes a key for the OS Login hosts gcloud
   # knows, starting with the session so the key is there for an agent's
   # first ssh, and never dumping its memory; the account's gcloud registers
@@ -125,7 +128,7 @@
       offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
       wired =
         holds "pi-agent-proxy-reaches-os-login-machines-wired"
-          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written and as the desktop starts, renewed each quarter hour by the wall clock within a bound, retried on failure in growing steps without ever giving up, or removed as it stops, its renewal is ordered after the proxy, which makes a cycle at login, is registered or renewed while the proxy isn't running, may dump its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written and as the desktop starts, renewed each quarter hour by the wall clock within a bound, retried on failure in growing steps without ever giving up, or removed as it stops, its renewal is ordered after the proxy, which makes a cycle at login, is registered or renewed while the proxy isn't running, may dump or swap its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
           (
             lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
             && lib.toList proxy.Install.WantedBy == [ "default.target" ]
@@ -152,6 +155,7 @@
             && renewing.Unit.StartLimitIntervalSec == 0
             && renewing.Install.WantedBy == [ "graphical-session.target" ]
             && proxy.Service.LimitCORE == 0
+            && proxy.Service.MemorySwapMax == 0
             && lib.hasInfix "Host compute.*\n  IdentityFile /run/user/%i/pi-agent/os-login.pub\nHost *\n" machine.config.programs.ssh.extraConfig
             && !(lib.hasInfix "--os-login" offStart)
             && !(off.systemd.user.services ? pi-agent-proxy-os-login)
@@ -168,6 +172,8 @@
       ''
         cat ${wired}
         $BASH ${./ssh-offer-test.sh} "$sshConfigPath"
+        # One agent behind the proxy: its 5 s patience and a margin.
+        grep -qx 'asking=8' ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
         $BASH ${./os-login-test.sh} ${lib.removeSuffix " register %t/pi-agent/os-login.pub" register}
         touch $out
       '';

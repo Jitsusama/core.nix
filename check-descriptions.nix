@@ -4844,7 +4844,7 @@
   '';
   pi-agent-proxy-reaches-os-login-machines = ''
     where pi's SSH agent proxy runs, by default, it makes a key for the OS Login hosts gcloud
-    knows, started with the session and never in a core dump; the account's gcloud registers
+    knows, started with the session, never in a core dump or swap; the account's gcloud registers
     each key it writes, once the proxy lists it, for twelve hours, and again as the desktop
     starts, renews it each quarter hour by the wall clock, every call bounded and a removal's
     tighter, tries a failed registration, or a proxy it couldn't ask, again from half a minute

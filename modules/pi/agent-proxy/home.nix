@@ -30,7 +30,12 @@ let
       pkgs.coreutils
       pkgs.openssh
     ];
-    text = builtins.readFile ./os-login.sh;
+    # The proxy lists its own key only once every agent behind it has
+    # answered or had its 5 s, so the script waits that out (os-login.sh).
+    text = ''
+      asking=${toString (5 * lib.length config.jitsusama.pi.agentProxy.upstreams + 3)}
+    ''
+    + builtins.readFile ./os-login.sh;
   };
 in
 {
@@ -77,11 +82,13 @@ in
         The known-hosts file gcloud keeps of the instances it reaches,
         `%h` for the home folder, whose `compute.<id>` hosts an agent's
         `gcloud compute ssh` may log in to as the person through OS Login.
-        The proxy makes a key for them as it starts, held only in its
-        memory, and the account's gcloud puts it in the person's login
-        profile for twelve hours at a time, renewed while the proxy runs
-        and taken out as it stops (agent-proxy/src/os_login.rs). Null for
-        no such key, where the person's own key serves agents too.
+        The proxy makes a key for them as it starts, written to no file
+        and kept out of swap, and the account's gcloud puts it in the
+        person's login profile for twelve hours at a time, renewed while
+        the proxy runs and taken out as it stops (agent-proxy/src/os_login.rs).
+        So agents reach, as the person, every instance the file names,
+        which their fence keeps read-only. Null for no such key, where the
+        person's own key serves agents too.
       '';
     };
     upstreams = lib.mkOption {
@@ -175,9 +182,12 @@ in
       # Taken out of the person's profile as the proxy stops, since the
       # key's private half goes with it.
       Service.ExecStopPost = lib.mkIf osLogin "-${lib.getExe osLoginRegister} remove ${osLoginKey}";
-      # The OS Login key is held only in its memory, so no crash writes
-      # that memory out; the proxy also makes itself undumpable.
+      # The OS Login key is written to no file, so no crash writes the
+      # proxy's memory out, and none of it goes to swap; the proxy also
+      # makes itself undumpable. A hibernation image still holds it,
+      # inside the disk's encryption, as it holds all of memory.
       Service.LimitCORE = lib.mkIf osLogin 0;
+      Service.MemorySwapMax = lib.mkIf osLogin 0;
       # Started with the session rather than by the first ssh, where it
       # makes an OS Login key, so the key's public half is there for an
       # agent's first ssh to offer.

@@ -14,7 +14,7 @@
 //! signs with it only a login as `nix-offload` to a builder lent now
 //! (`--lent`, src/lent.rs); an agent's key behind never signs for a lent
 //! builder, nor the builders' key for any other host. With `--os-login`
-//! it makes a key of its own as it starts, held only in its memory, and
+//! it makes a key of its own as it starts, written to no file, and
 //! signs with it only a login to an OS Login instance gcloud's known
 //! hosts name (`--os-login-hosts`, `src/os_login.rs`), as an agent's
 //! `gcloud compute ssh` makes one; no other key signs for one. Anything else a

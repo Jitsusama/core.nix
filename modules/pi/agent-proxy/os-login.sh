@@ -84,12 +84,16 @@ comment="pi-agent-proxy OS Login"
 # file names the same; nothing otherwise. It fails 2 where the proxy
 # couldn't be asked, which ssh-add says with 2 and timeout with 124,
 # and 1 where it was asked and holds no such key, which an agent with
-# no key at all says with 1.
+# no key at all says with 1. The proxy lists its own key only after
+# each agent behind it answers or its 5 s patience with that agent ends,
+# so asking waits that out: home.nix sets asking from the number of
+# agents, and one agent's 5 s and a margin stand where it doesn't.
 agent=${key%/*}/agent.sock
+asking=${asking:-8}
 held() {
   local kind blob rest listed line own='' asked=0
   read -r kind blob rest <"$key" || return 1
-  listed=$(SSH_AUTH_SOCK=$agent timeout 2 ssh-add -L 2>/dev/null) || asked=$?
+  listed=$(SSH_AUTH_SOCK=$agent timeout "$asking" ssh-add -L 2>/dev/null) || asked=$?
   ((asked == 0)) || return $((asked == 1 ? 1 : 2))
   while IFS= read -r line; do
     [[ $line == *" $comment" ]] || continue

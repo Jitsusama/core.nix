@@ -1,5 +1,5 @@
 //! The key an agent's ssh logs in to OS Login hosts with, made by the
-//! proxy as it starts and held only in its memory, and the hosts it
+//! proxy as it starts and written to no file, and the hosts it
 //! signs those logins to.
 //!
 //! A cloud's OS Login hosts take the keys in the person's login profile.
