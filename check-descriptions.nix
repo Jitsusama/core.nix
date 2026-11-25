@@ -2142,10 +2142,10 @@
     macOS's own folders and saying what they do in their logs, given nothing else: keep.sh,
     which sets the name back, from its start, whenever macOS writes its network settings and
     once a minute, and answer.sh, which answers it, kept running; a Mac with none runs
-    neither; the module adds or changes no launchd plist but those two, nor any agent of the
-    account's, launchd's environment or a file in /etc but the rotation of the two logs, as
-    held, and turns none off; each plist is on, is linked as its own file, is the text its
-    options lower to, is written from that text and opens no socket; keep.sh names, in any
+    neither; the module adds, changes or turns off no launchd plist but those two, nor any
+    agent of the account's, launchd's environment or a file in /etc but the rotation of the
+    two logs, as held; each plist is on, is linked as its own file, is the text its options
+    lower to, is written from that text and opens no socket; keep.sh names, in any
     case, none of dns-sd, launchctl, systemsetup's remote switches, Remote Management's kickstart or the
     sharing command, and answer.sh only dns-sd, in one line answering the name as a host of
     its own on one link, since any other could advertise for the host
