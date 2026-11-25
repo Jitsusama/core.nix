@@ -613,26 +613,41 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     wake(shell)
     since = shell.mark()
     shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    focused = time.monotonic()
     away = laid_out(shell, third)
     gone, width = away["tile_pos_in_workspace_view"][0], away["tile_size"][0]
     across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
     assert gone != sat_at, f"niri left its window at {sat_at}: the case's own"
     assert gone + width / 2 < across, f"niri scrolled its middle off at {gone}: the case's own"
 
-    # Still over its window where niri scrolled it, drawn at its place, its ride done.
+    # Still over its window where niri scrolled it, drawn at its place, its ride done: a
+    # report after the ride's own, never one from before niri carried it.
+    ride: list[Json] = []
+    still: list[Json] = []
+
     def settled(report: str) -> bool:
         at = placed(report)
-        return bool(
-            at is not None
-            and not at.get("walk")
+        if at is None or at.get("walk"):
+            return False
+        if abs(at["x"] - at["drawn"]["x"]) >= 1:
+            ride.append(at)
+            return False
+        if (
+            ride
             and at.get("window") == third["id"]
             and abs(at["x"] - at["drawn"]["x"]) < FLUSH
             and gone <= at["x"] + at["size"] / 2 <= gone + width
-        )
+        ):
+            still.append(at)
+        return bool(still)
 
     heard(shell, settled, since, timedelta(seconds=RESTS))
+    held = still[0]["x"]
     back = shell.mark()
     shell.as_account(f"niri msg action focus-window --id {third['id']}")
+    # The keys must come back before they rest on the other column, or the cat walks there.
+    took = time.monotonic() - focused
+    assert took < RESTS, f"the keys came back {took:.1f} s on, after they rested: the case's own"
     sits_over(shell, third, back)
     said, _ = shell.said_since(back)
     rode = [
@@ -641,6 +656,11 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
         if at is not None and not at.get("walk") and abs(at["drawn"]["x"] - at["x"]) >= 1
     ]
     assert rode, "niri scrolled its window back and the cat was put on its seat at once"
+    # Drawn short of its seat by what's left of the scroll back, as its window is, from where
+    # it was held: never set off from elsewhere, nor ahead of its window.
+    scroll = rode[0]["x"] - held
+    short = (rode[0]["x"] - rode[0]["drawn"]["x"]) / scroll if scroll else 0
+    assert 0 < short <= 1, f"drawn {short:.2f} of the scroll back short of its place"
 
 
 def walked_report(shell: Shell, since: int) -> Json:
