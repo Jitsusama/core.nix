@@ -147,27 +147,54 @@ fn a_listing_that_fails_says_why() {
     );
     let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
     assert!(failed.contains("cannot connect to the daemon"), "{failed}");
-    // A nix.conf line Nix refuses is quoted whole, and may hold a token, so
-    // it's told by its length alone, the rest of what Nix said kept.
-    script(
-        &dir.path().join("nix-store"),
-        "echo \"error: syntax error in configuration line 'access-tokens github.com=SECRET' \
-         in '/etc/nix/nix.conf'\" >&2; exit 1\n",
-    );
-    let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
-    assert!(
-        !failed.contains("SECRET")
-            && failed.contains(
-                "error: syntax error in configuration line '<31 bytes left out>' in \
-                 '/etc/nix/nix.conf'"
-            ),
-        "a refused nix.conf line was told, or what was around it lost: {failed}"
-    );
     let none = tempfile::tempdir().unwrap();
     assert_eq!(
         list(&fake_nix(none.path(), 0), Path::new(STORE), false).unwrap(),
         []
     );
+}
+
+/// A nix.conf line Nix refuses is quoted whole, and may hold a token, so
+/// it's told by its length alone, the rest of what Nix said kept: the
+/// file it's in, or nothing where Nix names none. Nix ends such a refusal
+/// with a line saying to try --help, so the line before it is told.
+#[test]
+fn a_refused_nix_conf_line_is_told_by_its_length_alone() {
+    let refused = "error: syntax error in configuration line 'access-tokens github.com=SECRET'";
+    let help = "echo \"Try 'nix-store --help' for more information.\" >&2";
+    for (said, told) in [
+        (
+            format!("echo \"{refused} in '/etc/nix/nix.conf'\" >&2\n{help}"),
+            "configuration line '<31 bytes left out>' in '/etc/nix/nix.conf'",
+        ),
+        (
+            format!("echo \"{refused} with more\" >&2"),
+            "configuration line '<42 bytes left out>",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        script(&dir.path().join("nix-store"), &format!("{said}\nexit 1\n"));
+        let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
+        assert!(
+            !failed.contains("SECRET") && failed.ends_with(told),
+            "a refused nix.conf line was told, or what was around it lost: {failed}"
+        );
+    }
+}
+
+/// The min-free read runs at the usual priority, not the idle one the
+/// guard's collections take: the stand-in prints its scheduling policy as
+/// the value, 0 for the usual and 5 for idle.
+#[test]
+#[cfg(target_os = "linux")]
+fn a_min_free_read_runs_at_the_usual_priority() {
+    let dir = tempfile::tempdir().unwrap();
+    script(
+        &dir.path().join("nix"),
+        // Its 41st field, its policy, past a name with no blanks in it.
+        "read -r stat < /proc/$$/stat\nset -- $stat\nshift 40\necho \"$1\"\n",
+    );
+    assert_eq!(min_free(&dir.path().join("nix")), Ok(0));
 }
 
 /// The guard's log is often readable by any account, and a Nix printing
@@ -185,7 +212,7 @@ fn a_min_free_read_tells_none_of_what_nix_printed() {
         (
             "echo \"error: illegal configuration line 'access-tokens github.com=SECRET'\" >&2\n\
              exit 1\n",
-            "ended 1, saying 67 bytes",
+            "exited 1, saying 67 bytes",
         ),
         (
             "echo 'access-tokens = github.com=SECRET' >&2\nkill -KILL $$\n",

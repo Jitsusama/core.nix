@@ -10,8 +10,8 @@
 
 mod ran;
 
-pub(crate) use ran::ran;
 use ran::{failed, name, output};
+pub(crate) use ran::{last_words, ran};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
@@ -193,12 +193,15 @@ pub fn min_free(nix: &Path) -> Result<u64, String> {
     // Not idle, unlike the guard's collections: it's one quick read, and on
     // a Mac the background band throttles it most while the machine is
     // busiest, which is when a read past its thirty seconds keeps the guard
-    // from its floor.
+    // from its floor. That lifts the system guard's read; an account's
+    // guard runs wholly in the background band, as its launchd agent's
+    // ProcessType puts it so the account's own work comes first, and so
+    // does this read.
     let (status, said) = output(&argv, Duration::from_secs(30), false, &[])?;
     if status != Some(0) {
         let ended = status.map_or_else(
             || "was ended by a signal".to_owned(),
-            |code| format!("ended {code}"),
+            |code| format!("exited {code}"),
         );
         return Err(format!(
             "nix config show min-free {ended}, saying {} bytes on its error stream",

@@ -57,12 +57,24 @@ pub(super) fn output(
 
 /// Why a command failed: its name and the last line it said.
 pub(super) fn failed(argv: &[&OsStr], said: &str) -> String {
-    let last = said
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or("");
-    format!("{} failed: {}", name(argv), unquoted(last))
+    format!(
+        "{} failed: {}",
+        name(argv),
+        last_words(said).unwrap_or_default()
+    )
+}
+
+/// The last line Nix said, with any nix.conf line it quotes left out, or
+/// none when it said nothing. Nix ends a refusal of how it was asked, as of
+/// a nix.conf line, with "Try '... --help' for more information.", which
+/// says nothing of why, so the line before it is told.
+pub(crate) fn last_words(said: &str) -> Option<String> {
+    let mut lines = said.lines().rev().filter(|line| !line.trim().is_empty());
+    let mut last = lines.next()?;
+    if last.starts_with("Try '") && last.ends_with("--help' for more information.") {
+        last = lines.next().unwrap_or(last);
+    }
+    Some(unquoted(last))
 }
 
 /// What Nix said, with any nix.conf line it quotes told by its length
