@@ -10156,6 +10156,14 @@ Scope {
             // then reads no keys, so a wait on it fails rather than passes.
             asksUnread: root.sourcesNamed.asks?.overPasswords
                 ? root.sourcesNamed.asks.taken.length : null,
+            // Whether a frame has drawn the armed ask's line since it was
+            // armed, so its time runs (secret-asks/Asks.qml's noteSelected):
+            // a yes before that frame is refused as unread, which a test
+            // waits out rather than racing. Null where asksUnread is.
+            asksNoted: root.sourcesNamed.asks?.overPasswords
+                ? root.sourcesNamed.asks.armed !== ""
+                    && root.sourcesNamed.asks.seen[root.sourcesNamed.asks.armed] !== undefined
+                : null,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).

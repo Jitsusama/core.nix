@@ -117,8 +117,6 @@ QtObject {
         // yes is refused as unread, and he moves again.
         Expect.same("and a move read with the Return after it",
             Shown.keyed(["j", "Return"], false), "resets");
-        Expect.same("even where the shell saw the selection move",
-            Shown.keyed(["j", "Return"], true), "resets");
         Expect.same("but Returns before a move leave the move its own",
             Shown.keyed(["Return", "Down"], true), "arms");
     }

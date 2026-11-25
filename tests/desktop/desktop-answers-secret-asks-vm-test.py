@@ -271,7 +271,13 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # alone would order the j before the Return only as Qt happens to order its events.
     taken = desktop.showing()["taken"]
     desktop.machine.send_chars("j")
-    desktop.launcher_until(lambda shown: shown["taken"] > taken and shown["asksUnread"] == 0)
+    # And a frame has drawn the line it armed, from which its time runs: a yes before that
+    # frame is refused as unread too, as niri presents it a turn or more later.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["taken"] > taken and shown["asksUnread"] == 0 and shown["asksNoted"] is True
+        )
+    )
     since = say_yes(desktop)
     answer = answered(desktop, ask, since)
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
@@ -406,7 +412,9 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     # Still normal, so the j and k below move over the rows rather than type into the find.
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
     desktop.machine.send_chars("j")
-    desktop.launcher_until(lambda shown: not selects(shown, why))
+    # Read by Asks before the k, so the two aren't read in one turn, where a move read with a
+    # key after it resets rather than arms.
+    desktop.launcher_until(lambda shown: not selects(shown, why) and shown["asksUnread"] == 0)
     desktop.machine.send_chars("k")
     # Read by Asks too, so the refusal below is for the agent's opening, not a k still unread.
     desktop.launcher_until(lambda shown: selects(shown, why) and shown["asksUnread"] == 0)
