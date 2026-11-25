@@ -1834,6 +1834,9 @@ struct Fitting {
     /// The slices whose others claimed past the room the units Joel is at
     /// left them ([`Fitting::overran`]).
     overrun: HashSet<String>,
+    /// The slices whose windows the sorter floors left the units Joel is at
+    /// short ([`Fitting::filled`]).
+    filled: HashSet<String>,
     /// Each window's claim at its peak within the minute.
     peaks: budget::Peaks,
     /// The scopes the sorter floors itself, as of this look.
@@ -1875,6 +1878,11 @@ impl Floored {
             .and_then(|name| self.kept.get(name).copied())
     }
 
+    /// Whether the sorter floors `scope` itself, holding or keeping it.
+    fn floors(&self, scope: &Path) -> bool {
+        self.held.contains(scope) || self.kept(scope).is_some()
+    }
+
     /// The most `scope` claims within the windows' cap: a window's floor for
     /// one held or only named, and for one keep.rs keeps and nothing holds,
     /// the floor keep.rs set it, so a memory.low raised past that since, by
@@ -1888,6 +1896,42 @@ impl Floored {
 }
 
 impl Fitting {
+    /// What to say of `slice` when the windows the sorter floors itself
+    /// take `windows` of its floor `low` and so leave the units Joel is at
+    /// `given` of the `wants` they'd add: with no stray past the room,
+    /// [`Fitting::overran`] says nothing, and the units' floors would fall
+    /// unsaid. Said once, when they're short by a [`budget::STEP`] or more,
+    /// and again only once they've been given all they'd add and are short
+    /// again; units short with no window floored say nothing, since then
+    /// it's no floor of the sorter's that left them short.
+    fn filled(
+        &mut self,
+        slice: &str,
+        windows: u64,
+        low: u64,
+        given: u64,
+        wants: u64,
+    ) -> Option<String> {
+        if given >= wants {
+            self.filled.remove(slice);
+            return None;
+        }
+        if windows == 0
+            || given.saturating_add(budget::STEP) > wants
+            || !self.filled.insert(slice.to_owned())
+        {
+            return None;
+        }
+        Some(format!(
+            "The windows the sorter floors in {slice} take {} MiB of its {} MiB floor, so the \
+             units Joel is at are given {} MiB of the {} MiB they'd add.",
+            windows >> 20,
+            low >> 20,
+            given >> 20,
+            wants >> 20
+        ))
+    }
+
     /// What to say of `slice` when the others beside its units, `strays`,
     /// each by name with its claim, claim more in all, `claimed`, than the
     /// room the units Joel is at `left` them: the sorter can't trim what
@@ -1896,7 +1940,10 @@ impl Fitting {
     /// again only once they fit by a [`budget::STEP`] and overrun again, so
     /// others hovering at the edge don't say it on every crossing. Each is
     /// named quoted, the first [`SAID`] of them, since a child's name is
-    /// whatever started it chose.
+    /// whatever started it chose, and a window the sorter floors itself,
+    /// claiming past the windows' cap as a stray does, is said to be one,
+    /// so the reader looks to the sorter's floors rather than a stranger.
+    /// The rest the sorter can't trim.
     fn overran(
         &mut self,
         slice: &str,
@@ -1915,7 +1962,15 @@ impl Fitting {
         let mut which: Vec<String> = named
             .iter()
             .take(SAID)
-            .map(|(name, claim)| format!("{name:?} {} MiB", claim >> 20))
+            .map(|(name, claim)| {
+                let ours = self.floored.floors(&Path::new(slice).join(name));
+                let whose = if ours {
+                    ", a window the sorter floors"
+                } else {
+                    ""
+                };
+                format!("{name:?} {} MiB{whose}", claim >> 20)
+            })
             .collect();
         if named.len() > SAID {
             which.push(format!("and {} more", named.len() - SAID));
@@ -2042,7 +2097,8 @@ fn fit_ranked(
 /// windows Joel types in, those under `prefixes`, keep theirs whole while
 /// those others fit in what the units Joel is at leave; past it the
 /// kernel shares the slice's floor among every child again, which is said
-/// once ([`Fitting::overran`]). Each window claims its peak of the last
+/// once ([`Fitting::overran`]), as is the windows the sorter floors leaving
+/// the units Joel is at short ([`Fitting::filled`]). Each window claims its peak of the last
 /// minute at `now` ([`budget::Peaks`]). A slice whose floor can't be read is left
 /// as ranked, and said once, as `fitting` remembers.
 fn fit_floors(
@@ -2062,6 +2118,7 @@ fn fit_floors(
     // A slice this look doesn't fit forgets it overran, so its next overrun is said.
     let fitted: HashSet<String> = slices.iter().map(|s| s.display().to_string()).collect();
     fitting.overrun.retain(|slice| fitted.contains(slice));
+    fitting.filled.retain(|slice| fitted.contains(slice));
     for slice in slices {
         let name = slice.display().to_string();
         let Some(low) = memory_low(&slice) else {
@@ -2125,6 +2182,16 @@ fn fit_floors(
         fitted.remove(viewed);
         margin.remove(viewed);
         if let Some(line) = fitting.overran(&name, &strays, claimed, left) {
+            eprintln!("{line}");
+        }
+        let given = fitted[..viewed]
+            .iter()
+            .fold(0u64, |sum, &add| sum.saturating_add(add));
+        let wants = wanted[..viewed]
+            .iter()
+            .fold(0u64, |sum, unit| sum.saturating_add(unit.added));
+        let windows = low.saturating_sub(room);
+        if let Some(line) = fitting.filled(&name, windows, low, given, wants) {
             eprintln!("{line}");
         }
         for ((&at, fitted), margin) in order.iter().zip(fitted).zip(margin) {
@@ -5620,6 +5687,74 @@ mod tests {
         assert!(
             said.ends_with("\"run-u4.scope\" 256 MiB, and 4 more."),
             "a long list of others was said whole: {said}"
+        );
+    }
+
+    #[test]
+    fn the_sorters_own_floors_leaving_the_units_joel_is_at_short_are_said_once() {
+        const MIB: u64 = 1 << 20;
+        let mut fitting = Fitting::default();
+        assert_eq!(
+            fitting
+                .filled("agents.slice", 6144 * MIB, 6348 * MIB, 0, 512 * MIB)
+                .as_deref(),
+            Some(
+                "The windows the sorter floors in agents.slice take 6144 MiB of its 6348 MiB \
+                 floor, so the units Joel is at are given 0 MiB of the 512 MiB they'd add."
+            ),
+            "the sorter's own floors starving the units Joel is at are said, with no stray \
+             past the room"
+        );
+        assert_eq!(
+            fitting.filled("agents.slice", 6144 * MIB, 6348 * MIB, 0, 512 * MIB),
+            None,
+            "and once while it lasts"
+        );
+        assert_eq!(
+            fitting.filled("agents.slice", 6144 * MIB, 6348 * MIB, 500 * MIB, 512 * MIB),
+            None,
+            "units given all but less than a step say nothing"
+        );
+        fitting.filled("agents.slice", 6144 * MIB, 6348 * MIB, 512 * MIB, 512 * MIB);
+        assert!(
+            fitting
+                .filled("agents.slice", 6144 * MIB, 6348 * MIB, 0, 512 * MIB)
+                .is_some(),
+            "once they're given all they'd add and are short again, it's said again"
+        );
+        assert_eq!(
+            Fitting::default().filled("agents.slice", 0, 6348 * MIB, 0, 512 * MIB),
+            None,
+            "units short with no window floored is the units' own doing, not the sorter's"
+        );
+    }
+
+    #[test]
+    fn an_overrun_says_which_of_the_others_are_the_sorters_own_floors() {
+        const MIB: u64 = 1 << 20;
+        let mut fitting = Fitting::default();
+        fitting
+            .floored
+            .kept
+            .insert("kitty-2-14.scope".to_owned(), keep::PI_FLOOR);
+        fitting
+            .floored
+            .held
+            .insert(PathBuf::from("agents.slice/kitty-3-1.scope"));
+        let strays = [
+            ("kitty-2-14.scope".to_owned(), 512 * MIB),
+            ("kitty-3-1.scope".to_owned(), 1024 * MIB),
+            ("run-u7.scope".to_owned(), 1024 * MIB),
+        ];
+        let said = fitting
+            .overran("agents.slice", &strays, 2560 * MIB, 768 * MIB)
+            .unwrap_or_default();
+        assert!(
+            said.ends_with(
+                "\"kitty-2-14.scope\" 512 MiB, a window the sorter floors, \"kitty-3-1.scope\" \
+                 1024 MiB, a window the sorter floors, \"run-u7.scope\" 1024 MiB."
+            ),
+            "the sorter's own floors past the windows' cap aren't named as strangers: {said}"
         );
     }
 
