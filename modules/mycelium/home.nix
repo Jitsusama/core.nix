@@ -597,9 +597,9 @@ in
         and strict fence the machine declares says them: pi's own fence,
         strict, on Linux and on a Mac, whose strict reads the home folder
         but what it hides, where Linux's reads only what it lists. A held
-        fenced or strict start goes after them too, except pi or the agent
-        program, told its fence instead on Linux and on a Mac declaring
-        `declares.piFencesItself`. Null refuses all that would go after them.
+        fenced or strict start goes after them too, except, on Linux and on a
+        Mac declaring `declares.piFencesItself`, pi or the agent program, told
+        its fence and fenced as it fences itself. Null refuses what goes after.
       '';
     };
   }

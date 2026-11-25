@@ -163,7 +163,8 @@ rec {
           Mac declaring piFencesItself, the kind fences only the commands
           it runs, as it fences them itself, while its own reads, writes
           and calls stand outside it. So a carry from a Mac that doesn't
-          declare it to Linux lands looser for the agent itself.
+          declare it, to Linux or to a Mac that does, lands looser for the
+          agent itself.
         '';
       };
     };
