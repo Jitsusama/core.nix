@@ -2,7 +2,9 @@
 //! bytes, sizes past a word or no stream fills, deltas writing past what
 //! they say, and the bases and trees kept between reads.
 
-use super::delta_tests::{Entries, appending, blob, low_seven, names, packed, read_each, within};
+use super::delta_tests::{
+    Entries, appending, blob, low_seven, named, names, packed, read_each, within,
+};
 use super::tests::{Removed, objects_over, read_from};
 use super::*;
 
@@ -37,15 +39,21 @@ fn noise(count: usize) -> Vec<u8> {
 #[test]
 fn sizes_and_distances_of_several_bytes_are_read_whole() {
     let names = names(2);
-    // 300 bytes, sized in two of a header's bytes and placed over by a
-    // delta whose sizes, copy and distance back take two bytes each.
-    let data = noise(300);
+    // 20,000 bytes, sized in three of a header's bytes and placed over by
+    // a delta whose sizes and distance back take three bytes each and its
+    // copy two.
+    let data = noise(20_000);
     let mut entries = Entries::new();
     entries.push(big_blob(&data));
-    entries.place_over(0, &[0xac, 0x02, 0xad, 0x02, 0xb0, 0x2c, 0x01, 0x01, b'!']);
+    entries.place_over(
+        0,
+        &[
+            0xa0, 0x9c, 0x01, 0xa1, 0x9c, 0x01, 0xb0, 0x20, 0x4e, 0x01, b'!',
+        ],
+    );
     assert!(
-        entries.starts[1] > 127,
-        "the base lies too near for its distance to take two bytes"
+        entries.starts[1] > 16_511,
+        "the base lies too near for its distance to take three bytes"
     );
     let folders = packed(&names, &[entries.entries]);
     let mut grown = data.clone();
@@ -60,10 +68,13 @@ fn sizes_and_distances_of_several_bytes_are_read_whole() {
 #[test]
 fn an_object_larger_than_what_inflates_at_once_is_read_whole() {
     let names = names(1);
-    let data: Vec<u8> = (0..200_000u32)
-        .map(|at| u8::try_from(at % 251).expect("below 251"))
-        .collect();
-    let folders = packed(&names, &[vec![big_blob(&data)]]);
+    let data = noise(200_000);
+    let entry = big_blob(&data);
+    assert!(
+        entry.len() > 2 << 16,
+        "the stream fits in fewer than three of the reads it's taken in"
+    );
+    let folders = packed(&names, &[vec![entry]]);
     assert_eq!(
         read_from(&folders.0[0], names[0]),
         Ok(Some(data)),
@@ -95,22 +106,31 @@ fn a_size_is_refused_before_its_bits_would_drop_and_a_large_one_takes_no_room() 
 }
 
 #[test]
-fn a_size_or_base_distance_past_64_bits_is_refused() {
+fn a_base_distance_is_refused_once_its_bits_would_pass_a_word() {
     let names = names(1);
-    // A blob whose size runs on past 64 bits, then a delta whose base
-    // lies further back than 64 bits can say.
-    let mut size = vec![0xbf];
-    size.extend([0xff; 10]);
-    size.push(1);
-    let mut distance = vec![0x64];
-    distance.extend([0xff; 10]);
-    distance.push(0x7f);
-    for (entry, refused) in [(size, "pack entry size"), (distance, "delta offset")] {
+    // Deltas whose distance takes ten bytes: the first nine saying
+    // 2^57 - 2, whose next byte fits a word, then 2^57 - 1, whose next
+    // doesn't, then one far past a word. A distance that fits a word yet
+    // lies before the pack is refused for where it lies instead.
+    let near = [0x80, 0xfe, 0xfe, 0xfe, 0xfe, 0xfe, 0xfe, 0xfe];
+    for (last, refused) in [
+        (vec![0xfe, 0x00], "delta base offset"),
+        (vec![0xff, 0x00], "delta offset"),
+        (
+            [0xff; 10].iter().copied().chain([0x7f]).collect(),
+            "delta offset",
+        ),
+    ] {
+        let mut entry = vec![0x64];
+        if last.len() == 2 {
+            entry.extend(near);
+        }
+        entry.extend(last);
         let folders = packed(&names, &[vec![entry]]);
         assert_eq!(
             read_from(&folders.0[0], names[0]),
             Err(refused.into()),
-            "an entry past 64 bits wasn't refused as its {refused}"
+            "a distance of ten bytes or more wasn't refused as its {refused}"
         );
     }
 }
@@ -186,10 +206,45 @@ fn bases_and_trees_are_kept_within_their_budgets_and_counted_as_replaced() {
     odb.keep_tree_within(&Oid([2; 20]), &tree(11), 10);
     let kept = (odb.trees.len(), odb.tree_bytes);
     odb.keep_tree_within(&Oid([3; 20]), &tree(5), 10);
+    odb.keep_tree_within(&Oid([4; 20]), &object(Kind::Blob, 1), 10);
     assert_eq!(
         (kept, (odb.trees.len(), odb.tree_bytes)),
         ((1, 6), (1, 5)),
-        "trees weren't kept within their budget"
+        "trees weren't kept within their budget, or something not a tree was"
+    );
+}
+
+#[test]
+fn a_tree_kept_is_read_from_memory_and_handed_to_a_delta_naming_it() {
+    let names = names(2);
+    // A tree, and a delta over it by name.
+    let mut entries = Entries::new();
+    entries.push({
+        let mut tree = vec![0x20 | 1];
+        tree.extend(miniz_oxide::deflate::compress_to_vec_zlib(b"t", 1));
+        tree
+    });
+    entries.push(named(names[0], &appending(1, b'b')));
+    let tree_end = entries.starts[1];
+    let folders = packed(&names, &[entries.entries]);
+    let mut odb = Odb::open(&folders.0[0]);
+    let mut read = |name| {
+        odb.read(&Oid(name))
+            .map(|object| object.map(|object| (object.kind, object.data)))
+            .map_err(|error| error.to_string())
+    };
+    let first = read(names[0]);
+    // The tree's stream spoilt in its pack, as the base's is above.
+    let pack = folders.0[0].join("pack/pack-00.pack");
+    let mut bytes = std::fs::read(&pack).expect("the pack reads");
+    let spoilt = usize::try_from(tree_end).expect("a small pack") + 12;
+    bytes[13..spoilt].fill(0xff);
+    std::fs::write(&pack, bytes).expect("the temp folder takes a file");
+    let tree = Ok(Some((Kind::Tree, b"t".to_vec())));
+    assert_eq!(
+        (first, read(names[0]), read(names[1])),
+        (tree.clone(), tree, Ok(Some((Kind::Tree, b"tb".to_vec())))),
+        "a tree kept was read again from its pack, or not handed to a delta naming it"
     );
 }
 

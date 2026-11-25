@@ -50,7 +50,7 @@ pub(super) fn appending(base_size: u8, c: u8) -> [u8; 6] {
 }
 
 /// A delta naming its base, `base`, as a pack's entry over `delta`.
-fn named(base: [u8; 20], delta: &[u8]) -> Vec<u8> {
+pub(super) fn named(base: [u8; 20], delta: &[u8]) -> Vec<u8> {
     let mut entry = vec![0x70 | u8::try_from(delta.len()).expect("a short delta")];
     entry.extend(base);
     entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(delta, 1));
@@ -232,7 +232,7 @@ fn a_delta_over_itself_leaves_a_sound_copy_in_another_pack_read() {
 }
 
 #[test]
-fn a_base_found_or_missed_for_one_copy_is_found_again_for_the_next() {
+fn a_base_found_or_missed_for_one_copy_answers_the_same_for_the_next() {
     let names = names(2);
     // names[0] twice a delta over names[1]: first where nothing holds
     // names[1], then where the first copy says its base is of 2 bytes,
@@ -256,7 +256,7 @@ fn a_base_found_or_missed_for_one_copy_is_found_again_for_the_next() {
         assert_eq!(
             read_from(&folders.0[0], names[0]),
             found,
-            "a base {what} for one copy wasn't searched for again for the next"
+            "a base {what} for one copy didn't answer the same for the next"
         );
     }
 }
@@ -492,14 +492,15 @@ fn a_base_spent_is_looked_up_once_a_find_however_many_copies_name_it() {
     .expect("the read ended");
     // Once a find, each name's copies take one lookup each and one more
     // to find there are no more; looked up again for each copy naming it,
-    // they'd take as many again for each of the packs.
+    // they'd take as many again for each of the packs. Fewer is no fault.
     assert_eq!(
-        (read, lookups),
-        (
-            Err("delta base cycle".into()),
-            (rungs - 1) * (packs + 1) + 2
-        ),
-        "a base spent was looked up again for a copy naming it"
+        read,
+        Err("delta base cycle".into()),
+        "a chain coming round wasn't refused for coming round"
+    );
+    assert!(
+        lookups <= (rungs - 1) * (packs + 1) + 2,
+        "a base spent was looked up again for a copy naming it: {lookups} lookups"
     );
 }
 

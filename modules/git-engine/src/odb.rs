@@ -273,13 +273,14 @@ impl Store {
 
 /// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
 ///
-/// What it inflates to is grown as the stream inflates rather than made
+/// What it inflates to is grown as the stream fills it rather than made
 /// at the size its header says, so a size no stream fills, however large,
-/// takes no more memory than the stream gives before it ends.
+/// takes at most twice what the stream gives before it ends, and memory
+/// that isn't there is refused rather than ending the program.
 fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
-    let mut out = Vec::with_capacity(size.min(TRUSTED_SIZE));
-    let mut window = vec![0; size.min(1 << 16)];
+    let mut out = Vec::new();
+    let mut filled = 0;
     let mut chunk = vec![0; size.saturating_add(64).clamp(256, 1 << 16)];
     loop {
         let got = file.read_at(&mut chunk, offset)?;
@@ -288,17 +289,21 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
         }
         let mut input = &chunk[..got];
         // Read on past the chunk's end too, while the stream still holds
-        // what it inflated past the window's.
+        // what it inflated past the room made for it.
         loop {
-            let room = (size - out.len()).min(window.len());
-            let result = inflate(&mut state, input, &mut window[..room], MZFlush::None);
-            out.extend_from_slice(&window[..result.bytes_written]);
+            if filled == out.len() {
+                grow_toward(&mut out, size)?;
+            }
+            let result = inflate(&mut state, input, &mut out[filled..], MZFlush::None);
+            filled += result.bytes_written;
             input = &input[result.bytes_consumed..];
             offset += result.bytes_consumed as u64;
+            // Room never grows past `size`, so once it's filled, `out`
+            // holds exactly the object.
             match result.status {
-                Ok(MZStatus::StreamEnd) if out.len() == size => return Ok(out),
+                Ok(MZStatus::StreamEnd) if filled == size => return Ok(out),
                 Ok(MZStatus::StreamEnd) => return Err(invalid("pack object's size")),
-                _ if out.len() == size => return Ok(out),
+                _ if filled == size => return Ok(out),
                 Ok(_) | Err(MZError::Buf) => {}
                 Err(_) => return Err(invalid("pack object's stream")),
             }
@@ -307,6 +312,18 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
             }
         }
     }
+}
+
+/// Makes more room at the end of `out`, which is to hold `size` bytes:
+/// twice what it holds, or 64 KiB more while it holds less, never past
+/// `size`, and refused should the memory not be there.
+fn grow_toward(out: &mut Vec<u8>, size: usize) -> io::Result<()> {
+    let len = out.len();
+    let to = size.min(len.saturating_mul(2).max(len.saturating_add(1 << 16)));
+    out.try_reserve_exact(to - len)
+        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "pack object's size"))?;
+    out.resize(to, 0);
+    Ok(())
 }
 
 /// Applies a delta to its base.
@@ -384,11 +401,14 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
 }
 
 /// Writes a delta's `piece` to `out`, refused should it run `out` past the
-/// size the delta says it makes.
+/// size the delta says it makes, or need memory that isn't there: copies
+/// from a small base can still claim far more than a pack holds.
 fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> {
     if piece.len() > size - out.len() {
         return Err(invalid("delta's result size"));
     }
+    out.try_reserve(piece.len())
+        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "delta's result size"))?;
     out.extend_from_slice(piece);
     Ok(())
 }
