@@ -79,14 +79,21 @@ let
       "the same flags in another order or count"
     else
       lib.concatStringsSep ", " shown + lib.optionalString (more > 0) ", and ${toString more} more";
-  whatDiffers =
-    lib.concatStringsSep ", " differs
-    + lib.optionalString (lib.elem "flags" differs && flagsSaid != "") " (${flagsSaid})";
+  flagsNote = lib.optionalString (lib.elem "flags" differs) " (${flagsSaid})";
+  whatDiffers = lib.concatStringsSep ", " differs + flagsNote;
+  # Each reason is told what to match for it, so a patched or re-sourced
+  # systemd isn't pointed at override arguments that set no patch or source.
+  kept = lib.filter (reason: reason != "flags") differs;
+  matching =
+    lib.optional (kept != [ ]) "its ${lib.concatStringsSep " and " kept}"
+    ++ lib.optional (lib.elem "flags" differs) (
+      "its flags, an override argument such as withTimedated showing as its flag"
+    );
   why =
     if canHave then
       "has none built alike, since the machine's differs in its ${whatDiffers}; build it on "
-      + "${stdenv.hostPlatform.system}, or match the builder's systemd where it differs, "
-      + "an override argument such as withTimedated showing as its flag, to hold it"
+      + "${stdenv.hostPlatform.system}, or match the builder's systemd in "
+      + "${lib.concatStringsSep ", and in " matching}, to hold it"
     else
       "can't build systemd at all; build it on ${stdenv.hostPlatform.system} to hold it";
   unheld =

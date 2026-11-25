@@ -832,7 +832,8 @@
       unheld = run: builtins.seq run.drvPath (!run.held && noHold run && saysSo run);
       saysSo = run: lib.hasInfix "isn't held" run.unheld;
       # The warning's advice is the one that holds it: a Mac is told only to
-      # build on the machine's platform, and one built otherwise what to drop.
+      # build on the machine's platform, and one built otherwise what to match,
+      # the override argument named only when its flags differ.
       advises = run: words: lib.all (word: lib.hasInfix word run.unheld) words;
       macAdvice =
         advises macRun [
@@ -840,14 +841,22 @@
           "can't build systemd at all; build it on aarch64-linux to hold it"
         ]
         && !advises macRun [ "match" ];
-      sourceAdvice = advises sourced [ "differs in its source" ];
-      patchAdvice = advises patchedCross [
-        "x86_64-linux, which builds it, can't run aarch64-linux's systemd"
-        "differs in its patches;"
-      ];
+      sourceAdvice =
+        advises sourced [
+          "differs in its source;"
+          "match the builder's systemd in its source, to hold it"
+        ]
+        && !advises sourced [ "withTimedated" ];
+      patchAdvice =
+        advises patchedCross [
+          "x86_64-linux, which builds it, can't run aarch64-linux's systemd"
+          "differs in its patches;"
+          "match the builder's systemd in its patches, to hold it"
+        ]
+        && !advises patchedCross [ "withTimedated" ];
       flagAdvice = advises flagged [
         "in its flags (-Dmode=developer);"
-        "match the builder's systemd where it differs"
+        "match the builder's systemd in its flags, an override argument"
       ];
       argAdvice = advises argued [
         "in its flags (-Dtimedated=false, no -Dtimedated=true);"
@@ -901,7 +910,7 @@
     assert lib.assertMsg macAdvice
       "a Mac's unheld systemd-run isn't told both why and to build on the machine's platform";
     assert lib.assertMsg sourceAdvice "a systemd-run of another source isn't told so";
-    assert lib.assertMsg flagAdvice "a systemd-run with its own flag isn't told which to drop";
+    assert lib.assertMsg flagAdvice "a systemd-run with its own flag isn't told which to match";
     assert lib.assertMsg argAdvice "a systemd-run with timedated off isn't told which flag differs";
     assert lib.assertMsg patchAdvice "a patched systemd-run isn't told its patches differ";
     assert lib.assertMsg (
