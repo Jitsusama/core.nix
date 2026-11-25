@@ -374,6 +374,26 @@ ShellRoot {
         expect("one in a terminal it can't reach is said, never a press that does nothing",
             root.unreached === "ELSETERM" && Niri.spawns.length === before + 1,
             `${root.unreached} ${Niri.spawned.join(" ")}`);
+        // Each Go To says whom it was asked for, and when, so its refusal can open the
+        // launcher to answer that press alone (Agents' refusedGoing).
+        expect("a Go To says whom it was asked for, just now",
+            Sessions.goneTo.address === "ELSETERM" && Date.now() - Sessions.goneTo.at < 5000,
+            JSON.stringify(Sessions.goneTo));
+        // Parked here, woken by Go To, it reopens by its wake, so what goTo can't open
+        // meanwhile is said while it wakes, which Agents leaves unsaid, and it went
+        // (#6519's second review).
+        const asleep = { address: "ASLEEPTERM", window: null, kitty: null, held: null,
+            here: true, presence: { session: "s-asleep-term", state: "parked" } };
+        root.wakingSaid = "-";
+        const sleptWent = Sessions.wakeToGo(asleep, asleep);
+        expect("one parked here, woken, went, its refusal said while it wakes",
+            sleptWent === true && root.unreached === "ASLEEPTERM"
+            && root.wakingSaid === "ASLEEPTERM" && Sessions.waking === "",
+            JSON.stringify([sleptWent, root.unreached, root.wakingSaid, Sessions.waking]));
+        root.wakingSaid = "-";
+        Sessions.goTo(asleep);
+        expect("and gone to with no wake, its refusal is said as one",
+            root.wakingSaid === "", root.wakingSaid);
         // A row's own Reopen for one no host serves yet, as just after a
         // crash, views it by its entry's words to wait for its host, once
         // while that window comes; one whose entry gives none is said.
@@ -2204,6 +2224,8 @@ ShellRoot {
     property string unhostedWhy: ""
     // The last that Go To couldn't open, in a terminal it can't reach.
     property string unreached: ""
+    // Whom Sessions said it was waking as Go To's refusal came.
+    property string wakingSaid: ""
     property bool steered: false
     // What the node said of waking the one parked elsewhere.
     property string strayed: ""
@@ -2233,6 +2255,7 @@ ShellRoot {
 
         function onUnopened(session) {
             root.unreached = session.address;
+            root.wakingSaid = Sessions.waking;
         }
 
         function onUnfenced(session) {

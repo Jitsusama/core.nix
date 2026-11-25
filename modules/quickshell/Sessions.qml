@@ -2664,6 +2664,7 @@ Singleton {
     // a link with the launcher shut was otherwise told to nobody (KP0L6A,
     // 2026-11-24 [00902e94]). A window raised, opened or still coming went.
     function goTo(session) {
+        root.goneTo = { address: String(session.address ?? ""), at: Date.now() };
         readKittyPid();
         if (session.presence?.hosted)
             raisedOwn(viewerOf(session.presence));
@@ -4229,8 +4230,19 @@ Singleton {
         const woke = Boolean(resting) && !wokenByViewing(resting);
         if (woke)
             wake(resting);
-        return goTo(session) || woke && resting.here !== false;
+        // A session woken here reopens by its wake, so what goTo can't open meanwhile is
+        // nothing refused, and isn't said as a press that did nothing (waking).
+        root.waking = woke && resting.here !== false ? String(session.address ?? "") : "";
+        const went = goTo(session);
+        const wakes = root.waking !== "";
+        root.waking = "";
+        return went || wakes;
     }
+    // The session a Go To is waking, while goTo runs for it, so its refusals go unsaid.
+    property string waking: ""
+    // The session Go To was last asked for, and when, so a refusal can tell one Joel just
+    // pressed for from one that came of no press, a walk's or a start's (Agents' refusedGoing).
+    property var goneTo: ({ address: "", at: 0 })
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.
     // A window only the windows daemon's index names, which niri, its list

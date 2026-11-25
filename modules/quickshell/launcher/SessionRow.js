@@ -316,3 +316,27 @@ function unsteered(launcher, said, refused, alert) {
         address: refused.address, name: refused.called });
     launcher?.tellOnOpen?.([[name, words, alert]]);
 }
+
+// How long after a Go To its refusal still answers that press: a session
+// elsewhere is refused once its node answers, in a few seconds.
+const PRESS_TELLS_MS = 15000;
+
+// How Agents' refusedGoing tells a Go To that couldn't go, by `going`,
+// Sessions' waking and goneTo: "unsaid" for one a Go To is waking, which
+// its wake reopens, so nothing was refused; "opens" for one Joel asked
+// Go To for moments ago, opening the launcher to say why, since every act
+// shuts it before it runs (KP0L6A, 2026-11-24 [00902e94]); else "held" in
+// the foot for his next opening, as a walk's, a kept view's or a start's
+// late refusal is, which came of no press just then and mustn't open the
+// launcher over his work.
+function refusalTold(address, going, now) {
+    const said = String(address ?? "");
+    if (said !== "" && going?.waking === said) {
+        return "unsaid";
+    }
+    const gone = going?.goneTo;
+    if (said !== "" && gone?.address === said && now - Number(gone.at) < PRESS_TELLS_MS) {
+        return "opens";
+    }
+    return "held";
+}

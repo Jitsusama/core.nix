@@ -847,13 +847,21 @@ Provider {
     // (Launcher.qml's toldHere), since every act shuts the launcher before
     // it runs, and a why held for its next opening was told to nobody
     // (KP0L6A, 2026-11-24 [00902e94]): a press that did nothing, unsaid.
-    // Not Provider's refused, which takes back a row by its key.
+    // Only a Go To asked for this session moments ago opens it; any other
+    // waits in the foot, and one a wake reopens is unsaid
+    // (SessionRow.refusalTold). Not Provider's refused, which takes back a
+    // row by its key.
     function refusedGoing(session, why) {
+        const told = SessionRow.refusalTold(session.address,
+            { waking: Sessions.waking, goneTo: Sessions.goneTo }, Date.now());
+        if (told === "unsaid")
+            return;
         const name = provider.footName(session);
         const said = provider.elsewhere(why, session);
         provider.refusedWhy = `${name}: ${said}`;
         provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
-        provider.launcher?.toldHere?.();
+        if (told === "opens")
+            provider.launcher?.toldHere?.();
     }
     // The last refusal said, as refusedGoing says it, so a Go To asked from
     // outside answers with the why it was given (goToFor), never one read

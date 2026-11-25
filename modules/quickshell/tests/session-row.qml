@@ -540,6 +540,32 @@ QtObject {
                 failures.push(`unsteered, ${what}: ${JSON.stringify(toldLauncher)}`);
         }
 
+        // A Go To's refusal opens the launcher only to answer Joel's press for
+        // that session moments ago; a walk's, a kept view's or a start's late
+        // one waits in the foot, and one a wake reopens is nothing refused
+        // (#6519's second review).
+        const now = 1800000000000;
+        const pressed = { address: "PARKED", at: now - 2000 };
+        const tellings = [
+            ["a Go To pressed for it moments ago opens", "PARKED",
+                { waking: "", goneTo: pressed }, "opens"],
+            ["one Go To is waking is unsaid", "PARKED",
+                { waking: "PARKED", goneTo: pressed }, "unsaid"],
+            ["a Go To pressed for another is held", "FARAWY",
+                { waking: "", goneTo: pressed }, "held"],
+            ["a Go To pressed long ago is held, as a start's late refusal", "PARKED",
+                { waking: "", goneTo: { address: "PARKED", at: now - 15000 } }, "held"],
+            ["no Go To yet is held, as a walk's", "PARKED",
+                { waking: "", goneTo: { address: "", at: 0 } }, "held"],
+            ["no address is never one pressed for", "",
+                { waking: "", goneTo: { address: "", at: now } }, "held"]
+        ];
+        for (const [what, address, going, want] of tellings) {
+            const told = SessionRow.refusalTold(address, going, now);
+            if (told !== want)
+                failures.push(`refusalTold, ${what}: "${told}", not "${want}"`);
+        }
+
         const names = [
             ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
             ["its quest's title with no row served", undefined, "Its Quest", "PARKED", "Its Quest"],
