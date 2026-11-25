@@ -2323,8 +2323,8 @@
     them, both those a fallen connection broke off and those the origin did, counts on each
     connection the requests pi gave up on and no answer read whole or broken off, tells one a
     fallen connection lost from a reset, the origin hearing a lost one once, says an origin out of
-    reach as a 502 or a 504 without queueing, doesn't ask for a connection that won't open on every
-    request, forgets a failure once the origin is back, sends pi direct with a 421 when it can't
+    reach as a 502 or a 504 without queueing, says an origin whose name can't be looked up as
+    that, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a 421 when it can't
     trust the origin, answers beside an answer longer than its idle time, leaves once idle even
     while refusing other hosts, held open by a kept connection or knocked on as it goes, finishes
     each answer it streams when stopped, sending what comes meanwhile direct with the 421 of one
