@@ -135,11 +135,11 @@ function fitFirst(at: Network): void {
 }
 
 // Where the room is too narrow for an eero with devices beside it, as on a
-// phone, each floor stacks; turning the phone draws the other way, fitted
-// afresh. What was drawn is the measure, so a redraw between turns counts.
+// phone, each floor stacks; a window narrowing past that, or widening back,
+// draws the other way. What was drawn is the measure, so a redraw between
+// resizes counts, and render fits afresh whichever drew it the other way.
 map.onResize(() => {
   if (drawn !== undefined && map.narrowerThan(ACROSS_LEAST) !== drawn.stacked) {
-    fitted = false;
     drawSoon();
   }
 });
@@ -164,7 +164,11 @@ function render(): void {
     return;
   }
   shape = study(network);
-  drawn = drawMap(draw, network, shape, { now: now(), stacked: map.narrowerThan(ACROSS_LEAST) });
+  const stacked = map.narrowerThan(ACROSS_LEAST);
+  if (drawn !== undefined && drawn.stacked !== stacked) {
+    fitted = false;
+  }
+  drawn = drawMap(draw, network, shape, { now: now(), stacked });
   map.shows(drawn);
   fitFirst(network);
   if (opened !== null && !shape.byId.has(opened)) {

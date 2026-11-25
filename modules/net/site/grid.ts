@@ -39,8 +39,9 @@ const ACROSS: Plan = { left: G.left, box: G.box, stacked: false };
 
 /**
  * Stacked, on a phone: the floors' names over their eeros, which leave room
- * at their left for three lanes of the links between them, and more where a
- * house needs them (map.ts's drawMap).
+ * at their left for three lanes of the links between them, a fourth by
+ * running them closer, and more where a house needs them (wires.ts's
+ * lanesWithin).
  */
 const STACKED: Plan = { left: 8, box: 40, stacked: true };
 

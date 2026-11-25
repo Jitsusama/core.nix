@@ -12,8 +12,9 @@ place on the mycelium map, say broken when net stops and live again, its
 devices read again, when it's back, say stale when the server goes and keep
 what it drew, draw every device and wire within a phone's width with its zoom
 buttons a finger's reach, stack a bigger house with switches and a full floor
-within a phone's width and a laptop's, draw the other way as a phone turns
-and back, keep to its budget,
+within a phone's width and a laptop's, draw the other way as a window narrows
+to a phone's and widens back, stack in a window just too narrow for the map
+across once its floors' names are counted, keep to its budget,
 and pass the web-design skill's page checks at a phone's width and a desk's in
 both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
@@ -256,7 +257,7 @@ def test_a_phone_sees_every_device_without_scrolling_sideways(
         opened.close()
 
 
-def test_turning_a_phone_draws_the_map_the_other_way(
+def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
     browser: Browser, network_served: Served
 ) -> None:
     root, _ = network_served
@@ -271,7 +272,7 @@ def test_turning_a_phone_draws_the_map_the_other_way(
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         every_device_drawn(page)
-        stands_within_the_room(page, "a turned phone")
+        stands_within_the_room(page, "a narrowed window")
         page.set_viewport_size({"width": desk[0], "height": desk[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
         page.wait_for_function(across, arg=KESTREL, timeout=PACE_MS)
@@ -279,8 +280,38 @@ def test_turning_a_phone_draws_the_map_the_other_way(
         opened.close()
 
 
+# The room across takes at the smallest zoom, in units (grid.ts's ACROSS_LEAST, and the same
+# less its floors' names' column), and that zoom (view.ts's ZOOMS[0]). A window whose map's room
+# falls between the two must stack, or the names' column is left out of the measure again.
+ACROSS_LEAST = 924
+ACROSS_UNNAMED = 884
+SMALLEST_ZOOM = 12 / 13
+# A narrow window with no panel beside the map, whose room falls between those two.
+JUST_SHORT = (864, 700)
+ROOM = """() => document.querySelector("#map-view").clientWidth"""
+
+
+def test_a_window_just_short_of_the_map_across_stacks_it(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", JUST_SHORT, "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_device_drawn(page)
+        room = page.evaluate(ROOM)
+        least, unnamed = ACROSS_LEAST * SMALLEST_ZOOM, ACROSS_UNNAMED * SMALLEST_ZOOM
+        assert unnamed <= room < least, f"the map's room is {room} px, not in [{unnamed}, {least})"
+        assert page.evaluate(DRAWN_ACROSS, KESTREL) is False, "the map was drawn across"
+        stands_within_the_room(page, f"a {JUST_SHORT[0]} px window")
+    finally:
+        opened.close()
+
+
 # A bigger house than net.json's: an attic eero, a switch on each of two floors, and the basement
-# full past one column, so stacked it takes four lanes of wires and across a second column.
+# full past one column, so stacked it takes four lanes of wires, run closer to keep the map's
+# width, and across a second column.
 ATTIC = "eero:3"
 SWITCHES = {"switch:1": ["eero:1", "modem"], "switch:2": ["eero:2", "eero:1", "modem"]}
 CROWD = [f"mac:00:00:5e:00:53:4{n}" for n in range(6)]

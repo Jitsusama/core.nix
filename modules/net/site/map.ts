@@ -25,7 +25,7 @@ import {
 import type { Channel, Device, Link, Network } from "./model.ts";
 import { endAt, type Floor, linkBetween, type Shape } from "./shape.ts";
 import { el, fitText, lookMark, text } from "./svg.ts";
-import { drawWires, type Looks, laneRoom, looksOf, type Wire } from "./wires.ts";
+import { drawWires, type Looks, lanesWithin, looksOf, type Wire } from "./wires.ts";
 import { ago, dbm, lasted, linkSpeed, plural, rate, roleWords, v4 } from "./words.ts";
 
 /** Where one device is drawn, and its group. */
@@ -426,15 +426,17 @@ function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawi
   const plan = stacked ? STACKED : ACROSS;
   let laid = layOut(draw, network, shape, { now, plan });
   // Stacked, every box sits at one left edge, so every wire up but the
-  // modem's cable runs in a lane left of it; a house with more than the plan
-  // leaves room for is laid out again with its boxes moved right to fit them.
-  const room = laneRoom(laid.pen.wires);
-  if (stacked && room > plan.box) {
-    laid = layOut(draw, network, shape, { now, plan: { ...plan, box: room } });
+  // modem's cable runs in a lane left of it. The lanes run closer to keep the
+  // map's width, and a house with more than even that leaves room for is laid
+  // out again with its boxes moved right to fit them.
+  const lanes = lanesWithin(laid.pen.wires, plan.box);
+  if (stacked && lanes.box > plan.box) {
+    laid = layOut(draw, network, shape, { now, plan: { ...plan, box: lanes.box } });
   }
   const { pen, marks, height } = laid;
   const { left, box } = pen.plan;
-  drawWires({ shape, looks: pen.looks, links: pen.links, at: pen.at }, pen.wires, box);
+  const wiring = { shape, looks: pen.looks, links: pen.links, at: pen.at };
+  drawWires(wiring, pen.wires, { box, step: lanes.step });
   const width = (stacked ? laid.width : Math.max(laid.width, G.narrowest)) + left;
   for (const rule of draw.querySelectorAll("[data-rule]")) {
     rule.setAttribute("x2", String(width - left));

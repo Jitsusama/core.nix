@@ -31,7 +31,8 @@ Nix builds, read in a headless browser through the sites' server beside a
 stand-in net holding `net.json` and a stand-in node holding `node.json`, as
 the records change, stop and come back, every device within a phone's width,
 a house with switches and a full floor stacked within a phone's width and a
-laptop's, drawn across again as the room grows, within its budget and passing the
-web-design skill's page checks.
+laptop's, stacked in a window just short of the room across takes, drawn across
+again as the room grows, within its budget and passing the web-design skill's
+page checks.
 
 [site]: ../../local-sites/site.nix

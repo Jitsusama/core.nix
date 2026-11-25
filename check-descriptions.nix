@@ -2608,7 +2608,8 @@
     every device and wire on its map within a phone's width with nothing to scroll sideways and
     each zoom button 44 px inside its set, a bigger house with two switches, a third eero and a
     full floor drawn the same way at a phone's width and a laptop's, the map drawn across on a
-    desk, stacked once the window turns to a phone's and across again once it turns back, a
+    desk, stacked once the window narrows to a phone's and across again once it widens back,
+    stacked in a window whose room falls short of across only once its floors' names count, a
     first visit within its budget and a second answered unchanged, the web-design skill's page
     checks passing at a phone's width and a desk's in both looks, and nothing logged but what a
     test causes
