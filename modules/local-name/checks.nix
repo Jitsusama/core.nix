@@ -105,9 +105,14 @@ let
   # nix-darwin makes it.
   written = namedMac.environment.launchDaemons.${label} or { };
   fromText = namedSystem.pkgs.writeText label written.text or "";
-  # A plist forced from another source, or none at all, is told apart from
-  # one that opens a socket, so the failure says which it is.
-  fromItsText = written ? text && "${written.source or ""}" == "${fromText}";
+  # A plist forced from another source or text, or none at all, is told
+  # apart from one that opens a socket, so the failure says which it is.
+  # Its text is held to what nix-darwin lowers the job's options to, so
+  # what launchd loads is the job held below, not text forced beside it.
+  fromItsText =
+    written ? text
+    && written.text == lib.generators.toPlist { escape = true; } job
+    && "${written.source or ""}" == "${fromText}";
   opensSocket =
     job.Sockets or null != null
     || lib.hasInfix "Sockets" written.text or ""
@@ -117,29 +122,34 @@ let
   # user or any key launchd reads beside these shows, not only those the
   # check thought of.
   held = removeAttrs (lib.filterAttrs (_: value: value != null) job) [ "Label" ];
+  # The Mac's own bash, by its store path, so a wrapper named bash that
+  # sets BASH_ENV or runs anything first isn't excused as the interpreter.
   jobHolds =
-    lib.hasSuffix "/bin/bash" (lib.head (held.ProgramArguments or [ "" ]))
-    &&
-      held == {
-        ProgramArguments = [
-          (lib.head held.ProgramArguments)
-          "${./keep.sh}"
-          "its-own-name"
-          "/var/db/local-name.last"
-        ];
-        EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
-        WatchPaths = [ "/Library/Preferences/SystemConfiguration/preferences.plist" ];
-        StartInterval = 60;
-        RunAtLoad = true;
-        StandardErrorPath = "/var/log/local-name.log";
-      };
+    held == {
+      ProgramArguments = [
+        (lib.getExe namedSystem.pkgs.bash)
+        "${./keep.sh}"
+        "its-own-name"
+        "/var/db/local-name.last"
+      ];
+      EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
+      WatchPaths = [ "/Library/Preferences/SystemConfiguration/preferences.plist" ];
+      StartInterval = 60;
+      RunAtLoad = true;
+      StandardErrorPath = "/var/log/local-name.log";
+    };
   # keep.sh, the one script the job runs, read for the ways a script could
-  # advertise the host: dns-sd, or turning Remote Login on.
+  # advertise the host: dns-sd; launchctl, which loads Remote Login's or
+  # Screen Sharing's job by its plist alone; and the sharing switches.
   keepSh = builtins.readFile ./keep.sh;
   advertising = lib.filter (word: lib.hasInfix word keepSh) [
     "dns-sd"
+    "launchctl"
     "setremotelogin"
     "com.openssh.sshd"
+    "ssh.plist"
+    "screensharing"
+    "sharing -a"
   ];
   yesNo = holding: if holding then "yes" else "no";
   # Only local-name's own plist, on a Mac with a local name, and nothing on
@@ -159,14 +169,16 @@ in
   # and saying what it does in its log, and given nothing else; a Mac with a
   # host name but no local name runs nothing; and the module adds or changes
   # no other launchd job, nix-darwin's or the account's, nor Remote Login or
-  # an activation script, the plist that job writes is its own text and
-  # opens no socket, and keep.sh names neither dns-sd nor Remote Login's
-  # switches. It doesn't see another module's jobs, a deliberately disguised
-  # spelling in keep.sh, or a line added to nix-darwin's own launchd
-  # activation or to home-manager's.
+  # an activation script, the plist that job writes is what its options
+  # lower to and opens no socket, and keep.sh names neither dns-sd,
+  # launchctl nor a sharing switch. It doesn't see another module's jobs, a
+  # deliberately disguised spelling in keep.sh, or a line added to
+  # nix-darwin's own launchd activation or to home-manager's. Its message
+  # quotes the job's store paths as text alone, so a red check on Linux
+  # needn't build the Mac's packages it names to say so.
   local-name-is-kept-by-a-job =
     holds "local-name-is-kept-by-a-job"
-      "A Mac's local name isn't kept by a root job running keep.sh under bash with its local name from its start, watching its network settings, finding its tools only in macOS's own folders, saying what it does in its log and given nothing else, or a Mac with no local name runs one, or the module adds or changes another launchd job, Remote Login or an activation script, writes its plist from elsewhere, opens a socket or names dns-sd or Remote Login in keep.sh, any of which could advertise for the host. What it adds or changes with a local name: ${lib.concatStringsSep ", " changedNamed}; without one: ${lib.concatStringsSep ", " changedUnnamed}. Its job is as held: ${yesNo jobHolds}, given ${builtins.toJSON held}. Its plist is its own text: ${yesNo fromItsText}. It opens a socket: ${yesNo opensSocket}. keep.sh names: ${lib.concatStringsSep ", " advertising}."
+      "A Mac's local name isn't kept by a root job running keep.sh under bash with its local name from its start, watching its network settings, finding its tools only in macOS's own folders, saying what it does in its log and given nothing else, or a Mac with no local name runs one, or the module adds or changes another launchd job, Remote Login or an activation script, writes its plist from elsewhere or from other text, opens a socket or names dns-sd, launchctl or a sharing switch in keep.sh, any of which could advertise for the host. What it adds or changes with a local name: ${lib.concatStringsSep ", " changedNamed}; without one: ${lib.concatStringsSep ", " changedUnnamed}. Its job is as held: ${yesNo jobHolds}, given ${builtins.unsafeDiscardStringContext (builtins.toJSON held)}. Its plist is its options' own text: ${yesNo fromItsText}. It opens a socket: ${yesNo opensSocket}. keep.sh names: ${lib.concatStringsSep ", " advertising}."
       (!mayAdvertise && jobHolds);
 }
 # What follows runs the job's script under Linux's bash, with a stand-in
