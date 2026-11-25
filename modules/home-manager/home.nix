@@ -42,8 +42,8 @@ in
     description = ''
       Services a timer runs that the account doesn't write, such as a
       package's own unit, by name without .service. The switch's setting
-      leaves them out, so it never hides the unit the timer runs, and a
-      switch restarts them as before.
+      and the hour-long bound on a run leave them out, so neither hides the unit the
+      timer runs.
     '';
   };
 
@@ -59,17 +59,22 @@ in
     # five-minute run, under load, outlasted the five minutes the account's
     # setup is given and went back to the system before it (2026-11-25). A
     # service that must restart at a switch says so with its own
-    # X-SwitchMethod. A switch no longer ends a run that hangs, and most
-    # timed services set no TimeoutStartSec, so such a run holds its timer
-    # until it ends or the account logs out.
+    # X-SwitchMethod.
+    #
+    # A switch no longer ends a run that hangs, and a timer starts no run
+    # while its last is still going, so each timed run is given an hour to
+    # end unless its service says its own TimeoutStartSec. The longest timed
+    # run in a day of a loaded machine's journal took 28 minutes, a
+    # ten-minute timer's, so an hour ends only a run that has stopped.
     systemd.user.services = lib.genAttrs timed (_: {
       Unit.X-SwitchMethod = lib.mkDefault "keep-old";
+      Service.TimeoutStartSec = lib.mkDefault "1h";
     });
 
     assertions = [
       {
         assertion = bare == [ ];
-        message = "These timers run a service the account doesn't write, which the switch's setting would hide: ${lib.concatStringsSep ", " bare}. Write it, or name it in jitsusama.timedRuns.unwritten.";
+        message = "A timer runs each of these services, which the account doesn't write, so the switch's setting would hide them: ${lib.concatStringsSep ", " bare}. Write each, or name it in jitsusama.timedRuns.unwritten.";
       }
     ];
   };

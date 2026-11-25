@@ -56,7 +56,21 @@ let
     systemd.user.timers."probe@one".Timer.OnCalendar = "daily";
     systemd.user.services."probe@".Service.ExecStart = "/run/current-system/sw/bin/true";
   };
+  bound = home: name: (home.systemd.user.services.${name} or { }).Service.TimeoutStartSec or null;
+  # A timer whose service the account writes, saying no bound of its own,
+  # and one whose service says its own.
+  written = account {
+    systemd.user.timers.bare-probe.Timer.OnCalendar = "daily";
+    systemd.user.services.bare-probe.Service.ExecStart = "/run/current-system/sw/bin/true";
+    systemd.user.timers.own-probe.Timer.OnCalendar = "daily";
+    systemd.user.services.own-probe.Service = {
+      ExecStart = "/run/current-system/sw/bin/true";
+      TimeoutStartSec = "3h";
+    };
+  };
   holdsFor = {
+    "a timed run with no bound of its own ends after an hour" = bound written "bare-probe" == "1h";
+    "a timed service's own bound wins" = bound written "own-probe" == "3h";
     "a timer whose service nothing writes is refused, by name" =
       strayRefused != null && lib.hasInfix "stray-probe" strayRefused.message;
     "a service named in jitsusama.timedRuns.unwritten is left out" =
