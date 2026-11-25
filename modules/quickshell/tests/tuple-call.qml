@@ -447,14 +447,23 @@ ShellRoot {
 
     function inHisRoom() {
         root.says(null);
-        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.his);
+        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.keptHis);
+    }
+
+    // The stale stop and picker are refused before what's told is read, so
+    // nothing told after reads as their refusals ignored, not yet given.
+    function keptHis() {
+        root.step("asked's stale stop and picker refused",
+            () => /^answered webcam stop 4$/m.test(root.asked)
+                && /^answered webcam start 3$/m.test(root.asked),
+            root.his);
     }
 
     function his() {
         const kept = Tuple.recent[0];
         expect("kept as Joel's", kept.since === root.inRoom && kept.caller === "",
             JSON.stringify(Tuple.recent));
-        // Tuple refused the stale stop and picker long since.
+        // Tuple refused the stale stop and picker, as the step before saw.
         expect("a stop refused once the camera was said off told nothing",
             root.timesAsked("webcam stop") === 4
             && root.noticesSaying("may still be in the call") === 2, root.told);
