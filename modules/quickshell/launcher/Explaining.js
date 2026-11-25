@@ -1,4 +1,5 @@
 .pragma library
+.import "Address.js" as Address
 .import "OnSelection.js" as OnSelection
 
 // Explain It, the act beside Talk and Go To on a row a session is behind
@@ -17,8 +18,8 @@
 // short, and the question asks the model to name no ids either.
 //
 // Only that one question is asked, of the address alone, as the notices
-// daemon and mycelium-link read one: capitals and digits, never an option.
-const ADDRESS = /^[A-Z0-9]{1,12}$/u;
+// daemon and mycelium-link read one: capitals and digits, never an option
+// (Address.js).
 const REALM = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const FACTS = "{facts}";
 const ACTS = "{acts}";
@@ -36,7 +37,7 @@ const FRESH = 600_000;
 // null when either isn't one.
 function command(realm, address) {
     const named = String(address ?? "").toUpperCase();
-    return REALM.test(String(realm ?? "")) && ADDRESS.test(named)
+    return REALM.test(String(realm ?? "")) && Address.shaped(named)
         ? ["mycelium", "--realm", String(realm), "cells", named, "-o", "json"]
         : null;
 }

@@ -4995,6 +4995,11 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
+  the-launcher-reads-the-address-cases = ''
+    the launcher's one copy of a mesh address's shape, which Start New Work and Explain It read,
+    says of each case in the mycelium map's shared address cases what the case says, the cases
+    read as their README says, a line or an escape written any other way refused
+  '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
     on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and how many letters its row's name

@@ -35,10 +35,14 @@ hold a tab, a line break, a backslash (`\u{5C}`) or a space at its end where
 it can be seen. Any other backslash, or a carriage return anywhere, fails
 each test reading it, and each reader has a case seeing it refuse them.
 
-Three copies of the rule read it in their tests, so none drifts from the
+Four copies of the rule read it in their tests, so none drifts from the
 others unseen: the map's `isAddress` (`../sprout.ts`), the notices daemon's
-`address_shaped` (`modules/notices/src/notice.rs`) and mycelium-link's
-`addressed` (`modules/quickshell/mycelium-link/src/main.rs`). The two Rust
+`address_shaped` (`modules/notices/src/notice.rs`), mycelium-link's
+`addressed` (`modules/quickshell/mycelium-link/src/main.rs`) and the
+launcher's `shaped` (`modules/quickshell/launcher/Address.js`), which Start
+New Work and Explain It read, Explain It upper-casing first. The launcher's
+reader is its own, in `modules/quickshell/tests/address.qml`, since Qt's
+engine takes in no TypeScript. The two Rust
 copies share one reader of it, `addresses.rs` beside it, which their tests
 take in with `include!`. It holds the bare rule alone, never the `@machine`
 and `#anchor` a whole cell link adds.
@@ -46,10 +50,7 @@ and `#anchor` a whole cell link adds.
 Other copies don't read it yet. A grep under `modules/` for the `[A-Z0-9]`
 patterns and `is_ascii_uppercase` found these, so there may be more:
 
-- The same rule: the sites' kit (`modules/local-sites/kit/cell.ts`), and the
-  launcher's Start New Work (`modules/quickshell/launcher/Sprouting.js`) and
-  Explain It (`modules/quickshell/launcher/Explaining.js`, which upper-cases
-  first).
+- The same rule: the sites' kit (`modules/local-sites/kit/cell.ts`).
 - Looser, any length: For You's reader of the notices daemon's cell links
   (`modules/quickshell/launcher/ForYouCells.js`, which takes either case and
   upper-cases it), session rows (`modules/quickshell/launcher/SessionRow.js`),
@@ -73,5 +74,7 @@ builds this whole folder and runs these tests, on any machine with local
 sites in a realm. So editing the file, its notes included, rebuilds all
 three, and the next switch restarts the notices daemon, which is safe since
 the bus holds notices meanwhile. A bad line fails all three, so those
-machines' switches fail until it is reverted. The notes kept in this README
-spare the two Rust packages a rebuild, though not the map site.
+machines' switches fail until it is reverted. The launcher's check
+(`the-launcher-reads-the-address-cases`) reads it too, and fails with them,
+though no switch builds it. The notes kept in this README spare the two Rust
+packages a rebuild, though not the map site.

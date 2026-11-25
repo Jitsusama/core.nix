@@ -48,6 +48,8 @@
   "launcher/Moment.js"
   "launcher/NowDrawers.js"
   "launcher/Ago.js"
+  # A mesh address's shape, read by Start New Work and Explain It.
+  "launcher/Address.js"
   "launcher/Colours.js"
   "launcher/Asking.js"
   "launcher/Catalogue.js"
