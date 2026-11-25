@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use pineapple::pause::Plan;
-use pineapple::pause::carry::{AGAIN_MS, Carried, Carrier, Gift, script, taken_away};
+use pineapple::pause::carry::{AGAIN_MS, Carried, Carrier, Gift, script, taken_away, unreached};
 use serde_json::{Value, json};
 
 use super::{FORKS, Machine, asked_with, json, machine, plan, scratch};
@@ -196,6 +196,11 @@ fn a_machine_that_cant_take_a_stop_is_tried_again_after_a_minute() {
         }],
         "the Mac's refusal is said, and it isn't asked again for the other stop"
     );
+    assert_eq!(
+        unreached(&state, "slack-C1-1.000000"),
+        ["mac"],
+        "the stop names the machine that couldn't take it, for Joel's row"
+    );
     let early = carry(&mut carrier, &state, AGAIN_MS - 1, &mut here);
     assert!(
         early.is_empty(),
@@ -212,6 +217,10 @@ fn a_machine_that_cant_take_a_stop_is_tried_again_after_a_minute() {
             gave("slack-C2-2.000000", "mac", Gift::Stop),
         ],
         "after a minute it's tried again, and takes both"
+    );
+    assert!(
+        unreached(&state, "slack-C1-1.000000").is_empty(),
+        "and names it no more once it has taken it"
     );
 }
 

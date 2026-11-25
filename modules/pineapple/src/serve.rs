@@ -334,7 +334,8 @@ fn pressed(
 }
 
 /// What's kept, by each file's name, size and time, so a change to any
-/// of them is seen.
+/// of them is seen: what each other machine was given of a stop too, so
+/// a row names one that couldn't take it as soon as it's known.
 fn mark(state: &Path) -> Vec<(String, u64, u128)> {
     let one = |path: &Path| {
         let meta = fs::metadata(path).ok();
@@ -349,12 +350,14 @@ fn mark(state: &Path) -> Vec<(String, u64, u128)> {
         .iter()
         .map(|name| one(&state.join(name)))
         .collect();
-    let stops = fs::read_dir(state.join("stops"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| one(&entry.path()));
-    marked.extend(stops);
+    for folder in ["stops", pause::carry::CARRIED] {
+        let files = fs::read_dir(state.join(folder))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| one(&entry.path()));
+        marked.extend(files);
+    }
     marked.sort();
     marked
 }

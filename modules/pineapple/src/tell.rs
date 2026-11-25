@@ -22,7 +22,10 @@
 //! before either: each undoes someone's safe word, which Joel counts as
 //! of significant consequence, while a stop or a dismissal acts at once.
 //! A stop also says how many sessions it parked, as the harness writes
-//! them to parked.jsonl, so For You weighs it by the work waiting on it.
+//! them to parked.jsonl, so For You weighs it by the work waiting on it,
+//! and names each other machine that couldn't take it when last given it
+//! (src/pause/carry.rs), whose agents may not have stopped, until each
+//! has.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -30,6 +33,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::pause::carry;
 use crate::resume::{self, Standing};
 use crate::vocabulary::Words;
 
@@ -51,18 +55,31 @@ pub struct Kept {
     pub acted: Vec<Value>,
     /// Every session a live stop parked, as the harness wrote it.
     pub parked: Vec<Value>,
+    /// Each other machine that couldn't take a stop when last given it,
+    /// by the stop's id.
+    pub unreached: BTreeMap<String, Vec<String>>,
 }
 
 /// What's kept under the state folder `state`: stops/, decisions.jsonl,
-/// acted.jsonl and parked.jsonl; a torn line is skipped, as everywhere
-/// else.
+/// acted.jsonl, parked.jsonl and what each stop's machines were given
+/// under carried/; a torn line is skipped, as everywhere else.
 #[must_use]
 pub fn kept(state: &Path) -> Kept {
+    let stops = resume::standing(&state.join("stops"));
+    let unreached = stops
+        .iter()
+        .filter_map(|stop| {
+            let name = stop.file.file_stem()?.to_string_lossy().into_owned();
+            let machines = carry::unreached(state, &name);
+            (!machines.is_empty()).then(|| (stop.id.clone(), machines))
+        })
+        .collect();
     Kept {
-        stops: resume::standing(&state.join("stops")),
+        stops,
         decisions: lines(&state.join("decisions.jsonl")),
         acted: lines(&state.join("acted.jsonl")),
         parked: lines(&state.join("parked.jsonl")),
+        unreached,
     }
 }
 
@@ -144,7 +161,7 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
     let by_joel = record["by_joel"] == true;
     let fell_back = record["fell_back"] == true;
     let who = who(by_joel, words);
-    let title = sentence(&if everything && fell_back {
+    let mut title = sentence(&if everything && fell_back {
         words.fill("stoppedAll", &[("who", &who)])
     } else {
         words.fill(
@@ -152,6 +169,10 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
             &[("reach", &said_reaches(&reaches, words)), ("who", &who)],
         )
     });
+    let unreached = kept.unreached.get(&stop.id).cloned().unwrap_or_default();
+    if !unreached.is_empty() {
+        title.push_str(&words.fill("unreached", &[("machines", &unreached.join(", "))]));
+    }
     let heard_at = record["heard_at"].as_u64().unwrap_or(0);
     // Said again in its thread since, so Joel's row counts the repeats
     // nobody was answered for.
@@ -188,6 +209,7 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
         "fell_back": fell_back,
         "count": repeats + 1,
         "parked": parked(&stop.id, kept),
+        "unreached": unreached,
         "shadow": record["shadow"] != false,
         "acts": acts,
     })
@@ -332,6 +354,7 @@ mod tests {
             ("someone", "someone"),
             ("stopped", "{who} stopped agents on {reach}"),
             ("stoppedAll", "{who} stopped all agents"),
+            ("unreached", ", not yet on {machines}"),
             ("asked", "{who} asked for a stop"),
             ("joke", "{who} joked, on {reach}"),
             ("noTag", "{who} didn't tag you"),
@@ -388,6 +411,7 @@ mod tests {
                 json!({"stop": "slack:C1:1.0", "session": "s2"}),
                 json!({"stop": "slack:C9:9.0", "session": "s3"}),
             ],
+            ..Kept::default()
         };
         let rows = rows(&kept, 30, &words());
         assert_eq!(rows.len(), 1, "one row: the repeat isn't a stop of its own");
@@ -417,6 +441,29 @@ mod tests {
             "said as all, since nothing narrower was named"
         );
         assert_eq!(verbs(row), ["resume"], "nothing to widen to");
+    }
+
+    #[test]
+    fn a_stop_names_each_machine_that_couldnt_take_it() {
+        let mut kept = Kept {
+            stops: vec![standing("s", &["pr:example/shop#12"], false)],
+            ..Kept::default()
+        };
+        kept.unreached
+            .insert("s".to_owned(), vec!["far".to_owned(), "farther".to_owned()]);
+        let row = &rows(&kept, 30, &words())[0];
+        assert_eq!(
+            row["title"],
+            "Someone stopped agents on pull request example/shop#12, not yet on far, farther",
+            "Joel is told his agents there may not have stopped"
+        );
+        assert_eq!(row["unreached"], json!(["far", "farther"]), "each by name");
+        kept.unreached.clear();
+        let row = &rows(&kept, 30, &words())[0];
+        assert_eq!(
+            row["title"], "Someone stopped agents on pull request example/shop#12",
+            "and no longer once each has taken it"
+        );
     }
 
     #[test]

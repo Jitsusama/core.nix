@@ -408,6 +408,21 @@ fn given(state: &Path, name: &str) -> Vec<(Reached, Value)> {
         .collect()
 }
 
+/// Each machine that couldn't take the stop kept here under `name` when
+/// last given it, by name, so Joel's row can say his agents there may not
+/// have stopped; none once each has taken it.
+#[must_use]
+pub fn unreached(state: &Path, name: &str) -> Vec<String> {
+    let mut machines: Vec<String> = given(state, name)
+        .into_iter()
+        .filter(|(_, holds)| holds.is_null())
+        .map(|(reached, _)| reached.machine)
+        .collect();
+    machines.sort();
+    machines.dedup();
+    machines
+}
+
 /// Notes what each machine was given of the stop `name`, written whole
 /// and renamed into place.
 fn keep_given(state: &Path, name: &str, given: &[(Reached, Value)]) -> io::Result<()> {
