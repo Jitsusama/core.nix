@@ -47,8 +47,10 @@ HANDLER = re.compile(r"\bfunction onUnhosted\(\s*\w+\s*,\s*(\w+)\s*\)[^{]*\{")
 # A string in double quotes, as each why and key is said, "" too, so the
 # quote that closes one is never read as opening the next.
 WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
-# SessionRow.js's list of the whys said plainly, up to its closing bracket.
-VIEWED = re.compile(r"\bconst VIEWED_WHYS = \[([^\]]*)\]")
+# SessionRow.js's tone for each why, up to its closing brace.
+TONES = re.compile(r"\bconst WHY_TONES = \{([^}]*)\}")
+# One why's bare name and its tone there, up to its comma or the end.
+TONE = re.compile(r'\s*(\w+)\s*:\s*"(plain|alert)"\s*(?:,|\Z)')
 OPENS = "([{"
 CLOSES = ")]}"
 QUOTES = "\"'`"
@@ -282,10 +284,26 @@ def passes_on(source: str) -> bool:
     return any(shells(held, at, first) for at, first in firsts(source))
 
 
-def viewed(rows: str) -> list[str] | None:
-    """Give the whys SessionRow.js's VIEWED_WHYS names, or None where it has no such list."""
-    found = VIEWED.search(rows)
-    return None if found is None else WORD.findall(found.group(1))
+def tones(rows: str) -> dict[str, str] | None:
+    """Give the tone SessionRow.js's WHY_TONES gives each why, or None where it can't be read.
+
+    Only a why's bare name and "plain" or "alert" may stand there, each
+    once, comma after comma, so an entry written otherwise makes the whole
+    unread rather than silently none of the whys.
+    """
+    found = TONES.search(rows)
+    if found is None:
+        return None
+    body = found.group(1)
+    toned: dict[str, str] = {}
+    at = 0
+    while body[at:].strip():
+        one = TONE.match(body, at)
+        if one is None or one.group(1) in toned:
+            return None
+        toned[one.group(1)] = one.group(2)
+        at = one.end()
+    return toned
 
 
 def said(vocabulary: object) -> dict[str, object]:
@@ -338,6 +356,11 @@ def refuses_what_it_should() -> list[str]:
             whys('unhosted(said, named === "x" ? "a" : "b");'),
             {"a", "b"},
             "a word a choice is made by, read as a why",
+        ),
+        (
+            whys('unhosted(told, same && told.at ? "a" : same ? "b" : told.at ? "c" : "d");'),
+            {"a", "b", "c", "d"},
+            "a why given as a choice of four, nested",
         ),
         (
             keys('provider.elsewhere("unopened", session), Theme.alert]]);'),
@@ -403,9 +426,22 @@ def refuses_what_it_should() -> list[str]:
             "a body never closed, as a quote in a regex leaves it, read to the file's end",
         ),
         (
-            viewed('const VIEWED_WHYS = ["opening",\n    "cameAfter"];'),
-            ["opening", "cameAfter"],
-            "the whys said plainly, wrapped onto a next line",
+            passes_on(
+                "function onUnhosted(session, why) { tell(/'/); }\n// it's past it\n"
+                "elsewhere(why, session); }"
+            ),
+            False,
+            "a regex in the handler, whose quote one after it closes, read as widening it",
+        ),
+        (
+            tones('const WHY_TONES = { opening: "plain",\n    disowned: "alert" };'),
+            {"opening": "plain", "disowned": "alert"},
+            "the tones, wrapped onto a next line",
+        ),
+        (
+            tones("const WHY_TONES = { opening: 'plain', disowned: \"alert\" };"),
+            None,
+            "a tone it can't read, taken as none rather than refused",
         ),
         (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
@@ -414,6 +450,26 @@ def refuses_what_it_should() -> list[str]:
         ),
     ]
     return [rule for given, wanted, rule in held if given != wanted]
+
+
+def toned_wrong(name: str, rows: str, given: set[str]) -> bool:
+    """Say each why the shell gives with no tone in WHY_TONES, and each toned it doesn't give.
+
+    Either way a colour goes unchosen, so a why added or renamed in the
+    shell fails until it's given its tone. True where any is, or where
+    WHY_TONES can't be read.
+    """
+    toned = tones(rows)
+    if toned is None:
+        print(f"foot-words: {name} has no WHY_TONES it can read", file=sys.stderr)
+        return True
+    untoned = sorted(given - toned.keys())
+    for why in untoned:
+        print(f"foot-words: {why} has no tone in WHY_TONES, its colour unchosen", file=sys.stderr)
+    ungiven = sorted(toned.keys() - given)
+    for why in ungiven:
+        print(f"foot-words: {why} has a tone but is no why the shell gives", file=sys.stderr)
+    return bool(untoned or ungiven)
 
 
 def main(arguments: list[str]) -> int:
@@ -449,14 +505,9 @@ def main(arguments: list[str]) -> int:
     missing = unworded(given | asked, said(vocabulary))
     for key in missing:
         print(f"foot-words: {key} has no words in agents:machine's said", file=sys.stderr)
-    plain = viewed(Path(arguments[3]).read_text(encoding="utf-8"))
-    if plain is None:
-        print(f"foot-words: {arguments[3]} has no VIEWED_WHYS to read", file=sys.stderr)
-    ungiven = sorted(set(plain or []) - given)
-    for why in ungiven:
-        print(f"foot-words: {why} is said plainly but no why the shell gives", file=sys.stderr)
+    mistoned = toned_wrong(arguments[3], Path(arguments[3]).read_text(encoding="utf-8"), given)
     unheld = let_through or missing or named or unasked or not passed or not given
-    return 1 if unheld or plain is None or ungiven else 0
+    return 1 if unheld or mistoned else 0
 
 
 if __name__ == "__main__":
