@@ -1,3 +1,6 @@
+//! The sign-in's tests, beside it: the keyring's program and the file,
+//! the rest after a run-over or a lock, and the sign-in that stands.
+
 use std::cell::Cell;
 
 use super::*;
