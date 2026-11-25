@@ -312,12 +312,12 @@ def dependencies(manifest: Path) -> set[str]:
 
 def source(manifest: Path) -> str:
     """Give a crate's own code, without its tests, which may spell what they expect."""
-    parts = []
-    for path in sorted((manifest.parent / "src").rglob("*.rs")):
-        if path.name == "tests.rs" or "tests" in path.relative_to(manifest.parent).parts:
-            continue
-        parts.append(TESTS.split(path.read_text(), maxsplit=1)[0])
-    return "\n".join(parts)
+    src = manifest.parent / "src"
+    return "\n".join(
+        TESTS.split(path.read_text(), maxsplit=1)[0]
+        for path in sorted(src.rglob("*.rs"))
+        if path.stem.split("_")[-1] != "tests" and "tests" not in path.relative_to(src).parts
+    )
 
 
 def ran(program: str, *args: str) -> subprocess.CompletedProcess[str] | None:
