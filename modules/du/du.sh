@@ -21,8 +21,11 @@
 # The home folder guarded is the account's, as its configuration names it,
 # and the one HOME names when that's elsewhere, each as named and by its
 # real path. A guarded folder reached through a link in a start's path is
-# resolved by bash, which looks inside it once. Another du ahead of this one
-# on PATH, as a dev shell's is, isn't reached.
+# resolved by bash, which looks inside it once; a file is judged by its
+# folder's real path. A start that is a link to a file, or a folder that
+# can't be entered, can't be judged, so it's left out and said apart.
+# Another du ahead of this one on PATH, as a dev shell's is, isn't reached,
+# and folders outside the home folder, as on /Volumes, aren't guarded.
 # usage: du.sh <du> <ignore file> <data volume> <home> [du's arguments...]
 set -euo pipefail
 
@@ -51,7 +54,8 @@ EXAMPLES
   du -sh ~/*
 
 EXIT
-  du's own, or 1 when anything was left out
+  du's own, or 1 when anything was left out or
+  a link not followed
 EOF
   exit 0
 fi
@@ -127,15 +131,18 @@ here=""
 if [ -n "${origin}" ] && cd -- "${origin}" 2>/dev/null; then
   here=yes
 fi
-# A folder's real path, as du opens it, never one CDPATH names instead;
-# empty when it can't be reached.
+# A folder's real path, as du opens it; empty when it can't be reached. A
+# relative path is gone to from `./`, so cd never takes one CDPATH names
+# instead, nor the last folder, which it reads `-` as.
 real() {
+  local to=$1
+  [[ ${to} == /* ]] || to=./${to}
   real=""
   if [ -z "${here}" ]; then
-    real=$(CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P) || real=""
+    real=$(cd -P -- "${to}" 2>/dev/null && pwd -P) || real=""
     return 0
   fi
-  if CDPATH='' cd -P -- "$1" 2>/dev/null; then
+  if cd -P -- "${to}" 2>/dev/null; then
     real=${PWD}
   fi
   if ! cd -- "${origin}" 2>/dev/null; then
@@ -147,7 +154,8 @@ real() {
 
 # Whether `plain` is a guarded folder or lies in one, as `inside`. A Mac's
 # disk takes a name in any case, and cd keeps the case typed, so paths are
-# matched whatever their case.
+# matched in bash's lowercase, which folds ASCII and most letters, not all
+# APFS folds.
 judge() {
   local path=${plain,,} target
   for target in ${lowered[@]+"${lowered[@]}"}; do
@@ -209,6 +217,9 @@ while IFS= read -r line || [ -n "${line}" ]; do
   [[ ${line} =~ ^/[^*?![]+/$ ]] || continue
   line=${line#/}
   for home in ${homes[@]+"${homes[@]}"}; do
+    # Only a folder there, so a project's own folder of that name isn't
+    # left out for one this home doesn't have.
+    [ -d "${home}/${line%/}" ] || continue
     targets+=("${home}/${line%/}")
     if [ -d "${data}${home}" ]; then
       targets+=("${data}${home}/${line%/}")
@@ -225,6 +236,7 @@ declare -A leaving=()
 names=()
 kept=()
 left=()
+unjudged=()
 leave() {
   local name=${1##*/}
   [ -n "${leaving[${name}]-}" ] && return
@@ -243,9 +255,27 @@ for path in "${starts[@]}"; do
     left+=("${path}")
     continue
   fi
+  # Then by its real path: a folder's own, and a file's by its folder's
+  # with its name. A folder that can't be entered, or a link that isn't a
+  # folder's, can't be judged, so it's left out too, said apart; one that
+  # isn't there is du's to say.
   real=""
+  judged=yes
   if [ -d "${path}" ]; then
     real "${path}"
+    [ -n "${real}" ] || judged=""
+  elif [ -L "${path}" ]; then
+    judged=""
+  elif [ -e "${path}" ]; then
+    folder=.
+    [[ ${path} != */* ]] || folder=${path%/*}
+    real "${folder:-/}"
+    [ -z "${real}" ] || real=${real%/}/${path##*/}
+    [ -n "${real}" ] || judged=""
+  fi
+  if [ -z "${judged}" ]; then
+    unjudged+=("${path}")
+    continue
   fi
   if [ -n "${real}" ]; then
     plain "" "${real}"
@@ -278,6 +308,12 @@ if [ ${#left[@]} -gt 0 ]; then
   listed "${left[@]}"
   echo "note: du left out ${#left[@]} start(s) in or through folders macOS asks about," \
     "uncounted: ${all}" >&2
+  short=yes
+fi
+if [ ${#unjudged[@]} -gt 0 ]; then
+  listed "${unjudged[@]}"
+  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a link to a file or a" \
+    "folder it can't enter, uncounted: ${all}" >&2
   short=yes
 fi
 if [ ${#kept[@]} -eq 0 ]; then

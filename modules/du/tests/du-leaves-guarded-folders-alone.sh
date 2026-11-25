@@ -4,11 +4,15 @@
 # / , even from inside a guarded folder, leaves out each guarded folder below
 # the start by its name, once, says so on stderr in full and ends 1; that a
 # start naming a guarded folder, by a glob's list, in another case, with
-# `./`, `//` or `/.`, through `..`, passing through one or inside one, is
-# left out of the count and said, judged before it's opened, du not run when
-# none is left, and that a start after it that looks like an option reaches
-# du as a path; that -L, alone or among letters, is taken out and said
-# unless -P follows it; that the account's home is guarded whatever HOME
+# `./`, `//` or `/.`, through `..`, passing through one or inside one, a
+# file through a link or by the data volume's name, is left out of the count
+# and said, judged before it's opened, du not run when none is left, and
+# that a start after it that looks like an option reaches du as a path; that
+# a link to a file or a folder that can't be entered is left out and said
+# apart; that a start named - is that folder and CDPATH moves none; that
+# only a home's own guarded folders are left out by name; that du's own
+# nonzero end is kept; that -L, alone or among letters, is taken out and
+# said unless -P follows it; that the account's home is guarded whatever HOME
 # says, HOME's too, an unset one, and a home named through a link; that a
 # working folder gone still counts a whole path; that a home that can't be
 # found is said; that du's options and their values, joined or apart, are
@@ -55,9 +59,11 @@ fi
 project=${home}/src/project
 mkdir -p "${project}"
 
+# The stand-in du ends as DU_ENDS says, 0 unless it's set.
 cat >"${work}/du" <<EOF
 #!${BASH}
 printf '%s\n' "\$@" >"${given}"
+exit "\${DU_ENDS:-0}"
 EOF
 chmod +x "${work}/du"
 
@@ -226,7 +232,14 @@ leaves_all "a count of the home folder with HOME unset" -sh "${home}"
 moved="${work}/another home"
 mkdir -p "${moved}"
 count "${work}" -sh "${moved}"
-leaves_all "a count of the home HOME names" -sh "${moved}"
+gives "a count of the home HOME names, holding no guarded folder" "" -sh "${moved}"
+mkdir "${moved}/Documents" "${moved}/Desktop"
+count "${work}" -sh "${moved}"
+two_names=$(names_left Desktop Documents)
+two_masks=$(masks Desktop Documents)
+gives "a count of the home HOME names, holding two" "${two_names}" "${two_masks}" \
+  -sh "${moved}"
+rmdir "${moved}/Documents" "${moved}/Desktop"
 account=/nonexistent
 moved=/nonexistent
 count "${work}" -sh "${project}"
@@ -279,13 +292,61 @@ runs_nothing "a count of .. from inside Documents" ..
 ln -s "${home}/Documents" "${home}/src/notes"
 count "${work}" -sh "${home}/src/notes"
 runs_nothing "a count of a link to Documents" "${home}/src/notes"
+: >"${home}/Documents/inside/file"
+count "${work}" -sh "${home}/src/notes/inside/file"
+runs_nothing "a count of a file reached through a link to Documents" \
+  "${home}/src/notes/inside/file"
 rm "${home}/src/notes"
+count "${work}" -sh "${data}${home}/Documents"
+runs_nothing "a count of Documents by the data volume's name" "${data}${home}/Documents"
+
+# A start that can't be judged, a link to a file or a folder that can't be
+# entered, is left out and said apart.
+ln -s "${home}/Documents/inside/file" "${home}/src/note"
+unjudged="note: du left out 1 start(s) it couldn't judge, a link to a file or a folder it"
+unjudged+=" can't enter, uncounted:"
+count "${home}" -sh src/note src
+gives "a count of a link to a file in Documents" "${unjudged} src/note" -sh src
+rm "${home}/src/note" "${home}/Documents/inside/file"
+mkdir "${home}/src/locked"
+chmod 000 "${home}/src/locked"
+count "${home}" -sh src/locked src
+gives "a count of a folder that can't be entered" "${unjudged} src/locked" -sh src
+chmod 755 "${home}/src/locked"
+rmdir "${home}/src/locked"
+
+# A start named - is a folder of that name, not the last one cd was in,
+# and CDPATH never sends a relative start elsewhere.
+mkdir "${work}/-" "${work}/inside"
+count "${work}" -sh -- -
+gives "a count of a folder named -" "" -sh -- -
+export CDPATH="${home}/Documents"
+count "${work}" -sh inside
+unset CDPATH
+gives "a count of inside with CDPATH naming Documents" "" -sh inside
+rmdir "${work}/-" "${work}/inside"
+
+# du's own end, when it isn't 0, is kept, whether or not anything was left
+# out.
+export DU_ENDS=2
+ends=2
+count "${home}" -sh src
+gives "a count whose du ends 2" "" -sh src
+count "${home}" -sh Desktop src
+left=$(starts_left Desktop)
+gives "a count leaving Desktop out, whose du ends 2" "${left}" -sh src
+unset DU_ENDS
+ends=""
 
 # A start named plainly is judged before it's opened: with Documents and
 # Downloads unable to be entered, and so having no real path, each named
 # plainly, however it's spelt, or passed through, is still left out, as is
 # one named through a link to the home folder, the account's home named so.
 chmod 000 "${home}/Documents" "${home}/Downloads"
+if (cd "${home}/Documents" 2>/dev/null); then
+  echo "Documents can still be entered after chmod 000, as root can, so this tests nothing" >&2
+  exit 1
+fi
 count "${work}" -sh "${home}/Documents"
 runs_nothing "a count of a Documents that can't be entered" "${home}/Documents"
 count "${home}" -sh ./Documents

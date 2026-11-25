@@ -1263,11 +1263,14 @@
     guarded folder out by its name, once, says so in full and ends 1, HOME gone, unset or not,
     options and their values, joined or apart, read past; a start that is, lies in or passes
     through a guarded folder, named, by a glob's list, in capitals, with ./, // or /., through
-    .., by a link, or through a home named by one, is judged before it's opened, left out and
-    said, du not run when none is left, and a start after it like an option reaches du as a
-    path; -L is taken out and said unless -P follows; a working folder gone still counts a
-    whole path, and no home found is said; a count above none runs as given and ends 0, and
-    --help runs no du
+    .., by a link, a file through a link, by the data volume's name, or through a home named by
+    one, is judged before it's opened, left out and said, du not run when none is left, and a
+    start after it like an option reaches du as a path; a link to a file or a folder that
+    can't be entered is left out and said apart; a start named - is that folder and CDPATH
+    moves none; only a home's own guarded folders are left out by name; -L is taken out and
+    said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
+    counts a whole path, and no home found is said; a count above none runs as given and ends
+    0, and --help runs no du
   '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
