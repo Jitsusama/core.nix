@@ -1854,7 +1854,6 @@ Provider {
         sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
     }
     function sprout(key, said, folder) {
-        sproutPressed = Openings.pressedAt(sproutPressed, key, Date.now());
         const words = Words.of("agents:start-new-work").said ?? {};
         // Asked from outside, or with no launcher to say whose Return it
         // was, it starts nothing (Sprouting.fromJoel).
@@ -1867,6 +1866,9 @@ Provider {
             console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
+        // Only Joel's own Return stops a start still coming up saying over
+        // its act, so no program outside quiets what he's told.
+        sproutPressed = Openings.pressedAt(sproutPressed, key, Date.now());
         if (sprouting !== "") {
             sproutSays(key, words.busy);
             sproutReaches({ started: false, why: words.busy });
@@ -2209,29 +2211,33 @@ Provider {
     // gives what the foot says of it left for Go To.
     function openOne(one) {
         const launcher = provider.launcher ?? null;
+        const late = one.late === true ? " late" : "";
+        // Its window, or its up word, answers the foot's "still coming up"
+        // of it, so neither says it beside them nor notices it at the shut.
+        takeBack(one);
         if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
-            Report.say(`new work's session ${one.session.address} is up${one.late === true
-                ? " late" : ""}; left for Go To`);
+            Report.say(`new work held ${one.held} is up${late} as session `
+                + `${one.session.address}; left for Go To`);
             return said(one, one.late === true ? "upLater" : "up");
         }
         said(one, "opening");
-        // Its window answers the foot's "still coming up" of it, if it was
-        // said late (Openings.toldOf), so shutting the launcher for it
-        // notices only what the foot told of others (sproutShut). Where that
-        // leaves nothing, sproutShut has no foot to clear, so it's cleared here.
-        const footed = sproutFooted;
-        sproutFooted = typeof one.told === "string"
-            ? Openings.footedWithout(footed, one.told) : footed;
-        if (footed !== null && sproutFooted === null) {
-            if (launcher.toldOnOpen === footed.shown)
-                launcher.toldOnOpen = [];
-            if (launcher.saying === footed.shown)
-                launcher.say([]);
-        }
         launcher.open = false;
         Sessions.goTo(one.session);
-        Report.say(`opening new work's session ${one.session.address}`);
+        Report.say(`opening new work held ${one.held}${late} as session ${one.session.address}`);
         return "";
+    }
+    // Takes back what the foot said of `one` late (Openings.takenBack),
+    // clearing the foot where nothing is left of it.
+    function takeBack(one) {
+        const launcher = provider.launcher ?? null;
+        const taken = Openings.takenBack(sproutFooted, one);
+        sproutFooted = taken.footed;
+        if (launcher === null || taken.cleared === null)
+            return;
+        if (launcher.toldOnOpen === taken.cleared)
+            launcher.toldOnOpen = [];
+        if (launcher.saying === taken.cleared)
+            launcher.say([]);
     }
     Timer {
         interval: 5000

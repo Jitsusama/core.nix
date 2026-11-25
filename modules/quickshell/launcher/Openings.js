@@ -55,3 +55,15 @@ function footedWithout(footed, text) {
     const told = footed.told.filter((_, index) => index !== at);
     return told.length === 0 ? null : Object.assign({}, footed, { told });
 }
+
+// What the foot told once opening `one` takes back the words said of it
+// late (its `told`, toldOf's), as its window opens or its up word is
+// told: `footed` what's left, and `cleared` the foot it was shown in where
+// nothing is left, since sproutShut finds no foot then to clear; else null.
+// One never said late has no `told`, which no tell reads, so it takes back
+// nothing.
+function takenBack(footed, one) {
+    const left = footedWithout(footed, one.told);
+    const was = footed ?? null;
+    return { footed: left, cleared: was !== null && left === null ? was.shown : null };
+}

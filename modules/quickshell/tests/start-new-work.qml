@@ -223,6 +223,10 @@ QtObject {
             [["slow", "h1"], ["quick", "h2"], ["unmarked", "h7"], ["watched", "h8"]]);
         Expect.same("each up keeps its late mark, which picks the words said of it",
             stood.up.map(one => one.late === true), [true, false, false, true]);
+        Expect.same("an up keeps the words said of it late, which it takes back",
+            Sprouting.settled([{ key: "k", held: "h9", machine: "m", since: 0, late: true,
+                told: "late on m" }], found => ({ address: "h9" }), now, times).up[0].told,
+            "late on m");
         Expect.same("one past the minute is late", stood.late.map(one => one.key), ["late"]);
         Expect.same("one watched a quarter hour is gone", stood.gone.map(one => one.key),
             ["gone"]);
@@ -441,6 +445,18 @@ QtObject {
         Expect.same("none is left once its own was the only tell",
             Openings.footedWithout({ told: ["late on k"], keys: 1, at: 2 }, "late on k"), null);
         Expect.same("no foot stays none", Openings.footedWithout(null, "late on k"), null);
+        const shownFoot = [["n", "late on k"]];
+        const lone = { told: ["late on k"], keys: 1, at: 2, shown: shownFoot };
+        const back = Openings.takenBack(lone, { told: "late on k" });
+        Expect.same("taking back the foot's last tell leaves none, and clears its foot",
+            [back.footed, back.cleared === shownFoot], [null, true]);
+        const someLeft = Openings.takenBack(tells, { told: "late on k" });
+        Expect.same("taking back one of several clears no foot",
+            [someLeft.footed.told, someLeft.cleared], [["lost on m", "late on k"], null]);
+        Expect.same("one never said late takes back nothing",
+            Openings.takenBack(lone, {}), { footed: lone, cleared: null });
+        Expect.same("no foot has none to clear",
+            Openings.takenBack(null, { told: "late on k" }), { footed: null, cleared: null });
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };
