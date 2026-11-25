@@ -81,7 +81,7 @@ fn a_list_written_over_with_under_half_its_asks_is_unread_until_restored() {
     assert!(text.is_empty(), "a list written over was read: {text}");
     assert_eq!(
         why.as_deref(),
-        Some("it holds 0 asks, under half the 853 read in it"),
+        Some("it holds 0 ask records, under half the 853 read in it"),
         "a list written over wasn't said unread, with why"
     );
     let (restored, why) = read_at(folder.path(), &list(853), &mut seen, NOW + 240);
@@ -116,6 +116,45 @@ fn a_list_short_for_two_hours_is_taken_as_pruned_and_counted_afresh() {
         "a list short for two hours wasn't taken as pruned: {why:?}"
     );
     assert_eq!(seen.most, 4, "the pruned list wasn't counted afresh");
+}
+
+#[test]
+fn a_list_holding_no_asks_is_never_taken_as_pruned() {
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    let mut seen = Seen::default();
+    read_at(folder.path(), &list(10), &mut seen, NOW);
+    let over = "{\"ts\": 1}\n";
+    read_at(folder.path(), over, &mut seen, NOW);
+    let (text, why) = read_at(folder.path(), over, &mut seen, NOW + 2 * SHORT_LASTS);
+    assert!(text.is_empty(), "a list holding no asks was read: {text}");
+    assert!(
+        why.is_some(),
+        "a list holding no asks for two hours was taken as pruned"
+    );
+    assert_eq!(
+        seen.most, 10,
+        "a list holding no asks lowered the most seen"
+    );
+}
+
+#[test]
+fn a_byte_that_is_no_text_leaves_the_list_read() {
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    let path = folder.path().join("asks.jsonl");
+    let mut bytes = list(4).into_bytes();
+    bytes.extend_from_slice(b"{\"at\":\"x\",\"words\":\"torn \xff\"}\n");
+    fs::write(&path, bytes).expect("the asks list is written");
+    let mut seen = Seen::default();
+    let (text, why) = whole(&path, &mut seen, NOW);
+    assert!(
+        why.is_none(),
+        "a list with one torn byte was said unread: {why:?}"
+    );
+    assert!(
+        text.starts_with(&list(4)),
+        "the whole lines before the torn byte weren't read: {text}"
+    );
+    assert_eq!(seen.most, 5, "the ask holding a torn byte wasn't counted");
 }
 
 #[test]

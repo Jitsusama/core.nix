@@ -25,7 +25,7 @@ const SHORT_LASTS: i64 = 2 * 3600;
 /// next by the run that sends the card.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seen {
-    /// The most asks the hour has read in it.
+    /// The most ask records the hour has read in it.
     #[serde(default)]
     pub most: usize,
     /// Since when it has held under half that many, while it does.
@@ -45,12 +45,16 @@ const FROM_ASKS: [&str; 4] = [
 /// The asks list at `path` as read at `now`, or empty with why it can't
 /// be read whole, beside what the hour has `seen` of it, which it brings
 /// up to date. A list never seen and not there holds no asks yet. One
-/// gone or unreadable once seen is unread, as is one holding under half
-/// the most asks read in it, until it has held that few for two hours,
-/// when it's taken as pruned and counted afresh from what it holds.
+/// gone or unreadable once seen is unread until it can be read again,
+/// since its keeper puts it back. One holding under half the most asks
+/// read in it is unread too, until it has held that few for two hours,
+/// when it's taken as pruned and counted afresh from what it holds; one
+/// holding none is never taken as pruned, as no pruning keeps nothing.
+/// A byte that's no text is read as a stand-in character, so one torn
+/// character never leaves the whole list unread.
 pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<String>) {
-    let text = match fs::read_to_string(path) {
-        Ok(text) => text,
+    let text = match fs::read(path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         Err(err) if seen.most == 0 && err.kind() == io::ErrorKind::NotFound => {
             return (String::new(), None);
         }
@@ -65,14 +69,14 @@ pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<S
         return (text, None);
     }
     let since = *seen.short_since.get_or_insert(now);
-    if now - since < SHORT_LASTS {
+    if held == 0 || now - since < SHORT_LASTS {
         let most = seen.most;
-        let why = format!("it holds {held} asks, under half the {most} read in it");
+        let why = format!("it holds {held} ask records, under half the {most} read in it");
         return (String::new(), Some(why));
     }
     eprintln!(
-        "cadence: the asks list has held {held} asks, under half the {}, for two hours, \
-         so it's taken as pruned",
+        "cadence: the asks list has held {held} ask records, under half the {}, for two \
+         hours, so it's taken as pruned",
         seen.most
     );
     *seen = Seen {
@@ -82,9 +86,10 @@ pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<S
     (text, None)
 }
 
-/// How many asks `text` holds: its lines that are records naming when
-/// each was asked and in what words, so lines of anything else written
-/// over it aren't counted as asks.
+/// How many ask records `text` holds: its lines naming when an ask was
+/// asked and in what words, so lines of anything else written over it
+/// aren't counted. An ask moved or answered has a record for each, as
+/// the list is only appended to, so this counts records, not asks.
 fn asks(text: &str) -> usize {
     text.lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
