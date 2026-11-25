@@ -43,7 +43,7 @@ pub fn cellless_since(state: &Path, at: i64, cellless: bool) -> Option<i64> {
 pub fn troubles(
     state: &Path,
     routes: &Routes,
-    (failed, late, given_up): (usize, usize, usize),
+    (failed, out_of_time, given_up): (usize, usize, usize),
     no_cells: bool,
 ) -> Vec<String> {
     let mut troubles: Vec<String> = Routes::trouble(state).into_iter().collect();
@@ -51,9 +51,9 @@ pub fn troubles(
     if failed > 0 {
         troubles.push(format!("{failed} sends failed"));
     }
-    if late > 0 {
+    if out_of_time > 0 {
         troubles.push(format!(
-            "{late} sends wait for the next run, as its time for sends ran out"
+            "{out_of_time} sends wait for the next run, as its time for sends ran out"
         ));
     }
     if given_up > 0 {

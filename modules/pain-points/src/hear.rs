@@ -375,14 +375,14 @@ pub fn hear_putting(
     // Nothing reaches a cell the routes say never to, whichever way it
     // was found, and each send that failed, or waits as the run's time
     // for sends ran out, is counted for the hour.
-    let (mut failed, mut late) = (0, 0);
+    let (mut failed, mut out_of_time) = (0, 0);
     let mut guarded = |to: &str, text: &str, put: Put| {
         if routes.refuses(to) {
             return Sent::Failed;
         }
         let answer = send(to, text, put);
         failed += usize::from(answer == Sent::Failed);
-        late += usize::from(answer == Sent::Late);
+        out_of_time += usize::from(answer == Sent::OutOfTime);
         answer
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
@@ -416,7 +416,7 @@ pub fn hear_putting(
     hour.troubles = troubles(
         &ears.state,
         &routes,
-        (failed, late, given_up),
+        (failed, out_of_time, given_up),
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
@@ -627,7 +627,7 @@ fn route_waiting(
                 }
             }
             // Not tried, so its tries stand for the next run.
-            Sent::Held | Sent::Late => {}
+            Sent::Held | Sent::OutOfTime => {}
         }
         let _ = keep(heard_at, kept);
     }
@@ -710,7 +710,7 @@ fn note_for_keeper(
                 kept[n].routed_at = Some(ears.at);
             }
             Sent::Failed => kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1,
-            Sent::Held | Sent::Late => {}
+            Sent::Held | Sent::OutOfTime => {}
         }
     }
     let _ = keep(heard_at, kept);
@@ -734,7 +734,7 @@ fn ledger_note_of(
 fn wait_for_note(kept: &mut [Heard], of: &[usize], sent: Sent, at: i64) {
     for &n in of {
         kept[n].unnoted_since = match sent {
-            Sent::Held | Sent::Late => kept[n].unnoted_since.or(Some(at)),
+            Sent::Held | Sent::OutOfTime => kept[n].unnoted_since.or(Some(at)),
             Sent::Went | Sent::Failed => None,
         };
     }

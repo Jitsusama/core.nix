@@ -47,11 +47,7 @@ fn a_node_that_stops_answering_is_asked_once_and_the_rest_wait() {
     assert_eq!(first, Sent::Failed, "a send that hangs spends its try");
     let second = node.send("GHI789", "another", Put::Asked);
     assert_eq!(second, Sent::Held, "a send after it waits for the next run");
-    assert_eq!(
-        (node.held, node.out_of_time),
-        (1, 0),
-        "the held send is counted as the node's"
-    );
+    assert_eq!(node.held, 1, "the held send is counted as the node's");
     assert_eq!(asks(&asked).len(), 1, "the node was asked only once");
     assert!(
         started.elapsed() < Duration::from_secs(5),
@@ -83,12 +79,12 @@ fn a_send_that_could_not_end_by_the_sends_end_waits_untried() {
     let ends = Instant::now() + Duration::from_secs(10);
     let mut node = Node::new(mycelium, Some("EAR001".into()), ends, limit);
     let sent = node.send("ABC123", "a finding", Put::Asked);
-    assert_eq!(sent, Sent::Late, "a send 20 s long can't start 10 s short");
     assert_eq!(
-        (node.held, node.out_of_time),
-        (0, 1),
-        "the held send is counted as the run's time"
+        sent,
+        Sent::OutOfTime,
+        "a send 20 s long can't start 10 s short"
     );
+    assert_eq!(node.held, 0, "a send out of time was counted as held");
     assert!(asks(&asked).is_empty(), "the node was never asked");
 }
 
@@ -141,12 +137,19 @@ fn sends_late_for_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries(
     place.routes();
     a_day(&place);
     for _ in 0..5 {
-        let hour = hear_putting(&place.ears(), CELLS, &mut |_, _, _| Sent::Late).expect("a run");
-        assert!(
-            hour.troubles
-                .iter()
-                .any(|t| t.ends_with("sends wait for the next run, as its time for sends ran out")),
-            "a run too slow to send read as a clean hour: {hour:?}"
+        let mut tried = 0;
+        let hour = hear_putting(&place.ears(), CELLS, &mut |_, _, _| {
+            tried += 1;
+            Sent::OutOfTime
+        })
+        .expect("a run");
+        assert!(tried > 0, "the run had nothing to send");
+        assert_eq!(
+            hour.troubles,
+            [format!(
+                "{tried} sends wait for the next run, as its time for sends ran out"
+            )],
+            "a run too slow to send didn't say so alone, with how many"
         );
     }
     let mut to_owner = 0;
@@ -160,6 +163,14 @@ fn sends_late_for_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries(
 
 #[test]
 fn a_keeper_s_note_held_goes_with_the_next_run_s() {
+    for untried in [Sent::Held, Sent::OutOfTime] {
+        a_keeper_s_note_not_tried_goes_with_the_next_run_s(untried);
+    }
+}
+
+/// The keeper's one note, answered `untried` by its first run, goes with
+/// the next and is said no more after.
+fn a_keeper_s_note_not_tried_goes_with_the_next_run_s(untried: Sent) {
     let place = Place::new("held-note");
     place.routes();
     a_day(&place);
@@ -168,14 +179,14 @@ fn a_keeper_s_note_held_goes_with_the_next_run_s() {
     let hour = hear_putting(&place.ears(), CELLS, &mut |to, text, _| {
         if note(to, text) {
             held += 1;
-            Sent::Held
+            untried
         } else {
             Sent::Went
         }
     })
     .expect("a run");
     assert_eq!(hour.routed, 3, "the day's pains were routed: {hour:?}");
-    assert_eq!(held, 1, "the keeper's one note was held: {hour:?}");
+    assert_eq!(held, 1, "the keeper's one note was {untried:?}: {hour:?}");
     let mut notes = Vec::new();
     hear(&place.ears(), CELLS, &mut |to, text| {
         if note(to, text) {

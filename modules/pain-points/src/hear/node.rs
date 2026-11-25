@@ -35,8 +35,9 @@ pub enum Sent {
     Held,
     /// Not tried this run, its tries kept, as no send could end by the
     /// run's end for sends: a trouble of the hour's, so a run always too
-    /// slow to send is seen to be.
-    Late,
+    /// slow to send is seen to be. Unlike a send that ran past its limit,
+    /// which was tried and so failed, this one never started.
+    OutOfTime,
 }
 
 /// The machine's mycelium, sending as `from`. Once one ask outruns its
@@ -50,8 +51,6 @@ pub struct Node {
     silent: bool,
     /// How many sends were held as the node had stopped answering.
     pub held: usize,
-    /// How many were held as none could end by `ends`.
-    pub out_of_time: usize,
 }
 
 impl Node {
@@ -65,7 +64,6 @@ impl Node {
             limit,
             silent: false,
             held: 0,
-            out_of_time: 0,
         }
     }
 
@@ -93,8 +91,7 @@ impl Node {
             return Sent::Held;
         }
         if Instant::now() + self.limit > self.ends {
-            self.out_of_time += 1;
-            return Sent::Late;
+            return Sent::OutOfTime;
         }
         let Some(from) = self.from.as_deref() else {
             return Sent::Failed;
