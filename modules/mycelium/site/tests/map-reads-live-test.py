@@ -1970,6 +1970,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
+    # Opening the drawer fits the whole map clear of it, a glide that places the names as it
+    # goes, so the case marks them only once the view stands still.
+    settled(page, "the map never stood still once Now opened")
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
