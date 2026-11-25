@@ -43,6 +43,11 @@ Json = dict[str, Any]
 # How long the shell may take to start, and what a wait allows by default.
 STARTING = timedelta(seconds=60)
 WAITING = timedelta(seconds=30)
+# How many of the reports a failed wait turned down it names, the last ones, and how much of
+# each: a showing is the launcher's whole state, and the margin cat says where it sits each
+# frame, so all of them would bury the log's tail printed after.
+NEAREST = 5
+NEAR_LONGEST = 200
 # How often what the launcher shows is asked again while a wait has heard nothing, and the
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
@@ -383,21 +388,27 @@ class Shell:
     ) -> None:
         """Wait until a report made after the mark starts with the prefix and passes the test.
 
-        One that fails names each report the prefix began, as the test turned it down, since
-        the log's tail is often only the showings a case asked for (the train, 25 Nov 03:21).
+        One that fails names the last reports the prefix began, as the test turned them down,
+        and how many it turned down, or that none came, since the log's tail is often only the
+        showings a case asked for (the train, 25 Nov 03:21). Only the last few, each cut short,
+        since a prefix the shell says each frame, as the margin cat's, would fill the message.
         """
         deadline = time.monotonic() + timeout.total_seconds()
         near: list[str] = []
+        turned = 0
         while time.monotonic() < deadline:
             reports, since = self.said_since(since)
             begun = [said[len(prefix) :] for said in reports if said.startswith(prefix)]
             if any(test(rest) for rest in begun):
                 return
-            near += begun
+            turned += len(begun)
+            near = (near + begun)[-NEAREST:]
             time.sleep(POLL)
+        heard = "".join(f"\n  {prefix}{rest[:NEAR_LONGEST]}" for rest in near)
+        said = f"it turned down {turned}, the last:{heard}" if turned else "none came"
         failed = (
-            f"the shell never reported {prefix!r} as wanted; it said {near!r} after it:\n"
-            f"{self.tail()}"
+            f"the shell never reported {prefix!r} as wanted since the mark; {said}\n"
+            f"its log ends:\n{self.tail()}"
         )
         raise AssertionError(failed)
 
