@@ -7,7 +7,7 @@ use std::path::Path;
 
 use pineapple::deaf::{Deafness, Round, Search};
 use pineapple::ears::{Ears, Unread};
-use pineapple::gate::{Asked, Gate, Sent, gate};
+use pineapple::gate::{Asked, gate};
 use pineapple::judged::{self, Judged};
 use pineapple::phone;
 use pineapple::record::{self, Source};
@@ -15,17 +15,13 @@ use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::slack::{Message, micros};
 use pineapple::vocabulary::Words;
-use pineapple::{Context, Decision, Heard, Joel, Platform, Target, Verdict, decide};
+use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use slack_people::Account;
 
 use super::{LOOK_BACK, MICROS, MILLIS, SLACK_RESUMES_LIVE, millis, seconds};
 
 /// The safe word, as its search asks for it.
 pub(super) const PHRASE: &str = "pineapple";
-
-/// The rule a stop's reply is held by when Joel resumed it before the
-/// stop was heard.
-const RESUMED_BEFORE_HEARD: &str = "resumed-before-heard";
 
 /// Joel's tag, as its search asks for it.
 pub(super) fn tag(me: &str) -> String {
@@ -260,8 +256,7 @@ fn judge(
         edited: message.edited,
         age: read_at.saturating_sub(said_at),
     };
-    let stop = stop_of(state, &source, &decision, (now, reader.shadow));
-    let gated = reply_gate(&asked, &sent, read_at, state, stop.as_ref());
+    let gated = gate(&asked, &sent, read_at, replies_off(state));
     let entry = record::line(&source, &decision, gated, now, reader.shadow);
     if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");
@@ -282,7 +277,8 @@ fn judge(
             }
         }
     }
-    if let Some(mut stop) = stop {
+    if decision.stops() {
+        let mut stop = record::stop(&source, &decision, now, reader.shadow);
         keep_stop(
             &state.join("stops"),
             &mut stop,
@@ -304,39 +300,6 @@ fn judge(
     }
 }
 
-/// The record of the stop `decision` says, heard at `now` in shadow or
-/// not, as Joel left it: said before a resume of his that names it and
-/// heard only after, it's kept ended (src/resume.rs). None for a
-/// decision that stops nothing.
-fn stop_of(
-    state: &Path,
-    source: &Source<'_>,
-    decision: &Decision,
-    heard: (u64, bool),
-) -> Option<serde_json::Value> {
-    let (now, shadow) = heard;
-    decision.stops().then(|| {
-        let stop = record::stop(source, decision, now, shadow);
-        resume::as_left(&state.join("stops"), stop)
-    })
-}
-
-/// What the gate says of a decision's reply at `read_at`, as [`gate`]
-/// does, but held for a `stop` Joel resumed before it was heard, as no
-/// reply may say it stands.
-fn reply_gate(
-    asked: &Asked<'_>,
-    sent: &[Sent],
-    read_at: u64,
-    state: &Path,
-    stop: Option<&serde_json::Value>,
-) -> Gate {
-    match gate(asked, sent, read_at, replies_off(state)) {
-        Gate::Through(_) if stop.is_some_and(resume::ended) => Gate::Held(RESUMED_BEFORE_HEARD),
-        gated => gated,
-    }
-}
-
 /// Keeps a stop's record, `stop`, under `key` in `records`, and says so.
 /// Not `agreed`, it never says Joel said it and calls its writer
 /// unconfirmed; agreed, its unconfirmed copy is taken away.
@@ -352,6 +315,13 @@ fn keep_stop(
         stop["by_joel"] = false.into();
         stop["said_by"] = format!("{} (unconfirmed)", message.author).into();
     }
+    // Joel's own, read agreed and never edited, said just before a resume
+    // of his naming it and heard only after, is kept as he left it,
+    // resumed (src/resume.rs). An edited one's time is when it was first
+    // said, not when its words were, so it stands.
+    if agreed && !message.edited {
+        *stop = resume::as_left(records, std::mem::take(stop));
+    }
     let shadow = if shadow { ", in shadow" } else { "" };
     let unagreed = if agreed {
         ""
@@ -361,8 +331,8 @@ fn keep_stop(
     let kept = record::keep(records, key, stop);
     match &kept {
         Ok(true) if resume::ended(stop) => eprintln!(
-            "<5>a stop{shadow}{unagreed}, said before Joel resumed it, kept as resumed: {}",
-            if agreed { message.link.as_str() } else { key }
+            "<5>a stop{shadow}, said before Joel resumed it, kept as resumed: {}",
+            message.link
         ),
         // An unagreed stop is named by the key it's kept under, as its
         // link could point anywhere.

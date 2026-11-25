@@ -68,12 +68,19 @@ pub(super) fn judge(
     }
     if decision.stops() {
         let folder = state.join("stops");
-        // Said before a resume of Joel's that names it, and heard only
-        // after, it's kept as he left it: ended.
-        let stop = resume::as_left(&folder, record::stop(&source, &decision, now, shadow));
+        // Joel's own, said just before a resume of his that names it and
+        // heard only after, it's kept as he left it: ended. One whose time
+        // isn't when its words were shown stands.
+        let stop = record::stop(&source, &decision, now, shadow);
+        let stop = if said.timed {
+            resume::as_left(&folder, stop)
+        } else {
+            stop
+        };
+        let in_shadow = if shadow { ", in shadow" } else { "" };
         match record::keep(&folder, &said.key, &stop) {
             Ok(true) if resume::ended(&stop) => eprintln!(
-                "<5>a stop said before Joel resumed it, kept as resumed: {}",
+                "<5>a stop{in_shadow}, said before Joel resumed it, kept as resumed: {}",
                 said.link
             ),
             Ok(true) if shadow => eprintln!("<5>a stop, in shadow: {}", said.link),

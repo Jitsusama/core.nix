@@ -457,6 +457,10 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
             Exit::NotFound,
             format!("no stop standing is named by {scope}"),
         )
+        .because(
+            "the resume is still kept, so a stop of yours said there just before it \
+             and heard late stays resumed",
+        )
         .try_this("pineapple stops"));
     }
     let written = match context.format() {
