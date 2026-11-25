@@ -18,6 +18,7 @@ import {
   countsOf,
   countsWords,
   described,
+  grewWords,
   hubWords,
   type Machine,
   machineWords,
@@ -140,6 +141,25 @@ it("counts cells by standing, worst first, and the answers they owe", () => {
     countsWords(each.map((standing, i) => cell(`S${i}`, { standing }))),
     "5 cells: 1 needs you, 1 stuck, 1 moving, 1 quiet, 1 dormant",
     "every standing in its place, however the cells come",
+  );
+});
+
+it("says a branch's starts and splits apart, each out of all its cells", () => {
+  const who = (cells: readonly string[]): string => cells.join(" and ");
+  assert.deepEqual(
+    grewWords({ by: ["SKIFF1"], started: 1, split: { from: ["GULL01"], cells: 1 } }, 3, who),
+    ["Started by SKIFF1: 1 of its 3 cells", "Split from GULL01: 1 of its 3 cells"],
+    "a branch both started and split says each line with its own count",
+  );
+  assert.deepEqual(
+    grewWords({ by: [], started: 0, split: { from: ["GULL01", "TERN01"], cells: 2 } }, 2, who),
+    ["Split from GULL01 and TERN01: all 2 of its cells"],
+    "a branch only split says no one started it",
+  );
+  assert.deepEqual(
+    grewWords({ by: ["SKIFF1"], started: 1, split: null }, 1, who),
+    ["Started by SKIFF1: its cell"],
+    "a branch only started says no split",
   );
 });
 

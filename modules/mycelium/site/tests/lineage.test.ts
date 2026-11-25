@@ -12,6 +12,7 @@ import {
   isLaterCopy,
   type Network,
   oneCopyEach,
+  type Origin,
   originsOf,
   type Started,
 } from "../lineage.ts";
@@ -249,6 +250,9 @@ it("a split naming the cell itself, a blank or anything but words names nothing"
     forage("NUMBER", { split_from: 7, split_into: null }),
     forage("ALONE1", { split_from: null }),
     { key: "forage:NOCELL", kind: "forage", heard: AT, lineage: { split_into: ["GULL01"] } },
+    // The cells listed have forages here, so only how they were listed keeps them out.
+    forage("TERNAA", {}),
+    forage("GULL01", {}),
   ];
   assert.deepEqual(nowOf(told(these), AT).split, []);
   assert.deepEqual(nowOf(told(undefined), AT).split, [], "a node serving no forage says no split");
@@ -283,9 +287,9 @@ function network(
 }
 
 /** What grows out of what among `networks`, each cell drawn in the network that lists it. */
-function grown(networks: readonly Network[], started: readonly Started[]) {
+function grown(networks: readonly Network[], origins: readonly Origin[]) {
   const hubOf = new Map(networks.flatMap((each) => each.cells.map((cell) => [cell, each.key])));
-  return Object.fromEntries(grownOf(networks, hubOf, started));
+  return Object.fromEntries(grownOf(networks, hubOf, origins));
 }
 
 /** Each of `cells` started by `by`. */
@@ -312,6 +316,37 @@ it("a start from inside or from a receptor leaves the cell's split to grow its b
   );
   assert.deepEqual(grown(networks, origins), {
     heron: { from: "skiff", by: [], cells: 2, started: 0, split: { from: ["SKIFF1"], cells: 2 } },
+  });
+});
+
+it("a cell started from one network and split from the trunk counts as split from it", () => {
+  const networks = [
+    network("skiff", ["SKIFF1"]),
+    network("gull", ["GULL01"]),
+    network("heron", ["HERON1", "HERON2"]),
+  ];
+  const origins = originsOf(startedBy("SKIFF1", "HERON1"), [
+    { cell: "HERON1", from: "GULL01" },
+    { cell: "HERON2", from: "GULL01" },
+  ]);
+  assert.deepEqual(grown(networks, origins), {
+    heron: { from: "gull", by: [], cells: 2, started: 0, split: { from: ["GULL01"], cells: 2 } },
+  });
+});
+
+it("a start whose branch would loop leaves the network to grow from its split", () => {
+  const networks = [
+    network("aaa", ["AUK001", "AUK002"]),
+    network("bbb", ["BRANT1", "BRANT2", "BRANT3", "BRANT4"]),
+    network("ccc", ["CRANE1"]),
+  ];
+  const origins = originsOf(
+    [...startedBy("AUK001", "BRANT1", "BRANT2", "BRANT3"), ...startedBy("BRANT4", "AUK002")],
+    [{ cell: "AUK002", from: "CRANE1" }],
+  );
+  assert.deepEqual(grown(networks, origins), {
+    aaa: { from: "ccc", by: [], cells: 1, started: 0, split: { from: ["CRANE1"], cells: 1 } },
+    bbb: { from: "aaa", by: ["AUK001"], cells: 3, started: 3 },
   });
 });
 

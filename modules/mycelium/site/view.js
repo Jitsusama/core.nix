@@ -86,6 +86,7 @@ import {
   builds,
   countsOf,
   described,
+  grewWords,
   money,
   NUMBER,
   offWords,
@@ -3557,12 +3558,8 @@ import {
       const named = cells.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
       return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
     };
-    const ofIts = (n) => (n === h.cells.length ? (n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`) : `${NUMBER.format(n)} of its ${plural(h.cells.length, "cell")}`);
-    const split = h.grown.split;
-    const lines = [`Grown out of <button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`];
-    if (h.grown.started && h.grown.by.length) lines.push(`Started by ${whoOf(h.grown.by)}: ${ofIts(h.grown.started)}`);
-    if (split) lines.push(`Split from ${whoOf(split.from)}: ${ofIts(split.cells)}`);
-    return lines;
+    const outOf = `<button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`;
+    return [`Grown out of ${outOf}`, ...grewWords(h.grown, h.cells.length, whoOf)];
   };
   const networkPurpose = (h) => {
     if (h.alone) return "Each its own: these cells work alone, and each one's drawer says what it is for.";

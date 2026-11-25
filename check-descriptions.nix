@@ -2606,8 +2606,10 @@
     from inside it counting, of two that started each other's cells the stronger the trunk and
     no branch looping back round, a cell's forage saying what it split from, else the first
     forage listing a cell with a forage here, growing a branch where no start is said or the
-    start grows none, counting toward the trunk as a start does and counted apart from the
-    starts, what each key asks of the map, its tree, its find line, the
+    start grows none or would loop, counting toward the trunk as a start does and counted
+    apart from the starts, a cell started and split from two networks counting toward each,
+    the drawer saying a branch's starts and splits each out of its cells, what each key asks of
+    the map, its tree, its find line, the
     page and the theme switch, chords, typing and a key named after an object's own asking
     nothing, the tree's networks and branches by name under a machine or a network and the
     reading's order at the top, their cells worst first, the rows only open branches show and

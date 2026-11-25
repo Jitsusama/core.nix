@@ -206,6 +206,14 @@ function came(): Came {
   return { starters: new Set(), splitters: new Set(), cells: new Set(), split: new Set() };
 }
 
+/** What a network grew out of `key` says, from what came from there. */
+function grownFrom(key: string, { starters, splitters, cells, split }: Came): Grown {
+  const by = [...starters].sort(collate);
+  const splits =
+    split.size > 0 ? { split: { from: [...splitters].sort(collate), cells: split.size } } : {};
+  return { from: key, by, cells: cells.size, started: cells.size - split.size, ...splits };
+}
+
 /**
  * Which networks grow out of which, from where their cells came from, each
  * drawn network's cells known by `hubOf` (a cell's address to the key of
@@ -218,8 +226,11 @@ function came(): Came {
  * each other's cells the one that started more is the trunk, and no
  * branch is grown that would loop back round to itself. A split counts as
  * a start does, and is said apart, since nobody is said to have started it.
- * Of a cell's origins the first that can grow a branch grows it, one edge
- * a cell.
+ * Each of a cell's origins counts toward the network it came from, once a
+ * network and its start before its split, so a cell started from one
+ * network and split from another counts toward both, and where its branch
+ * grows from says how it came from there. A network whose strongest choice
+ * would loop grows out of the next, so a start refused never hides a split.
  */
 function grownOf(
   networks: readonly Network[],
@@ -244,51 +255,45 @@ function grownOf(
     }
     return false;
   };
-  const offered: { readonly key: string; readonly grown: Grown }[] = [];
-  for (const network of networks) {
-    if (network.within !== null) {
-      continue;
-    }
+  const nameOf = (key: string): string => named.get(key)?.name ?? key;
+  const cameFrom = (network: Network): Grown[] => {
     const from = new Map<string, Came>();
     for (const cell of network.cells) {
-      const grew = (originsOfCell.get(cell) ?? [])
-        .map((each) => ({ origin: each, hub: hubOf.get(each.by) }))
-        .find(
-          (pair) => pair.hub !== undefined && named.has(pair.hub) && !sitsIn(pair.hub, network.key),
-        );
-      if (grew === undefined || grew.hub === undefined) {
-        continue;
+      for (const origin of originsOfCell.get(cell) ?? []) {
+        const hub = hubOf.get(origin.by);
+        const had = hub === undefined ? undefined : (from.get(hub) ?? came());
+        if (hub === undefined || had === undefined || had.cells.has(cell)) {
+          continue;
+        }
+        if (!named.has(hub) || sitsIn(hub, network.key)) {
+          continue;
+        }
+        (origin.split ? had.splitters : had.starters).add(origin.by);
+        if (origin.split) {
+          had.split.add(cell);
+        }
+        had.cells.add(cell);
+        from.set(hub, had);
       }
-      const { origin } = grew;
-      const hub = grew.hub;
-      const had = from.get(hub) ?? came();
-      (origin.split ? had.splitters : had.starters).add(origin.by);
-      if (origin.split) {
-        had.split.add(cell);
-      }
-      had.cells.add(cell);
-      from.set(hub, had);
     }
-    const nameOf = (key: string): string => named.get(key)?.name ?? key;
-    const [best] = [...from].sort(
-      ([one, ones], [other, others]) =>
-        others.cells.size - ones.cells.size || collate(nameOf(one), nameOf(other)),
-    );
-    if (best) {
-      const [key, { starters, splitters, cells, split }] = best;
-      const by = [...starters].sort(collate);
-      const splits =
-        split.size > 0 ? { split: { from: [...splitters].sort(collate), cells: split.size } } : {};
-      const started = cells.size - split.size;
-      offered.push({
-        key: network.key,
-        grown: { from: key, by, cells: cells.size, started, ...splits },
-      });
-    }
-  }
-  offered.sort((one, other) => other.grown.cells - one.grown.cells || collate(one.key, other.key));
-  for (const { key, grown: offer } of offered) {
-    if (!sitsIn(offer.from, key)) {
+    return [...from]
+      .map(([key, had]) => grownFrom(key, had))
+      .sort(
+        (one, other) => other.cells - one.cells || collate(nameOf(one.from), nameOf(other.from)),
+      );
+  };
+  const offered = networks
+    .filter((network) => network.within === null)
+    .map((network) => ({ key: network.key, choices: cameFrom(network) }))
+    .filter(({ choices }) => choices.length > 0);
+  const strongest = (choices: readonly Grown[]): number => choices[0]?.cells ?? 0;
+  offered.sort(
+    (one, other) =>
+      strongest(other.choices) - strongest(one.choices) || collate(one.key, other.key),
+  );
+  for (const { key, choices } of offered) {
+    const offer = choices.find((choice) => !sitsIn(choice.from, key));
+    if (offer) {
       grown.set(key, offer);
     }
   }
