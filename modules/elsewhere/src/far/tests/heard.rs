@@ -465,6 +465,8 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     let (_, searching) = refusing("find", "*\" -type l \"*", "exit 1");
     for (step, stand_in) in [
         ("mkdir", "exit 1"),
+        ("mv", "exit 1"),
+        ("od", "exit 1"),
         ("tar", "exit 1"),
         ("find", "exit 1"),
         ("tar", &unpacking),
@@ -487,9 +489,10 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
         assert!(
             !work(&home).join("ran").exists()
                 && !work(&home).join("1").exists()
-                && !work(&home).join("1.run").exists(),
+                && !work(&home).join("1.run").exists()
+                && !work(&home).join("1.tar").exists(),
             "a tree it couldn't make for {step} ({stand_in:?}) was run, or left behind with \
-             its run's file"
+             its run's file or archive"
         );
         assert!(
             stand_in != unpacking || work(&home).join("closed").exists(),
