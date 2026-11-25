@@ -83,8 +83,8 @@ rec {
       };
       # A Mac's pi in pi-fence's launcher can't reach its own state, so the
       # realm's agent program, pi unless `agents` names another, held there
-      # for a fenced kind starts alone once it lays its own sandbox profile
-      # round each command it runs.
+      # for a fenced kind starts alone where the machine declares pi fences
+      # itself, so it is fenced only as it fences each command it runs.
       piFencesItself = lib.mkOption {
         type = lib.types.bool;
         default = false;
