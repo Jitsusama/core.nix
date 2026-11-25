@@ -4,6 +4,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+/// Where the store lies for a listing Nix's own collector makes, which
+/// reads none of it.
+const STORE: &str = "/nix/store";
+
 /// How the guard asks `nix-store` for the dead: with no experimental
 /// features, so the trace doesn't parse and hash every derivation it meets
 /// to look up content-addressed outputs. The empty value leaves two spaces.
@@ -91,7 +95,7 @@ fn a_reference_into_a_later_chunk_is_held_by_place() {
          done\n\
          printf '}'\n",
     );
-    let dead = list(&nix, false).unwrap();
+    let dead = list(&nix, Path::new(STORE), false).unwrap();
     assert_eq!(dead.len(), 1499);
     assert_eq!(dead[1498].path, "/nix/store/p1499");
     assert_eq!(dead[0].refers, [1498]);
@@ -101,7 +105,7 @@ fn a_reference_into_a_later_chunk_is_held_by_place() {
 fn the_dead_are_listed_and_described_in_chunks_the_kernel_takes() {
     let dir = tempfile::tempdir().unwrap();
     let nix = fake_nix(dir.path(), 2500);
-    let dead = list(&nix, false).unwrap();
+    let dead = list(&nix, Path::new(STORE), false).unwrap();
     assert_eq!(dead.len(), 2500);
     assert!(
         dead.iter()
@@ -129,7 +133,7 @@ fn what_isnt_a_store_path_in_the_store_is_not_described() {
              echo /nix/store/p1\n"
         ),
     );
-    let dead = list(&nix, false).unwrap();
+    let dead = list(&nix, Path::new(STORE), false).unwrap();
     let paths: Vec<&str> = dead.iter().map(|dead| dead.path.as_str()).collect();
     assert_eq!(paths, ["/nix/store/p0", "/nix/store/p1"]);
 }
@@ -141,10 +145,13 @@ fn a_listing_that_fails_says_why() {
         &dir.path().join("nix-store"),
         "echo 'error: cannot connect to the daemon' >&2; exit 1\n",
     );
-    let failed = list(&dir.path().join("nix"), false).unwrap_err();
+    let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
     assert!(failed.contains("cannot connect to the daemon"), "{failed}");
     let none = tempfile::tempdir().unwrap();
-    assert_eq!(list(&fake_nix(none.path(), 0), false).unwrap(), []);
+    assert_eq!(
+        list(&fake_nix(none.path(), 0), Path::new(STORE), false).unwrap(),
+        []
+    );
 }
 
 const DAY: f64 = 86400.0;
