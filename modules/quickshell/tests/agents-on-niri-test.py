@@ -4505,11 +4505,21 @@ def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
     shell.launcher_until(
         lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
     )
-    # Refused, his words go and nothing is kept, so the Talk shows no answer he didn't send.
-    shell.launcher_until(lambda shown: shown["typed"] == "")
-    talks = cast("list[Json]", shell.showing()["talks"] or [])
-    assert not any(one.get("line") == "Left" for one in talks), talks
+    # Refused, nothing is kept, so the Talk still held shows his first answer and no other.
+    shown = shell.showing()
+    talks = [(one.get("line"), one.get("stands")) for one in shown["talks"] or []]
+    assert shown["asking"], shown
+    assert ("Right", "answered") in talks, talks
+    assert not [one for one in talks if one[0] == "Left"], talks
     assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+    # And his words go: the field empties on any Return, so only a Talk opened again shows it.
+    shell.close_launcher()
+    did = followed(shell, "talkTo", inbox.name)
+    assert did["done"], did
+    shell.launcher_until(lambda shown: shown["asking"])
+    # Words kept would be put back as the Talk lays out; a second lets that pass first.
+    time.sleep(1)
+    assert shell.showing()["typed"] == "", "refused words came back"
     return told
 
 
