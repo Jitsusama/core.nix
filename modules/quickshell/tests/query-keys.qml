@@ -1123,6 +1123,14 @@ QtObject {
             `Drawing 2026-${washing("11-09<br>10")}.12.03.svg`);
         holds("though another text's break still ends what's washed",
             Search.washed("line 14\nline 15", "14 line", wash, false), "line 14<br>line 15");
+        // Every break of a title is its space, two or more as one, and so is a line or
+        // paragraph separator its name holds, which titleBreaks keeps in a word too wide
+        // for a line, as the drawer's search reads it (DrawerLines.runsOn).
+        holds("a title's every break is washed across",
+            Search.washed("one\ntwo\nthree", "one two three", wash, true),
+            washing("one<br>two<br>three"));
+        holds("and so is a separator its name holds",
+            Search.washed("a\u2028b\u2029c", "a b c", wash, true), washing("a\u2028b\u2029c"));
         // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
@@ -2091,11 +2099,14 @@ QtObject {
             Lines.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
         // What a laid line runs on into the next with (DrawerLines.runsOn),
         // from all it holds to the next line past the letters it keeps:
-        // what Qt wrapped at, or null for a break however Qt keeps it.
-        // A title's break stands for the space it was laid at, so a search
-        // runs on across it as across a wrap, as the title's wash does.
+        // what Qt wrapped at, or null for a break however Qt keeps it,
+        // except in a title. A title's break stands for the space it was
+        // laid at, so a search runs on across it as across a wrap, each
+        // space beside it kept, as the title's wash reads it.
         holds("a laid line of a title runs on with the space its break stood for",
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, true), " ");
+        holds("and with each space beside the break kept",
+            Lines.runsOn("a \u2028", 1, true), "  ");
         holds("and with none at another text's break",
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, false), null);
         // The break those are read at is the one Qt gives: a title's "\n"
@@ -2137,6 +2148,37 @@ QtObject {
         ];
         for (const [what, raw, kept, want] of trailing)
             holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
+        // The search and the wash read a title alike: all the search reads of it, its laid
+        // lines' letters each run on as runsOn says, and its last with what trails it, as
+        // Drawer.qml's pieces give them, sought, washes the whole title.
+        const titleInk = { ink: "ink", ground: "ground" };
+        const titleWash = words =>
+            `<span style="color:ink;background-color:ground">${words}</span>`;
+        const searchRead = title => {
+            let read = "";
+            let from = 0;
+            for (let at = 0; at <= title.length; at++) {
+                if (at < title.length && !/[\n\u2028\u2029]/.test(title[at]))
+                    continue;
+                const raw = title.slice(from, at + 1);
+                const kept = raw.replace(/\s+$/, "").length;
+                const on = at < title.length ? Lines.runsOn(raw, kept, true)
+                    : Lines.trailing(raw, kept);
+                read += raw.slice(0, kept) + on;
+                from = at + 1;
+            }
+            return read;
+        };
+        const titles = [
+            ["one at its balanced break", "Drawing 2026-11-09\n10.12.03.svg"],
+            ["one with a space before its break", "a \nb"],
+            ["one with separators its name holds", "a\u2028b\u2029c"],
+            ["one ending in spaces", "a\nb  "]
+        ];
+        for (const [what, title] of titles)
+            holds(`the search reads a title as its wash does: ${what}`,
+                Search.washed(title, searchRead(title), titleInk, true),
+                titleWash(title.replace(/\n/g, "<br>")));
         // How pieces become laid lines (DrawerLines.linesOf): those sharing
         // a baseline one line, its parts left to right, each keeping what
         // it wrapped at, which a search runs on with (DrawerPage.textsOf).
