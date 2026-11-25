@@ -14,8 +14,10 @@
 //! nothing, and never for more repositories than its searches allow, and
 //! its journal names it, not GitHub, when it can't be read. A site of a
 //! company's own weighs no writer's standing; who may stop Joel on GitHub
-//! itself, where any account may comment, is in standing.rs.
+//! itself, where any account may comment, is in standing.rs; a stop heard
+//! after Joel resumed what it was said before, in late.rs.
 
+mod late;
 mod standing;
 
 use std::path::{Path, PathBuf};
