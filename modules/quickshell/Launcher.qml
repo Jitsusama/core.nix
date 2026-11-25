@@ -14779,9 +14779,11 @@ Scope {
                         Item {
                             objectName: "startSays"
                             width: parent.width
-                            // Two bands at most, so what it says is read whole rather than cut
-                            // at its point, a long folder's name with it.
-                            height: root.rowTall * Math.max(1, startSaysText.lineCount)
+                            // Two lines at most, so what it says is read whole rather than cut
+                            // at its point, a long folder's name with it; the second a Figure
+                            // pitch under the first, as a drawer's lines are, not a row's band.
+                            height: root.rowTall + Theme.level.figure.pitch
+                                * Math.max(0, startSaysText.lineCount - 1)
                             visible: root.startSays !== ""
 
                             // On the rows' glyph column, so the words under the path and the
@@ -14809,7 +14811,7 @@ Scope {
                                 wrapMode: Text.Wrap
                                 maximumLineCount: 2
                                 lineHeightMode: Text.FixedHeight
-                                lineHeight: root.rowTall
+                                lineHeight: Theme.level.figure.pitch
                                 elide: Text.ElideRight
                                 color: Theme.text
                                 font.family: Theme.level.figure.family
