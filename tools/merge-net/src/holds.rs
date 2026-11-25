@@ -28,9 +28,16 @@
 //! This reads
 //! the hold's words, a stopgap until a hold carries its scope in a field of
 //! its own.
+//!
+//! The net reads the folder rather than asking the machine's mycelium
+//! node, which answers a message by its id but lists none and says nothing
+//! of holds, while every message sent still lands in the folder. Each read
+//! parses only the files it hasn't seen (`Kept`).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::ffi::{OsStr, OsString};
 use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, SystemTime};
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -384,32 +391,202 @@ pub struct Held {
     pub from: Option<String>,
 }
 
+/// How long after a folder last changed its stamp is trusted to say it
+/// hasn't changed since: a file renamed in within the same tick of the
+/// kernel's clock as the read before leaves the stamp as it was.
+const SETTLED: Duration = Duration::from_secs(1);
+
+/// How soon after one read the next lists the folders again, while a
+/// change is too new to trust its stamp: thousands of asks a second would
+/// otherwise each list tens of thousands of files for that second. A hold
+/// is read at most this late. The tests read each change at once.
+const AGAIN: Duration = Duration::from_millis(if cfg!(test) { 0 } else { 100 });
+
+/// What the net keeps of one messages folder between reads. Every worker
+/// asks `World::held`, 24.6 million times in one round on 25 November, and
+/// each ask parsed every message since the boot afresh: those parsed
+/// copies were 1.17 GB of the net's 2.2 GB peak. A message is renamed into
+/// place whole and never changes, and one arriving, or filed into its
+/// day's folder, changes the folder it lands in. So an ask finding every
+/// folder as it was answers as the last did, and one that doesn't parses
+/// only the files it hasn't seen.
+#[derive(Default)]
+struct Kept {
+    /// Milliseconds since the epoch; a file sent before it is never read.
+    since: u64,
+    /// When the folder and each of its day folders last changed, as the
+    /// last read found them, and when that read was.
+    stamps: Vec<(PathBuf, SystemTime)>,
+    read_at: Option<SystemTime>,
+    /// Each file read, by its name, which it keeps in its day's folder:
+    /// when it was sent and what of it the net reads, or nothing for a
+    /// message no hold turns on.
+    files: HashMap<OsString, Option<(u64, Value)>>,
+    answer: Option<Held>,
+    /// How many reads of the folders and parses of files there have been,
+    /// for the test that a quiet folder costs neither.
+    reads: usize,
+    parsed: usize,
+}
+
+/// What the net keeps of each messages folder it reads.
+static KEPT: Mutex<Option<HashMap<PathBuf, Kept>>> = Mutex::new(None);
+
+/// When `path` last changed, or nothing where that can't be read.
+fn changed(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).and_then(|meta| meta.modified()).ok()
+}
+
+/// When a message file's name says it was sent, in milliseconds; nothing
+/// for any other file, as a dot-file still being written is.
+fn sent_at(name: &OsStr) -> Option<u64> {
+    name.to_str()?.split('-').next()?.parse().ok()
+}
+
+/// Whether `message` goes to every session on the machine.
+fn to_everyone(message: &Value) -> bool {
+    message["to"].as_array().is_some_and(|to| {
+        to.iter()
+            .any(|group| EVERYONE.iter().any(|name| group == name))
+    })
+}
+
+/// What of `message` the net reads, or nothing for one no hold turns on:
+/// no hold, sent to no group for the whole machine, answering and replacing
+/// nothing. Only a hold's words are read, and a message a hold replaces
+/// went where the hold goes, to everyone, so only those keep their text.
+fn what_the_net_reads(message: &Value) -> Option<Value> {
+    let worded = message["intent"] == "hold" || to_everyone(message);
+    if !worded && !message["re"].is_string() && !message["supersedes"].is_string() {
+        return None;
+    }
+    let fields: &[&str] = if worded {
+        &["id", "from", "to", "intent", "re", "supersedes", "text"]
+    } else {
+        &["id", "from", "intent", "re", "supersedes"]
+    };
+    let kept = fields
+        .iter()
+        .filter_map(|field| Some(((*field).to_owned(), message.get(*field)?.clone())))
+        .collect();
+    Some(Value::Object(kept))
+}
+
+impl Kept {
+    /// Whether every folder is as the last read found it, and that read
+    /// came long enough after the newest change to have seen all of it.
+    fn unchanged(&self) -> bool {
+        let Some(read_at) = self.read_at else {
+            return false;
+        };
+        if read_at.elapsed().is_ok_and(|since| since < AGAIN) {
+            return true;
+        }
+        let settled = self
+            .stamps
+            .iter()
+            .all(|(_, at)| read_at.duration_since(*at).is_ok_and(|age| age >= SETTLED));
+        settled
+            && self
+                .stamps
+                .iter()
+                .all(|(path, at)| changed(path) == Some(*at))
+    }
+
+    /// Reads `folder` and its day folders again, parsing only the files
+    /// not yet seen and letting go of those gone, and answers whether what
+    /// the net reads changed; nothing where the folder can't be read.
+    fn read(&mut self, folder: &Path) -> Option<bool> {
+        self.reads += 1;
+        // Each stamp is taken before its folder is listed, so a file
+        // arriving between the two is read again next time, never missed.
+        let read_at = SystemTime::now();
+        let mut stamps = vec![(folder.to_owned(), changed(folder)?)];
+        let mut entries = Vec::new();
+        for entry in fs::read_dir(folder).ok()?.filter_map(Result::ok) {
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                entries.push(entry);
+                continue;
+            }
+            let day = entry.path();
+            if let (Some(at), Ok(listed)) = (changed(&day), fs::read_dir(&day)) {
+                stamps.push((day, at));
+                entries.extend(listed.filter_map(Result::ok));
+            }
+        }
+        let mut seen = HashSet::new();
+        let mut moved = false;
+        for entry in entries {
+            let name = entry.file_name();
+            let Some(at) = sent_at(&name).filter(|at| *at >= self.since) else {
+                continue;
+            };
+            if !self.files.contains_key(&name) {
+                self.parsed += 1;
+                let text = fs::read_to_string(entry.path()).ok();
+                // One that can't be read yet is tried again next time.
+                let Some(message) = text.and_then(|text| serde_json::from_str(&text).ok()) else {
+                    continue;
+                };
+                let read = what_the_net_reads(&message).map(|message| (at, message));
+                moved |= read.is_some();
+                self.files.insert(name.clone(), read);
+            }
+            seen.insert(name);
+        }
+        let before = self.files.len();
+        self.files.retain(|name, _| seen.contains(name));
+        self.stamps = stamps;
+        self.read_at = Some(read_at);
+        Some(moved || self.files.len() != before)
+    }
+
+    /// The messages kept, oldest first.
+    fn messages(&self) -> Vec<Value> {
+        let mut sent: Vec<&(u64, Value)> = self.files.values().flatten().collect();
+        sent.sort_by_key(|(at, _)| *at);
+        sent.into_iter()
+            .map(|(_, message)| message.clone())
+            .collect()
+    }
+}
+
+/// How many times the net has read `folder` and parsed a file of it.
+#[cfg(test)]
+fn costs(folder: &Path) -> (usize, usize) {
+    let kept = KEPT.lock().unwrap_or_else(PoisonError::into_inner);
+    kept.as_ref()
+        .and_then(|kept| kept.get(folder))
+        .map_or((0, 0), |kept| (kept.reads, kept.parsed))
+}
+
 /// The first hold on the whole machine still standing among the messages
 /// in `folder` sent since `since` (milliseconds, as each file's name
 /// begins).
 pub fn standing(folder: &Path, since: u64) -> Option<Held> {
-    let entries: Vec<fs::DirEntry> = fs::read_dir(folder).ok()?.filter_map(Result::ok).collect();
-    let days: Vec<fs::DirEntry> = entries
-        .iter()
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-        .filter_map(|day| fs::read_dir(day.path()).ok())
-        .flat_map(|day| day.filter_map(Result::ok))
-        .collect();
-    let mut sent: Vec<(u64, Value)> = days
-        .into_iter()
-        .chain(entries)
-        .filter_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            let at: u64 = name.split('-').next()?.parse().ok()?;
-            (at >= since).then_some((at, entry.path()))
-        })
-        .filter_map(|(at, path)| {
-            let text = fs::read_to_string(path).ok()?;
-            Some((at, serde_json::from_str(&text).ok()?))
-        })
-        .collect();
-    sent.sort_by_key(|(at, _)| *at);
-    let messages: Vec<Value> = sent.into_iter().map(|(_, message)| message).collect();
+    let mut kept = KEPT.lock().unwrap_or_else(PoisonError::into_inner);
+    let kept = kept
+        .get_or_insert_with(HashMap::new)
+        .entry(folder.to_owned())
+        .or_default();
+    if kept.since != since {
+        *kept = Kept {
+            since,
+            ..Kept::default()
+        };
+    }
+    if kept.unchanged() {
+        return kept.answer.clone();
+    }
+    match kept.read(folder) {
+        None => {
+            kept.read_at = None;
+            return None;
+        }
+        Some(false) if kept.reads > 1 => return kept.answer.clone(),
+        Some(_) => {}
+    }
+    let messages = kept.messages();
     let mut said = SAID.lock().unwrap_or_else(PoisonError::into_inner);
     for hold in passed_by(&messages) {
         let id = hold["id"].as_str().unwrap_or_default();
@@ -427,7 +604,8 @@ pub fn standing(folder: &Path, since: u64) -> Option<Held> {
             eprintln!("merge-net: passing by hold {id}, not about its work: {text}");
         }
     }
-    held_by(&messages)
+    kept.answer = held_by(&messages);
+    kept.answer.clone()
 }
 
 /// The holds the net has said it passes by. A misread hold would otherwise
@@ -439,10 +617,7 @@ static SAID: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 /// its sender answers or replaces.
 fn standing_holds(messages: &[Value]) -> impl Iterator<Item = &Value> {
     messages.iter().filter(|hold| {
-        let everyone = hold["to"].as_array().is_some_and(|to| {
-            to.iter()
-                .any(|group| EVERYONE.iter().any(|name| group == name))
-        });
+        let everyone = to_everyone(hold);
         let ended = || {
             messages.iter().any(|later| {
                 later["from"] == hold["from"]
