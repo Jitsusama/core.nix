@@ -42,7 +42,10 @@
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
-// Its stand-ins are in modules/quickshell/tests/stand-ins.
+// Its stand-ins are in modules/quickshell/tests/stand-ins. Long because
+// its cases run in turn against one real people daemon and its stand-ins,
+// each starting from the state the last left, so split apart each file
+// would start the daemon and walk the client back to that state again.
 import Quickshell
 import Quickshell.Io
 import QtQuick
