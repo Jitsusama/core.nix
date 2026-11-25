@@ -480,6 +480,11 @@ fn a_reading_left_waiting_past_stale_paces_is_never_said_as_now() {
     drop(free);
 }
 
+/// A case of the journal: what it's called, the reading before, the reading
+/// now, whether the readings before measured a share, and what the journal
+/// says.
+type Case = (&'static str, Sample, Sample, Option<bool>, Option<String>);
+
 #[test]
 fn the_journal_says_why_a_share_goes_unmeasured_and_only_what_changed() {
     let one = Process {
@@ -497,9 +502,6 @@ fn the_journal_says_why_a_share_goes_unmeasured_and_only_what_changed() {
         processes: vec![one.clone()],
     };
     let unmeasured = |why: &str| Some(format!("the share of a core goes unmeasured, as {why}"));
-    // What each case is called, the reading before, the reading now, whether
-    // the readings before measured a share, and what the journal says.
-    type Case = (&'static str, Sample, Sample, Option<bool>, Option<String>);
     let cases: [Case; 8] = [
         (
             "measured from the start",
