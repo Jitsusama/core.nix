@@ -10280,6 +10280,9 @@ Scope {
                 drawer: (typeof row.drawer === "function" ? row.drawer() : row.drawer) ?? null,
                 // The keys the foot says for it, each a mark and its word.
                 told: root.keysFor(row).map(key => root.saidKey(key)),
+                // Whether the foot has read its acts yet, so what it tells
+                // of them, d, y and an act's own key, is whole.
+                weighed: root.footActions.row === row,
                 // The key its side names where it ends something.
                 carried: root.carriedBy(row),
                 settled: !(row === root.headline || row.answered)
