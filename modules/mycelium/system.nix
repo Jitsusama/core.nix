@@ -23,7 +23,8 @@
 let
   cfg = config.jitsusama.mycelium;
   package = mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  name = lib.types.strMatching "[a-z0-9-]+";
+  # Never opening with a hyphen, which mycelium would read as a flag.
+  name = lib.types.strMatching "[a-z0-9][a-z0-9-]*";
   # An attach joins a session held here, so the key may have a terminal.
   pinned =
     realm: machine: key:
@@ -39,7 +40,9 @@ in
     };
 
     linkedFrom = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.attrsOf lib.types.str);
+      # One line, so a key can't add an unpinned line of its own; a key
+      # read from its file keeps its last newline, which this drops.
+      type = lib.types.attrsOf (lib.types.attrsOf lib.types.singleLineStr);
       default = { };
       example = {
         personal.other-machine = "ecdsa-sha2-nistp256 AAAA...";
@@ -65,7 +68,7 @@ in
             lib.mapAttrsToList (realm: machines: [ realm ] ++ lib.attrNames machines) cfg.linkedFrom
           )
         );
-        message = "Each realm and machine in jitsusama.mycelium.linkedFrom is a name of a-z, 0-9 and -.";
+        message = "Each realm and machine in jitsusama.mycelium.linkedFrom is a name of a-z, 0-9 and -, opening with a letter or digit.";
       }
     ];
 

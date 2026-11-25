@@ -1752,7 +1752,7 @@ in
           # Deserialize with nothing but deny_unknown_fields over it, and no
           # field says more than default. So the scan reads every attribute
           # and doc line above the struct, back to a blank line or the end
-          # of another item, and throws on any other line there or in the
+          # of another item, and fails on any other line there or in the
           # body, on anything but that end past the blank lines, and on a
           # struct no longer found, rather than passing what it didn't read.
           # Past any blank lines over an item's attributes stands the end of
@@ -1767,7 +1767,16 @@ in
             gap == lib.length past
             || line == "}"
             || lib.hasSuffix ";" line && builtins.match "[[:space:]]*[/#].*" line == null;
-          scan =
+          # Each scan answers what it read as read, or why it can't read it
+          # as failed, so a case it refuses shows which refusal it met.
+          reading =
+            scanned: scanned.read or (throw "mycelium's ${scanned.failed}, which this check can't read");
+          scan = lines: struct: reading (structScan lines struct);
+          refusedFor =
+            scanner:
+            { lines, why }:
+            lib.hasInfix why ((scanner lines).failed or "");
+          structScan =
             lines: struct:
             let
               from = lib.lists.findFirstIndex (line: line == "struct ${struct} {") null lines;
@@ -1787,10 +1796,10 @@ in
               field = builtins.match "    ([a-z_][a-z0-9_]*): (.*),";
               defaulted = "    #[serde(default)]";
               plain = line: lib.hasPrefix "    ///" line || line == defaulted || field line != null;
-              fail = why: throw "mycelium's struct ${struct} ${why}, which this check can't read";
+              fail = why: { failed = "struct ${struct} ${why}"; };
             in
             if from == null || to == null then
-              throw "mycelium's lender has no lines 'struct ${struct} {' to '}'"
+              fail "has no lines 'struct ${struct} {' to '}'"
             else if !ended (lib.drop reach before) then
               fail "has over its attributes, past blank lines, other than an item's end"
             else if
@@ -1802,26 +1811,27 @@ in
             else if !lib.all plain body then
               fail "has a line in its body other than a doc line, a field or #[serde(default)]"
             else
-              lib.listToAttrs (
-                lib.concatMap (
-                  line:
-                  let
-                    matched = field line;
-                  in
-                  if matched == null then
-                    [ ]
-                  else
-                    [
-                      {
-                        name = lib.head matched;
-                        value = lib.last matched;
-                      }
-                    ]
-                ) body
-              );
+              {
+                read = lib.listToAttrs (
+                  lib.concatMap (
+                    line:
+                    let
+                      matched = field line;
+                    in
+                    if matched == null then
+                      [ ]
+                    else
+                      [
+                        {
+                          name = lib.head matched;
+                          value = lib.last matched;
+                        }
+                      ]
+                  ) body
+                );
+              };
           fields = scan lines;
           named = struct: lib.attrNames (fields struct);
-          throws = value: !(builtins.tryEval (builtins.deepSeq value value)).success;
           # A struct laid out as the lender's are, which the scan reads,
           # and with each change that has serde read it otherwise, or that
           # the scan can't read, in place of its line AT.
@@ -1842,39 +1852,123 @@ in
           };
           denying = "#[serde(deny_unknown_fields)]";
           changedVm = at: lines: lib.take at plainVm ++ lines ++ lib.drop (at + 1) plainVm;
+          # The refusals, each by words of its own reason.
+          pastItem = "past blank lines, other than an item's end";
+          overStruct = "other than doc lines, a Deserialize derive and deny_unknown_fields";
+          inBody = "has a line in its body other than a doc line";
+          noLines = "has no lines";
+          # Ends of the item before that the scan reads past: one ending
+          # ';' and one ending '}', with more than one blank line after.
+          endedVms = [
+            (
+              [
+                "const MOST: u64 = 1;"
+                ""
+              ]
+              ++ plainVm
+            )
+            (
+              [
+                "}"
+                ""
+                ""
+              ]
+              ++ plainVm
+            )
+          ];
           unread = [
-            (changedVm 0 [
-              "#[serde(rename_all = \"kebab-case\")]"
-              ""
-            ])
-            (changedVm 0 [
-              "#[serde(rename_all = \"kebab-case\")]"
-              "// A machine lent to."
-              ""
-            ])
-            (changedVm 0 [
-              "#[serde(rename_all = \"kebab-case\")]"
-              "  // Its name; its cap;"
-              ""
-            ])
-            (changedVm 0 [
-              "#[serde(rename_all = \"kebab-case\")]"
-              ""
-              ""
-            ])
-            (changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ])
-            (changedVm 2 [ "#[serde(deny_unknown_fields, rename_all = \"kebab-case\")]" ])
-            (changedVm 2 [
-              denying
-              "#[cfg_attr(test, serde(rename_all = \"camelCase\"))]"
-            ])
-            (changedVm 3 [ "pub struct Vm {" ])
-            (changedVm 5 [ "    pub prefix: String," ])
-            (changedVm 5 [
-              "    prefix:"
-              "        String,"
-            ])
-            (changedVm 6 [ "    #[serde(rename = \"name\")]" ])
+            {
+              lines = changedVm 0 [
+                "#[serde(rename_all = \"kebab-case\")]"
+                ""
+              ];
+              why = pastItem;
+            }
+            {
+              lines = changedVm 0 [
+                "#[serde(rename_all = \"kebab-case\")]"
+                "// A machine lent to."
+                ""
+              ];
+              why = pastItem;
+            }
+            {
+              lines = changedVm 0 [
+                "#[serde(rename_all = \"kebab-case\")]"
+                "  // Its name; its cap;"
+                ""
+              ];
+              why = pastItem;
+            }
+            {
+              lines = changedVm 0 [
+                "#[serde(rename_all = \"kebab-case\")]"
+                ""
+                ""
+              ];
+              why = pastItem;
+            }
+            # An item's end opening with an attribute, read as one left
+            # unread, so the scan refuses rather than guess.
+            {
+              lines = [
+                "#[cfg(test)] mod tests;"
+                ""
+              ]
+              ++ plainVm;
+              why = pastItem;
+            }
+            {
+              lines = changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ];
+              why = overStruct;
+            }
+            # Each line over these the scan tells, so only the missing
+            # derive, or the count of deny_unknown_fields, refuses it.
+            {
+              lines = changedVm 1 [ ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 2 [ ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 2 [
+                denying
+                denying
+              ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 2 [ "#[serde(deny_unknown_fields, rename_all = \"kebab-case\")]" ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 2 [
+                denying
+                "#[cfg_attr(test, serde(rename_all = \"camelCase\"))]"
+              ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 3 [ "pub struct Vm {" ];
+              why = noLines;
+            }
+            {
+              lines = changedVm 5 [ "    pub prefix: String," ];
+              why = inBody;
+            }
+            {
+              lines = changedVm 5 [
+                "    prefix:"
+                "        String,"
+              ];
+              why = inBody;
+            }
+            {
+              lines = changedVm 6 [ "    #[serde(rename = \"name\")]" ];
+              why = inBody;
+            }
           ];
           # Each field's JSON shape as the module writes it: a keyless
           # budget with no key, read as none only while the key is
@@ -1934,7 +2028,7 @@ in
           # derives Deserialize with nothing but one lowercase rename over
           # it, and its body holds only plain variants. So, as the struct
           # scan does, it reads every attribute and doc line above the enum,
-          # back to a blank line or another item's end, and throws on any
+          # back to a blank line or another item's end, and fails on any
           # other line there or in the body, rather than passing what it
           # didn't read.
           kindScan =
@@ -1956,26 +2050,28 @@ in
               variant = builtins.match "    ([A-Z][A-Za-z]*),";
               defaulted = "    #[default]";
               at = lib.lists.findFirstIndex (line: line == defaulted) null body;
-              fail = why: throw "mycelium's enum Kind ${why}, which this check can't read";
+              fail = why: { failed = "enum Kind ${why}"; };
             in
             if from == null || to == null then
-              throw "mycelium's lender has no lines 'enum Kind {' to '}'"
+              fail "has no lines 'enum Kind {' to '}'"
             else if !ended (lib.drop reach before) then
               fail "has over its attributes, past blank lines, other than an item's end"
             else if !lib.all told above || count deriving != 1 || count (l: l == renaming) != 1 then
               fail "has over it other than doc lines, a Deserialize derive and a lowercase rename"
             else if !lib.all (line: line == defaulted || variant line != null) body then
               fail "has a line in its body other than a doc line, a plain variant or #[default]"
-            else if at == null || variant (lib.elemAt body (at + 1)) == null then
+            else if at == null || at + 1 == lib.length body || variant (lib.elemAt body (at + 1)) == null then
               fail "has no variant marked default"
             else
               {
-                words = map (line: lib.toLower (lib.head (variant line))) (
-                  lib.filter (line: variant line != null) body
-                );
-                unwritten = lib.toLower (lib.head (variant (lib.elemAt body (at + 1))));
+                read = {
+                  words = map (line: lib.toLower (lib.head (variant line))) (
+                    lib.filter (line: variant line != null) body
+                  );
+                  unwritten = lib.toLower (lib.head (variant (lib.elemAt body (at + 1))));
+                };
               };
-          kinds = kindScan lines;
+          kinds = reading (kindScan lines);
           # An enum laid out as the lender's Kind is, which the scan reads,
           # and with each change that has serde read it otherwise, or that
           # the scan can't read, in place of its line AT.
@@ -1998,31 +2094,82 @@ in
             unwritten = "models";
           };
           changedKind = at: lines: lib.take at plainKind ++ lines ++ lib.drop (at + 1) plainKind;
+          overKind = "other than doc lines, a Deserialize derive and a lowercase rename";
+          noDefault = "has no variant marked default";
           unreadKinds = [
-            (changedKind 0 [
-              "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
-              ""
-              "/// What a budget's upstream is."
-            ])
-            (changedKind 0 [
-              "#[serde("
-              "    deny_unknown_fields,"
-              ")]"
-            ])
-            (changedKind 1 [ "#[derive(Debug, Default, DeserializeFromStr)]" ])
-            (changedKind 2 [ "#[serde(rename_all = \"UPPERCASE\")]" ])
-            (changedKind 2 [ ])
-            (changedKind 2 [
-              "#[serde(rename_all = \"lowercase\")]"
-              "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
-            ])
-            (changedKind 3 [ "pub enum Kind {" ])
-            (changedKind 5 [ ])
-            (changedKind 7 [ "    Forge(String)," ])
-            (changedKind 7 [
-              "    #[serde(rename = \"git\")]"
-              "    Forge,"
-            ])
+            {
+              lines = changedKind 0 [
+                "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
+                ""
+                "/// What a budget's upstream is."
+              ];
+              why = pastItem;
+            }
+            {
+              lines = changedKind 0 [
+                "#[serde("
+                "    deny_unknown_fields,"
+                ")]"
+              ];
+              why = pastItem;
+            }
+            {
+              lines = changedKind 1 [ "#[derive(Debug, Default, DeserializeFromStr)]" ];
+              why = overKind;
+            }
+            # Two derives, each read alone as serde's, which only the count
+            # of them refuses.
+            {
+              lines = changedKind 1 [
+                "#[derive(Debug, Default, Deserialize)]"
+                "#[derive(Deserialize)]"
+              ];
+              why = overKind;
+            }
+            {
+              lines = changedKind 2 [ "#[serde(rename_all = \"UPPERCASE\")]" ];
+              why = overKind;
+            }
+            {
+              lines = changedKind 2 [ ];
+              why = overKind;
+            }
+            {
+              lines = changedKind 2 [
+                "#[serde(rename_all = \"lowercase\")]"
+                "#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]"
+              ];
+              why = overKind;
+            }
+            {
+              lines = changedKind 3 [ "pub enum Kind {" ];
+              why = noLines;
+            }
+            {
+              lines = changedKind 5 [ ];
+              why = noDefault;
+            }
+            # The mark on the body's last line, with no variant after it.
+            {
+              lines = lib.take 5 plainKind ++ [
+                "    Models,"
+                "    Forge,"
+                "    #[default]"
+                "}"
+              ];
+              why = noDefault;
+            }
+            {
+              lines = changedKind 7 [ "    Forge(String)," ];
+              why = inBody;
+            }
+            {
+              lines = changedKind 7 [
+                "    #[serde(rename = \"git\")]"
+                "    Forge,"
+              ];
+              why = inBody;
+            }
           ];
           # lend.nix's budget kind option, as the module takes it.
           kindOption =
@@ -2081,16 +2228,23 @@ in
         && joins
         && parses
         && scan plainVm "Vm" == plainFields
-        && lib.all (lines: throws (scan lines "Vm")) unread
+        && lib.all (lines: scan lines "Vm" == plainFields) endedVms
+        && lib.all (refusedFor (lines: structScan lines "Vm")) unread
         && named "Written" == lib.attrNames lending
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
         && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
         && sorted kindOption.type.functor.payload.values == sorted kinds.words
         && kindOption.default == kinds.unwritten
+        && takes unsaid
         && writes unsaid filled
-        && kindScan plainKind == plainKinds
-        && lib.all (lines: throws (kindScan lines)) unreadKinds
+        && reading (kindScan plainKind) == plainKinds
+        && lib.all (refusedFor kindScan) unreadKinds
+        # A kind the type takes, beside one it refuses, so the refusal is
+        # the word's alone.
+        && takes (withModels {
+          kind = "models";
+        })
         && typeRefuses (withModels {
           kind = "Forge";
         })
@@ -2212,7 +2366,7 @@ in
   # none authorizes nothing of mycelium's.
   mycelium-lets-a-link-key-only-link =
     holds "mycelium-lets-a-link-key-only-link"
-      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, or a machine naming none authorizes a key."
+      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, a machine naming none authorizes a key, a realm or machine name opening with a hyphen is taken, a key of two lines is, or a key's last newline isn't dropped."
       (
         let
           key = "ecdsa-sha2-nistp256 AAAAone";
@@ -2234,10 +2388,52 @@ in
             builtins.length given == 1
             && lib.hasPrefix ''restrict,pty,command="/nix/store/'' (lib.head given)
             && lib.hasSuffix ''/bin/mycelium --realm personal ssh --from one" ${key}'' (lib.head given);
+          # The machines' keys as the option gives them.
+          linked =
+            given:
+            (bareNixos [
+              self.nixosModules.workstation
+              {
+                jitsusama.mycelium = pinning // {
+                  linkedFrom.personal.one = given;
+                };
+              }
+            ]).config.jitsusama.mycelium.linkedFrom;
+          # Whether the name's own assertion refuses a realm and machine so
+          # named, read by its message so another assertion failing can't
+          # stand in. Only a failed one's message is read, since some are
+          # made only then.
+          misnamed =
+            realm: machine:
+            lib.any
+              (
+                check:
+                !check.assertion
+                && lib.hasPrefix "Each realm and machine in jitsusama.mycelium.linkedFrom" check.message
+              )
+              (bareNixos [
+                self.nixosModules.workstation
+                {
+                  jitsusama.mycelium = {
+                    account = "someone";
+                    linkedFrom.${realm}.${machine} = key;
+                  };
+                }
+              ]).config.assertions;
         in
         pinnedOn bareNixos self.nixosModules.workstation
         && pinnedOn bareDarwin self.darwinModules.workstation
         && keys bareNixos self.nixosModules.workstation { } == [ ]
+        # A name opening with a hyphen would reach mycelium as a flag.
+        && misnamed "personal" "-h"
+        && misnamed "-h" "one"
+        && !misnamed "personal" "other-machine"
+        # A key's second line would be one of authorized_keys' own, unpinned.
+        # The option's own value is read, since NixOS's keys refuse it too
+        # and nix-darwin's may not; a key read from its file keeps its last
+        # newline, which is taken and dropped.
+        && !(builtins.tryEval (builtins.deepSeq (linked "${key}\nssh-ed25519 AAAAtwo") true)).success
+        && linked "${key}\n" == { personal.one = key; }
       );
 
   # The words a link key is pinned to, read from the line a machine's system
@@ -2251,27 +2447,34 @@ in
   # package the line names.
   mycelium-takes-its-link-key-s-words =
     let
-      lines =
-        (bareNixos [
-          self.nixosModules.workstation
-          {
-            jitsusama.mycelium = {
-              account = "someone";
-              linkedFrom.personal.one = "ecdsa-sha2-nistp256 AAAAone";
-            };
-          }
-        ]).config.users.users.someone.openssh.authorizedKeys.keys;
+      nixos = bareNixos [
+        self.nixosModules.workstation
+        {
+          jitsusama.mycelium = {
+            account = "someone";
+            linkedFrom.personal.one = "ecdsa-sha2-nistp256 AAAAone";
+          };
+        }
+      ];
+      lines = nixos.config.users.users.someone.openssh.authorizedKeys.keys;
       line =
         assert lib.assertMsg (lines != [ ]) "a machine linked from one is given no key line";
         lib.head lines;
-      pinned = builtins.match ''.*command="[^ "]*/bin/mycelium ([^"]*)".*'' (
+      pinned = builtins.match ''.*command="([^ "]*)/bin/mycelium ([^"]*)".*'' (
         builtins.unsafeDiscardStringContext line
       );
-      words = lib.filter (word: word != "") (lib.splitString " " (lib.head pinned));
-      locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+      words = lib.filter (word: word != "") (lib.splitString " " (lib.elemAt pinned 1));
+      # The package the line pins, by its store path alone, which naming
+      # builds nothing, so the words run here are the ones sshd would run.
+      lockedFor = system: self.inputs.mycelium.packages.${system}.default;
+      linePins = builtins.unsafeDiscardStringContext "${lockedFor nixos.pkgs.stdenv.hostPlatform.system}";
+      locked = lockedFor pkgs.stdenv.hostPlatform.system;
       mycelium = lib.getExe (locked.overrideAttrs { doCheck = false; });
     in
     assert lib.assertMsg (pinned != null) "no link key line pins mycelium: ${line}";
+    assert lib.assertMsg (
+      lib.head pinned == linePins
+    ) "the link key line pins ${lib.head pinned}, not the locked mycelium ${linePins}";
     # Kept in Nix because the locked mycelium and the words its key line
     # pins come from this evaluation, and a script of its own would only be
     # handed them back as words.
@@ -2285,12 +2488,20 @@ in
       # of the words 2; the record kept below says which error it was.
       case $ended in
         1) ;;
-        0) echo "mycelium took a login on its link key's words"; exit 1 ;;
-        124) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
+        0) echo "mycelium took a login on its link key's words"; cat said told; exit 1 ;;
+        # timeout ends 124 on its TERM, and 137 once it kills a run that
+        # ignored that, as a kill from outside, the builder's memory say, also
+        # ends.
+        124 | 137) echo "mycelium hung, or was killed, on a login on its link key's words"; cat told; exit 1 ;;
         *) echo "mycelium ended $ended on a login on its link key's words"; cat told; exit 1 ;;
       esac
+      # Each refusal is a JSON object of its own line, read by its fields,
+      # so neither its layout nor another field's text decides. mycelium
+      # writes `asked` on every refusal, null where no command was asked.
+      # jq's own words on a file it can't read stay in the log.
       kept=state/mycelium/refused-keys.jsonl
-      grep '"asked":null' "$kept" 2> /dev/null | grep -q '"from":"one"' || {
+      ${lib.getExe pkgs.jq} -e 'select(.from == "one" and has("asked") and .asked == null)' \
+        "$kept" > /dev/null || {
         echo "mycelium didn't take its link key's words:" ${lib.escapeShellArgs words}
         cat told
         exit 1
