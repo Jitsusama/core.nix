@@ -18,6 +18,10 @@ use crate::{LOOK_BACK, MILLIS, millis};
 /// own IM, which the gateway finds and never names.
 const TO_SELF: &str = "self";
 
+/// What phoned.jsonl names an alert as when it went unsent for its ten
+/// minutes and is let go.
+const GIVEN_UP: &str = "given-up";
+
 /// Where Joel's phone is told: his own IM, once it's found.
 pub struct Phone {
     pub origin: String,
@@ -52,6 +56,9 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
         ..
     } = &*phone;
     let im = own.as_ref().map(OwnIm::id);
+    if !*shadow {
+        give_up(state, im);
+    }
     tell_each(*shadow, state, new, im, |alert| {
         own.as_ref()
             .map(|own| phone::tell(origin, account, own, alert))
@@ -62,6 +69,7 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
 /// whose tool sends to him alone, so no IM is looked for. A reader over a
 /// gateway in shadow tells no phone, so never calls it.
 pub fn tell_through(gateway: &mut Gateway, state: &Path) {
+    give_up(state, Some(TO_SELF));
     tell_each(false, state, untold(state), Some(TO_SELF), |alert| {
         Some(phone::tell_self(gateway, alert))
     });
@@ -76,6 +84,37 @@ fn untold(state: &Path) -> Vec<Value> {
         .into_iter()
         .filter(|line| line["at"].as_u64().unwrap_or(0) >= since && !told.contains(&told_as(line)))
         .collect()
+}
+
+/// Says each live alert that went ten minutes untold is let go, as it
+/// won't be tried again, and keeps a line of it in phoned.jsonl so it's
+/// said once: those of the ten minutes before the last ten, so a reader
+/// starting afresh says nothing of older ones.
+fn give_up(state: &Path, im: Option<&str>) {
+    let phoned = state.join("phoned.jsonl");
+    let told = done(&lines(&phoned));
+    let now = millis();
+    let since = now.saturating_sub(LOOK_BACK * MILLIS);
+    let from = now.saturating_sub(2 * LOOK_BACK * MILLIS);
+    for line in lines(&state.join("would-tell.jsonl")) {
+        let at = line["at"].as_u64().unwrap_or(0);
+        if at < from || at >= since || line["shadow"] != false || told.contains(&told_as(&line)) {
+            continue;
+        }
+        let link = line["link"].as_str().unwrap_or_default();
+        eprintln!("<3>Joel's phone alert is let go, untold after ten minutes of trying: {link}");
+        let one = json!({
+            "at": now,
+            "key": line["key"],
+            "saying": line["saying"],
+            "shadow": false,
+            "sent": GIVEN_UP,
+            "im": im,
+        });
+        if let Err(error) = record::append(&phoned, &one) {
+            eprintln!("<3>couldn't keep a phone alert's line: {error}");
+        }
+    }
 }
 
 /// Tells each of `new` by `tell`, which says nothing where there's

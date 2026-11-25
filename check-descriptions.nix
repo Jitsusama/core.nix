@@ -3465,8 +3465,9 @@
   '';
   pineapple-slack-goes-live-through-a-gateway = ''
     a machine saying its tool gateway's reader is live runs it as the Slack reader for the safe
-    word, live, given the gateway and its sign-in rather than pi's keyring, still taking its row in
-    For You with it as it stops, with no shadow reader beside it
+    word, live, given the gateway and its sign-in rather than pi's keyring, its URL's percent
+    signs reaching systemd as written, still taking its row in For You with it as it stops, with
+    no shadow reader beside it
   '';
   pineapple-slack-hears-a-gateway-in-shadow = ''
     a machine naming a tool gateway hears Slack through it with a second reader for the safe word,

@@ -56,8 +56,9 @@ pub enum Deafness {
     /// One search's answer can't be read, so only the other's messages
     /// are judged.
     Unread(Search),
-    /// The tool gateway Slack is heard through went unreached more than
-    /// [`UNREACHED`] rounds in a row.
+    /// The tool gateway Slack is heard through left its searches
+    /// unanswered more than [`UNREACHED`] rounds in a row: unreached, or
+    /// its tool failing or Slack's rate spent behind it.
     Unreached,
 }
 
@@ -362,11 +363,12 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         ),
         Deafness::Unreached => (
             format!(
-                "The tool gateway the safe word hears Slack through can't be reached, {UNHEARD}"
+                "The tool gateway the safe word hears Slack through isn't answering its \
+                 searches, {UNHEARD}"
             ),
             vec![
-                "Ask an agent to read the reader's journal, which says why the gateway went \
-                 unreached",
+                "Ask an agent to read the reader's journal, which says why each search went \
+                 unanswered: the gateway unreached, its tool failing or Slack's rate spent",
             ],
             json!({"by": "person"}),
         ),

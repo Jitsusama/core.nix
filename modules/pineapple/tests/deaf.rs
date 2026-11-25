@@ -208,9 +208,10 @@ fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() 
     assert!(
         item["why"]
             .as_str()
-            .is_some_and(|why| why.contains("can't be reached"))
+            .is_some_and(|why| why.contains("isn't answering its searches"))
             && item["doneWhen"] == serde_json::json!({"by": "person"}),
-        "it says the gateway can't be reached, and only Joel marks it done: {item}"
+        "it says the gateway isn't answering, as a tool failing gets there too, and only \
+         Joel marks it done: {item}"
     );
     assert_eq!(
         deaf.heard(Round::Unasked, round(UNREACHED + 3)),
@@ -222,6 +223,13 @@ fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() 
         Change::Untell,
         "heard again, the row is taken away"
     );
+    for n in UNREACHED + 5..=2 * UNREACHED + 5 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "heard again, the count starts anew, so round {n} unasked isn't told yet"
+        );
+    }
     let mut keyring = Deaf::new();
     let _ = keyring.heard(Round::Heard, AT);
     for n in 1..=3 * UNREACHED {
