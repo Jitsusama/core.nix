@@ -312,3 +312,203 @@ fn what_a_line_leaves_open_is_what_bash_leaves_open() {
          was taken for another line's opening"
     );
 }
+
+// As above, each a file of its own, and each heredoc's comment hidden only
+// when the line before is read as bash reads it.
+#[test]
+fn sums_cases_and_backticks_close_where_bash_closes_them() {
+    let files = [
+        file(
+            "tests/sum.sh",
+            "x=$(( $(echo 1) + 1 ))\n\
+             cat <<A\n\
+             # tests/kept/in-sum.sh\n\
+             A\n\
+             # tests/kept/sum.sh, past a substitution in a sum\n",
+        ),
+        file(
+            "tests/brackets.sh",
+            "x=$(( (1 + 2) * $(echo 3) )) <<A\n\
+             # tests/kept/in-brackets.sh\n\
+             A\n\
+             # tests/kept/brackets.sh, past a sum's own brackets\n",
+        ),
+        file(
+            "tests/case.sh",
+            "x=\"$(case a in\n\
+             a) echo hi ;;\n\
+             esac\n\
+             # tests/kept/case.sh, in a case in a substitution in quotes\n\
+             )\" <<A\n\
+             # tests/kept/in-case.sh\n\
+             A\n",
+        ),
+        file(
+            "tests/pattern.sh",
+            "x=$(case a in (a) case b in b) echo ;; esac ;; esac) <<A\n\
+             # tests/kept/in-pattern.sh\n\
+             A\n\
+             # tests/kept/pattern.sh, past cases in cases, a pattern bracketed\n",
+        ),
+        file(
+            "tests/word.sh",
+            "x=$(echo case x in y) <<A\n\
+             # tests/kept/in-word.sh\n\
+             A\n\
+             # tests/kept/word.sh, past a case that is only a word\n",
+        ),
+        file(
+            "tests/backtick.sh",
+            "x=`echo a # it's` <<A\n\
+             # tests/kept/in-backtick.sh\n\
+             A\n\
+             # tests/kept/backtick.sh, past a comment a backtick ends\n",
+        ),
+        // Bash opens a quote at an apostrophe in a default even in double
+        // quotes, so the comment between is in it; a POSIX shell's isn't.
+        file(
+            "tests/default.sh",
+            "echo \"${x:-it's}\"\n\
+             # tests/kept/quoted.sh, in a quote a default opens\n\
+             echo \"${x:-it's}\"\n\
+             # tests/kept/default.sh, past it\n",
+        ),
+        file("tests/kept/x.nix", "{ }\n"),
+    ];
+    assert_eq!(
+        stale(&paths(&files), &files),
+        [
+            "tests/sum.sh:5: tests/kept/sum.sh",
+            "tests/brackets.sh:4: tests/kept/brackets.sh",
+            "tests/case.sh:4: tests/kept/case.sh",
+            "tests/pattern.sh:4: tests/kept/pattern.sh",
+            "tests/word.sh:4: tests/kept/word.sh",
+            "tests/backtick.sh:4: tests/kept/backtick.sh",
+            "tests/default.sh:4: tests/kept/default.sh"
+        ],
+        "a substitution in a sum or a sum's own brackets, a case's patterns or a word \
+         reading case, a comment in backticks, or an apostrophe in a quoted default was \
+         read other than as bash reads it"
+    );
+}
+
+/// What a line of shell, read from outside everything, leaves open.
+fn left_open(line: &str) -> Vec<Shell> {
+    let mut within = Vec::new();
+    shell_line(line, &mut within, true);
+    within
+}
+
+#[test]
+fn each_line_leaves_open_what_bash_leaves_open() {
+    use Shell::{Ansi, Arithmetic, Backtick, Case, Command, Double, Parameter, Single};
+    let cases: [(&str, &[Shell]); 19] = [
+        ("echo $'it\\'s", &[Ansi]),
+        ("x=\"$(echo \"it's", &[Double, Command(0), Double]),
+        ("y=\"${z:-\"it's", &[Double, Parameter, Double]),
+        ("w=\"`echo \"it's", &[Double, Backtick, Double]),
+        ("echo \"${x:-it's", &[Double, Parameter, Single]),
+        ("x=$(( $(echo 1) + 1 ))", &[]),
+        ("x=$(( (1 + 2", &[Arithmetic(1)]),
+        ("(( x <<A", &[Arithmetic(0)]),
+        ("echo ${x:-((}", &[]),
+        ("x=$( (echo", &[Command(1)]),
+        ("x=$( (#'", &[Command(1)]),
+        ("x=$( (echo)#'", &[Command(0)]),
+        ("x=$(case a in a)", &[Command(0), Case]),
+        ("x=$(case a in a) ;; esac", &[Command(0)]),
+        ("x=$(case a in a) echo esac)", &[Command(0), Case]),
+        ("x=$(echo case a in a)", &[]),
+        ("x=$(cased a in a)", &[]),
+        ("x=`echo # it's`", &[]),
+        ("x=`echo # it's", &[Backtick]),
+    ];
+    for (line, open) in cases {
+        assert_eq!(
+            left_open(line),
+            open,
+            "{line:?} left open other than bash does"
+        );
+    }
+}
+
+#[test]
+fn heredocs_open_only_where_each_closes_in_turn() {
+    // Each heredoc's word, with whether `<<-` lets tabs indent it.
+    type Words = &'static [(&'static str, bool)];
+    let closers = Closers::of("cat <<A <<B\nB\nA\nB\n\tC\n", true, false);
+    let words = |words: &[(&str, bool)]| -> Vec<(String, bool)> {
+        words
+            .iter()
+            .map(|&(word, tabbed)| (word.to_string(), tabbed))
+            .collect()
+    };
+    let cases: [(Words, Words); 5] = [
+        (&[("A", false), ("B", false)], &[("A", false), ("B", false)]),
+        (&[("A", false), ("A", false)], &[("A", false)]),
+        (
+            &[("B", false), ("A", false), ("B", false)],
+            &[("B", false), ("A", false), ("B", false)],
+        ),
+        (&[("C", false), ("A", false)], &[]),
+        (&[("C", true)], &[("C", true)]),
+    ];
+    for (opened, closing) in cases {
+        assert_eq!(
+            closers.closing(words(opened), 0),
+            words(closing),
+            "heredocs {opened:?} on the first line closed other than in turn"
+        );
+    }
+}
+
+#[test]
+fn a_line_is_named_for_what_it_leaves_open_not_what_it_closed() {
+    let named = |content| {
+        let closers = Closers::of(content, true, false);
+        read(content, "sh", ("#", false), &closers, &HashSet::new())
+    };
+    assert_eq!(
+        named("x=$(\n) y=$(\n"),
+        Err(vec![1]),
+        "a line closing one substitution and opening another wasn't named for the second"
+    );
+    assert_eq!(
+        named("x=$(\n(echo\n"),
+        Err(vec![0]),
+        "a bracket counted in a substitution was taken for its opening"
+    );
+}
+
+// Read again for each line holding one open, these would take seconds.
+#[test]
+fn what_never_closes_is_known_from_one_reading() {
+    for opening in ["x=$(", "x=\"$(", "x=${"] {
+        let content = format!("{opening}\n").repeat(3000) + "# tests/kept/end.sh\n";
+        let closers = Closers::of(&content, true, false);
+        let read = |unopened| read(&content, "sh", ("#", false), &closers, unopened);
+        let none = HashSet::new();
+        let openers = read(&none).expect_err("3000 openings never closed read as closed");
+        assert_eq!(
+            openers.len(),
+            3000,
+            "{opening:?} open on each line wasn't known from one reading"
+        );
+        assert!(
+            read(&openers.into_iter().collect()).is_ok(),
+            "{opening:?} read as opening nothing still left something open"
+        );
+    }
+    let heredocs = "cat <<A <<A\n".repeat(3000) + "A\n";
+    let blocks = "/*\n".repeat(3000);
+    for (content, extension, comment) in [
+        (&heredocs, "sh", ("#", false)),
+        (&blocks, "nix", ("#", true)),
+    ] {
+        let closers = Closers::of(content, extension == "sh", comment.1);
+        assert!(
+            read(content, extension, comment, &closers, &HashSet::new()).is_ok(),
+            "openings in {extension} no line closes in turn weren't known at once"
+        );
+    }
+}

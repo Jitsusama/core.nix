@@ -27,9 +27,14 @@
 //! `screens.nix` beside it begins only with its letters. It's there too
 //! when found whole, the dash then punctuation, as in `home.nix- which`.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 use crate::measure::{File, extension};
+
+#[path = "stale_shell.rs"]
+mod shell;
+
+use shell::{Closers, Shell, ends_heredoc, shell_line};
 
 /// Every comment of `files` naming a path `paths` doesn't hold, as the
 /// file, its line and the path named.
@@ -108,30 +113,40 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         "sh" | "bash" | "py" | "toml" | "yaml" | "yml" => ("#", false),
         _ => return Vec::new(),
     };
-    // Each reading names a line not named before, since a line named opens
+    // A byte-order mark opens a file as nothing at all.
+    let content = file.text.strip_prefix('\u{feff}').unwrap_or(&file.text);
+    let closers = Closers::of(content, matches!(extension, "sh" | "bash"), blocks);
+    // Each reading names lines not named before, since a line named opens
     // nothing, so there are no more readings than lines.
     let mut unopened = HashSet::new();
     loop {
-        match read(file, extension, (mark, blocks), &unopened) {
+        match read(content, extension, (mark, blocks), &closers, &unopened) {
             Ok(lines) => return lines,
-            Err(opener) => assert!(
-                unopened.insert(opener),
-                "line {opener} of {} opened something though named",
-                file.path
-            ),
+            Err(openers) => {
+                for opener in openers {
+                    assert!(
+                        unopened.insert(opener),
+                        "line {opener} of {} opened something though named",
+                        file.path
+                    );
+                }
+            }
         }
     }
 }
 
-/// A file's comment lines, read with the comment `mark` and `blocks`, or
-/// the line that opened a docstring, a block comment, a heredoc, a string
-/// or a shell quote the file never closes. No line in `unopened` opens one.
+/// The comment lines of a file's `content`, read with the comment `mark`
+/// and `blocks`, or the lines that opened a docstring, a block comment, a
+/// heredoc, a string or a shell quote the file never closes. No line in
+/// `unopened` opens one, and `closers` says where what a line opens could
+/// close.
 fn read<'a>(
-    file: &'a File,
+    content: &'a str,
     extension: &str,
     (mark, blocks): (&str, bool),
+    closers: &Closers,
     unopened: &HashSet<usize>,
-) -> Result<Vec<(usize, &'a str)>, usize> {
+) -> Result<Vec<(usize, &'a str)>, Vec<usize>> {
     // The quotes a docstring opened with, which alone close it, while
     // one is open, and the same for a string in code, whose lines aren't
     // comment.
@@ -145,6 +160,8 @@ fn read<'a>(
     // lines up to the close are a string's, so neither comment nor opening
     // a heredoc.
     let mut quoted: Vec<Shell> = Vec::new();
+    // The line each of `quoted` was opened on.
+    let mut opened_at: Vec<usize> = Vec::new();
     // Whether a docstring may stand on the next line of code: at a
     // module's top, or first in a def's or a class's body, past the colon
     // ending its header. Any other colon, as an if's or a dict key's, opens
@@ -158,9 +175,6 @@ fn read<'a>(
     // string or a quote, which is the one still open at the file's end, if
     // any is.
     let mut opener = 0;
-    // A byte-order mark opens a file as nothing at all.
-    let content = file.text.strip_prefix('\u{feff}').unwrap_or(&file.text);
-    let closers = Closers::of(content);
     for (number, line) in content.lines().enumerate() {
         let opens_here = !unopened.contains(&number);
         // Whether this line opened the code string open past it.
@@ -189,7 +203,12 @@ fn read<'a>(
             logical = Logical::default();
             opener = number;
             Some(line)
-        } else if blocks && trimmed.starts_with("/*") && opens_here {
+        } else if blocks
+            && trimmed.starts_with("/*")
+            && opens_here
+            && (trimmed[2..].contains("*/") || closers.block_after(number))
+        {
+            // A block no later line closes is a misreading, known at once.
             block = !trimmed[2..].contains("*/");
             opener = number;
             Some(line)
@@ -239,13 +258,13 @@ fn read<'a>(
                 if matches!(extension, "sh" | "bash") && !comment {
                     // A line named still closes what it started inside,
                     // but opens neither heredoc nor quote. A heredoc no
-                    // later line closes is a misreading, known at once.
-                    let (words, left_open) = shell_line(line, &mut quoted, opens_here);
-                    let words: Vec<_> = words
-                        .into_iter()
-                        .filter(|heredoc| closers.close_after(heredoc, number))
-                        .collect();
-                    if !words.is_empty() || left_open {
+                    // later line closes in turn is a misreading, known at
+                    // once.
+                    let (words, kept) = shell_line(line, &mut quoted, opens_here);
+                    opened_at.truncate(kept);
+                    opened_at.resize(quoted.len(), number);
+                    let words = closers.closing(words, number);
+                    if !words.is_empty() || quoted.len() > kept {
                         opener = number;
                     }
                     heredocs.extend(words);
@@ -262,13 +281,15 @@ fn read<'a>(
             lines.push((number + 1, comment));
         }
     }
-    if docstring.is_some()
-        || block
-        || !heredocs.is_empty()
-        || string.is_some()
-        || !quoted.is_empty()
-    {
-        Err(opener)
+    if !quoted.is_empty() {
+        // What a quote or a substitution holds is read alike whatever it
+        // stands in, so each line holding open what the file never closes
+        // opened it on a misreading, and all are named at once, rather
+        // than the file read again for each.
+        opened_at.dedup();
+        Err(opened_at)
+    } else if docstring.is_some() || block || !heredocs.is_empty() || string.is_some() {
+        Err(vec![opener])
     } else {
         Ok(lines)
     }
@@ -451,236 +472,6 @@ fn opens(trimmed: &str) -> Option<(&'static str, usize)> {
         .into_iter()
         .find(|quotes| unprefixed.starts_with(quotes))
         .map(|quotes| (quotes, prefix + quotes.len()))
-}
-
-/// Where a line of shell stands, as bash reads it: in a quote, or in the
-/// code of a substitution, inside which quotes open anew, as they do in
-/// `"$(echo "a b")"`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Shell {
-    /// `'...'`, which only its quote closes, a backslash being its own.
-    Single,
-    /// `$'...'`, where a backslash keeps a quote from closing it.
-    Ansi,
-    /// `"..."`, where a backslash escapes, and `$(`, `${` and a backtick
-    /// open code again.
-    Double,
-    /// `$(...)`, code, with how many brackets of its own it holds open,
-    /// which close before it does.
-    Command(usize),
-    /// A backtick's command, code until the next backtick.
-    Backtick,
-    /// `${...}`, where quotes open as in code but a `#` is the
-    /// parameter's, and `}` closes it.
-    Parameter,
-}
-
-impl Shell {
-    /// Whether what stands `within` this is code, where a line starting
-    /// with `#` is a comment: outside every quote, or in a command
-    /// substitution's lines.
-    fn code(within: Option<Shell>) -> bool {
-        matches!(within, None | Some(Shell::Command(_) | Shell::Backtick))
-    }
-}
-
-/// The words closing the heredocs a line of shell opens, in the order
-/// their bodies follow it, each with whether `<<-` lets tabs indent its
-/// body, and whether the line leaves open a quote or a substitution it
-/// opened. `within` holds what lines before left open, innermost last,
-/// which the line starts inside, and is left holding what it leaves open.
-/// A line that `opens` nothing still closes what it starts inside, but
-/// leaves open nothing of its own and opens no heredoc. A `<<` opens a
-/// heredoc only in code, past no comment, and outside the `((` of
-/// arithmetic, where it shifts; a here-string's `<<<` has no word after
-/// it, so it opens none.
-fn shell_line(line: &str, within: &mut Vec<Shell>, opens: bool) -> (Vec<(String, bool)>, bool) {
-    let mut heredocs = Vec::new();
-    // The fewest things open at any point of the line: what stands above
-    // them at its end the line opened.
-    let mut kept = within.len();
-    let mut arithmetic = 0;
-    // Whether a word begins here, as it does where a line or a command
-    // substitution begins, or past a blank or an operator.
-    let mut word_starts = true;
-    let mut at = 0;
-    while let Some(c) = line[at..].chars().next() {
-        let rest = &line[at..];
-        let mut step = c.len_utf8();
-        let mut starts = false;
-        let innermost = within.last().copied();
-        match innermost {
-            Some(Shell::Single | Shell::Ansi) if c == '\'' => {
-                within.pop();
-            }
-            Some(Shell::Ansi | Shell::Double) if c == '\\' => step = escaped(rest),
-            Some(Shell::Single | Shell::Ansi) => {}
-            Some(Shell::Double) if c == '"' => {
-                within.pop();
-            }
-            Some(Shell::Double) => {
-                if let Some(opened) = substitution(rest, within) {
-                    (step, starts) = opened;
-                }
-            }
-            Some(Shell::Backtick) if c == '`' => {
-                within.pop();
-            }
-            Some(Shell::Parameter) if c == '}' => {
-                within.pop();
-            }
-            Some(Shell::Command(open)) if c == ')' && arithmetic == 0 => {
-                if open == 0 {
-                    within.pop();
-                } else {
-                    within.pop();
-                    within.push(Shell::Command(open - 1));
-                    starts = true;
-                }
-            }
-            Some(Shell::Command(open)) if c == '(' && !rest.starts_with("((") => {
-                within.pop();
-                within.push(Shell::Command(open + 1));
-                starts = true;
-            }
-            // Code: outside quotes, or in a substitution's.
-            _ if c == '\\' => step = escaped(rest),
-            _ if c == '\'' => within.push(Shell::Single),
-            _ if rest.starts_with("$'") => {
-                within.push(Shell::Ansi);
-                step = 2;
-            }
-            _ if c == '"' => within.push(Shell::Double),
-            // A `#` opens a comment only where a word begins.
-            _ if c == '#' && word_starts && innermost != Some(Shell::Parameter) => break,
-            _ if rest.starts_with("((") => {
-                arithmetic += 1;
-                step = 2;
-            }
-            _ if rest.starts_with("))") && arithmetic > 0 => {
-                arithmetic -= 1;
-                step = 2;
-            }
-            _ if rest.starts_with("<<") && arithmetic == 0 => {
-                step = 2;
-                if let Some((word, tabbed, length)) = heredoc_word(&rest[2..]) {
-                    heredocs.push((word, tabbed));
-                    step += length;
-                }
-            }
-            _ => {
-                if let Some(opened) = substitution(rest, within) {
-                    (step, starts) = opened;
-                } else {
-                    starts = c.is_whitespace() || ";&|()<>".contains(c);
-                }
-            }
-        }
-        kept = kept.min(within.len());
-        word_starts = starts;
-        at += step;
-    }
-    if !opens {
-        within.truncate(kept);
-        heredocs.clear();
-    }
-    let left_open = within.len() > kept;
-    (heredocs, left_open)
-}
-
-/// The substitution `rest` opens, pushed onto `within`: how long its
-/// opening is, and whether a word begins past it, as one does at a
-/// command's start. None for `$((`, arithmetic, which is read as `((`.
-fn substitution(rest: &str, within: &mut Vec<Shell>) -> Option<(usize, bool)> {
-    if rest.starts_with("$(") && !rest.starts_with("$((") {
-        within.push(Shell::Command(0));
-        Some((2, true))
-    } else if rest.starts_with("${") {
-        within.push(Shell::Parameter);
-        Some((2, false))
-    } else if rest.starts_with('`') {
-        within.push(Shell::Backtick);
-        Some((1, true))
-    } else {
-        None
-    }
-}
-
-/// The lines a heredoc's word might close, each by where it last stands,
-/// as it is and with its leading tabs gone, as `<<-` lets them be.
-struct Closers<'a> {
-    whole: HashMap<&'a str, usize>,
-    untabbed: HashMap<&'a str, usize>,
-}
-
-impl<'a> Closers<'a> {
-    fn of(content: &'a str) -> Closers<'a> {
-        let mut closers = Closers {
-            whole: HashMap::new(),
-            untabbed: HashMap::new(),
-        };
-        for (number, line) in content.lines().enumerate() {
-            closers.whole.insert(line, number);
-            closers
-                .untabbed
-                .insert(line.trim_start_matches('\t'), number);
-        }
-        closers
-    }
-
-    /// Whether a line past `number` could close `heredoc`: when none does,
-    /// its `<<` was read wrong, and taken for nothing at once, the file
-    /// not read again from its top for it.
-    fn close_after(&self, (word, tabbed): &(String, bool), number: usize) -> bool {
-        let lines = if *tabbed { &self.untabbed } else { &self.whole };
-        lines.get(word.as_str()).is_some_and(|&last| last > number)
-    }
-}
-
-/// Whether `line` closes the heredoc whose body it's in: its word alone on
-/// the line, past any tabs where `<<-` lets them indent it.
-fn ends_heredoc(line: &str, (word, tabbed): &(String, bool)) -> bool {
-    let last = if *tabbed {
-        line.trim_start_matches('\t')
-    } else {
-        line
-    };
-    last == word
-}
-
-/// How long a backslash opening `rest` is with the character it escapes.
-fn escaped(rest: &str) -> usize {
-    1 + rest[1..].chars().next().map_or(0, char::len_utf8)
-}
-
-/// The word a heredoc's `<<` is followed by in `rest`, read as the shell
-/// reads it: past a `-`, which lets tabs indent the body, and any blanks,
-/// up to a blank or an operator outside quotes, its quotes and backslashes
-/// taken off as its closing line leaves them. With whether tabs may
-/// indent, and how much of `rest` it took; none where no word follows.
-fn heredoc_word(rest: &str) -> Option<(String, bool, usize)> {
-    let (dashless, tabbed) = rest
-        .strip_prefix('-')
-        .map_or((rest, false), |rest| (rest, true));
-    let mut at = rest.len() - dashless.trim_start_matches([' ', '\t']).len();
-    let mut word = String::new();
-    let mut quote = None;
-    while let Some(c) = rest[at..].chars().next() {
-        let mut step = c.len_utf8();
-        match quote {
-            Some(open) if c == open => quote = None,
-            None if c == '\\' => {
-                step = escaped(&rest[at..]);
-                word.push_str(&rest[at + 1..at + step]);
-            }
-            None if c == '\'' || c == '"' => quote = Some(c),
-            None if c.is_whitespace() || ";&|<>()".contains(c) => break,
-            // Quoted or not, the rest is the word's.
-            Some(_) | None => word.push(c),
-        }
-        at += step;
-    }
-    (!word.is_empty()).then_some((word, tabbed, at))
 }
 
 /// The paths `text` names that start at one of `tops`, each from the start
