@@ -54,7 +54,8 @@ const PACE: u32 = 4;
 /// was. Warnings are told only in a pass, so this bounds how late one comes
 /// once a pass ends. `budgets.json` is stamped as a pass starts, so before
 /// the next replaces it, it ages by both passes and the wait between: for
-/// passes up to this long, inside the `FAILING` the shell trusts it for.
+/// passes up to this long, inside the `FAILING` the command line trusts it
+/// for while the daemon listens.
 const BUSIEST: Duration = Duration::from_secs(120);
 /// The most, while nothing does: the clocks and the day move regardless.
 const IDLE: Duration = Duration::from_secs(300);
@@ -66,6 +67,7 @@ const HARNESS: Duration = Duration::from_secs(300);
 const REFRESH: Duration = Duration::from_secs(10);
 /// How long the heartbeat goes on without a pass that worked: past this,
 /// the shell is let see a watch that isn't working as one that stopped.
+/// The command line trusts the last pass's `budgets.json` as long.
 pub(crate) const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
 
 struct Feed {
@@ -497,7 +499,9 @@ fn answer(stream: &UnixStream, wake: &Sender<Wake>, hub: &Hub) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(stream);
     let mut asked = String::new();
-    if reader.read_line(&mut asked).is_err() {
+    // A connection that says nothing asks nothing: the command line opens
+    // one only to learn the daemon is still there.
+    if matches!(reader.read_line(&mut asked), Err(_) | Ok(0)) {
         return;
     }
     if asked.trim_start().starts_with('{') {
@@ -985,7 +989,7 @@ pub fn run(config: &Config) -> Result<(), String> {
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
-            took = how_long(began);
+            took = timed(began);
             dirty = false;
             refresh.owed.clear();
             for reply in refresh.waiting.drain(..) {
@@ -1107,16 +1111,14 @@ fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
     paced
 }
 
-/// How long the pass that `began` took, said in the journal when it was
-/// longer than the busiest wait, since warnings and `budgets.json` then fall
-/// behind what the pacing promises.
-fn how_long(began: Instant) -> Duration {
+/// How long the pass that `began` took, journalled when it ran past the
+/// busiest wait, the most the pacing promises a warning is late by.
+fn timed(began: Instant) -> Duration {
     let took = began.elapsed();
     if took > BUSIEST {
         eprintln!(
-            "a pass took {} s, longer than the {} s a busy one waits, so warnings and \
-             budgets.json fall behind",
-            took.as_secs(),
+            "a pass took {:.1} s, past the {} s a busy wait is capped at, so its warnings came late",
+            took.as_secs_f64(),
             BUSIEST.as_secs()
         );
     }
@@ -1611,7 +1613,7 @@ mod tests {
 
     // `budgets.json` is stamped as a pass starts, so it ages by that pass,
     // the wait and the pass that replaces it. For every pass up to the cap,
-    // busy or quiet, that stays inside the time the shell trusts it for,
+    // busy or quiet, that stays inside the time the command line trusts it,
     // with a minute to spare for the loop's own work between passes.
     #[test]
     fn the_budgets_last_from_one_pass_to_the_next() {
@@ -1621,7 +1623,7 @@ mod tests {
             for dirty in [true, false] {
                 let oldest = took * 2 + until_pass(dirty, took, Duration::ZERO) + spare;
                 assert!(
-                    oldest <= FAILING,
+                    oldest.as_secs_f64() <= crate::cli::WRITTEN_LASTS,
                     "passes of {seconds} s left budgets.json {oldest:?} old, busy: {dirty}"
                 );
             }

@@ -272,13 +272,16 @@ feed speaks.
   is a pass whose hours are still in memory. The two-minute cap bounds how
   late a warning comes and keeps `budgets.json` within the eleven minutes
   below, and a pass longer than it says so in the journal. The heartbeat
-  alone is written every 30 seconds, so the shell can tell a stopped
-  daemon from a quiet one. Every pi session asks
+  alone is written every 30 seconds between passes, so the shell can tell
+  a stopped daemon from a quiet one; not during one, so a pass longer
+  than the shell's two minutes of silence shows the watch as stopped
+  until it ends. Every pi session asks
   `budgets --json` as it starts, all of them at once when an update
   reloads them, so without a session it answers with the last pass's
-  `budgets.json` while that's within eleven minutes, as long as the daemon
-  goes without a pass that worked before the shell counts it stopped,
-  rather than a pass each that took 20 seconds under load (2026-11-07).
+  `budgets.json` while the daemon's socket still takes a connection and
+  the file is within eleven minutes, as long as the daemon beats without
+  a pass that worked, rather than a pass each that took 20 seconds under
+  load (2026-11-07).
 
 ## Working on It
 
