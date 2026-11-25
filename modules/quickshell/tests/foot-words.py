@@ -307,6 +307,22 @@ def refuses_what_it_should() -> list[str]:
             "a handler not passing the shell's why on, its name used elsewhere",
         ),
         (
+            passes_on(
+                'function onUnhosted(session, why) { tell("{", elsewhere("x", session)); }\n'
+                "elsewhere(why, session);"
+            ),
+            False,
+            "a brace in a string in the handler, read as one of its blocks",
+        ),
+        (
+            passes_on(
+                "function onUnhosted(session, why) {\n    // isn't it\n"
+                '    tell(elsewhere("x", session)); }\nelsewhere(why, session);'
+            ),
+            False,
+            "a quote in a comment in the handler, read as opening a string",
+        ),
+        (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
             ["opening", "unnamed"],
             "a why worded empty or not at all",
