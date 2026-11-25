@@ -257,7 +257,7 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
-| Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
+| Media | the place in Desktop holding every player and what each is playing, apart from Sound in Machine, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
 | link | the web address a track, a page or a message opens at, which Copy the Link copies | | MPRIS's `xesam:url` |
@@ -312,7 +312,7 @@ or a copy, can be opened, copied or forgotten.
 | This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
 | notice | what a program said, on the arrival line as it comes and after in Now's Desktop, but Slack's in Slack's row and only while Slack's daemon can't answer, and the shell's own for a to-do or pi in neither | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
-| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own (a to-do's and pi's): those unread inside it and those read in its History; never home's Desktop, the place for the screens and windows | | `Lately.js`'s `desktop` |
+| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own (a to-do's and pi's): those unread inside it and those read in its History; never home's Desktop, the place for the windows and what's made or played on them | | `Lately.js`'s `desktop` |
 | arrival line | one line at the top of the screen, where the launcher stands, showing the notice that waits on Joel as it comes, without taking the keys | | `NoticeLine.qml` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on, and on by itself while the screen may be shared | dnd, quiet | `session:quiet` |

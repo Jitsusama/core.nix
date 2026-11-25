@@ -24,7 +24,7 @@ its example error. What the daemon says of each refusal, and of a screen gone, i
 own tests (modules/windows, screens/acts.rs and screens/line.rs); here, only that niri's words
 reach the line.
 
-How many screens there are, which Screens says at its right inside Desktop, is the windows
+How many screens there are, which Screens says at its right inside Machine, is the windows
 daemon's summary, worded there and served beside its rows (modules/windows, screens.rs), so
 here it's the nested niri's one screen as the daemon counts it.
 """

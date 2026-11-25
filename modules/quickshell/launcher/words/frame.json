@@ -32,7 +32,6 @@
         "session:quiet"
       ],
       "commands": [
-        "command:desk",
         "command:time",
         "command:timer",
         "command:weather",
@@ -69,6 +68,7 @@
       ],
       "commands": [
         "command:brightness",
+        "command:desk",
         "command:volume"
       ]
     },

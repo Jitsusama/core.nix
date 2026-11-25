@@ -287,10 +287,9 @@ def test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there(
     # A screen's rotation is a step inside the screen, inside Screens,
     # inside Machine, since a screen is part of the machine; from the root
     # it's found by its name, saying so, below the focused screen's answer.
-    # In normal, l goes nowhere, as a
-    # row has no line to move along, and says Vim's way in instead, the
-    # foot naming Return and - by the keys that do them (Joel, 2026-11-05:
-    # "where in vi does that step into shit?").
+    # In normal, l goes nowhere, as a row has no line to move along, and says
+    # Vim's way in instead, the foot naming Return and - by the keys that do
+    # them (Joel, 2026-11-05: "where in vi does that step into shit?").
     find_rotation()
     desktop.normal()
     told = desktop.showing()["selected"]["told"]
