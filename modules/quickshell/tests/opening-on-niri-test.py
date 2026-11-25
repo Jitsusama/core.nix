@@ -1989,6 +1989,9 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
         time.sleep(launcher_on_niri.POLL)
     assert len(presented) > before, f"the letter was never presented: {presented}"
     letter = presented[before]
+    # One that let the held answer go waits on its own, up to the launcher's bound, so a quick
+    # answer could list the same count; held says it waited.
+    assert letter["held"] is False, f"the letter waited on its answers: {letter}"
     assert letter["listed"] == held, (
         f"the letter's first frame listed {letter['listed']}, not the {held} held: {letter}"
     )

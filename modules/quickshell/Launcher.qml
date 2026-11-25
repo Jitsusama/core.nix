@@ -13211,8 +13211,11 @@ Scope {
         // finds it however fast it was; typed words are never said here.
         // Its clock's line says whether niri timed its press and how many
         // frames after its own niri answered (Presented.keyClockOf).
+        // `held` when it waited on its answers (Awaited.heldFor), so a check
+        // tells a key listed by its own frame from one listed as they came.
         const one = Object.assign({ from, at, heard: key.heard, begun: key.begun,
-            onRow: key.onRow, listed: key.listed ?? null }, Presented.keyClockOf(key, answered), {
+            onRow: key.onRow, listed: key.listed ?? null,
+            held: typeof key.parts?.waited === "number" }, Presented.keyClockOf(key, answered), {
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),
