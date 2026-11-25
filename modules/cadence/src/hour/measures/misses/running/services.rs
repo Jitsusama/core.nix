@@ -2,10 +2,9 @@
 //! writes a service's new unit, but the service's process keeps the program
 //! it started with until it restarts, as a unit marked keep-old does by
 //! design, and a runtime drop-in that copies a whole `ExecStart` pins it
-//! through every switch after. From 21:06 on 23 November to 16:59 on 24
-//! November optimus's work mycelium node ran a build no core lock named,
-//! through three switches, while cadence read each mycelium merge as
-//! running. So a change reaching a service runs only once that service
+//! through every switch after. For most of a day, one machine's mycelium
+//! node ran a build no lock named, through three switches, while cadence
+//! read each mycelium merge as running. So a change reaching a service runs only once that service
 //! runs what its unit, as the switch wrote it, names.
 
 use std::collections::{BTreeMap, BTreeSet};

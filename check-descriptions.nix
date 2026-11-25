@@ -581,6 +581,10 @@
     and says how far the machines' loads spread over the hour, each machine's share busiest first
     and the minutes each of balance's flags was held, from the newer definition alone
   '';
+  cadence-hour-finds-nix-store = ''
+    the hour's unit has the Nix of the user's config on its PATH, so it can list the closure of
+    the build each service's unit names rather than reading every service as unread
+  '';
   cadence-hour-gives-back-the-pages-it-reads = ''
     the hour's unit holds a high mark of 512 MiB, past which the kernel takes back the pages its
     journal and history reads charge, no hard limit, whose kill would lose the card, and a

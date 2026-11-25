@@ -268,9 +268,18 @@ fn a_change_reaches_the_services_its_folders_name() {
         reached("world", Some("modules/x/y.nix")).is_empty(),
         "a change to a repository whose services cadence doesn't map reached some"
     );
-    assert!(reaches("model-relay", "model-relay-agents.service"));
-    assert!(reaches("mycelium", "mycelium.service"));
-    assert!(reaches("pi", "pi-conversation-a@1.service"));
+    assert!(
+        reaches("model-relay", "model-relay-agents.service"),
+        "a unit named for its folder and a part wasn't reached"
+    );
+    assert!(
+        reaches("mycelium", "mycelium.service"),
+        "a unit named for its folder alone wasn't reached"
+    );
+    assert!(
+        reaches("pi", "pi-conversation-a@1.service"),
+        "a templated unit named for its folder wasn't reached"
+    );
     assert!(
         !reaches("model", "modelling.service"),
         "a unit whose name only begins with the folder's letters was reached"
