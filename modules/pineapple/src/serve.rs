@@ -218,14 +218,14 @@ fn carry_each(plan: &pause::Plan, state: &Path, host: &str) {
     let mut unlisted = Vec::new();
     loop {
         let mut runs = pause::System { limit: CARRY_STEP };
-        let (carried, listing) = carrier.carry(plan, state, host, now_ms(), &mut runs);
+        let (gives, listing) = carrier.carry(plan, state, host, now_ms(), &mut runs);
         if listing != unlisted {
             for why in &listing {
                 eprintln!("<4>couldn't list every machine to give a stop: {why}");
             }
             unlisted = listing;
         }
-        for one in carried {
+        for one in gives {
             let what = if one.resumed { "resume" } else { "stop" };
             match one.failed {
                 None => eprintln!("gave {} the {what} {}", one.machine, one.name),

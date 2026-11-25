@@ -34,9 +34,9 @@ fn keep(state: &Path, name: &str, record: &Value) {
 }
 
 fn carry(carrier: &mut Carrier, state: &Path, at: u64, here: &mut Machine) -> Vec<Carried> {
-    let (carried, listing) = carrier.carry(&plan(), state, "here", at, here);
+    let (gives, listing) = carrier.carry(&plan(), state, "here", at, here);
     assert!(listing.is_empty(), "every machine was listed: {listing:?}");
-    carried
+    gives
 }
 
 fn gave(name: &str, machine: &str, resumed: bool) -> Carried {
@@ -61,10 +61,10 @@ fn a_live_stop_heard_here_is_given_once_to_each_machine_running_a_session() {
     let mut here = machine();
     let mut carrier = Carrier::default();
 
-    let carried = carry(&mut carrier, &state, 0, &mut here);
+    let gives = carry(&mut carrier, &state, 0, &mut here);
 
     assert_eq!(
-        carried,
+        gives,
         vec![gave("slack-C1-1.000000", "mac", false)],
         "only the Mac runs a session elsewhere, and it's given the stop"
     );
@@ -132,10 +132,10 @@ fn a_resume_is_given_only_to_the_machines_that_held_the_stop() {
     pineapple::resume::resume(&state.join("stops"), "all", 5, "joel").expect("resumed");
     let listed = asked_with(&here, "sessions").len();
 
-    let carried = carry(&mut carrier, &state, 10, &mut here);
+    let gives = carry(&mut carrier, &state, 10, &mut here);
 
     assert_eq!(
-        carried,
+        gives,
         vec![gave("slack-C1-1.000000", "mac", true)],
         "the Mac is given the resume of the stop it held, and nothing of one it never did"
     );
@@ -226,7 +226,7 @@ fn the_script_writes_the_record_whole_under_its_name_there() {
         String::from_utf8_lossy(&ran.stderr)
     );
     let stops = home.join(".local/state/pineapple/stops");
-    let mut there = record.clone();
+    let mut there = record;
     there["carried_from"] = json!("listener");
     assert_eq!(
         json(&stops.join(format!("{name}.json"))),
