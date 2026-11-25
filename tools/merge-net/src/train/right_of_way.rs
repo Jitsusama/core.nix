@@ -127,9 +127,11 @@ pub fn yields(held: Option<u64>, runs: Option<u64>, aboard: usize) -> Option<Yie
 /// Why a change that would merge alone boards the train under `root`
 /// instead, at `now`, if it does, as its files say and whether its unit
 /// is `going`: a run marked by a train that was killed isn't running.
+/// Whether it goes is asked only of a run the files mark, since asking
+/// systemd costs every `ready` a process.
 #[must_use]
-pub fn why(root: &Path, now: u64, going: bool) -> Option<Yields> {
-    let runs = runs(root, now).filter(|_| going);
+pub fn why(root: &Path, now: u64, going: impl FnOnce() -> bool) -> Option<Yields> {
+    let runs = runs(root, now).filter(|_| going());
     yields(holds(root, now), runs, super::riders(root).len())
 }
 
@@ -143,7 +145,7 @@ pub fn why(root: &Path, now: u64, going: bool) -> Option<Yields> {
 pub fn gives_way(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     let now = crate::state::now();
-    let why = why(&root, now, super::going())?;
+    let why = why(&root, now, super::going)?;
     if crate::turn::waits_to_run(head).is_some() {
         return None;
     }
@@ -190,8 +192,13 @@ fn runs_file(root: &Path) -> PathBuf {
 /// Say that the train under `root` began a clear run at `began`, whole,
 /// since a `ready` reading a file half written would find no run and let
 /// its change merge alone beside it.
-pub fn run_begins(root: &Path, began: u64) {
-    let _ = crate::whole::write(&runs_file(root), &format!("{began}\n"));
+///
+/// # Errors
+///
+/// When the mark can't be written, so a change that would merge alone
+/// merges beside the run.
+pub fn run_begins(root: &Path, began: u64) -> Result<(), String> {
+    crate::whole::write(&runs_file(root), &format!("{began}\n"))
 }
 
 /// Say that the train under `root` runs nothing clear.
@@ -374,10 +381,10 @@ mod tests {
         let root = root("runs");
         give(&root, 100);
         let now = 100 + RIGHT_OF_WAY + 600;
-        run_begins(&root, now - 300);
+        run_begins(&root, now - 300).unwrap();
         aboard(&root, 18);
         assert_eq!(
-            why(&root, now, true),
+            why(&root, now, || true),
             Some(Yields::Runs(18)),
             "a change would merge alone beside a clear run with riders, once the right of way \
              ran out"
@@ -390,31 +397,33 @@ mod tests {
         let root = root("alone");
         aboard(&root, 3);
         assert_eq!(
-            why(&root, 1000, true),
+            why(&root, 1000, || panic!(
+                "asked whether the train goes with no run marked"
+            )),
             None,
             "a change would board a red's search or an outage, which no clear run marks"
         );
-        run_begins(&root, 1000);
+        run_begins(&root, 1000).unwrap();
         assert_eq!(
-            why(&root, 1000, false),
+            why(&root, 1000, || false),
             None,
             "a change would board a run a train that was killed marked"
         );
         assert_eq!(
-            why(&root, 1000 + RIGHT_OF_WAY, true),
+            why(&root, 1000 + RIGHT_OF_WAY, || true),
             None,
             "a change would board a run that hung past its time"
         );
         run_ends(&root);
         assert_eq!(
-            why(&root, 1000, true),
+            why(&root, 1000, || true),
             None,
             "a change would board a run that ended"
         );
         let empty = self::root("empty");
-        run_begins(&empty, 1000);
+        run_begins(&empty, 1000).unwrap();
         assert_eq!(
-            why(&empty, 1000, true),
+            why(&empty, 1000, || true),
             None,
             "a change would board a run with no one aboard"
         );
@@ -427,14 +436,14 @@ mod tests {
         let root = root("held");
         give(&root, 100);
         assert_eq!(
-            why(&root, 200, false),
+            why(&root, 200, || false),
             Some(Yields::Held(100)),
             "a change would merge alone while the train held the right of way"
         );
-        run_begins(&root, 150);
+        run_begins(&root, 150).unwrap();
         aboard(&root, 2);
         assert_eq!(
-            why(&root, 200, true),
+            why(&root, 200, || true),
             Some(Yields::Held(100)),
             "a clear run was said as why while the train held the right of way"
         );

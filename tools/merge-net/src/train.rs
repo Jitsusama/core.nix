@@ -518,13 +518,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         // Only a clear run takes changes that would merge alone, so none
         // boards a red's search or an outage only to fall with its riders.
         // One that boards rides the next candidate, cut once this one ends.
-        if splitting.clear() {
-            right_of_way::run_begins(&root, began);
-            println!(
-                "merge-net: the train's run is clear, so a change that would merge alone \
-                 boards it until the run ends"
-            );
-        }
+        println!("{}", mark_run(&root, &splitting, began));
         println!(
             "merge-net: the train runs changed-checks at {} over {}",
             short(&candidate),
@@ -568,6 +562,28 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         // would send back to run again.
         right_of_way::run_ends(&root);
         after_landing(&root, landing, &done.merged, began, &mut splitting);
+    }
+}
+
+/// Mark a run begun at `began` under `root` as one a change that would
+/// merge alone boards, if `splitting` says it's clear, and say which it
+/// is, so the log tells which runs a change boarded.
+fn mark_run(root: &Path, splitting: &Splitting, began: u64) -> String {
+    if !splitting.clear() {
+        return "merge-net: the train's run isn't clear, so a change that would merge alone \
+                merges beside it"
+            .to_owned();
+    }
+    match right_of_way::run_begins(root, began) {
+        Ok(()) => format!(
+            "merge-net: the train's run is clear, so a change that would merge alone boards \
+             it until the run ends or {} minutes pass",
+            right_of_way::RIGHT_OF_WAY / 60
+        ),
+        Err(error) => format!(
+            "merge-net: the train's run is clear, but {error}, so a change that would merge \
+             alone merges beside it"
+        ),
     }
 }
 

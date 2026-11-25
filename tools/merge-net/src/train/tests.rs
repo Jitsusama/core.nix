@@ -87,7 +87,7 @@ fn a_ride_handed_over_keeps_the_right_of_way_a_fresh_one_takes_back() {
     let root = root("handed-way");
     fs::create_dir_all(folder(&root)).unwrap();
     right_of_way::give(&root, crate::state::now());
-    right_of_way::run_begins(&root, crate::state::now());
+    right_of_way::run_begins(&root, crate::state::now()).unwrap();
     begin(&root, true);
     assert!(
         right_of_way::holds(&root, crate::state::now()).is_some(),
@@ -436,6 +436,40 @@ fn a_run_is_clear_only_one_red_or_refusal_from_emptying_nothing() {
     );
     untaken.taken();
     assert!(untaken.clear(), "a taken candidate didn't end the wait");
+}
+
+#[test]
+fn only_a_clear_run_is_marked_for_a_change_to_board_and_each_is_said() {
+    let root = root("marked");
+    fs::create_dir_all(folder(&root)).unwrap();
+    let now = crate::state::now();
+    let mut searching = Splitting::default();
+    searching.red(4);
+    let said = mark_run(&root, &searching, now);
+    assert!(
+        right_of_way::runs(&root, now).is_none(),
+        "a red's search was marked for a change to board"
+    );
+    assert!(
+        said.contains("isn't clear"),
+        "a run that isn't clear wasn't said as one: {said}"
+    );
+    let said = mark_run(&root, &Splitting::default(), now);
+    assert_eq!(
+        right_of_way::runs(&root, now),
+        Some(now),
+        "a clear run wasn't marked for a change to board"
+    );
+    assert!(
+        said.contains("boards it"),
+        "a clear run wasn't said as one a change boards: {said}"
+    );
+    fs::remove_dir_all(&root).unwrap();
+    let said = mark_run(&root, &Splitting::default(), now);
+    assert!(
+        said.contains("merges beside it") && said.contains("writing"),
+        "a clear run whose mark couldn't be written was said as one a change boards: {said}"
+    );
 }
 
 #[test]
