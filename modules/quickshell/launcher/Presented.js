@@ -297,9 +297,10 @@ function kindsLed(parts, kinds) {
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
 // since most keys carry what someone else wrote, a network's name or a window's title. The
 // launcher's own ids are whole, and an own kind's key holding more than an id is said by that
-// kind alone. `window:<app>:<title>` is `window:<app>`, and the launcher's own
-// `program:<desktop entry's id>` whole, so each program's drawer is timed apart (RTOIMQ,
-// 2026-11-24), each only where its id is shaped as an app's and else by its kind. A `verb:` key,
+// kind alone. `window:<app>:<title>` is `window:<app>`, and `program:<id>`, as the programs
+// daemon keys a program by its desktop entry's id, whole where the id is shaped as an app's, as
+// a window's app is, and else `program`, so each program's drawer is timed apart (RTOIMQ,
+// 2026-11-24); another daemon's thing keyed so would be said alike. A `verb:` key,
 // its daemon's own words, goes to its kind, and its act where that's one of KeysSaid's actWords:
 // `verb:agent:close` whole, `verb:disk:nvme0:/home` as `verb:disk`,
 // `verb:notice:offer:<sender's id>` as `verb:notice:offer`. A new kind says nothing more until
