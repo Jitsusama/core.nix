@@ -27,7 +27,7 @@
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
@@ -54,6 +54,10 @@ const JOURNALLED: usize = 256;
 
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
+
+/// How much an answered client may still send, and for how long, before
+/// its connection is let go of whatever is left.
+const LINGERING: (u64, Duration) = (16 * 1024, Duration::from_secs(1));
 
 /// The sandbox a session's file runs in under the sites' names: its
 /// scripts, its forms and the windows it opens, each in an origin of no
@@ -694,6 +698,12 @@ fn write_answer(
             Ok(())
         }
     });
+    // What it still sends is read and dropped, so a request refused before
+    // its body was read isn't reset, and its answer lost, as it closes.
+    let (most, wait) = LINGERING;
+    if stream.shutdown(Shutdown::Write).is_ok() && stream.set_read_timeout(Some(wait)).is_ok() {
+        let _ = io::copy(&mut (&*stream).take(most), &mut io::sink());
+    }
 }
 
 #[cfg(test)]

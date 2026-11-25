@@ -524,8 +524,11 @@ fn the_documents_origin_reads_nothing_of_the_sites() {
     let opened = tungstenite::client(request, stream);
     assert!(opened.is_err(), "a feed opened under the documents' name");
     let sites = format!("localhost:{}", served.port);
-    let from = format!("Origin: {documents}\r\nSec-Fetch-Site: same-site\r\nContent-Length: 0\r\n");
-    let (status, _, _) = asked(served.port, &sites, "POST /", &from);
+    let from = format!("Origin: {documents}\r\nSec-Fetch-Site: same-site\r\n");
+    // A form's body the server never reads, nine bytes and the two `asked`
+    // ends with: refused unread, its answer must still arrive, not a reset.
+    let form = format!("{from}Content-Length: 11\r\n\r\nvalue=yes");
+    let (status, _, _) = asked(served.port, &sites, "POST /", &form);
     assert_eq!(
         status, "HTTP/1.1 405 Method Not Allowed",
         "a document's form changed something"
