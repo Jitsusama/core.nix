@@ -20,10 +20,15 @@
 // serves it, and a map without it draws no feeding at all. So are the
 // forages, which say who started each of this machine's cells: a map without
 // them grows no network out of another.
+//
+// The looks waiting on Joel are drawn beside the drawer and answered there
+// (the kit's waits.ts), loaded only once one waits: every one under Now and
+// a cell's own under it, as view.js says what's open with each drawing.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
+import { asksOnceOneWaits } from "../../local-sites/kit/waits.ts";
 import { expiryOf, type Heard, nowOf } from "./model.ts";
 import { asked, sayReach } from "./reach.ts";
 
@@ -197,12 +202,47 @@ const heard: Heard = {
   },
 };
 
+/** What view.js says is open, for the asks beside the drawer. */
+interface Chosen {
+  readonly showing: boolean;
+  readonly address: string | null;
+}
+
+/** The looks waiting on Joel, beside the drawer, following what it shows. */
+function followTheAsks(): void {
+  const part = document.querySelector<HTMLElement>("#asks-part");
+  const holder = part?.querySelector("#asks");
+  if (part === null || holder === null || holder === undefined) {
+    return;
+  }
+  let showing = true;
+  let count = 0;
+  const shown = (): void => {
+    part.hidden = !showing || count === 0;
+  };
+  const asks = asksOnceOneWaits<Element>({
+    holder,
+    make: (tag) => document.createElement(tag),
+    counted: (counted) => {
+      count = counted;
+      shown();
+    },
+  });
+  document.addEventListener("mycelium:chosen", (event) => {
+    const chosen = (event as CustomEvent<Chosen>).detail;
+    showing = chosen.showing;
+    asks.narrow(chosen.address);
+    shown();
+  });
+}
+
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && owed) {
     owe();
   }
 });
 sayHow();
+followTheAsks();
 // Opened to be checked, the page says whether it reaches every cell.
 if (asked(location.search)) {
   sayReach(document.documentElement, document);

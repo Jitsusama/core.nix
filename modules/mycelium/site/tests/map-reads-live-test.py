@@ -73,8 +73,10 @@ CELLS = 8
 # builders, the legend's moving samples and new work's line, and since no
 # comment is sent, view.js's and the styles' included, with a little room
 # above; new work's line and its hidden controls draw about 20 elements of the
-# 611. One file is the kit's head.css, the head every live page shares.
-BUDGET = Budget(files=33, kilobytes=677, elements=620)
+# 611. One file is the kit's head.css, the head every live page shares. One file, three
+# kilobytes and four elements are the asks beside the drawer: the watch for a waiting look,
+# and the part it fills, whose rows load only once one waits.
+BUDGET = Budget(files=34, kilobytes=680, elements=624)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -433,6 +435,50 @@ def talking_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "talking.sock", "node", talking()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
+
+
+# The cells with a look waiting on Joel, each its own, and a machine whose drawer shows no asks.
+ASKING = ("SKIFF1", "TERN02")
+ASKLESS_MACHINE = "osprey"
+
+
+def asking(cell: str) -> dict[str, object]:
+    """Give a look waiting on Joel from `cell`, as the to-do daemon holds one."""
+    look = {
+        "v": 1,
+        "id": f"look-{cell}",
+        "at": datetime.now(UTC).isoformat(),
+        "kind": "pr",
+        "target": "https://example.com/pull/1",
+        "title": f"{cell}'s Change",
+        "why": "Its checks passed.",
+        "ask": "Say whether it merges.",
+        "choices": [
+            {"value": "yes", "label": "Merge It"},
+            {"value": "no", "label": "Leave It"},
+        ],
+        "state": "waiting",
+        "address": cell.lower(),
+    }
+    return {"key": f"look:{look['id']}", "kind": "look", "look": look}
+
+
+@pytest.fixture
+def asks_served(tmp_path: Path, mycelium_node: StandIn) -> Iterator[tuple[Served, StandIn]]:
+    """Serve the map beside a to-do daemon holding a look from each asking cell.
+
+    The same stand-in takes the answer as the node would, so what was
+    steered is read from it.
+    """
+    to_do = StandIn(tmp_path / "to-do.sock", "to-do", {"look": [asking(cell) for cell in ASKING]})
+    to_do.start()
+    node = {"socket": str(mycelium_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    feeds = {"node": node, "to-do": {"socket": str(to_do.path), "kinds": {"look": {}}}}
+    answers = {"looks": str(to_do.path), "node": str(to_do.path)}
+    site = {"mycelium": os.environ["MYCELIUM_SITE"]}
+    with serving(tmp_path, site, feeds, answers=answers) as served:
+        yield served, to_do
+    to_do.leave()
 
 
 def reach(browser: Browser, root: str, timeout: int = PACE_MS) -> dict[str, Any]:
@@ -2151,5 +2197,40 @@ def test_the_map_passes_the_skills_page_checks_and_its_own(
         # The map's own, after the skill's, since it opens things through the hash.
         found = opened.page.evaluate((HERE / "site-checks.js").read_text())
         assert found == [], f"site-checks.js at {size} in the {look} look found {found}"
+    finally:
+        opened.close()
+
+
+def test_the_asks_beside_the_drawer_follow_what_it_shows_and_are_answered_there(
+    browser: Browser, asks_served: tuple[Served, StandIn]
+) -> None:
+    (root, _), to_do = asks_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        part = page.locator("#asks-part")
+        rows = part.locator("article.ask")
+        expect(rows, "Now didn't hold every look waiting on you").to_have_count(len(ASKING))
+        page.evaluate(f"location.hash = '#cell={ASKING[1]}'")
+        expect(rows, "a cell's drawer showed another's asks").to_have_count(1)
+        expect(rows.locator("h3")).to_have_text(f"{ASKING[1]}'s Change")
+        page.evaluate(f"location.hash = '#machine={ASKLESS_MACHINE}'")
+        expect(part, "a machine's drawer showed the asks").to_be_hidden()
+        page.evaluate("location.hash = ''")
+        expect(rows, "let go, the asks didn't widen again").to_have_count(len(ASKING))
+        page.evaluate(f"location.hash = '#cell={ASKING[0]}'")
+        expect(part, "a cell's own ask wasn't shown beside its drawer").to_be_visible()
+        rows.get_by_role("button", name="Merge It").click()
+        expect(rows.locator(".ask-told")).to_have_text(
+            "Answered Merge It: sent to the session that asked."
+        )
+        expect(rows.get_by_role("button"), "answers stayed once one was pressed").to_have_count(0)
+        steered = [(asked["address"], asked["steer"]) for asked in to_do.steered]
+        assert len(steered) == 1, f"the map's answer was carried {len(steered)} times"
+        address, steer = steered[0]
+        assert address == ASKING[0], f"the answer went to {address}"
+        assert isinstance(steer, dict), f"the steer was {steer!r}"
+        assert (steer["look"], steer["value"]) == (f"look-{ASKING[0]}", "yes"), steer
     finally:
         opened.close()

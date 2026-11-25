@@ -1091,6 +1091,17 @@ body {
   border-block-start: 1px solid var(--rule);
 }
 
+/* The asks sit between the drawer's words and the tree, ruled off as the tree is. */
+.asks-part {
+  padding: 0 var(--inset) var(--items);
+  border-block-start: 1px solid var(--rule);
+}
+
+.asks-title {
+  padding: var(--items) 0 var(--tie);
+  font-size: var(--step-body);
+}
+
 .tree-title {
   padding: var(--items) var(--inset) var(--tie);
   font-size: var(--step-body);

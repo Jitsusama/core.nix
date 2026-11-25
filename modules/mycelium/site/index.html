@@ -107,6 +107,12 @@
 
   <aside class="panel" id="panel" aria-labelledby="panel-title">
     <div class="panel-body" id="panel-body"></div>
+    <!-- The looks waiting on you, drawn and answered here by site.js: every one under Now, a
+         cell's own under it; shown while one waits. -->
+    <section class="asks-part" id="asks-part" aria-labelledby="asks-part-title" hidden>
+      <h2 id="asks-part-title" class="asks-title">Waiting on <em>You</em></h2>
+      <div id="asks"></div>
+    </section>
     <section class="network" aria-labelledby="tree-title">
       <h2 id="tree-title" class="tree-title">The Mycelium</h2>
       <ul class="tree" id="tree" role="tree" aria-labelledby="tree-title"></ul>

@@ -3932,6 +3932,10 @@ import {
   };
   const drawPanel = () => {
     if (!current) return;
+    // The asks beside the drawer follow what's open (site.ts): every one
+    // under Now, a cell's own under it, and none beside anything else.
+    const asksFor = { showing: !chosen || chosen.kind === "cell", address: chosen?.kind === "cell" ? chosen.id : null };
+    document.dispatchEvent(new CustomEvent("mycelium:chosen", { detail: asksFor }));
     const html = !chosen
       ? overview()
       : chosen.kind === "cell"
