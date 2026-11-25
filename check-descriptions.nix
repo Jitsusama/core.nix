@@ -1347,8 +1347,8 @@
   every-why-in-the-foot-has-words = ''
     every why the shell's sessions say a press they can't answer by, and every key the agents'
     list names to its foot through its elsewhere words, has words in the machine vocabulary, so
-    none of those presses goes unsaid in the foot, and each why the foot says plainly is one
-    the shell gives
+    none of those presses goes unsaid in the foot, and each why the shell gives has its colour
+    chosen, plain or alert, and none other has
   '';
   every-window-says-what-it-holds = ''
     the reader on a page and a kitty running the account's shell, opened on the account's niri,

@@ -4,11 +4,11 @@
 
 AGENTS is the vocabulary's own file for agents (launcher/words/agents.json),
 SESSIONS the shell's Sessions.qml, LAUNCHER the launcher's Agents.qml and ROWS
-its SessionRow.js, whose VIEWED_WHYS says which whys the foot says plainly:
-each must be a why the shell gives, so one renamed there fails rather than
-turning a viewer's plain words into the alert's. Each
-why Sessions says a session by (`unhosted(session, "why")`, one or a choice
-of two) and each key the launcher names to its foot (`elsewhere("key", ...)`)
+its SessionRow.js, whose WHY_TONES says how the foot says each why, plainly
+or as an alert: its whys must be the shell's, both ways, so a why added or
+renamed fails until its colour is chosen. Each why Sessions says a session
+by (`unhosted(session, "why")`, a word or a choice of words, nested or not)
+and each key the launcher names to its foot (`elsewhere("key", ...)`)
 must have words in agents:machine's `said`: the launcher reads them there and
 says nothing for a key it hasn't, so a press would be met with an empty foot
 (Joel, 2026-11-15: a press must never do nothing). Keys the launcher reads off
@@ -19,8 +19,8 @@ come to anything but a word, as one held in a name, which can't be read; only
 the why the launcher's onUnhosted is given, inside that handler, may be a
 name, and that handler must pass it on to elsewhere, in its code rather than
 a string or comment there, or every why the shell gives would meet an empty
-foot; a handler whose body never closes, as a quote in a regex can leave
-it, is none. A word a choice is made by is no why. The
+foot; a handler whose body never closes, or that holds a regex, whose quote
+could widen it, is none. A word a choice is made by is no why. The
 check first proves it finds a why in a choice or a wrapped call and refuses a
 why with no words, so a rule that stopped finding or refusing fails it too.
 """
@@ -207,13 +207,26 @@ class Handler:
         )
 
 
+def comment_end(source: str, at: int) -> int | None:
+    """Give where a comment opening at `at` ends, or None where none opens there."""
+    if source.startswith("//", at):
+        ends = source.find("\n", at)
+        return len(source) if ends < 0 else ends
+    if source.startswith("/*", at):
+        ends = source.find("*/", at)
+        return len(source) if ends < 0 else ends + 2
+    return None
+
+
 def handler(source: str) -> Handler | None:
     """Give onUnhosted's name for the shell's why, its body, and the strings and comments there.
 
     A brace inside a string or a comment is none of the body's, and a quote
     inside a comment opens no string, so neither moves where it ends. A body
-    that never closes is none, as a quote misread, in a regex, would
-    otherwise widen it to the file's end and excuse every name after.
+    holding a / that opens no comment is none, as a regex's quote, read as
+    opening a string, would widen it past its end to excuse names beyond,
+    and a regex can't be told from a division without parsing; so is one
+    that never closes.
     """
     found = HANDLER.search(source)
     if found is None:
@@ -228,16 +241,11 @@ def handler(source: str) -> Handler | None:
             elif one == quote:
                 quote = ""
                 unread.append((opened, at + 1))
-        elif source.startswith("//", at):
-            ends = source.find("\n", at)
-            ends = len(source) if ends < 0 else ends
-            unread.append((at, ends))
-            at = ends
-        elif source.startswith("/*", at):
-            ends = source.find("*/", at)
-            ends = len(source) if ends < 0 else ends + 2
+        elif (ends := comment_end(source, at)) is not None:
             unread.append((at, ends))
             at = ends - 1
+        elif one == "/":
+            return None
         elif one in QUOTES:
             quote, opened = one, at
         else:

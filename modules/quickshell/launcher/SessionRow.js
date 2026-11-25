@@ -199,18 +199,24 @@ function footNameOf(served, session, titleOf) {
         session.address);
 }
 
-// The whys Sessions gives a press it can't answer as asked (its unhosted)
-// that tell of the press's viewer opening or viewed, said plainly in the
-// foot; every other is said in the alert's colour, as a press that viewed
-// nothing (docs/design.md: colour carries the meaning). foot-words.py
-// holds each to a why the shell gives, so one renamed there fails rather
-// than turning a viewer's plain words into an alert.
-const VIEWED_WHYS = ["opening", "startedOpening", "cameAfter", "startedCameAfter",
-    "ownAfterAll", "startedOwnAfterAll"];
+// How the foot says each why Sessions gives a press it can't answer as
+// asked (its unhosted): plainly, as of the press's viewer opening or
+// viewed, or in the alert's colour, as a press that viewed nothing
+// (docs/design.md: colour carries the meaning). foot-words.py holds these
+// to the whys the shell gives, both ways, so a why added or renamed there
+// fails until its tone is chosen here, rather than meeting the alert's.
+const WHY_TONES = {
+    opening: "plain", startedOpening: "plain", cameAfter: "plain",
+    startedCameAfter: "plain", ownAfterAll: "plain", startedOwnAfterAll: "plain",
+    disowned: "alert", startedDisowned: "alert", untaken: "alert",
+    startedUntaken: "alert", unowned: "alert", hosted: "alert", hostless: "alert",
+    unnamed: "alert", unviewable: "alert", unviewableHost: "alert"
+};
 
-// Whether the foot says `why` plainly, as of a viewer opening or viewed.
+// Whether the foot says `why` plainly, as of a viewer opening or viewed;
+// one with no tone, which foot-words refuses, in the alert's.
 function viewedWhy(why) {
-    return VIEWED_WHYS.includes(String(why ?? ""));
+    return WHY_TONES[String(why ?? "")] === "plain";
 }
 
 // What an address is made of, the only kind reasonOf looks for in a reason.
