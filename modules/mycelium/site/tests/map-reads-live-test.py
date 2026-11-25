@@ -2131,6 +2131,12 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
+    # The ring is said as an answer the cell owes, and never as one waiting on him,
+    # which is what a question waiting once made him read it as.
+    expect(
+        page.locator('#panel-body details[data-keep="legend"] dd', has_text="An answer owed:"),
+        "the legend never said a ring is an answer owed, or let it read as his",
+    ).to_contain_text(re.compile("a cell another cell asked something.*, never one waiting on you"))
     # A turn's worth of context, which moves no cell and no network.
     used = {"limit": 1000000, "used": 12000}
     last = "2026-11-16T10:00:00Z"
