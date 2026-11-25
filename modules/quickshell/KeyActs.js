@@ -4,6 +4,7 @@
 // (Launcher.qml's keyHeardAt), and tests/query-keys.qml holds it in Qt's
 // own engine.
 .pragma library
+.import "QueryKeys.js" as QueryKeys
 
 // The line's own edits and caret moves, and Ctrl+Y's completion, which
 // change only what's typed and where its caret stands, as a letter typed
@@ -12,13 +13,28 @@ const typing = ["caretLeft", "caretRight", "caretStart", "caretEnd", "deleteBack
     "deleteToStart", "complete"];
 
 // Normal's edits and caret moves on a prompt's words, read only in normal
-// (QueryKeys.js, `words`), which change what's typed as insert's do.
+// (QueryKeys.js, `words`), which change what's typed as insert's do. Not
+// cw, which goes into insert as i, a and S do, so acts as they do.
 const editing = ["letterBack", "letterNext", "wordNext", "wordBack", "wordEnd", "lineStart",
-    "lineEnd", "deleteLetter", "deleteWordOn", "changeWord", "undo"];
+    "lineEnd", "deleteLetter", "deleteWordOn", "undo"];
 
 // The keys that only say a word: h and l on a row saying the way out and
-// in, q how to close, and a page's change keys Vim's E21.
+// in, q how to close, and a page's change keys Vim's E21, which say only
+// that on the page: while the drawer chooses, each ends its choice too
+// (QueryKeys.modeAfter), so acts there (`saysOnly`).
 const saying = ["intoSaid", "outSaid", "quitSaid", "cannotChange"];
+
+function saysOnly(act, line) {
+    return saying.includes(act) && !(act === "cannotChange" && QueryKeys.chosen(line.mode));
+}
+
+// Whether gv has something to take back: on the rows a selection
+// (Launcher.qml's lastVisual, `rows`), and in the drawer the kind it last
+// chose by (Prompt.qml's lastChosen, `chosen`); with neither it does
+// nothing (Drawer.qml's reselect).
+function reselectHere(mode, rows, chosen) {
+    return QueryKeys.paged(mode) ? chosen !== "" : rows;
+}
 
 // The acts that do nothing where the launcher has nowhere to take them,
 // each by the line's word for whether it has: Space or Ctrl+W l into the
@@ -60,7 +76,7 @@ function acts(read, line) {
     if (line.commands) {
         return true;
     }
-    if (!read.ours || read.act === "" || saying.includes(read.act) || nowhere(read.act, line)) {
+    if (!read.ours || read.act === "" || saysOnly(read.act, line) || nowhere(read.act, line)) {
         return false;
     }
     if (line.mode === "normal" && editing.includes(read.act)) {

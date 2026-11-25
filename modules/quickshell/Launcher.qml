@@ -5138,14 +5138,16 @@ Scope {
     // Return on the line: exactly what's typed, as Commands.ran read it.
     // From the drawer, :q closes its window, the keys back on the rows, as
     // his Neovim's :q closes a split, and :{n} stays in it.
-    function commandRan(read) {
+    function commandRan(read, from = "Return") {
         // A Return doubled with the one that wrote an ending row's line is
         // that one press, so it runs nothing; only a fresh Return does.
         if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
             return;
         // The command line's own Return, which the prompt never reads, runs
-        // what's typed, so it's timed as acting.
-        keyActs("Return");
+        // what's typed, so it's timed as acting; @: comes with no key of
+        // its own (`from`), since the prompt timed it as commandAgain.
+        if (from !== "")
+            keyActs(from);
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5308,7 +5310,7 @@ Scope {
             return;
         }
         commandLine(null);
-        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }));
+        commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }), "");
     }
 
     // The things a line acts on: those bound as : was pressed, or where a

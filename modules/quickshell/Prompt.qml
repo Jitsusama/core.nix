@@ -692,8 +692,6 @@ Item {
         return false;
     }
 
-    // The register's letter after Ctrl+R, and Ctrl+R itself, which
-    // registerKey takes where the line takes registers.
     // Whether registerKey takes the key, as Ctrl+R or the letter after it,
     // so what the key does is read from the same test that takes it.
     function takesRegister(event: KeyEvent, key: string): bool {
@@ -729,8 +727,7 @@ Item {
             drawerHere,
             intoHere,
             upHere,
-            // The drawer's gv always goes back to a mode.
-            reselectHere: reselectable || QueryKeys.paged(mode),
+            reselectHere: KeyActs.reselectHere(mode, reselectable, lastChosen),
             mode,
             text: input.text
         });
@@ -803,7 +800,8 @@ Item {
         const at = input.cursorPosition;
         // gv on the rows with no selection before it does nothing, as
         // Vim's; with one, the rows take it back before visual begins round
-        // the cursor. The drawer's gv goes back to the mode it chose in.
+        // the cursor. The drawer's gv goes back to the mode it chose in,
+        // and with nothing chosen does nothing (Drawer.qml's reselect).
         const onRows = !QueryKeys.paged(mode);
         if (read.act === "reselect" && onRows) {
             if (!reselectable)
