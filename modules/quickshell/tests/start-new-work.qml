@@ -1,11 +1,12 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js, tests/lib/Expect.js and Agents'
-// words, as words.json, beside this file and runs it offscreen.
+// modules/quickshell/launcher/Sprouting.js and StartSaid.js, tests/lib/Expect.js
+// and Agents' words, as words.json, beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Sprouting.js" as Sprouting
+import "launcher/StartSaid.js" as StartSaid
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
@@ -475,5 +476,31 @@ QtObject {
             /^[a-z0-9]+-[a-z0-9]+$/u.test(token), true);
         Expect.same("two asked in one moment are told apart",
             token === Sprouting.token(1763500000000, 0.25), false);
+
+        // The same words given the same act again say when they started, rather than
+        // starting the work twice (Joel, 2026-11-25: "no clue if i did it once, twice,
+        // thrice or not at all").
+        const began = new Date(2026, 10, 25, 14, 30, 50).getTime();
+        const last = { key: "verb:agents:start-new-work:in:/src/a", words: "fix the bar",
+            at: began };
+        Expect.same("the same words again say when they started",
+            StartSaid.startedAlready(last, last.key, "  fix the bar ", began + 60000), "14:30");
+        Expect.same("other words start",
+            StartSaid.startedAlready(last, last.key, "fix the foot", began + 60000), null);
+        Expect.same("the same words in another folder start", StartSaid.startedAlready(last,
+            "verb:agents:start-new-work:in:/src/b", "fix the bar", began + 60000), null);
+        Expect.same("an hour on, the same words start", StartSaid.startedAlready(last, last.key,
+            "fix the bar", began + 60 * 60 * 1000), null);
+        Expect.same("nothing started, anything starts",
+            StartSaid.startedAlready(null, last.key, "fix the bar", began), null);
+        Expect.same("and Start New Work says so in its own words, with the time",
+            String(written.again ?? "").includes("{at}"), true);
+
+        // A start's wait is counted to the second, so it's seen to run.
+        Expect.same("nothing before it began", StartSaid.waited(0, began), "");
+        Expect.same("seconds at first", StartSaid.waited(began, began + 8400), "8 s");
+        Expect.same("then minutes and seconds", StartSaid.waited(began, began + 65000),
+            "1 min 05 s");
+        Expect.same("never less than nothing", StartSaid.waited(began, began - 5000), "0 s");
     }
 }

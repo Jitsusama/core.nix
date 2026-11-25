@@ -55,6 +55,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
+import "StartSaid.js" as StartSaid
 import "StartsStopped.js" as StartsStopped
 import "TalkAnswers.js" as TalkAnswers
 import "TalkTo.js" as TalkTo
@@ -1816,6 +1817,18 @@ Provider {
             // one carried here (askWhere).
             offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
+            // The mark its state wears under the words: a glyph's name, running
+            // while it's under way, done once started, failed when refused.
+            mark: () => provider.sproutMarked[key] ?? "",
+            // Words to start work are a sentence or two, so they take lines
+            // of their own under the path (Prompt's composes), and stay in
+            // muted ink once given while the start is under way, with the
+            // moment it began, so the launcher says it took and counts
+            // the seconds since (Joel, 2026-11-25 14:33: "no confirmation
+            // that it took my enter").
+            composes: true,
+            taken: () => provider.underWay(key),
+            since: () => provider.underWay(key) ? provider.sproutSince : 0,
             given: said => provider.sprout(key, said, start === undefined ? folder
                 : Wheres.startAt(startWheres(), folder, start))
         });
@@ -1853,10 +1866,27 @@ Provider {
     // key of the act it's for, "" while none runs, and `sprouts` counts
     // them, so an answer heard after its patience ran out says nothing.
     property var sproutSaid: ({})
+    property var sproutMarked: ({})
     property string sprouting: ""
     property int sprouts: 0
-    function sproutSays(key, text) {
+    // When the start running began, as Date.now() said it.
+    property real sproutSince: 0
+    // Whether the start `key` asked is under way: asked of the node, or started and
+    // waiting for its session to come up before its window opens, which took three
+    // minutes on 25 November. A window opened sooner was blank all that while.
+    function underWay(key) {
+        return sprouting === key || openings.some(one => one.key === key);
+    }
+    // The last start that started, `{ key, words, at }`, so the same words
+    // given again to the same act say when they started rather than
+    // starting the work twice (Joel, 2026-11-25: "no clue if i did it once,
+    // twice, thrice or not at all"). Kept for the shell's life alone, since
+    // the daemon keeps none of Joel's words (starts.rs).
+    property var sproutLast: null
+    function sproutSays(key, text, mark) {
         sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
+        sproutMarked = Object.assign({}, sproutMarked,
+            { [key]: text ? mark ?? "failed" : "" });
     }
     function sprout(key, said, folder) {
         const words = Words.of("agents:start-new-work").said ?? {};
@@ -1872,8 +1902,13 @@ Provider {
             return;
         }
         if (sprouting !== "") {
-            sproutSays(key, words.busy);
+            sproutSays(key, words.busy, "pending");
             sproutReaches({ started: false, why: words.busy });
+            return;
+        }
+        const again = StartSaid.startedAlready(sproutLast, key, said, Date.now());
+        if (again !== null) {
+            sproutSays(key, String(words.again ?? "").replace("{at}", again), "done");
             return;
         }
         const ask = Sprouting.ask(said, folder);
@@ -1884,6 +1919,7 @@ Provider {
             return;
         }
         sprouting = key;
+        sproutSince = Date.now();
         sprouts += 1;
         sproutGiven = { words: String(said), letters: launcher.lettersAt };
         sproutCarried = "";
@@ -1894,7 +1930,7 @@ Provider {
             if (sprouts === sprout)
                 sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
         });
-        sproutSays(key, words.starting);
+        sproutSays(key, words.starting, "running");
         sproutPatience.restart();
         const token = Sprouting.token(Date.now(), Math.random());
         sproutTokens[token] = "asking";
@@ -2059,12 +2095,14 @@ Provider {
         const where = Sprouting.asksWhere(how) && askWhere(key);
         const text = where ? Sprouting.toldWhere(how, sproutWords())
             : Sprouting.told(how, sproutWords());
-        sproutSays(key, text);
+        sproutSays(key, text, how.started ? how.held !== "" ? "running" : "done" : "failed");
         // Told Joel before the daemon is told it's told, so it's kept until he is.
         sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
+        if (how.started)
+            sproutLast = { key: key, words: sproutGiven.words, at: Date.now() };
         if (how.started && how.held !== "") {
             openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
                 since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);
@@ -2224,7 +2262,7 @@ Provider {
     // Says `word` of `one` on its act, and gives the words for the foot.
     function said(one, word) {
         const text = String(sproutWords()[word] ?? "").replace("{machine}", one.machine);
-        sproutSays(one.key, text);
+        sproutSays(one.key, text, word === "unopened" ? "pending" : "done");
         return text;
     }
     // Opens `one`'s session if Joel still waits on its act, giving "", or
