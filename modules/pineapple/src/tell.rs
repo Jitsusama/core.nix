@@ -92,6 +92,21 @@ fn text<'a>(value: &'a Value, field: &str) -> &'a str {
     value[field].as_str().unwrap_or_default()
 }
 
+/// How many characters of what was said a row carries: enough to know the
+/// saying by, while the whole of it is at the row's link.
+const GIST: usize = 280;
+
+/// What was said, as a row, its notice and Joel's phone show it: on one
+/// line, and cut after [`GIST`] characters, so a long comment heard costs
+/// the launcher and his notices no more than a short one.
+fn gist(said: &str) -> String {
+    let line = said.split_whitespace().collect::<Vec<_>>().join(" ");
+    match line.char_indices().nth(GIST) {
+        Some((cut, _)) => format!("{} ...", line[..cut].trim_end()),
+        None => line,
+    }
+}
+
 fn strings(value: &Value, field: &str) -> Vec<String> {
     value[field]
         .as_array()
@@ -181,7 +196,7 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
         "stop": stop.id,
         "saying": stop.id,
         "link": text(record, "where"),
-        "words": text(record, "words"),
+        "words": gist(text(record, "words")),
         "said_by": text(record, "said_by"),
         "by_joel": by_joel,
         "reaches": reaches,
@@ -277,7 +292,7 @@ fn alert_row(key: &str, latest: &Value, count: usize, words: &Words) -> Value {
         "since": latest["heard_at"].as_u64().unwrap_or(0),
         "saying": text(latest, "key"),
         "link": text(latest, "link"),
-        "words": text(latest, "text"),
+        "words": gist(text(latest, "text")),
         "said_by": text(latest, "author"),
         "said_at": text(latest, "said_at"),
         "by_joel": false,
@@ -325,6 +340,33 @@ pub fn said_reach(reach: &str, words: &Words) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_was_said_is_shown_on_one_line_and_cut_when_long() {
+        assert_eq!(
+            gist("@joel pineapple override"),
+            "@joel pineapple override",
+            "a short saying is shown as said"
+        );
+        assert_eq!(
+            gist("pineapple override\n\n  on this one\n"),
+            "pineapple override on this one",
+            "its lines are joined into one"
+        );
+        let long = format!("pineapple override {}", "\u{e9}t\u{e9} ".repeat(GIST));
+        let shown = gist(&long);
+        assert!(
+            shown.starts_with("pineapple override \u{e9}t\u{e9} ")
+                && shown.ends_with(" ...")
+                && shown.chars().count() <= GIST + 4,
+            "a long one is cut on a letter's edge, saying it was: {shown}"
+        );
+        assert_eq!(
+            gist(&"x".repeat(GIST)),
+            "x".repeat(GIST),
+            "one just as long is shown whole"
+        );
+    }
 
     fn words() -> Words {
         Words::of(&[
