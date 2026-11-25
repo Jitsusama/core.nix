@@ -345,12 +345,13 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         )
         # Gone before the time it was warned of, the card was never the point's to drop. Timed
         # from the warning as wifid read it, so a move asked late counts its wait.
-        said = said_since(machine, since)
-        heard = next((at for at, line in said if line == warned), None)
+        timed = said_since(machine, since)
+        heard = next((at for at, line in timed if line == warned), None)
         reached = next(
-            (at for at, line in said if line.startswith(f"wlan2 reached {FIRST} ")), None
+            (at for at, line in timed if line.startswith(f"wlan2 reached {FIRST} ")), None
         )
-        assert heard is not None and reached is not None, f"no warning and arrival in:\n{said}"
+        assert heard is not None, f"wifid never said the warning in:\n{timed}"
+        assert reached is not None, f"wifid never said the card reached {FIRST} in:\n{timed}"
         took = (reached - heard) // 1000
         assert took < DROPS_IN_MS, f"the card took {took} ms, past the {DROPS_IN_MS} ms warned of"
         machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
