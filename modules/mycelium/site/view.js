@@ -613,6 +613,9 @@ import {
       outside.carries = `where ${senses.length > 1 ? `${senses.slice(0, -1).join(", ")} and ${senses.at(-1)}` : senses[0]} come in from outside, each listened to for the cells that read it`;
       hubs.set(OUTSIDE, outside);
     }
+    // The groups working alone and the outside joined the hubs after the
+    // networks were told apart, so they are labelled by their own name.
+    for (const h of hubs.values()) h.label ??= clipped(h.name);
     for (const h of hubs.values()) h.lead = cells.find((s) => s.leads.includes(h.key)) || null;
     // A hub is placed by the machine most of its cells run on. That is
     // where it sits on the map and in the tree, never what it belongs to:
