@@ -18,6 +18,7 @@
 //! Joel's a search indexed late, in late.rs.
 
 mod late;
+mod partial;
 mod standing;
 
 use std::path::{Path, PathBuf};

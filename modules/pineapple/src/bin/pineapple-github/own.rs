@@ -198,6 +198,30 @@ impl Searched {
         found
     }
 
+    /// Says in the journal that a round could read only `done` of the
+    /// `named` pull requests and issues it named, and knows as read what
+    /// of those the search `found`, so the next reads only the rest of a
+    /// flood, and what of it changes since. How far it read stays put, so
+    /// the rest is read again, and nothing is judged twice, its keys kept.
+    pub(super) fn read_part(
+        &mut self,
+        github: &GitHub<'_>,
+        found: Option<&Found>,
+        done: &[String],
+        named: usize,
+    ) {
+        eprintln!(
+            "<4>{} read {} of the {named} it named, so the rest is read again next round",
+            github.name,
+            done.len()
+        );
+        for key in done {
+            if let Some(at) = found.and_then(|found| found.seen.get(key)) {
+                self.read.insert(key.clone(), at.clone());
+            }
+        }
+    }
+
     /// Moves on to a round begun at `began` once what it `found` was
     /// answered, knowing what that read as read, and says in the journal
     /// what its searches left out, from where the next round reaches. Only

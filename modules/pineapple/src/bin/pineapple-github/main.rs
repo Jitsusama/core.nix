@@ -32,9 +32,10 @@
 //! issue that changed (one the search finds, only when it says it has
 //! changed since it was read), one more for each repository where
 //! something on one is to be judged, and a page more for each hundred of
-//! a long list. One his limit refuses is tried again whole, so nothing it
-//! couldn't read is skipped, but for a search of what's older than one
-//! GitHub cut short (src/bin/pineapple-github/own.rs).
+//! a long list. What his limit refuses is read again next round, what was
+//! read before it judged meanwhile, so nothing it couldn't read is
+//! skipped, but for a search of what's older than one GitHub cut short
+//! (src/bin/pineapple-github/own.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -122,6 +123,11 @@ const SITE: &str = "github";
 
 /// How many judged keys are kept: far more than a few rounds find.
 const KEPT: usize = 1000;
+
+/// How many pull requests and issues a round may fail to read before it
+/// stops reading them: one that keeps failing holds back none after it,
+/// and a spent limit costs only a few refused asks.
+const FAILS: usize = 3;
 
 /// Milliseconds in a second.
 const MILLIS: u64 = 1000;
@@ -575,6 +581,9 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on only once every pull request and issue it
 /// named was read; Joel's own search only once its first search answered.
+/// One that couldn't read them all, reading past up to [`FAILS`] it
+/// couldn't, judges what it did, and knows what of the search's it read,
+/// so a flood past his limit is read a part each round.
 fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own: &mut Searched) {
     let began = seconds();
     let Some(login) = who(github, how) else {
@@ -604,11 +613,15 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {
         threads.push((thread.clone(), reach, own.read_from()));
     }
+    let searched = threads.len();
     for thread in notified {
         if !threads.iter().any(|(listed, _, _)| *listed == thread) {
             threads.push((thread, from, from));
         }
     }
+    // What others said to him is read before what his own search found,
+    // so a flood the search finds can't hold it back.
+    threads.rotate_left(searched);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
         slack_ids: Vec::new(),
@@ -622,6 +635,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
+    let (mut done, mut failed) = (Vec::new(), 0);
     for (thread, from, read_from) in &threads {
         // What this round judges, which alone is worth asking about a repository.
         let keeps = |said: &Said| {
@@ -638,11 +652,18 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
                     }
                 }
                 heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said)));
+                done.push(thread.key());
             }
-            Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
+            Err(Unread::Gone(why)) => {
+                eprintln!("<4>{} can't be read: {why}", thread.key());
+                done.push(thread.key());
+            }
             Err(Unread::Failed(why)) => {
                 eprintln!("<4>couldn't read {}: {why}", thread.key());
-                return;
+                failed += 1;
+                if failed == FAILS {
+                    break;
+                }
             }
         }
     }
@@ -652,9 +673,13 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         judge(state, &joel, &said, place, how.shadow);
         judged.keys.push(said.key);
     }
-    judged.since = began;
-    if let Some(hits) = hits {
-        own.moved_on(began, hits);
+    if failed == 0 {
+        judged.since = began;
+        if let Some(hits) = hits {
+            own.moved_on(began, hits);
+        }
+    } else {
+        own.read_part(github, hits.as_ref(), &done, threads.len());
     }
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
