@@ -409,6 +409,10 @@ pub struct Guard {
     /// Whether the last listing failed, which rests however full the store:
     /// it freed nothing, and the locked one held Nix's lock all along.
     listing_failed: bool,
+    /// Whether a writers' hold's mark stood when the step began: no pass,
+    /// listing or collection starts short of nearly full while one does.
+    /// Not `held_ended`, a process that held store paths having ended.
+    writers_held: bool,
     /// Since when a listing that's due has waited for the machine to have
     /// room.
     room_awaited: Option<f64>,
@@ -791,17 +795,17 @@ fn say_pass(
     when: &str,
 ) -> Option<crate::pass::Failing> {
     if let Some(line) = crate::pass::told(report, seconds, when) {
-        eprintln!("{line}");
+        say!("{line}");
     }
     if scan.went_unheard() {
-        eprintln!(
+        say!(
             "{WARNING_LEVEL}{}",
             crate::pass::unheard_line(scan.unheard(), when)
         );
     }
     let failing = crate::pass::failing(report);
     if let Some(failing) = &failing {
-        eprintln!(
+        say!(
             "{ERROR_LEVEL}{}",
             crate::pass::failed_line(failing, report, when)
         );
@@ -867,6 +871,7 @@ impl Guard {
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
             listing_failed: false,
+            writers_held: false,
             room_awaited: None,
             reached_short: BTreeMap::new(),
             listing,
@@ -975,7 +980,7 @@ impl Guard {
                 // A ledger that won't write leaves the holders unsaid only
                 // in how much they grew.
                 let grew = crate::ledger::record(&state, now, &sized).unwrap_or_else(|error| {
-                    eprintln!("disk-guard: keeping the ledger: {error}");
+                    say!("disk-guard: keeping the ledger: {error}");
                     crate::ledger::Grown::new()
                 });
                 *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized, grew));
@@ -983,7 +988,7 @@ impl Guard {
             });
         match started {
             Ok(thread) => self.measuring = Some(thread),
-            Err(error) => eprintln!("disk-guard: measuring what holds the disks: {error}"),
+            Err(error) => say!("disk-guard: measuring what holds the disks: {error}"),
         }
     }
 
@@ -1196,7 +1201,7 @@ impl Guard {
         impl Drop for Deafens {
             fn drop(&mut self) {
                 if std::thread::panicking() {
-                    eprintln!("disk-guard: hearing opens panicked, so builds keep the hour");
+                    say!("disk-guard: hearing opens panicked, so builds keep the hour");
                 }
                 self.0.store(false, Ordering::SeqCst);
                 if let Some(uses) = self.1.upgrade() {
@@ -1233,13 +1238,13 @@ impl Guard {
                                 .unwrap_or_else(PoisonError::into_inner)
                                 .lost(now);
                             if failed >= LISTEN_TRIES {
-                                eprintln!(
+                                say!(
                                     "disk-guard: stopped hearing opens ({error}), \
                                      so builds keep the hour"
                                 );
                                 return;
                             }
-                            eprintln!("disk-guard: reading opens failed ({error}), trying again");
+                            say!("disk-guard: reading opens failed ({error}), trying again");
                             drop(uses);
                             std::thread::sleep(LISTEN_PAUSE);
                             continue;
@@ -1320,7 +1325,7 @@ impl Guard {
             }
         }
         if let Some(why) = why {
-            eprintln!(
+            say!(
                 "disk-guard: {unmarked} build folders couldn't be marked ({why}, the first), \
                  so their builds keep the hour"
             );
@@ -1368,6 +1373,7 @@ impl Guard {
             disks.observe(tick);
         }
         self.mark(tick);
+        self.heed_holds();
         self.read_min_free(tick.wall);
         self.heartbeat();
         self.heard_garbage(tick.wall);
@@ -1380,6 +1386,7 @@ impl Guard {
             spare(senses.power, senses.saver, &self.memory.awake, tick.wall) && !overload;
         let mut due = Vec::new();
         let heard = self.system_heard;
+        let writers_held = self.writers_held;
         for (&device, watched) in &mut self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
                 watched.space = None;
@@ -1417,7 +1424,8 @@ impl Guard {
             // turn; the system's own upkeep goes on.
             let driven =
                 matches!(decision, Decision::Reach(_)) && spoken_for(self.hearing.as_ref(), device);
-            if decision != Decision::Rest && !resting && !driven {
+            let waits = writers_held && watched.band < Band::NearlyFull;
+            if decision != Decision::Rest && !resting && !driven && !waits {
                 due.push((device, decision, thresholds));
             }
         }
@@ -1437,7 +1445,7 @@ impl Guard {
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
         // waits for a calm disk.
-        let calm_moment = spare_moment && calm(senses.pressure);
+        let calm_moment = spare_moment && calm(senses.pressure) && !self.writers_held;
         self.dedupe(tick, calm_moment, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let asked = self.clear_asked(tick)?;
@@ -1448,7 +1456,7 @@ impl Guard {
             // disk too full to hold the status is the one the pass is for,
             // so a status unwritten stops nothing but the telling.
             if let Err(error) = self.write_status(tick.wall) {
-                eprintln!("disk-guard: writing the status before a pass: {error}");
+                say!("disk-guard: writing the status before a pass: {error}");
             }
             self.passes(tick, &due)?;
         }
@@ -1580,7 +1588,7 @@ impl Guard {
         // Joel asks most as the disk fills, when the status may not fit:
         // the clear goes on, and so does every pass after it.
         if let Err(error) = self.write_status(tick.wall) {
-            eprintln!("disk-guard: writing the status before a clear: {error}");
+            say!("disk-guard: writing the status before a clear: {error}");
         }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
@@ -1612,7 +1620,8 @@ impl Guard {
     /// moving on every 11 minutes no longer walks every source, as it
     /// did with each move on 29 October.
     fn produce(&mut self, tick: &Tick) -> io::Result<bool> {
-        if self.produced.is_empty() {
+        // What they said waits for the hold's end, kept as news.
+        if self.produced.is_empty() || self.writers_held {
             return Ok(false);
         }
         let mut producers = self.config.clone();
@@ -1620,7 +1629,7 @@ impl Guard {
         producers.sources.retain(|name, _| names.contains(name));
         // Its news is already taken, so a failed write would lose it.
         if let Err(error) = self.write_status(tick.wall) {
-            eprintln!("disk-guard: writing the status before a producer: {error}");
+            say!("disk-guard: writing the status before a producer: {error}");
         }
         let (mut scan, offers, surveyed) = self.offers(tick, Some(&producers))?;
         let devices: BTreeSet<u64> = offers.iter().map(|offer| offer.device).collect();
@@ -1703,6 +1712,12 @@ impl Guard {
     /// holding `path`, its generations and its garbage, in `band`, for the
     /// user daemon driving its order.
     fn collect(&mut self, tick: &Tick, path: &Path, band: Band) -> Result<End, String> {
+        // Answered as the deletes' rest is, so the user daemon's pass waits
+        // with the store's garbage rather than counting a failure and taking
+        // dearer files.
+        if self.writers_held && band < Band::NearlyFull {
+            return Ok(End::Waiting);
+        }
         let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let mount = match (self.store(), self.watched.get(&device)) {
             (Some((_, store)), Some(watched)) if store == device => watched.path.clone(),
@@ -1728,6 +1743,30 @@ impl Guard {
             thresholds,
             &mut scan,
         ))
+    }
+
+    /// Notes whether any writers' hold's mark stands, as another program
+    /// leaves one while the disk's writes must wait for what Joel is using,
+    /// and says so in the log as a hold begins and ends. Only its presence
+    /// counts, never what it says.
+    fn heed_holds(&mut self) {
+        let mark = self
+            .config
+            .writer_holds
+            .iter()
+            .find(|mark| fs::symlink_metadata(mark).is_ok());
+        let held = mark.is_some();
+        if held != self.writers_held {
+            match mark {
+                Some(mark) => say!(
+                    "disk-guard: {} stands, so no pass, listing or collection starts short of \
+                     nearly full",
+                    mark.display()
+                ),
+                None => say!("disk-guard: the writers' hold is over"),
+            }
+        }
+        self.writers_held = held;
     }
 
     /// Takes a listing of Nix's garbage that has finished, keeping it for
@@ -1760,7 +1799,7 @@ impl Guard {
                 // Kept for this run though the disk can't hold it: thrown
                 // away, it would be listed again five minutes on.
                 if let Err(error) = state::save(&self.listing_path, &listing) {
-                    eprintln!("disk-guard: saving the listing of Nix's garbage: {error}");
+                    say!("disk-guard: saving the listing of Nix's garbage: {error}");
                 }
                 self.collect = true;
                 self.stale_listing = false;
@@ -1771,7 +1810,7 @@ impl Guard {
             }
             // Tried again once it has rested, an hour on at most short of
             // pressure; until then the listing before stands.
-            Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
+            Err(why) => say!("disk-guard: listing Nix's garbage: {why}"),
         }
     }
 
@@ -1905,7 +1944,7 @@ impl Guard {
         let Some(watched) = self.watched.get(&device) else {
             return;
         };
-        if watched.band < Band::NearlyFull && self.deletes_resting(now) {
+        if watched.band < Band::NearlyFull && (self.deletes_resting(now) || self.writers_held) {
             // Looked at again once the rest is over.
             self.collect = true;
             return;
@@ -2011,7 +2050,7 @@ impl Guard {
             .get(&device)
             .map_or(Band::Healthy, |watched| watched.band);
         let pressed = band > Band::Healthy;
-        if overloaded && !pressed {
+        if overloaded && !pressed || self.writers_held && band < Band::NearlyFull {
             return;
         }
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
@@ -2071,7 +2110,7 @@ impl Guard {
         self.held_ended = false;
         match listing {
             Ok(_) => self.listing_out = Some((now, out)),
-            Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
+            Err(error) => say!("disk-guard: listing Nix's garbage: {error}"),
         }
     }
 
@@ -2154,7 +2193,7 @@ impl Guard {
             });
         match running {
             Ok(_) => self.dedupe_out = Some((tick.wall, stop, out)),
-            Err(error) => eprintln!("disk-guard: linking the store's files: {error}"),
+            Err(error) => say!("disk-guard: linking the store's files: {error}"),
         }
         Ok(())
     }
@@ -2529,7 +2568,7 @@ impl Guard {
             // the next plan surveys for itself.
             let kept = crate::surveyed::Surveyed::new(tick.wall, &offers);
             if let Err(error) = crate::surveyed::save(self.state(), &kept) {
-                eprintln!("disk-guard: keeping the survey: {error}");
+                say!("disk-guard: keeping the survey: {error}");
             }
             (scan, offers, Some(seconds))
         };
@@ -2873,7 +2912,7 @@ impl Guard {
             why: why.word().to_owned(),
         });
         if let Err(error) = self.write_status(tick.wall) {
-            eprintln!("disk-guard: telling the pass at work: {error}");
+            say!("disk-guard: telling the pass at work: {error}");
             self.end_passing();
         }
     }
@@ -2979,7 +3018,7 @@ impl Guard {
             surveyed,
         };
         if let Err(error) = self.journal.write(&line) {
-            eprintln!("disk-guard: journalling a pass: {error}");
+            say!("disk-guard: journalling a pass: {error}");
         }
         let last = LastPass {
             at: tick.wall,
@@ -3017,7 +3056,7 @@ impl Guard {
                 bytes,
             };
             if let Err(error) = self.journal.write(&line) {
-                eprintln!("disk-guard: journalling the builds taken from {from}: {error}");
+                say!("disk-guard: journalling the builds taken from {from}: {error}");
             }
         }
     }
@@ -3330,7 +3369,7 @@ impl Guard {
         match crate::pace::SyncedWrite::open(state, "probe") {
             Ok(probe) => Some(Box::new(probe)),
             Err(error) => {
-                eprintln!("disk-guard: opening its probe: {error}");
+                say!("disk-guard: opening its probe: {error}");
                 None
             }
         }
@@ -3382,7 +3421,7 @@ impl Guard {
                 }
             };
             if let Err(error) = saved {
-                eprintln!("disk-guard: writing its status: {error}");
+                say!("disk-guard: writing its status: {error}");
             }
         })
     }
