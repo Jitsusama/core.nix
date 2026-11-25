@@ -263,7 +263,7 @@ holds = '"id": "verb:agent:close"'
 [[act]]
 name = "park"
 says = "park a cell, its program ended, to wake when it's spoken to"
-through = "the harness's parking steer, which 5HJZ8Z is bringing"
+through = "a steer with act park and when it was asked, which the harness's parking steer takes (agentic-harness.pi#2159)"
 
 [act.cli.owed]
 by = "KP0L6A"

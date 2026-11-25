@@ -1019,6 +1019,7 @@ in
             wake = "go"
             stop = "go"
             close = "go"
+            park = "go"
           '';
           says = "what the launcher lists: talk is no act of the table, nor set apart";
         }
@@ -1041,6 +1042,7 @@ in
             wake = "go"
             stop = "go"
             close = "go"
+            park = "go"
             gone = "go"
           '';
           says = "launcher/words/agents.json no longer lists gone";
@@ -1064,6 +1066,7 @@ in
             wake = "go"
             stop = "go"
             close = "go"
+            park = "go"
           '';
           says = "switch is said to be went, no act of the table";
         }
