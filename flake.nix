@@ -202,6 +202,7 @@
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
         disk-guard = ./modules/disk-guard/home.nix;
+        du = ./modules/du/home.nix;
         eero = ./modules/eero/home.nix;
         elsewhere = ./modules/elsewhere/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };

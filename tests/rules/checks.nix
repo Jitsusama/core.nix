@@ -226,6 +226,9 @@
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
+        du = script "du" ../../modules/du/du.sh {
+          words = "/usr/bin/du ${../../modules/ripgrep/ignore} /System/Volumes/Data";
+        };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         find = script "find" ../../modules/find/find.sh {
