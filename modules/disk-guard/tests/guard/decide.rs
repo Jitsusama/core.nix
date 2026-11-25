@@ -1,6 +1,9 @@
 use disk_guard::band::{Band, Thresholds};
 use disk_guard::clock::{Awake, Tick};
-use disk_guard::decide::{Decision, Fill, Situation, calm, decide, overloaded, roomy, spare};
+use disk_guard::decide::{
+    Ahead, COLLECTING_UNDER, Decision, Fill, Forecast, Situation, calm, decide, overloaded, roomy,
+    spare,
+};
 use disk_guard::moments::{Power, Pressure, Stall};
 use disk_guard::units::{float, whole};
 
@@ -119,6 +122,144 @@ fn a_steady_fill_trends_as_its_rate() {
     assert!(
         (until - expected).abs() < expected * 0.05,
         "{until} against {expected}"
+    );
+}
+
+/// A Mac's guard said its disk filled in 22 h, a straight line to empty,
+/// while Nix collected its own garbage at 50 GiB (2026-11-20).
+#[test]
+fn a_disk_above_nixs_floor_counts_to_the_floor_not_to_full() {
+    let (fill, free) = filling(500 * GIB, 10e6, 1800);
+    let ahead = fill.ahead(free, Some(50 * GIB));
+    assert_eq!(
+        ahead.full_in, None,
+        "above the floor it isn't told it fills"
+    );
+    let expected = float(free - 50 * GIB) / 10e6;
+    let until = ahead.floor_in.expect("above the floor, when it reaches it");
+    assert!(
+        (until - expected).abs() < expected * 0.05,
+        "{until} against {expected}"
+    );
+    assert_eq!(
+        fill.ahead(free, Some(free)),
+        Ahead::default(),
+        "at the floor, Nix collects, so neither"
+    );
+    assert_eq!(
+        fill.ahead(free, Some(free + COLLECTING_UNDER)),
+        Ahead::default(),
+        "as far under the floor as a collection dips, neither"
+    );
+    let under = fill.ahead(free, Some(free + COLLECTING_UNDER + GIB));
+    assert_eq!(
+        under.floor_in, None,
+        "further under the floor, it's reached"
+    );
+    assert_eq!(
+        under.full_in,
+        fill.steady_until(free, 0),
+        "further under the floor, Nix hasn't kept up, so when it fills"
+    );
+    assert_eq!(
+        fill.ahead(free, None).full_in,
+        fill.steady_until(free, 0),
+        "with no floor, when it fills"
+    );
+}
+
+/// NixOS keeps 10 GiB free, as much as a collection dips under the Mac's
+/// 50 GiB, so under it the dip is half the floor: under 5 GiB free the disk
+/// is told when it fills, rather than never.
+#[test]
+fn a_disk_under_nixoss_small_floor_is_told_when_it_fills() {
+    let (fill, _) = filling(30 * GIB, 10e6, 1800);
+    let floor = Some(10 * GIB);
+    assert_eq!(
+        fill.ahead(5 * GIB, floor),
+        Ahead::default(),
+        "half the floor under it, Nix is collecting, so neither"
+    );
+    let under = fill.ahead(GIB, floor);
+    assert_eq!(under.floor_in, None);
+    assert_eq!(
+        under.full_in,
+        fill.steady_until(GIB, 0),
+        "further under, when it fills"
+    );
+    assert!(under.full_in.is_some(), "a filling disk has a time to full");
+}
+
+/// The store's disk above Nix's floor is told no band that starts under
+/// the floor, since Nix stops it there first: a 500 GB Mac's nearly full
+/// starts at 46.6 GiB, under its 50 GiB floor. A band above the floor, or a
+/// disk Nix hasn't kept up on, is told as before.
+#[test]
+fn a_band_under_nixs_floor_isnt_told_as_coming() {
+    let (fill, free) = filling(120 * GIB, 10e6, 1800);
+    let floor = Some(50 * GIB);
+    assert_eq!(fill.band_in(free, 46 * GIB, floor), None);
+    assert_eq!(
+        fill.band_in(free, 60 * GIB, floor),
+        fill.steady_until(free, 60 * GIB),
+        "a band above the floor"
+    );
+    assert_eq!(
+        fill.band_in(free, 46 * GIB, None),
+        fill.steady_until(free, 46 * GIB),
+        "another disk"
+    );
+    assert_eq!(
+        fill.band_in(30 * GIB, 20 * GIB, floor),
+        fill.steady_until(30 * GIB, 20 * GIB),
+        "under where Nix collects, it hasn't kept up"
+    );
+    assert!(
+        fill.band_in(free, 60 * GIB, floor).is_some(),
+        "a filling disk has a time to a band above the floor"
+    );
+}
+
+/// A status carries no time to full for the store's disk above Nix's
+/// floor, which is what keeps the desktop's full-in warning quiet, while
+/// another disk keeps its own; at a trend of nothing, nothing is told.
+#[test]
+fn only_the_stores_disk_forecasts_to_nixs_floor() {
+    let (fill, free) = filling(500 * GIB, 10e6, 1800);
+    let store = 7;
+    let floor = Some((store, 50 * GIB));
+    let on_store = fill.forecast(free, store, floor, 1000.0);
+    assert_eq!(
+        on_store.full_at, None,
+        "the store's disk above the floor isn't told it fills"
+    );
+    assert_eq!(on_store.nix_floor, Some(50 * GIB));
+    assert_eq!(
+        on_store.floor_at,
+        fill.steady_until(free, 50 * GIB)
+            .map(|seconds| 1000.0 + seconds)
+    );
+    let elsewhere = fill.forecast(free, 8, floor, 1000.0);
+    assert_eq!(
+        elsewhere,
+        Forecast {
+            full_at: fill.steady_until(free, 0).map(|seconds| 1000.0 + seconds),
+            nix_floor: None,
+            floor_at: None,
+        },
+        "another disk is told when it fills"
+    );
+    assert!(
+        elsewhere.full_at.is_some(),
+        "a filling disk has a time to full"
+    );
+    assert_eq!(
+        Fill::default().forecast(free, store, floor, 1000.0),
+        Forecast {
+            nix_floor: Some(50 * GIB),
+            ..Forecast::default()
+        },
+        "with no trend, no time"
     );
 }
 
