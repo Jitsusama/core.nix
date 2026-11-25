@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from live_page import LOOKS, SIZES, Opened, serving
+from live_page import DOCUMENTS_NAME, LOOKS, SIZES, Opened, serving
 from playwright.sync_api import Browser, Page, expect
 
 if TYPE_CHECKING:
@@ -166,10 +166,11 @@ def test_the_mark_is_drawn_in_each_looks_tint(home: str, tmp_path: Path) -> None
 
 
 def test_return_opens_the_site_the_cursor_is_on(tab: Page, home: str) -> None:
-    """Return on the cursor goes to its site."""
+    """Return on the cursor goes to its site, on the documents' own origin."""
     pressing(tab, "j", NAMES[1])
     tab.keyboard.press("Enter")
-    expect(tab, "Return didn't open the site under the cursor").to_have_url(f"{home}kestrel/")
+    documents = home.replace("//sites.localhost", f"//{DOCUMENTS_NAME}")
+    expect(tab, "Return didn't open the site under the cursor").to_have_url(f"{documents}kestrel/")
 
 
 def test_question_mark_and_f1_open_the_keys_and_escape_closes_them(tab: Page) -> None:

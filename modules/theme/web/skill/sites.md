@@ -200,13 +200,17 @@ is the theme's web kit: `theme.css`, `base.css` and the fonts.
 `early.js`, and `switch.css` and `head.css`. Neither holds the other's
 files.
 
-A document runs sandboxed, in an origin of no one's, so what a session
-wrote can never act as one of the sites' own, which read Joel's feeds and
-answer what he's asked. Three things follow. It keeps no look between
-visits, since the lines setting the kept look find nothing kept (the switch
-still turns it for the visit). It reads no feed. And what it fetches
-beside it is read as another origin's, which the server lets it do as a
-page it served; the kit's scripts and fonts are shared with it too.
+A document is served under a name of its own,
+`http://documents.sites.localhost:8484/<site>/`, so what a session wrote
+runs in the documents' origin and can never act as one of the sites' own,
+which read Joel's feeds and answer what he's asked. Link to it under the
+sites' name as ever: the server sends a document's address there, keeping
+its path, and a page of the sites' own back. Three things follow. It reads
+no feed. It reads what sits beside it as its own origin's: the kit, the
+fonts, `/rows.json`, `/llms.txt` and the other documents. And it keeps its
+look apart from the sites', since each origin keeps its own. A document
+loads only scripts from the documents or the kit; under the sites' name a
+script a session wrote is refused.
 
 **The head every live page opens with** is the kit's, so the pages read
 as one family; before it each drew its own, five eyebrows in five faces.

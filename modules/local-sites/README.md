@@ -15,9 +15,12 @@ page reads and never acts; it sees only the kinds and fields its feed
 declares in `jitsusama.local-sites.feeds`. The server answers only its own
 names on loopback, and opens a feed only to its own pages: the live sites
 and the home, which its builder writes into a folder of its own. A document
-a session wrote runs sandboxed, in an origin of no one's, so its script can
-never act as one of those pages, which run only the scripts served beside
-them. It keeps no look between visits and reads no feed, the cost of that.
+a session wrote is served under a name of its own,
+`documents.sites.localhost`, its address under the sites' name sent there,
+so its script runs in the documents' origin and can never act as one of
+those pages, which run only the scripts Nix served beside them. It reads
+what sits beside it, the kit and the home's rows among them, but no feed,
+and keeps its look apart from theirs, the cost of that.
 
 A live site is TypeScript on the kit, built by Nix: [`site.nix`][site]
 typechecks it at its strictest, runs its tests and compiles it beside its

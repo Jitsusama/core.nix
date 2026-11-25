@@ -1,5 +1,5 @@
 //! What the server is told by its module: where it listens, the names a
-//! browser reaches it by, the folder of documents sessions write, the
+//! browser reaches it by, the name it serves the documents under, the folder of documents sessions write, the
 //! folder the home's builder writes the home into, the
 //! folders Nix built that it serves at their own paths, and each feed a
 //! page may read, with the kinds and fields that feed may show. One JSON
@@ -20,6 +20,11 @@ pub struct Config {
     /// request naming any other is refused, so a page elsewhere that
     /// rebinds its own name to this machine reads nothing.
     pub names: Vec<String>,
+    /// The name the documents are served under, such as
+    /// `documents.sites.localhost`: an origin of their own, so what a
+    /// session's page runs is never one of the sites' own (http.rs). None
+    /// of `names`, which would make the two one origin.
+    pub documents_name: String,
     /// The folder of documents sessions write, served below every mount.
     pub documents: PathBuf,
     /// The folder the home's builder writes the home's own files into,
@@ -73,6 +78,19 @@ impl Config {
         if names.is_empty() {
             return Err("names is empty, so no browser could reach it".to_owned());
         }
+        let documents_name = text_of(&said, "documentsName")?.to_ascii_lowercase();
+        if documents_name.is_empty() {
+            return Err("documentsName is empty, so no browser could reach a document".to_owned());
+        }
+        if names
+            .iter()
+            .any(|name| name.eq_ignore_ascii_case(&documents_name))
+        {
+            return Err(format!(
+                "documentsName {documents_name} is one of names, which would serve a session's \
+                 page as one of the sites' own"
+            ));
+        }
         let documents = PathBuf::from(text_of(&said, "documents")?);
         let home = match said.get("home") {
             None | Some(Value::Null) => None,
@@ -114,6 +132,7 @@ impl Config {
         Ok(Self {
             listen,
             names,
+            documents_name,
             documents,
             home,
             mounts,
@@ -189,6 +208,7 @@ mod tests {
     const WHOLE: &str = r#"{
         "listen": "127.0.0.1:8484",
         "names": ["sites.localhost", "localhost"],
+        "documentsName": "Documents.Sites.Localhost",
         "documents": "/home/joel/sites",
         "mounts": {"kit": "/nix/store/kit"},
         "feeds": {"node": {"socket": "mycelium/work.sock", "kinds": {
@@ -203,6 +223,10 @@ mod tests {
         assert_eq!(config.listen.port(), 8484);
         assert_eq!(config.mounts["kit"], PathBuf::from("/nix/store/kit"));
         assert_eq!(config.home, None, "a home among the documents names none");
+        assert_eq!(
+            config.documents_name, "documents.sites.localhost",
+            "a name's case is the browser's"
+        );
         let node = &config.feeds["node"];
         assert_eq!(
             node.socket,
@@ -241,6 +265,26 @@ mod tests {
             Some(PathBuf::from("/run/user/1000/local-sites/home")),
             "a relative home is under the runtime folder, as a socket is"
         );
+        let absolute = WHOLE.replace("mycelium/work.sock", "/run/work.sock");
+        let unrun = absolute.replace(r#""mounts""#, r#""home": "local-sites/home", "mounts""#);
+        let why = Config::from_json(&unrun, None).expect_err("refused");
+        assert!(
+            why.contains("home is under the runtime folder, and none is set"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn documents_served_as_one_of_the_sites_own_names_or_none_are_refused() {
+        let shared = WHOLE.replace("Documents.Sites.Localhost", "LOCALHOST");
+        let why = Config::from_json(&shared, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("one of names"), "{why}");
+        let empty = WHOLE.replace("Documents.Sites.Localhost", "");
+        let why = Config::from_json(&empty, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("documentsName is empty"), "{why}");
+        let unnamed = WHOLE.replace(r#""documentsName": "Documents.Sites.Localhost","#, "");
+        let why = Config::from_json(&unnamed, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("documentsName is missing"), "{why}");
     }
 
     #[test]

@@ -13,10 +13,12 @@
 # feed at /feed/<name> from each daemon a module declares, with the kinds
 # and fields a page may read of it, so the server enforces what a page
 # never sees. It answers only its own names on loopback and opens a feed
-# only to its own pages. A document a session wrote runs sandboxed, in an
-# origin of no one's, so its script can't act as one of the sites' own.
-# That costs a document what an origin keeps: the theme it was last left
-# in, and the feeds, which only the sites' own pages read.
+# only to its own pages. A document a session wrote is served under a name
+# of its own, http://documents.sites.localhost:8484/<site>/, its link under
+# the sites' name sent there, so its script runs in the documents' origin
+# and can't act as one of the sites' own. It reads what sits beside it, the
+# kit and the home's rows among them, but no feed, which only the sites' own
+# pages read, and it keeps its theme apart from theirs.
 #
 # The home is built from sites.json, a row per site, which sessions write:
 # home/home.py writes the list, its llms.txt and Markdown twin, and each
@@ -77,6 +79,7 @@ let
         "localhost"
         "127.0.0.1"
       ];
+      documentsName = "documents.sites.localhost";
       inherit documents;
       home = homeFolder;
       inherit (cfg) mounts feeds;
