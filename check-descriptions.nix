@@ -3463,6 +3463,11 @@
     the launcher looks, knocks with notify-send and reads its words from the launcher's vocabulary,
     with a pause plan naming the agents' timers and keeping the compile cache
   '';
+  pineapple-slack-goes-live-through-a-gateway = ''
+    a machine saying its tool gateway's reader is live runs it as the Slack reader for the safe
+    word, live, given the gateway and its sign-in rather than pi's keyring, still taking its row in
+    For You with it as it stops, with no shadow reader beside it
+  '';
   pineapple-slack-hears-a-gateway-in-shadow = ''
     a machine naming a tool gateway hears Slack through it with a second reader for the safe word,
     started as Slack's is but only ever in shadow, leaving the environment its sign-in reads as it

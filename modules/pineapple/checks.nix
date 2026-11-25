@@ -199,6 +199,46 @@ onLinux {
         && unit.Service.Slice == "background.slice"
         && !((withGateway null).systemd.user.services ? pineapple-slack-gateway)
       );
+  # A machine saying its gateway's reader is live runs it as pineapple-slack
+  # in the keyring's reader's place: live, given the gateway and its
+  # sign-in, not the keyring, still handed and still taking away its row in
+  # For You; and no shadow runs beside it.
+  pineapple-slack-goes-live-through-a-gateway =
+    let
+      home = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.pineapple
+            {
+              jitsusama.pineapple.gateway = {
+                url = "https://gateway.example.com/mcp";
+                signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
+                live = true;
+              };
+            }
+          ];
+        }
+      ]);
+      services = home.systemd.user.services;
+      unit = services.pineapple-slack;
+      command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
+      environment = lib.toList unit.Service.Environment;
+      waiting = "${home.xdg.stateHome}/mission/waiting/pineapple.json";
+    in
+    holds "pineapple-slack-goes-live-through-a-gateway"
+      "pineapple-slack over a live gateway lacks --live, the gateway or its row, reads the keyring, or runs beside a shadow."
+      (
+        lib.hasInfix (
+          "/bin/pineapple-slack pineapple-slack run --live"
+          + " --gateway https://gateway.example.com/mcp --gateway-sign-in /nix/store/"
+        ) command
+        && !(lib.any (lib.hasPrefix "SIGN_IN_KEYRING=") environment)
+        && environment == [ ''"SAFE_WORD_WAITING=${waiting}"'' ]
+        && lib.hasInfix waiting unit.Service.ExecStopPost
+        && lib.hasSuffix ", through a tool gateway" unit.Unit.Description
+        && lib.elem "default.target" unit.Install.WantedBy
+        && !(services ? pineapple-slack-gateway)
+      );
   # pineapple, the daemon showing stops in the launcher, is started at
   # login for its socket, which systemd holds where the launcher looks,
   # knocks with notify-send, and reads its words from the launcher's
