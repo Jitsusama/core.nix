@@ -363,7 +363,11 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
             .read(&Oid(names[0]))
             .map(|object| object.map(|object| object.data))
             .map_err(|error| error.to_string());
-        let lasting = odb.bad.values().filter(|mark| mark.lasts).count();
+        let lasting = odb
+            .bad
+            .values()
+            .filter(|mark| mark.lasts == Lasts::WhileThePacksHold)
+            .count();
         (read, odb.bad.len(), lasting)
     });
     // Only the three entries of no kind are wrong in themselves; the
@@ -377,13 +381,14 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
 }
 
 #[test]
-fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
+fn a_copy_marked_for_a_missing_base_stays_marked_until_its_answer_ends() {
     let names = names(2);
     // names[0] a delta over names[1], which nothing holds yet.
     let folders = packed(&names[..1], &[vec![over(names[1])]]);
     let objects = &folders.0[0];
     let mut odb = Odb::open(objects);
-    let before = odb.read(&Oid(names[0])).map_err(|error| error.to_string());
+    let read = |odb: &mut Odb| odb.read(&Oid(names[0])).map_err(|error| error.to_string());
+    let before = read(&mut odb);
     let hex = Oid(names[1]).hex();
     std::fs::create_dir_all(objects.join(&hex[..2])).expect("the temp folder takes a folder");
     std::fs::write(
@@ -391,17 +396,74 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
         miniz_oxide::deflate::compress_to_vec_zlib(b"blob 1\0a", 1),
     )
     .expect("the temp folder takes a file");
-    let after = odb.read(&Oid(names[0])).map_err(|error| error.to_string());
-    let reopened = read_from(objects, names[0]);
+    let within = read(&mut odb);
+    odb.forget_passing_marks();
+    let next = read(&mut odb).map(|object| object.map(|object| object.data));
     assert_eq!(
-        (before.err(), after.err(), reopened),
+        (before.err(), within.err(), next),
         (
             Some("delta base missing".into()),
             Some("delta base missing".into()),
             Ok(Some(b"x".to_vec()))
         ),
-        "a copy marked bad was unpacked again before its store was opened again, \
-         or stayed bad past it"
+        "a copy marked for a missing base was unpacked again within its answer, \
+         or stayed marked past it"
+    );
+}
+
+#[test]
+fn a_copy_stays_marked_while_the_packs_hold_only_for_its_own_bytes() {
+    let names = names(6);
+    // The blob "a"; a delta placing it, saying its base is of two bytes;
+    // the same delta naming it instead, found elsewhere; a delta naming it
+    // whose data won't inflate; a sound delta naming it; and a delta
+    // placing that one, saying its base is of three bytes, which is its
+    // own fault, being a hop past the base found by name.
+    let mut entries = Entries::new();
+    entries.push(blob(b"a"));
+    entries.place_over(0, &appending(2, b'b'));
+    entries.push(named(names[0], &appending(2, b'c')));
+    let mut broken = vec![0x70 | 4];
+    broken.extend(names[0]);
+    broken.extend([0xff; 8]);
+    entries.push(broken);
+    entries.push(named(names[0], &appending(1, b'd')));
+    entries.place_over(4, &appending(3, b'e'));
+    let at: Vec<u64> = entries.starts.iter().map(|start| 12 + start).collect();
+    let folders = packed(&names, &[entries.entries]);
+    let mut odb = Odb::open(&folders.0[0]);
+    let marks = |odb: &Odb| {
+        let mut marks: Vec<_> = odb
+            .bad
+            .iter()
+            .map(|(&(_, _, offset), mark)| (offset, mark.lasts))
+            .collect();
+        marks.sort_unstable_by_key(|&(offset, _)| offset);
+        marks
+    };
+    for name in &names[1..] {
+        let _ = odb.read(&Oid(*name));
+    }
+    let made = marks(&odb);
+    odb.forget_passing_marks();
+    assert_eq!(
+        (made, marks(&odb)),
+        (
+            vec![
+                (at[1], Lasts::WhileThePacksHold),
+                (at[2], Lasts::ThisAnswer),
+                (at[3], Lasts::WhileThePacksHold),
+                (at[5], Lasts::WhileThePacksHold),
+            ],
+            vec![
+                (at[1], Lasts::WhileThePacksHold),
+                (at[3], Lasts::WhileThePacksHold),
+                (at[5], Lasts::WhileThePacksHold),
+            ],
+        ),
+        "a delta's own corrupt bytes weren't marked while the packs hold, one applied \
+         over a base found by name was, for what may be the base's fault, or one a hop \
+         past that base was taken for the base's fault"
     );
 }
 

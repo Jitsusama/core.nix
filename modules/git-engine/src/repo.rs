@@ -93,6 +93,11 @@ pub struct Options {
     pub respect_untracked_setting: bool,
 }
 
+/// Every tag by name with the commit it comes to, and what they were read
+/// from, or None where a tag object wouldn't read, which the next answer
+/// reads again rather than keep the tag unpeeled.
+type Tags = (Option<Stamps>, Vec<(String, Oid)>);
+
 pub struct Repo {
     pub location: Location,
     home: Option<PathBuf>,
@@ -108,9 +113,8 @@ pub struct Repo {
     walks: Walks,
     /// HEAD's commit as last read: its name, tree, encoding and summary.
     head_commit: Option<(Oid, Oid, String, String)>,
-    /// Every tag by name with the commit it comes to, and what they were
-    /// read from.
-    tags: Option<(Stamps, Vec<(String, Oid)>)>,
+    /// Every tag, once read.
+    tags: Option<Tags>,
     /// git's file system monitor for this worktree, when it's asked to run
     /// one.
     monitor: Option<Monitor>,
@@ -392,7 +396,7 @@ impl Repo {
         if self
             .tags
             .as_ref()
-            .is_none_or(|(stamps, _)| !crate::stamp::still(stamps))
+            .is_none_or(|(stamps, _)| stamps.as_ref().is_none_or(|s| !crate::stamp::still(s)))
         {
             self.tags = Some(self.read_tags());
         }
@@ -405,7 +409,7 @@ impl Repo {
 
     /// Every tag, sorted by name, with the commit it comes to once an
     /// annotated tag is peeled, and the stamps of what they were read from.
-    fn read_tags(&mut self) -> (Stamps, Vec<(String, Oid)>) {
+    fn read_tags(&mut self) -> Tags {
         let mut stamps = Stamps::new();
         let mut peeled: HashMap<String, Oid> = HashMap::new();
         let mut names: Vec<(String, Oid)> = match &self.refs {
@@ -476,6 +480,7 @@ impl Repo {
         }
         names.sort();
         let mut tags = Vec::with_capacity(names.len());
+        let mut whole = true;
         for (name, mut oid) in names {
             if let Some(target) = peeled.get(&name) {
                 tags.push((name, *target));
@@ -483,8 +488,13 @@ impl Repo {
             }
             // An annotated tag points at a tag object; peel it.
             for _ in 0..8 {
-                let Ok(Some(object)) = self.odb.read(&oid) else {
-                    break;
+                let object = match self.odb.read(&oid) {
+                    Ok(Some(object)) => object,
+                    Ok(None) => break,
+                    Err(_) => {
+                        whole = false;
+                        break;
+                    }
                 };
                 if object.kind != Kind::Tag {
                     break;
@@ -498,7 +508,7 @@ impl Repo {
             }
             tags.push((name, oid));
         }
-        (stamps, tags)
+        (whole.then_some(stamps), tags)
     }
 
     pub fn answer(&mut self, options: &Options, diff: bool) -> io::Result<Answer> {

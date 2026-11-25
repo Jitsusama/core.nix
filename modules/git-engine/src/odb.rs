@@ -280,16 +280,27 @@ thread_local! {
     static STARVED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
+/// The memory an object or delta was refused: what was growing, and the
+/// bytes it would have held, which a mark it leaves waits for.
+#[derive(Debug)]
+struct Starved {
+    what: &'static str,
+    total: usize,
+}
+
+impl std::fmt::Display for Starved {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no memory to grow {} to {} bytes", self.what, self.total)
+    }
+}
+
+impl std::error::Error for Starved {}
+
 /// Makes room for `more` bytes past what `out` holds, refused as `what`
 /// and the bytes it would then hold should the memory not be there.
-fn reserve(out: &mut Vec<u8>, more: usize, what: &str) -> io::Result<()> {
+fn reserve(out: &mut Vec<u8>, more: usize, what: &'static str) -> io::Result<()> {
     let total = out.len().saturating_add(more);
-    let refused = || {
-        io::Error::new(
-            io::ErrorKind::OutOfMemory,
-            format!("no memory to grow {what} to {total} bytes"),
-        )
-    };
+    let refused = || io::Error::new(io::ErrorKind::OutOfMemory, Starved { what, total });
     #[cfg(test)]
     if STARVED
         .with(std::cell::Cell::get)
@@ -306,7 +317,7 @@ fn reserve(out: &mut Vec<u8>, more: usize, what: &str) -> io::Result<()> {
 /// at the size its header says, so a size no stream fills, however large,
 /// takes at most twice what the stream gives, or 64 KiB, before it ends.
 /// Memory the allocator won't give for it fails the read rather than
-/// ending the program, and the copy is marked for that answer. As git's
+/// ending the program, and the copy is marked until it can be had. As git's
 /// `unpack_compressed_entry` does, it makes room for one byte past the
 /// size, and takes the object only where its stream ends there, so a
 /// stream giving more, or ending wrongly, is refused.
@@ -475,20 +486,50 @@ pub struct Odb {
     bad: HashMap<Place, Mark>,
 }
 
-/// Why a copy is marked bad, and whether the mark lasts past the answer
-/// that made it.
-///
-/// A copy whose own bytes won't read, its data corrupt or its deltas
-/// running past their sizes, reads no better while the packs hold, so its
-/// mark lasts until they change, through a repository started afresh
-/// after an error too, which keeps its store. A copy refused memory, an
-/// I/O error, or a base no copy of which read may read on the next answer
-/// (once memory is there, or the base is written), so its mark lasts that
-/// answer alone.
+/// Why a copy is marked bad, and how long the mark lasts.
 struct Mark {
     kind: io::ErrorKind,
     said: String,
-    lasts: bool,
+    lasts: Lasts,
+}
+
+/// How long a copy's mark lasts, each answer asking again what it waits on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Lasts {
+    /// While the packs hold: the copy's own bytes won't read, its data
+    /// corrupt or its deltas running past their sizes, through a
+    /// repository started afresh after an error too, which keeps its store.
+    WhileThePacksHold,
+    /// Until this many bytes can be had, the memory the copy was refused.
+    /// Climbing back to a refusal costs what the climb cost the first
+    /// time, as much as a stream will inflate, so a copy that inflates
+    /// toward all the memory there is costs that once, not every answer.
+    UntilThereIsRoom(usize),
+    /// That answer alone: an I/O error, or a fault that may be a base's
+    /// found by name, which the next answer may find written or rewritten.
+    ThisAnswer,
+}
+
+impl Mark {
+    /// The mark a copy leaves that won't read for `error`, which is its
+    /// `own` bytes' fault, rather than a base's found elsewhere, or not.
+    fn of(error: &io::Error, own: bool) -> Mark {
+        let starved = error
+            .get_ref()
+            .and_then(|cause| cause.downcast_ref::<Starved>());
+        let lasts = if let Some(starved) = starved {
+            Lasts::UntilThereIsRoom(starved.total)
+        } else if own && error.kind() == io::ErrorKind::InvalidData {
+            Lasts::WhileThePacksHold
+        } else {
+            Lasts::ThisAnswer
+        };
+        Mark {
+            kind: error.kind(),
+            said: error.to_string(),
+            lasts,
+        }
+    }
 }
 
 /// The most deltas a chain may run through to its base, its bases named
@@ -568,10 +609,15 @@ impl Odb {
         }
     }
 
-    /// Forgets the marks that last one answer, as the next begins, so the
-    /// copies they marked are read again.
+    /// Forgets the marks that last one answer, and those refused memory
+    /// that can now be had, as the next answer begins, so the copies they
+    /// marked are read again.
     pub fn forget_passing_marks(&mut self) {
-        self.bad.retain(|_, mark| mark.lasts);
+        self.bad.retain(|_, mark| match mark.lasts {
+            Lasts::WhileThePacksHold => true,
+            Lasts::UntilThereIsRoom(total) => reserve(&mut Vec::new(), total, "room").is_err(),
+            Lasts::ThisAnswer => false,
+        });
     }
 
     /// The object, or None when no store here has it (a partial clone's

@@ -301,7 +301,7 @@ fn an_object_grows_to_one_byte_past_its_size_and_no_further() {
 }
 
 #[test]
-fn a_copy_refused_memory_is_marked_with_that_refusal_for_that_answer_alone() {
+fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_memory_is_there() {
     const COPIES: usize = 21;
     let names = names(2);
     // names[1] a blob past the first 64 KiB its stream is given, and
@@ -327,28 +327,38 @@ fn a_copy_refused_memory_is_marked_with_that_refusal_for_that_answer_alone() {
     let (at_delta, at_blob) = (12, 12 + first.len() as u64);
     let folders = packed(&names, &[vec![first, big_blob(&base)]]);
     let starved_blob = "no memory to grow a pack object to 100001 bytes";
+    let room = Lasts::UntilThereIsRoom;
+    let (blob_room, delta_size) = (room(base.len() + 1), COPIES * base.len());
     for (name, limit, refusal, marked, size) in [
-        (names[1], 80_000, starved_blob, vec![at_blob], base.len()),
+        (
+            names[1],
+            80_000,
+            starved_blob,
+            vec![(at_blob, blob_room)],
+            base.len(),
+        ),
         (
             names[0],
             1_500_000,
             "no memory to grow a delta to 2000000 bytes",
-            vec![at_delta],
-            COPIES * base.len(),
+            vec![(at_delta, room(2_000_000))],
+            delta_size,
         ),
         (
             names[0],
             1_000_000,
             "no memory to grow a delta to 1048576 bytes",
-            vec![at_delta],
-            COPIES * base.len(),
+            vec![(at_delta, room(1 << 20))],
+            delta_size,
         ),
+        // The delta's own copy is refused for its base's want, which a
+        // base found again may yet meet.
         (
             names[0],
             80_000,
             starved_blob,
-            vec![at_delta, at_blob],
-            COPIES * base.len(),
+            vec![(at_delta, Lasts::ThisAnswer), (at_blob, blob_room)],
+            delta_size,
         ),
     ] {
         let objects = folders.0[0].clone();
@@ -358,34 +368,83 @@ fn a_copy_refused_memory_is_marked_with_that_refusal_for_that_answer_alone() {
                     .map(|object| object.map(|object| object.data.len()))
                     .map_err(|error| error.to_string())
             };
+            let marks = |odb: &Odb| {
+                let mut marks: Vec<_> = odb
+                    .bad
+                    .iter()
+                    .map(|(&(_, _, offset), mark)| (offset, mark.kind, mark.lasts))
+                    .collect();
+                marks.sort_unstable_by_key(|&(offset, ..)| offset);
+                marks
+            };
             let mut odb = Odb::open(&objects);
             STARVED.with(|starved| starved.set(Some(limit)));
             let starved = read(&mut odb);
-            STARVED.with(|starved| starved.set(None));
-            let mut marks: Vec<_> = odb
-                .bad
-                .iter()
-                .map(|(&(_, _, offset), mark)| (offset, mark.kind, mark.lasts))
-                .collect();
-            marks.sort_unstable();
-            let again = read(&mut odb);
+            let made = marks(&odb);
+            // The next answer, the memory still short.
             odb.forget_passing_marks();
-            (starved, marks, again, read(&mut odb))
+            let held = marks(&odb);
+            let again = read(&mut odb);
+            STARVED.with(|starved| starved.set(None));
+            odb.forget_passing_marks();
+            (starved, made, held, again, read(&mut odb))
         });
-        let marks = marked
+        let made: Vec<_> = marked
             .into_iter()
-            .map(|offset| (offset, io::ErrorKind::OutOfMemory, false))
+            .map(|(offset, lasts)| (offset, io::ErrorKind::OutOfMemory, lasts))
+            .collect();
+        let held = made
+            .iter()
+            .copied()
+            .filter(|&(.., lasts)| lasts != Lasts::ThisAnswer)
             .collect();
         assert_eq!(
             read,
             Ok((
                 Err(refusal.into()),
-                marks,
+                made,
+                held,
                 Err(refusal.into()),
                 Ok(Some(size))
             )),
             "a copy refused memory past {limit} bytes wasn't marked where it lies with that \
-             refusal alone, or stayed marked past its answer"
+             refusal alone, or its mark didn't last until the memory was there"
+        );
+    }
+}
+
+#[test]
+fn a_mark_lasts_by_what_refused_the_copy_and_whose_fault_it_was() {
+    let starved = || {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            Starved {
+                what: "a delta",
+                total: 7,
+            },
+        )
+    };
+    for (error, own, lasts) in [
+        (invalid("pack entry kind"), true, Lasts::WhileThePacksHold),
+        (invalid("delta's base size"), false, Lasts::ThisAnswer),
+        (
+            io::Error::other("the disk went away"),
+            true,
+            Lasts::ThisAnswer,
+        ),
+        (
+            io::Error::from(io::ErrorKind::OutOfMemory),
+            true,
+            Lasts::ThisAnswer,
+        ),
+        (starved(), true, Lasts::UntilThereIsRoom(7)),
+        (starved(), false, Lasts::UntilThereIsRoom(7)),
+    ] {
+        let said = error.to_string();
+        assert_eq!(
+            Mark::of(&error, own).lasts,
+            lasts,
+            "a copy refused for {said}, its own fault {own}, was marked for the wrong while"
         );
     }
 }

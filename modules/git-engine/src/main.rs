@@ -548,6 +548,9 @@ mod tests {
         crate::stamp::tests::ahead(3);
         let mut engine = Engine::default();
         let refused = engine.ask(&dir, &options(&[]), false).is_none();
+        // The store is kept, marks and all, so a store opened afresh can't
+        // be what reads the copy next.
+        let kept = engine.kept.len();
         // The base written loose, which moves none of the stamps the store
         // watches, so only a mark that passes lets the copy read.
         let hex = hash::Oid(base).hex();
@@ -560,10 +563,62 @@ mod tests {
         .unwrap();
         let answered = engine.ask(&dir, &options(&[]), false).is_some();
         assert_eq!(
-            (refused, answered),
-            (true, true),
+            (refused, kept, answered, engine.kept.len()),
+            (true, 1, true, 0),
             "a copy whose base no store held was answered before the base was written, \
-             or stayed marked once it was"
+             its store wasn't kept, or it stayed marked once the base was"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_tag_whose_object_wouldnt_read_is_peeled_again_by_the_next_answer() {
+        let dir = repository("unpeeled");
+        let (commit, tag) = ([9; 20], [10; 20]);
+        std::fs::write(
+            dir.join(".git/refs/heads/main"),
+            format!("{}\n", hash::Oid(commit).hex()),
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join(".git/refs/tags")).unwrap();
+        std::fs::write(
+            dir.join(".git/refs/tags/v1"),
+            format!("{}\n", hash::Oid(tag).hex()),
+        )
+        .unwrap();
+        // The annotated tag's object, loose and first not zlib at all, then
+        // rewritten whole, which moves none of the stamps the tags are
+        // kept on.
+        let hex = hash::Oid(tag).hex();
+        let loose = dir.join(".git/objects").join(&hex[..2]);
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::write(loose.join(&hex[2..]), b"not zlib").unwrap();
+        crate::stamp::tests::ahead(3);
+        let mut engine = Engine::default();
+        let mut tag_said = || {
+            engine
+                .ask(&dir, &options(&[]), false)
+                .map(|answer| answer.tag)
+        };
+        let unread = tag_said();
+        let object = format!(
+            "object {}\ntype commit\ntag v1\n\nv1\n",
+            hash::Oid(commit).hex()
+        );
+        let raw = [
+            format!("tag {}\0", object.len()).as_bytes(),
+            object.as_bytes(),
+        ]
+        .concat();
+        std::fs::write(
+            loose.join(&hex[2..]),
+            miniz_oxide::deflate::compress_to_vec_zlib(&raw, 1),
+        )
+        .unwrap();
+        assert_eq!(
+            (unread, tag_said()),
+            (Some(String::new()), Some("v1".into())),
+            "a tag whose object wouldn't read was named, or stayed unpeeled once it read"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

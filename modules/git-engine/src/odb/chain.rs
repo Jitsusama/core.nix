@@ -118,8 +118,7 @@ impl Odb {
     /// its failure twice an answer. A copy refused memory is marked too,
     /// since only a stream truly inflating that far is refused it, and
     /// unpacking it on every find would cost the same each time. How long
-    /// a mark lasts is `Mark`'s to say. A copy
-    /// whose chain comes round to an object already being found, or runs past
+    /// a mark lasts is `Lasts`'s to say. A copy whose chain comes round to an object already being found, or runs past
     /// `CHAIN_LIMIT`, may be sound under another copy of a base on the
     /// way, so it's only passed over, for this find alone, and the next
     /// copy read; a base spent with a copy passed over passes over the
@@ -136,6 +135,8 @@ impl Odb {
         let mut handed = None;
         loop {
             let at = searches.len() - 1;
+            // Whether the base this copy reaches is one, found by name.
+            let named = handed.is_some();
             let reached = if let Some(base) = handed.take() {
                 Ok(Reached::Base(base))
             } else {
@@ -197,8 +198,8 @@ impl Odb {
                         );
                     }
                 }
-                Ok(Reached::Base(base)) => match self.apply(&mut searches[at], base) {
-                    Err(error) => self.fail(&mut searches[at], &error, true),
+                Ok(Reached::Base(base)) => match self.apply(&mut searches[at], base, named) {
+                    Err((error, own)) => self.fail(&mut searches[at], &error, own),
                     Ok(object) => {
                         let found = end(&mut searches, &mut searching);
                         self.keep_tree(&found.oid, &object);
@@ -326,13 +327,25 @@ impl Odb {
 
     /// `base` with every delta `search` read applied over it, from the one
     /// nearest it up, each inflated as it's applied and each result below
-    /// the object asked for kept as a base for the reads to come.
-    fn apply(&mut self, search: &mut Search, base: Object) -> io::Result<Object> {
+    /// the object asked for kept as a base for the reads to come; or what
+    /// refused it, and whether that's the copy's own fault. Applied over a
+    /// base found by `name` elsewhere, the first delta may fail for the
+    /// base's fault, which a loose base no stamp watches can mend.
+    fn apply(
+        &mut self,
+        search: &mut Search,
+        base: Object,
+        named: bool,
+    ) -> Result<Object, (io::Error, bool)> {
         let mut object = base;
+        let mut over_named = named;
         while let Some(hop) = search.deltas.pop() {
             let (store, pack, _) = hop.place;
-            let delta = inflate_at(&self.stores[store].packs[pack].data, hop.data, hop.size)?;
-            object.data = apply_delta(&object.data, &delta)?;
+            let delta = inflate_at(&self.stores[store].packs[pack].data, hop.data, hop.size)
+                .map_err(|error| (error, true))?;
+            object.data =
+                apply_delta(&object.data, &delta).map_err(|error| (error, !over_named))?;
+            over_named = false;
             if search.depth() > 0 {
                 self.keep_base(hop.place, &object);
             }
@@ -343,16 +356,11 @@ impl Odb {
     /// Ends the copy `search` was reading, which won't read for `error`:
     /// marks it bad, keeps the refusal should it be the first, and leaves
     /// the next copy to be read. The mark keeps the error's kind, so a copy
-    /// refused memory is never taken for a corrupt one, and lasts while
-    /// the packs hold only where the copy's `own` bytes were found invalid.
+    /// refused memory is never taken for a corrupt one, and lasts as
+    /// `Mark::of` says for an error that's the copy's `own` fault or not.
     fn fail(&mut self, search: &mut Search, error: &io::Error, own: bool) {
         if let Some(copy) = search.copy.take() {
-            let mark = Mark {
-                kind: error.kind(),
-                said: error.to_string(),
-                lasts: own && error.kind() == io::ErrorKind::InvalidData,
-            };
-            self.bad.insert(copy, mark);
+            self.bad.insert(copy, Mark::of(error, own));
         }
         refuse(search, error);
     }
