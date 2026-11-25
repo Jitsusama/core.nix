@@ -8,6 +8,9 @@ fn paths(files: &[File]) -> Vec<String> {
     files.iter().map(|file| file.path.clone()).collect()
 }
 
+#[path = "stale_shell_tests.rs"]
+mod shell;
+
 #[test]
 fn a_comment_naming_a_path_gone_is_stale() {
     let files = [
@@ -77,134 +80,6 @@ fn only_comments_and_docstrings_are_read() {
         ],
         "a string or a shebang was read, or a docstring, an indented `#!` or one past line 1 \
          missed"
-    );
-}
-
-#[test]
-fn a_heredocs_body_is_no_comment() {
-    let files = [
-        file(
-            "tests/h.sh",
-            "#!/bin/sh\n\
-             cat << EOF>out.sh\n\
-             #!/usr/bin/env tests/kept/bang\n\
-             # tests/kept/heredoc.sh, in a heredoc\n\
-             EOF\n\
-             # tests/kept/after.sh, past it\n\
-             cat <<-'END'\n\
-             \t# tests/kept/tabbed.sh, in a tabbed one\n\
-             \tEND\n\
-             # tests/kept/untabbed.sh, past that\n\
-             cat <<\\STOP\n\
-             # tests/kept/slashed.sh, in an escaped one\n\
-             STOP\n\
-             cat <<END-OF-HELP\n\
-             # tests/kept/hyphen.sh, in a hyphenated one\n\
-             END-OF-HELP\n\
-             echo \"it's\" <<'my doc'\n\
-             # tests/kept/spaced.sh, in one named with a space\n\
-             my doc\n\
-             cat <<A <<B\n\
-             # tests/kept/a.sh, in the first of two\n\
-             A\n\
-             # tests/kept/b.sh, in the second\n\
-             B\n\
-             echo $((1 << 2)); cat <<C\n\
-             # tests/kept/c.sh, in one past a shift\n\
-             C\n\
-             echo \\\"x <<F\n\
-             # tests/kept/escaped.sh, in one past an escaped quote\n\
-             F\n\
-             echo \"\\\"\" <<G\n\
-             # tests/kept/inquote.sh, in one past an escape in quotes\n\
-             G\n\
-             echo a#b <<K\n\
-             # tests/kept/hash.sh, in one past a hash inside a word\n\
-             K\n\
-             cat <<L\n\
-             # tests/kept/undashed.sh, in one a tabbed word closes not\n\
-             \tL\n\
-             # tests/kept/still.sh, in it still\n\
-             L\n\
-             cat <<E\"O\"F\n\
-             # tests/kept/partly.sh, in one partly quoted\n\
-             EOF\n\
-             cat <<- M\n\
-             # tests/kept/dashed.sh, in one dashed past a blank\n\
-             \tM\n\
-             # tests/kept/past.sh, past them all\n",
-        ),
-        file("tests/kept/x.nix", "{ }\n"),
-    ];
-    assert_eq!(
-        stale(&paths(&files), &files),
-        [
-            "tests/h.sh:6: tests/kept/after.sh",
-            "tests/h.sh:10: tests/kept/untabbed.sh",
-            "tests/h.sh:48: tests/kept/past.sh"
-        ],
-        "a heredoc's body was read as comment, or one spaced, tabbed, escaped, hyphenated, \
-         quoted, partly quoted, second on its line, past a shift, an escaped quote or a \
-         hash inside a word, or its word before an operator, was missed, or a tabbed word \
-         closed one without `<<-`"
-    );
-}
-
-#[test]
-fn only_a_heredocs_own_less_thans_open_one() {
-    let files = [
-        file(
-            "tests/p.sh",
-            "cat <<<x\n\
-             # tests/kept/herestring.sh, past a here-string\n\
-             x\n\
-             echo hi # feeds <<D\n\
-             # tests/kept/comment.sh, past a comment's\n\
-             D\n\
-             echo \"a <<E\"\n\
-             # tests/kept/double.sh, past a double-quoted one\n\
-             E\n\
-             echo 'a <<H'\n\
-             # tests/kept/single.sh, past a single-quoted one\n\
-             H\n\
-             echo $((x << y))\n\
-             # tests/kept/shift.sh, past a shift\n\
-             y\n\
-             true;# feeds <<I\n\
-             # tests/kept/semi.sh, past a comment's after an operator\n\
-             I\n\
-             echo \"a\n\
-             <<J in a string\"\n\
-             # tests/kept/string.sh, past a string's over lines\n\
-             J\n\
-             echo \"b\n\
-             # tests/kept/inquote.sh, in a string\n\
-             \"\n\
-             echo \\'\n\
-             # tests/kept/escaped.sh, past an escaped quote\n\
-             echo \\'\n\
-             cat <<NEVER\n\
-             # tests/kept/rest.sh, past one never closed\n",
-        ),
-        file("tests/kept/x.nix", "{ }\n"),
-    ];
-    assert_eq!(
-        stale(&paths(&files), &files),
-        [
-            "tests/p.sh:2: tests/kept/herestring.sh",
-            "tests/p.sh:5: tests/kept/comment.sh",
-            "tests/p.sh:8: tests/kept/double.sh",
-            "tests/p.sh:11: tests/kept/single.sh",
-            "tests/p.sh:14: tests/kept/shift.sh",
-            "tests/p.sh:17: tests/kept/semi.sh",
-            "tests/p.sh:21: tests/kept/string.sh",
-            "tests/p.sh:27: tests/kept/escaped.sh",
-            "tests/p.sh:30: tests/kept/rest.sh"
-        ],
-        "a here-string, a `<<` in a comment, even one past an operator, in quotes, even \
-         over lines, or shifting in arithmetic opened a heredoc, a string's line was read as \
-         comment, an escaped quote opened one, or a heredoc never closed hid the rest of its \
-         file"
     );
 }
 
@@ -296,6 +171,19 @@ fn an_opening_the_file_never_closes_hides_nothing() {
              \"\"\" + '''never\n\
              # tests/kept/after.nix, past it\n",
         ),
+        file(
+            "tests/z.py",
+            "x = ('''never)\n\
+             def f():\n\
+             \x20   \"\"\"Naming tests/kept/bracketed.nix.\"\"\"\n",
+        ),
+        file(
+            "tests/n.sh",
+            "echo \"a\n\
+             # tests/kept/in.sh, in a string\n\
+             \" 'never\n\
+             # tests/kept/closes.sh, past it\n",
+        ),
         file("tests/kept/x.nix", "{ }\n"),
     ];
     assert_eq!(
@@ -313,10 +201,13 @@ fn an_opening_the_file_never_closes_hides_nothing() {
             "tests/u.py:3: tests/kept/beyond.nix",
             "tests/v.py:1: tests/kept/opens.nix",
             "tests/v.py:3: tests/kept/later.nix",
-            "tests/y.py:4: tests/kept/after.nix"
+            "tests/y.py:4: tests/kept/after.nix",
+            "tests/z.py:3: tests/kept/bracketed.nix",
+            "tests/n.sh:4: tests/kept/closes.sh"
         ],
-        "a docstring, a block comment or a string the file never closes, even one opened \
-         where another closes, was read, or it hid what came before or after it"
+        "a docstring, a block comment, a string or a quote the file never closes, even one \
+         opened where another closes, was read, or it hid what came before or after it, or \
+         kept the bracket closing past it open"
     );
 }
 
