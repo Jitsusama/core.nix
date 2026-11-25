@@ -14,7 +14,9 @@
 /// or past a comment closing on its line, isn't seen. One named rawly, as
 /// `r#allow`, is Rust's own `allow`, so it counts. A first line opening `#!`,
 /// past a byte-order mark, is a shebang rustc drops, unless what follows
-/// past whitespace and plain comments is a `[`.
+/// past whitespace and plain comments is a `[`. Rust is read as edition 2021
+/// and later lex it; an older edition splits some names written against a
+/// `#` or a quote otherwise.
 pub fn lines_turning_a_lint_off(text: &str) -> Vec<usize> {
     let mut code = Tokens { text, at: 0 };
     if text
@@ -459,16 +461,50 @@ mod tests {
                 "m!(r#r\"\\\";\n#[allow(x)]\n\");\n#[allow(x)]\n",
                 "m!('r#r\"\\\";\n#[allow(x)]\n\");\n#[allow(x)]\n",
                 "#[cfg_attr(test, m(r#r\"\\\"]\"), allow(x))]\n",
-                "m!(1r#r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!('a'r#r\"\\\");\n#[allow(x)]\n// \");\n",
             ),
         )];
         let health = measure(&["n.rs".to_owned()], &files, &[]);
         assert_eq!(
             health.named["suppressions"],
-            ["n.rs:4", "n.rs:8", "n.rs:9", "n.rs:11", "n.rs:14"],
+            ["n.rs:4", "n.rs:8", "n.rs:9"],
             "a raw name or lifetime's last r was read as opening a raw string, so a string \
-             after it was misread, or a number's or character's suffix r and a # as a raw name"
+             after it was misread"
+        );
+    }
+
+    #[test]
+    fn a_suffix_r_and_hash_make_no_raw_name() {
+        let files = [file(
+            "q.rs",
+            concat!(
+                "m!(1r#r\"\\\");\n#[allow(x)]\n// \");\n",
+                "m!(1ur#r\"\\\");\n#[allow(x)]\n// \");\n",
+                "m!(1_r#r\"\\\");\n#[allow(x)]\n// \");\n",
+                "m!(1u\u{301}r#r\"\\\");\n#[allow(x)]\n// \");\n",
+                "m!('a'r#r\"\\\");\n#[allow(x)]\n// \");\n",
+            ),
+        )];
+        let health = measure(&["q.rs".to_owned()], &files, &[]);
+        assert_eq!(
+            health.named["suppressions"],
+            ["q.rs:2", "q.rs:5", "q.rs:8", "q.rs:11", "q.rs:14"],
+            "a number's or character's suffix r and a # were read as a raw name"
+        );
+    }
+
+    #[test]
+    fn a_numbers_suffix_r_in_an_attribute_opens_no_raw_string() {
+        // Misread as raw, the string closes at the escaped quote and the real
+        // closing quote opens one that runs to the end, so this line stays last.
+        let files = [file(
+            "o.rs",
+            "#[cfg_attr(all(), cfg_attr(any(), m(1r\"\\\"),\")), allow(x))]\n",
+        )];
+        let health = measure(&["o.rs".to_owned()], &files, &[]);
+        assert_eq!(
+            health.named["suppressions"],
+            ["o.rs:1"],
+            "a number's suffix r in an attribute was read as opening a raw string"
         );
     }
 
