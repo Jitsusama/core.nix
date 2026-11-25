@@ -882,9 +882,21 @@ QtObject {
         const counting = Reopening.tallyOf(null, ["b"], hear);
         const handedOver = Reopening.tallyOf(walkOf(counting, [asked("b")], asked("y"), ["y"]),
             ["y"], hear);
+        const toldBefore = heard.length;
         Reopening.foundGone(counting, { id: "y" });
         expect("joined while it counts, one begun and still looked for counts once found gone",
-            [handedOver === counting, heard[heard.length - 1]], [true, "1 gone, 1 reopened"]);
+            [handedOver === counting, heard.slice(toldBefore)], [true, ["1 gone, 1 reopened"]]);
+        // Its one exception: a list given just after one the walk used up
+        // within the same turn counts afresh, none that walk began among
+        // them, though the two were pressed as one, since nothing the walk
+        // holds says the first's may still be found gone.
+        const usedUp = Reopening.tallyOf(null, ["a"], hear);
+        const pressedAsOne = Reopening.tallyOf(walkOf(usedUp, [], null, ["a"]), ["a", "b"],
+            hear);
+        const toldThen = heard.length;
+        Reopening.foundGone(pressedAsOne, { id: "b" });
+        expect("given just after a list the walk used up in its turn, it counts afresh",
+            [pressedAsOne === usedUp, heard.slice(toldThen)], [false, ["1 gone, 0 reopened"]]);
         // A walk the harness began counts nothing, and a list given during
         // it counts the sessions both hold, whichever list queued them.
         const harness = walkOf(null, [asked("h"), asked("a")], null);

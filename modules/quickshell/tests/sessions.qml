@@ -831,12 +831,16 @@ ShellRoot {
         // they count as one. s-counted, its folder gone, is found so as
         // s-unkept is begun, before s-patient, whose window niri never
         // opens; s-patient follows by the walk's pace. s-counted is given
-        // as Agents' row gives its list, through reopenThemAll, which
-        // hands its own words to reopenAll in another order; s-patient
-        // isn't, since it would open told to carry on, and its spawn is
-        // known by ending at its id.
-        Sessions.reopenThemAll([{ id: "s-counted", cwd: "/gone/s-counted" }], root.tally,
-            id => null);
+        // as Agents' row gives its list, through reopenThemAll with only
+        // its list and tell, which hands its own words to reopenAll in
+        // another order and arms the earlier boot's other windows to go
+        // back, Slack's, which no window here is; s-patient isn't, since
+        // it would open told to carry on, and its spawn is known by ending
+        // at its id.
+        Sessions.reopenThemAll([{ id: "s-counted", cwd: "/gone/s-counted" }], root.tally);
+        expect("Reopen Them All arms the earlier boot's windows to go back",
+            Sessions.puttingBack?.kept?.[0]?.app === "slack",
+            JSON.stringify(Sessions.puttingBack));
         Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null,
             undefined, root.tally);
         patience.start();
