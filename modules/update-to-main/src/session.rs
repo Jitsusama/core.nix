@@ -285,10 +285,13 @@ fn give(path: &Path, account: &Account) -> std::io::Result<()> {
 /// at most `within`. The status is read as the job's other files are, and
 /// only to its last few bytes, so one the account made a link, a pipe or a
 /// large file is refused rather than followed, waited on or read whole.
+/// An empty one is a status written in place but not yet, so it's waited
+/// on as one not there.
 fn wait(folder: &Path, what: &str, within: Duration) -> Result<i32, Failure> {
     let since = Instant::now();
     loop {
         match read_end(&folder.join(STATUS), STATUS_KEPT) {
+            Ok(bytes) if bytes.is_empty() => {}
             Ok(bytes) => {
                 let status = String::from_utf8_lossy(&bytes);
                 return status.trim().parse().map_err(|_| {
@@ -364,8 +367,8 @@ pub fn job(folder: &Path) -> i32 {
         let _ = fs::write(folder.join(ERR), format!("update-to-main job: {e}\n"));
         127
     });
-    // Written aside and moved into place, so root never reads it half
-    // written as a job that ended saying nothing.
+    // Written aside and moved into place, so root reads it whole, but for
+    // the fallback below.
     let aside = folder.join(format!("{STATUS}.new"));
     let said = format!("{status}\n");
     if fs::write(&aside, &said)
@@ -373,8 +376,9 @@ pub fn job(folder: &Path) -> i32 {
         .is_err()
     {
         // One that can't be moved into place, as on a full disk, is written
-        // where it goes: root reads however much lands as the job's end at
-        // once, rather than waiting out its hour on a job that ended.
+        // where it goes, rather than root waiting out its hour on a job that
+        // ended: root waits on an empty one, as when it's caught before its
+        // bytes land, and reads whatever lands as the job's end.
         let _ = fs::write(folder.join(STATUS), said);
     }
     status
@@ -552,6 +556,17 @@ mod tests {
                 "fetching in the login session ended saying \"x\\n\"",
                 lines(&["said"])
             )
+        );
+    }
+
+    #[test]
+    fn an_empty_status_is_waited_on_as_one_not_written() {
+        let folder = tempfile::tempdir().unwrap();
+        fs::write(folder.path().join(STATUS), "").unwrap();
+        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
+        assert_eq!(
+            told.why, "fetching in the login session didn't end within 0 minutes",
+            "an empty status, as one written in place but not yet, was read as the job's end"
         );
     }
 
