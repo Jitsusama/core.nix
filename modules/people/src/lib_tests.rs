@@ -70,10 +70,12 @@ fn each_ask_is_read_with_its_id_and_a_kind_not_kept_refused() {
             ask: "shout".to_owned()
         }
     );
-    assert!(
-        matches!(ask("not json"), Ask::Unknown { .. }),
-        "a line that isn't JSON was read as {:?}",
-        ask("not json")
+    assert_eq!(
+        ask("not json"),
+        Ask::Unknown {
+            id: Value::Null,
+            ask: String::new()
+        }
     );
 }
 
@@ -118,9 +120,9 @@ fn what_a_source_says_is_held_whole_under_its_name_changing_only_when_it_does() 
         Some("person:ada@example.com".to_owned())
     );
     assert_eq!(book.take("slack", ada("Ada")), None);
-    assert!(
-        !book.ready("person:ada@example.com"),
-        "Ada was ready before Vault had answered for her"
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["vault"]
     );
     assert_eq!(
         book.take("vault", ada("Ada L")),
@@ -233,9 +235,9 @@ fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
         "Gus, whom the roster knows only by Tuple's id, had no record"
     );
     // Only Slack, which is asked, is waited on.
-    assert!(
-        !book.ready("person:ada@example.com"),
-        "Ada was ready before Slack had answered for her"
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["slack"]
     );
     book.take(
         "slack",
@@ -252,12 +254,15 @@ fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
     );
     assert!(
         book.ready("person:ada@example.com"),
-        "Ada waited on Tuple's roster once Slack had answered"
+        "Ada waited on {:?} once Slack had answered",
+        book.waiting("person:ada@example.com").collect::<Vec<_>>()
     );
+    // Started again, Tuple says anew whether it's a roster, and is waited
+    // on until it does.
     book.restarted("tuple");
-    assert!(
-        !book.ready("person:ada@example.com"),
-        "Ada was ready though Tuple had started again and not yet answered"
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["tuple"]
     );
 }
 
@@ -510,7 +515,7 @@ fn a_search_finds_by_any_name_or_address_and_cuts_once_ranked() {
     );
     assert!(
         book.record("person:x@example.com").unwrap().listed(),
-        "Ray, a favourite, wasn't listed"
+        "Adams Ray, a favourite, wasn't listed"
     );
     assert!(
         !book.record("person:gus@example.com").unwrap().listed(),

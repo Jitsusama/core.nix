@@ -318,7 +318,7 @@ fn a_watch_asks_ahead_says_what_is_held_and_gathers_a_burst_into_one_change() {
         changed
             .iter()
             .all(|record| record["sources"]["slack"]["way"] == "ahead"),
-        "not every change was Slack's answer ahead of the ask: {changed:?}"
+        "not every change came from Slack being asked ahead: {changed:?}"
     );
     assert_eq!(
         running.asked("slack"),
@@ -465,7 +465,8 @@ fn a_source_that_stops_is_started_again_and_asked_again_about_everyone_watched()
     let asked = running.asked("slack");
     assert!(
         asked.iter().all(|line| line == "?ada@example.com"),
-        "Slack was asked about more than Ada, the one watched: {asked:?}"
+        "Slack was asked about someone besides Ada, the one watched, or about her as a \
+         step-in rather than ahead: {asked:?}"
     );
     let said = client.ask(&json!({"id": 2, "ask": "health"}));
     assert!(
