@@ -2044,9 +2044,10 @@
     local-sites' home module refuses a machine whose launcher renames one of its acts on a look,
     in place or by a later entry keyed by a list of one set or a set words.json writes as the id
     by its outPath or __toString, or by a whole entry so written, reading the words as words.json
-    writes them, or in a words.json a machine writes itself; it names only each act's old and new word though another word is renamed beside
-    them, even to no name, and takes core's own words and ids Words.qml keys as no act: objects,
-    lists of several or none, whichever end holds the act, and a path in the store
+    writes them, or in a words.json a machine writes itself, and refuses that file given as a
+    source it can't read; it names only each act's old and new word though another word is
+    renamed beside them, even to no name, and takes core's own words and ids Words.qml keys as
+    no act: objects, lists of several or none, whichever end holds the act, and a path in the store
   '';
   local-sites-rows-homes-read-as-readers-do = ''
     the rules a switch asserts over declared local site rows name each kind two sites are home to,

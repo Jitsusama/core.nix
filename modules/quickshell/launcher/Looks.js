@@ -83,12 +83,14 @@ function askerOf(one, quest) {
 // What a look asks of Joel, and what happens if he does nothing, as its
 // session writes them (85PKB2, 2026-11-19), or "". Read here rather than
 // into the look, since a look is written back as it was read (`rewritten`).
+// Trimmed, as the sites' ask row reads them, so words only of spaces say
+// nothing and For You says what it knows in their place, never a blank.
 function askOf(one) {
-    return written(one.ask);
+    return written(one.ask).trim();
 }
 
 function ifNothingOf(one) {
-    return written(one.ifNothing);
+    return written(one.ifNothing).trim();
 }
 
 function written(value) {

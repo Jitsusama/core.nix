@@ -62,7 +62,8 @@ in
   # on a look, in place or by an entry after core's (its id a list of one,
   # or a set words.json writes as the id, or the whole entry so written, as
   # the shell's Words.qml keys it all the same), even to no name, and in
-  # the words file a machine writes itself, naming
+  # the words file a machine writes itself, and refuses that file given as
+  # a source it can't read, naming
   # only the act's old and new word. It takes core's own words and ids
   # Words.qml keys as no act: objects, lists of several or none, and a path
   # in the store. Each case's machine is evaluated once, since an evaluation
@@ -208,11 +209,20 @@ in
       forced = refusedBy {
         xdg.configFile."quickshell/launcher/words.json".text = lib.mkForce (builtins.toJSON inPlace);
       };
+      # One giving the file as a source, which wins over the text the module
+      # would read, so the module can't see what it renames.
+      sourced =
+        lib.findFirst (check: !check.assertion && lib.hasInfix "is given as a source" check.message) null
+          (sites {
+            xdg.configFile."quickshell/launcher/words.json".source = lib.mkForce (
+              pkgs.writeText "words.json" (builtins.toJSON inPlace)
+            );
+          }).assertions;
       says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
       lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name, or in the file the launcher reads), refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name, or in the file the launcher reads), lets that file be given as a source it can't read, refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
       (
         refusals.core == null
         && refusals.odd == null
@@ -222,5 +232,6 @@ in
         && says "wrapped" "acts on a look (${clear} from Clear It to Dismiss),"
         && forced != null
         && lib.hasInfix "acts on a look (${clear} from Clear It to Drop It)," forced.message
+        && sourced != null
       );
 }
