@@ -1,6 +1,9 @@
 //! The hour's card: each measure against its target, the one biggest
 //! drag, what became of last hour's, and Joel's misses, open or fixed;
 //! and what the next hour keeps of it to say so.
+//!
+//! Long because its cases are over half of it: each way a card has told
+//! Joel wrong, or the next hour forgot what this one saw, has its own.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -773,6 +776,31 @@ mod tests {
         assert!(
             card.contains("to each file's owner by"),
             "a clean drag whose files have owners named one owner: {card}"
+        );
+    }
+
+    /// What the hour saw of the asks list goes on to the next through
+    /// `hour.json`, so a list written over is read as unread, not as none.
+    #[test]
+    fn what_the_hour_saw_of_the_asks_is_kept_for_the_next() {
+        let kept = Kept {
+            asks: Seen {
+                most: 853,
+                short_since: Some(1_794_700_000),
+            },
+            ..Kept::default()
+        };
+        let none_open = measure("misses", Class::Miss, 0.0, Some(0.0));
+        let (_, next) = compose("06:10", &[none_open], &kept, &none(), "");
+        assert_eq!(
+            next.asks, kept.asks,
+            "the hour forgot what it saw of the asks"
+        );
+        let written = serde_json::to_string(&next).expect("the hour is written");
+        let read: Kept = serde_json::from_str(&written).expect("the hour is read back");
+        assert_eq!(
+            read.asks, kept.asks,
+            "hour.json lost what the hour saw of the asks"
         );
     }
 }
