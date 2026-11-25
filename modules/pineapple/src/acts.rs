@@ -98,7 +98,7 @@ pub fn press(state: &Path, said: &Value, now: u64, words: &Words) -> Result<Valu
         "stop" => {
             let id = row["saying"].as_str().unwrap_or_default();
             let said = said_whole(&kept, id, row);
-            record::keep(&stops, id, &stopped(row, said, now)).map_err(failed)?;
+            record::keep(&stops, id, &stopped(row, &said, now)).map_err(failed)?;
             json!({"stopped": id})
         }
         "approve" => json!({"resumed": approve(&stops, row, now).map_err(failed)?}),
@@ -125,7 +125,7 @@ fn said_whole(kept: &tell::Kept, id: &str, row: &Value) -> Value {
 
 /// A stop of Joel's making from an alert's row: its saying, said as
 /// `words`, reaching what a stop said there would have.
-fn stopped(row: &Value, words: Value, now: u64) -> Value {
+fn stopped(row: &Value, words: &Value, now: u64) -> Value {
     json!({
         "id": row["saying"],
         "shadow": false,
