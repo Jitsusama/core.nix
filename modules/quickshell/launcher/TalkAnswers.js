@@ -95,7 +95,8 @@ function question(now, name, words, dayOf) {
     const want = now?.want ?? null;
     const asking = now?.asking === true;
     const what = whole(want) || String(want?.asked ?? "").trim();
-    const untold = whole(want) === "" && String(want?.said ?? "").trim() === ""
+    // A whole question is what it asks, so it's told unless it too is only the title.
+    const untold = String(want?.said ?? "").trim() === ""
         && what === String(want?.title ?? "");
     const answers = asked(want, asking);
     if (!asking || what === "" || (untold && answers === null)) {
