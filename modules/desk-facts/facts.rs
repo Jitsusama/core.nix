@@ -2608,7 +2608,7 @@ mod tests {
         // D65, then one beside the cubic's epicentre, tens of millions.
         let d65 = kelvin((0.3127, 0.3290)).unwrap();
         assert!((d65 - 6505.0).abs() < 1.0, "{d65}");
-        assert!(kelvin((0.4, 0.185)).is_none());
+        assert_eq!(kelvin((0.4, 0.185)), None);
     }
 
     #[test]
@@ -2627,8 +2627,8 @@ mod tests {
     fn what_isn_t_a_whole_edid_says_nothing() {
         let mut edid = bytes(Z27K_G3);
         edid[127] ^= 1;
-        assert!(display(&edid).is_none());
-        assert!(display(&[0; 64]).is_none());
+        assert_eq!(display(&edid), None);
+        assert_eq!(display(&[0; 64]), None);
     }
 
     #[test]
@@ -2675,13 +2675,13 @@ Capture:
     #[test]
     fn a_usb_card_s_streams_say_what_they_offer_and_how_they_run() {
         let (playback, capture) = streams(MV7);
-        assert!(!playback.running);
+        assert!(!playback.running, "the MV7's playback is stopped");
         assert_eq!(playback.clock, "adaptive");
         assert_eq!(
             offered(&playback.settings),
             "44.1 kHz or 48 kHz \u{b7} 24 bit \u{b7} stereo"
         );
-        assert!(capture.running);
+        assert!(capture.running, "the MV7's capture is running");
         assert_eq!(capture.momentary, "48000 Hz");
         assert_eq!(capture.clock, "asynchronous");
         assert_eq!(
@@ -3046,7 +3046,8 @@ Playback:
         assert!(
             !facts
                 .iter()
-                .any(|(name, _)| name == "buttons" || name == "wheel")
+                .any(|(name, _)| name == "buttons" || name == "wheel"),
+            "a keyboard says no buttons or wheel: {facts:?}"
         );
     }
 
@@ -3247,7 +3248,10 @@ Playback:
         put(&sys.0, "asound/card1/id", "MV7\n");
         put(&sys.0, "asound/card1/usbid", "14ed:1012\n");
         let all = sound(&sys.0.join("asound"), &sys.0, None, &|_| Control::default());
-        assert!(all.iter().all(|(key, _)| key.starts_with("sofsoundwire,")));
+        assert!(
+            all.iter().all(|(key, _)| key.starts_with("sofsoundwire,")),
+            "only the built-in card's devices: {all:?}"
+        );
     }
 
     #[test]
@@ -3260,8 +3264,11 @@ Playback:
         };
         let volume = event("Speaker Playback Volume");
         let jack = event("cs42l45 OT 43 Headphone Jack");
-        assert!(!a_jack_changed(&volume));
-        assert!(a_jack_changed(&[volume, jack].concat()));
+        assert!(!a_jack_changed(&volume), "a volume's change is no jack's");
+        assert!(
+            a_jack_changed(&[volume, jack].concat()),
+            "a jack's change is heard among others"
+        );
     }
 
     #[test]
@@ -3514,31 +3521,43 @@ Playback:
 
     #[test]
     fn a_monitor_s_facts_written_whole_are_heard_and_their_copy_is_not() {
-        assert!(names_a_monitor(&event(
-            IN_MOVED_TO,
-            "ddc-220ed336000000001c1f"
-        )));
-        assert!(names_a_monitor(&event(
-            IN_DELETE,
-            "ddc-220ed336000000001c1f"
-        )));
-        assert!(!names_a_monitor(&event(
-            IN_MOVED_TO,
-            "ddc-220ed336000000001c1f.new"
-        )));
-        assert!(!names_a_monitor(&event(IN_MOVED_TO, "displays.json")));
+        assert!(
+            names_a_monitor(&event(IN_MOVED_TO, "ddc-220ed336000000001c1f")),
+            "a monitor's facts written whole"
+        );
+        assert!(
+            names_a_monitor(&event(IN_DELETE, "ddc-220ed336000000001c1f")),
+            "a monitor's facts removed"
+        );
+        assert!(
+            !names_a_monitor(&event(IN_MOVED_TO, "ddc-220ed336000000001c1f.new")),
+            "a copy still being written"
+        );
+        assert!(
+            !names_a_monitor(&event(IN_MOVED_TO, "displays.json")),
+            "the desk's own file"
+        );
     }
 
     #[test]
     fn a_sound_device_opening_or_the_lighting_changing_is_heard() {
-        assert!(names_one(&event(IN_OPEN, "pcmC1D0p"), "pebble-lights"));
-        assert!(names_one(
-            &event(IN_MOVED_TO, "pebble-lights"),
-            "pebble-lights"
-        ));
+        assert!(
+            names_one(&event(IN_OPEN, "pcmC1D0p"), "pebble-lights"),
+            "a sound device opening"
+        );
+        assert!(
+            names_one(&event(IN_MOVED_TO, "pebble-lights"), "pebble-lights"),
+            "the lighting written whole"
+        );
         let mut other = event(IN_CLOSE_WRITE, "quickshell-locked");
         other.extend(event(IN_CLOSE_WRITE, "pebble-lights.new"));
-        assert!(!names_one(&other, "pebble-lights"));
-        assert!(names_one(&event(IN_Q_OVERFLOW, ""), "pebble-lights"));
+        assert!(
+            !names_one(&other, "pebble-lights"),
+            "neither the lock nor the lighting's copy"
+        );
+        assert!(
+            names_one(&event(IN_Q_OVERFLOW, ""), "pebble-lights"),
+            "an overflow, which may have hidden either"
+        );
     }
 }
