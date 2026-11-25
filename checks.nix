@@ -666,6 +666,7 @@ gather {
     ./modules/mx-brio/checks.nix
     ./modules/mx-brio-seat/checks.nix
     ./modules/mycelium/checks.nix
+    ./modules/name-lookups/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix
     ./modules/net/checks.nix

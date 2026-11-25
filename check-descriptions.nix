@@ -2114,6 +2114,16 @@
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
     64, asking nothing of the shell, niri or swayidle
   '';
+  lookups-say-a-name-that-fails-or-takes-long = ''
+    a Mac's account times its names each minute through the system's resolver and each server
+    named, at Standard, given the slow mark, names and servers in order, and a round over
+    stand-ins says a failed lookup, a server giving no address (a CNAME alone, or a failing dig)
+    or a slow lookup from its second round running, each kind counted apart so a failure then
+    one cold answer says nothing, one failing and lagging by turns from its third, and a busy
+    mDNSResponder, by its path or its name, from its fifth, as errors opening with name-lookups,
+    each well again once, and nothing while all is well; a state file's blank line or a word for
+    a count is read past, never run
+  '';
   looks-probe-finds-what-a-deploy-lost = ''
     the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a
     page's stylesheet, face, type, colours, masthead, mark, drawings, images and scripts as drawn,
