@@ -1073,6 +1073,106 @@ def test_new_work_in_a_zone_by_its_name_begins_at_its_checkouts_top(desktop: Des
         desktop.as_account("rm -rf ~/src/github.com/harbour")
 
 
+def test_new_work_is_pictured_from_its_folder_to_its_window(desktop: Desktop) -> None:
+    """Pictures each step of Start New Work in a folder, as Joel walks it, to its window.
+
+    Joel, 2026-11-25 14:33, of a start he gave in a folder: "i have no room to type once i
+    choose a folder, no confirmation that it took my enter to start the work, no feedback at
+    all, and now no clue if i did it once, twice, thrice or not at all". The gallery keeps
+    each step for whoever judges the path end to end; the walk itself proves only that the
+    session's window opens, as the link's walk does.
+    """
+    machine = desktop.machine
+    folder = "/home/jitsusama/src/github.com/harbour/lighthouse"
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    first = "$XDG_RUNTIME_DIR/pi-first-text"
+    desktop.as_account(
+        f"rm -f {opened} {first} && mkdir -p {folder} && git -C {folder} init -q"
+        " && touch $XDG_RUNTIME_DIR/pi-stays"
+    )
+    quests_listed(desktop, [listed_quest("QEST-20261124-HARBQA", "Harbour", start=folder)])
+    before = {window["id"] for window in desktop.windows()}
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        desktop.shoot("new-work-1-found")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+        desktop.down_to("In ~/src/github.com/harbour/lighthouse")
+        desktop.shoot("new-work-2-folders")
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        desktop.shoot("new-work-3-asked")
+        machine.send_chars(NEW_WORK_SAID)
+        desktop.launcher_until(lambda shown: shown["typed"] == NEW_WORK_SAID)
+        desktop.shoot("new-work-4-typed")
+        machine.send_key("ret")
+        # Return is seen to take: the words stay, and the line under them says the start
+        # is under way and counts its wait.
+        returned = desktop.launcher_until(
+            lambda shown: not shown["open"] or shown["start"]["says"] != ""
+        )
+        if returned["open"]:
+            assert returned["typed"] == NEW_WORK_SAID, f"Return took the words: {returned}"
+            assert returned["start"]["waited"].endswith(" s"), f"no wait counted: {returned}"
+        # The moment after Return is what Joel judges took or not, so it's kept as it is,
+        # not once the screen holds still, which a start under way may never do.
+        if desktop.values["shots"]:
+            machine.sleep(1)  # A beat, as his eye takes in what Return changed.
+            machine.screenshot("new-work-5-returned")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -qx '{folder} ' {opened}"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        machine.wait_until_succeeds(
+            desktop.in_session("test -s $XDG_RUNTIME_DIR/pi-owner-sprouted"),
+            timeout=dt.timedelta(seconds=30),
+        )
+        presents(desktop, "sprouted", "SPROUT", {"cwd": folder})
+        opened_focused(desktop, before)
+        desktop.shoot("new-work-6-window")
+        # Back to Start New Work, to see what says the start took, and only once.
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["rows"][:1] == ["From a Link"])
+        desktop.shoot("new-work-7-again")
+        # The same words again say when they started, and start nothing more.
+        desktop.down_to("In ~/src/github.com/harbour/lighthouse")
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        if desktop.showing()["typed"] != NEW_WORK_SAID:
+            machine.send_chars(NEW_WORK_SAID)
+            desktop.launcher_until(lambda shown: shown["typed"] == NEW_WORK_SAID)
+        machine.send_key("ret")
+        desktop.launcher_until(lambda shown: shown["start"]["says"].startswith("started at "))
+        desktop.shoot("new-work-8-same")
+        starts = desktop.as_account(f"grep -cx '{folder} ' {opened}").strip()
+        assert starts == "1", f"the same words started the work again: {starts} starts"
+    finally:
+        desktop.launcher_left_closed()
+        for window in desktop.windows():
+            if window["id"] not in before:
+                desktop.close(window)
+        # A pattern its own shell's words don't match, so pkill ends only the stand-in.
+        desktop.as_account(
+            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first} $XDG_RUNTIME_DIR/pi-owner-sprouted"
+            f" {PI_PRESENCE}/sprout.json; pkill -f 'sleep 60[0-5]'; true"
+        )
+        quests_listed(desktop, [])
+        desktop.as_account("rm -rf ~/src/github.com/harbour")
+
+
+# What Joel gives a start in the pictured walk: as long as the words he gave at 14:30 on 25
+# November, and a little more, so the field shows how it holds a sentence that wraps.
+NEW_WORK_SAID = (
+    "see the dms with olga about access to the lighthouse tooling, put together a solution"
+    " and an idea of what happened, so she can tell her team today"
+)
+
+
 def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
     desktop: Desktop,
 ) -> None:
