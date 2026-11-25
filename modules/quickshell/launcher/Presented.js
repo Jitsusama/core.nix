@@ -324,7 +324,9 @@ function kindsLed(parts, kinds) {
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
 // since most keys carry what someone else wrote, a network's name or a window's title. The
 // launcher's own ids are whole, `window:<app>:<title>` is `window:<app>`, or `window` where that
-// isn't a program's id or nothing follows it, and a `verb:` key, its daemon's own words, goes to
+// isn't a program's id or nothing follows it, `program:<desktop entry's id>` whole where the id
+// is shaped as an app's and nothing follows it, so each program's drawer is timed apart (RTOIMQ,
+// 2026-11-24), and `program` otherwise, and a `verb:` key, its daemon's own words, goes to
 // its kind, and its act where that's one of actWords: `verb:agent:close` whole,
 // `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<sender's id>` as
 // `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
@@ -341,6 +343,10 @@ function keyShown(key, whole) {
     if (parts[0] === "window") {
         const app = parts.length > 2 ? parts[1] : "";
         return appWord.test(app) && !appsUnnamed.includes(app) ? `window:${app}` : "window";
+    }
+    if (parts[0] === "program") {
+        const id = parts.length === 2 ? parts[1] : "";
+        return appWord.test(id) && !appsUnnamed.includes(id) ? `program:${id}` : "program";
     }
     if (parts[0] === "verb") {
         return kindsLed(parts.slice(0, 3), 2).join(":");
