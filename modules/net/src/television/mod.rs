@@ -170,6 +170,13 @@ pub fn press(context: &Context, device: &Device, word: &str) -> Result<(), Failu
     )
 }
 
+/// Where what the TV allowed is kept, as a word for the shell.
+fn kept_file(device: &Device) -> Option<String> {
+    let mac = device.macs.first()?;
+    let file = kept::file_in(&kept::folder().ok()?, mac);
+    Some(terminal_kit::failure::shell_word(&file.display().to_string()).into_owned())
+}
+
 /// Why a key wasn't pressed, in the three parts every failure has.
 fn refused(device: &Device, word: &str, why: remote::Why) -> Failure {
     let name = &device.name;
@@ -180,20 +187,25 @@ fn refused(device: &Device, word: &str, why: remote::Why) -> Failure {
                 .because(format!("it's asleep or off ({error})"))
                 .try_this(format!("net devices {} wake", word_for(device)))
         }
-        remote::Why::NotTheTv => Failure::new(
-            Exit::Refused,
-            format!("what answered at {name}'s address isn't the TV that allowed this machine"),
-        )
-        .because("its certificate isn't the one kept; a TV reset to its factory settings makes a new one")
-        .try_this(format!(
-            "rm {} && {again}",
-            kept::folder()
-                .map(|folder| kept::file_in(&folder, device.macs.first().map_or("", String::as_str)))
-                .map_or_else(|_| "the TV's kept file".to_owned(), |file| file.display().to_string())
-        )),
-        remote::Why::NotAllowed => Failure::new(Exit::Refused, format!("{name} didn't allow this machine"))
-            .because("it asks on its own screen, and nobody pressed Allow before it stopped asking")
-            .try_this(again),
+        remote::Why::NotTheTv => {
+            let what = format!("what answered at {name}'s address isn't the TV that allowed this");
+            let failure = Failure::new(Exit::Refused, what).because(
+                "its certificate isn't the one kept; a TV reset to its factory settings makes \
+                 a new one",
+            );
+            match kept_file(device) {
+                Some(file) => failure.try_this(format!("rm {file} && {again}")),
+                None => failure,
+            }
+        }
+        remote::Why::NotAllowed => {
+            Failure::new(Exit::Refused, format!("{name} didn't allow this machine"))
+                .because(
+                    "it asks on its own screen, and nobody pressed Allow before it stopped \
+                     asking",
+                )
+                .try_this(again)
+        }
         remote::Why::Broke(error) => Failure::new(Exit::TryAgain, format!("{name} broke off"))
             .because(error)
             .try_this(again),
@@ -213,24 +225,28 @@ pub fn wake(context: &Context, device: &Device) -> Result<(), Failure> {
     })?;
     let waiting = context.wait(&format!("waking {}", device.name)).ok();
     let until = Instant::now() + WOKEN;
-    let mut awake = false;
-    while Instant::now() < until {
+    let woke = loop {
         if awake(address) {
-            awake = true;
-            break;
+            break true;
+        }
+        if Instant::now() >= until {
+            break false;
         }
         std::thread::sleep(Duration::from_secs(1));
-    }
-    if !awake {
+    };
+    if !woke {
         if let Some(waiting) = waiting {
             let _ = waiting.failed(&format!("{} didn't wake", device.name));
         }
-        return Err(Failure::new(Exit::Unavailable, format!("{} didn't wake", device.name))
-            .because(format!(
-                "it answered nothing for {} s; a TV on Wi-Fi hears a wake only with Power On with Mobile on, in its network settings",
-                WOKEN.as_secs()
-            ))
-            .try_this(format!("net devices {} wake", word_for(device))));
+        return Err(
+            Failure::new(Exit::Unavailable, format!("{} didn't wake", device.name))
+                .because(format!(
+                    "it answered nothing for {} s; a TV on Wi-Fi hears a wake only with \
+                 Power On with Mobile on, in its network settings",
+                    WOKEN.as_secs()
+                ))
+                .try_this(format!("net devices {} wake", word_for(device))),
+        );
     }
     if let Some(waiting) = waiting {
         let _ = waiting.done(&format!("{} is awake", device.name));
@@ -284,7 +300,7 @@ fn spoken(word: &str) -> String {
 
 /// The device's name as a shell word, for a try line.
 fn word_for(device: &Device) -> String {
-    terminal_kit::failure::shell_word(&device.name)
+    terminal_kit::failure::shell_word(&device.name).into_owned()
 }
 
 #[cfg(test)]

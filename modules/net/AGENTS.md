@@ -190,12 +190,45 @@ what net says of the day.
   only once eero knows it neither on nor off. A minute net can't read
   eero's record (it's missing, can't be opened or doesn't parse), or
   one listing no devices, asks no TV and forgets none. The answer stays as
-  `detail.samsung`, but for its ids and the addresses eero gives. Sending
-  it a key waits on Joel pressing Allow on the TV, so none is sent.
+  `detail.samsung`, but for its ids and the addresses eero gives. The
+  daemon only reads it: keys are pressed by the command, below.
 
 It listens on nothing and asks nothing outside the home network. Away
 from home the modem doesn't answer, and the record says so while eero's
 devices stay.
+
+## The TV's Remote
+
+`net devices NAME press KEY` and `net devices NAME wake`
+(`src/television/`) act on a device the record names a television,
+from the command rather than the daemon, since only a person or an agent
+asked to presses a key. Each reaches the TV at its first IPv4 address in
+the record.
+
+- Keys go over `wss://` on 8002 to `samsung.remote.control`, the only way
+  a TV saying `TokenAuthSupport` takes them. Only the fourteen words in
+  `television::KEYS` are sent; any other is refused before the TV is
+  reached, so no word reaches a TV as a key code it wasn't meant to be.
+- The first press makes the TV ask on its own screen whether to allow
+  "net on" this machine's hostname, read at run time, and the press
+  waits 35 s for Allow. Once allowed, the TV hands a token, and later
+  presses carry it and ask nothing.
+- The TV's certificate is self-signed, so it's pinned on first use by
+  its SHA-256 and any other is refused (`NotTheTv`), rather than any
+  certificate being trusted each time. A reset TV shows a new one; the
+  refusal says which file to remove to allow it again.
+- The token and the pin are sealed with `systemd-creds --user` under
+  `$XDG_STATE_HOME/net/televisions/`, one file named by the TV's hardware
+  address, as eero-daemon seals its session, so a fenced agent can't
+  read them.
+- A TV in standby answers nothing, so `wake` sends Wake-on-LAN to its
+  hardware address, broadcast and to its last address, then asks its
+  page each second for 15 s until it says `on`. A TV on Wi-Fi hears it
+  only with Power On with Mobile turned on in its network settings,
+  which the refusal says.
+
+Its tests talk to a TV played on a local socket without TLS
+(`remote_tests.rs`); no real TV is reached by any check.
 
 ## The Switch's Reader
 

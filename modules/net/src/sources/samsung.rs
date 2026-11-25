@@ -15,9 +15,9 @@
 //! on eero's list but stops answering, as Joel's Q70C does in standby, so
 //! a remembered TV's silence isn't the source failing either.
 //!
-//! Only that page is read, without pairing: sending it a key waits on
-//! Joel pressing Allow on the TV, and what it's playing, its volume and
-//! its input are said only through Samsung's cloud.
+//! Only that page is read here, without pairing: keys are pressed by
+//! the command (television/), and what it's playing, its volume and its
+//! input are said only through Samsung's cloud.
 
 use std::collections::BTreeMap;
 

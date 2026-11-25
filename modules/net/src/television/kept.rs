@@ -181,14 +181,17 @@ mod tests {
 
     #[test]
     fn a_file_holding_anything_else_is_no_tv() {
+        let zeros = "0".repeat(64);
+        let unhex = format!("zz{}", "0".repeat(62));
         for text in [
-            "",
-            "{}",
-            r#"{"token": "1", "pin": "00"}"#,
-            r#"{"token": 1, "pin": "0000000000000000000000000000000000000000000000000000000000000000"}"#,
-            r#"{"pin": "0000000000000000000000000000000000000000000000000000000000000000"}"#,
-            r#"{"token": null, "pin": "zz00000000000000000000000000000000000000000000000000000000000000"}"#,
+            String::new(),
+            "{}".into(),
+            r#"{"token": "1", "pin": "00"}"#.into(),
+            json!({"token": 1, "pin": zeros}).to_string(),
+            json!({"pin": zeros}).to_string(),
+            json!({"token": null, "pin": unhex}).to_string(),
         ] {
+            let text = text.as_str();
             assert_eq!(Kept::read(text), None, "{text}");
         }
     }

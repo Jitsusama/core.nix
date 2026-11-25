@@ -103,7 +103,8 @@ fn a_tv_saying_nothing_before_the_deadline_takes_no_key() {
 
 #[test]
 fn a_token_that_isnt_plain_is_never_taken() {
-    for token in ["", "12 34", "1&name=x", &"9".repeat(65)] {
+    let long = "9".repeat(65);
+    for token in ["", "12 34", "1&name=x", long.as_str()] {
         assert_eq!(
             told(&connected(Some(token))),
             Told::Connected { token: None },
