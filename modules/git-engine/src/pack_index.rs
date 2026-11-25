@@ -208,10 +208,28 @@ impl Index {
     }
 }
 
+/// One pack's `.idx` name as a multi-pack-index gives it, taken only as a
+/// file of the pack folder, since the store joins it onto that folder: a
+/// name that climbs out or into a subfolder is a crafted or broken index.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "git names a pack's index .idx, in lowercase"
+)]
+fn pack_name(raw: &[u8]) -> io::Result<String> {
+    let name = std::str::from_utf8(raw).map_err(|_| invalid("multi-pack-index pack name"))?;
+    let bare = !name.starts_with('.') && !name.contains(['/', '\\']);
+    if bare && name.ends_with(".idx") {
+        Ok(name.to_owned())
+    } else {
+        Err(invalid("multi-pack-index pack name"))
+    }
+}
+
 /// A multi-pack-index: one sorted table of names across many packs.
 pub struct Midx {
     file: File,
-    /// The `.idx` names of the packs it covers, in its order.
+    /// The `.idx` names of the packs it covers, in its order, each a bare
+    /// file name of the pack folder.
     pub packs: Vec<String>,
     fanout: u64,
     names: u64,
@@ -242,16 +260,29 @@ impl Midx {
         };
         let names_at = chunk(b"PNAM")?;
         let pack_count = u32::from_be_bytes(head[8..12].try_into().expect("4 bytes")) as usize;
-        // The names run to the next chunk; read generously and split.
-        let next = found.values().copied().filter(|&at| at > names_at).min();
-        let len = next.map_or(65_536, |next| next - names_at);
-        let raw = read_exact_at(&file, usize::try_from(len).unwrap_or(65_536), names_at)?;
+        // The names run to the next chunk, and never past the file's end, so
+        // a chunk table that says otherwise costs no more than the file.
+        let size = file.metadata()?.len();
+        let end = found
+            .values()
+            .copied()
+            .filter(|&at| at > names_at)
+            .min()
+            .map_or(size, |next| next.min(size));
+        let len = end
+            .checked_sub(names_at)
+            .and_then(|len| usize::try_from(len).ok())
+            .ok_or_else(|| invalid("multi-pack-index names past its end"))?;
+        let raw = read_exact_at(&file, len, names_at)?;
         let packs: Vec<String> = raw
             .split(|&b| b == 0)
             .filter(|name| !name.is_empty())
             .take(pack_count)
-            .map(|name| String::from_utf8_lossy(name).into_owned())
-            .collect();
+            .map(pack_name)
+            .collect::<io::Result<_>>()?;
+        if packs.len() < pack_count {
+            return Err(invalid("multi-pack-index names fewer packs than it holds"));
+        }
         Ok(Midx {
             file,
             packs,
@@ -279,5 +310,260 @@ impl Midx {
             u64_at(&self.file, large + 8 * u64::from(small & 0x7fff_ffff))?
         };
         Ok(Some((pack, offset)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Names spread over first bytes, one of them sharing a first byte with
+    // another, as the fan-out must count.
+    const NAMES: [[u8; 20]; 4] = [[0x01; 20], [0x7f; 20], [0x80; 20], [0xfe; 20]];
+    const SAME_FIRST: [u8; 20] = {
+        let mut name = [0x7f; 20];
+        name[19] = 0x80;
+        name
+    };
+
+    fn sorted() -> Vec<[u8; 20]> {
+        let mut names = NAMES.to_vec();
+        names.push(SAME_FIRST);
+        names.sort_unstable();
+        names
+    }
+
+    fn be32(value: u32) -> [u8; 4] {
+        value.to_be_bytes()
+    }
+
+    fn count(names: &[[u8; 20]]) -> u32 {
+        u32::try_from(names.len()).expect("a handful of names")
+    }
+
+    fn fanout(names: &[[u8; 20]]) -> Vec<u8> {
+        (0..=255u8)
+            .flat_map(|byte| {
+                be32(count(
+                    &names
+                        .iter()
+                        .copied()
+                        .filter(|name| name[0] <= byte)
+                        .collect::<Vec<_>>(),
+                ))
+            })
+            .collect()
+    }
+
+    /// Writes `bytes` where a test alone reads them.
+    fn file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("git-engine-{}-{name}", std::process::id()));
+        std::fs::write(&path, bytes).expect("the temp folder takes a file");
+        path
+    }
+
+    /// Git ends each index with the checksums of its pack and of itself,
+    /// which nothing here reads but a window of names may run into.
+    fn trailed(mut bytes: Vec<u8>) -> Vec<u8> {
+        bytes.extend([0; 40]);
+        bytes
+    }
+
+    /// Where each name lies in its pack, the last past what four bytes hold.
+    fn offsets(names: &[[u8; 20]]) -> Vec<u64> {
+        (0..names.len())
+            .map(|at| {
+                if at + 1 == names.len() {
+                    0x1_2345_6789
+                } else {
+                    12 + 100 * at as u64
+                }
+            })
+            .collect()
+    }
+
+    fn version_1(names: &[[u8; 20]]) -> Vec<u8> {
+        let mut bytes = fanout(names);
+        for (name, offset) in names.iter().zip(offsets(names)) {
+            bytes.extend(be32(u32::try_from(offset).unwrap_or(0)));
+            bytes.extend(name);
+        }
+        trailed(bytes)
+    }
+
+    fn version_2(names: &[[u8; 20]]) -> Vec<u8> {
+        let mut bytes = b"\xfftOc".to_vec();
+        bytes.extend(be32(2));
+        bytes.extend(fanout(names));
+        bytes.extend(names.concat());
+        bytes.extend(vec![0; 4 * names.len()]);
+        let mut large: Vec<u64> = Vec::new();
+        for offset in offsets(names) {
+            if let Ok(small) = u32::try_from(offset)
+                && small & 0x8000_0000 == 0
+            {
+                bytes.extend(be32(small));
+            } else {
+                let at = u32::try_from(large.len()).expect("few large offsets");
+                bytes.extend(be32(0x8000_0000 | at));
+                large.push(offset);
+            }
+        }
+        bytes.extend(large.iter().flat_map(|offset| offset.to_be_bytes()));
+        trailed(bytes)
+    }
+
+    /// A multi-pack-index over `packs`, its names spread across them in
+    /// turn, claiming `pack_count` packs, with its pack names' chunk at
+    /// `names_at` when given and where they lie otherwise.
+    fn midx(packs: &[&str], pack_count: u32, names_at: Option<u64>) -> Vec<u8> {
+        let names = sorted();
+        let mut pnam = packs.join("\0").into_bytes();
+        pnam.push(0);
+        while !pnam.len().is_multiple_of(4) {
+            pnam.push(0);
+        }
+        let mut ooff = Vec::new();
+        let mut loff = Vec::new();
+        for (at, offset) in offsets(&names).into_iter().enumerate() {
+            ooff.extend(be32(
+                u32::try_from(at % packs.len().max(1)).expect("few packs"),
+            ));
+            if offset > 0x7fff_ffff {
+                ooff.extend(be32(
+                    0x8000_0000 | u32::try_from(loff.len() / 8).expect("few"),
+                ));
+                loff.extend(offset.to_be_bytes());
+            } else {
+                ooff.extend(be32(u32::try_from(offset).expect("small")));
+            }
+        }
+        let chunks: [(&[u8; 4], Vec<u8>); 5] = [
+            (b"PNAM", pnam),
+            (b"OIDF", fanout(&names)),
+            (b"OIDL", names.concat()),
+            (b"OOFF", ooff),
+            (b"LOFF", loff),
+        ];
+        let mut at = 12 + 12 * (chunks.len() as u64 + 1);
+        let mut bytes = b"MIDX".to_vec();
+        bytes.extend([1, 1, u8::try_from(chunks.len()).expect("five"), 0]);
+        bytes.extend(be32(pack_count));
+        for (id, chunk) in &chunks {
+            bytes.extend(*id);
+            let start = if *id == b"PNAM" {
+                names_at.unwrap_or(at)
+            } else {
+                at
+            };
+            bytes.extend(start.to_be_bytes());
+            at += chunk.len() as u64;
+        }
+        bytes.extend([0; 4]);
+        bytes.extend(at.to_be_bytes());
+        for (_, chunk) in chunks {
+            bytes.extend(chunk);
+        }
+        // Its own checksum, as git's ends with.
+        bytes.extend([0; 20]);
+        bytes
+    }
+
+    fn found(index: &Index) -> Vec<Option<u64>> {
+        let mut absent = [0x7f; 20];
+        absent[19] = 0x01;
+        sorted()
+            .into_iter()
+            .chain([absent])
+            .map(|name| index.offset(&Oid(name)).expect("the index reads"))
+            .collect()
+    }
+
+    #[test]
+    fn a_version_1_index_finds_each_name_where_its_pack_holds_it() {
+        let names = sorted();
+        let index = Index::open(&file("v1.idx", &version_1(&names))).expect("it opens");
+        let mut want: Vec<Option<u64>> = offsets(&names)
+            .into_iter()
+            .map(|offset| Some(offset & 0xffff_ffff))
+            .collect();
+        // Version 1 holds four bytes of offset, so the last reads as written.
+        *want.last_mut().expect("names") = Some(0);
+        want.push(None);
+        assert_eq!(found(&index), want);
+    }
+
+    #[test]
+    fn a_version_2_index_finds_an_offset_past_four_bytes_in_its_large_table() {
+        let names = sorted();
+        let index = Index::open(&file("v2.idx", &version_2(&names))).expect("it opens");
+        let mut want: Vec<Option<u64>> = offsets(&names).into_iter().map(Some).collect();
+        want.push(None);
+        assert_eq!(found(&index), want);
+    }
+
+    #[test]
+    fn a_multi_pack_index_says_which_pack_holds_each_name_and_where() {
+        let packs = ["pack-a.idx", "pack-b.idx"];
+        let midx = Midx::open(&file("multi-pack-index", &midx(&packs, 2, None))).expect("it opens");
+        assert_eq!(midx.packs, packs);
+        let names = sorted();
+        let located: Vec<_> = names
+            .iter()
+            .map(|name| midx.locate(&Oid(*name)).expect("the index reads"))
+            .collect();
+        let want: Vec<_> = offsets(&names)
+            .into_iter()
+            .enumerate()
+            .map(|(at, offset)| Some((at % 2, offset)))
+            .collect();
+        assert_eq!(located, want);
+        assert_eq!(
+            midx.locate(&Oid([0x02; 20])).expect("the index reads"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_multi_pack_index_naming_a_file_outside_the_pack_folder_is_refused() {
+        for name in [
+            "../objects.idx",
+            "sub/pack-a.idx",
+            ".hidden.idx",
+            "pack-a.pack",
+            "pack-a\\b.idx",
+        ] {
+            let bytes = midx(&["pack-a.idx", name], 2, None);
+            let opened = Midx::open(&file("named-outside", &bytes));
+            assert!(opened.is_err(), "a pack named {name:?} was taken");
+        }
+    }
+
+    #[test]
+    fn a_multi_pack_index_naming_fewer_packs_than_it_holds_is_refused() {
+        let bytes = midx(&["pack-a.idx"], 2, None);
+        assert!(
+            Midx::open(&file("named-fewer", &bytes)).is_err(),
+            "one name was taken for two packs"
+        );
+    }
+
+    #[test]
+    fn a_multi_pack_index_reads_no_further_than_its_own_end() {
+        // The names are said to start past the file's end.
+        let past = midx(&["pack-a.idx"], 1, Some(1 << 40));
+        assert!(
+            Midx::open(&file("names-past", &past)).is_err(),
+            "names past the end were read"
+        );
+        // Every chunk after the names is said to lie a terabyte on, so the
+        // file's end is all that bounds them.
+        let mut far = midx(&["pack-a.idx"], 1, None);
+        for entry in 1..5 {
+            let at = 12 + 12 * entry + 4;
+            far[at..at + 8].copy_from_slice(&((1u64 << 40) + entry as u64).to_be_bytes());
+        }
+        let midx = Midx::open(&file("chunk-far", &far)).expect("the names it has are read");
+        assert_eq!(midx.packs, ["pack-a.idx"]);
     }
 }
