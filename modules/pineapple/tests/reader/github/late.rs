@@ -3,7 +3,9 @@
 //! in the journal once a run, unless it was judged; a first start judges
 //! none from before its look back, and a restart keeps to what the first
 //! start judged and to how far back a failed search held it, which a site
-//! read by what Joel opened never searches, so keeps nothing of.
+//! read by what Joel opened never searches, so keeps nothing of; a search
+//! giving fewer than it found holds its hour too, reading each it gave
+//! once.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -276,6 +278,7 @@ fn github_a_search_that_keeps_failing_keeps_its_hour_across_a_restart() {
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
     let before = searches(&asked).len();
+    let said_before = journal(&home).len();
     let mut again = github_reader(&home, &origin, &[]);
     searched_twice(before);
     again.kill().expect("the reader stops again");
@@ -291,8 +294,67 @@ fn github_a_search_that_keeps_failing_keeps_its_hour_across_a_restart() {
     let warned = format!("so it's searched from {} again", stamp(last - 3600));
     let said = journal(&home);
     assert!(
-        said.contains(&warned),
-        "the warning names the hour it's searched from, as the search does: {said}"
+        said[said_before..].contains(&warned),
+        "restarted, its warning names the hour it's searched from, as the search does: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// Where a search for Joel's words found two threads but gave only
+/// example/shop#12, never changed since, as GitHub gives at most a
+/// thousand.
+fn searched_short(line: &str, now: u64) -> Value {
+    static CHANGED: AtomicU64 = AtomicU64::new(0);
+    if line.contains(" /search/issues?") {
+        let changed = CHANGED
+            .compare_exchange(0, now - 1000, Ordering::SeqCst, Ordering::SeqCst)
+            .map_or_else(|changed| changed, |_| now - 1000);
+        return json!({"total_count": 2, "items": [{"number": 12, "pull_request": {},
+            "updated_at": stamp(changed),
+            "repository_url": "https://api.example.com/repos/example/shop"}]});
+    }
+    if line.contains(" /notifications?") {
+        return json!([]);
+    }
+    answer_with(line, now, &[])
+}
+
+#[test]
+fn github_a_search_that_gives_fewer_than_it_found_keeps_its_hour_and_reads_each_once() {
+    let (origin, asked) = answering(searched_short);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let from = format!("updated%3A%3E%3D{}", stamp(last - 3600).replace(':', "%3A"));
+    let searched = searches(&asked);
+    assert!(
+        searched.iter().all(|it| it.contains(&from)),
+        "a search cut short doesn't move on, as what it left out may hold his stop: \
+         {searched:?}"
+    );
+    let warned = format!(
+        "found 2 but gave 1, so it's searched from {} again",
+        stamp(last - 3600)
+    );
+    let said = journal(&home);
+    assert!(said.contains(&warned), "the journal says so: {said}");
+    let comments = " /repos/example/shop/issues/12/comments?";
+    let read = asked
+        .lock()
+        .expect("what was asked")
+        .iter()
+        .filter(|line| line.contains(comments))
+        .count();
+    assert_eq!(
+        read, 1,
+        "a thread it gave, unchanged since, is read once, so a flood isn't read every round"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

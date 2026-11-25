@@ -9,10 +9,13 @@
 //! within the hour of it, and told of within two, as a search finds a
 //! thread by its last change and reads it back two hours; it must see
 //! that change, and the word already indexed there, in time, so on a
-//! thread nothing brings back by then it's missed unsaid. A thread run
-//! past 30 pages is read without its newest, so a stop there is missed,
-//! the journal saying only that the read was cut. How far it reached is
-//! kept across a restart (src/progress.rs).
+//! thread nothing brings back by then it's missed unsaid. A search that
+//! gives fewer threads than it found keeps its reach, as what it leaves
+//! out may hold his stop. A thread given more than 30 pages of comments
+//! in the two hours a read covers, or a pull request more than 30 pages
+//! of reviews in its life, is read without its newest, so a stop there is
+//! missed, the journal saying only that the read was cut. How far it
+//! reached is kept across a restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
@@ -115,6 +118,22 @@ impl Searched {
                     }
                     found.seen.insert(key, at);
                 }
+                // GitHub gives a search at most a thousand, leaving out
+                // the least lately changed, where his stop may be, so one
+                // that gives fewer than it found keeps its reach.
+                let gave = answer["items"].as_array().map_or(0, Vec::len);
+                if let Some(all) = answer["total_count"].as_u64()
+                    && u64::try_from(gave).is_ok_and(|gave| gave < all)
+                {
+                    eprintln!(
+                        "<4>{}'s search for what Joel said found {all} but gave {gave}, so it's \
+                         searched from {} again next round, as what it left out may hold his \
+                         stop",
+                        github.name,
+                        github::stamp(self.reach())
+                    );
+                    found.whole = false;
+                }
             }
             Err(Unread::Gone(why) | Unread::Failed(why)) => {
                 // Its reach stays put, so the journal says how far back
@@ -131,10 +150,16 @@ impl Searched {
         found
     }
 
-    /// Moves on to a round begun at `began`, once its search was whole.
-    pub(super) fn moved_on(&mut self, began: u64, seen: HashMap<String, String>) {
-        self.from = began;
-        self.read = seen;
+    /// Moves on to a round begun at `began` once what it `found` was
+    /// whole; one cut short keeps its reach, though what it read is known
+    /// as read, so a flood of threads isn't read again every round.
+    pub(super) fn moved_on(&mut self, began: u64, found: Found) {
+        if found.whole {
+            self.from = began;
+            self.read = found.seen;
+        } else {
+            self.read.extend(found.seen);
+        }
     }
 
     /// Says in the journal, once a run, Joel's own stop a read found from

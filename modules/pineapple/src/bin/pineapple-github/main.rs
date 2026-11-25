@@ -652,8 +652,8 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         judged.keys.push(said.key);
     }
     judged.since = began;
-    if let Some(hits) = hits.filter(|hits| hits.whole) {
-        own.moved_on(began, hits.seen);
+    if let Some(hits) = hits {
+        own.moved_on(began, hits);
     }
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
