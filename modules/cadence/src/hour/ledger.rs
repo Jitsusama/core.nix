@@ -48,13 +48,15 @@ const FROM_ASKS: [&str; 4] = [
 /// gone or unreadable once seen is unread until it can be read again,
 /// since its keeper puts it back. One holding under half the most asks
 /// read in it is unread too, until it has held that few for two hours,
-/// when it's taken as pruned and counted afresh from what it holds; one
-/// holding none is never taken as pruned, as no pruning keeps nothing.
-/// A byte that's no text is read as a stand-in character, so one torn
-/// character never leaves the whole list unread.
+/// when it's taken as pruned and counted afresh from what it holds. One
+/// holding none is never taken as pruned, as no pruning keeps nothing,
+/// and the hours it held none don't count toward pruning it after, so an
+/// ask added to a list written over starts the two hours afresh. A line holding a
+/// byte that's no text is left out, so one torn byte never leaves the
+/// whole list unread.
 pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<String>) {
     let text = match fs::read(path) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Ok(bytes) => text_lines(&bytes),
         Err(err) if seen.most == 0 && err.kind() == io::ErrorKind::NotFound => {
             return (String::new(), None);
         }
@@ -68,8 +70,18 @@ pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<S
         };
         return (text, None);
     }
+    if held == 0 {
+        seen.short_since = None;
+        let most = seen.most;
+        eprintln!(
+            "cadence: the asks list holds no ask records, where {most} were read in it, so \
+             it's said unread until its keeper puts it back"
+        );
+        let why = format!("it holds no ask records, where {most} were read in it");
+        return (String::new(), Some(why));
+    }
     let since = *seen.short_since.get_or_insert(now);
-    if held == 0 || now - since < SHORT_LASTS {
+    if now - since < SHORT_LASTS {
         let most = seen.most;
         let why = format!("it holds {held} ask records, under half the {most} read in it");
         return (String::new(), Some(why));
@@ -84,6 +96,19 @@ pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<S
         short_since: None,
     };
     (text, None)
+}
+
+/// The lines of `bytes` that are text, joined again. A line holding a
+/// byte that's no text is left out, as a line torn as it was written
+/// is: read with a stand-in for the byte, it could count as an ask, and
+/// the measures, which know an ask by its exact words, would take it for
+/// an ask of its own.
+pub(crate) fn text_lines(bytes: &[u8]) -> String {
+    bytes
+        .split(|&byte| byte == b'\n')
+        .filter_map(|line| std::str::from_utf8(line).ok())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// How many ask records `text` holds: its lines naming when an ask was

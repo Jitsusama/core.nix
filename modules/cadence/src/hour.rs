@@ -17,7 +17,7 @@
 
 mod card;
 mod good;
-mod ledger;
+pub(crate) mod ledger;
 mod lines;
 mod measures;
 mod moved;

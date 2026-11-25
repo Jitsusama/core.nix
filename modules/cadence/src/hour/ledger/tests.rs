@@ -81,7 +81,7 @@ fn a_list_written_over_with_under_half_its_asks_is_unread_until_restored() {
     assert!(text.is_empty(), "a list written over was read: {text}");
     assert_eq!(
         why.as_deref(),
-        Some("it holds 0 ask records, under half the 853 read in it"),
+        Some("it holds no ask records, where 853 were read in it"),
         "a list written over wasn't said unread, with why"
     );
     let (restored, why) = read_at(folder.path(), &list(853), &mut seen, NOW + 240);
@@ -127,34 +127,54 @@ fn a_list_holding_no_asks_is_never_taken_as_pruned() {
     read_at(folder.path(), over, &mut seen, NOW);
     let (text, why) = read_at(folder.path(), over, &mut seen, NOW + 2 * SHORT_LASTS);
     assert!(text.is_empty(), "a list holding no asks was read: {text}");
-    assert!(
-        why.is_some(),
-        "a list holding no asks for two hours was taken as pruned"
+    assert_eq!(
+        why.as_deref(),
+        Some("it holds no ask records, where 10 were read in it"),
+        "a list holding no asks for two hours wasn't said unread for it"
     );
     assert_eq!(
-        seen.most, 10,
-        "a list holding no asks lowered the most seen"
+        seen,
+        Seen {
+            most: 10,
+            short_since: None
+        },
+        "the hours a list held no asks counted toward its pruning"
+    );
+    let added = format!("{over}{}", list(1));
+    let after = NOW + 3 * SHORT_LASTS;
+    let (text, why) = read_at(folder.path(), &added, &mut seen, after);
+    assert!(
+        text.is_empty() && why.is_some(),
+        "one ask added after hours at none was taken as pruned at once: {text}"
+    );
+    assert_eq!(
+        seen.short_since,
+        Some(after),
+        "one ask added after hours at none didn't start the two hours afresh"
     );
 }
 
 #[test]
-fn a_byte_that_is_no_text_leaves_the_list_read() {
+fn a_byte_that_is_no_text_leaves_out_its_line_and_no_other() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let path = folder.path().join("asks.jsonl");
     let mut bytes = list(4).into_bytes();
     bytes.extend_from_slice(b"{\"at\":\"x\",\"words\":\"torn \xff\"}\n");
+    bytes.extend_from_slice(b"{\"at\":\"y\",\"words\":\"ok\"}\n");
+    bytes.extend_from_slice(b"{\"at\":\"z\",\"words\":\"caf\xc3");
     fs::write(&path, bytes).expect("the asks list is written");
     let mut seen = Seen::default();
     let (text, why) = whole(&path, &mut seen, NOW);
     assert!(
         why.is_none(),
-        "a list with one torn byte was said unread: {why:?}"
+        "a list with torn bytes was said unread: {why:?}"
     );
-    assert!(
-        text.starts_with(&list(4)),
-        "the whole lines before the torn byte weren't read: {text}"
+    assert_eq!(
+        text,
+        format!("{}{{\"at\":\"y\",\"words\":\"ok\"}}", list(4)),
+        "the lines holding torn bytes were read, or a whole line was lost"
     );
-    assert_eq!(seen.most, 5, "the ask holding a torn byte wasn't counted");
+    assert_eq!(seen.most, 5, "a record holding a torn byte was counted");
 }
 
 #[test]
