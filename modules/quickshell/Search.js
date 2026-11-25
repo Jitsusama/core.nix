@@ -179,3 +179,18 @@ function washed(text, pattern, wash, spaced) {
     }
     return html + escaped(text.slice(at));
 }
+
+// What a drawer's reader, a rich text, is given to hold a text in: a block
+// keeping every space and break as written, `leading` px a line where it's
+// set. A `styled` text is markup already, its links in its `ink` rather
+// than rich text's blue, and isn't washed, since washing inside markup
+// isn't done; any other is escaped, or washed where a pattern is `sought`.
+// Drawer.qml's reader and tests/query-keys.qml both build it here, so the
+// break a test reads back is the one the drawer's reader gives.
+function readerText(text, { leading, styled, ink, sought, wash, spaced } = {}) {
+    const spacing = leading > 0
+        ? `; line-height:${leading}px; -qt-line-height-type:fixed` : "";
+    const held = styled ? text.replace(/<a /g, `<a style="color:${ink}" `)
+        : sought ? washed(text, sought, wash, spaced) : escaped(text);
+    return `<div style="white-space:pre-wrap${spacing}">${held}</div>`;
+}

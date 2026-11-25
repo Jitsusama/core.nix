@@ -2099,18 +2099,21 @@ QtObject {
         holds("and with none at another text's break",
             Lines.runsOn("Drawing 2026-11-09\u2028", 18, false), null);
         // The break those are read at is the one Qt gives: a title's "\n"
-        // goes into its reader, a rich text, as <br>, and the reader gives
-        // it back as a line separator, not a newline (Drawer.qml's words).
+        // goes into its reader, a rich text, as <br>, in the markup
+        // Drawer.qml's reader is given (Search.readerText), and the reader
+        // gives it back as a line separator, not a newline.
         const titleReader = Qt.createQmlObject(
             "import QtQuick; TextEdit { textFormat: TextEdit.RichText }", root);
-        titleReader.text = `<div style="white-space:pre-wrap">`
-            + `${Search.escaped("Drawing 2026-11-09\n10.12.03.svg")}</div>`;
-        const atBreak = titleReader.getText(0, 19);
-        holds("a title's reader gives its break back as a line separator", atBreak,
-            "Drawing 2026-11-09\u2028");
-        holds("which a search runs on across with the space it stood for",
-            Lines.runsOn(atBreak, 18, true), " ");
+        titleReader.text = Search.readerText("Drawing 2026-11-09\n10.12.03.svg");
+        holds("a title's reader gives its break back as a line separator",
+            titleReader.getText(0, 19), "Drawing 2026-11-09\u2028");
         titleReader.destroy();
+        holds("a reader's text keeps its spaces at its leading",
+            Search.readerText("a  <b>", { leading: 20 }), "<div style=\"white-space:pre-wrap;"
+                + " line-height:20px; -qt-line-height-type:fixed\">a  &lt;b&gt;</div>");
+        holds("and a styled one's links in its ink, unwashed",
+            Search.readerText("<a href=\"x\">y</a>", { styled: true, ink: "#fff", sought: "y" }),
+            "<div style=\"white-space:pre-wrap\"><a style=\"color:#fff\" href=\"x\">y</a></div>");
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
@@ -2480,9 +2483,16 @@ QtObject {
     }
 
     function run() {
+        // A value as a failure says it, with the separators JSON leaves
+        // bare spelt out, so a line separator never reads as a paragraph's.
+        function spelt(value) {
+            return String(JSON.stringify(value)).replace(/[\u2028\u2029\u200b\u2060]/g,
+                letter => `\\u${letter.charCodeAt(0).toString(16).padStart(4, "0")}`);
+        }
+
         function holds(what, got, want) {
             if (JSON.stringify(got) !== JSON.stringify(want))
-                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
+                failures.push(`${what}: ${spelt(got)}, not ${spelt(want)}`);
         }
 
         // [what, the keys typed from the opening, the acts done]

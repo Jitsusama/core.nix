@@ -196,17 +196,11 @@ Floating {
                 textFormat: TextEdit.RichText
                 wrapMode: words.wrapMode === Text.NoWrap ? TextEdit.NoWrap
                     : TextEdit.WrapAtWordBoundaryOrAnywhere
-                text: `<div style="white-space:pre-wrap`
-                    + (words.leading > 0
-                        ? `; line-height:${words.leading}px; -qt-line-height-type:fixed` : "")
-                    // A match in a styled text lands the cursor but isn't
-                    // washed, since washing inside markup isn't done. Its
-                    // links take its ink, as the Text's do, never rich
-                    // text's blue.
-                    + `">${words.styled ? said.replace(/<a /g, `<a style="color:${words.ink}" `)
-                        : words.sought !== ""
-                            ? Search.washed(said, words.sought, words.wash, words.spaced)
-                            : Search.escaped(said)}</div>`
+                // A match in a styled text lands the cursor but isn't
+                // washed. Its links take its ink, as the Text's do.
+                text: Search.readerText(said, { leading: words.leading,
+                    styled: words.styled, ink: words.ink, sought: words.sought,
+                    wash: words.wash, spaced: words.spaced })
 
                 FontMetrics {
                     id: cut
