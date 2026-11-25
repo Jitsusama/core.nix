@@ -428,7 +428,7 @@ fn token() -> SignIn {
 /// Why the site didn't answer, as far as a round cares.
 enum Unread {
     /// What was asked for is gone, or not Joel's to read: the round goes
-    /// on without it.
+    /// on without it, though one owed stays owed (owed.rs).
     Gone(String),
     /// The site couldn't be asked now: what the round wanted is asked
     /// again, a round that couldn't ask what changed whole, a pull request

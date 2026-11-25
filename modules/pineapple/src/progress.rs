@@ -11,7 +11,9 @@
 //! the file with its reader stopped, as a running one writes it back each
 //! round; that lets go of a first start's floor too. A reader from before
 //! owing writes the file back without what's owed, so going back to one
-//! lets that go unnamed, its `since` already past it.
+//! lets that go unnamed, its `since` already past it. One owed that GitHub
+//! won't read again holds when it was last read whole back for the hours
+//! until it's let go, so it reads as a reader that isn't reading.
 
 use std::path::Path;
 

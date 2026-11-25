@@ -79,8 +79,11 @@ fn merged(threads: &mut [Listed], thread: &Thread, from: u64, read_from: u64) ->
 /// it owed `before` and didn't list, a round nearer due. One owed that
 /// GitHub says is gone is asked again as one that failed, as it says so
 /// of one that's there when an organization's sign-in lapses, and one
-/// truly gone is let go after its tries, its span named; one gone that
-/// wasn't owed goes as it did, a round's minute unread.
+/// truly gone is let go after its tries, its span named. One gone that
+/// wasn't owed goes, as it did before anything was owed: what notified
+/// Joel loses a round's minute, but a search hit loses from its reach on,
+/// as the search gives it again only once it changes, and while a sign-in
+/// lapses each new one there goes so, under a warning each.
 pub(super) fn kept(
     name: &str,
     threads: &[Listed],

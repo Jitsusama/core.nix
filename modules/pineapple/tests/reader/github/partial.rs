@@ -230,6 +230,7 @@ fn github_a_thread_that_keeps_failing_is_owed_asked_less_often_and_holds_back_no
 fn github_a_spent_limit_stops_the_round_at_a_search_hit_and_what_it_owes_is_judged_once() {
     let case = Case {
         found: &[14, 15, 16],
+        said: Some(last() - 50),
         refused: 3,
         ..Case::default()
     };
@@ -251,9 +252,15 @@ fn github_a_spent_limit_stops_the_round_at_a_search_hit_and_what_it_owes_is_judg
          notified Joel: {seen:?}"
     );
     assert_eq!(
+        (reads(&seen, 15).len(), reads(&seen, 16).len()),
+        (1, 1),
+        "what the limit kept back is read once it lifts: {seen:?}"
+    );
+    assert_eq!(
         verdicts,
         ["stop", "stop-asked"],
-        "what it owed is judged once the limit lifts, and once"
+        "Joel's stop, which only where #12 was owed from reaches, is judged once the limit \
+         lifts, and once"
     );
     assert!(
         said.contains("read 0 of the 4 it named, so the rest is read again later"),
@@ -284,11 +291,17 @@ fn github_a_round_stops_reading_at_its_third_failure_and_reads_what_it_kept_back
         first, 3,
         "a round that fails three times asks no more: {seen:?}"
     );
+    let second: Vec<&String> = seen[searched[1]..searched[2]]
+        .iter()
+        .filter(|line| line.contains("/comments?"))
+        .collect();
     assert!(
-        seen[searched[1]..searched[2]]
-            .iter()
-            .any(|line| asks_comments_of(line, 12)),
-        "the next round reads what it kept back before what keeps failing: {seen:?}"
+        second
+            .first()
+            .is_some_and(|line| asks_comments_of(line, 17))
+            && second.iter().any(|line| asks_comments_of(line, 12)),
+        "the next round reads what it kept back before what keeps failing, the third to fail \
+         counted as one that failed: {seen:?}"
     );
     assert_eq!(
         verdicts,
