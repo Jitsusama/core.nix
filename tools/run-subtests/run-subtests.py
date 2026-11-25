@@ -70,6 +70,12 @@ OPERATORS = frozenset({"and", "or", "not"})
 # What subtests.nix says of a check that isn't a VM test, and so has no
 # subtests: its evaluation fails, which must never read as the check failing.
 NOT_A_VM_TEST = "isn't a VM test, so it has no subtests"
+# What this program says, inside the build too, of a VM test whose script
+# doesn't hand its tests to pytest: that build fails having run no test, which
+# must never read as the check failing either.
+NOT_HANDED_TO_PYTEST = "doesn't hand its tests to pytest"
+# Either refusal, read from what the build elsewhere said.
+REFUSALS = (NOT_A_VM_TEST, NOT_HANDED_TO_PYTEST)
 
 # What nix-offload says of subtests that passed at the commit already, naming
 # the folder it kept them in (its main.rs, Kept::unpassed), which it copies
@@ -347,7 +353,7 @@ class Offloaded(NamedTuple):
     """What nix-offload did: its status, and what its errors said."""
 
     status: int
-    # Whether subtests.nix refused the check as no VM test.
+    # Whether the check was refused as having no subtests to pick.
     refused: bool
     # nix-offload's word that it served a pass kept from before, naming its
     # folder and the command that has it run again.
@@ -396,7 +402,8 @@ def there(options: Options) -> tuple[int, frozenset[str]] | None:
     status, refused, served, failed = ran
     if refused:
         print(
-            f"run-subtests: {options.check} isn't a VM test; build it whole with {whole(options)}",
+            f"run-subtests: {options.check} has no subtests to pick; "
+            f"build it whole with {whole(options)}",
             file=sys.stderr,
         )
         return USAGE, frozenset()
@@ -455,7 +462,7 @@ def offloaded(command: list[str]) -> Offloaded:
     ) as running:
         for line in running.stderr or ():
             sys.stderr.write(line)
-            refused = refused or NOT_A_VM_TEST in line
+            refused = refused or any(refusal in line for refusal in REFUSALS)
             served = SERVED.search(line) or served
             said.append(line)
     return Offloaded(running.returncode, refused, served, failed_tests(said))
@@ -641,7 +648,7 @@ def ran(options: Options) -> int:
     script = (driver / "test-script").read_text()
     if not pytest_driven(script):
         print(
-            f"run-subtests: {options.check}'s script doesn't hand its tests to pytest "
+            f"run-subtests: {options.check}'s script {NOT_HANDED_TO_PYTEST} "
             f"(tests/lib/vm_pytest.py), so it has none to pick; build it whole with "
             f"{whole(options)}",
             file=sys.stderr,

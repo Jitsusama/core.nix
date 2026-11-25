@@ -729,8 +729,38 @@ def test_a_check_that_isnt_a_vm_test_is_refused_and_never_excused(
 
     assert tool.main(["--there", "the-launcher-answers-on-niri", "x"]) == tool.USAGE
     said = capsys.readouterr().err
-    assert "isn't a VM test" in said
+    # The build's own line is echoed too, so only the tool's words show it
+    # read that line as a refusal.
+    assert "the-launcher-answers-on-niri has no subtests to pick" in said
     assert "quarantines it" not in said
+
+
+@pytest.mark.usefixtures("stand_in")
+def test_a_script_refused_inside_the_build_elsewhere_is_refused_and_never_excused(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The build runs this program on the check's driver, which refuses a
+    # script not handed to pytest; the build fails naming no test, which a
+    # whole entry would otherwise excuse as a pass.
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+    monkeypatch.setenv(
+        "STAND_IN_OFFLOAD_SAYS",
+        "vm-test-run-vm-desktop-x> run-subtests: vm-desktop-x's script doesn't hand its "
+        "tests to pytest (tests/lib/vm_pytest.py), so it has none to pick",
+    )
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == tool.USAGE, (
+        "a refusal inside the build was taken for the check failing"
+    )
+    said = capsys.readouterr().err
+    assert "vm-desktop-x has no subtests to pick" in said, said
+    assert "quarantines it" not in said, said
 
 
 @pytest.mark.usefixtures("stand_in")
