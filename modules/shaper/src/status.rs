@@ -682,15 +682,17 @@ mod tests {
 
     #[test]
     fn names_and_a_why_from_outside_draw_no_escape() {
-        // The leader's name sits on a line that fits, so it reads the
-        // path a line set whole takes, as every line into a pipe does.
+        // The leader's name sits on a line that fits, and the why below
+        // wraps, so in a terminal both of a hanging paragraph's outcomes
+        // see the controls, and into a pipe its one line does.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
             network: "6c:ae\u{1b}]0;owned\u{7}:f6".to_owned(),
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
-        // A why long enough to wrap at 60, so the hang's path is read.
+        // A why long enough to wrap at 60, so it hangs under its first
+        // line there and fits whole at 200.
         if let Some(heard) = link.heard.as_mut() {
             heard.why = heard
                 .why
