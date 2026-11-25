@@ -721,8 +721,8 @@ in
     })
     (lib.mkIf (cfg.declares != null) {
       # Only a Mac's pi lays a sandbox profile round each command it runs,
-      # and a Linux node starts no held session through a launcher to
-      # spare, so the word is refused where it can't be true.
+      # and only a Mac's node acts on the word, so it is refused where it
+      # can't be true.
       assertions = [
         {
           assertion = cfg.declares.piFencesItself -> isDarwin;
