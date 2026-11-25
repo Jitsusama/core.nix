@@ -130,11 +130,13 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
             block = !trimmed[2..].contains("*/");
             true
         } else {
-            let comment = (trimmed.starts_with(mark) && !trimmed.starts_with("#!"))
+            // Only a file's first line can be its shebang; past it, `#!` opens a comment.
+            let shebang = number == 0 && line.starts_with("#!");
+            let comment = (trimmed.starts_with(mark) && !shebang)
                 || (extension == "nix" && trimmed.starts_with('*'));
             // A blank line, a comment or a shebang leaves where a statement
             // starts as it was.
-            if extension == "py" && !comment && !trimmed.is_empty() && !trimmed.starts_with('#') {
+            if extension == "py" && !comment && !trimmed.is_empty() && !shebang {
                 let scanned = scan(line, None);
                 string = scanned.open;
                 starts = string.is_none() && scanned.code.trim_end().ends_with(':');
@@ -314,7 +316,7 @@ mod tests {
         let files = [
             file(
                 "tests/a.sh",
-                "#!/usr/bin/env tests/kept/gone\nx=\"tests/kept/none.sh\"\n",
+                "#!/usr/bin/env tests/kept/gone\nx=\"tests/kept/none.sh\"\n#! tests/kept/bang.sh\n",
             ),
             file(
                 "tests/b.py",
@@ -322,15 +324,23 @@ mod tests {
             ),
             file("tests/c.md", "See tests/kept/none.\n"),
             file("tests/d.nix", "/* Beside\n * tests/kept/none.nix */\n{ }\n"),
+            file(
+                "tests/e.sh",
+                "  #! tests/kept/lead.sh\n#! tests/kept/two.sh\n",
+            ),
             file("tests/kept/x.nix", "{ }\n"),
         ];
         assert_eq!(
             stale(&paths(&files), &files),
             [
+                "tests/a.sh:3: tests/kept/bang.sh",
                 "tests/b.py:2: tests/kept/checks.nix",
-                "tests/d.nix:2: tests/kept/none.nix"
+                "tests/d.nix:2: tests/kept/none.nix",
+                "tests/e.sh:1: tests/kept/lead.sh",
+                "tests/e.sh:2: tests/kept/two.sh"
             ],
-            "a string or a shebang was read, or a docstring missed"
+            "a string or a shebang was read, or a docstring, an indented `#!` or one past line 1 \
+             missed"
         );
     }
 
@@ -473,6 +483,7 @@ mod tests {
                  def f():\n\
                  \x20   # A comment before its docstring.\n\
                  \n\
+                 \x20   \n\
                  \x20   \"\"\"Naming tests/kept/def.nix.\"\"\"\n",
             ),
             file("tests/kept/x.nix", "{ }\n"),
@@ -481,9 +492,10 @@ mod tests {
             stale(&paths(&files), &files),
             [
                 "tests/n.py:4: tests/kept/module.nix",
-                "tests/n.py:8: tests/kept/def.nix"
+                "tests/n.py:9: tests/kept/def.nix"
             ],
-            "a blank line, a comment or a shebang moved where a docstring may stand"
+            "a blank line, one of spaces alone, a comment or a shebang moved where a docstring \
+             may stand"
         );
     }
 
@@ -508,7 +520,15 @@ mod tests {
                  \"\"\"Not a docstring, naming tests/kept/notdoc.nix.\"\"\"\n\
                  t = 'one quote, \\\n\
                  # tests/kept/cont.nix'\n\
-                 # tests/kept/out.nix, past them all\n",
+                 # tests/kept/out.nix, past them all\n\
+                 def j():\n\
+                 \x20   \"\"\"Opened,\n\
+                 \x20   closed\"\"\" + \"\"\"and a string opened\n\
+                 # tests/kept/handed.nix, in that string\n\
+                 \"\"\"\n\
+                 if x == \"\"\"a\n\
+                 b\"\"\":\n\
+                 \x20   \"\"\"Naming tests/kept/colon.nix.\"\"\"\n",
             ),
             file("tests/kept/x.nix", "{ }\n"),
         ];
@@ -519,11 +539,13 @@ mod tests {
                 "tests/m.py:4: tests/kept/later.nix",
                 "tests/m.py:6: tests/kept/raw.nix",
                 "tests/m.py:7: tests/kept/rawafter.nix",
-                "tests/m.py:17: tests/kept/out.nix"
+                "tests/m.py:17: tests/kept/out.nix",
+                "tests/m.py:25: tests/kept/colon.nix"
             ],
             "an escape closed a docstring, a string opened past one's close was read as it, \
-             a line past a string was read as if it began outside one, or a backslash's \
-             one-quote string was dropped"
+             a line past a string was read as if it began outside one, a backslash's \
+             one-quote string was dropped, a string opened past a docstring's close was lost, \
+             or a string closing on a colon hid the docstring after it"
         );
     }
 

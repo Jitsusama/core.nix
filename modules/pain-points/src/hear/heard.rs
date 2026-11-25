@@ -110,25 +110,45 @@ impl Heard {
     }
 }
 
-/// The words of each line of a ledger. A line carries its pain whether or
-/// not its ask has landed: either way the keeper has it. A line this
-/// listener wrote of a pain it sent carries nothing, or its own pains
-/// would read as carried and leave the count.
-pub fn ledger(text: &str) -> Vec<String> {
+/// A ledger line as the listener reads it: the words it carries, and the
+/// cell it names as their owner, empty when it names none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Line {
+    pub words: String,
+    pub owner: String,
+}
+
+/// Each line of a ledger. A line carries its pain whether or not its ask
+/// has landed: either way the keeper has it. A line this listener wrote
+/// of a pain it sent carries nothing, or its own pains would read as
+/// carried and leave the count.
+pub fn ledger(text: &str) -> Vec<Line> {
     text.lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .filter(|line| line.get(super::missed::PAIN).is_none())
-        .filter_map(|line| Some(line.get("words")?.as_str()?.to_string()))
+        .filter_map(|line| {
+            let owner = line.get("owner").and_then(serde_json::Value::as_str);
+            Some(Line {
+                words: line.get("words")?.as_str()?.to_string(),
+                owner: owner.unwrap_or_default().to_string(),
+            })
+        })
         .collect()
 }
 
-/// Whether a ledger line's words are these words: alike, or quoted
+/// Whether a ledger line carries these words.
+pub fn carried(words: &str, ledgers: &[Line]) -> bool {
+    carrier(words, ledgers).is_some()
+}
+
+/// The first ledger line whose words are these words: alike, or quoted
 /// inside them, a part at a time where the ledger cut him with "...".
-pub fn carried(words: &str, ledgers: &[String]) -> bool {
+pub fn carrier<'a>(words: &str, ledgers: &'a [Line]) -> Option<&'a Line> {
     let low = words.to_lowercase();
-    ledgers.iter().any(|said| {
-        alike(said, words) > CARRIED_ALIKE
-            || said
+    ledgers.iter().find(|line| {
+        alike(&line.words, words) > CARRIED_ALIKE
+            || line
+                .words
                 .to_lowercase()
                 .split("...")
                 .map(str::trim)
@@ -177,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn a_ledger_gives_each_lines_words() {
+    fn a_ledger_gives_each_lines_words_and_owner() {
         let text = concat!(
             r#"{"at":"x","words":"the bar is too tight","owner":"Y","landed":"2026"}"#,
             "\n",
@@ -190,14 +210,33 @@ mod tests {
         );
         assert_eq!(
             ledger(text),
-            vec!["the bar is too tight", "no window opened", "still open ask"]
+            [
+                ("the bar is too tight", "Y"),
+                ("no window opened", "Z"),
+                ("still open ask", "Z")
+            ]
+            .map(|(words, owner)| Line {
+                words: words.into(),
+                owner: owner.into()
+            }),
+            "a line's words or owner went astray, or a line it sent was read"
         );
+        let ownerless = ledger(r#"{"at":"x","words":"no one named"}"#);
+        assert_eq!(ownerless[0].owner, "", "a line naming no owner gave one");
+    }
+
+    fn said(words: &str) -> Line {
+        Line {
+            words: words.into(),
+            owner: "ABC123".into(),
+        }
     }
 
     #[test]
     fn a_pain_the_ledgers_quote_is_carried() {
-        let ledgers = vec![
-            "i had sent a number of things to the void ... now going in shows me nothing".into(),
+        let ledgers = [
+            said("i had sent a number of things to the void ... now going in shows me nothing"),
+            said("the launcher is slow to open"),
         ];
         assert!(
             carried(
@@ -212,12 +251,17 @@ mod tests {
             "a part"
         );
         assert!(
-            !carried("the launcher is slow to open", &ledgers),
+            !carried("the bar is the wrong colour", &ledgers),
             "another pain"
         );
-        let short = vec!["no".to_string()];
+        assert_eq!(
+            carrier("the launcher is slow to open", &ledgers),
+            ledgers.get(1),
+            "the line carrying a pain wasn't the one found"
+        );
+        let short = [said("no")];
         assert!(!carried("no, the other one", &short), "too short to find");
-        let tight = vec!["the launcher is too tight on the right".to_string()];
+        let tight = [said("the launcher is too tight on the right")];
         assert!(
             !carried("the launcher is slow to open", &tight),
             "another pain about the same tool"

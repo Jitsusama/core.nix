@@ -82,7 +82,9 @@ pub enum Job {
 /// and not for one taken up from its file after a restart. Its `guesses`
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
-/// were read back from its file, their echoes already left out.
+/// were read back from its file, their echoes already left out. Its
+/// `told` are the echo cuts from Joel's words already journaled, by line
+/// and the sample the cut starts at.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -94,6 +96,7 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
+    told: HashSet<(usize, usize)>,
 }
 
 /// A piece of a take of theirs as the speaker model heard it: its
@@ -101,6 +104,28 @@ struct Writing {
 type Embedded = (Vec<f32>, usize, usize);
 
 impl Writing {
+    /// What's newly cut from Joel's words as the others' echo, a journal
+    /// line a cut, said once each: how many words, when and how late,
+    /// never the words, since a call's words stay out of the journal. A
+    /// word wrongly cut is gone from the file, so this is all that says
+    /// where to listen for it.
+    fn untold_cuts(&mut self) -> Vec<String> {
+        let (_, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
+        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
+        cuts.into_iter()
+            .filter(|cut| self.told.insert((cut.line, cut.at)))
+            .map(|cut| {
+                format!(
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, \
+                     {} ms after theirs",
+                    cut.text.split_whitespace().count(),
+                    transcript::clock(cut.at),
+                    cut.after * 1000 / rate,
+                )
+            })
+            .collect()
+    }
+
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
@@ -237,6 +262,9 @@ pub fn hear(
                     voice: None,
                     name: None,
                 });
+                for cut in writing.untold_cuts() {
+                    eprintln!("{cut}");
+                }
                 write(book, &key, writing, me, true);
             }
             Job::Done { key, side } => {
@@ -288,8 +316,9 @@ impl Hears for Parakeet {
 /// text a space between each, as `transcribe` would, and timed from the
 /// call's start, which is where its pieces are, so each of theirs finds
 /// the piece it was said in and each of Joel's the words of theirs it
-/// may echo.
-fn transcribe_take(
+/// may echo. The `transcribe` subcommand and the scorer hear a take
+/// through this too (`score::hear_take`), so they read what it writes.
+pub fn transcribe_take(
     hears: &mut impl Hears,
     start: usize,
     samples: &[f32],

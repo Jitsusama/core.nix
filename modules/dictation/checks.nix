@@ -283,8 +283,10 @@
       # Cutting their echo from Joel's lines by word time and loudness,
       # rather than leaving out only whole lines that repeat theirs, took
       # the rate from 25.8% to 21.7%, and his side's from 37.0% to 24.6%.
-      # The ceiling is what it reaches, as the clean meetings' is.
-      ceiling = "21.7";
+      # Carrying a run of their echo past a word only his microphone heard
+      # took it on to 21.5%, his side to 24.0%. The ceiling is what it
+      # reaches, as the clean meetings' is.
+      ceiling = "21.5";
     in
     pkgs.runCommand "call-transcripts-hears-echoed-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}

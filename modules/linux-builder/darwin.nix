@@ -230,6 +230,17 @@ let
         cfg.nixDaemon
       ];
 
+  # How long ssh waits on the guest, in seconds, before a build sent there
+  # fails: to greet it, and between asks, and how many asks may go
+  # unanswered. The greeting covers a boot from idle, which took about 90
+  # seconds from vzvm's start on 24 November, and Nix's hook fails the
+  # build the first time it can't connect, so it's well past that.
+  answers = {
+    greeting = 300;
+    every = 15;
+    unanswered = 4;
+  };
+
   # Not nix-darwin's /var/lib/linux-builder, which it empties at every switch
   # while its own builder is off.
   home = "/var/lib/linux-builder-vz";
@@ -435,6 +446,16 @@ in
       ) cfg.restartableBy
     );
 
+    # The VM is reached through vzvm's port on the Mac's loopback, which
+    # stays open whatever the guest does, so ssh to a guest that stops
+    # answering would wait without end, and the build with it, holding the
+    # store paths it locked. So ssh asks the guest every 15 seconds and
+    # gives up after four asks go unanswered, and gives a guest waking from
+    # idle five minutes to greet it: a build on a guest that stopped
+    # answering fails within about a minute, freeing what it held. A guest
+    # busy building still answers, since its sshd does. Neither reaches a
+    # machine that jumps through the Mac, whose own ssh settings apply, nor
+    # a guest whose sshd answers while its build hangs.
     environment.etc."ssh/ssh_config.d/100-linux-builder.conf".text = ''
       Host linux-builder
         User builder
@@ -442,6 +463,9 @@ in
         HostKeyAlias linux-builder
         Port ${toString guest.virtualisation.darwin-builder.hostPort}
         IdentityFile /etc/nix/builder_ed25519
+        ConnectTimeout ${toString answers.greeting}
+        ServerAliveInterval ${toString answers.every}
+        ServerAliveCountMax ${toString answers.unanswered}
     '';
 
     environment.etc."nix/linux-builder.conf".text = ''

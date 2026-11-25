@@ -3,6 +3,7 @@
 {
   account,
   bareNixos,
+  compilesForMacos,
   holds,
   onLinux,
   passesClippy,
@@ -10,7 +11,22 @@
   self,
   ...
 }:
-onLinux {
+{
+  # clippy finds nothing in elsewhere, its tests included. It's held on
+  # every system, since elsewhere runs on Macs too, and a Mac's cargo
+  # clippy, run without core's lints, passed what Linux's check refused.
+  elsewhere-passes-clippy = passesClippy "elsewhere-passes-clippy" (
+    pkgs.callPackage ./package.nix { }
+  );
+}
+// onLinux {
+  # clippy reads elsewhere, its tests included, as macOS would compile it,
+  # from Linux, where every merge's checks build: a lint that only a Mac's
+  # code trips fails the gate with no Mac to ask.
+  elsewhere-compiles-for-macos = compilesForMacos "elsewhere-compiles-for-macos" (
+    pkgs.callPackage ./package.nix { }
+  );
+
   # elsewhere's tests run as it builds, against a stand-in realm: a job
   # mycelium places far goes by the quest's handover and mycelium's run,
   # never ssh or rsync, starts in the quest's scratch and runs in a copy
@@ -24,10 +40,6 @@ onLinux {
   # doesn't allow is refused before anything runs. The far line runs under
   # dash, the strictest sh a far machine may have.
   elsewhere-goes-where-mycelium-places-it = pkgs.callPackage ./package.nix { };
-  # clippy finds nothing in elsewhere, its tests included.
-  elsewhere-passes-clippy = passesClippy "elsewhere-passes-clippy" (
-    pkgs.callPackage ./package.nix { }
-  );
 
   # The machines and kinds a machine repository declares reach elsewhere's
   # settings in the words the program reads, an account that declares

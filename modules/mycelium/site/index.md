@@ -39,9 +39,10 @@ Nothing on it acts on the network.
   more of its cells than any other, and its drawer names them. A branch
   lasts only while the cell that started it is on the map, since that
   cell's network is known from where it is drawn. Who started a cell is
-  known only of this machine's cells for now, so each machine's map grows
-  branches only from its own cells, and two machines' maps of one realm
-  can differ.
+  said by the node that started it and carried to every machine, so a
+  branch grows across machines alike. A node too old to say so of its
+  cells says it only of its own machine's, so a realm with such a node in
+  it grows branches from that machine's cells only on that machine's map.
 - **Lines thin as the map steps out past its own size.** What each line
   carries past a hairline thins with the zoom, as the cells shrink with
   it, so the cells read first: a heavier line still reads heavier than a
@@ -144,10 +145,11 @@ Nothing on it acts on the network.
   the questions waiting and holds standing that hold the flow; then how
   the whole network stands, what it spent today, how to read the map
   and the network as a tree. Full stop, or the last control over the
-  map, opens Now. A cell's drawer talks to it in the Launcher, starts
-  new work from it, and one
-  with a forage opens the forage page on it, saying what it is for and
-  how far its plans have come.
+  map, opens Now. A cell's drawer can go to it, raising its window or
+  opening one, talk to it in the Launcher and start new work from it;
+  one that asks you something leads with those acts, then says what it
+  asks, whole, and one with a forage opens the forage page on it,
+  saying what it is for and how far its plans have come.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's

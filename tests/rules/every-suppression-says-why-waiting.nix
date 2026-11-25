@@ -18,5 +18,4 @@
   "tests/vm/boot/greeter-vm-test.py" = 2;
   "modules/quickshell/tests/launcher-on-niri-test.py" = 7;
   "tests/repository/every-vm-test-keeps-to-the-pyramid.py" = 1;
-  "tools/run-subtests/run-subtests.py" = 5;
 }

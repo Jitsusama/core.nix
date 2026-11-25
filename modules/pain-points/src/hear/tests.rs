@@ -388,6 +388,16 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
     )
     .expect("an hour");
     assert_eq!(kept, hour);
+    let misses = fs::read_to_string(place.root.join("misses.jsonl")).expect("misses written");
+    let carried = misses
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|line| line["pain"] == "s-live/e4");
+    assert_eq!(
+        carried.map(|line| (line["owner"].clone(), line["carried"].clone())),
+        Some((json!("Y"), json!(true))),
+        "the pain the asks carried before it was sent wasn't written to that line's owner"
+    );
 }
 
 #[test]

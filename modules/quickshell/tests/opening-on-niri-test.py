@@ -1947,13 +1947,14 @@ def test_the_cursor_stays_on_its_row_as_home_fills_in(shell: Shell) -> None:
 def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     shell: Shell,
 ) -> None:
-    """A first letter in a kept Emoji, ranking hundreds of its rows anew, starts on its first.
+    """A first letter in a kept Emoji, ranking a hundred of its rows anew, starts on its first.
 
     Those rows moved into place one at a time, each move reading the rows in view again, so the
     letter's frame came 2.4 to 7.3 s after it (H6EDLC, 2026-11-11); listed afresh instead, the
     selection stands on the first row found, drawn there rather than gliding, and the list
     starts at its top and holds every row found. Emoji's are found by the clipboard's history,
-    so the letter's rows are read once its answer has come.
+    so the letter is typed once for its answer and again once that's held, as the key's own
+    frame then lists the hundred, where the first is listed only as its answer comes.
     """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
@@ -1964,11 +1965,24 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     shell.as_account(shell.ipc("collection", "emoji"))
     filled_after(shell, timed)
     settled(shell)
+    whole = shell.showing()["count"]
+    shell.send_chars("f")
+    shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
+    shell.send_key("backspace")
+    shell.launcher_until(lambda shown: shown["typed"] == "" and shown["count"] == whole)
     for _ in range(ROWS_DOWN):
         shell.send_key("down")
     shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
+    first: list[Json] = []
+
+    def typed_f(shown: Json) -> bool:
+        if shown["typed"] == "f" and not first:
+            first.append(shown)
+        return bool(first)
+
     shell.send_chars("f")
-    shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
+    shell.launcher_until(typed_f)
+    assert cast("int", first[0]["count"]) > 0, f"the held answer's letter listed none: {first}"
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     selection = laid["selection"]
     assert selection is not None, f"the letter left no selection drawn: {laid['rows']}"

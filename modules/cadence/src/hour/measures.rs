@@ -165,6 +165,8 @@ type Slip = (i64, String, String);
 /// `promised` gives its `expected` alone. An older date is answered by a
 /// landing or a move said by `now`, or by any later date the ask was
 /// given, since a date moved by `expected` alone says no time it moved.
+/// An older slip's line says how long ago it was due, so one stuck for
+/// weeks reads apart from yesterday's.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // The list writes an ask again to move its date, or to re-mark, land
@@ -240,8 +242,20 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
             .unwrap_or_default(),
         behind: slipped
             .iter()
-            .map(|(_, words, owner)| format!("{} · {owner}", short(words)))
+            .map(|(expected, words, owner)| {
+                format!("{}{} · {owner}", short(words), due_ago(now - expected))
+            })
             .collect(),
+    }
+}
+
+/// How long ago a slip `late` seconds past its date was due, or nothing
+/// within the day, which the measure's own words already say.
+fn due_ago(late: i64) -> String {
+    match late / DAY {
+        0 => String::new(),
+        1 => ", due a day ago".to_owned(),
+        days => format!(", due {days} days ago"),
     }
 }
 

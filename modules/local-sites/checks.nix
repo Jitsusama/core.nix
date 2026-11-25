@@ -518,7 +518,8 @@ import ./ask-checks.nix args
   # The map, built on the theme's own web kit as a machine builds it, read in
   # headless Chromium through the server beside a stand-in node
   # (modules/mycelium/site/tests/map-reads-live-test.py): live with the realm
-  # drawn, a cell moving and another going, broken while the node is away
+  # drawn, a cell moving, two sharing a title moving and another going,
+  # broken while the node is away
   # with the realm kept and live once it's back, stale once the server goes
   # with the realm kept, a cell's title drawn as words and never as markup,
   # what each spent today, what waits on a cell and what holds stand as the
