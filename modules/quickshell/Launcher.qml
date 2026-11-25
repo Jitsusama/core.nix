@@ -8238,7 +8238,9 @@ Scope {
             waited.firedAt = KeyTimes.now();
             // A wait ended after its closing lists nothing, so it marks
             // nothing late and says no key listed (onOpenChanged); the
-            // held key is let go as searchAwaited lets one go shut.
+            // held key is let go as searchAwaited lets one go shut. No case
+            // reaches it: the wait is answersWaitedFor, 8 ms, too short for
+            // a test's closing to land inside it.
             if (!root.open) {
                 root.searchAwaited();
                 return;

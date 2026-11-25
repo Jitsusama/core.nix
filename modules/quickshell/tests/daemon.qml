@@ -743,8 +743,10 @@ ShellRoot {
         {
             // The loaders' bindings follow connects, so its socket may go
             // and say so before onConnectsChanged runs: a going read from
-            // who called it was said as one gone wrong (#6513's F1).
-            what: "a connection the shell lets go with an ask in flight is said let go",
+            // who called it was said as one gone wrong (#6513's F1). This
+            // step only lets it go: what its going said, and at what level,
+            // is read from the log by checks/shell.nix.
+            what: "a connection the shell lets go with an ask in flight goes, its ask given none",
             holds: () => {
                 if (!root.letGo && lettingGo.wire !== null) {
                     lettingGo.get([root.ada], 5000, () => {});
