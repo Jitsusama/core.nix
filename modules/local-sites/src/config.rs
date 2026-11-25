@@ -78,7 +78,10 @@ impl Config {
             None | Some(Value::Null) => None,
             Some(home) => {
                 let home = home.as_str().ok_or("home isn't a path")?;
-                Some(under(home, runtime).ok_or("home is under the runtime folder, and none is set")?)
+                Some(
+                    under(home, runtime)
+                        .ok_or("home is under the runtime folder, and none is set")?,
+                )
             }
         };
         let mounts = said
@@ -231,7 +234,8 @@ mod tests {
         let why = Config::from_json(&unpathed, Some(Path::new("/run"))).expect_err("refused");
         assert!(why.contains("home isn't a path"), "{why}");
         let running = WHOLE.replace(r#""mounts""#, r#""home": "local-sites/home", "mounts""#);
-        let config = Config::from_json(&running, Some(Path::new("/run/user/1000"))).expect("it reads");
+        let config =
+            Config::from_json(&running, Some(Path::new("/run/user/1000"))).expect("it reads");
         assert_eq!(
             config.home,
             Some(PathBuf::from("/run/user/1000/local-sites/home")),

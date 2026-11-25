@@ -77,10 +77,8 @@ pub fn find(config: &Config, path: &str) -> Found {
     {
         return Found::Refused;
     }
-    match home_file(config, &parts) {
-        Some(Some(own)) => return Found::File(own, Made::Built),
-        Some(None) => return Found::Unready,
-        None => {}
+    if let Some(found) = home_file(config, &parts) {
+        return found;
     }
     let (root, rest, guarded) = match parts.split_first() {
         Some((first, rest)) if config.mounts.contains_key(*first) => {
@@ -116,8 +114,8 @@ pub fn find(config: &Config, path: &str) -> Found {
 /// The home's own file `parts` names, its page for none: one file in its
 /// folder, never a folder, so every deeper path is a mount's or a document.
 /// Answers none where the home has no folder or the name isn't its, and
-/// `Some(None)` for one of its own names its builder hasn't written.
-fn home_file(config: &Config, parts: &[&str]) -> Option<Option<PathBuf>> {
+/// `Unready` for one of its own names its builder hasn't written.
+fn home_file(config: &Config, parts: &[&str]) -> Option<Found> {
     let name = match parts {
         [] => "index.html",
         [name] => *name,
@@ -125,9 +123,9 @@ fn home_file(config: &Config, parts: &[&str]) -> Option<Option<PathBuf>> {
     };
     let file = config.home.as_deref()?.join(name);
     if file.is_file() {
-        Some(Some(file))
+        Some(Found::File(file, Made::Built))
     } else {
-        HOME_OWN.contains(&name).then_some(None)
+        HOME_OWN.contains(&name).then_some(Found::Unready)
     }
 }
 
@@ -301,7 +299,11 @@ mod tests {
         fs::write(documents.join("index.html"), "a session's home").expect("a document");
         fs::write(documents.join("strip.css"), "a session's strip").expect("a document");
         folders.config.home = Some(home);
-        assert_eq!(find(&folders.config, "/"), Found::Unready, "a session's page stood as the home");
+        assert_eq!(
+            find(&folders.config, "/"),
+            Found::Unready,
+            "a session's page stood as the home"
+        );
         assert_eq!(
             find(&folders.config, "/strip.css"),
             Found::Unready,

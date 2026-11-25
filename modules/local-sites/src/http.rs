@@ -58,8 +58,7 @@ const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-a
 /// from here, none written into the page or evaluated from words, no
 /// plugin, no base moving its links, and no frame around it to press its
 /// buttons through.
-const OWN: &str =
-    "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 /// The cookie saying a browser's storage was swept of what a document could
 /// have left there, so it's swept once.
@@ -309,7 +308,12 @@ fn send_file(stream: &mut TcpStream, head: &Head, file: &Path, guarded: &Guarded
         return unreadable(stream);
     };
     let mut tagged = vec![("ETag", tag.as_str())];
-    tagged.extend(guarded.headers.iter().map(|(name, value)| (*name, value.as_str())));
+    tagged.extend(
+        guarded
+            .headers
+            .iter()
+            .map(|(name, value)| (*name, value.as_str())),
+    );
     if !guarded.whole && head.held.as_deref().is_some_and(|held| holds(held, &tag)) {
         let told = Told {
             kind,
