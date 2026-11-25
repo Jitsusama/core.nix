@@ -435,9 +435,9 @@ fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
             "a far line {how} cleared through the link at its copies' folder ({code:?}): {err}"
         );
         let linked = std::fs::symlink_metadata(work(&home)).is_ok_and(|at| at.is_symlink());
+        let stays = !programs.is_empty();
         assert!(
-            linked == !programs.is_empty()
-                && err.contains("so its copy stays") == !programs.is_empty(),
+            linked == stays && err.contains("so its copy stays") == stays,
             "a far line {how} kept the link it may clear, or didn't say the copy stays \
              ({code:?}): {err}"
         );

@@ -153,16 +153,6 @@ unlinked() {{
   done
   return 0
 }}
-# True once the copies' folder in the quest's scratch is no link, any one
-# there cleared first: a job of the quest may put one there while this
-# line runs, and the copy, what lies beside it and its run's file are
-# each written, unpacked or cleared by name through that folder. Each
-# step doing so asks first, which narrows a link put there after to that
-# step's own instant rather than closing it.
-copies() {{
-  [ ! -L "${{work%/*}}" ] || rm -f "${{work%/*}}" 2>/dev/null
-  [ ! -L "${{work%/*}}" ]
-}}
 stopped() {{
   trap '' HUP INT PIPE TERM
   cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
@@ -249,10 +239,11 @@ pub(super) const RUN: &str = ".run";
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
-/// taken. It comes first, before any step that clears, so each finds it
-/// whichever runs first. It opens what its walk meets only below each
-/// path, and a link met there as itself alone; a folder above a path is
-/// passed through as `rm` passes it.
+/// taken, and `copies`, true once no link stands at the copies' folder.
+/// It comes first, before any step that clears, so each finds both
+/// whichever runs first. `cleared` opens what its walk meets only below
+/// each path, and a link met there as itself alone; a folder above a path
+/// is passed through as `rm` passes it.
 pub(super) const CLEARING: &str = r#"# Takes each path away whole,
 # its folders made the far line's own to enter and write first: a job
 # may close one, so that what lies under it can't be taken. find takes a
@@ -261,6 +252,16 @@ pub(super) const CLEARING: &str = r#"# Takes each path away whole,
 cleared() {
   find -P "$@" -type d ! -perm -700 -exec chmod u+rwx {} \; 2>/dev/null
   rm -rf "$@"
+}
+# True once the copies' folder in the quest's scratch is no link, any one
+# there cleared first: a job of the quest may put one there while this
+# line runs, and the copy, what lies beside it and its run's file are
+# each written, unpacked or cleared by name through that folder. Each
+# step doing so asks first, which narrows a link put there after to that
+# step's own instant rather than closing it.
+copies() {
+  [ ! -L "${work%/*}" ] || rm -f "${work%/*}" 2>/dev/null
+  [ ! -L "${work%/*}" ]
 }"#;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
@@ -495,12 +496,11 @@ pub(super) fn bringing(kind: &Kind) -> String {
         // What can't be cleared, as a folder the job made at a list's
         // name, is left for the list's own write to fail on, so each path
         // is lost as when nowhere is left to list them.
-        r#"names="$work.back" wrote=0
+        r#"names="$work.back" wrote=0 beside=
 (
 rm -f "$job/{BROUGHT}" 2>/dev/null
 # Its lists lie beside the copy, so only once no link stands at the
 # copies' folder; where one does, each path is lost.
-beside=
 copies && beside=1 && rm -f "$names" "$names".* 2>/dev/null
 set -C
 lose() {{
@@ -589,7 +589,8 @@ fi
 /// where no link stood at the job's handover or above it as `unlinked`
 /// looked, and the copy and its run's file only where none stood at the
 /// copies' folder as `copies` looked, which narrows a link put at either
-/// after to the clearing's own instant rather than closing it. Each kept
+/// after to the span from that look to the clearing's `rm`, past its walk
+/// of what it clears, rather than closing it. Each kept
 /// is said, and each goes whether or not the other could.
 pub(super) fn freed() -> String {
     format!(
