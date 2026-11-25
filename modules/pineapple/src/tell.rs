@@ -353,17 +353,17 @@ mod tests {
             "pineapple override on this one",
             "its lines are joined into one"
         );
-        let long = format!("pineapple override {}", "\u{e9}t\u{e9} ".repeat(GIST));
+        let long = format!("pineapple override {}", "\u{e9}t\u{e9} ".repeat(500));
         let shown = gist(&long);
         assert!(
             shown.starts_with("pineapple override \u{e9}t\u{e9} ")
                 && shown.ends_with(" ...")
-                && shown.chars().count() <= GIST + 4,
+                && shown.chars().count() <= 284,
             "a long one is cut on a letter's edge, saying it was: {shown}"
         );
         assert_eq!(
-            gist(&"x".repeat(GIST)),
-            "x".repeat(GIST),
+            gist(&"x".repeat(280)),
+            "x".repeat(280),
             "one just as long is shown whole"
         );
     }
