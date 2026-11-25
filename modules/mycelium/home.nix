@@ -10,8 +10,7 @@
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
 # A machine SSH can't reach, such as one a provider lent, is dialled through
-# that provider's program instead, as `PROGRAM:PLACE`, the program by its
-# store path:
+# that provider's program instead, as `PROGRAM:PLACE`, the program by its store path:
 #
 #   jitsusama.mycelium.vias = [ "${cistern-link}/bin/cistern-link:sandbox-1" ];
 #
@@ -332,9 +331,6 @@ let
     "--steer"
     "${config.xdg.stateHome}/pi/agentic-harness.pi/realms/${realm}/steer"
   ];
-  # Every realm's node keeps its state under this one folder, as a path
-  # from the home, which is how a folder is given its own subvolume.
-  stateFolder = lib.removePrefix "${config.home.homeDirectory}/" "${config.xdg.stateHome}/mycelium";
   furtherNodes = lib.mapAttrs (
     realm: joined:
     nodeIn realm joined.links joined.vias joined.providers (apartIn realm)
@@ -450,7 +446,7 @@ in
 {
   imports = [
     ../signing/home.nix
-    ../subvolumes/home.nix
+    ./state-subvolume.nix
   ];
 
   options.jitsusama.mycelium = {
@@ -756,15 +752,6 @@ in
       );
     })
     (lib.mkIf (isLinux && serving) {
-      # The node writes its claims and what it shares all day, so it waits
-      # for its state to move into a tree of its own as the account's
-      # manager starts, rather than holding the home's root lock on every
-      # write beside Chrome's.
-      jitsusama.subvolumes.folders.${stateFolder}.before = [
-        "mycelium.service"
-        "mycelium-balance.service"
-      ]
-      ++ map (realm: "mycelium-${realm}.service") (lib.attrNames furtherNodes);
       systemd.user.services = {
         mycelium = linuxNode (describe cfg.realm) node cfg.signsInWith cfg.realm;
         mycelium-balance = {

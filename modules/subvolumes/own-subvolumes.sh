@@ -8,8 +8,9 @@
 # and rename it.
 #
 # It fails open: a folder that's missing, isn't on Btrfs, is already a
-# subvolume's root, has a file of the account's open in it, changes while
-# it's copied, or can't be copied in time is left as it was, and the run
+# subvolume's root, has a writer named running, has a file of the account's
+# open in it, changes while it's copied, or can't be copied in time is left
+# as it was, and the run
 # says why and goes on to the next. The rename that puts the subvolume in
 # the folder's place is the last step and atomic, so a run stopped at any
 # point before it leaves the folder whole, and the half-made copy is cleared
@@ -23,15 +24,18 @@
 case ${1:-} in
 -h | --help)
   cat << 'EOF'
-own-subvolumes  folders moved into Btrfs subvolumes of their own
+own-subvolumes  folders moved into subvolumes of their own
 
 EXAMPLES
   own-subvolumes 60 ~/.config/google-chrome ~/.config/Slack
-      move each into a subvolume of its own, giving each copy
-      60 seconds, unless something has a file open in it
+      move each into a subvolume of its own, with 60 seconds
+      for each copy, unless something has a file open in it
+  own-subvolumes --writer slack.service 60 ~/.config/Slack
+      the same, but not while slack.service runs, since a
+      writer between writes holds nothing open
 
 EXIT
-  0   each folder moved, or left as it was for a reason it gives
+  0   each folder moved, or left as it was, saying why
   1   a folder couldn't be moved, and was left as it was
   64  asked wrongly
 EOF
@@ -48,6 +52,12 @@ asked_wrongly() {
   echo "  try  own-subvolumes --help" >&2
   exit 64
 }
+writers=()
+while [ "${1:-}" = --writer ]; do
+  [ $# -ge 2 ] || asked_wrongly
+  writers+=("$2")
+  shift 2
+done
 [ $# -ge 2 ] || asked_wrongly
 case $1 in
 '' | *[!0-9]*) asked_wrongly ;;
@@ -93,6 +103,25 @@ holding() {
   echo "$found"
 }
 
+# Says which writer named is running, or nothing when none is. One that
+# runs may write in its folder by path at any moment, open or not, so a
+# folder is moved only while its writers are stopped: as the account's
+# manager starts, they wait for the move, but a switch that starts it
+# finds them running.
+running() {
+  local unit state
+  for unit in "${writers[@]}"; do
+    state=$(systemctl --user is-active -- "$unit" 2> /dev/null) || true
+    case $state in
+    active | activating | deactivating | reloading | refreshing)
+      echo "$unit is running"
+      return 0
+      ;;
+    *) ;;
+    esac
+  done
+}
+
 # The copy being made, and the folder as it was once moved aside.
 making() { echo "$1.subvolume-new"; }
 kept() {
@@ -136,7 +165,8 @@ own() {
     return 0
   fi
   tidy "$real"
-  why=$(holding "$real")
+  why=$(running)
+  [ -n "$why" ] || why=$(holding "$real")
   if [ -n "$why" ]; then
     echo "$why, so $folder stays in the home's tree until a login finds it free"
     return 0
@@ -156,6 +186,7 @@ own() {
   # Anything written, made or removed in it since the copy began, by a
   # process that opened and closed it meanwhile, would be lost.
   why=$(find "$real" -newer "$stamp" -print -quit 2> /dev/null)
+  [ -n "$why" ] || why=$(running)
   [ -n "$why" ] || why=$(holding "$real")
   rm -f -- "$stamp"
   if [ -n "$why" ]; then

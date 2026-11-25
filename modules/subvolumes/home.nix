@@ -29,6 +29,7 @@ let
       pkgs.coreutils
       pkgs.findutils
       pkgs.gawk
+      pkgs.systemd
     ];
     text = builtins.readFile ./own-subvolumes.sh;
   };
@@ -44,24 +45,32 @@ let
   # slow copy holds back nothing but them. It's wanted by the account's
   # manager, never needed by a writer: a run that fails leaves the folder
   # as it was, and they start all the same.
-  unitFor = folder: settings: {
-    name = unitOf folder;
-    value = {
-      Unit = {
-        Description = "Moves ~/${folder} into a subvolume of its own";
-        Before = settings.before;
+  unitFor =
+    folder: settings:
+    let
+      # A switch starts the unit with its writers already running, and one
+      # between writes may hold nothing open, so they're named to it too.
+      writers = lib.concatMapStrings (writer: "--writer ${writer} ") settings.before;
+      move = "${lib.getExe ownSubvolumes} ${writers}${toString settings.seconds}";
+    in
+    {
+      name = unitOf folder;
+      value = {
+        Unit = {
+          Description = "Moves ~/${folder} into a subvolume of its own";
+          Before = settings.before;
+        };
+        Service = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "${move} %h/${folder}";
+          # The copy is bounded, and the rest is a look at /proc and a
+          # rename or two, so this is only a backstop.
+          TimeoutStartSec = settings.seconds + 60;
+        };
+        Install.WantedBy = [ "default.target" ];
       };
-      Service = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        ExecStart = "${lib.getExe ownSubvolumes} ${toString settings.seconds} %h/${folder}";
-        # The copy is bounded, and the rest is a look at /proc and a
-        # rename or two, so this is only a backstop.
-        TimeoutStartSec = settings.seconds + 60;
-      };
-      Install.WantedBy = [ "default.target" ];
     };
-  };
 in
 {
   options.jitsusama.subvolumes.folders = lib.mkOption {
@@ -73,9 +82,10 @@ in
             default = [ ];
             description = ''
               The account's units that write in the folder and start with
-              its manager, so they wait for the move rather than find it,
-              or hold the folder open and keep it where it is. A writer
-              the session waits on makes the session wait too.
+              its manager, so they wait for the move rather than find it.
+              While one runs, as at a switch, the folder stays where it
+              is. A writer the session waits on makes the session wait
+              too.
             '';
           };
           seconds = lib.mkOption {
