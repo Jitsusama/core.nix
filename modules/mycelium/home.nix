@@ -599,7 +599,7 @@ in
         but what it hides, where Linux's reads only what it lists. An
         agent's fenced or strict held start goes after them too, but not
         `agents` where it is told its fence instead: on Linux, and on a Mac
-        with `declares.piFencesItself`. Null refuses each run and start after them.
+        with `declares.piFencesItself`. Null refuses each run and start that would go after them.
       '';
     };
   }
@@ -720,13 +720,13 @@ in
       };
     })
     (lib.mkIf (cfg.declares != null) {
-      # Only a Mac's pi lays its own fence round each command; mycelium
-      # starts a fenced or strict session bare where this is said, so on
-      # Linux it would run with no fence at all.
+      # Only a Mac's pi lays a sandbox profile round each command it runs,
+      # and a Linux node starts no held session through a launcher to
+      # spare, so the word is refused where it can't be true.
       assertions = [
         {
           assertion = cfg.declares.piFencesItself -> isDarwin;
-          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux, where pi lays no fence round each of its commands, so mycelium would start fenced and strict sessions there unfenced.";
+          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux; it says pi fences each command it runs with a sandbox profile, which only a Mac's pi does.";
         }
       ];
       # Where the account's commands read it: XDG_CONFIG_HOME's, or
