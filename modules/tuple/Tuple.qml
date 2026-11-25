@@ -248,24 +248,31 @@ Singleton {
     // there, or stops his camera; Tuple's stream says which it is after.
     // The launcher has closed by the time Tuple answers, so a refusal, or
     // no answer at all with tuple-call gone, is told as a notice of
-    // Tuple's, with the reason given. A stop that didn't happen is kept
-    // and offers the call's window, where the camera stops by hand, since
-    // his face may still be in the call, until the call ends or his camera
-    // is said off; a picker that didn't open isn't kept, as nothing was
-    // shared.
+    // Tuple's, with the reason given. A stop that didn't happen is kept,
+    // one at a time, offering the call's window while Tuple has one, where
+    // the camera stops by hand, since his face may still be in the call,
+    // until the call ends or his camera is said off; a picker that didn't
+    // open isn't kept, as nothing was shared. By the time Tuple answers,
+    // the call may be over or his camera said off, and then nothing's
+    // told; nor is a picker Tuple hasn't answered in time, which may be
+    // open, waiting on him to pick.
     function camera(on) {
         calls.ask({ ask: "camera", on: on }, answer => {
             if (answer?.done === true)
                 return;
             const why = answer === null ? "Tuple's call daemon didn't answer"
-                : plain(answer?.error?.message ?? answer?.error?.code ?? "It wasn't done");
-            console.warn(`tuple: the camera's ${on ? "picker" : "stop"} didn't happen: ${why}`);
-            if (on)
-                notify("Tuple's camera picker didn't open", why, [], false);
-            else
-                notify("Your camera may still be in the call", why, [
-                    ["camera", "Go To the Call"]
-                ], true);
+                : String(answer?.error?.message ?? answer?.error?.code ?? "It wasn't done");
+            console.warn(`tuple: the camera's ${on ? "picker" : "stop"} wasn't done: ${why}`);
+            if (!calling)
+                return;
+            if (on) {
+                if (answer?.error?.code !== "unanswered")
+                    notify("Tuple's camera picker didn't open", plain(why), [], false);
+            } else if (filming) {
+                withdraw("camera");
+                notify("Your camera may still be in the call", plain(why),
+                    windowed ? [["camera", "Go To the Call"]] : [], true, ["camera"]);
+            }
         });
     }
 
@@ -371,18 +378,26 @@ Singleton {
                 });
     }
 
-    function notify(summary, body, actions, kept) {
+    // Tells a notice of Tuple's, offering each action's key, or the keys
+    // given, to be withdrawn by; one offering a key with no action is
+    // waited on all the same, so its id is held until it closes. The
+    // text follows a `--`, so words from elsewhere opening with a dash
+    // aren't read as notify-send's flags.
+    function notify(summary, body, actions, kept, keys) {
+        const offers = keys ?? actions.map(([key]) => key);
         notice.createObject(root, {
-            offers: actions.map(([key]) => key),
+            offers: offers,
             command: ["notify-send", "--app-name=Tuple", "--print-id"]
                 .concat(kept ? [] : ["--transient"])
+                .concat(actions.length === 0 && offers.length > 0 ? ["--wait"] : [])
                 .concat(actions.map(([key, label]) => `--action=${key}=${label}`))
-                .concat([summary], body === "" ? [] : [body])
+                .concat(["--", summary], body === "" ? [] : [body])
         });
     }
 
-    // A notice of Tuple's, which notify-send waits on while it has actions,
-    // printing its id as it's shown and then the action Joel picks.
+    // A notice of Tuple's, which notify-send waits on while it has actions
+    // or is told to wait, printing its id as it's shown and then the
+    // action Joel picks.
     Component {
         id: notice
 

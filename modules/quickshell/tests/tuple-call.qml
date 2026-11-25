@@ -8,13 +8,14 @@
 // going is told once the call has settled; muting, opening the room and
 // Joel's camera are asked of the daemon, which runs Tuple for each, a
 // camera stopped turning the row back to the picker before Tuple's stream
-// says so, a stop Tuple refuses told as a kept notice, and a picker it
-// refuses told as a passing one; the call ending ends it and is kept in
-// Recent with everyone who was in it, though they'd left; and a ring and
-// a missed call, from Tuple's log, are told, the missed call kept in
-// Recent ahead of the call; and a call in the room Joel opened is kept as
-// his, where the first was kept with nobody seen to ring. It exits 0 once
-// every case holds, and otherwise 1, saying which didn't.
+// says so, a stop Tuple refuses told as a kept notice, its reason as
+// plain text, offering the call's window only while Tuple has one, and a
+// picker it refuses told as a passing one; the call ending ends it and is
+// kept in Recent with everyone who was in it, though they'd left; and a
+// ring and a missed call, from Tuple's log, are told, the missed call kept
+// in Recent ahead of the call; and a call in the room Joel opened is kept
+// as his, where the first was kept with nobody seen to ring. It exits 0
+// once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -259,19 +260,40 @@ ShellRoot {
             () => /Your camera may still be in the call/.test(root.told), root.refused);
     }
 
-    // The line Tuple's notice was told in, saying what's given.
+    // The last line a notice of Tuple's was told in, saying what's given.
     function noticeSaying(said) {
-        return root.told.split("\n").find(line => line.includes(said)) ?? "";
+        return root.told.split("\n").filter(line => line.includes(said)).pop() ?? "";
     }
 
-    // A stop Tuple refused is told with its reason, kept, offering the
-    // call's window under a key of its own, and leaves the camera said on.
+    // How many notices of Tuple's said what's given.
+    function noticesSaying(said) {
+        return root.told.split("\n").filter(line => line.includes(said)).length;
+    }
+
+    // A stop Tuple refused is told with its reason as plain text after
+    // notify-send's flags, kept and waited on, and leaves the camera said
+    // on; with no window of Tuple's, it offers none. Refused again with a
+    // window open, it offers that.
     function refused() {
+        const told = root.noticeSaying("may still be in the call");
+        expect("told why as plain text, kept and waited on, offering nothing",
+            told.includes("-- Your camera may still be in the call no webcam to stop &lt;&amp;&gt;")
+            && !told.includes("--transient") && told.includes("--wait")
+            && !told.includes("--action"), told);
+        expect("a refused stop leaves the camera on", Tuple.filming, Tuple.filming);
+        Niri.windows = { "9": { id: 9, app_id: "Tuple" } };
+        root.camera()?.run();
+        root.step("told again my camera may still be in the call",
+            () => root.noticesSaying("may still be in the call") === 2,
+            root.refusedBesideItsWindow);
+    }
+
+    function refusedBesideItsWindow() {
         const told = root.noticeSaying("may still be in the call");
         expect("told why, kept, offering the call's window",
             told.includes("no webcam to stop") && !told.includes("--transient")
-            && told.includes("--action=camera=Go To the Call"), told);
-        expect("a refused stop leaves the camera on", Tuple.filming, Tuple.filming);
+            && !told.includes("--wait") && told.includes("--action=camera=Go To the Call"), told);
+        Niri.windows = {};
         root.says(root.call("connected", root.started, [false, false, false], []));
         root.step("my camera off, as Tuple's stream says", () => !Tuple.filming, root.picking);
     }

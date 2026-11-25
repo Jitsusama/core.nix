@@ -210,11 +210,11 @@
       '';
       # Tuple's stream says each line of the runtime folder's stream as
       # it's written; `new` opens a room, and every other command is kept.
-      # Each camera command is refused, as Tuple refuses one, the second
-      # time it's asked, which the list of asks says without a race. Kept
-      # in Nix because it names coreutils' tail and grep by their store
-      # paths, the build sandbox having no PATH to find them on, and it's
-      # a stand-in of a few lines, not a program.
+      # Each camera command is refused, as Tuple refuses one, from the
+      # second time it's asked on, which the list of asks says without a
+      # race, its reason holding what markup reads. Kept in Nix because
+      # it's a stand-in of a few lines that names tail and grep by their
+      # store paths, so it runs on those whatever PATH tuple-call gives it.
       tuple = pkgs.writeShellScript "tuple" ''
         if [ "$3 $4" = "state follow" ]; then
           exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
@@ -224,7 +224,7 @@
         case "$*" in
           "webcam stop" | "webcam start")
             if [ "$(${pkgs.gnugrep}/bin/grep -cx "$*" "$XDG_RUNTIME_DIR/asked")" -gt 1 ]; then
-              echo "no webcam to $2" >&2
+              echo "no webcam to $2 <&>" >&2
               exit 1
             fi
             ;;
