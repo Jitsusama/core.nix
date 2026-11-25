@@ -55,8 +55,7 @@
           unit = home.systemd.user.services.${unitOf folder} or null;
         in
         unit != null
-        && lib.sort lib.lessThan (lib.toList (unit.Unit.Before or [ ]))
-          == lib.sort lib.lessThan expected
+        && lib.sort lib.lessThan (lib.toList (unit.Unit.Before or [ ])) == lib.sort lib.lessThan expected
         && lib.elem "default.target" (lib.toList (unit.Install.WantedBy or [ ]));
       names = home: lib.attrNames home.systemd.user.services;
     in
