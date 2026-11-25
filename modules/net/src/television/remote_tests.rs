@@ -148,10 +148,7 @@ fn base64_pads_as_standard_base64_does() {
 #[test]
 fn a_pin_is_the_certificates_sha256() {
     assert_eq!(
-        pin_of(b"abc")
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>(),
+        crate::television::kept::hex(&pin_of(b"abc")),
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
 }

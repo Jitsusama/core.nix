@@ -7,6 +7,7 @@
 //! one and the machine's own key, so the file opens only here and only for
 //! Joel, and a fenced agent, kept from that service, can't open it.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
@@ -48,8 +49,13 @@ impl Kept {
     }
 }
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+/// `bytes` as lowercase hex, two digits each.
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::new(), |mut text, byte| {
+        // Writing to a String can't fail.
+        let _ = write!(text, "{byte:02x}");
+        text
+    })
 }
 
 fn unhex(text: &str) -> Option<Pin> {
