@@ -1868,8 +1868,11 @@ Provider {
         }
         const pressed = Date.now();
         if (sprouting !== "") {
-            // Unstamped, so the start still asked says on as it comes up,
-            // over the busy words its answer takes the place of.
+            // The start still asked says on as it comes up, over the busy words its
+            // answer takes the place of, so its own act is left unstamped; any other
+            // is stamped, so an older start's late words don't write over them.
+            if (key !== sprouting)
+                sproutPressed = Openings.pressedAt(sproutPressed, key, pressed);
             sproutSays(key, words.busy);
             sproutReaches({ started: false, why: words.busy });
             return;
@@ -1917,10 +1920,17 @@ Provider {
             }
             const how = Sprouting.ended(answer, sproutWords());
             sproutTokens[token] = "ended";
-            if (sprout === sprouts && sprouting !== "")
+            if (answer !== null)
+                delete sproutUnanswered[token];
+            if (sprout === sprouts && sprouting !== "") {
                 sprouted(how);
-            else
+            } else {
                 console.info(`launcher: late, ${Sprouting.reach(how, sproutWords()).journal}`);
+                // Answered after its minute, or after a later start: no act waits on
+                // it, so it's watched as a kept one is, and Joel hears when it's up.
+                if (watchFor(how, token))
+                    openSprouted();
+            }
             sproutTold([token]);
         };
         // With no daemon to send it to, nothing is kept, so none is to come.
@@ -1956,6 +1966,9 @@ Provider {
     // daemon is answered by its record. A told the daemon didn't take is
     // said again (sproutAgain).
     property var sproutTokens: ({})
+    // Those the patience ended unanswered (sprouted), by token: one whose
+    // answer went with the daemon is answered late by its record.
+    property var sproutUnanswered: ({})
     property var sproutSeen: ({})
     // The tokens of those to tell being asked for again (sproutsChecked).
     property var sproutChecking: ({})
@@ -1966,6 +1979,14 @@ Provider {
             .map(one => one.start ?? {});
         const now = Date.now();
         const stood = Sprouting.untold(kept, sproutTokens, sproutSeen, now);
+        const answeredLate = kept.filter(one => Object.keys(sproutUnanswered)
+            .includes(one.token));
+        answeredLate.forEach(one => {
+            delete sproutUnanswered[one.token];
+            watchFor(Sprouting.ended(one.ended, sproutWords()), one.token);
+        });
+        if (answeredLate.length > 0)
+            openSprouted();
         stood.waiting.forEach(token => {
             if (!Object.keys(sproutSeen).includes(token))
                 sproutSeen[token] = now;
@@ -2007,17 +2028,24 @@ Provider {
         still.forEach(one => {
             const how = Sprouting.ended(one.ended, sproutWords());
             sproutReaches(how);
-            if (how.started && how.held !== "") {
-                openings = openings.concat([{ key: `start:${one.token}`, held: how.held,
-                    machine: how.machine, since: Date.now(),
-                    // No keysTaken is -1, so Sprouting.waitsOn never has it
-                    // take the keys: the foot says it's up for Go To.
-                    keys: -1 }]);
-            }
+            watchFor(how, one.token);
         });
         if (still.length > 0)
             openSprouted();
         sproutTold(still.map(one => one.token));
+    }
+    // Watches for the session of `how`, a start no act waits on (kept, or
+    // answered late, as `token`), so Joel is told when it's up or lost: keys
+    // -1, so Sprouting.waitsOn never has it take the keys. Whether it does:
+    // one already watched isn't again, as a late answer and its record may
+    // both come, in either order.
+    function watchFor(how, token) {
+        if (!how.started || how.held === "" || openings.some(one => one.held === how.held
+            && one.machine === how.machine))
+            return false;
+        openings = openings.concat([{ key: `start:${token}`, held: how.held,
+            machine: how.machine, since: Date.now(), keys: -1 }]);
+        return true;
     }
     function sproutTold(tokens) {
         if (tokens.length === 0 || !rowsKind)
@@ -2059,12 +2087,15 @@ Provider {
         sproutPatience.stop();
         // Ended here, by its answer or by the patience running out, so the
         // daemon's record of it, heard already or to come, is said told.
-        if (sproutTokens[sproutToken] === "asking")
+        if (sproutTokens[sproutToken] === "asking") {
             sproutTokens[sproutToken] = "ended";
+            if (how.unanswered === true)
+                sproutUnanswered[sproutToken] = true;
+        }
         sproutToken = "";
         const where = Sprouting.asksWhere(how) && askWhere(key);
         const text = where ? Sprouting.toldWhere(how, sproutWords())
-            : Sprouting.told(how, sproutWords());
+            : Sprouting.told(Openings.promised(how, sproutGiven), sproutWords());
         sproutSays(key, text);
         // Told Joel before the daemon is told it's told, so it's kept until he is.
         sproutReaches(how, where ? text : null);
@@ -2181,15 +2212,17 @@ Provider {
     // it comes up, however late, or once it's watched no more
     // (Sprouting.settled): Joel's at 14:30 on 25 November came up five and a
     // half minutes after his Return on a loaded machine, and was said
-    // unopened at the minute and never again. What a pass says is one tell,
-    // in the foot or as a notice as sproutTell says.
+    // unopened at the minute and never again. What a pass says goes to the
+    // foot for the starts Joel still waits on, and as a notice for the rest
+    // (Openings.toldWhere).
     function openSprouted() {
         const stood = Sprouting.settled(openings, one => sessionOf(one), Date.now(),
             openingPatience);
         if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
-        const late = stood.late.map(one => said(one, "unopened"));
-        openings = Openings.toldOf(stood.waiting, stood.late, late);
+        const launcher = provider.launcher ?? null;
+        const late = stood.late.map(one => ({ one, text: said(one, "unopened") }));
+        openings = Openings.toldOf(stood.waiting, stood.late, late.map(each => each.text));
         stood.late.forEach(one => sproutJournal(
             `new work held ${one.held} on ${one.machine} is still coming up`));
         stood.gone.forEach(one => {
@@ -2197,14 +2230,18 @@ Provider {
             // "Lost" answers its "still coming up", as an up word does.
             takeBack(one);
         });
-        const told = late.concat(stood.gone.map(one => said(one, "lost")));
+        const told = late.concat(stood.gone.map(one => ({ one, text: said(one, "lost") })));
         stood.up.forEach(one => {
             const text = openOne(one);
             if (text !== "")
-                told.push(text);
+                told.push({ one, text });
         });
-        if (told.length > 0)
-            sproutTell(told);
+        const where = Openings.toldWhere(told,
+            one => Sprouting.waitsOn(launcher, one.key, one.keys, one.letters));
+        if (where.foot.length > 0)
+            sproutTell(where.foot);
+        if (where.notice.length > 0)
+            sproutNoticed(where.notice);
     }
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);

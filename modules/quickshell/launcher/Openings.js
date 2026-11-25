@@ -23,11 +23,11 @@ function pressedAt(pressed, key, now) {
     return Object.assign({}, pressed, { [key]: now });
 }
 
-// Whether a start answered at `since` may still say over its act `key`:
-// not once that act was pressed again, or given fresh words, since then
-// (`pressed`, as pressedAt keeps it).
-function saysOnAct(pressed, key, since) {
-    return (pressed[key] ?? 0) <= since;
+// Whether a start whose Return was at `asked` (askedOf) may still say over
+// its act `key`: not once that act was pressed again, or given fresh
+// words, after it (`pressed`, as pressedAt keeps it).
+function saysOnAct(pressed, key, asked) {
+    return (pressed[key] ?? 0) <= asked;
 }
 
 // The openings still `waiting` (Sprouting.settled's), each of the `late`
@@ -92,6 +92,28 @@ function spent(given) {
 // The `openings` once the launcher shuts, each spent.
 function shutOn(openings) {
     return openings.map(spent);
+}
+
+// How a start `how` is said at its answer, `given` its Return's record: one
+// held to open but answered after the launcher shut (spent) opens no window,
+// so it's said as one that shows in Agents once it's up (Sprouting.told's
+// unheld), not promised a window that won't come.
+function promised(how, given) {
+    return how.started === true && how.held !== "" && given.keys === -1
+        ? Object.assign({}, how, { held: "" }) : how;
+}
+
+// What a pass tells of starts (`told`, each `{ one, text }`, in order), by
+// where Joel sees it: in the foot, `foot`, those he still `waits` on
+// (Sprouting.waitsOn), whose foot he's watching; the rest as a notice,
+// `notice`, since a late word in the foot would go at his next key, or put
+// aside a link offer's foot telling where its words came from.
+function toldWhere(told, waits) {
+    const where = { foot: [], notice: [] };
+    for (const each of told) {
+        where[waits(each.one) ? "foot" : "notice"].push(each.text);
+    }
+    return where;
 }
 
 // The word said of `one` come up and left for Go To: "upLater", naming

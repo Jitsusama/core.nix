@@ -201,7 +201,7 @@ QtObject {
         Expect.same("words pasted since, on the act's row, it doesn't",
             Sprouting.waitsOn(Object.assign(at(true, null, { key: act }, 5), { lettersAt: 4 }),
                 act, 5, 0), false);
-        Expect.same("one with no launcher at its answer never does",
+        Expect.same("one whose keys were spent, as the launcher shut, never does",
             Sprouting.waitsOn(at(true, null, { key: act }, 0), act, -1, 0), false);
         Expect.same("on another row, it doesn't",
             Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5, 0), false);
@@ -467,15 +467,35 @@ QtObject {
                     .late.length, 0);
             Expect.same("once the launcher shut, none takes the keys again",
                 Openings.shutOn([made, { key: "b", keys: 3, late: true }])
-                    .map(one => [one.key, one.keys, one.late === true, one.asked]),
-                [["a", -1, false, 200], ["b", -1, true, undefined]]);
+                    .map(one => [one.key, one.keys, one.late === true, one.asked === undefined]),
+                [["a", -1, false, false], ["b", -1, true, true]]);
             Expect.same("a start still asked as it shut is spent, keeping the rest",
                 Openings.spent({ words: "w", letters: 3, keys: 7, at: 200 }),
                 { words: "w", letters: 3, keys: -1, at: 200 });
+            // Answered after the launcher shut, a held start opens no window.
+            const heldHow = { started: true, held: "h1", machine: "kestrel" };
+            const spentGiven = Openings.spent({ words: "w", letters: 3, keys: 7, at: 200 });
+            Expect.same("one answered after the shut promises no window",
+                Sprouting.told(Openings.promised(heldHow, spentGiven), written),
+                written.unheld.replace("{machine}", "kestrel"));
+            Expect.same("one answered with the launcher still up does",
+                Sprouting.told(Openings.promised(heldHow, { keys: 7 }), written),
+                written.started.replace("{machine}", "kestrel"));
+            Expect.same("one refused is said as it is",
+                Openings.promised({ started: false, held: "", why: "no" }, spentGiven),
+                { started: false, held: "", why: "no" });
+            // Late words go to the foot only for a start Joel still waits on.
+            const toldNow = [{ one: { key: "a" }, text: "ta" }, { one: { key: "b" }, text: "tb" },
+                { one: { key: "c" }, text: "tc" }];
+            Expect.same("a pass's words are footed where he waits, else noticed, in order",
+                Openings.toldWhere(toldNow, one => one.key !== "b"),
+                { foot: ["ta", "tc"], notice: ["tb"] });
+            Expect.same("and all noticed where he waits on none",
+                Openings.toldWhere(toldNow, () => false), { foot: [], notice: ["ta", "tb", "tc"] });
         }
         Expect.same("an act pressed since, or given fresh words, doesn't",
             Openings.saysOnAct({ a: 300 }, "a", 200), false);
-        Expect.same("an act pressed as it was answered still says",
+        Expect.same("an act last pressed at the start's own Return still says",
             Openings.saysOnAct({ a: 200 }, "a", 200), true);
         Expect.same("a press stamps only its own act, at its time",
             Openings.pressedAt({ a: 100, b: 5 }, "a", 300), { a: 300, b: 5 });
