@@ -3183,6 +3183,13 @@ Singleton {
         }
         console.info(`sessions: window ${id} isn't taken as a viewer: pid ${window?.pid} `
             + `drew it, not the sessions kitty's ${sessionsKittyPid}`);
+        // One come for a viewer the walk still holds, not taken as its own
+        // (past the script's answer, or listed as it was asked), is said,
+        // so a walk that never ends can be traced to it.
+        if (walked && !own)
+            console.info(`sessions: window ${id} came for ${named}, which Reopen Them All `
+                + `still waits on, but ${asked < answerPatience ? "was listed as it was asked"
+                    : "too late to be its own"}, so the walk waits on`);
         // The press waiting on it is told, as one no kitty took is
         // (untaken), since a press is never met with nothing.
         const said = own ? pressedFor[named] ?? null : null;
