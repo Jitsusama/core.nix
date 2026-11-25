@@ -63,6 +63,7 @@ pub mod locks;
 pub mod logs;
 #[cfg(target_os = "macos")]
 pub mod macos;
+pub mod memorystatus;
 pub mod moments;
 pub mod nix_builds;
 pub mod nix_database;

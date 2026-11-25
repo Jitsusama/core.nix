@@ -372,6 +372,7 @@ pub fn pressure(proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
         io: stall("io")?,
         memory: stall("memory")?,
         cpu: stall("cpu")?,
+        memory_room: None,
     })
 }
 
