@@ -393,31 +393,33 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
 
 #[test]
 fn anything_but_a_folder_of_its_own_at_the_job_s_tree_is_refused_as_the_job_s_doing() {
-    // A mkdir that, making the copy's folder, puts at the tree's name, or
-    // at the job's handover folder above it, a link pointing nowhere, a
-    // file, or a folder this account can't enter, each the job's doing
-    // rather than a tree gone, which another try would meet again.
-    let tree = r#"t="$HOME/${at%/*}""#;
-    let job = r#"t="$HOME/${at%/*/*}""#;
-    for (put, swap, kept) in [
-        ("a link pointing nowhere at the tree", tree, Some("0.tar")),
-        ("a file at the tree", tree, Some("0.tar")),
-        ("a folder closed at the tree", tree, None),
+    // A mkdir that, making the copy's folder, puts at the tree's name a
+    // link pointing nowhere, a file, or a folder this account can't
+    // enter, each the job's doing rather than a tree gone, which another
+    // try would meet again. Above the tree, the list's read meets such a
+    // thing first.
+    let aside = r#"mv "$t" "$HOME/aside""#;
+    for (put, swapped, kept) in [
         (
-            "a link pointing nowhere above the tree",
-            job,
-            Some("tree/0.tar"),
+            "a link pointing nowhere at the tree",
+            format!(r#"{aside} && ln -s "$HOME/nowhere" "$t""#),
+            Some("0.tar"),
+        ),
+        (
+            "a file at the tree",
+            format!(r#"{aside} && : > "$t""#),
+            Some("0.tar"),
+        ),
+        (
+            "a folder closed at the tree",
+            r#"chmod 0 "$t""#.to_owned(),
+            None,
         ),
     ] {
-        let swapped = match (put.starts_with("a link"), kept) {
-            (true, _) => r#"mv "$t" "$HOME/aside" && ln -s "$HOME/nowhere" "$t""#,
-            (false, Some(_)) => r#"mv "$t" "$HOME/aside" && : > "$t""#,
-            (false, None) => r#"chmod 0 "$t""#,
-        };
         let swapping = format!(
             r#"case " $* " in *"/.s/1 "*)
-  PATH=${{PATH#*:}} at='{FIRST}'
-  {swap} && {swapped} && : > "$HOME/swapped" ;;
+  PATH=${{PATH#*:}} at='{FIRST}' && t="$HOME/${{at%/*}}"
+  {swapped} && : > "$HOME/swapped" ;;
 esac
 PATH=${{PATH#*:}} exec mkdir "$@""#
         );

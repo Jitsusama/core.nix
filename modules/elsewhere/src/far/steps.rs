@@ -331,9 +331,11 @@ pub(super) fn copying() -> String {
       [ ! -L "$job/{TREE}" ] && cd -P "$job/{TREE}" 2>/dev/null &&
         [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
         # Judged once the tree couldn't be held, so one taken away
-        # meanwhile is gone too. A link at the tree or at a folder above
-        # it that `unlinked` walks, even one pointing nowhere, a file, or
-        # a folder closed to this account is the job's doing.
+        # meanwhile is gone too. A link at the tree, even one pointing
+        # nowhere, or at a folder above it that `unlinked` walks, is the
+        # job's doing, as a file or a folder closed to this account at the
+        # tree is. Above the tree, one pointing nowhere, a file or a closed
+        # folder fails the list's read before this, as this machine's.
         for at in "$job/{TREE}" "$job" "${{job%/*}}" "${{job%/*/*}}"; do
           [ ! -L "$at" ] || at=
           [ -n "$at" ] || break
@@ -555,10 +557,11 @@ fi
 /// only where no link stood at the job's handover or above it as
 /// `unlinked` looked, which narrows a link put there after to the
 /// clearing's own instant rather than closing it; the copy goes either
-/// way.
+/// way, and a tree kept is said.
 fn freed() -> String {
     format!(
-        "cd \"$HOME\" && if unlinked; then cleared \"$job/{TREE}\" \"$work\"; \
-         else cleared \"$work\"; fi &&\n  rm -f \"$work{RUN}\"\n"
+        "cd \"$HOME\" && if unlinked; then cleared \"$job/{TREE}\" \"$work\"; else\n  \
+         printf \"elsewhere: a link at the job's handover couldn't be cleared, so its tree \
+         stays\\n\" >&2\n  cleared \"$work\"; fi && rm -f \"$work{RUN}\"\n"
     )
 }
