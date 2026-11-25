@@ -24,9 +24,17 @@
 # keyboard. Each phase says a line of its own once it holds ("WALLS HOLD"
 # and "FOCUSED"), so the test reads what was tried, never only that a
 # failure went unsaid. Each wait is bounded by the clock, not by tries,
-# so the whole run ends inside the three minutes the test gives it.
-# usage: pi-fence-keeps-x11-from-secrets.sh
+# and stretched by X11_PACE, the host's busyness as the test reads it, so
+# the whole run ends inside the three minutes the test gives it, paced
+# the same.
+# usage: X11_PACE=<whole number> pi-fence-keeps-x11-from-secrets.sh
 set -euo pipefail
+
+pace=${X11_PACE:-1}
+# Seconds a wait of $1 may take on this host.
+paced() {
+  echo $(($1 * pace))
+}
 
 fail() {
   echo "FAIL: $*" >&2
@@ -63,10 +71,13 @@ cp "$XAUTHORITY" "$cookie"
 xlogo -display "$display" &
 logo=$!
 
-# Whether what a reader said is X refusing the connection.
+# Whether what a reader said is X refusing the connection: xclip's one
+# line saying so and nothing else, so no read that got through and then
+# failed passes for one, whatever its text held.
 unreached() {
   case $1 in
-  *"Can't open display"*) return 0 ;;
+  *$'\n'*) return 1 ;;
+  "Error: Can't open display"*) return 0 ;;
   *) return 1 ;;
   esac
 }
@@ -103,25 +114,30 @@ fenced_read() {
   fi
   # env by its full path: landrun 0.1.17, given --env, finds no bare
   # command named env, and the read would fail without reaching X.
-  timeout 5 "${fence[@]}" -- "${landlock[@]}" \
+  timeout "$(paced 10)" "${fence[@]}" -- "${landlock[@]}" \
     "$env" DISPLAY="$display" XAUTHORITY="$auth" xclip -o -selection clipboard
 }
 env=$(command -v env)
 
 # Whether a fenced read is refused, saying what it read when it isn't.
+# What was read is quoted onto one line wherever it's told, so nothing
+# read can pass for a phase's line.
 refused() {
-  local said
+  local said ended=0
   # shellcheck disable=SC2310 # A read that fails is the refusal sought, not an error.
-  if said=$(fenced_read "$1" "$2" 2>&1); then
-    # Quoted onto one line, so nothing read can pass for a phase's line.
+  said=$(fenced_read "$1" "$2" 2>&1) || ended=$?
+  if [ "$ended" -eq 0 ]; then
     printf 'the fenced command read: %q\n' "$said" >&2
     return 1
   fi
+  # A read cut off says nothing, so its cause is told apart from X's refusal.
+  [ "$ended" -ne 124 ] ||
+    fail "the fenced read ($1, $2 cookie) ran past $(paced 10) s: a slow fence, or one that let it reach an X that never answered"
   # Only X refusing the connection counts, never a reader that didn't run.
   # shellcheck disable=SC2310 # unreached is a test, read in a condition.
   unreached "$said" ||
-    fail "the fenced command reached X ($1, $2 cookie), or failed before trying: $said"
-  echo "refused ($1, $2 cookie): $said" >&2
+    fail "the fenced command reached X ($1, $2 cookie), or failed before trying, ending $ended: $(printf '%q' "$said")"
+  echo "refused ($1, $2 cookie): $(printf '%q' "$said")" >&2
 }
 
 # Each wall, then neither: $1 names the phase in what fails.
@@ -136,10 +152,10 @@ walls() {
 }
 
 # X answers Joel's own client once the satellite is up, whatever the
-# clipboard holds: up to 40 seconds.
+# clipboard holds: up to 40 seconds, paced.
 said=
 reached=
-until=$((SECONDS + 40))
+until=$((SECONDS + $(paced 40)))
 # shellcheck disable=SC2310 # past only compares the clock, which is the loop's test.
 until past "$until"; do
   # A read that succeeds reached X, though what it read was empty.
@@ -166,9 +182,9 @@ echo "WALLS HOLD: a fenced command reaches no X11 on $display" >&2
 
 # The satellite is offered niri's clipboard only while one of its windows
 # holds the keyboard, as any Wayland client is, and then holds it for every
-# X11 client, focused or not: up to 30 seconds.
+# X11 client, focused or not: up to 30 seconds, paced.
 focused=
-until=$((SECONDS + 30))
+until=$((SECONDS + $(paced 30)))
 # shellcheck disable=SC2310 # As above.
 until past "$until"; do
   focused=$(timeout 5 niri msg focused-window 2> /dev/null || true)
@@ -188,9 +204,10 @@ secret="secret-$RANDOM-$RANDOM"
 wl-copy --sensitive "$secret"
 
 # Joel's own X11 client, holding the cookie, reads his copy through the
-# satellite, once the satellite has been offered it: up to 20 seconds.
+# satellite, once the satellite has been offered it: up to 20 seconds,
+# paced.
 read=
-until=$((SECONDS + 20))
+until=$((SECONDS + $(paced 20)))
 # shellcheck disable=SC2310 # As above.
 until past "$until"; do
   read=$(timeout 5 xclip -o -selection clipboard -display "$display" 2> /dev/null) || read=

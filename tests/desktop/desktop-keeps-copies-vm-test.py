@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import time
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 from desktop_session import STARTING, retry
 
 if TYPE_CHECKING:
@@ -398,8 +400,12 @@ def x11_fence_said(desktop: Desktop) -> str:
         # The script says each case it tried, and fails naming the one
         # that let the secret through (modules/pi/tests); this area alone
         # has it.
+        # Its waits run on the guest's clock, so they're stretched by the
+        # host's busyness as as_account stretches the wait for its end.
+        pace = math.ceil(vm_helpers.pace(vm_helpers.busyness()))
         return desktop.as_account(
-            f"pi-fence-keeps-x11-from-secrets > {X11_SAID} 2>&1; echo ended $? >> {X11_SAID};"
+            f"X11_PACE={pace} pi-fence-keeps-x11-from-secrets > {X11_SAID} 2>&1;"
+            f" echo ended $? >> {X11_SAID};"
             f" cat {X11_SAID}",
             timeout=X11_ENDING,
         )
@@ -412,9 +418,18 @@ def test_an_x11_window_of_joels_takes_the_focus(desktop: Desktop) -> None:
     """An X11 window of Joel's takes the focus through the satellite."""
     said = x11_fence_said(desktop)
     # The walls come first, so a run that never reached the focus says so
-    # by its own cause rather than as a window that never took it.
-    assert said_line(said, WALLS_HOLD), f"the walls didn't hold, so the focus went untried: {said}"
+    # by its own cause rather than as a window that never took it. Their
+    # line is missing too where X never answered or the script didn't end,
+    # which proves no breach, so this says only that they weren't shown.
+    assert said_line(said, WALLS_HOLD), (
+        f"the walls weren't shown to hold, so the focus went untried: {said}"
+    )
     assert said_line(said, FOCUSED), f"no X11 window was seen to take the focus: {said}"
+    # The secret copy's phase follows the focus, so it's this subtest's
+    # too, and listed while the satellite's stall is: a run where focus
+    # came and the copy's phase failed on the fence fails the next one as
+    # well, so the quarantine excuses only a run whose focus never came.
+    assert said.rstrip().endswith("ended 0"), f"the secret copy's phase didn't end clean: {said}"
 
 
 def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> None:
@@ -423,14 +438,21 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
     # The walls are tried before any window takes the focus, so this
     # proves them in every run, and fails in every run they let X through.
     assert said_line(said, WALLS_HOLD), f"the fence's walls weren't shown to hold: {said}"
-    # Past the focus, the secret copy's phase is this one's too, so a run
-    # whose window never took the focus fails here as well, saying the
-    # walls held and what went untried, rather than passing without it.
-    assert said_line(said, FOCUSED), (
-        f"the walls held, but no X11 window took the focus, so the secret copy's phase"
-        f" went untried: {said}"
-    )
-    assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+    if said_line(said, FOCUSED):
+        # Past the focus, the walls are tried again with a secret copy on
+        # the clipboard, and any failure there is this one's to say.
+        assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
+    else:
+        # The focus is the quarantined subtest's to fail, so this one
+        # takes only that ending as the script's own, never another.
+        # Refusing a connection owes nothing to what the clipboard holds,
+        # so the walls above are proven with or without the copy.
+        # Padded, so a script that said too little fails the checks below.
+        failed, ended = ["", "", *said.rstrip().splitlines()][-2:]
+        assert failed.startswith("FAIL: niri focused no X11 window"), (
+            f"the walls held, then the script failed on something other than the focus: {said}"
+        )
+        assert ended == "ended 1", f"the script ended otherwise than its failure: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and
