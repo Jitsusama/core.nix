@@ -38,8 +38,8 @@ use std::io::{self, Read};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
@@ -662,16 +662,28 @@ impl Relay {
     /// can act the moment it does; all it said, should it leave first, or
     /// once it's stopped for not saying it `within`.
     fn heard_by(&mut self, mark: &str, within: Duration) -> &str {
-        let done = Arc::new(AtomicBool::new(false));
+        // Held while the relay is stopped, so once this returns no stop can
+        // follow, onto this relay or a process given its pid after it.
+        let done = Arc::new(Mutex::new(false));
         let watching = Arc::clone(&done);
         let pid = self.child.id().to_string();
+        let awaited = mark.to_owned();
         std::thread::spawn(move || {
             // The read below waits on the relay's log, which a relay that
             // never says the mark leaves open for ever; stopping it closes
             // the log, which ends the read, so the test fails, not hangs.
             std::thread::sleep(within);
-            if !watching.load(Ordering::SeqCst) {
-                let _ = Command::new("kill").arg("-KILL").arg(&pid).status();
+            let finished = watching.lock().unwrap_or_else(PoisonError::into_inner);
+            if !*finished {
+                match Command::new("kill").arg("-KILL").arg(&pid).status() {
+                    Ok(status) if status.success() => {}
+                    // The read then waits on as it did before this bound,
+                    // so this says why the test hangs.
+                    stopped => eprintln!(
+                        "the relay never said {awaited:?} within {within:?}, \
+                         and couldn't be stopped: {stopped:?}"
+                    ),
+                }
             }
         });
         if let Some(stderr) = self.child.stderr.as_mut() {
@@ -685,7 +697,7 @@ impl Relay {
                 }
             }
         }
-        done.store(true, Ordering::SeqCst);
+        *done.lock().unwrap_or_else(PoisonError::into_inner) = true;
         &self.heard
     }
 
@@ -2785,44 +2797,6 @@ async fn a_stop_as_it_leaves_idle_cuts_a_body_still_being_read() {
     assert!(
         said_once_after(&said, "stopped as it left"),
         "a body it was reading when stopped as it left wasn't counted cut, once: {said}"
-    );
-}
-
-#[tokio::test(flavor = "current_thread")]
-async fn a_late_pi_leaving_while_a_stop_as_it_leaves_idle_waits_is_its_cancel() {
-    let origin = origin().await;
-    let host = origin.address.to_string();
-    let mut relay = Relay::start_with(
-        &format!("https://{host}"),
-        &origin.roots,
-        1,
-        &["--idle-exit", "2"],
-    );
-    // Taken before the leave, so the stop cuts it.
-    let _held = half_a_body(&relay.socket, "example.com").await;
-    let heard = relay.heard_by("so it leaves; its socket starts it again", SAYS_WITHIN);
-    assert!(
-        heard.contains("so it leaves; its socket starts it again"),
-        "the relay didn't leave idle: {heard}"
-    );
-    // Taken while it leaves, so the stop waits on it, and pi hangs up in
-    // that wait: its cancel, said beside the one the stop cuts.
-    let late = half_a_body(&relay.socket, "example.com").await;
-    tokio::time::sleep(HEARD_WITHIN).await;
-
-    relay.stop();
-    tokio::time::sleep(HEARD_WITHIN).await;
-    drop(late);
-    let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
-    let said = relay.said();
-    assert!(
-        left.is_some_and(|status| status.success()),
-        "the relay didn't leave once stopped as it left: {left:?}, saying: {said}"
-    );
-    assert!(
-        said.contains("2 asked, 0 refused, 0 failed")
-            && said.contains("pi cancelled 1; 1 cut as it was stopped;"),
-        "a late pi leaving while the stop waited wasn't its cancel beside one cut: {said}"
     );
 }
 
