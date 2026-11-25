@@ -362,8 +362,10 @@ fn report_command(context: &Context, config: &Config, rest: &[&str]) -> Result<(
 }
 
 /// How old the daemon's last word on the budgets may be and still be how
-/// they stand: past its idle wait between passes, by a minute.
-const WRITTEN_LASTS: f64 = 360.0;
+/// they stand: as long as the daemon counts as working without a pass that
+/// did. The word is stamped as a pass starts, so it ages by two passes and
+/// the wait between, which a trust of the idle wait alone ran past.
+const WRITTEN_LASTS: f64 = crate::daemon::FAILING.as_secs_f64();
 
 /// The budgets as the daemon's last pass wrote them, while that's recent
 /// enough to be how they stand. Every pi session asks for them, all at once
