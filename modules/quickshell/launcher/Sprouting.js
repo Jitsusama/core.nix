@@ -303,12 +303,12 @@ function sproutedOf(running, held, machine) {
 
 // Whether Joel still waits on the act `key` in `launcher`: open, on its row
 // or held in its ask, where Return leaves him with the field emptied, and no
-// letter typed since the answer, when its `lettersAt` was `letters`. Only
-// then may its window take the keys; otherwise what he types next, a new try
-// in the ask included, could go into an agent's prompt.
-function waitsOn(launcher, key, letters) {
+// key taken since the answer, when its `keysTaken` was `keys`: a count only
+// keys move, as an arrow's lettersAt of 0 could match again. Only then may
+// its window take the keys; else what he types could reach an agent's prompt.
+function waitsOn(launcher, key, keys) {
     const on = row => row?.key === key;
-    return launcher?.open === true && launcher.lettersAt === letters &&
+    return launcher?.open === true && launcher.keysTaken === keys &&
         (on(launcher.asking) || on(launcher.selected));
 }
 

@@ -181,17 +181,23 @@ QtObject {
 
         // Whether Joel still waits on the act in the launcher, so it may close for its
         // window and take the keys: open, on the act itself or held in its ask, where
-        // Return leaves him with the field emptied for another try, and no letter typed
-        // since the answer (its lettersAt then), so a new try he's typing keeps its keys.
+        // Return leaves him with the field emptied for another try, and no key taken
+        // since the answer (its keysTaken then), so a new try he's typing keeps its keys.
         const act = "verb:agents:start-new-work:link";
-        const at = (open, asking, selected, lettersAt) => ({ open, asking, selected,
-            lettersAt });
+        const at = (open, asking, selected, keysTaken) => ({ open, asking, selected,
+            keysTaken, lettersAt: 0 });
         Expect.same("held in the act's ask, it waits",
             Sprouting.waitsOn(at(true, { key: act }, null, 5), act, 5), true);
         Expect.same("on the act's row, it waits",
             Sprouting.waitsOn(at(true, null, { key: act }, 5), act, 5), true);
-        Expect.same("a letter typed since, in its ask, it doesn't",
+        Expect.same("a key taken since, in its ask, it doesn't",
             Sprouting.waitsOn(at(true, { key: act }, null, 9), act, 5), false);
+        // An arrow sets lettersAt to 0 again, so an answer heard after one, at 0, would
+        // wait again at any later arrow; keysTaken only goes up.
+        Expect.same("an arrow since, on the act's row, it doesn't",
+            Sprouting.waitsOn(at(true, null, { key: act }, 6), act, 0), false);
+        Expect.same("one with no launcher at its answer never does",
+            Sprouting.waitsOn(at(true, null, { key: act }, 0), act, -1), false);
         Expect.same("on another row, it doesn't",
             Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5), false);
         Expect.same("closed, it doesn't",
@@ -237,6 +243,17 @@ QtObject {
             () => null, now + 5000, times).late.length, 0);
         Expect.same("at the minute's own end, it's late", Sprouting.settled(
             [{ key: "x", since: now - minutes }], () => null, now, times).late.length, 1);
+        Expect.same("one said late, a minute short of the quarter hour, still waits",
+            Sprouting.settled([{ key: "x", since: now - 14 * minutes, late: true }],
+                () => null, now, times).waiting.length, 1);
+        {
+            const toldOne = [{ key: "t", held: "h0", since: now - 3 * minutes, late: true,
+                told: "late on m" }];
+            Expect.same("one waiting keeps the words said of it late", Sprouting.settled(
+                toldOne, () => null, now, times).waiting[0].told, "late on m");
+            Expect.same("one gone keeps them too, so it takes them back", Sprouting.settled(
+                toldOne, () => null, now + 13 * minutes, times).gone[0].told, "late on m");
+        }
         }
 
         // What the act that ran says.
@@ -405,6 +422,8 @@ QtObject {
         Expect.same("each said once it's up names its session",
             ["up", "upLater"].filter(key => !String(written[key]).includes("{title}")), []);
         const full = { machine: "kestrel", title: "Olga's access", minutes: "15" };
+        // Filled with more than each needs, a title included though only an up one has
+        // its title, so a fill any word names and none gets is caught.
         Expect.same("each is filled whole", opened.filter(key =>
             Openings.filled(written, key, full).includes("{")), []);
 
@@ -417,6 +436,14 @@ QtObject {
         Expect.same("an act unpressed since says", Openings.saysOnAct({ a: 100 }, "a", 200),
             true);
         Expect.same("an act never pressed says", Openings.saysOnAct({}, "a", 200), true);
+        {
+            const opening = { key: "a", since: 200 };
+            Expect.same("an up start Joel waits on, its act unpressed since, opens",
+                Openings.opensOn(true, { a: 100 }, opening), true);
+            Expect.same("its act offered fresh words since, it doesn't, though he waits",
+                Openings.opensOn(true, { a: 300 }, opening), false);
+            Expect.same("not waited on, it doesn't", Openings.opensOn(false, {}, opening), false);
+        }
         Expect.same("an act pressed since, or given fresh words, doesn't",
             Openings.saysOnAct({ a: 300 }, "a", 200), false);
         Expect.same("an act pressed as it was answered still says",

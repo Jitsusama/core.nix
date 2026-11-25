@@ -2005,9 +2005,9 @@ Provider {
             if (how.started && how.held !== "") {
                 openings = openings.concat([{ key: `start:${one.token}`, held: how.held,
                     machine: how.machine, since: Date.now(),
-                    // No lettersAt is -1, so Sprouting.waitsOn never has it
+                    // No keysTaken is -1, so Sprouting.waitsOn never has it
                     // take the keys: the foot says it's up for Go To.
-                    letters: -1 }]);
+                    keys: -1 }]);
             }
         });
         if (still.length > 0)
@@ -2068,7 +2068,7 @@ Provider {
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
             openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
-                since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);
+                since: Date.now(), keys: provider.launcher?.keysTaken ?? -1 }]);
             openSprouted();
         }
     }
@@ -2151,8 +2151,8 @@ Provider {
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
-    // since, letters, late, told }`, `letters` the launcher's lettersAt at
-    // the answer, `late` true once it's said to be still coming up and
+    // since, keys, late, told }`, `keys` the launcher's keysTaken at the
+    // answer (-1 with none, so it never takes the keys), `late` true once it's said to be still coming up and
     // `told` the words that said it (Openings.toldOf):
     // Joel asked for each, so each opens for him, on the workspace a session
     // goes to and focused (Sessions.goTo), rather than in no window (Joel,
@@ -2218,7 +2218,8 @@ Provider {
         // Its window, or its up word, answers the foot's "still coming up"
         // of it, so neither says it beside them nor notices it at the shut.
         takeBack(one);
-        if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
+        if (!Openings.opensOn(Sprouting.waitsOn(launcher, one.key, one.keys), sproutPressed,
+            one)) {
             sproutJournal(`new work held ${one.held} is up${late} as session `
                 + `${one.session.address}; left for Go To`);
             return said(one, Openings.upWord(one));

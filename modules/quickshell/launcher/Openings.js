@@ -56,6 +56,15 @@ function footedWithout(footed, text) {
     return told.length === 0 ? null : Object.assign({}, footed, { told });
 }
 
+// Whether `one`, up, opens and takes the keys: only where Joel `waits` on
+// its act (Sprouting.waitsOn) and nothing has been pressed or offered on
+// that act since it started (`pressed`, saysOnAct). A link offer moves
+// no key, so it would otherwise leave a late start shutting the launcher
+// on the words just offered.
+function opensOn(waits, pressed, one) {
+    return waits && saysOnAct(pressed, one.key, one.since);
+}
+
 // The word said of `one` come up and left for Go To: "upLater", naming
 // it, where it was said late to be still coming up, so Joel knows which
 // start it was; else "up".
