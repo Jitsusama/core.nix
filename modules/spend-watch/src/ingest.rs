@@ -165,6 +165,10 @@ fn aged(at: SystemTime, now: SystemTime) -> bool {
 /// boot to boot. A kept history held eleven of them on 25 November, and
 /// each boot took every log for a new one, forgot it and read it again
 /// from its start: 29 GB in the walk a start makes before its first pass.
+/// A log written beside and moved over the old one always has another
+/// inode. One deleted and made again could be handed the freed number,
+/// which the device never told apart within a boot either: it's taken for
+/// the old log unless it's shorter than where reading stopped.
 fn identity(metadata: &std::fs::Metadata) -> String {
     metadata.ino().to_string()
 }
@@ -787,8 +791,6 @@ mod tests {
         );
     }
 
-    // A log written anew keeps no budget it couldn't draw on from before,
-    // and reading it again doesn't write one twice.
     // A boot gives a btrfs subvolume another device number, so a log kept
     // under the number it had is the same log, read on from where it was.
     #[test]
@@ -799,10 +801,12 @@ mod tests {
         std::fs::write(&path, format!("{HEADER}\n{TURN}\n")).unwrap();
         let history = History::memory();
         scan(&history, &own(dir.path()), Reading::default()).unwrap();
-        let inode = std::fs::metadata(&path).unwrap().ino();
+        let metadata = std::fs::metadata(&path).unwrap();
+        // Another number than the one the log is under now, whatever that is.
+        let kept = format!("{}:{}", metadata.dev() + 1, metadata.ino());
         history
             .db
-            .execute("UPDATE files SET identity = ?1", [format!("38:{inode}")])
+            .execute("UPDATE files SET identity = ?1", [kept])
             .unwrap();
         let later = turn_at(2);
         let mut file = std::fs::OpenOptions::new()
@@ -817,6 +821,33 @@ mod tests {
             "a log kept under another boot's device number was read again from its start"
         );
     }
+
+    // A row kept as device and inode still tells a log replaced since: its
+    // inode isn't the one kept, so it's read again from its start.
+    #[test]
+    fn a_log_kept_as_device_and_another_inode_is_read_again_from_its_start() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("project")).unwrap();
+        let path = dir.path().join("project/2026_s1.jsonl");
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n")).unwrap();
+        let history = History::memory();
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        let metadata = std::fs::metadata(&path).unwrap();
+        let kept = format!("{}:{}", metadata.dev(), metadata.ino() + 1);
+        history
+            .db
+            .execute("UPDATE files SET identity = ?1", [kept])
+            .unwrap();
+        let read = scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        assert_eq!(
+            (read.bytes, turns(&history)),
+            (metadata.len(), 1),
+            "a log under another inode than its kept row's was read on rather than from its start"
+        );
+    }
+
+    // A log written anew keeps no budget it couldn't draw on from before,
+    // and reading it again doesn't write one twice.
 
     #[test]
     fn a_replaced_log_tells_its_unresolved_budgets_once() {

@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE files (
     path TEXT PRIMARY KEY, identity TEXT NOT NULL, offset INTEGER NOT NULL,
     carry TEXT NOT NULL, session TEXT);
+CREATE INDEX files_session ON files (session);
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY, cwd TEXT NOT NULL, repo TEXT NOT NULL, started REAL NOT NULL,
     kind TEXT, name TEXT,
@@ -414,10 +415,12 @@ impl History {
             .flatten()
             .and_then(|value| value.parse().ok());
         if schema == Some(SCHEMA) {
+            history.index_sessions()?;
             return Ok(history);
         }
         if let Some(from) = schema.filter(|from| (1..SCHEMA).contains(from)) {
             history.upgrade(from)?;
+            history.index_sessions()?;
             return Ok(history);
         }
         drop(history);
@@ -439,6 +442,18 @@ impl History {
             )
             .map_err(sql)?;
         Ok(history)
+    }
+
+    /// Indexes which session each log holds, in a history kept before the
+    /// index was. Forgetting a log asks whether another holds its session,
+    /// and without the index that read every row: 43.6 MB a log on a
+    /// history of 39,486 logs on 25 November. It's no change of shape,
+    /// since an older spend-watch reads the history the same with it, so
+    /// it's made where it's missing rather than as a step.
+    fn index_sessions(&self) -> Result<(), String> {
+        self.db
+            .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);")
+            .map_err(sql)
     }
 
     /// The shape of the history at `path`, when a newer spend-watch keeps
@@ -915,6 +930,34 @@ mod tests {
             })
             .unwrap();
         assert_eq!(kept, "yes");
+    }
+
+    #[test]
+    fn a_history_kept_before_its_logs_sessions_were_indexed_gains_the_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        History::open(&path)
+            .unwrap()
+            .db
+            .execute_batch("DROP INDEX files_session;")
+            .unwrap();
+        let history = History::open(&path).unwrap();
+        let plan: Vec<String> = history
+            .db
+            .prepare(
+                "EXPLAIN QUERY PLAN SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 \
+                 AND path != ?2)",
+            )
+            .unwrap()
+            .query_map(params!["teal", "ochre"], |row| row.get(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            plan.iter().any(|step| step.contains("files_session")),
+            "forgetting a log still reads every log's row to learn whether another holds its \
+             session: {plan:?}"
+        );
     }
 
     #[test]
