@@ -1160,8 +1160,11 @@
     within its own lowest and highest clock, frees each to its full clock, refuses words it doesn't
     take, and holds nothing on a processor with no efficient cores
   '';
+  elsewhere-compiles-for-macos = ''
+    elsewhere and its tests compile for macOS, clean, read from Linux
+  '';
   elsewhere-passes-clippy = ''
-    clippy finds nothing in elsewhere or its tests
+    clippy finds nothing in elsewhere or its tests, on a Mac as on Linux
   '';
   elsewhere-reads-what-a-machine-declares = ''
     the machines and kinds of job a machine repository declares reach elsewhere's settings in the
