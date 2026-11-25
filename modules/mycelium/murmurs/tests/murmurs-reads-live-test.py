@@ -10,8 +10,9 @@ sky, never call a node it never heard quiet, say what it couldn't read, say
 broken when the node stops while keeping what it drew and live once it's back,
 say stale when the server goes, draw a murmur's words as words and never as
 markup, step its cursor by the keys and by a tap on the keys its head shows,
-and pass the web-design skill's page checks at a phone's width and a desk's in
-both looks. Anything the page logs fails it. The server, the browser and the tab are
+open on a headline and lede taking the lines the live ones take, and pass
+the web-design skill's page checks at a phone's width and a desk's in both
+looks. Anything the page logs fails it. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's, which opens once more a tab whose
 renderer died before its first reading, as a busy builder's sometimes does.
 """

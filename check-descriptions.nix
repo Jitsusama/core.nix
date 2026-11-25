@@ -954,12 +954,13 @@
     skill's page checks and its homes check passing at a phone's width and a desk's in both looks, a
     repository's weight and due upkeep said in its row and drawer, its ages told again each minute
     in place with the focused tree kept, today's growth yesterday's once the day turns, no row
-    moving as the cursor steps, a reload not shifting as the feeds arrive, a second's burst of
-    records drawing the list a few times, a first visit within its budget of files, bytes and
-    elements, both visits reaching only the sites' server and the second answered unchanged, the
-    map at the page's foot drawing a thread for each cell joining two repositories, walked by its
-    keys, opening one as the list does, and handing the keys to the list once its last tie goes,
-    and nothing logged
+    moving as the cursor steps, a reload not shifting as the feeds arrive, the headline and lede
+    it opens with taking the lines the live ones take at 390, 1440 and 1920 wide, a second's
+    burst of records drawing the list a few times, a first visit within its budget of files, bytes
+    and elements, both visits reaching only the sites' server and the second answered unchanged,
+    the map at the page's foot drawing a thread for each cell joining two repositories, walked by
+    its keys, opening one as the list does, and handing the keys to the list once its last tie
+    goes, and nothing logged
   '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
@@ -4648,8 +4649,10 @@
     kept and live once it's back, stale once the server goes with them kept, a murmur's words
     drawn as words and never as markup, j, k, g, G and ? answering, a tap on a key its head shows
     doing what typing it does, the web-design skill's page checks passing at a phone's width and a
-    desk's in both looks, a first visit within its budget of files, bytes and elements, both visits
-    reaching only the sites' server and the second answered unchanged, a tab whose renderer dies
+    desk's in both looks, the headline and lede it opens with taking the lines the live ones take
+    at 390, 1440 and 1920 wide, a first visit within its budget of files, bytes and elements, both
+    visits reaching only the sites' server and the second answered unchanged, a tab whose renderer
+    dies
     before its first reading opened once more and said, and nothing logged
   '';
   start-new-work-asks-only-a-sprout = ''

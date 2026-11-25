@@ -12,7 +12,8 @@ drawer, say broken when the daemon stops and live again, its repositories
 drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
-Tab reach the head's keys once, not shift as its feeds arrive on a reload, nor
+Tab reach the head's keys once, open on a headline and lede taking the lines
+the live ones take, not shift as its feeds arrive on a reload, nor
 hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, draw a thread for
 each cell joining two repositories on the map under the work and walk it by
