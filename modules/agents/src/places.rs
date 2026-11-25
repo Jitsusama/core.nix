@@ -55,7 +55,10 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
             (Value::Array(places), _, _) => {
                 json!({"places": places.iter().take(MOST_PLACES).collect::<Vec<_>>()})
             }
-            (_, Value::String(why), _) | (_, _, Some((_, why))) => unlisted(&start_of(why)),
+            // Two arms, as an or-pattern can't bind the error's &String and
+            // the refusal's &str as one.
+            (_, Value::String(why), _) => unlisted(&start_of(why)),
+            (_, _, Some((_, why))) => unlisted(&start_of(why)),
             // What sprout::asked reads of a line that isn't JSON.
             _ if reply.is_null() => unlisted("the node's answer couldn't be read: not JSON"),
             _ => unlisted(&format!(
