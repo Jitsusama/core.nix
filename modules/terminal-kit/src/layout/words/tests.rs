@@ -77,6 +77,34 @@ fn a_word_too_long_for_its_line_is_shortened_not_broken() {
 }
 
 #[test]
+fn a_word_sharing_a_hung_first_line_is_shortened_to_that_line_s_room() {
+    let words =
+        "Cleared ~/.cache/pi/agentic-harness.pi/quest-workspace/QEST-1/tmp/run-48 (16 KiB).";
+    // The first line has 40 cells past its inset and the lines under it
+    // 38, so the path beside Cleared has 32 cells to keep, where the
+    // hang's measure would leave it 30 and cut a folder more.
+    assert_eq!(
+        hanging(words, 2, Room::Cells(42)),
+        [
+            "  Cleared ~/.cache/pi/\u{2026}/QEST-1/tmp/run-48",
+            "    (16 KiB)."
+        ],
+        "the path beside Cleared was cut to the hang's room"
+    );
+}
+
+#[test]
+fn a_word_cut_to_the_hang_still_shares_a_first_line_it_fits() {
+    // Ten cells are left beside the first word, under the 24 a word
+    // needs to share a line, so it's cut to the ten its own line would
+    // give it, and those fit the first line, where it stays.
+    assert_eq!(
+        hanging("a bbbbbbbbbbbbbbbbbbbbb", 0, Room::Cells(12)),
+        ["a bbbb\u{2026}bbbbb"]
+    );
+}
+
+#[test]
 fn a_last_word_is_never_left_alone_on_its_line() {
     assert_eq!(
         wrapped("the guard clears some once idle", 26),
@@ -157,6 +185,28 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
                     words(&lines.join(" ")),
                     words(said),
                     "{said:?} lost or changed a word at {room}"
+                );
+            }
+            // A run's dot goes with its break, so no line ends or starts
+            // on one, and where no item breaks between its words, each
+            // gap between items is either a dot or a line's end.
+            for line in &lines {
+                let line = line.trim();
+                assert!(
+                    !line.starts_with('·') && !line.ends_with('·'),
+                    "{said:?} left a line on its dot at {room}: {lines:?}"
+                );
+            }
+            let items: Vec<&str> = said.split(ITEMS).collect();
+            if items.len() > 1
+                && !items.iter().any(|item| item.contains(' '))
+                && room >= inset + GAP + longest
+            {
+                let dots = lines.iter().map(|line| line.matches('·').count()).sum::<usize>();
+                assert_eq!(
+                    dots + lines.len() - 1,
+                    items.len() - 1,
+                    "{said:?} lost or doubled a dot at {room}: {lines:?}"
                 );
             }
         }
