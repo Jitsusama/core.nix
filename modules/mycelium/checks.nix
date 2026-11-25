@@ -967,6 +967,7 @@ in
             [act.launcher.owed]
             by = "soon"
             due = "2026-11-24 17:00"
+            why = "soon"
           '';
           says = "go on the launcher is owed by no cell's address";
         }
@@ -1171,6 +1172,12 @@ in
         fi
         if ! grep -qF -- "$2" said; then
           echo "On $1 the surfaces check didn't say: $2"
+          cat said
+          exit 1
+        fi
+        # Its own fault alone, so a second can't hide that the first went unseen.
+        if [ "$(grep -c '^- ' said)" != 1 ]; then
+          echo "On $1 the surfaces check found more than its own fault: $2"
           cat said
           exit 1
         fi
