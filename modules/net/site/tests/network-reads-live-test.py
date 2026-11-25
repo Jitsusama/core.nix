@@ -357,6 +357,11 @@ def test_a_bigger_house_stacks_within_the_room(
         every_device_drawn(opened.page)
         for key in [ATTIC, *SWITCHES, *CROWD]:
             expect(placed(opened.page, key), f"the map drew no {key}").to_have_count(1)
+        # Links come over their own watch, so a house drawn before they arrive takes no lanes;
+        # measured once each switch and the attic is wired, the lanes are all there.
+        for key in [ATTIC, *SWITCHES]:
+            ends = f'#map-draw .n-link[data-from="{key}"], #map-draw .n-link[data-to="{key}"]'
+            expect(opened.page.locator(ends), f"the map drew no wire to {key}").not_to_have_count(0)
         stands_within_the_room(opened.page, f"a {size[0]} px window")
     finally:
         opened.close()

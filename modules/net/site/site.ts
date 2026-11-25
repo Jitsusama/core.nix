@@ -118,17 +118,18 @@ function drawSoon(): void {
  * The first drawing fits the room it has, and a house too big for the room
  * opens where something is worth a look rather than on its top corner;
  * after that the reader's zoom stays, so a new record never moves the map
- * under them.
+ * under them. A drawing the other way fits afresh, keeping the device the
+ * keys are on in view rather than jumping back to that first concern.
  */
-function fitFirst(at: Network): void {
-  if (fitted) {
+function fitFirst(at: Network, flipped: boolean): void {
+  if (fitted && !flipped) {
     return;
   }
   fitted = true;
   map.fit();
-  const worth = at.concerns.find(
-    (concern) => concern.kind !== "ceiling" && drawn?.at.has(concern.device),
-  );
+  const worth = flipped
+    ? undefined
+    : at.concerns.find((concern) => concern.kind !== "ceiling" && drawn?.at.has(concern.device));
   if (map.overflows && worth !== undefined) {
     map.bringIntoView(worth.device);
   }
@@ -165,12 +166,10 @@ function render(): void {
   }
   shape = study(network);
   const stacked = map.narrowerThan(ACROSS_LEAST);
-  if (drawn !== undefined && drawn.stacked !== stacked) {
-    fitted = false;
-  }
+  const flipped = drawn !== undefined && drawn.stacked !== stacked;
   drawn = drawMap(draw, network, shape, { now: now(), stacked });
   map.shows(drawn);
-  fitFirst(network);
+  fitFirst(network, flipped);
   if (opened !== null && !shape.byId.has(opened)) {
     opened = null;
   }
