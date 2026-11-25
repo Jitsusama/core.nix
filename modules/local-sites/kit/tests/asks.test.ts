@@ -84,6 +84,16 @@ const make = (tag: string): Element => new Element(tag);
 const NOW = Date.parse("2026-11-24T23:00:00Z");
 const HOUR = 3_600_000;
 
+// What a row says when an answer can't be carried, and once one is.
+const STALE = /reload it to answer/u;
+const TAKES_NONE = /take no answers: answer in For You/u;
+const UNREACHED = /can't be reached/u;
+const AGENTS = /one of your agents/u;
+const FOR_YOU = /answer in For You/u;
+const UNTOLD = /couldn't tell this press was yours/u;
+const COME_BACK = /come back once this page is live/u;
+const ANSWERED = /Answered Merge It/u;
+
 /** A look waiting on him, left by the cell at `address` `ago` before now. */
 function look(id: string, address: string, ago = HOUR): object {
   return {
@@ -104,11 +114,19 @@ function look(id: string, address: string, ago = HOUR): object {
   };
 }
 
-/** The feed's records holding `looks`, keyed as the to-do daemon keys them. */
+/** `looks` as the feed's records, keyed as the to-do daemon keys them. */
+function recordsOf(looks: object[]): object[] {
+  return looks.map((one) => ({
+    key: `look:${(one as { id: string }).id}`,
+    kind: "look",
+    look: one,
+  }));
+}
+
+/** The feed's records holding `looks`. */
 function holding(...looks: object[]): Held {
   const held = new Held();
-  const records = looks.map((one) => ({ key: `look:${(one as { id: string }).id}`, kind: "look", look: one }));
-  held.took({ records });
+  held.took({ records: recordsOf(looks) });
   return held;
 }
 
@@ -135,7 +153,10 @@ it("every word a session wrote is set as text, so markup in a title shows as wri
   assert.equal(title?.words(), "<b>Merge</b> it?");
   assert.equal(title?.all("b").length, 0, "a title's markup became an element");
   assert.equal(row.all("img").length, 0, "a why's markup became an element");
-  assert.equal(row.all("a")[0]?.getAttribute("href"), "https://github.com/Jitsusama/core.nix/pull/1");
+  assert.equal(
+    row.all("a")[0]?.getAttribute("href"),
+    "https://github.com/Jitsusama/core.nix/pull/1",
+  );
   assert.deepEqual(
     row.all("button").map((button) => button.words()),
     ["Merge It", "Leave It"],
@@ -165,18 +186,26 @@ it("a press posts the look and the value alone, and a refusal is said with what 
     return Promise.resolve({ status, text });
   };
   const carried = await carry(look("l1", "abc"), choice, NOW, answering(200, "{}"));
-  assert.deepEqual(carried, { carried: true, words: "Answered Merge It: sent to the session that asked." });
+  assert.deepEqual(carried, {
+    carried: true,
+    words: "Answered Merge It: sent to the session that asked.",
+  });
   assert.deepEqual(JSON.parse(posted[0] ?? ""), { look: "l1", value: "yes" });
   const stale = await carry(look("l1", "abc"), choice, NOW, answering(403, '{"refused":"cookie"}'));
-  assert.match(stale.words, /reload it to answer/u);
-  const none = await carry(look("l1", "abc"), choice, NOW, answering(404, "this server takes no answers\n"));
-  assert.match(none.words, /take no answers: answer in For You/u);
+  assert.match(stale.words, STALE);
+  const none = await carry(
+    look("l1", "abc"),
+    choice,
+    NOW,
+    answering(404, "this server takes no answers\n"),
+  );
+  assert.match(none.words, TAKES_NONE);
   const down = await carry(look("l1", "abc"), choice, NOW, () => Promise.reject(new Error("down")));
-  assert.match(down.words, /can't be reached/u);
+  assert.match(down.words, UNREACHED);
   const agents = await carry(look("l1", "abc"), choice, NOW, answering(403, '{"refused":"agent"}'));
-  assert.match(agents.words, /one of your agents/u);
+  assert.match(agents.words, AGENTS);
   const form = await carry(look("l1", "abc"), choice, NOW, answering(415, '{"refused":"type"}'));
-  assert.match(form.words, /answer in For You/u);
+  assert.match(form.words, FOR_YOU);
 });
 
 /** A server that takes the page's answers. */
@@ -184,14 +213,16 @@ const takes = (): Promise<Posted> => Promise.resolve({ status: 204, text: "" });
 
 it("a page asks once whether its answers are taken, and is told why not", async () => {
   assert.equal(await ready(takes), null);
-  const none = await ready(() => Promise.resolve({ status: 404, text: "this server takes no answers\n" }));
-  assert.match(none ?? "", /take no answers: answer in For You/u);
+  const none = await ready(() =>
+    Promise.resolve({ status: 404, text: "this server takes no answers\n" }),
+  );
+  assert.match(none ?? "", TAKES_NONE);
   const agents = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"agent"}' }));
-  assert.match(agents ?? "", /one of your agents/u);
+  assert.match(agents ?? "", AGENTS);
   const untold = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"untold"}' }));
-  assert.match(untold ?? "", /couldn't tell this press was yours/u);
+  assert.match(untold ?? "", UNTOLD);
   const down = await ready(() => Promise.reject(new Error("down")));
-  assert.match(down ?? "", /can't be reached/u);
+  assert.match(down ?? "", UNREACHED);
 });
 
 it("answers wait on the server taking them, and say why where it doesn't", async () => {
@@ -208,14 +239,20 @@ it("answers wait on the server taking them, and say why where it doesn't", async
       });
     followAsks({ holder, make, reaching: { ...reaching(sockets), ready: waits } });
     telling(sockets[0], look("l1", "abc"));
-    assert.equal(holder.all("button").length, 0, "answers showed before the server said it takes them");
+    assert.equal(
+      holder.all("button").length,
+      0,
+      "answers showed before the server said it takes them",
+    );
     answer(said);
     await Promise.resolve();
     await Promise.resolve();
     assert.equal(holder.all("button").length, shown, `${said.status}`);
-    if (shown === 0) {
-      assert.match(holder.words(), /one of your agents/u);
-    }
+    assert.equal(
+      AGENTS.test(holder.words()),
+      shown === 0,
+      `${said.status}: whether the row named the agents`,
+    );
   }
 });
 
@@ -250,7 +287,7 @@ it("answers show only while the feed is live and go once one is pressed", async 
   feed.onopen?.();
   feed.tell({ id: 2, records: [{ key: "look:l1", kind: "look", look: look("l1", "abc") }] });
   assert.equal(holder.all("button").length, 0, "answers showed before the feed was live");
-  assert.match(holder.words(), /come back once this page is live/u);
+  assert.match(holder.words(), COME_BACK);
   feed.tell({ id: 2, state: "live" });
   const [yes] = holder.all("button");
   assert.ok(yes !== undefined, "no answers showed while live");
@@ -259,7 +296,7 @@ it("answers show only while the feed is live and go once one is pressed", async 
   await Promise.resolve();
   await Promise.resolve();
   assert.deepEqual(posted.map((body) => JSON.parse(body)), [{ look: "l1", value: "yes" }]);
-  assert.match(holder.words(), /Answered Merge It/u);
+  assert.match(holder.words(), ANSWERED);
   assert.deepEqual(counts.slice(-1), [1]);
 });
 
@@ -287,8 +324,7 @@ function reaching(sockets: StandIn[]): {
 /** `socket` opened, told `looks` whole, then live. */
 function telling(socket: StandIn | undefined, ...looks: object[]): void {
   socket?.onopen?.();
-  const records = looks.map((one) => ({ key: `look:${(one as { id: string }).id}`, kind: "look", look: one }));
-  socket?.tell({ id: 2, records });
+  socket?.tell({ id: 2, records: recordsOf(looks) });
   socket?.tell({ id: 2, state: "live" });
 }
 

@@ -95,7 +95,12 @@ function ifNothing(ask: Ask, now: number): string {
 }
 
 /** An element of `tag` made by `make`, of `kind` and saying `words`, set as text. */
-function said<Item extends Made<Item>>(make: Make<Item>, tag: string, words: string, kind = ""): Item {
+function said<Item extends Made<Item>>(
+  make: Make<Item>,
+  tag: string,
+  words: string,
+  kind = "",
+): Item {
   const element = make(tag);
   element.className = kind;
   element.textContent = words;
@@ -103,7 +108,11 @@ function said<Item extends Made<Item>>(make: Make<Item>, tag: string, words: str
 }
 
 /** `words`, a link to `opens` where it's a web address, as text otherwise. */
-function linked<Item extends Made<Item>>(make: Make<Item>, words: string, opens: string | null): Item {
+function linked<Item extends Made<Item>>(
+  make: Make<Item>,
+  words: string,
+  opens: string | null,
+): Item {
   if (opens === null) {
     return said(make, "span", words);
   }
@@ -130,7 +139,12 @@ function answers<Item extends Made<Item>>(make: Make<Item>, ask: Ask, view: View
 }
 
 /** One look's row, as ask.css lays it out, every word set as text. */
-function drawAsk<Item extends Made<Item>>(make: Make<Item>, row: Waiting, view: View, now: number): Item {
+function drawAsk<Item extends Made<Item>>(
+  make: Make<Item>,
+  row: Waiting,
+  view: View,
+  now: number,
+): Item {
   const { ask } = row;
   const article = said(make, "article", "", "ask");
   const title = make("h3");
@@ -262,8 +276,8 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
     reaching,
   );
   held = following.held;
-  ready(reaching.ready).then((said) => {
-    barred = said;
+  ready(reaching.ready).then((why) => {
+    barred = why;
     draw();
   });
   return {
