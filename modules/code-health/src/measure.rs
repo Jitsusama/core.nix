@@ -434,7 +434,10 @@ fn duplicated(code: &[&File]) -> (usize, Vec<String>) {
 /// Each file whose comments can't be known, and the comments naming
 /// what's gone, but none while any file's comments can't be known: what
 /// such a file names can't be told, so a figure without it would read as
-/// a gain, and two such hours in a row would ratchet the target down.
+/// a gain, and two such day records in a row would ratchet the target
+/// down. With no figure, a day isn't held against the target at all, so
+/// a misreading lasting a week lets the target rise back to the one set,
+/// never under what's true; the misreading itself is held to none.
 fn put_stale(health: &mut Health, stale: stale::Stale) {
     if stale.unread.is_empty() {
         let count = stale.gone.len();

@@ -29,7 +29,8 @@ const SWINGING: [&str; 3] = ["edit-to-merge", "files-per-change", "shared-files"
 pub const STRAY_OWNERS: &str = "stray-owners";
 
 /// The files whose comments the stale reader couldn't know, which only
-/// its own misreading leaves, so it's held to none where no target is set.
+/// its own misreading leaves, so it's held to none where no target is set
+/// and goes to who keeps code-health where a machine names one.
 pub const UNREAD_COMMENTS: &str = "unread-comments";
 
 /// The measures that are always a mistake, held to none unless a target

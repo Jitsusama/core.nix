@@ -39,6 +39,9 @@ let
         "${name}/${measure}=${toString value}"
       ]) values
     );
+  # The files code-health's own reader couldn't read are its keeper's to
+  # mend, wherever they lie, unless a repository names another for them.
+  kept = lib.optionalAttrs (cfg.owner != null) { unread-comments = cfg.owner; };
   judged = lib.concatLists (
     lib.mapAttrsToList (
       name: repo:
@@ -47,7 +50,7 @@ let
         "--owner"
         "${name}=${repo.owner}"
       ]
-      ++ byMeasure "--owner" name repo.owners
+      ++ byMeasure "--owner" name (kept // repo.owners)
       ++ lib.concatLists (
         lib.mapAttrsToList (folder: owner: [
           "--owner"
@@ -119,6 +122,17 @@ in
     );
     default = { };
     description = "The repositories read each hour, by the name cadence says them by.";
+  };
+
+  options.jitsusama.code-health.owner = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    description = ''
+      Who keeps code-health itself: told, in every repository, of the files
+      whose comments its stale reader couldn't read, which only its own
+      misreading leaves, ahead of the repository's owner, unless the
+      repository's owners name another for unread-comments.
+    '';
   };
 
   options.jitsusama.code-health.path = lib.mkOption {

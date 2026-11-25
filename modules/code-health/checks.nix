@@ -92,7 +92,9 @@
       (handed "some=apps/web" && handed "some=infra/web" && handed "one=apps/one");
   # cadence's hourly read holds each measure against the target and owner
   # a machine sets, so code-health reads each hour and is handed both: a
-  # repository's owner, a measure's own owner, and each target.
+  # repository's owner, a measure's own owner, and each target; and what
+  # its own reader couldn't read goes to who keeps code-health, unless a
+  # repository names another for it.
   code-health-reads-hourly-against-targets =
     let
       home = account (bareNixos [
@@ -100,11 +102,16 @@
           home-manager.sharedModules = [
             self.homeModules.code-health
             {
+              jitsusama.code-health.owner = "keeper";
               jitsusama.code-health.repos.some = {
                 checkout = "/home/someone/src/some";
                 targets.long-files = 3;
                 owner = "someone";
                 owners.suppressions = "another";
+              };
+              jitsusama.code-health.repos.one = {
+                checkout = "/home/someone/src/one";
+                owners.unread-comments = "another";
               };
             }
           ];
@@ -131,6 +138,18 @@
         && handed [
           "--owner"
           "some/suppressions=another"
+        ]
+        && handed [
+          "--owner"
+          "some/unread-comments=keeper"
+        ]
+        && handed [
+          "--owner"
+          "one/unread-comments=another"
+        ]
+        && !handed [
+          "--owner"
+          "one/unread-comments=keeper"
         ]
       );
 
