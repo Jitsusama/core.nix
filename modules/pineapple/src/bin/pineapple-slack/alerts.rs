@@ -78,7 +78,7 @@ fn untold(state: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// Tells each of `new` by `send`, which says nothing where there's
+/// Tells each of `new` by `tell`, which says nothing where there's
 /// nowhere yet to send, and keeps a line in phoned.jsonl for each told,
 /// written down in shadow, or that may have gone, as `im` names where.
 fn tell_each(
@@ -86,7 +86,7 @@ fn tell_each(
     state: &Path,
     new: Vec<Value>,
     im: Option<&str>,
-    mut send: impl FnMut(Alert) -> Option<Result<(), Missed>>,
+    mut tell: impl FnMut(Alert) -> Option<Result<(), Missed>>,
 ) {
     let phoned = state.join("phoned.jsonl");
     for line in new {
@@ -102,7 +102,7 @@ fn tell_each(
             eprintln!("<5>Joel's phone, in shadow: {link}");
             json!(false)
         } else {
-            match send(alert) {
+            match tell(alert) {
                 Some(Ok(())) => {
                     eprintln!("<5>Joel's phone was told: {link}");
                     json!(true)
