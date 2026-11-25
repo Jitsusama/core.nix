@@ -315,26 +315,26 @@ function waitsOn(launcher, key, letters) {
     );
 }
 
-// How `openings` ({key, held, machine, since}) stand at `now`, `found`
-// giving each one's session or null: `late` have waited `patience`
-// milliseconds or more, and open nothing even if up by now, so a window
-// never comes past the minute it's said to; `up` came up within it, each
-// with its `session`; `waiting` are neither yet.
-function settled(openings, found, now, patience) {
-    const late = [];
-    const up = [];
-    const waiting = [];
+// How `openings` ({key, held, machine, since, late}) stand at `now`, by
+// `found` giving each one's session or null: `up` are up, however late;
+// `late` have waited `patience` with no `late` mark yet; `gone` have
+// waited `watch`; `waiting` are none of those.
+function settled(openings, found, now, { patience, watch }) {
+    const stood = { late: [], up: [], gone: [], waiting: [] };
     for (const one of openings) {
         const session = found(one);
-        if (now - one.since >= patience) {
-            late.push(one);
-        } else if (session) {
-            up.push(Object.assign({}, one, { session }));
+        const waited = now - one.since;
+        if (session) {
+            stood.up.push(Object.assign({}, one, { session }));
+        } else if (waited >= watch) {
+            stood.gone.push(one);
+        } else if (waited >= patience && one.late !== true) {
+            stood.late.push(one);
         } else {
-            waiting.push(one);
+            stood.waiting.push(one);
         }
     }
-    return { late, up, waiting };
+    return stood;
 }
 
 // What opens a placement refusal, and a machine's reason in one that waiting

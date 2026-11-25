@@ -2142,28 +2142,36 @@ Provider {
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
-    // since, letters }`, `letters` the launcher's lettersAt at the answer:
+    // since, letters, late }`, `letters` the launcher's lettersAt at the
+    // answer and `late` true once it's said to be still coming up:
     // Joel asked for each, so each opens for him, on the workspace a session
     // goes to and focused (Sessions.goTo), rather than in no window (Joel,
     // 18 November: "start new work does not seem to work from the
     // launcher"). A list, so a second sprout never loses the first.
     property var openings: []
-    readonly property int openingPatience: 60000
+    // A minute before one still coming up is said to be, and a quarter hour,
+    // three times the slowest start seen on a loaded machine, before it's
+    // watched no more.
+    readonly property var openingPatience: ({ patience: 60000, watch: 15 * 60000 })
     // Each that's up opens and goes, but takes the keys only while Joel
     // still waits on its act in the launcher (Sprouting.waitsOn): once he's
     // at something else, what he types could land in an agent's prompt, so
-    // the foot says it's up and Go To in Agents opens it. A session comes up
-    // in seconds; one not up within the minute is said unopened and opens no
-    // window later, when Joel may be at something else (Sprouting.settled).
-    // What a pass says is one tell, in the foot or as a notice as
-    // sproutTell says.
+    // he's told it's up, by its name, and Go To in Agents opens it. One not
+    // up within the minute is said to be still coming up, and told again as
+    // it comes up, however late, or once it's watched no more
+    // (Sprouting.settled): Joel's at 14:30 on 25 November came up five and a
+    // half minutes after his Return on a loaded machine, and was said
+    // unopened at the minute and never again. What a pass says is one tell,
+    // in the foot or as a notice as sproutTell says.
     function openSprouted() {
         const stood = Sprouting.settled(openings, one => sessionOf(one), Date.now(),
             openingPatience);
-        if (stood.late.length === 0 && stood.up.length === 0)
+        if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
-        openings = stood.waiting;
-        const told = stood.late.map(one => said(one, "unopened"));
+        openings = stood.waiting.concat(stood.late.map(one => Object.assign({}, one,
+            { late: true })));
+        const told = stood.late.map(one => said(one, "unopened"))
+            .concat(stood.gone.map(one => said(one, "lost")));
         stood.up.forEach(one => {
             const text = openOne(one);
             if (text !== "")
@@ -2175,9 +2183,12 @@ Provider {
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
     }
-    // Says `word` of `one` on its act, and gives the words for the foot.
+    // Says `word` of `one` on its act, and gives the words for the foot, its
+    // session named where it's up.
     function said(one, word) {
-        const text = String(sproutWords()[word] ?? "").replace("{machine}", one.machine);
+        const title = one.session ? one.session.title || one.session.address : "";
+        const text = String(sproutWords()[word] ?? "").replace("{machine}", one.machine)
+            .replace("{title}", title);
         sproutSays(one.key, text);
         return text;
     }
@@ -2187,7 +2198,7 @@ Provider {
         const launcher = provider.launcher ?? null;
         if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
             Report.say(`new work's session ${one.session.address} is up; left for Go To`);
-            return said(one, "up");
+            return said(one, one.late === true ? "upLater" : "up");
         }
         said(one, "opening");
         launcher.open = false;

@@ -197,20 +197,35 @@ QtObject {
             Sprouting.waitsOn(at(false, { key: act }, null, 5), act, 5), false);
         Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act, 5), false);
 
-        // How the waiting stand at `now`: those past the minute are late even when up by
-        // then, so none opens past it; those up within it open; the rest wait on.
-        const openings = [{ key: "a", held: "h1", since: 1000 }, { key: "b", held: "h2",
-            since: 50000 }, { key: "c", held: "h3", since: 55000 }];
+        // How the waiting stand at `now`: each up opens however long it took, as Joel's
+        // start at 14:30 on 25 November came up five and a half minutes on; one past the
+        // minute and not yet said to be late is late, once; one past the watch is gone.
+        {
+        const minutes = 60000;
+        const times = { patience: minutes, watch: 15 * minutes };
+        const now = 20 * minutes;
+        const openings = [
+            { key: "slow", held: "h1", since: now - 5.5 * minutes, late: true },
+            { key: "quick", held: "h2", since: now - 5000 },
+            { key: "waits", held: "h3", since: now - 10000 },
+            { key: "late", held: "h4", since: now - 2 * minutes },
+            { key: "said", held: "h5", since: now - 3 * minutes, late: true },
+            { key: "gone", held: "h6", since: now - 15 * minutes, late: true }
+        ];
         const upAre = new Set(["h1", "h2"]);
         const found = one => upAre.has(one.held) ? { address: one.held } : null;
-        const stood = Sprouting.settled(openings, found, 61000, 60000);
-        Expect.same("one past the minute is late, though up",
-            stood.late.map(one => one.key), ["a"]);
-        Expect.same("one up within it opens, with its session",
-            stood.up.map(one => [one.key, one.session.address]), [["b", "h2"]]);
-        Expect.same("one not up within it waits on", stood.waiting.map(one => one.key), ["c"]);
-        Expect.same("at the minute's own end, it's late",
-            Sprouting.settled([openings[0]], () => null, 61000, 60000).late.length, 1);
+        const stood = Sprouting.settled(openings, found, now, times);
+        Expect.same("each up opens, with its session, the slow one after its minute too",
+            stood.up.map(one => [one.key, one.session.address]),
+            [["slow", "h1"], ["quick", "h2"]]);
+        Expect.same("one past the minute is late", stood.late.map(one => one.key), ["late"]);
+        Expect.same("one watched a quarter hour is gone", stood.gone.map(one => one.key),
+            ["gone"]);
+        Expect.same("one within the minute, or already said late, waits on",
+            stood.waiting.map(one => one.key), ["waits", "said"]);
+        Expect.same("at the minute's own end, it's late", Sprouting.settled(
+            [{ key: "x", since: now - minutes }], () => null, now, times).late.length, 1);
+        }
 
         // What the act that ran says.
         Expect.same("started names the machine",
