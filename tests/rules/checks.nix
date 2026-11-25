@@ -227,7 +227,7 @@
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
         du = script "du" ../../modules/du/du.sh {
-          words = "/usr/bin/du ${../../modules/ripgrep/ignore} /System/Volumes/Data";
+          words = "/usr/bin/du ${../../modules/ripgrep/ignore} /System/Volumes/Data /Users/someone";
         };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };

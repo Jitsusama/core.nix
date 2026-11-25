@@ -1256,11 +1256,14 @@
     every doc's links and paths name what's there, but the exemptions named
   '';
   du-leaves-guarded-folders-alone = ''
-    a Mac's account runs its own du, macOS's with the ignore file and the data volume, and a
-    Linux account none; over a stand-in du, a count starting above a guarded folder, from the
-    home folder, Library, the data volume's name for it or /, leaves each guarded folder below
-    out by its name, once, and says so, options and their values read past, while a count
-    naming one, starting inside one or above none runs as given, and --help runs no du
+    a Mac's account runs its own du, ahead of any other in its profile, macOS's with the ignore
+    file, the data volume and the account's home, and a Linux account none; over a stand-in du,
+    a count starting above a guarded folder, from the home folder, Library, the data volume's
+    name for it, /, a home in capitals or HOME's own, or following links from anywhere, leaves
+    each guarded folder out by its name, once, and says so in full, HOME gone or not, options
+    and their values, joined or apart, read past; a start that is a guarded folder or lies in
+    one, named, by a glob's list, in capitals or through .., is left out and said, du not run
+    when none is left; a count above none runs as given, and --help runs no du
   '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
