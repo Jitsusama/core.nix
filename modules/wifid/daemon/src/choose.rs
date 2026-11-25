@@ -923,7 +923,7 @@ impl Chooser {
     /// or one a call gave way from within `fading::AWAY`, as loss every
     /// point shares would otherwise send it from point to point.
     pub fn call_keeps_off(&self, point: &str, now: Instant) -> bool {
-        self.keeps_off(point, now) || self.left_lately(point, now)
+        self.kept_for(point, now).is_some() || self.left_lately(point, now)
     }
 
     /// Whether a call gave way from that access point within
@@ -2949,7 +2949,11 @@ pub(crate) mod tests {
         let later = start + fading::BETWEEN;
         chooser.followed(later, DESK);
 
-        assert_eq!(chooser.unreached().as_deref(), Some(HALL), "said once");
+        assert_eq!(
+            chooser.unreached(),
+            Some((HALL.into(), SPURNED)),
+            "said once, kept off an hour"
+        );
         assert!(chooser.keeps_off(HALL, later), "the hall is kept off");
         assert!(chooser.settled(later), "and the move holds no settle");
     }
@@ -3098,7 +3102,11 @@ pub(crate) mod tests {
         let gave = start + fading::BETWEEN;
         chooser.gave_way(gave, (DESK, NEAR), LOSING);
 
-        assert_eq!(chooser.unreached().as_deref(), Some(HALL), "the try ends");
+        assert_eq!(
+            chooser.unreached(),
+            Some((HALL.into(), SPURNED)),
+            "the try ends, kept off an hour"
+        );
         assert!(chooser.keeps_off(HALL, gave), "kept off as never reached");
     }
 

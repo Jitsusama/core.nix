@@ -172,8 +172,8 @@ fn given(
     measured: (usize, Option<i32>),
 ) -> Option<Next> {
     chooser.followed(now, &on.point);
-    if let Some(unreached) = chooser.unreached() {
-        println!("<6>{}", kept_off(on, &unreached));
+    if let Some((unreached, lasts)) = chooser.unreached() {
+        println!("<6>{}", kept_off(on, &unreached, lasts));
     }
     if !chooser.may_give_way(now) {
         return None;
