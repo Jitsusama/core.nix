@@ -76,9 +76,10 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
-# 611.
-BUDGET = Budget(files=33, kilobytes=677, elements=620)
+# 677.4 KB once a network's label keeps what tells it apart, under the 678 KB
+# allowed; new work's line and its hidden controls draw about 20 elements of
+# the 611.
+BUDGET = Budget(files=33, kilobytes=678, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1973,6 +1974,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
+    # Opening the drawer fits the whole map clear of it, a glide that places the names as it
+    # goes, so the case marks them only once the view stands still.
+    settled(page, "the map never stood still once Now opened")
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
