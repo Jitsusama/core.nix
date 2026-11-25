@@ -329,6 +329,35 @@ fn a_writers_hold_stops_a_pass_until_the_disk_is_nearly_full() {
 }
 
 #[test]
+fn a_filling_disk_under_a_writers_hold_says_its_clearing_waits() {
+    let home = Home::new();
+    let mark = home.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "").unwrap();
+    home.cold_scratch("run-1");
+    let mut guard = home.guard(held_by(&home, &mark, "0%"));
+    guard.step(&tick_at(0.0), &CALM).unwrap();
+    let says = home.status()["says"].as_str().unwrap().to_owned();
+    assert!(
+        says.contains("waits") && !says.contains("is clearing"),
+        "a held guard said it was clearing: {says}"
+    );
+    assert_eq!(
+        home.status()["filesystems"][0]["says"].as_str(),
+        Some(says.as_str()),
+        "the disk's own sentence said otherwise"
+    );
+
+    fs::remove_file(&mark).unwrap();
+    guard.step(&tick_at(60.0), &CALM).unwrap();
+    let says = home.status()["says"].as_str().unwrap().to_owned();
+    assert!(
+        !says.contains("waits"),
+        "the guard still said it waited once the hold ended: {says}"
+    );
+}
+
+#[test]
 fn a_directory_is_begun_in_the_journal_before_it_is_moved() {
     let home = Home::new();
     let cold = home.cold_scratch("run-1");
@@ -1188,6 +1217,7 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
     use disk_guard::daemon::{FilesystemStatus, Status, news};
     let now = 1_000_000.0;
     let disk = |forecast: Option<f64>, fill: f64, full_in: f64, says: &str| FilesystemStatus {
+        waiting: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,
@@ -1434,6 +1464,7 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         btrfs: None,
     };
     let mut status = FilesystemStatus {
+        waiting: false,
         path: PathBuf::from("/"),
         band: Band::Filling,
         free: 200,
@@ -1503,6 +1534,7 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
         target: Size::Percent(35.0),
     };
     let mut status = FilesystemStatus {
+        waiting: false,
         path: PathBuf::from("/"),
         band: Band::Filling,
         free: 200,
@@ -1554,6 +1586,7 @@ fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
         btrfs: None,
     };
     let mut status = FilesystemStatus {
+        waiting: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,
@@ -1621,6 +1654,7 @@ fn a_fresh_measures_machine_sentence_says_what_its_own_does() {
         btrfs: None,
     };
     let mut status = FilesystemStatus {
+        waiting: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,
@@ -1664,6 +1698,7 @@ fn a_status_tells_the_time_to_nixs_floor_and_otherwise_to_full() {
     use disk_guard::daemon::FilesystemStatus;
     use disk_guard::words::{filesystem, machine};
     let mut status = FilesystemStatus {
+        waiting: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,

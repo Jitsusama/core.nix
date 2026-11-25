@@ -30,6 +30,9 @@ pub struct Room<'a> {
     /// Whether the last pass in this band or a worse one found nothing
     /// more it may clear, so saying it's clearing would be untrue.
     pub cleared_all: bool,
+    /// Whether a writers' hold stands while the disk is still above nearly
+    /// full, so no pass runs here until it ends.
+    pub waiting: bool,
 }
 
 /// What one filesystem's room is, and what the guard does about it.
@@ -38,6 +41,10 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     let free = shown(room.free);
     let mut said = match (room.band, room.cleared_all) {
         (Band::Healthy, _) => format!("{name} has {free} free."),
+        (Band::Filling, _) if room.waiting => format!(
+            "{name} is filling, with {free} free. \
+             The guard waits to clear while heavy writing is held off."
+        ),
         (Band::Filling, true) => format!(
             "{name} is filling, with {free} free. \
              The guard has cleared all it may; what's left is in use or kept."

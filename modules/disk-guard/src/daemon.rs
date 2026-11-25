@@ -672,6 +672,10 @@ pub struct FilesystemStatus {
     /// Whether the last pass here, in this band or a worse one, found
     /// nothing more it may clear.
     pub exhausted: bool,
+    /// Whether a writers' hold keeps passes off this disk, as it does
+    /// above nearly full, so it isn't told as clearing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub waiting: bool,
 }
 
 impl FilesystemStatus {
@@ -695,6 +699,10 @@ impl FilesystemStatus {
         // its own pass hasn't run yet.
         if band > self.band {
             self.exhausted = false;
+        }
+        // A hold waits no pass at nearly full or worse.
+        if band >= Band::NearlyFull {
+            self.waiting = false;
         }
         self.band = band;
         self.free = space.free;
@@ -736,6 +744,7 @@ impl FilesystemStatus {
             full_in: next,
             nix_floor: self.nix_floor.filter(|_| to_floor),
             cleared_all: self.exhausted,
+            waiting: self.waiting,
         }
     }
 }
@@ -3266,6 +3275,7 @@ impl Guard {
                             && watched.band != Band::Healthy
                             && last.band >= watched.band
                     }),
+                    waiting: self.writers_held && watched.band < Band::NearlyFull,
                 };
                 status.says = crate::words::filesystem(&status.told(now), home);
                 Some(status)

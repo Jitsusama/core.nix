@@ -532,9 +532,10 @@ or launchd, and [`home.nix`][2] the account's.
   a failure. Only a mark's presence counts, never what it says. A nearly
   full disk is answered as ever, as is a clear Joel asked for, and what is
   already running goes on, a dedupe included. The log says when a hold
-  begins and ends. The system's guard and the account's each read their
-  own config, so a machine names its marks in both: core knows no program
-  that leaves one. A mark's path must be plain and absolute, since one the
+  begins and ends, and while it stands a filling disk's status says its
+  clearing waits, never that it is clearing. The system's guard and the
+  account's each read their own config, so a machine names its marks in
+  both: core knows no program that leaves one. A mark's path must be plain and absolute, since one the
   guard can't find would never hold it, and a mistyped one is refused
   when the config is read.
 - **Notices.** The account's guard shows one desktop notice, and only once

@@ -13,7 +13,27 @@ fn room(path: &str, band: Band, free: u64, full_in: Option<f64>) -> Room<'_> {
         full_in,
         nix_floor: None,
         cleared_all: false,
+        waiting: false,
     }
+}
+
+#[test]
+fn a_filling_disk_a_writers_hold_keeps_passes_off_says_its_clearing_waits() {
+    let held = |band, cleared_all| {
+        filesystem(
+            &Room {
+                waiting: true,
+                cleared_all,
+                ..room("/", band, 200 * GIB, None)
+            },
+            None,
+        )
+    };
+    let waits = "The disk is filling, with 200.0 GiB free. \
+                 The guard waits to clear while heavy writing is held off.";
+    assert_eq!(held(Band::Filling, false), waits);
+    assert_eq!(held(Band::Filling, true), waits);
+    assert_eq!(held(Band::Healthy, false), "The disk has 200.0 GiB free.");
 }
 
 #[test]
