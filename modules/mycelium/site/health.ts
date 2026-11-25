@@ -100,7 +100,7 @@ export const groupHealth = (cells: readonly Cell[]): Health => {
   const bits = [
     n.asks > 0 ? `${n.asks} ${n.asks === 1 ? "needs" : "need"} you` : "",
     n.stuck > 0 ? `${n.stuck} stuck` : "",
-    owes > 0 ? `${plural(owes, "question")} waiting` : "",
+    owes > 0 ? `${plural(owes, "answer")} owed` : "",
     full > 0 ? `${full} nearly out of context` : "",
     filling > 0 ? `${filling} with context filling` : "",
     ...QUIETER.filter((s) => n[s] > 0).map((s) => `${n[s]} ${STANDING_WORD[s]}`),

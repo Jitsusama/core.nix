@@ -2444,15 +2444,16 @@
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
     what each spent today, most first, ten to a list and the rest counted and summed, what
-    waits on each cell and what holds stand, oldest first, said as the page names each, and a
-    cell drawer's acts in order, Go to It first, and its question whole, paragraphs and lines kept
+    waits on each cell and what holds stand, oldest first, said as the page names each, a
+    question to a cell said as an answer it owes, and a cell drawer's acts in order, Go to It
+    first, and its question whole, paragraphs and lines kept
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
     drawn and counted, its networks, a branch and lines across them in one window that opens a cell
-    clicked, a cell moving and one going, two cells sharing a title moving with a question waiting
-    on them, broken while the node is away with the realm
+    clicked, a cell moving and one going, two cells sharing a title moving each owing an
+    answer, broken while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
     machine's drawer and a network's, what waits on a cell and what holds stand said as the node
