@@ -330,6 +330,64 @@ fn a_writers_hold_stops_a_pass_until_the_disk_is_nearly_full() {
 }
 
 #[test]
+fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
+    // Its survey can walk for minutes, in which a status still saying the
+    // disk waits tells Joel his clear never started.
+    let home = Home::new();
+    let mark = home.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "").unwrap();
+    let scratch = home.cold_scratch("build");
+    disk_guard::clears::ask(&home.root.join("state"), scratch.parent().unwrap(), 0.0).unwrap();
+    let mut guard = home.guard(held_by(&home, &mark, "0%"));
+    // Asked once its survey has walked, before any pass judges.
+    let status = home.root.join("status.json");
+    let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seeing = std::rc::Rc::clone(&seen);
+    guard.stop_when(Box::new(move || {
+        if let Ok(text) = fs::read_to_string(&status) {
+            let read: serde_json::Value = serde_json::from_str(&text).unwrap();
+            seeing
+                .borrow_mut()
+                .push(read["filesystems"][0]["waiting"].clone());
+        }
+        false
+    }));
+    guard.step(&tick_at(0.0), &CALM).unwrap();
+    assert!(
+        !scratch.exists(),
+        "the clear asked for didn't run under the hold"
+    );
+    let seen = seen.borrow();
+    assert!(
+        !seen.is_empty(),
+        "nothing read the status while the clear surveyed"
+    );
+    // Left out of the status when false.
+    assert!(
+        seen.iter().all(|waiting| *waiting != true),
+        "a disk whose clear was surveying said it waits: {seen:?}"
+    );
+    drop(seen);
+    // A clear of a folder with nothing in it to clear runs no pass, and
+    // the disk is told at work no longer once it ends.
+    let empty = home.root.join("scratch/nothing-here");
+    fs::create_dir_all(&empty).unwrap();
+    disk_guard::clears::ask(&home.root.join("state"), &empty, 60.0).unwrap();
+    guard.step(&tick_at(60.0), &CALM).unwrap();
+    assert!(
+        home.status()["passing"].is_null(),
+        "a clear with nothing to clear left its disk told at work: {}",
+        home.status()["passing"]
+    );
+    assert_eq!(
+        home.status()["filesystems"][0]["waiting"],
+        true,
+        "the held disk didn't say it waits once its clear ended"
+    );
+}
+
+#[test]
 fn a_filling_disk_under_a_writers_hold_says_its_clearing_waits() {
     let home = Home::new();
     let mark = home.root.join("velocity-hold/disk-writers");
@@ -888,6 +946,36 @@ fn passes_that_find_nothing_far_apart_are_not_two_in_a_row() {
 }
 
 #[test]
+fn passes_that_find_nothing_are_in_a_row_only_within_a_filling_disk_s_longest_rest() {
+    // The first pass rests a minute, to 3660 s. The second comes 890 s
+    // or 910 s after that rest ended, either side of the 15 minutes a
+    // filling disk rests longest. In a row, it rests the hour, so a step
+    // past the two minutes it would otherwise rest runs no third pass.
+    for (gap, third) in [(890.0, 2), (910.0, 3)] {
+        let home = Home::new();
+        fs::create_dir_all(home.root.join("scratch")).unwrap();
+        let mut guard = home.guard(home.config("100%", "100%"));
+        let passes = || {
+            home.journal()
+                .iter()
+                .filter(|line| line["event"] == "pass")
+                .count()
+        };
+        let second = 3660.0 + gap;
+        let mut seen = Vec::new();
+        for at in [3600.0, second, second + 150.0] {
+            guard.step(&tick_at(at), &CALM).unwrap();
+            seen.push(passes());
+        }
+        assert_eq!(
+            seen,
+            [1, 2, third],
+            "a pass {gap} s after its rest ended counted other than as the window says"
+        );
+    }
+}
+
+#[test]
 fn a_rest_counts_from_when_its_pass_ended() {
     // On 25 November a pass ran 24 minutes, and a rest counted from its
     // start had ended before it did, so the next came at once and never
@@ -912,9 +1000,9 @@ fn a_rest_counts_from_when_its_pass_ended() {
     let mut seen = Vec::new();
     // A rest counted from the step's start ended at 3660 s; from the
     // pass's end, at 3664 s at the earliest. The last step leaves the
-    // pass most of a minute and a half, for a commit's wait on a loaded
-    // builder.
-    for at in [3600.0, 3663.0, 3760.0] {
+    // pass ten minutes, for a commit's wait on a loaded builder, and
+    // still comes before an hour's rest could have ended.
+    for at in [3600.0, 3663.0, 4300.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }

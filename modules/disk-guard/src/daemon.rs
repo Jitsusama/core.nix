@@ -1639,14 +1639,28 @@ impl Guard {
         if asks.is_empty() {
             return Ok(false);
         }
-        // Joel asks most as the disk fills, when the status may not fit:
-        // the clear goes on, and so does every pass after it.
-        if let Err(error) = self.write_status(tick.wall) {
+        // Told as at work from before its survey, which walks for minutes:
+        // under a writers' hold the disk otherwise says it waits, as if
+        // the clear Joel asked for never started.
+        let first = asks.iter().find_map(|(_, ask)| {
+            use std::os::unix::fs::MetadataExt;
+            let device = fs::metadata(&ask.path).ok()?.dev();
+            let watched = self.watched.get(&device)?;
+            Some((watched.path.clone(), watched.band))
+        });
+        if let Some((path, band)) = first {
+            self.tell_passing(tick, &path, band, Why::Clear);
+        } else if let Err(error) = self.write_status(tick.wall) {
+            // Joel asks most as the disk fills, when the status may not
+            // fit: the clear goes on, and so does every pass after it.
             say!("disk-guard: writing the status before a clear: {error}");
         }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
-        let (mut scan, offers, surveyed) = self.offers(tick, Some(&scoped))?;
+        let (mut scan, offers, surveyed) = self
+            .offers(tick, Some(&scoped))
+            .inspect_err(|_| self.end_passing())?;
+        let mut ended = Ok(());
         for (file, ask) in asks {
             // A source's root may be named through a link, and an ask's
             // folder never is.
@@ -1662,9 +1676,15 @@ impl Guard {
             let cleared = self.clear_on(tick, &inside, &mut scan, surveyed);
             // Ended whatever the pass did, since one that failed would
             // fail again, each step surveying everything to.
-            crate::clears::done(&file)?;
-            cleared?;
+            ended = crate::clears::done(&file).and(cleared);
+            if ended.is_err() {
+                break;
+            }
         }
+        // A clear that found nothing inside its folder ran no pass to end
+        // the telling, and its disk would say it clears until the next.
+        self.end_passing();
+        ended?;
         self.remeasure = true;
         Ok(true)
     }
