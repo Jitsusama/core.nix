@@ -118,11 +118,12 @@ pub struct Repo {
 
 /// The config files git reads for a repository whose common folder is
 /// `common`, from its environment as `var` gives it, lowest first: the
-/// system's, the global ones, then the repository's own.
+/// system's, the global ones, then the repository's own. The environment's
+/// own bytes name each, as git takes them, whether or not they are UTF-8.
 fn config_files(
     common: &Path,
     home: Option<&Path>,
-    var: impl Fn(&str) -> Option<String>,
+    var: impl Fn(&str) -> Option<std::ffi::OsString>,
 ) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = config::system_file(
         &var,
@@ -155,7 +156,7 @@ fn load_config(location: &Location, home: Option<&Path>, branch: Option<&str>) -
         branch,
         home,
     };
-    let mut files = config_files(&location.common, home, |name| std::env::var(name).ok());
+    let mut files = config_files(&location.common, home, |name| std::env::var_os(name));
     let parameters = config::parameters(|name| std::env::var(name).ok());
     let first = Config::load(&files, &parameters, &context);
     if first.get_bool("extensions.worktreeconfig") == Some(true) {
@@ -706,7 +707,7 @@ impl Repo {
             // git has no variable moving the system attributes file, as
             // GIT_CONFIG_SYSTEM moves the config's.
             system_attributes: config::system_file(
-                |name| std::env::var(name).ok(),
+                |name| std::env::var_os(name),
                 "GIT_ATTR_NOSYSTEM",
                 None,
                 "/etc/gitattributes",
@@ -741,46 +742,5 @@ impl Repo {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::config_files;
-    use std::path::{Path, PathBuf};
-
-    /// The files read for a repository at /r, home /h, in an environment
-    /// holding `vars`.
-    fn files(vars: &[(&str, &str)]) -> Vec<PathBuf> {
-        config_files(Path::new("/r"), Some(Path::new("/h")), |name| {
-            vars.iter()
-                .find(|(key, _)| *key == name)
-                .map(|(_, value)| (*value).to_owned())
-        })
-    }
-
-    #[test]
-    fn config_files_are_read_system_first_then_global_then_the_repositorys() {
-        let paths = |names: &[&str]| names.iter().map(PathBuf::from).collect::<Vec<_>>();
-        assert_eq!(
-            files(&[]),
-            paths(&[
-                "/etc/gitconfig",
-                "/h/.config/git/config",
-                "/h/.gitconfig",
-                "/r/config"
-            ]),
-            "the files weren't read in git's order"
-        );
-        assert_eq!(
-            files(&[
-                ("GIT_CONFIG_SYSTEM", "/s"),
-                ("GIT_CONFIG_GLOBAL", "/g"),
-                ("XDG_CONFIG_HOME", "/x"),
-            ]),
-            paths(&["/s", "/g", "/r/config"]),
-            "the system or global file wasn't taken from where the environment says"
-        );
-        assert_eq!(
-            files(&[("GIT_CONFIG_NOSYSTEM", "1"), ("XDG_CONFIG_HOME", "/x")]),
-            paths(&["/x/git/config", "/h/.gitconfig", "/r/config"]),
-            "the system file was read where it's turned off, or XDG's wasn't followed"
-        );
-    }
-}
+#[path = "repo_tests.rs"]
+mod tests;

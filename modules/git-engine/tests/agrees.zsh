@@ -480,6 +480,7 @@ for r in $work/converted $work/converted-watched; do
   git config --system filter.nothing.clean 'tr o O'
   like_git "${r:t}: a filter git runs by the system config" $r
   : > $GIT_CONFIG_SYSTEM
+  like_git "${r:t}: a filter the system config no longer names" $r
   [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
 done
 
