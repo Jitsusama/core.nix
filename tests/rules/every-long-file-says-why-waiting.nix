@@ -22,7 +22,6 @@
   "modules/open-with/FileChooser.qml"
   "modules/passwords/src/lib.rs"
   "modules/passwords/src/main.rs"
-  "modules/people/src/lib.rs"
   "modules/quickshell/Drawer.qml"
   "modules/quickshell/Launcher.qml"
   "modules/quickshell/Prompt.qml"
