@@ -13,10 +13,14 @@
 # up on, and the run looks once more and starts over once it has quit;
 # and that while a Chrome holds the profile, on this host or another,
 # nothing in the profile is touched, though the folders in memory are
-# still made; and that folders reaching outside the profile are refused.
-# The folders are those a running Chrome was seen mapping shared and
+# still made, but for BrowserMetrics, which Chrome deletes itself as it
+# runs and which moves whenever nothing of Chrome's maps or holds open a
+# file still in it: a file it maps there keeps it on the disk, one it
+# deleted doesn't, and what a session left in memory goes unless it's
+# mapped; and that folders reaching outside the profile are refused. The
+# folders are those a running Chrome was seen mapping shared and
 # writable, listed here apart from the module so one dropped there is
-# caught.
+# caught, as is BrowserMetrics losing its mark.
 #
 # Usage: chrome-maps-land-in-memory.sh COMMAND_FILE UNREADABLE_CHROME
 set -euo pipefail
@@ -136,10 +140,12 @@ in_memory() {
   fi
 }
 
-# Every folder where Chrome had it, as it was, with its folder in memory
+# BrowserMetrics in memory, with nothing of Chrome's open in it, and every
+# other folder where Chrome had it, as it was, with its folder in memory
 # made all the same.
 untouched() {
-  for folder in "${folders[@]}"; do
+  metrics "$1"
+  for folder in "${folders[@]:1}"; do
     index=$(cat "$profile/$folder/index" 2>/dev/null) || index=
     if [ -L "$profile/$folder" ] || [ "$index" != old ]; then
       echo "$1, the command swapped $folder out from under it"
@@ -150,6 +156,20 @@ untouched() {
       exit 1
     fi
   done
+}
+
+# BrowserMetrics a link into memory, its old files gone.
+metrics() {
+  local link
+  link=$(readlink "$profile/BrowserMetrics" || true)
+  if [ "$link" != "$runtime/chrome/BrowserMetrics" ]; then
+    echo "$1, BrowserMetrics isn't a link into memory, though nothing of Chrome's was open in it"
+    exit 1
+  fi
+  if [ -e "$runtime/chrome/BrowserMetrics/index" ]; then
+    echo "$1, BrowserMetrics' old files went into memory with it"
+    exit 1
+  fi
 }
 
 fill
@@ -311,6 +331,57 @@ if ! grep -q 'starts over' run.log; then
   exit 1
 fi
 in_memory "once a Chrome that quit as the run ended had gone"
+
+# A running Chrome mapping a file in BrowserMetrics, as its browser maps
+# its histograms, keeps it on the disk, and the run says why.
+fill
+cp "$BASH" "$profile/BrowserMetrics/chrome"
+"$profile/BrowserMetrics/chrome" -c 'while :; do sleep 1; done' &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "mapping Chrome's"
+index=$(cat "$profile/BrowserMetrics/index" || true)
+if [ -L "$profile/BrowserMetrics" ] || [ "$index" != old ]; then
+  echo "the command moved BrowserMetrics from under a Chrome mapping a file in it"
+  exit 1
+fi
+if ! grep -q "process $chrome, maps $profile/BrowserMetrics/chrome" run.log; then
+  echo "the command kept BrowserMetrics on the disk without saying what mapped it:"
+  cat run.log
+  exit 1
+fi
+
+# Once Chrome has deleted the folder, its file with it, and made another,
+# the map names a deleted file, and the folder moves.
+rm -rf "$profile/BrowserMetrics"
+mkdir "$profile/BrowserMetrics"
+echo old >"$profile/BrowserMetrics/index"
+run "deleted map's"
+kill "$chrome"
+metrics "with Chrome mapping a file it had deleted"
+
+# What a session before left in memory goes as it moves, but for a file
+# that's still mapped.
+fill
+mkdir -p "$runtime/chrome/BrowserMetrics"
+echo left >"$runtime/chrome/BrowserMetrics/left.pma"
+cp "$BASH" "$runtime/chrome/BrowserMetrics/chrome"
+"$runtime/chrome/BrowserMetrics/chrome" -c 'while :; do sleep 1; done' &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "left files'"
+kill "$chrome"
+metrics "with files left in memory"
+if [ -e "$runtime/chrome/BrowserMetrics/left.pma" ]; then
+  echo "a file a session left in memory, which nothing mapped, stayed"
+  exit 1
+fi
+if [ ! -e "$runtime/chrome/BrowserMetrics/chrome" ]; then
+  echo "a file in memory that Chrome still mapped was taken"
+  exit 1
+fi
 
 # A folder that reaches outside the profile is refused as asked wrongly,
 # and what's there is kept.

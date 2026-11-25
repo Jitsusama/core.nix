@@ -23,6 +23,16 @@
 # the lock went meanwhile: the watch that starts it misses a change made
 # while it runs, so a quit landing then would otherwise wait for the next.
 #
+# A folder named with a leading + is one Chrome empties itself as it runs:
+# BrowserMetrics, which it deletes whole, link and all, a while into each
+# session when usage reports are off, leaving a folder on the disk for the
+# next start to map from. That one moves whenever no Chrome process maps
+# or holds open a file still in it, even while Chrome holds the profile.
+# Only the browser process maps its histograms, and its maps are readable,
+# so a sandboxed process whose maps can't be read doesn't stop it. A file
+# Chrome deleted is in no folder, so its map doesn't count. The files a
+# session left in its folder in memory, which nothing maps, go as it moves.
+#
 # The folders in memory are made first, whatever the lock says, since the
 # runtime folder is empty after each boot and the links from the boot
 # before would otherwise point at nothing. A link that does is no harm:
@@ -40,6 +50,10 @@ EXAMPLES
       /run/user/1000/chrome BrowserMetrics
       link the profile's BrowserMetrics into memory,
       unless a Chrome holds the profile
+  chrome-maps-in-memory ~/.config/google-chrome \
+      /run/user/1000/chrome +BrowserMetrics
+      the same, and while a Chrome holds the profile too,
+      once nothing of Chrome's is open in it
 
 EXIT
   0   linked, or left alone while a Chrome runs
@@ -66,7 +80,7 @@ here=$(uname -n)
 # A process's maps name the files' real paths, past any link on the way.
 real=$(realpath -m -- "$profile")
 for folder in "$@"; do
-  case /$folder/ in
+  case /${folder#+}/ in
   // | */../* | */./* | //*)
     echo "✕ chrome-maps-in-memory needs folders inside the profile, not '$folder'" >&2
     echo "  try  chrome-maps-in-memory --help" >&2
@@ -138,22 +152,78 @@ held() {
   echo "$chrome"
 }
 
+# Says which Chrome process maps or holds open `$1`, a real path, or a file
+# still under it, or nothing when none does. A map or a descriptor of a deleted
+# file names its old path with " (deleted)" after it, and isn't counted.
+# A process whose maps can't be read is passed over (see the top).
+open_in() {
+  local proc comm key uid line
+  for proc in /proc/[0-9]*; do
+    read -r comm 2>/dev/null <"$proc/comm" || continue
+    [ "$comm" = chrome ] || continue
+    uid=
+    {
+      while read -r key uid _; do
+        [ "$key" != Uid: ] || break
+      done <"$proc/status"
+    } 2>/dev/null || continue
+    [ "$uid" = "$UID" ] || continue
+    while read -r line; do
+      case $line in
+      *" $1"*" (deleted)") ;;
+      *" $1" | *" $1/"*)
+        echo "Chrome, as process ${proc#/proc/}, maps ${line##* }"
+        return 0
+        ;;
+      *) ;;
+      esac
+    done 2>/dev/null <"$proc/maps" || true
+    for line in "$proc"/fd/*; do
+      line=$(readlink "$line" 2>/dev/null) || continue
+      case $line in
+      *" (deleted)") ;;
+      "$1" | "$1"/*)
+        echo "Chrome, as process ${proc#/proc/}, holds $line open"
+        return 0
+        ;;
+      *) ;;
+      esac
+    done
+  done
+}
+
 for folder in "$@"; do
-  mkdir -p "$memory/$folder"
+  mkdir -p "$memory/${folder#+}"
 done
 
 while :; do
   chrome=
-  for folder in "$@"; do
+  for marked in "$@"; do
+    folder=${marked#+}
     link=$(readlink "$profile/$folder" 2>/dev/null) || link=
     if [ "$link" = "$memory/$folder" ]; then
       continue
     fi
-    chrome=$(held)
-    if [ -n "$chrome" ]; then
-      echo "$chrome holds the profile, so $folder and those after it stay on the disk"
-      echo "until this runs again, as Chrome next quits or the account's manager next starts"
-      break
+    if [ "$marked" != "$folder" ]; then
+      using=$(open_in "$real/$folder")
+      if [ -n "$using" ]; then
+        echo "$using, so $folder stays on the disk until nothing of Chrome's is open in it"
+        continue
+      fi
+      # What sessions before left in memory, which nothing maps any more.
+      for left in "$memory/$folder"/*; do
+        [ -e "$left" ] || continue
+        whole=$(realpath -m -- "$left")
+        using=$(open_in "$whole")
+        [ -n "$using" ] || rm -rf -- "$left"
+      done
+    else
+      chrome=$(held)
+      if [ -n "$chrome" ]; then
+        echo "$chrome holds the profile, so $folder and those after it stay on the disk"
+        echo "until this runs again, as Chrome next quits or the account's manager next starts"
+        break
+      fi
     fi
     # What was there is a cache Chrome fills again, or its histograms, which
     # feed only its usage reports to Google.
