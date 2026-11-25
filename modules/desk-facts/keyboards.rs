@@ -3,8 +3,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::bluetooth::{BLUETOOTH_BUS, FEWEST_KEYS, Heard, KEYBOARD_KEYS, MOUSE_BUTTONS, set_bits};
-use crate::sound::release;
+use crate::bluetooth::BLUETOOTH_BUS;
+use crate::input::{FEWEST_KEYS, Heard, KEYBOARD_KEYS, MOUSE_BUTTONS, set_bits};
+use crate::usb::release;
 use crate::{Facts, fact};
 
 /// The relative axes a mouse moves on, `REL_X` and `REL_Y`.

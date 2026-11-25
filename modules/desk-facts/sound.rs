@@ -4,8 +4,8 @@ use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
-use crate::cameras::speed;
 use crate::own_sound::{Control, built_in, sound_parts};
+use crate::usb::{release, speed};
 use crate::{Facts, fact};
 
 /// The Pebble X Plus, as its USB device names itself.
@@ -180,16 +180,6 @@ pub(crate) fn running(hw_params: &str) -> String {
 fn milliseconds(frames: u32, hertz: u32) -> String {
     let tenths = (u64::from(frames) * 10_000 + u64::from(hertz) / 2) / u64::from(hertz);
     format!("{}.{} ms", tenths / 10, tenths % 10)
-}
-
-/// A USB release number as its device gives it: 0x1310 is "13.10", and
-/// 0x0021 "0.21".
-pub(crate) fn release(bcd: &str) -> String {
-    let bcd = bcd.trim();
-    match (bcd.get(..2).map(str::parse::<u8>), bcd.get(2..)) {
-        (Some(Ok(major)), Some(minor)) if bcd.len() == 4 => format!("{major}.{minor}"),
-        _ => bcd.to_owned(),
-    }
 }
 
 /// One direction of a card's facts.
@@ -384,13 +374,5 @@ Playback:
         assert_eq!(all[0].0, "Plus:out");
         assert_eq!(named(&all[0].1, "USB"), Some("12 Mbit/s"));
         assert_eq!(named(&all[0].1, "firmware"), Some("release 13.10"));
-    }
-
-    #[test]
-    fn a_usb_release_reads_as_its_device_writes_it() {
-        assert_eq!(release("1310\n"), "13.10");
-        assert_eq!(release("0203"), "2.03");
-        assert_eq!(release("0021"), "0.21");
-        assert_eq!(release("21"), "21");
     }
 }

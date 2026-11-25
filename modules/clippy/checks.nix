@@ -9,8 +9,10 @@
   ...
 }:
 onLinux {
-  # clippy finds nothing in the programs that are one Rust file on the
-  # standard library alone, their tests included, held to clippyLints.
+  # clippy finds nothing in the programs built by rustc alone on the standard
+  # library, with no crate of their own, held to clippyLints with their tests.
+  # Each is named by its root file, which reads its other files from beside
+  # it: its tests, or the folder its source.nix copies.
   rust-programs-pass-clippy =
     let
       # A program whose tests sit in <name>_tests.rs beside it goes to the

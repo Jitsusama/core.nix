@@ -100,16 +100,21 @@ fn fact(facts: &mut Facts, name: &str, value: impl Into<String>) {
 }
 
 // Each kind of device is read in a file of its own, and how changes are heard
-// in another; each reads the others' through this root, as one file did.
+// in another. What several kinds read alike (USB descriptors, the input
+// layer's capabilities, inotify's events) has a file of its own too, so a file
+// imports the one that holds what it needs rather than a neighbour's.
 
 mod bluetooth;
 mod cable;
 mod cameras;
 mod displays;
 mod hearing;
+mod inotify;
+mod input;
 mod keyboards;
 mod own_sound;
 mod sound;
+mod usb;
 mod writing;
 
 fn main() -> ExitCode {

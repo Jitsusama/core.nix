@@ -488,9 +488,10 @@ mod tests {
         put(&sys.0, "asound/card1/id", "MV7\n");
         put(&sys.0, "asound/card1/usbid", "14ed:1012\n");
         let all = sound(&sys.0.join("asound"), &sys.0, None, &|_| Control::default());
-        assert!(
-            all.iter().all(|(key, _)| key.starts_with("sofsoundwire,")),
-            "only the built-in card's devices: {all:?}"
+        assert_eq!(
+            all.iter().map(|(key, _)| key.as_str()).collect::<Vec<_>>(),
+            ["sofsoundwire,1:in", "sofsoundwire,2:out"],
+            "the built-in card's devices, and nothing of the USB card's"
         );
     }
 

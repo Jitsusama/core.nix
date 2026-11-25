@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::cable::usb_c;
-use crate::hearing::IN_Q_OVERFLOW;
+use crate::inotify::names;
 use crate::{Facts, fact};
 
 /// The makers a desk is likely to have, by the three letters an EDID gives;
@@ -357,21 +357,9 @@ fn monitor_said(told: &Path, edid: &[u8]) -> Facts {
 /// Whether inotify's events name a monitor's DDC facts written whole, or
 /// lost some that might have.
 pub(crate) fn names_a_monitor(events: &[u8]) -> bool {
-    let mut rest = events;
-    while let Some((head, tail)) = rest.split_at_checked(16) {
-        let word =
-            |at: usize| u32::from_ne_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
-        let (mask, length) = (word(4), word(12) as usize);
-        let Some((name, after)) = tail.split_at_checked(length) else {
-            return true;
-        };
-        let name = name.split(|byte| *byte == 0).next().unwrap_or(name);
-        if mask & IN_Q_OVERFLOW != 0 || (name.starts_with(b"ddc-") && !name.ends_with(b".new")) {
-            return true;
-        }
-        rest = after;
-    }
-    false
+    names(events, |name| {
+        name.starts_with(b"ddc-") && !name.ends_with(b".new")
+    })
 }
 
 #[cfg(test)]
@@ -379,7 +367,7 @@ mod tests {
     use super::*;
     use crate::tests::*;
 
-    use crate::hearing::{IN_DELETE, IN_MOVED_TO};
+    use crate::inotify::{IN_DELETE, IN_MOVED_TO};
 
     /// The HP Z27k G3's EDID, as it gave it on 2026-10-24.
     const Z27K_G3: &str = "\

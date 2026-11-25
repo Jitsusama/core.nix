@@ -3,7 +3,7 @@
 use std::fs::{self, File};
 use std::path::Path;
 
-use crate::sound::release;
+use crate::usb::{release, speed};
 use crate::{Facts, ask, fact, word};
 
 /// V4L2's requests, each `_IOWR('V', number, size)` as videodev2.h has it.
@@ -186,15 +186,6 @@ fn field_of_view(node: &File, unit: u8) -> Option<&'static str> {
         1 => Some("78\u{b0}"),
         2 => Some("65\u{b0}"),
         _ => None,
-    }
-}
-
-/// A USB speed in Mbit/s, as it's said.
-pub(crate) fn speed(megabits: &str) -> String {
-    match megabits.trim().parse::<u32>() {
-        Ok(fast) if fast >= 1000 && fast % 1000 == 0 => format!("{} Gbit/s", fast / 1000),
-        Ok(speed) => format!("{speed} Mbit/s"),
-        Err(_) => String::new(),
     }
 }
 
@@ -433,14 +424,6 @@ mod tests {
     }
 
     #[test]
-    fn a_usb_speed_is_said_in_its_own_unit() {
-        assert_eq!(speed("5000\n"), "5 Gbit/s");
-        assert_eq!(speed("480"), "480 Mbit/s");
-        assert_eq!(speed("12"), "12 Mbit/s");
-        assert_eq!(speed(""), "");
-    }
-
-    #[test]
     fn a_camera_is_keyed_as_its_holders_file_is_named() {
         assert_eq!(
             holders_name("MX Brio 705 for Business\n"),
@@ -489,6 +472,11 @@ mod tests {
         put(&holders, "camera", "firefox\n");
         let listed = loopbacks("camera\tBuilt-in Camera\ti2c-OVTI08F4:00\n");
         let found = cameras(&sys.0, &sys.0.join("dev"), &holders, &listed);
+        assert_eq!(
+            found.len(),
+            1,
+            "one camera, the loopback told of: {found:?}"
+        );
         let said: Vec<(&str, &str)> = found[0]
             .1
             .iter()

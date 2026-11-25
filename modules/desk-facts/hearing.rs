@@ -2,7 +2,7 @@
 //! from, a built-in card's jacks and the signals that stop it, reading again
 //! only the kinds each is about.
 
-use std::ffi::{CString, c_char, c_int, c_void};
+use std::ffi::{c_int, c_void};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 use crate::bluetooth::bluetooth;
 use crate::cameras::{Loopback, cameras};
 use crate::displays::{displays, names_a_monitor};
+use crate::inotify::{
+    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, names, watches,
+};
 use crate::keyboards::keyboards;
 use crate::own_sound::{a_jack_changed, control, open_control};
 use crate::sound::sound;
@@ -23,15 +26,6 @@ const SOCK_DGRAM: c_int = 2;
 const SOCK_NONBLOCK: c_int = 0o4000;
 const SOCK_CLOEXEC: c_int = 0o2_000_000;
 const NETLINK_KOBJECT_UEVENT: c_int = 15;
-const IN_NONBLOCK: c_int = 0o4000;
-const IN_CLOEXEC: c_int = 0o2_000_000;
-const IN_CLOSE_WRITE: u32 = 0x008;
-const IN_CLOSE_NOWRITE: u32 = 0x010;
-const IN_OPEN: u32 = 0x020;
-pub(crate) const IN_MOVED_TO: u32 = 0x080;
-const IN_CREATE: u32 = 0x100;
-pub(crate) const IN_DELETE: u32 = 0x200;
-pub(crate) const IN_Q_OVERFLOW: u32 = 0x4000;
 const POLLIN: i16 = 0x001;
 const POLLERR: i16 = 0x008;
 const POLLHUP: i16 = 0x010;
@@ -92,8 +86,6 @@ struct SigSet([u64; 16]);
 unsafe extern "C" {
     fn socket(domain: c_int, kind: c_int, protocol: c_int) -> c_int;
     fn bind(fd: c_int, address: *const c_void, length: u32) -> c_int;
-    fn inotify_init1(flags: c_int) -> c_int;
-    fn inotify_add_watch(fd: c_int, path: *const c_char, mask: u32) -> c_int;
     fn poll(fds: *mut PollFd, count: u64, timeout: c_int) -> c_int;
     fn sigemptyset(set: *mut SigSet) -> c_int;
     fn sigaddset(set: *mut SigSet, signal: c_int) -> c_int;
@@ -137,26 +129,6 @@ fn matters(uevent: &[u8]) -> u8 {
         .fold(0, |kinds, (_, kind)| kinds | kind)
 }
 
-/// inotify, watching each of these folders for what the mask names. A
-/// folder that isn't there yet, as /dev/snd is on a machine with no sound
-/// card, is heard of by its uevent instead.
-fn watches(watched: &[(PathBuf, u32)]) -> io::Result<File> {
-    // SAFETY: a plain call.
-    let fd = unsafe { inotify_init1(IN_NONBLOCK | IN_CLOEXEC) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: the descriptor is ours alone, and the file closes it.
-    let file = unsafe { File::from_raw_fd(fd) };
-    for (path, mask) in watched {
-        let mask = *mask;
-        let path = CString::new(path.as_os_str().as_encoded_bytes()).map_err(io::Error::other)?;
-        // SAFETY: the path is a valid C string for the call.
-        unsafe { inotify_add_watch(fd, path.as_ptr(), mask) };
-    }
-    Ok(file)
-}
-
 /// When sound is read again after a sound device is heard, from then. A
 /// stream's parameters are set, and it starts running, a moment after its
 /// device opens, and nothing is heard when it does, so the first read
@@ -188,25 +160,9 @@ fn settled_once(settling: Option<(Instant, usize)>) -> Option<(Instant, usize)> 
 /// Whether inotify's events name a sound device or the lighting's file, or
 /// lost some that might have.
 fn names_one(events: &[u8], lighting: &str) -> bool {
-    let mut rest = events;
-    while let Some((head, tail)) = rest.split_at_checked(16) {
-        let word =
-            |at: usize| u32::from_ne_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
-        let (mask, length) = (word(4), word(12) as usize);
-        let Some((name, after)) = tail.split_at_checked(length) else {
-            return true;
-        };
-        let name = name.split(|byte| *byte == 0).next().unwrap_or(name);
-        if mask & IN_Q_OVERFLOW != 0
-            || name.starts_with(b"pcm")
-            || name.starts_with(b"control")
-            || name == lighting.as_bytes()
-        {
-            return true;
-        }
-        rest = after;
-    }
-    false
+    names(events, |name| {
+        name.starts_with(b"pcm") || name.starts_with(b"control") || name == lighting.as_bytes()
+    })
 }
 
 /// A descriptor that becomes readable when SIGTERM or SIGINT arrives,
@@ -472,6 +428,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inotify::IN_Q_OVERFLOW;
     use crate::tests::*;
 
     /// A uevent as the kernel sends it: fields split by NULs.
