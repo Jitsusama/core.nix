@@ -23,7 +23,8 @@ field, stepping through what was found, Escape's order, the walk, the
 machines, Now and Escape closing it, the view zoomed about its middle,
 panned across and down and fitted, -
 climbing from a cell to its network, the tree's steps, branches and
-Return, and the theme switch), and pass the web-design
+Return, and the theme switch), draw a realm of ten thousand cells and answer
+Return, j then Return and Now there within budgets of time, and pass the web-design
 skill's page checks and the map's own (site-checks.js) at a phone's width
 and a desk's in both looks. Any error the page logs fails it, since that is
 how the map froze on "reading" unseen, and how the drawing says a key
@@ -39,7 +40,6 @@ import copy
 import json
 import os
 import re
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -90,13 +90,16 @@ BUDGET = Budget(files=33, kilobytes=689, elements=620)
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
 TWIN_RECEPTORS = 4
-# How long a twin of ten thousand cells may take to read and draw.
+# How long the checks wait for a twin of ten thousand cells to be read and judged, which is
+# patience, not a budget: a busy builder takes what it takes.
 TWIN_MS = 60_000
-# How long the twin may take to stand drawn once opened, and to answer a key, and the longest
-# the page may be held by one task meanwhile, in milliseconds. In the build's sandbox it stood
-# drawn at 2.2 s, answered Return in 210 ms (its longest task 157 ms), j and Return in 113
-# and . in 105, so each is about two and a half times what was measured: a regression of that
-# size is one a reader feels, and the sandbox's own spread stays well inside it.
+# The budgets the twin is held to, in milliseconds: its whole realm drawn, from the page opening;
+# a key answered and painted, from the key going down; and the longest the page is held by one
+# task meanwhile. In the build's sandbox it stood drawn at 2.2 s, answered Return in 210 ms
+# (its longest task 157 ms), j and Return in 113 and . in 105, timed to the answer's words. A
+# builder's load moves a time by as much as twice between runs (docs/testing.md), so each is
+# set past that, where a regression a reader would feel still fails: half a second is past
+# which a key reads as lag, and a task past 400 ms drops frames he would see.
 TWIN_DRAWN_MS = 6000
 TWIN_KEY_MS = 500
 TWIN_TASK_MS = 400
@@ -1948,25 +1951,44 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
 
 
-# Every long task the page runs from here on, in milliseconds.
+# Every long task the page runs from here on, and when the first key of each answer went down,
+# both on the page's own clock.
 WATCH_LONG = """() => {
   window.longTasks = [];
   new PerformanceObserver((list) => {
-    for (const task of list.getEntries()) window.longTasks.push(task.duration);
+    for (const task of list.getEntries()) window.longTasks.push(task);
   }).observe({ type: "longtask" });
+  addEventListener("keydown", (e) => { window.keyDown ??= e.timeStamp; }, { capture: true });
+}"""
+# When the frame after the answer was painted, then the longest task from the key to then, once
+# the observer has had a task's turn to deliver what it saw.
+PAINTED = """async () => {
+  await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+  const painted = performance.now();
+  await new Promise((done) => setTimeout(done, 100));
+  const within = window.longTasks.filter(
+    (task) => task.startTime + task.duration > window.keyDown && task.startTime < painted,
+  );
+  const took = painted - window.keyDown;
+  window.keyDown = undefined;
+  return { took, longest: Math.max(0, ...within.map((task) => task.duration)) };
+}"""
+# When the twin's whole realm last stood drawn: the end of the map's own measure of its draw,
+# once every network is a hub on it.
+DRAWN = """(networks) => {
+  const [draw] = performance.getEntriesByName("mycelium-draw");
+  const hubs = document.querySelectorAll("#world .hub").length;
+  return hubs >= networks && draw ? draw.startTime + draw.duration : null;
 }"""
 
 
 def answered_in(page: Page, keys: str, check: Callable[[], None]) -> dict[str, float]:
-    """How long the keys took to be answered as check sees, and the longest task in it."""
-    page.evaluate("() => { window.longTasks = []; }")
-    began = time.monotonic()
+    """How long the keys took to be answered and painted, and the longest task in it."""
     for key in keys.split():
         page.keyboard.press(key)
     check()
-    took = (time.monotonic() - began) * 1000
-    longest = page.evaluate("() => Math.max(0, ...window.longTasks)")
-    return {"took": round(took), "longest": round(longest)}
+    answered: dict[str, float] = page.evaluate(PAINTED)
+    return {said: round(value) for said, value in answered.items()}
 
 
 def test_the_map_answers_its_keys_at_ten_thousand(browser: Browser, twin_served: Served) -> None:
@@ -1975,20 +1997,34 @@ def test_the_map_answers_its_keys_at_ten_thousand(browser: Browser, twin_served:
     try:
         page = opened.page
         the_map_stands(page, "live", TWIN_MS)
-        drawn = round(page.evaluate("() => performance.now()"))
+        page.wait_for_function(DRAWN, arg=TWIN_NETWORKS, timeout=TWIN_MS)
+        drawn = round(page.evaluate(DRAWN, TWIN_NETWORKS))
+        assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
         page.evaluate(WATCH_LONG)
         where = page.locator("#where")
         page.locator("#map-view").focus()
         first = answered_in(
-            page, "Enter", lambda: expect(where, "Return opened nothing").to_contain_text("Opened")
+            page,
+            "Enter",
+            lambda: expect(where, "Return opened nothing").to_contain_text(
+                "Opened", timeout=PACE_MS
+            ),
         )
-        at = where.inner_text()
+        # Another opened, which j alone, saying where the walk went, never says.
+        another = re.compile(rf"^(?!{re.escape(where.inner_text())}$).*Opened")
         step = answered_in(
-            page, "j Enter", lambda: expect(where, "j walked nowhere").not_to_have_text(at)
+            page,
+            "j Enter",
+            lambda: expect(where, "j and Return opened nothing new").to_have_text(
+                another, timeout=PACE_MS
+            ),
         )
         title = page.locator("#panel-title")
-        now = answered_in(page, ".", lambda: expect(title, ". opened no Now").to_have_text("Now"))
-        assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
+        now = answered_in(
+            page, ".", lambda: expect(title, ". opened no Now").to_have_text("Now", timeout=PACE_MS)
+        )
+        # Said whether it passes, so each run's log adds a measure the budgets can be read against.
+        print(f"drawn at {drawn} ms; Return {first}; j Return {step}; . {now}")
         for keys, answered in (("Return", first), ("j and Return", step), (".", now)):
             assert answered["took"] <= TWIN_KEY_MS, f"{keys} was answered in {answered}"
             assert answered["longest"] <= TWIN_TASK_MS, f"{keys} held the page: {answered}"
