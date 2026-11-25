@@ -124,9 +124,7 @@ def copied(shell: Shell, typed: str, expected: str) -> None:
     assert shell.copied() == expected
 
 
-def copy_told(
-    shell: Shell, named: str = "", *, copy_key: str = "y copy", asked: str = ""
-) -> None:
+def copy_told(shell: Shell, named: str = "", *, copy_key: str = "y copy", asked: str = "") -> None:
     """Wait for the key that copies the selected row to be told over it, its acts read.
 
     An answer holding parts tells y once its acts are read, which waits on its parts and on
