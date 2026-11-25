@@ -81,11 +81,13 @@ echo "sync \$*" >> "\$FAKE_CALLS"
 [ "\${FAKE_SYNC:-ok}" = fail ] && exit 1
 exit 0
 EOF
+real_dd=$(command -v dd)
+real_sleep=$(command -v sleep)
 echo "#!$BASH" > "$tools/dd"
 cat >> "$tools/dd" << EOF
 case " \$* " in
 *" iflag=nocache "*) echo "dd \$*" >> "\$FAKE_CALLS" ;;
-*) exec $(command -v dd) "\$@" ;;
+*) exec $real_dd "\$@" ;;
 esac
 EOF
 # A wait for the disk: noted, and the disk then stops being busy, so a
@@ -95,7 +97,7 @@ cat >> "$tools/sleep" << EOF
 case "\$1" in
 5) echo "slept" >> "\$FAKE_CALLS"
   echo "full avg10=0.00 avg60=0.00 avg300=0.00 total=0" > "\$PI_COMPRESS_LOGS_PRESSURE" ;;
-*) exec $(command -v sleep) "\$@" ;;
+*) exec $real_sleep "\$@" ;;
 esac
 EOF
 chmod +x "$tools/stat" "$tools/filefrag" "$tools/btrfs" "$tools/sync" "$tools/dd" "$tools/sleep"
@@ -114,7 +116,9 @@ old_log() {
   local sessions=$work/$1
   mkdir -p "$sessions/project"
   # Bash's own substitution over 100 KB takes minutes, so tr makes it.
-  head -c 100000 /dev/zero | tr '\0' a > "$sessions/project/$1.jsonl"
+  head -c 100000 /dev/zero > "$sessions/project/$1.zeros"
+  tr '\0' a < "$sessions/project/$1.zeros" > "$sessions/project/$1.jsonl"
+  rm "$sessions/project/$1.zeros"
   touch -d '5 days ago' "$sessions/project/$1.jsonl"
   echo "$sessions"
 }

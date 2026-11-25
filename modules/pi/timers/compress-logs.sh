@@ -122,6 +122,7 @@ written_since() {
   read -r was_length was_time was_sum <<< "$2"
   read -r now_length now_time _ <<< "$3"
   [ "$now_length" -gt "$was_length" ] && [ "$now_time" -gt "$was_time" ] || return 1
+  # shellcheck disable=SC2312 # It runs under pipefail, so a head that fails fails here.
   kept=$(head -c "$was_length" -- "$1" | cksum) || return 1
   [ "$kept" = "$was_sum" ]
 }
