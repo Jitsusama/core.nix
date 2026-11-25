@@ -10088,6 +10088,11 @@ Scope {
             // is, or "", so a test sees arming let go as the launcher shuts.
             armedRow: Arming.holds(root.armed, root.armed.key, prompt.keysTaken)
                 ? root.armed.key : "",
+            // How many keys the launcher has taken, so a test sends its next key
+            // only once the last was taken: keys read in one turn are read
+            // together, and Asks times no move read with a key after it
+            // (Shown.js's keyed).
+            taken: prompt.keysTaken,
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.

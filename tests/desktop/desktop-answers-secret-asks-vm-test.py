@@ -222,9 +222,13 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # find, where the launcher opens, an arrow could be a terminal's.
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
-    # Nothing the launcher reports shows j taken, but a j not read leaves the line untimed and
-    # the yes refused, so the release below is what proves it.
+    # The release below proves the j was read as a move, since one not read leaves the line
+    # untimed and the yes refused. The first Return waits for the j to be taken: read with it
+    # in one turn, the j's move is unknown, and the line's time starts again (Shown.js's
+    # keyed), as it was in two of the net's last 36 runs, j and Return 10 ms apart.
+    taken = desktop.showing()["taken"]
     desktop.machine.send_chars("j")
+    desktop.launcher_until(lambda shown: shown["taken"] > taken)
     say_yes(desktop)
     answer = answered(desktop, ask)
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
