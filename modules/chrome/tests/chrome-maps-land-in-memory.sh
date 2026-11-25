@@ -454,10 +454,14 @@ quit_later "$work/quit" BrowserMetrics
 started=$SECONDS
 run "outlasting Chrome's"
 # A minute of looks a second apart, less five seconds since the clock
-# counts whole seconds, and a quarter minute over for a loaded builder.
+# counts whole seconds. A loaded builder stretches each look, so the top
+# bound only catches a wait with no end short of the run's two minutes; a
+# third half minute says a wait twice, which the count below catches.
 took=$((SECONDS - started))
-if [ "$took" -lt 55 ] || [ "$took" -gt 75 ]; then
-  echo "the command ended after $took s on a Chrome quitting through the last look, not a minute"
+if [ "$took" -lt 55 ] || [ "$took" -gt 105 ]; then
+  echo "the command ended after $took s on a Chrome quitting through the last look, not a minute,"
+  echo "saying:"
+  cat run.log
   exit 1
 fi
 if ! kill -0 "$quitting" 2>/dev/null; then
