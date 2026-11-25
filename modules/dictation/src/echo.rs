@@ -4,12 +4,13 @@
 //! app's echo cancelling, so on the laptop's speakers it hears the others
 //! too. Where each word's time is known, their words his microphone heard
 //! just after they said them, and quieter than they said them, are cut
-//! from his line, and his own words in it stay: their microphones pick
-//! up his voice too, far quieter than their own, and that's his. A line
-//! of his whose words repeat a line of theirs said at the same time is
-//! their echo, and is left out whole, which also covers a line read back
-//! from a transcript, whose words' times are lost. On a headset there's
-//! none of either.
+//! from his line, as are words of his heard inside their speech far
+//! quieter than it, however spelled. His own words in it stay: their
+//! microphones pick up his voice too, far quieter than their own, and
+//! that's his. A line of his whose words repeat a line of theirs said at
+//! the same time is their echo, and is left out whole, which also covers
+//! a line read back from a transcript, whose words' times are lost. On a
+//! headset there's none of either.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
@@ -58,6 +59,14 @@ const RUN: usize = 2;
 /// How many words on either side a word of their echo may follow the
 /// last by: either side may hear a word the other doesn't.
 const GAP: usize = 2;
+
+/// How far below the loudest of their words said around it, in dB, a
+/// word of Joel's said inside their speech is their echo however it's
+/// spelled: each side's model hears the echo its own way, so on the
+/// echoed meetings most of the echo left on his side spelled none of
+/// their words. Echo comes back 15 to 35 dB down, while his own voice
+/// in his microphone is near theirs in theirs.
+const DROWNED: f32 = 15.0;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
 /// and so left out of the transcript; the meetings check says which of
@@ -158,6 +167,25 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
     echoes
 }
 
+/// For each of Joel's `mine`, the loudest of `theirs` said within a
+/// moment of it, if that's `DROWNED` louder and they go on speaking past
+/// it: his words heard inside their speech far below it are its echo,
+/// while a word of his just after their line ends may be his answer.
+fn drowned(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
+    mine.iter()
+        .map(|word| {
+            let from = theirs.partition_point(|said| said.at + LAG < word.at);
+            let to = theirs.partition_point(|said| said.at <= word.at + LEAD);
+            let on = theirs[to..]
+                .first()
+                .is_some_and(|said| said.at <= word.at + LAG)
+                || theirs[from..to].iter().any(|said| said.at > word.at);
+            let loudest = (from..to).max_by(|&a, &b| theirs[a].level.total_cmp(&theirs[b].level));
+            loudest.filter(|&j| on && theirs[j].level >= word.level + DROWNED)
+        })
+        .collect()
+}
+
 /// Some of Joel's words cut from a line of his as the others' echo: the
 /// line's index, when the first was heard, how long after its word of
 /// theirs, in samples, and what they say.
@@ -195,7 +223,11 @@ pub fn cut_echoes<S: BuildHasher>(
         let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
             continue;
         };
-        let echoes = echoes_of(mine, &theirs);
+        let echoes: Vec<Option<usize>> = echoes_of(mine, &theirs)
+            .into_iter()
+            .zip(drowned(mine, &theirs))
+            .map(|(by_spelling, by_level)| by_spelling.or(by_level))
+            .collect();
         if echoes.iter().all(Option::is_none) {
             continue;
         }
