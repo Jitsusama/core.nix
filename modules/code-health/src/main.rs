@@ -152,7 +152,21 @@ fn stale_held(context: &Context, tree: &str, waiting: &str) -> Result<(), Failur
         .filter(|line| !line.is_empty())
         .map(str::to_owned)
         .collect();
-    let (new, gone) = tree::held(&stale::stale(&paths, &files), &listed);
+    let stale = stale::stale(&paths, &files);
+    let (new, gone) = tree::held(&stale.gone, &stale.unread, &listed);
+    // A file that couldn't be read is this tool's misreading, not the
+    // tree's fault, so it's said without refusing the change, and what the
+    // list holds of it stands.
+    if !stale.unread.is_empty() {
+        let mut unread =
+            vec!["These files' comments couldn't be read; what waits in them stands:".to_owned()];
+        unread.extend(stale.unread.iter().map(|file| format!("  {file}")));
+        let mut unread = unread.join("\n");
+        unread.push('\n');
+        context.say(&unread).map_err(|error| {
+            Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
+        })?;
+    }
     let mut said = Vec::new();
     if !new.is_empty() {
         said.push("These comments name what isn't there; name where it is now:".to_owned());

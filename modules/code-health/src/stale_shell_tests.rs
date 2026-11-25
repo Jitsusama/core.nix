@@ -439,9 +439,10 @@ fn left_open(line: &str) -> Vec<Shell> {
 #[test]
 fn each_line_leaves_open_what_bash_leaves_open() {
     use Shell::{
-        Ansi, Arithmetic, Backtick, Case, Command, Double, Grouping, Parameter, Single, Subshell,
+        Ansi, Arithmetic, Backtick, Branch, Case, Command, Double, Grouping, Parameter, Pattern,
+        Single, Subshell,
     };
-    let cases: [(&str, &[Shell]); 46] = [
+    let cases: [(&str, &[Shell]); 78] = [
         ("echo $'it\\'s", &[Ansi]),
         ("x=\"$(echo \"it's", &[Double, Command, Double]),
         ("y=\"${z:-\"it's", &[Double, Parameter, Double]),
@@ -460,21 +461,49 @@ fn each_line_leaves_open_what_bash_leaves_open() {
         ("x=$( (echo)#'", &[Command]),
         // Past a substitution's close the word runs on, so no comment opens.
         ("x=$(echo)#'", &[Single]),
-        ("x=$(case a in a)", &[Command, Case]),
+        ("x=$(case", &[Command, Case]),
+        ("x=$(case a", &[Command, Case]),
+        ("x=$(case a in", &[Command, Pattern]),
+        ("x=$(case a in a)", &[Command, Branch]),
         ("x=$(case a in a) ;; esac", &[Command]),
-        ("x=$(case a in a) echo esac)", &[Command, Case]),
-        ("x=$(case a in (a) case b in b)", &[Command, Case, Case]),
-        // A pattern's opening bracket opens no subshell.
-        ("x=$(case a in (a", &[Command, Case]),
-        ("x=$(if true; then case a in a)", &[Command, Case]),
-        ("x=$(while x; do case a in a)", &[Command, Case]),
-        ("x=$({ case a in a)", &[Command, Case]),
-        ("x=$(! case a in a)", &[Command, Case]),
-        ("x=$(if x; then y; else case a in a)", &[Command, Case]),
-        ("x=$(if x; then y; elif case a in a)", &[Command, Case]),
-        ("x=$(until case a in a)", &[Command, Case]),
-        ("x=$(time case a in a)", &[Command, Case]),
-        ("x=$( (case a in a)", &[Command, Subshell, Case]),
+        ("x=$(case a in a) echo esac)", &[Command, Branch]),
+        ("x=$(case a in (a) case b in b)", &[Command, Branch, Branch]),
+        // A pattern's opening bracket opens no subshell, nor a branch's
+        // first word, though a command in a branch may open one.
+        ("x=$(case a in (a", &[Command, Pattern]),
+        ("x=$(case a in a) (echo", &[Command, Branch, Subshell]),
+        ("x=$(case a in a) (echo) ;; esac)", &[]),
+        // Each of a branch's ends opens a pattern list, where an esac
+        // closes the case, but not past a pattern's own bracket or a bar.
+        ("x=$(case a in a) echo ;& esac)", &[]),
+        ("x=$(case a in a) echo ;;& esac)", &[]),
+        ("x=$(case a in a) echo ;& case ) echo", &[Command, Branch]),
+        ("x=$(case a in a) esac)", &[]),
+        // A comment opens in a case's subject and patterns, where code
+        // stands, though no command runs.
+        ("x=$(case #'", &[Command, Case]),
+        ("x=$(case a in #'", &[Command, Pattern]),
+        ("x=$(case a in esac)", &[]),
+        ("x=$(case a in\tesac)", &[]),
+        ("x=$(case a in (esac) echo", &[Command, Branch]),
+        ("x=$(case a in a | esac) echo", &[Command, Branch]),
+        ("x=$(case a in a) echo 2> esac", &[Command, Branch]),
+        // The first word past a case is its subject, whatever it reads.
+        ("x=$(case in", &[Command, Case]),
+        ("x=$(case xin", &[Command, Case]),
+        ("x=$(case in in a) echo", &[Command, Branch]),
+        ("x=$(case esac in a) echo", &[Command, Branch]),
+        ("x=$(case if in a) echo", &[Command, Branch]),
+        ("x=$(case a inn b in a) echo", &[Command, Branch]),
+        ("x=$(if true; then case a in a)", &[Command, Branch]),
+        ("x=$(while x; do case a in a)", &[Command, Branch]),
+        ("x=$({ case a in a)", &[Command, Branch]),
+        ("x=$(! case a in a)", &[Command, Branch]),
+        ("x=$(if x; then y; else case a in a)", &[Command, Branch]),
+        ("x=$(if x; then y; elif case a in a)", &[Command, Branch]),
+        ("x=$(until case a in a)", &[Command, Branch]),
+        ("x=$(time case a in a)", &[Command, Branch]),
+        ("x=$( (case a in a)", &[Command, Subshell, Branch]),
         ("x=$(echo then case a in a)", &[]),
         ("x=$(thence case a in a)", &[]),
         ("x=$({case a in a)", &[]),
@@ -484,15 +513,25 @@ fn each_line_leaves_open_what_bash_leaves_open() {
         ("x=$(cat <case a in a)", &[]),
         ("x=$(cat <<<case a in a)", &[]),
         ("x=$(echo >then case a in a)", &[]),
+        ("x=$(echo >| case a in a)", &[]),
+        ("x=$(echo >& case a in a)", &[]),
+        ("x=$(cat <& case a in a)", &[]),
+        ("x=$(cat <<< if case a in a)", &[]),
+        ("x=$(echo | case a in a)", &[Command, Branch]),
+        ("x=$(echo >x; case a in a)", &[Command, Branch]),
         // A word running on past `case` with no blank is a plain one.
         ("x=$(case=1 a in a)", &[]),
         ("x=$(case.sh a in a)", &[]),
-        // A pattern named case opens no case, though an esac an
+        ("x=$(case; echo)", &[]),
+        // A pattern named case or if opens nothing, though an esac an
         // operator ends closes one.
         ("x=$(case a in a) ;; case) echo ;; esac", &[Command]),
-        ("x=$(case a in a) ;; case|b) echo", &[Command, Case]),
+        ("x=$(case a in a) ;; case|b) echo", &[Command, Branch]),
+        ("x=$(case a in case ) echo", &[Command, Branch]),
+        ("x=$(case a in a | case ) echo", &[Command, Branch]),
+        ("x=$(case a in if ) echo", &[Command, Branch]),
         ("x=$(case a in a) echo;; esac)", &[]),
-        ("x=$(case a in a) echo;; esac.sh", &[Command, Case]),
+        ("x=$(case a in a) echo;; esac.sh", &[Command, Pattern]),
         ("x=`echo # it's`", &[]),
         ("x=`echo # it's", &[Backtick]),
     ];

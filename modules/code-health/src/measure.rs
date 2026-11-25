@@ -182,7 +182,16 @@ pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
     let count = bare.len();
     health.put("folders-without-notes", bare, count);
 
-    let gone = stale::stale(paths, files);
+    // A file whose comments can't be known counts once too, so a
+    // misreading can't make the figure fall.
+    let stale = stale::stale(paths, files);
+    let mut gone = stale.gone;
+    gone.extend(
+        stale
+            .unread
+            .iter()
+            .map(|file| format!("{file}: its comments can't be known")),
+    );
     let count = gone.len();
     health.put("stale-paths", gone, count);
 

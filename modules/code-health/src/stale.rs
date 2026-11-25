@@ -36,10 +36,20 @@ mod shell;
 
 use shell::{Closers, Shell, ends_heredoc, shell_line};
 
-/// Every comment of `files` naming a path `paths` doesn't hold, as the
-/// file, its line and the path named, and every file whose comments
-/// can't be known, as the file alone.
-pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
+/// What the comments of a tree's files say of the paths they name.
+pub struct Stale {
+    /// Each comment naming a path the tree doesn't hold, as the file, its
+    /// line and the path named.
+    pub gone: Vec<String>,
+    /// Each file whose comments can't be known, which only a misreading of
+    /// this reader's own leaves: what a waiting list holds of it stands,
+    /// since none of it can be told fixed.
+    pub unread: Vec<String>,
+}
+
+/// Every comment of `files` naming a path `paths` doesn't hold, and every
+/// file whose comments can't be known.
+pub fn stale(paths: &[String], files: &[File]) -> Stale {
     let mut there: HashSet<&str> = HashSet::new();
     let mut tops: HashSet<&str> = HashSet::new();
     for path in paths {
@@ -78,11 +88,10 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
             .any(|path| starts.iter().any(|start| path.starts_with(start.as_str())))
     };
     let mut gone = Vec::new();
+    let mut unread = Vec::new();
     for file in files {
-        // Said aloud, so the stale comments the file was known for aren't
-        // taken for fixed, and its entries dropped from a waiting list.
         let Some(comments) = comments(file) else {
-            gone.push(format!("{}: its comments can't be known", file.path));
+            unread.push(file.path.clone());
             continue;
         };
         for (number, comment) in comments {
@@ -101,7 +110,7 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
             }
         }
     }
-    gone
+    Stale { gone, unread }
 }
 
 /// A file's comment lines, numbered from one, block comments and
@@ -125,31 +134,29 @@ fn comments(file: &File) -> Option<Vec<(usize, &str)>> {
     // A byte-order mark opens a file as nothing at all.
     let content = file.text.strip_prefix('\u{feff}').unwrap_or(&file.text);
     let closers = Closers::of(content, matches!(extension, "sh" | "bash"), blocks);
-    // Each reading names lines not named before, since a line named opens
-    // nothing, so there are no more readings than lines.
+    settled(|unopened| read(content, extension, (mark, blocks), &closers, unopened))
+}
+
+/// What `read` gives once it reads whole, read again each time it names
+/// the lines that opened what never closed, as opening nothing. Each
+/// reading names lines not named before, since a line named opens nothing,
+/// so there are no more readings than lines. A reading naming only lines
+/// named already is a misreading of this reader's own, and the next would
+/// read as it did, so rather than read forever, or take down the measure
+/// of every repository, it gives None: the comments can't be known.
+fn settled<'a>(
+    mut read: impl FnMut(&HashSet<usize>) -> Result<Vec<(usize, &'a str)>, Vec<usize>>,
+) -> Option<Vec<(usize, &'a str)>> {
     let mut unopened = HashSet::new();
     loop {
-        match read(content, extension, (mark, blocks), &closers, &unopened) {
+        let openers = match read(&unopened) {
             Ok(lines) => return Some(lines),
-            Err(openers) => {
-                let named = unopened.len();
-                unopened.extend(openers);
-                // A line named opens nothing of its own, so it can't hold
-                // anything open, and a reading naming only lines named
-                // already is a misreading of this reader's own. The next
-                // would read as it did, so rather than read forever, or
-                // take down the measure of every repository, the file's
-                // comments are said to be unknown, and a debug build, the
-                // tests', stops at once.
-                debug_assert!(
-                    unopened.len() > named,
-                    "a reading of {} named only lines named before",
-                    file.path
-                );
-                if unopened.len() == named {
-                    return None;
-                }
-            }
+            Err(openers) => openers,
+        };
+        let named = unopened.len();
+        unopened.extend(openers);
+        if unopened.len() == named {
+            return None;
         }
     }
 }

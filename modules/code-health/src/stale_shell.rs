@@ -33,9 +33,14 @@ pub(super) enum Shell {
     /// A bracket arithmetic opens, as `(1 + 2)` does, arithmetic whose `)`
     /// closes it, so a `))` past it closes the sum no sooner.
     Grouping,
-    /// A `case` in a command substitution, code whose patterns' `)` close
-    /// nothing, until its `esac`.
+    /// A `case` in a command substitution, from its own word to its `in`.
     Case,
+    /// A case's patterns, until the `)` ending them or the case's `esac`,
+    /// where no reserved word but `esac` is one.
+    Pattern,
+    /// A pattern's commands, until the `;;`, `;&` or `;;&` ending them or
+    /// the case's `esac`.
+    Branch,
 }
 
 impl Shell {
@@ -43,9 +48,16 @@ impl Shell {
     /// with `#` is a comment: outside every quote, or in a command
     /// substitution's lines.
     pub(super) fn code(within: Option<Shell>) -> bool {
+        Self::runs(within) || matches!(within, Some(Shell::Case | Shell::Pattern))
+    }
+
+    /// Whether commands run where what stands `within` this is: outside
+    /// every quote, or in a command substitution's commands or a case
+    /// branch's, but not in a case's subject or its patterns.
+    fn runs(within: Option<Shell>) -> bool {
         matches!(
             within,
-            None | Some(Shell::Command | Shell::Subshell | Shell::Backtick | Shell::Case)
+            None | Some(Shell::Command | Shell::Subshell | Shell::Backtick | Shell::Branch)
         )
     }
 }
@@ -72,17 +84,28 @@ pub(super) fn shell_line(
     let mut word_starts = true;
     // Whether a command may begin here: where a word does, but not past a
     // word and blanks, so `case` opens a case and `echo case` doesn't, nor
-    // past a redirection, whose word is its target.
+    // past a redirection, whose word is its target. In a case's patterns,
+    // where a pattern list may begin.
     let mut command_starts = true;
+    // Whether the character before was a redirection's, which `>|`, `>&`
+    // and `<&` run on through.
+    let mut redirected = false;
     let mut at = 0;
     while let Some(c) = line[at..].chars().next() {
         let rest = &line[at..];
         let mut step = c.len_utf8();
         let mut starts = false;
+        // Whether no command or pattern list begins past this, though a
+        // word may: past a redirection, or a pattern's `(` or `|`.
+        let mut ends_none = false;
         let mut redirects = false;
         let innermost = within.last().copied();
         if let Some(counted) = bracket(innermost, rest, within) {
             (step, starts) = counted;
+        } else if let Some(turned) =
+            case_part(innermost, rest, (word_starts, command_starts), within)
+        {
+            (step, starts, ends_none) = turned;
         } else {
             match innermost {
                 Some(Shell::Single | Shell::Ansi) if c == '\'' => {
@@ -109,10 +132,6 @@ pub(super) fn shell_line(
                 Some(Shell::Parameter) if c == '}' => {
                     within.pop();
                 }
-                Some(Shell::Case) if command_starts && reserved(rest, "esac", true) => {
-                    within.pop();
-                    step = 4;
-                }
                 // Code: outside quotes, or in a substitution's.
                 _ if c == '\\' => step = escaped(rest),
                 _ if c == '\'' => within.push(Shell::Single),
@@ -134,36 +153,40 @@ pub(super) fn shell_line(
                         step += length;
                     }
                 }
+                // A word begins past it, which may be the case's subject
+                // alone, whatever it reads.
                 _ if command_starts
                     && matches!(
                         innermost,
-                        Some(Shell::Command | Shell::Subshell | Shell::Case)
+                        Some(Shell::Command | Shell::Subshell | Shell::Branch)
                     )
                     && reserved(rest, "case", false) =>
                 {
                     within.push(Shell::Case);
-                    step = 4;
+                    (step, starts) = (4, true);
                 }
                 _ => {
                     if let Some(opened) = substitution(rest, within) {
                         (step, starts) = opened;
                     } else if let Some(length) =
-                        leads_a_command(rest).filter(|_| command_starts && Shell::code(innermost))
+                        leads_a_command(rest).filter(|_| command_starts && Shell::runs(innermost))
                     {
                         // A command may begin past a reserved word leading
                         // one, so a `case` past `then` opens a case.
                         (step, starts) = (length, true);
                     } else {
                         starts = c.is_whitespace() || ";&|()<>".contains(c);
-                        redirects = "<>".contains(c);
+                        redirects = "<>".contains(c) || (redirected && "|&".contains(c));
+                        ends_none = redirects;
                     }
                 }
             }
         }
         kept = kept.min(within.len());
         if !c.is_whitespace() {
-            command_starts = starts && !redirects;
+            command_starts = starts && !ends_none;
         }
+        redirected = redirects;
         word_starts = starts;
         at += step;
     }
@@ -182,7 +205,9 @@ pub(super) fn shell_line(
 /// it.
 fn bracket(innermost: Option<Shell>, rest: &str, within: &mut Vec<Shell>) -> Option<(usize, bool)> {
     let (length, starts) = match innermost? {
-        Shell::Command | Shell::Subshell if rest.starts_with('(') && !rest.starts_with("((") => {
+        Shell::Command | Shell::Subshell | Shell::Branch
+            if rest.starts_with('(') && !rest.starts_with("((") =>
+        {
             within.push(Shell::Subshell);
             return Some((1, true));
         }
@@ -200,6 +225,43 @@ fn bracket(innermost: Option<Shell>, rest: &str, within: &mut Vec<Shell>) -> Opt
     };
     within.pop();
     Some((length, starts))
+}
+
+/// The turn of a case in a command substitution that `rest` opens with,
+/// where `innermost` is a part of it, and `within` turned to match: how
+/// long it is, whether a word begins past it, and whether neither a
+/// command nor a pattern list does. None for any other text. A case's
+/// subject is the first word past it, so only an `in` past a word ends
+/// it, whatever the word reads. A pattern list begins past that `in`, past
+/// the `;;`, `;&` or `;;&` ending a branch, and at a line's start, and an
+/// `esac` there, or where a branch's command may begin, closes the case.
+/// `starts` says whether a word, and a command or a pattern list, may
+/// begin here.
+fn case_part(
+    innermost: Option<Shell>,
+    rest: &str,
+    (word_starts, command_starts): (bool, bool),
+    within: &mut Vec<Shell>,
+) -> Option<(usize, bool, bool)> {
+    let c = rest.chars().next()?;
+    let (turned, length) = match innermost? {
+        Shell::Pattern | Shell::Branch if command_starts && reserved(rest, "esac", true) => {
+            within.pop();
+            return Some((4, false, false));
+        }
+        Shell::Case if word_starts && !command_starts && reserved(rest, "in", true) => {
+            (Shell::Pattern, 2)
+        }
+        Shell::Pattern if c == ')' => (Shell::Branch, 1),
+        // Another pattern stands past a pattern's own `(` or a `|`.
+        Shell::Pattern if c == '(' || c == '|' => return Some((1, true, true)),
+        // A `;;&` is a `;;` and an operator past it.
+        Shell::Branch if rest.starts_with(";;") || rest.starts_with(";&") => (Shell::Pattern, 2),
+        _ => return None,
+    };
+    within.pop();
+    within.push(turned);
+    Some((length, true, false))
 }
 
 /// How long the reserved word `rest` opens with is, where it's one past
