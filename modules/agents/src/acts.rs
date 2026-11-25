@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 /// The acts that steer a session by their own name, as the node takes
 /// them; Wake only wakes one parked, putting nothing in its inbox.
-const STEERED: [&str; 5] = ["pause", "resume", "stop", "close", "wake"];
+pub const STEERED: [&str; 5] = ["pause", "resume", "stop", "close", "wake"];
 
 /// How long the node may take to answer a steer before the act is said
 /// to have failed, since the shell waits on its answer to say what

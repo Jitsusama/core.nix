@@ -28,6 +28,37 @@ onLinux {
   agents-makes-the-launchers-rows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the agents daemon, its tests included.
   agents-passes-clippy = passesClippy "agents-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # The daemon tells an agent from Joel by the node's own names for an
+  # agent's units and pi's processes, as the pinned mycelium's
+  # src/node/asker.rs says them, so what it refuses as Joel's is what the
+  # node refuses beside it (ISXEG8, 25 November).
+  agents-tells-an-agent-as-the-node-does =
+    let
+      lines = file: lib.splitString "\n" (builtins.readFile file);
+      # What a file's AGENTS_UNITS lists, a name to a line as rustfmt lays
+      # them out, or nothing where it lists none.
+      units =
+        file:
+        let
+          from = lib.lists.findFirstIndex (lib.hasPrefix "const AGENTS_UNITS") null (lines file);
+          rest = lib.drop (from + 1) (lines file);
+          until = lib.lists.findFirstIndex (line: line == "];") (lib.length rest) rest;
+        in
+        if from == null then [ ] else map lib.trim (lib.take until rest);
+      # The names a file gives pi's process and its host's.
+      names =
+        file: lib.filter (line: builtins.match "const PI(_HOST)?: &str = .*;" line != null) (lines file);
+      ours = ./src/asker.rs;
+      nodes = "${self.inputs.mycelium}/src/node/asker.rs";
+    in
+    holds "agents-tells-an-agent-as-the-node-does"
+      "The agents daemon names an agent's units or pi's processes otherwise than the node does."
+      (
+        units ours != [ ]
+        && units ours == units nodes
+        && lib.length (names ours) == 2
+        && names ours == names nodes
+      );
   # The daemon runs in each account of a machine in a realm, following
   # that realm's node and the to-do daemon and reading the launcher's own
   # words, its socket systemd's, and a switch restarts it; a machine in no

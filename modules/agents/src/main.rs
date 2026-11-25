@@ -310,11 +310,13 @@ fn own(
 /// Start New Work, where it can begin, Let Them Start and an answer to
 /// what a session asks, asked of `node` only for the shell, told apart by
 /// the connection each came on, so no agent lifts the stop Joel put on
-/// their starts, reads his places nor answers one of `wants` as him; what
-/// the node says of the starts once they're let start is `stood` at once,
-/// rather than at the next poll. Feedback, a sprout, the places, letting
-/// them start and an answer wait on the node, so none holds up an ask
-/// after it. Each start the shell names by a
+/// their starts, reads his places nor answers one of `wants` as him; and
+/// what he says or does to a session ([`AS_JOEL`]) only from one `judge`
+/// takes as his, so no agent says or does it as him. What the node says
+/// of the starts once they're let start is `stood` at once, rather than
+/// at the next poll. Feedback, a sprout, the places, letting them start
+/// and an answer wait on the node, so none holds up an ask after it.
+/// Each start the shell names by a
 /// token is kept on disk before the node is asked, its end before the
 /// shell hears it, and its told before that's answered, until the shell
 /// says it told Joel its end (starts.rs), so neither a restart of the
@@ -326,17 +328,17 @@ fn for_the_shell_alone(
     keeping: Keeping,
     told: mpsc::Sender<Heard>,
     (stood, words): (Arc<starts_stopped::Told>, Said),
+    judge: asker::Judge,
 ) {
     shared.peered(
-        &[
-            sprout::ASK,
-            places::ASK,
-            starts::TOLD,
-            starts::KEPT,
-            starts_stopped::ASK,
-            wants::ASK,
-        ],
+        &PEERED,
         Box::new(move |said, stream| {
+            // Joel's own are answered by `own`, as ever, once no agent is
+            // known to have said them.
+            let ask = said["ask"].as_str().unwrap_or("");
+            if AS_JOEL.contains(&ask) {
+                return judge(stream).err().map(|why| refused_as_joel(ask, &why));
+            }
             if said["ask"] == places::ASK {
                 return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
             }
@@ -395,7 +397,10 @@ fn for_the_shell_alone(
         }),
     );
     // Told and an answer ask the shell's systemd who the shell is, as a
-    // sprout does, and an answer waits on the node besides.
+    // sprout does, and an answer waits on the node besides. Who says
+    // Joel's own is read from /proc alone, so they stay on their
+    // connection's thread, and what he says to a session reaches it in
+    // the order he said it.
     shared.slow(&[
         "feedback",
         sprout::ASK,
@@ -404,6 +409,61 @@ fn for_the_shell_alone(
         starts_stopped::ASK,
         wants::ASK,
     ]);
+}
+
+/// What Joel says or does to a session, which whoever hears it takes as
+/// his: words to it, a line to tell, feedback on a landing, Not Now on
+/// what it asks and an act on it. No agent says them here, as none may
+/// steer the node as him beside it, so none puts words in his mouth or
+/// acts as him by asking this daemon, which the node trusts to say
+/// what's his (ISXEG8, 25 November).
+const AS_JOEL: [&str; 9] = [
+    "talk", "tell", "feedback", "not-now", "pause", "resume", "stop", "close", "wake",
+];
+
+/// The asks answered knowing who asked: the shell's own, then Joel's.
+const PEERED: [&str; 6 + AS_JOEL.len()] = {
+    let shells = [
+        sprout::ASK,
+        places::ASK,
+        starts::TOLD,
+        starts::KEPT,
+        starts_stopped::ASK,
+        wants::ASK,
+    ];
+    let mut all = [""; 6 + AS_JOEL.len()];
+    let mut at = 0;
+    while at < all.len() {
+        all[at] = if at < shells.len() {
+            shells[at]
+        } else {
+            AS_JOEL[at - shells.len()]
+        };
+        at += 1;
+    }
+    all
+};
+
+/// What one of [`AS_JOEL`] that wasn't taken as Joel's is told, naming
+/// what it was and why, as the node says it of a steer.
+fn refused_as_joel(ask: &str, why: &asker::NotJoels) -> Value {
+    let what = match ask {
+        "talk" => "words to a session",
+        "tell" => "a line to tell",
+        "feedback" => "feedback on a landing",
+        "not-now" => "a Not Now",
+        _ => "an act on a session",
+    };
+    let message = match why {
+        asker::NotJoels::Agent(unit) => {
+            format!("this asks from {unit}, an agent's, and an agent can't give {what} as Joel's")
+        }
+        asker::NotJoels::Untold(why) => format!(
+            "the agents daemon takes {what} as Joel's only once it can tell no agent asked: {why}"
+        ),
+    };
+    eprintln!("agents: {ask} wasn't taken as Joel's: {message}");
+    json!({"error": {"code": "refused", "message": message}})
 }
 
 /// What an answer the shell's check refused is told, as Let Them Start
@@ -577,6 +637,7 @@ fn serve(args: Args) -> Result<(), Failure> {
         keeping.clone(),
         to.clone(),
         (Arc::clone(&starts_told), starts_said),
+        asker::speaks_as_joel,
     );
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
