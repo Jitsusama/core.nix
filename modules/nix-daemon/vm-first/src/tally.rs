@@ -7,7 +7,12 @@ use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use crate::{QUEST_SLICE, client_of_build, quest_slice};
+use crate::{QUEST_SLICE, client_of_build};
+
+/// The tier the work of quests no tier names goes in, and of work for no
+/// quest, which sits in its slice directly, as jobs-sorter's tiers.rs
+/// puts it.
+const UNRANKED: &str = "unranked";
 
 /// Who asked for a build: the client's command, and its quest if it sits
 /// in one's slice.
@@ -138,25 +143,76 @@ const COMMAND_LENGTH: usize = 120;
 
 /// A client's command as a person would type it, from its command line:
 /// the program by its name alone, and cut short past `COMMAND_LENGTH`.
+/// Any client may write its command line, so it's said safely, as
+/// `said_safely` says.
+/// The command is cut between the characters it's said in, so no escape
+/// is cut in two.
 fn command_of(cmdline: &[u8]) -> String {
     let mut args = cmdline
         .split(|&byte| byte == 0)
-        .filter(|arg| !arg.is_empty())
-        .map(String::from_utf8_lossy);
+        .filter(|arg| !arg.is_empty());
     let Some(program) = args.next() else {
         return String::new();
     };
-    let name = program.rsplit('/').next().unwrap_or(&program).to_string();
-    let said = std::iter::once(name)
-        .chain(args.map(std::borrow::Cow::into_owned))
-        .collect::<Vec<_>>()
-        .join(" ");
-    if said.chars().count() <= COMMAND_LENGTH {
-        return said;
+    let name = program
+        .rsplit(|&byte| byte == b'/')
+        .next()
+        .unwrap_or(program);
+    let mut said = said_each(name);
+    for arg in args {
+        said.push(" ".to_owned());
+        said.extend(said_each(arg));
     }
-    let mut cut: String = said.chars().take(COMMAND_LENGTH - 3).collect();
+    if said.iter().map(|each| each.chars().count()).sum::<usize>() <= COMMAND_LENGTH {
+        return said.concat();
+    }
+    let mut cut = String::new();
+    let mut length = 0;
+    for each in said {
+        length += each.chars().count();
+        if length > COMMAND_LENGTH - 3 {
+            break;
+        }
+        cut.push_str(&each);
+    }
     cut.push_str("...");
     cut
+}
+
+/// Whether a character said as it is could start a line of its own or
+/// turn round the text after it: a control character, a line or paragraph
+/// separator, or a mark setting the way text runs.
+fn unsafe_to_say(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+        )
+}
+
+/// Text a client chose, as a journal line may hold it, character by
+/// character: each character unsafe to say escaped, as `\n`, so no newline
+/// in it starts a line of its own, and each backslash and backtick escaped
+/// too, so none passes for an escape or closes the quoting the line says
+/// it in.
+fn said_each(text: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(text)
+        .chars()
+        .map(|c| {
+            if unsafe_to_say(c) {
+                c.escape_default().collect()
+            } else if c == '\\' || c == '`' {
+                format!("\\{c}")
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+/// The same text said whole.
+pub(crate) fn said_safely(text: &[u8]) -> String {
+    said_each(text).concat()
 }
 
 /// The line vm-first says when a build has gone.
@@ -195,14 +251,38 @@ fn told(tally: &Tally) -> Option<String> {
     })
 }
 
-/// The quest a quest's slice is for, from the slice's path.
-fn quest_of(slice: &str) -> Option<&str> {
-    slice
-        .rsplit('/')
-        .next()?
-        .strip_prefix(QUEST_SLICE)?
-        .strip_suffix(".slice")
-        .filter(|quest| !quest.is_empty())
+/// The quest a process's `/proc/<pid>/cgroup` sits in a slice of, said
+/// safely, since a client may name a slice of its own. A quest's slice
+/// sits in jobs-work.slice, as jobs-work-<quest>.slice, or given tiers in
+/// its tier's, as jobs-work-<tier>-<quest>.slice, beside the unranked
+/// tier's work for no quest.
+fn quest_said(cgroup: &str) -> Option<String> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let slices: Vec<&str> = path
+        .split('/')
+        .filter_map(|part| part.strip_suffix(".slice"))
+        .filter(|slice| slice.starts_with(QUEST_SLICE))
+        .collect();
+    let quest = match slices.as_slice() {
+        [] => None,
+        [quest] => quest
+            .strip_prefix(QUEST_SLICE)
+            .filter(|quest| *quest != UNRANKED),
+        [.., tier, quest] => quest
+            .strip_prefix(tier)
+            .and_then(|rest| rest.strip_prefix('-')),
+    }?;
+    (!quest.is_empty()).then(|| said_safely(quest.as_bytes()))
+}
+
+/// Who asked for a build, from its client's command line and cgroup; a
+/// cgroup's path that isn't UTF-8 is read as near as it can be, since the
+/// command is still worth saying.
+fn asker(cmdline: &[u8], cgroup: &[u8]) -> Asker {
+    Asker {
+        command: command_of(cmdline),
+        quest: quest_said(&String::from_utf8_lossy(cgroup)),
+    }
 }
 
 /// Whether a build's cgroup holds a process to follow to its client.
@@ -213,10 +293,7 @@ fn has_a_process(build: &Path) -> bool {
 /// Who asked for a build, while its client is still there to ask.
 fn asker_of(build: &Path) -> Option<Asker> {
     let client = client_of_build(build)?;
-    let command = command_of(&fs::read(format!("/proc/{client}/cmdline")).ok()?);
-    let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
-    let quest = quest_slice(&cgroup).and_then(quest_of).map(str::to_string);
-    Some(Asker { command, quest })
+    Some(asker(&client.read("cmdline")?, &client.read("cgroup")?))
 }
 
 /// Brings each build's tally up to date, and says what each build that has

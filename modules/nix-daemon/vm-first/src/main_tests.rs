@@ -3,6 +3,112 @@
 
 use super::*;
 
+// Only Linux has a /proc to read.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_process_is_read_through_its_open_folder_until_it_is_gone() {
+    let own = Proc::open(std::process::id()).expect("this process's folder wouldn't open");
+    assert_eq!(
+        (own.read("cmdline"), own.owner()),
+        (
+            fs::read("/proc/self/cmdline").ok(),
+            fs::metadata("/proc/self").ok().map(|meta| meta.uid())
+        ),
+        "a process's own files or owner weren't read through its folder"
+    );
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("sleep wouldn't start");
+    let gone = Proc::open(child.id()).expect("the child's folder wouldn't open");
+    child.kill().expect("the child wouldn't stop");
+    child.wait().expect("the child wasn't reaped");
+    assert_eq!(
+        gone.read("cmdline"),
+        None,
+        "a process reaped was still read, as its pid's next process could be"
+    );
+}
+
+// Only Linux has a /proc to read.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_process_named_is_opened_only_if_it_started_no_later_than_its_namer() {
+    let started = |proc: &Proc| parse_started(&proc.text("stat").expect("no stat"));
+    let own = Proc::open(std::process::id()).expect("this process's folder wouldn't open");
+    let own_at = started(&own).expect("this process's start wouldn't read");
+    // Start times count clock ticks of 10 ms, so a child made within one
+    // of this process starting would start in the same tick; made 30 ms
+    // after it, the child starts at least a tick later.
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("sleep wouldn't start");
+    let child_at = Proc::open(child.id()).as_ref().and_then(started);
+    let younger = Proc::open_older(child.id(), own_at).is_some();
+    let itself = Proc::open_older(std::process::id(), own_at).is_some();
+    let parent = Proc::open_older(std::os::unix::process::parent_id(), own_at).is_some();
+    child.kill().expect("the child wouldn't stop");
+    child.wait().expect("the child wasn't reaped");
+    assert!(
+        child_at.is_some_and(|at| at > own_at),
+        "the child didn't start a tick later, so the test proves nothing"
+    );
+    assert_eq!(
+        (younger, itself, parent),
+        (false, true, true),
+        "a process started later than the one naming it was opened, or one started in \
+         its tick or before wasn't"
+    );
+}
+
+#[test]
+fn a_build_s_first_process_counts_only_while_in_its_cgroup_or_one_under_it() {
+    let build = Path::new("/sys/fs/cgroup/build.slice/nix-daemon.service/nix-build-a.slice");
+    let daemon = "0::/build.slice/nix-daemon.service";
+    // A cgroup whose name only starts with the build's is another's, and
+    // only the unified hierarchy's line says where a process sits.
+    for (said, within) in [
+        (format!("{daemon}/nix-build-a.slice\n"), true),
+        (format!("{daemon}/nix-build-a.slice/payload\n"), true),
+        (format!("{daemon}/nix-build-ab.slice\n"), false),
+        (format!("{daemon}/nix-build-a.slice-x\n"), false),
+        (format!("{daemon}/nix-build-a.sliced\n"), false),
+        ("0::/user.slice\n".to_owned(), false),
+        (
+            "1:cpu:/build.slice/nix-daemon.service/nix-build-a.slice\n0::/user.slice\n".to_owned(),
+            false,
+        ),
+    ] {
+        assert_eq!(
+            in_cgroup(&said, build),
+            within,
+            "{said:?} was read as in the build's cgroup when it isn't, or out when it is"
+        );
+    }
+}
+
+#[test]
+fn reads_when_a_process_started_past_a_name_with_spaces() {
+    let stat = "4242 (a b) c) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2";
+    assert_eq!(parse_started(stat), Some(98765));
+    assert_eq!(parse_started("4242 (cc1) S 1"), None);
+    // A name that isn't UTF-8 is read as a stand-in, as Proc::text reads
+    // it, and the fields past it still read.
+    let lossy = [
+        b"4242 (a\xff\xfe) S 1 4242 4242 0 -1 4194560".as_slice(),
+        b" 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2",
+    ]
+    .concat();
+    let lossy = String::from_utf8_lossy(&lossy);
+    assert_eq!(
+        (parse_started(&lossy), parse_ppid(&lossy)),
+        (Some(98765), Some(1)),
+        "a name that isn't UTF-8 lost the fields past it"
+    );
+}
+
 fn words(line: &str) -> Vec<String> {
     line.split_whitespace().map(String::from).collect()
 }
@@ -47,6 +153,9 @@ fn a_flag_asked_wrongly_is_a_usage_failure() {
         "--weight 0",
         "--every soon",
         "--quick",
+        "--cgroup sys/fs/cgroup/build.slice",
+        "--cgroup /sys/fs/cgroup/../build.slice",
+        "--cgroup /run/build.slice",
     ] {
         let exit = settings(&words(line)).err().map(|failure| failure.exit);
         assert_eq!(
@@ -183,16 +292,22 @@ fn a_vms_build_is_weighed_for_cpu_and_disk() {
 fn a_daemon_worker_names_its_client() {
     // Nix writes the client's pid over "--daemon", padding with NULs.
     assert_eq!(
-        client_of(b"nix-daemon\x00307605\x00\x00\x00"),
+        client_of(b"nix-daemon\x00307605\x00\x00\x00", 0),
         Some(307_605)
     );
     assert_eq!(
-        client_of(b"/nix/store/x-nix/bin/nix-daemon\x0042\x00"),
+        client_of(b"/nix/store/x-nix/bin/nix-daemon\x0042\x00", 0),
         Some(42)
     );
-    assert_eq!(client_of(b"nix-daemon\x00--daemon\x00"), None);
-    assert_eq!(client_of(b"bash\x00123\x00"), None);
-    assert_eq!(client_of(b""), None);
+    assert_eq!(client_of(b"nix-daemon\x00--daemon\x00", 0), None);
+    assert_eq!(client_of(b"bash\x00123\x00", 0), None);
+    assert_eq!(client_of(b"", 0), None);
+    // A build's process, run as a build user, naming itself a worker.
+    assert_eq!(
+        client_of(b"nix-daemon\x00307605\x00", 30_001),
+        None,
+        "a build's own process was taken for a daemon worker"
+    );
 }
 
 #[test]
@@ -205,20 +320,39 @@ fn reads_a_parent() {
 
 #[test]
 fn finds_the_quest_a_client_works_for() {
-    let quest = "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-qest20261024abc123.slice";
+    let quest = concat!(
+        "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+        "/jobs-work-qest20261024abc123.slice"
+    );
     assert_eq!(
         quest_slice(&format!("0::{quest}/work-307590-4656305.scope\n")),
         Some(quest)
     );
     assert_eq!(
-        quest_slice(
-            "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/work-1-2.scope\n"
-        ),
+        quest_slice(concat!(
+            "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+            "/work-1-2.scope\n"
+        )),
         None
     );
     assert_eq!(
         quest_slice("0::/system.slice/compiler-build.service\n"),
         None
+    );
+}
+
+#[test]
+fn a_tiered_quests_build_is_weighed_by_its_tier() {
+    let tier = concat!(
+        "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+        "/jobs-work-driving.slice"
+    );
+    assert_eq!(
+        quest_slice(&format!(
+            "0::{tier}/jobs-work-driving-qest20261024abc123.slice/work-1-2.scope\n"
+        )),
+        Some(tier),
+        "a tiered quest's build wasn't weighed by its tier, which ranks it among every quest"
     );
 }
 
@@ -300,6 +434,27 @@ fn finds_every_process_under_a_build_its_containers_too() {
     fs::remove_dir_all(&root).unwrap();
 
     assert_eq!(found, vec!["10", "11", "30"]);
+}
+
+#[test]
+fn a_builds_first_process_is_its_own_else_the_first_under_it() {
+    let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
+    let payload = root.join("payload");
+    fs::create_dir_all(&payload).unwrap();
+    fs::write(root.join("cgroup.procs"), "10\n11\n").unwrap();
+    fs::write(payload.join("cgroup.procs"), "30\n").unwrap();
+    let own = first_process(&root);
+    fs::write(root.join("cgroup.procs"), "").unwrap();
+    let moved = first_process(&root);
+    fs::write(payload.join("cgroup.procs"), "").unwrap();
+    let none = first_process(&root);
+    fs::remove_dir_all(&root).unwrap();
+
+    assert_eq!(
+        (own, moved, none),
+        (Some(10), Some(30), None),
+        "a build's first process wasn't its own, else the first under it"
+    );
 }
 
 #[test]

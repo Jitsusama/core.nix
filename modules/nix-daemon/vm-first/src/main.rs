@@ -46,7 +46,9 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
+use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
@@ -56,7 +58,7 @@ use terminal_kit::{Context, Exit, Failure, Help};
 
 mod tally;
 
-use tally::{Tally, tally};
+use tally::{Tally, said_safely, tally};
 
 const SCHED_OTHER: i32 = 0;
 const PRIO_PROCESS: i32 = 0;
@@ -132,9 +134,26 @@ fn parse_ppid(line: &str) -> Option<u32> {
         .ok()
 }
 
-/// The client a daemon worker serves, from its command line: Nix writes
-/// the client's pid over the worker's `--daemon`, padding it with NULs.
-fn client_of(cmdline: &[u8]) -> Option<u32> {
+/// When a process started, in clock ticks since boot, from its
+/// `/proc/<pid>/stat`.
+fn parse_started(line: &str) -> Option<u64> {
+    let close = line.rfind(')')?;
+    line[close + 1..]
+        .split_whitespace()
+        .nth(22 - 3)?
+        .parse()
+        .ok()
+}
+
+/// The client a daemon worker serves, from its command line and the user
+/// `owner` it runs as: Nix writes the client's pid over the worker's
+/// `--daemon`, padding it with NULs. A worker runs as root and a build's
+/// processes never do, so a build naming itself nix-daemon with another
+/// client's pid isn't taken for a worker, nor given that client's weight.
+fn client_of(cmdline: &[u8], owner: u32) -> Option<u32> {
+    if owner != 0 {
+        return None;
+    }
     let mut args = cmdline.split(|byte| *byte == 0);
     let program = args.next()?;
     if !program
@@ -148,7 +167,10 @@ fn client_of(cmdline: &[u8]) -> Option<u32> {
 }
 
 /// The quest's slice a process's cgroup sits in, as a path under the
-/// cgroup file system, from its `/proc/<pid>/cgroup`.
+/// cgroup file system, from its `/proc/<pid>/cgroup`. Given tiers, it's
+/// the quest's tier's slice, whose weight ranks it among every quest's
+/// work, where its own ranks it only among its tier's; a build is weighed
+/// among them all.
 fn quest_slice(cgroup: &str) -> Option<&str> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
     let mut end = 0;
@@ -171,28 +193,113 @@ fn quest_weight(quest: u64, vm: u64) -> u64 {
     quest.min(vm.saturating_sub(1)).max(1)
 }
 
+/// A process's folder under `/proc`, held open so that each read of it is
+/// of the one process. Read again by its pid, the folder could by then be
+/// another's, since a pid is used again once its process is reaped, but a
+/// read through the open folder of a process that's gone fails.
+struct Proc(fs::File);
+
+impl Proc {
+    fn open(pid: u32) -> Option<Proc> {
+        fs::File::open(format!("/proc/{pid}")).ok().map(Proc)
+    }
+
+    /// The user the process runs as, who owns its folder. A process that
+    /// makes itself undumpable has the files in its folder shown as
+    /// root's, but Linux leaves the folder its own user's, as
+    /// `task_dump_owner` in fs/proc/base.c does for every `dr-xr-xr-x`
+    /// folder, so no build passes for a root worker that way.
+    fn owner(&self) -> Option<u32> {
+        self.0.metadata().ok().map(|meta| meta.uid())
+    }
+
+    /// One of the process's files, read through its open folder.
+    fn read(&self, name: &str) -> Option<Vec<u8>> {
+        fs::read(format!("/proc/self/fd/{}/{name}", self.0.as_raw_fd())).ok()
+    }
+
+    /// One of the process's files as text, any bytes not UTF-8 in its
+    /// name or its cgroup's path read as a stand-in, so the fields past
+    /// them still read.
+    fn text(&self, name: &str) -> Option<String> {
+        Some(String::from_utf8_lossy(&self.read(name)?).into_owned())
+    }
+
+    /// The process `pid` names, and its stat, should it have started no
+    /// later than the clock tick its namer did, `named_at`, the namer
+    /// naming it as its parent or its client: by then the pid could be a
+    /// process made since, which starts later, as only a pid used again in
+    /// the same clock tick could not.
+    fn open_older(pid: u32, named_at: u64) -> Option<(Proc, String)> {
+        let opened = Proc::open(pid)?;
+        let stat = opened.text("stat")?;
+        (parse_started(&stat)? <= named_at).then_some((opened, stat))
+    }
+}
+
 /// The client that asked for a build, found through the daemon's worker
-/// its processes descend from.
-fn client_of_build(build: &Path) -> Option<u32> {
-    let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
-    let mut pid: u32 = procs.lines().next()?.parse().ok()?;
+/// its processes descend from. The client is opened by the pid the worker
+/// names, which is all a worker says of it.
+///
+/// A process's owner is read before its command line: Linux's
+/// `pid_getattr` says root owns the folder of a process that has gone, so
+/// read after, a build that wrote a worker's command line and ended would
+/// pass for one, but read before, the command line of a process gone by
+/// then won't read.
+///
+/// The walk starts at the build's first process, opened only while its
+/// cgroup is still the build's or one under it, since by then its pid
+/// could be another's.
+fn client_of_build(build: &Path) -> Option<Proc> {
+    let mut process = Proc::open(first_process(build)?)?;
+    if !in_cgroup(&process.text("cgroup")?, build) {
+        return None;
+    }
+    let mut stat = process.text("stat")?;
     for _ in 0..WORKER_DEPTH {
-        if let Some(client) = fs::read(format!("/proc/{pid}/cmdline"))
-            .ok()
-            .and_then(|cmdline| client_of(&cmdline))
+        let owner = process.owner()?;
+        let started = parse_started(&stat)?;
+        if let Some(client) = process
+            .read("cmdline")
+            .and_then(|cmdline| client_of(&cmdline, owner))
         {
-            return Some(client);
+            return Proc::open_older(client, started).map(|(client, _)| client);
         }
-        pid = parse_ppid(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+        (process, stat) = Proc::open_older(parse_ppid(&stat)?, started)?;
     }
     None
+}
+
+/// The first process a build's cgroup lists, else the first a cgroup under
+/// it lists, so a build that moves every process into a cgroup of its own
+/// is still weighed by its quest.
+fn first_process(build: &Path) -> Option<u32> {
+    pids_under(build).first()?.parse().ok()
+}
+
+/// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
+/// would, from the file system's root down and never back up it, without
+/// which every client would be taken for out of its build's cgroup.
+fn under_cgroup_root(cgroup: &Path) -> bool {
+    cgroup.starts_with(CGROUP_ROOT)
+        && !cgroup
+            .components()
+            .any(|part| part == std::path::Component::ParentDir)
+}
+
+/// Whether a process's `/proc/<pid>/cgroup` puts it in `cgroup`, a path
+/// under the cgroup file system, or a cgroup under that one.
+fn in_cgroup(said: &str, cgroup: &Path) -> bool {
+    said.lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .is_some_and(|path| Path::new(&format!("{CGROUP_ROOT}{path}")).starts_with(cgroup))
 }
 
 /// The CPU weight of the quest that asked for a build, if its client sits
 /// in a quest's slice.
 fn weight_of_quest(build: &Path) -> Option<u64> {
     let client = client_of_build(build)?;
-    let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
+    let cgroup = client.text("cgroup")?;
     let slice = quest_slice(&cgroup)?;
     let weight = format!("{CGROUP_ROOT}{slice}/cpu.weight");
     fs::read_to_string(weight).ok()?.trim().parse().ok()
@@ -535,7 +642,7 @@ fn bring_process_ahead(pid: &str, comm: &str, settings: &Settings, warned: &mut 
     if moved > 0 {
         eprintln!(
             "Brought {} ({pid}) ahead of the builds: {moved} threads to nice {}.",
-            comm.trim_end(),
+            said_safely(comm.trim_end().as_bytes()),
             settings.nice
         );
     }
@@ -557,7 +664,11 @@ fn settings(args: &[String]) -> Result<Settings, Failure> {
                 .ok_or_else(|| wrongly(format!("{flag} needs a value")))
         };
         match flag.as_str() {
-            "--cgroup" => settings.cgroup = PathBuf::from(value()?),
+            "--cgroup" => {
+                settings.cgroup = Some(PathBuf::from(value()?))
+                    .filter(|cgroup| under_cgroup_root(cgroup))
+                    .ok_or_else(|| wrongly(format!("--cgroup is a path under {CGROUP_ROOT}")))?;
+            }
             "--name" => settings.names.push(value()?.clone()),
             "--nice" => {
                 settings.nice = value()?
