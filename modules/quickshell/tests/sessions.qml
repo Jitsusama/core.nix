@@ -252,8 +252,9 @@ ShellRoot {
             JSON.stringify(unseen.window));
         expect("a session with no window is itself", Sessions.isOf(unseen) === "agent:NOWIN6",
             Sessions.isOf(unseen));
-        Sessions.goTo(unseen);
-        expect("Go To asks its kitty", Niri.spawned.join(" ")
+        const unseenWent = Sessions.goTo(unseen);
+        expect("Go To asks its kitty, saying it went", unseenWent === true
+            && Niri.spawned.join(" ")
             === "kitten @ --to unix:@kitty-700 focus-window --match id:2", Niri.spawned.join(" "));
         elsewhere();
         parks();
@@ -271,8 +272,9 @@ ShellRoot {
             JSON.stringify(out));
         expect("this machine's first", Sessions.running.slice(0, 3).every(session => session.here),
             Sessions.running.map(session => session.address).join(" "));
-        Sessions.goTo(far);
+        const farWent = Sessions.goTo(far);
         const joined = Niri.spawned.join(" ");
+        expect("and says it went", farWent === true, String(farWent));
         expect("Go To joins it by its node's words", inSessions(joined)
             === "sessions zsh -lic mycelium attach r-far", joined);
         // Its window opens on its orchestrator's workspace, never on the
@@ -286,8 +288,11 @@ ShellRoot {
             opened?.reference?.Id === 8 && opened?.app_id === asked(joined)?.classed,
             JSON.stringify(Niri.acted));
         expect("and keeps niri's token", !joined.includes("XDG_ACTIVATION_TOKEN"), joined);
-        Sessions.goTo(out);
+        const outWent = Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
+        // Said false, so a Go To from a link with the launcher shut opens it to say why, rather
+        // than telling a launcher nobody opens (KP0L6A, 2026-11-24 [00902e94]).
+        expect("and says it didn't go", outWent === false, String(outWent));
         hosts();
         Sessions.steer("farawy", { act: "pause" }, (put, answer, sent) => {
             root.farawyTold = [put, answer?.error?.message ?? null, sent];

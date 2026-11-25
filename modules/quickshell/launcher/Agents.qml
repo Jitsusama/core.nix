@@ -1372,8 +1372,9 @@ Provider {
     // (Launcher.qml's goToCell), as its row's Switch does: raises its window, or opens one on it
     // where it has none, held here, hosted or on another machine (Sessions.goTo), waking it
     // first where it's parked, as a look's Go To does. Only the first word said names one
-    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session gone to, or null for
-    // nobody here: the void and a network have no window to go to.
+    // (TalkTo.goesTo), and nothing is typed or sent. Gives the session and whether it went
+    // (Sessions.wakeToGo), the foot told why where it didn't, or null for nobody here: the
+    // void and a network have no window to go to.
     function goToFor(said) {
         const address = TalkTo.goesTo(said, {
             isVoid: address => provider.isVoid(address),
@@ -1384,9 +1385,9 @@ Provider {
             return null;
         const session = heldAt(address);
         heard(session.address);
-        Sessions.wakeToGo(Sessions.parkedAs(session.address),
+        const went = Sessions.wakeToGo(Sessions.parkedAs(session.address),
             sessionAt(session.address) ?? session);
-        return session;
+        return { session, went };
     }
 
     // The key the daemon serves a network's row by, among the rows the Networks row holds

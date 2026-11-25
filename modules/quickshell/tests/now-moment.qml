@@ -246,6 +246,9 @@ ShellRoot {
         property string intoAsked: ""
         property int goneTold: 0
         property var goneMoved: []
+        // How often it was asked to open and say what's held for its next opening
+        // (Launcher.qml's toldHere), as a Go To that couldn't go asks.
+        property int hereTold: 0
 
         function toldThat(what, why) {
             told = told.concat([{ what: what, why: why }]);
@@ -256,6 +259,10 @@ ShellRoot {
         function toldGone(moved) {
             goneTold += 1;
             goneMoved = goneMoved.concat([moved]);
+            return true;
+        }
+        function toldHere() {
+            hereTold += 1;
             return true;
         }
         // Set without one only by a case that asks what's left without it.
@@ -2587,6 +2594,27 @@ ShellRoot {
                 && JSON.stringify(theLauncher.goneMoved) === "[false]",
             JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked,
                 theLauncher.goneMoved]));
+        // Go on one whose session is held but can't be gone to, as one on another machine no
+        // holder keeps, opens the launcher to say why (KP0L6A, 2026-11-24 [00902e94]), and
+        // leaves it waiting, since nothing opened.
+        const farLook = { id: "x", file: "x.json", kind: "terminal", title: "Read X",
+            target: "", state: "waiting", cell: "ACTED" };
+        now.lookTexts = Object.assign({}, now.lookTexts, { "x.json": JSON.stringify(farLook) });
+        const textFar = now.lookTexts["x.json"];
+        Sessions.wentTo = null;
+        Sessions.goes = false;
+        theLauncher.hereTold = 0;
+        const openedFar = now.openLook(farLook);
+        Sessions.goes = true;
+        expect("Go on a session it can't go to says it opened nothing",
+            openedFar === false && Sessions.wentTo?.address === "ACTED",
+            JSON.stringify([openedFar, Sessions.wentTo?.address ?? null]));
+        expect("and leaves its look waiting as it was",
+            now.lookTexts["x.json"] === textFar && now.looksSettling["x.json"] === undefined,
+            JSON.stringify([now.lookTexts["x.json"], now.looksSettling["x.json"] ?? null]));
+        expect("and opens the launcher to say why", theLauncher.hereTold === 1,
+            String(theLauncher.hereTold));
+        Sessions.wentTo = null;
         now.lookTexts = textsGone;
         theLauncher.goneTold = 0;
         theLauncher.goneMoved = [];

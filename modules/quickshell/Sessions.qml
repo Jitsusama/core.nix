@@ -2658,7 +2658,11 @@ Singleton {
     // in the launcher's foot, since a press is never met with nothing.
     signal unhosted(var session, string why)
     // A window Go To opens goes where the session would reopen (goesTo),
-    // never on whichever workspace Joel is on.
+    // never on whichever workspace Joel is on. Whether it went: false only
+    // where it told why it couldn't (unhosted but for "opening" and
+    // "unowned", unjoined, unopened), which its caller says where Joel is, since one asked from
+    // a link with the launcher shut was otherwise told to nobody (KP0L6A,
+    // 2026-11-24 [00902e94]). A window raised, opened or still coming went.
     function goTo(session) {
         readKittyPid();
         if (session.presence?.hosted)
@@ -2676,33 +2680,37 @@ Singleton {
             const named = viewerOf(session.presence);
             const listed = listedNamed(named);
             const words = session.attach;
-            if (listed)
+            if (listed) {
                 Niri.act({ FocusWindow: { id: listed.id } });
-            else if (named === "" || !Array.isArray(words) || words.length === 0)
+            } else if (named === "" || !Array.isArray(words) || words.length === 0) {
                 unhosted(session, named === "" ? "unnamed" : "hosted");
-            else if (!disowned(named, session) && !heldBack(session.address, named, session)) {
+                return false;
+            } else if (disowned(named, session)) {
+                return false;
+            } else if (!heldBack(session.address, named, session)) {
                 view(session, root.goesTo(session), true);
                 // Its own asked for, whose window holds its name is said,
                 // so a stray window is seen at the press. One held back is
-                // said opening, as its own is.
+                // said opening, as its own is. Both went.
                 if (heldByAnother(named))
                     unhosted(session, "unowned");
             }
-            return;
+            return true;
         }
-        if (!session.here && !session.window && !session.kitty) {
-            joinElsewhere(session);
-            return;
-        }
-        if (session.window)
+        if (!session.here && !session.window && !session.kitty)
+            return joinElsewhere(session);
+        if (session.window) {
             Niri.act({ FocusWindow: { id: session.window.id } });
-        else if (session.kitty)
+        } else if (session.kitty) {
             Niri.spawn(["kitten", "@", "--to", session.kitty.socket, "focus-window",
                 "--match", `id:${session.kitty.window}`]);
-        else if (session.held)
+        } else if (session.held) {
             attach(session.held, root.goesTo(session));
-        else
+        } else {
             unopened(session);
+            return false;
+        }
+        return true;
     }
     // A session here in no window, kitty or holder the shell can reach, as
     // pi run in another terminal is, which Go To can't open: said, never
@@ -2733,21 +2741,23 @@ Singleton {
     // `ssh -t -- <machine> mycelium ... attach <id>`), and only once: the
     // node names the window it joins, which Go To then goes to. With no
     // words, as when it isn't held or its machine is out of reach, nothing
-    // opens, and the caller is told why.
+    // opens, and the caller is told why, said false. One asked for moments
+    // ago is still coming, so a second press went too.
     signal unjoined(var session)
     function joinElsewhere(session) {
         const words = session.attach;
         const joining = `${session.machine}:${session.address}`;
         if (!words || (Array.isArray(words) && words.length === 0)) {
             unjoined(session);
-            return;
+            return false;
         }
         if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
-            return;
+            return true;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
         root.inSessions("pi-session", command, root.goesTo(session));
         Report.say(`joined session ${session.address} on ${session.machine}`);
+        return true;
     }
 
     // Views a hosted session in a new window of the sessions' kitty, by its
@@ -4210,11 +4220,14 @@ Singleton {
     // it's parked. One only viewing wakes is left to goTo's own viewer,
     // which opens where Joel is and takes focus: wake's would open where it
     // slept, unfocused, and hold goTo's off while it came. Agents' Go To,
-    // What's On's and For You's Deal With It all go through here.
+    // What's On's and For You's Deal With It all go through here. Whether it
+    // went, as goTo says, or woke one, since a wake opens its own window,
+    // which goTo can't yet see.
     function wakeToGo(resting, session) {
-        if (resting && !wokenByViewing(resting))
+        const woke = Boolean(resting) && !wokenByViewing(resting);
+        if (woke)
             wake(resting);
-        goTo(session);
+        return goTo(session) || woke;
     }
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.

@@ -1621,21 +1621,40 @@ Scope {
     // where it's parked (Agents' goToFor). Only the first word said names one, and nothing is
     // typed or sent. Like talkTo, it does nothing over a launcher in use, which an open act has
     // closed before its link reaches here. A session no longer here opens Agents, its foot
-    // saying so once, so a notice from an ended one never goes nowhere unsaid. Says what it
-    // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
+    // saying so once, so a notice from an ended one never goes nowhere unsaid, and so does one
+    // it can't go to, as one on another machine no holder keeps (toldHere). Says what it did
+    // as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
     function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         console.info("launcher: asked from outside to go to "
             + Presented.typedShown(String(said ?? ""), Options.reports));
         if (inUse())
             return inUseSaid;
-        const session = agents ? agents.goToFor(said) : null;
-        if (session === null) {
+        const going = agents ? agents.goToFor(said) : null;
+        if (going === null) {
             const gone = Words.of("verb:notice:goTo").said ?? {};
             toldGone();
             return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
         }
-        return { done: true, said: String(session.title ?? "") };
+        if (!going.went) {
+            const why = (toldOnOpen[0] ?? []).slice(0, 2).join(": ");
+            toldHere();
+            return { done: false, said: why };
+        }
+        return { done: true, said: String(going.session.title ?? "") };
+    }
+
+    // Opens the launcher on Agents to say what's held for its next opening, a Go To's why it
+    // couldn't go (Sessions.goTo), with Joel's first keys held back, as toldGone does: from a
+    // link, and from a look's Go in Now, which runs once the launcher has shut, neither of
+    // which would otherwise be said until he next opened it himself. Over a launcher in use it
+    // says nothing (inUse). Whether it said so.
+    function toldHere() {
+        if (inUse())
+            return false;
+        into("agents");
+        prompt.linked();
+        return true;
     }
 
     // Says a Go To's session is no longer here, in a notice's Go To's own words, opening the
