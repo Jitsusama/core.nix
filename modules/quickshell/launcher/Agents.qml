@@ -2757,10 +2757,18 @@ Provider {
         }
         // No reply where it was sent is the daemon gone while asked (Daemon.qml's gone), the
         // answer put or not, so it's said unheard rather than not delivered; none where the
-        // daemon wasn't there to send to is not delivered.
+        // daemon wasn't there to send to is not delivered. An unheard one isn't Sessions'
+        // steered, whose refusal would put "not told" on the foot beside "may not have it".
         const sent = rowsKind.wire !== null;
-        rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
-            String(reply?.error?.message ?? ""), TalkAnswers.unheard(sent, reply)));
+        rowsKind.ask(said, reply => {
+            const why = String(reply?.error?.message ?? "");
+            if (!TalkAnswers.unheard(sent, reply)) {
+                then(Sessions.steered(address, reply), why, false);
+                return;
+            }
+            Report.say(`unheard answer to ${String(address).toUpperCase()}: ${why}`);
+            then(false, why, true);
+        });
     }
 
     // Joel's answer to what the session at `address` asks (`chose.answers`, asked's), shown as
