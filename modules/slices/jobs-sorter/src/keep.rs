@@ -56,6 +56,17 @@ pub enum Floor {
     Nothing,
 }
 
+impl Floor {
+    /// The memory.low it sets.
+    pub fn bytes(self) -> u64 {
+        match self {
+            Floor::Orchestrator => FLOOR,
+            Floor::Pi => PI_FLOOR,
+            Floor::Nothing => 0,
+        }
+    }
+}
+
 /// The floor of a window running `pis` pis, whether any `orchestrates`.
 pub fn floor_of(pis: usize, orchestrates: bool) -> Floor {
     if orchestrates {
@@ -285,9 +296,12 @@ impl Keeping {
         }
     }
 
-    /// The windows kept at a floor, by unit.
-    pub fn units(&self) -> impl Iterator<Item = &str> {
-        self.kept.keys().map(String::as_str)
+    /// The windows kept at a floor, by unit, each with the memory.low it was
+    /// set.
+    pub fn floors(&self) -> impl Iterator<Item = (&str, u64)> {
+        self.kept
+            .iter()
+            .map(|(unit, floor)| (unit.as_str(), floor.bytes()))
     }
 
     /// Forgets the windows no longer among `units`, which have closed.
