@@ -9,7 +9,9 @@
 //! `pineapple-github` says (src/bin/pineapple-github/).
 //! A search held back by days of failing is let go by taking `own` out of
 //! the file with its reader stopped, as a running one writes it back each
-//! round; that lets go of a first start's floor too.
+//! round; that lets go of a first start's floor too. A reader from before
+//! owing writes the file back without what's owed, so going back to one
+//! lets that go unnamed, its `since` already past it.
 
 use std::path::Path;
 
@@ -46,7 +48,8 @@ pub struct Owed {
     pub read_from: u64,
     /// When a round first couldn't read it.
     pub at: u64,
-    /// How many asks for it failed, not counting asks a spent limit kept.
+    /// How many asks its wait chose failed: not asks a spent limit kept
+    /// back, nor those made early as it changed.
     pub tries: u32,
     /// How many rounds it waits before it's asked again.
     pub skip: u32,
@@ -295,6 +298,24 @@ mod tests {
             ],
             "while it owes anything, it was last read whole when it last owed nothing"
         );
+        std::fs::remove_dir_all(&state).expect("the case's state goes");
+    }
+
+    #[test]
+    fn what_an_older_file_owes_has_failed_no_tries_and_waits_no_rounds() {
+        let state = fresh("older");
+        std::fs::create_dir_all(&state).expect("the case's state");
+        let owed = json!({"repo": "example/shop", "number": 14, "pull": true,
+            "from": 1_699_999_940, "read_from": 1_699_996_340, "at": 1_700_000_000});
+        let kept = json!({"since": 1_700_000_100, "keys": [], "owed": [owed]});
+        std::fs::write(state.join(file("github")), kept.to_string()).expect("the file");
+
+        let owed = read(&state, "github").map(|judged| judged.owed);
+        let counts = owed.as_deref().and_then(|owed| {
+            let first = owed.first()?;
+            Some((owed.len(), first.tries, first.skip))
+        });
+        assert_eq!(counts, Some((1, 0, 0)), "it's asked next round, as one new");
         std::fs::remove_dir_all(&state).expect("the case's state goes");
     }
 }

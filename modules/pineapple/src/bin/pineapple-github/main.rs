@@ -633,7 +633,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
-    let (mut failed, mut unasked) = (Vec::new(), threads.len());
+    let (mut failed, mut gone, mut unasked) = (Vec::new(), Vec::new(), threads.len());
     for (place, (thread, from, read_from)) in threads.iter().enumerate() {
         // What this round judges, which alone is worth asking about a repository.
         let keeps = |said: &Said| {
@@ -653,7 +653,10 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
                 }
                 heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said)));
             }
-            Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
+            Err(Unread::Gone(why)) => {
+                eprintln!("<4>{} can't be read: {why}", thread.key());
+                gone.push(place);
+            }
             Err(Unread::Failed(why)) => {
                 eprintln!("<4>couldn't read {}: {why}", thread.key());
                 failed.push(place);
@@ -679,7 +682,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     if let Some(hits) = hits {
         own.moved_on(began, hits);
     }
-    let read = (&failed[..], unasked);
+    let read = (&failed[..], &gone[..], unasked);
     judged.owed = owed::kept(github.name, &threads, read, &judged.owed, began);
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
