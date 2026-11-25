@@ -322,6 +322,19 @@ refuse warned "holds no record"
 refuse said "No MX Brio is held"
 replayed ""
 
+# One node's add still queued once udev runs out of time may be the Brio's
+# other node, so the run replays the node it can read and never says it
+# gave the Brio back, though udev settles in time for the replay.
+machine "$held" "$given"
+mkdir "$work/root/queued"
+mv "$work/root/facts/video0" "$work/root/queued/video0"
+printf 'DEVNAME=/dev/video0\nSUBSYSTEM=video4linux\n' >"$work/root/facts/video0"
+touch "$work/root/hangs-once"
+give_back "a Brio node udev hasn't finished adding beside one it can read"
+expect warned "udev hasn't finished adding the cameras at $work/root/dev/video0 in"
+refuse said "Gave the seat back"
+replayed $'remove video1\nadd video1'
+
 machine "$given" "$given"
 rm "$work/root/dev"/*
 give_back "a machine with no camera"

@@ -47,6 +47,10 @@ LOOKING = 4
 # How far short of a wait the journal's clock may read it: the relay counts its wait in whole
 # seconds, so one it calls 90 s may have run as little as 89, and a correct relay read 89.997.
 ROUNDING = 1
+# How much shorter still a gap between two of the relay's lines may read: the journal may stamp
+# the earlier one late on a busy builder, and the camera that stops gives its last frame a frame
+# before its FRAMING runs out. A wait counted from the camera's start still falls far short.
+STAMPED = 1
 # How long after its client starts the relay may count it: the client opens the loopback and
 # asks for its first picture before the loopback tells the relay it's there.
 COUNTING = 5
@@ -182,7 +186,7 @@ def test_a_camera_that_never_frames_is_waited_on_90_s_then_ended(never: Relay) -
     # made again gets the whole first wait over, since its camera's setup starts over too.
     again = never.when("starting it again")
     ended = never.when(ENDING)
-    assert STALL - ROUNDING <= ended - again <= STALL + LOOKING, (
+    assert STALL - ROUNDING - STAMPED <= ended - again <= STALL + LOOKING, (
         f"The relay ended {ended - again:.1f} s after making its camera again, not {STALL}"
     )
     assert UNMADE not in said, f"The relay never made its camera's pipeline:\n{said}"
@@ -205,7 +209,8 @@ def test_a_camera_that_stops_is_waited_on_10_s_each_time(stops: Relay) -> None:
     times = [stops.counted(), *stops.whens("starting it again")]
     for earlier, later in pairwise(times):
         gap = later - earlier
-        assert FRAMING + FLOWING - ROUNDING <= gap <= FRAMING + FLOWING + LOOKING + COUNTING, (
+        least = FRAMING + FLOWING - ROUNDING - STAMPED
+        assert least <= gap <= FRAMING + FLOWING + LOOKING + COUNTING, (
             f"The relay made its camera again {gap:.1f} s after it started, not {FRAMING + FLOWING}"
         )
     assert ENDING not in stops.said(), "The relay ended a camera that framed again"
