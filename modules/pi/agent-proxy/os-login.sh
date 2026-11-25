@@ -20,10 +20,11 @@
 # person's alone, bound read-only inside the agent fence, so whatever can
 # write it already runs as the person, with their gcloud login itself.
 # That bind is the harness's: lib/internal/fence/fence.ts binds each of
-# its LET_THROUGH folders, pi-agent among them, read-only, and
-# tests/lib/internal/fence/fence-runtime-binds.test.ts proves it ("can't
-# remove, move or add anything there, so the proxy's socket stays the
-# proxy's"). held() trusts the folder's socket on the same bind.
+# its LET_THROUGH folders, pi-agent among them, read-only. The harness's
+# tests folder holds the proof, at
+# lib/internal/fence/fence-runtime-binds.test.ts ("can't remove, move or
+# add anything there, so the proxy's socket stays the proxy's").
+# held() trusts the folder's socket on the same bind.
 # The copy is never made in the temporary folder, which a fenced command
 # can write, and so could swap a key of its own in before gcloud reads it.
 #
