@@ -68,6 +68,9 @@ QtObject {
             Wheres.startAt(landed, pond.folder, "made"), "//system/pond");
         Expect.same("and the folder holding them as its own",
             Wheres.startAt(landed, system.folder, "made"), system.folder);
+        Expect.same("and as its own where a row under it is listed first",
+            Wheres.startAt(Wheres.wheres(reefQuest.slice(1).concat([system]), [unchecked]),
+                system.folder, "made"), system.folder);
         Expect.same("and as made where its folder is no longer listed",
             Wheres.startAt(Wheres.wheres([system], [pond]), unchecked.folder, "//made/start"),
             "//made/start");
@@ -90,11 +93,15 @@ QtObject {
             ]);
         // A row made to start by a zone's name starts by its folder once a second
         // checkout of that zone lands, so the node can't pick the other.
-        const madeByName = Wheres.startAt(Wheres.wheres([], [big, pond]), pond.folder, null);
+        const madeByName = Wheres.wheres([], [big, pond]).find(one => one.folder === pond.folder)
+            .start;
         Expect.same("one checkout's zone starts by its name", madeByName, "//system/pond");
         Expect.same("and by its folder at Return once another checkout holds it too",
             Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), pond.folder,
                 madeByName), pond.folder);
+        Expect.same("and the other checkout's by its own folder",
+            Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), otherPond.folder,
+                madeByName), otherPond.folder);
         Expect.same("one no checkout holds is named by its folder",
             Wheres.wheres([], [pond, otherPond]).map(one => one.name),
             [pond.folder, otherPond.folder]);

@@ -4382,7 +4382,8 @@
     Start New Work lists the open quests' folders, then the places the realm's node names, each
     folder once and only in plain words, what the node calls a zone started by its name, a quest's
     folder that is one included, and the rest by their folder, as is a zone two checkouts share;
-    and a place the node says isn't checked out started by name all the same
+    and a place the node says isn't checked out started by name all the same; a row picked before
+    the places land starts at Return as it says once they have, found by its own folder
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
