@@ -419,7 +419,7 @@
         mpv = ./modules/mpv/nixos.nix;
         mx-brio = ./modules/mx-brio/nixos.nix;
         mx-brio-seat = ./modules/mx-brio-seat/nixos.nix;
-        mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
+        mycelium = moduleFrom ./modules/mycelium/nixos.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
         sd-switch = ./modules/sd-switch/nixos.nix;
         net = ./modules/net/nixos.nix;

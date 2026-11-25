@@ -104,6 +104,13 @@ let
   easingLinux = linux easing;
   carryingNode = toString easingLinux.systemd.user.services.mycelium.Service.ExecStart;
   macEasing = (mac easing).launchd.agents.mycelium.config.ProgramArguments;
+  # A machine whose agents run as an account apart from the node's, as a
+  # cloud VM's do, in two realms so only the home one's answers it.
+  apartAgents = both // {
+    agentsUid = 1001;
+  };
+  apartAgentsLinux = (linux apartAgents).systemd.user.services;
+  apartAgentsNode = toString apartAgentsLinux.mycelium.Service.ExecStart;
   # Whether a node built from `mycelium` may make carries, by
   # carry-guards.nix's own rule, what the switch warns of an account
   # setting it anyway, and whether its node is told to carry.
@@ -814,6 +821,7 @@ in
           sleepingNode
           carryingNode
           carryingAloneNode
+          apartAgentsNode
           (viaNode "/bin/cell:cell-1")
           (providerNode "/bin/cell")
           (toString bothFlowing.mycelium.Service.ExecStart)
@@ -2359,6 +2367,66 @@ in
           sorted = lib.sort lib.lessThan;
         in
         named != [ ] && sorted (import ./sources.nix) == sorted named
+      );
+
+  # Agents of an account apart from the node's reach the home realm's node
+  # through a socket of their own, in a folder made at boot for the node's
+  # account alone to write, since the node refuses one another account
+  # could change; a further realm's node answers no such agents, a machine
+  # naming no account serves none, and a Mac, whose system makes no such
+  # folder, an account naming no realm, and a system that makes the folder
+  # for another account, are each refused for that alone.
+  mycelium-serves-agents-of-another-account =
+    holds "mycelium-serves-agents-of-another-account"
+      "A workstation naming its agents' account doesn't give the home realm's node their socket in /run/mycelium with that account, gives one to a further realm's node or a machine naming none, a Mac or an account naming no realm takes one or is refused for something else, NixOS doesn't make /run/mycelium for the node's account alone, or takes a node whose account it doesn't make it for."
+      (
+        let
+          socket = lib.escapeShellArgs [
+            "--worker-socket"
+            "/run/mycelium/home-worker.sock"
+            "--worker-uid"
+            "1001"
+          ];
+          folderOn =
+            settings:
+            (bareNixos [
+              self.nixosModules.workstation
+              { jitsusama.mycelium = settings; }
+            ]).config.systemd.tmpfiles.rules;
+          # Whether `home` is refused, and only for naming agents apart.
+          refusedForAgentsAlone =
+            home:
+            !evaluates home
+            && lib.all (
+              check: check.assertion || lib.hasPrefix "jitsusama.mycelium.agentsUid needs" check.message
+            ) home.assertions;
+          # What a NixOS system whose account `someone` names agents apart,
+          # with `settings` of its own, refuses of that.
+          systemRefuses =
+            settings:
+            lib.any
+              (check: !check.assertion && lib.hasInfix "someone sets jitsusama.mycelium.agentsUid" check.message)
+              (bareNixos [
+                self.nixosModules.workstation
+                { home-manager.users.someone.jitsusama.mycelium = apartAgents; }
+                { jitsusama.mycelium = settings; }
+              ]).config.assertions;
+        in
+        lib.hasInfix " ${socket} " " ${apartAgentsNode} "
+        && !lib.hasInfix "--worker" (toString apartAgentsLinux.mycelium-other.Service.ExecStart)
+        && !lib.hasInfix "--worker" linuxNode
+        && evaluates (linux apartAgents)
+        && refusedForAgentsAlone (mac apartAgents)
+        && refusedForAgentsAlone (linux {
+          agentsUid = 1001;
+        })
+        && systemRefuses { }
+        && systemRefuses { account = "another"; }
+        && !systemRefuses { account = "someone"; }
+        && lib.elem "d /run/mycelium 0755 someone root -" (folderOn {
+          account = "someone";
+        })
+        && !lib.any (lib.hasInfix "/run/mycelium") (folderOn { })
       );
 
   # A machine's system pins each key that links to it, on either system, to
