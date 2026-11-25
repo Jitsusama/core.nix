@@ -38,6 +38,7 @@ import Quickshell
 import Quickshell.Io
 import QtQuick
 import "launcher" as Launcher
+import "launcher/Pacing.js" as Pacing
 
 ShellRoot {
     id: root
@@ -104,8 +105,7 @@ ShellRoot {
         function drawFrame() {
             const due = framed;
             framed = [];
-            for (const then of due)
-                then();
+            Pacing.runEach(due, said => console.warn(`what waited on a frame threw: ${said}`));
         }
         // Shut, or an opening ended unopened, what waits on a frame runs
         // in that turn, as Launcher.qml's afterFramesDue does from its close
@@ -723,7 +723,9 @@ ShellRoot {
         try {
             expect("a row told while in another place made ahead there once woken",
                 theQuests.tally.rows > root.counted, "none made");
-            theQuests.served.aheadEachTurn = 1;
+            // A turn set to make none still makes one, rather than frames
+            // spun making nothing.
+            theQuests.served.aheadEachTurn = 0;
             theLauncher.framesHeld = true;
             root.counted = theQuests.tally.rows;
             root.told = [];
@@ -768,28 +770,49 @@ ShellRoot {
         }
     }
 
-    // A row that throws as it's made ahead is let go for its step back,
-    // the rest made still, and none left waiting on a frame; its making is
-    // felt as Quests' ahead, as a frame it stalls says who held it.
+    // A row that throws as it's made ahead, the first owed, once it's
+    // made and before its clock is read, is let go for its step back,
+    // nothing of it kept, and the rest made still, none left waiting on a
+    // frame; its making is felt as Quests' ahead, as a frame it stalls
+    // says who held it.
     function aRowThrows() {
         const served = theQuests.served;
         const making = served.make;
-        const throwing = "row:quests:QEST-20261003-PROMPT";
+        const owed = Object.keys(served.owedAhead);
+        const [throwing, rest] = owed;
+        let broken = null;
+        const mend = () => {
+            if (broken !== null)
+                Object.defineProperty(broken.row, "side", { value: broken.side,
+                    writable: true, enumerable: true, configurable: true });
+            broken = null;
+        };
         try {
-            expect("both owed", Object.keys(served.owedAhead).length === 2,
-                Object.keys(served.owedAhead).join(", "));
+            expect("both owed", owed.length === 2, owed.join(", "));
+            // Its served row's side, read for its clock once it's made,
+            // throws, as a row the place can't say would.
             served.make = (row, key) => {
-                if (key === throwing)
-                    throw new Error("a row broke");
-                return making(row, key);
+                const madeRow = making(row, key);
+                if (key === throwing) {
+                    broken = { row, side: row.side };
+                    Object.defineProperty(row, "side", { configurable: true,
+                        get: () => { throw new Error("a row broke"); } });
+                }
+                return madeRow;
             };
             theLauncher.felt = [];
             theLauncher.drawFrame();
             served.make = making;
-            expect("the rest made, though one threw", theQuests.tally.rows === root.counted + 1
-                && "row:quests:QEST-20261001-LAPTOP" in served.made, rowsSince());
-            expect("the one that threw let go for its step back", !(throwing in served.made),
-                JSON.stringify(served.made[throwing] ?? null));
+            const thrown = broken?.row;
+            mend();
+            expect("the rest made, though the first owed threw",
+                theQuests.tally.rows === root.counted + 2 && rest in served.made, rowsSince());
+            expect("the one that threw let go for its step back, nothing of it kept",
+                thrown !== undefined && !(throwing in served.made)
+                && !Object.values(served.madeOf).includes(throwing)
+                && !(throwing in served.madeFrom),
+                JSON.stringify([thrown !== undefined, throwing in served.made,
+                    throwing in served.madeFrom]));
             expect("and none left waiting on a frame", theLauncher.framed.length === 0
                 && Object.keys(served.owedAhead).length === 0,
                 `${theLauncher.framed.length} waiting, `
@@ -799,46 +822,47 @@ ShellRoot {
             // Its step back makes it whole.
             served.rowAt(throwing);
             expect("made whole once wanted", throwing in served.made, "not made");
-            // The laptop's told again, it waits on the next frame as the
-            // launcher shuts.
-            served.aheadEachTurn = 1;
+            // Both told again, they wait on the next frame as the launcher
+            // shuts.
             root.counted = theQuests.tally.rows;
             root.told = [];
             root.waiting = "a batch waiting";
-            root.toldFor = "row:quests:QEST-20261001-LAPTOP";
             root.toldWaits = root.batchWaiting;
-            tell("session", { changed: [laptopSession("running")] });
+            tell("session", { changed: [{ key: "session:WCJQSG", standing: "parked",
+                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } },
+            laptopSession("running")] });
         } catch (error) {
             served.make = making;
+            mend();
             fail(error.message);
         }
     }
 
-    // Shut with a batch waiting on its frame, the close runs it in its own
-    // turn, which makes none, nor all owed at once, though the rows' drawn
-    // hasn't followed the close yet, as the order Qt tells the two in
-    // leaves open; shut with that place's step still held, as a kept place
-    // leaves it, the next isn't made, until the launcher opens there again.
+    // Shut with a batch of two waiting on its frame, the close runs it in
+    // its own turn, which makes neither, though the rows' drawn hasn't
+    // followed the close yet, as the order Qt tells the two in leaves
+    // open, so both stay owed; told while shut with that place's step
+    // still held, as a kept place leaves it, none is made, until the
+    // launcher opens there again.
     function batchWaiting() {
         try {
-            expect("a batch waits on the frame", theLauncher.framed.length > 0,
-                `${theLauncher.framed.length} waiting`);
+            expect("a batch of two waits on the frame", theLauncher.framed.length > 0
+                && Object.keys(theQuests.served.owedAhead).length === 2,
+                `${theLauncher.framed.length} waiting, `
+                + `${Object.keys(theQuests.served.owedAhead).join(", ")} owed`);
             theQuests.served.drawn = true;
             theLauncher.open = false;
             theQuests.served.drawn = Qt.binding(() => theLauncher.open);
             expect("a close with a batch waiting makes none", theQuests.tally.rows === root.counted,
                 rowsSince());
-            theQuests.served.aheadEachTurn = 8;
             theLauncher.framesHeld = false;
             root.counted = theQuests.tally.rows;
             root.told = [];
-            root.toldFor = "row:quests:QEST-20261003-PROMPT";
+            root.toldFor = "row:quests:QEST-20261001-LAPTOP";
             root.toldWaits = root.toldShut;
             // The laptop's session ends, so its quest is held by none
             // again for the cases after.
-            tell("session", { changed: [{ key: "session:WCJQSG", standing: "parked",
-                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } },
-            laptopSession("ended")] });
+            tell("session", { changed: [laptopSession("ended")] });
         } catch (error) {
             fail(error.message);
         }
@@ -848,6 +872,16 @@ ShellRoot {
         try {
             expect("no row made shut, though a step stays held", theQuests.tally.rows === root.counted,
                 `${theQuests.tally.rows - root.counted} rows`);
+            root.toldFor = "row:quests:QEST-20261003-PROMPT";
+            // Shut, an opening that ends unopened runs what waits on a
+            // frame then, as Launcher.qml's unopened does.
+            let ran = false;
+            theLauncher.opening = true;
+            theLauncher.afterFrame(() => ran = true);
+            const heldBack = !ran;
+            theLauncher.opening = false;
+            expect("an opening holds what waits on a frame, and run once it ends unopened",
+                heldBack && ran, JSON.stringify([heldBack, ran]));
             theLauncher.open = true;
             root.settleThen(root.reopenedElsewhere);
         } catch (error) {
@@ -858,8 +892,12 @@ ShellRoot {
     function reopenedElsewhere() {
         try {
             const before = theQuests.tally.rows;
-            expect("the row told shut made ahead once open there again", before > root.counted,
-                "none made");
+            const served = theQuests.served;
+            expect("the rows owed at the close and told shut made ahead once open there again",
+                before - root.counted === 2 && "row:quests:QEST-20261003-PROMPT" in served.made
+                && "row:quests:QEST-20261001-LAPTOP" in served.made
+                && Object.keys(served.owedAhead).length === 0,
+                `${before - root.counted} made, ${Object.keys(served.owedAhead).join(", ")} owed`);
             theLauncher.held = [];
             theLauncher.wanting = true;
             const prompt = theQuests.everything()[1];

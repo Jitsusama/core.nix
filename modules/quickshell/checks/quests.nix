@@ -56,6 +56,7 @@
         "Daemon.qml"
         "Options.qml"
         "Words.qml"
+        "launcher/Pacing.js"
         "launcher/Provider.qml"
         "launcher/Quests.qml"
         "launcher/ReadyRows.qml"

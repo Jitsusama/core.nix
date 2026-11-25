@@ -5005,8 +5005,9 @@
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
     ahead of the step back, after a frame, and one told while already there once its sources have
-    woken, a turn's worth a frame, felt as Quests' ahead, one that throws let go for its step back
-    and the rest made still, making no row on the step back, though none as an opening fills
+    woken, a turn's worth a frame, one at least, felt as Quests' ahead, one that throws once made
+    let go for its step back, nothing of it kept, and the rest made still, making no row on the
+    step back, though none as an opening fills
     in at home, holds another place's step or wakes its sources, under a viewer's command line,
     shut with a step held, or as a close runs a batch waiting on its frame, and sees one made
     since, remaking only the quests a change names and none a list written again leaves the
@@ -5154,9 +5155,9 @@
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, and none over a viewer, so a change nobody
     sees builds none; and a key's act is said shown by the first frame begun after its refresh,
-    which another act refreshed while that frame is drawn never holds back, and what waits on a
-    frame runs each in turn, one that throws said in a line and the rest run still; and an
-    opening says what its own work
+    which another act refreshed while that frame is drawn never holds back, and the run the
+    launcher gives what waits on a frame runs each in turn, one that throws said in a line with
+    where, even a value with no words, and the rest run still; and an opening says what its own work
     went on slowest first, and weighs the foot's room for Return's verbs again only once the
     words file or the face has changed; and a daemon's changes are timed from the first line
     its draw shows, and said a place a line, with where their time went as a key's is, a refresh

@@ -784,8 +784,17 @@ QtObject {
         }, () => ran.push("last")], line => said.push(line));
         check(failures, "one that throws stops none after it", ran.join(" "), "first last");
         check(failures, "and is said once, in one line, where it was thrown",
-            [said.length, said[0]?.startsWith("a row broke at "), said[0]?.includes("\n")]
-                .join(), "1,true,false");
+            [said.length, /^a row broke at .*pacing\.qml:\d+/.test(said[0] ?? ""),
+                said[0]?.includes("\n")].join(), "1,true,false");
+        // A value thrown that can't be said as text, with no prototype to
+        // say it by, is said as one that can't be, its saying throwing none.
+        const unsaid = [];
+        Pacing.runEach([() => {
+            throw Object.create(null);
+        }, () => ran.push("after")], line => unsaid.push(line));
+        check(failures, "one thrown that can't be said is said so, the rest run still",
+            [unsaid.join(), ran[ran.length - 1]].join(" / "),
+            "a value that can't be said as text / after");
     }
 
     // A daemon's changes are timed from the first line the draw shows,

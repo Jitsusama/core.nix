@@ -794,7 +794,8 @@ in
   # never two refreshes closer than that however the first was asked for, and
   # a source's rows are wanted only where they're shown or searched, and a
   # key's act is said shown by the first frame begun after its refresh, and
-  # what waits on a frame runs each in turn though one throws, and
+  # Pacing's run of what waits on a frame runs each in turn though one
+  # throws, and
   # an opening weighs the foot's verbs only once its words or face change,
   # and a daemon's changes are said presented by place, and they and keys
   # with where their time went, and a closing makes again only the spots of

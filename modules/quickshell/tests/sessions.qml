@@ -841,6 +841,9 @@ ShellRoot {
         expect("Reopen Them All arms the earlier boot's windows to go back",
             Sessions.puttingBack?.kept?.[0]?.app === "slack",
             JSON.stringify(Sessions.puttingBack));
+        // Disarmed again, since no window here is Slack's to put back, so
+        // no later case inherits it.
+        Sessions.puttingBack = null;
         Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null,
             undefined, root.tally);
         patience.start();
