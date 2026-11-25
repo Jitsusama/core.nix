@@ -53,9 +53,9 @@ QtObject {
             [pond.folder, otherPond.folder]);
         const otherReef = Object.assign({}, unchecked,
             { folder: "/home/j/big2/src/areas/system/reef" });
-        Expect.same("one not checked out that two share is started by name, as no folder is here",
+        Expect.same("one not checked out that two share is one row, started by name",
             Wheres.wheres([], [unchecked, otherReef]).map(one => one.start),
-            ["//system/reef", "//system/reef"]);
+            ["//system/reef"]);
         Expect.same("a zone the node names twice at one folder is still started by its name",
             Wheres.wheres([], [pond, Object.assign({}, pond)]).map(one => one.start),
             ["//system/pond"]);

@@ -766,4 +766,49 @@ mod sprouts {
         );
         let _ = std::fs::remove_dir_all(&folder);
     }
+
+    /// Places on the daemon's own socket, from a connection that isn't
+    /// the shell's (this test's), asks the node nothing, so no agent reads
+    /// the folders the node lists for Joel.
+    #[test]
+    fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
+        let folder = std::env::temp_dir().join(format!("agents-places-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder for the sockets");
+        let at_node = folder.join("node.sock");
+        let node = UnixListener::bind(&at_node).expect("a node's socket");
+        node.set_nonblocking(true).expect("the node never waits");
+        let shared = Shared::new(DOMAIN, Box::new(|_| None));
+        let (told, _heard) = mpsc::channel();
+        let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+        let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+        sprouts_for_the_shell(
+            &shared,
+            Some(at_node),
+            keeping,
+            told,
+            (stood, Said::default()),
+        );
+        let socket = folder.join("agents.sock");
+        let listener = serve::listen(&socket).expect("the daemon's socket");
+        serve::accept(shared, listener);
+        let mut asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+        writeln!(asking, "{}", json!({"id": 1, "ask": places::ASK})).expect("places are asked");
+        let mut line = String::new();
+        BufReader::new(&asking)
+            .read_line(&mut line)
+            .expect("an answer");
+        let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+        assert_eq!(
+            answer["error"],
+            json!({"code": "unlisted", "message": places::REFUSED}),
+            "refused in its own words, whatever the kernel lets be told of who asked: {answer}"
+        );
+        assert!(
+            node.accept()
+                .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
+            "the node was never asked"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
 }

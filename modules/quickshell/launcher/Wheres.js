@@ -37,7 +37,8 @@ function listable(places) {
         && one.folder.startsWith("/") && plain(one.name));
 }
 
-// The rows' places, `{ folder, name, start }`, each folder once and a
+// The rows' places, `{ folder, name, start }`, each start once (a row's
+// act is keyed by it, Agents.qml's newWorkAct), so each folder once, and a
 // quest's first: each of the `quests`' folders ({ folder, name }), then
 // each of the node's `places`, as listable() left them ({ folder, name,
 // kind, out }), none read again here. `start` is what a Sprout names as
@@ -45,7 +46,8 @@ function listable(places) {
 // a quest's folder that is a zone's included, since one not checked out
 // has no folder here yet and the node starts it by its name; else the
 // folder, as for a checked-out zone whose name two checkouts share, which
-// its name alone wouldn't say.
+// its name alone wouldn't say. A zone not checked out that two checkouts
+// share is one row: the node starts either by the one name.
 function wheres(quests, places) {
     const named = Array.isArray(places) ? places : [];
     const zones = new Map();
@@ -66,9 +68,10 @@ function wheres(quests, places) {
     const listed = [];
     const seen = new Set();
     const add = (folder, name) => {
-        if (!seen.has(folder)) {
-            seen.add(folder);
-            listed.push({ folder, name, start: startOf(folder) });
+        const start = startOf(folder);
+        if (!seen.has(start)) {
+            seen.add(start);
+            listed.push({ folder, name, start });
         }
     };
     for (const one of Array.isArray(quests) ? quests : []) {

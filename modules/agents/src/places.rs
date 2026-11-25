@@ -17,6 +17,10 @@ use crate::sprout::{self, Unanswered};
 /// The launcher's ask for them.
 pub const ASK: &str = "places";
 
+/// What a refusal of anyone but the shell says: the asker's own words
+/// say only the launcher starts new work, which isn't this ask's.
+pub const REFUSED: &str = "only the launcher lists places here";
+
 /// How long the node may take to list them: it reads its folders from
 /// disk, well within a second, and the launcher lists its quests' folders
 /// alone until it answers.
@@ -33,17 +37,20 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
         return unlisted("this machine runs no node to list places on");
     };
     if let Err(why) = asker() {
-        return unlisted(&why);
+        eprintln!("agents: places weren't listed: {why}");
+        return unlisted(REFUSED);
     }
     match sprout::asked(node, &json!({"Places": {}}), PATIENCE) {
-        Ok(reply) => match (&reply["Ok"]["Places"], &reply["Err"]) {
-            (Value::Array(places), _) => json!({"places": places}),
-            (_, Value::String(why)) => unlisted(why),
-            // Only its start is said, as the launcher journals it and a
-            // whole answer names Joel's folders.
+        Ok(reply) => match (
+            &reply["Ok"]["Places"],
+            &reply["Err"],
+            &reply["Refused"]["why"],
+        ) {
+            (Value::Array(places), _, _) => json!({"places": places}),
+            (_, Value::String(why), _) | (_, _, Value::String(why)) => unlisted(&start_of(why)),
             _ => unlisted(&format!(
                 "the node's answer couldn't be read: {}",
-                reply.to_string().chars().take(80).collect::<String>()
+                start_of(&reply.to_string())
             )),
         },
         Err(Unanswered::Unreached(why)) => {
@@ -51,6 +58,14 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
         }
         Err(Unanswered::Silent) => unlisted("the node didn't list its places in time"),
     }
+}
+
+/// The most of the node's words said: the launcher journals them, and a
+/// whole answer may name Joel's folders.
+const MOST_SAID: usize = 80;
+
+fn start_of(said: &str) -> String {
+    said.chars().take(MOST_SAID).collect()
 }
 
 fn unlisted(why: &str) -> Value {
@@ -111,7 +126,12 @@ mod tests {
     #[test]
     fn a_node_that_lists_none_says_why() {
         for (name, reply, why) in [
-            ("refused", r#"{"Err": "no home"}"#, "no home"),
+            ("erred", r#"{"Err": "no home"}"#, "no home"),
+            (
+                "refused",
+                r#"{"Refused": {"code": "unheard", "why": "not yours"}}"#,
+                "not yours",
+            ),
             (
                 "unknown",
                 r#"{"Ok": {"Other": 1}}"#,
@@ -154,6 +174,21 @@ mod tests {
             said.starts_with("the node's answer couldn't be read: ") && !said.contains("five"),
             "only its first 80 characters: {said}"
         );
+        let (socket, asked) = node(
+            "long-err",
+            concat!(
+                r#"{"Err": "none of /home/j/src/one, /home/j/src/two, /home/j/src/three, "#,
+                r#"/home/j/src/four or /home/j/src/five is here"}"#,
+            ),
+        );
+        let answer = answer(|| Ok(()), Some(&socket));
+        let _ = asked.join();
+        let _ = std::fs::remove_file(&socket);
+        let said = answer["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            said.starts_with("none of /home/j/src/one") && !said.contains("five"),
+            "the node's own words, cut as an unread answer is: {said}"
+        );
     }
 
     #[test]
@@ -161,11 +196,10 @@ mod tests {
         let gone = std::env::temp_dir().join("agents-places-no-node.sock");
         assert_eq!(
             answer(
-                || Err("only the launcher lists places here".to_owned()),
+                || Err("only the launcher starts new work here".to_owned()),
                 Some(&gone)
             ),
-            json!({"error": {"code": "unlisted",
-                "message": "only the launcher lists places here"}}),
+            json!({"error": {"code": "unlisted", "message": REFUSED}}),
             "anyone but the shell is refused before the node is asked"
         );
         assert!(
