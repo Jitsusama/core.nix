@@ -368,7 +368,14 @@ pub fn loopback(root: &Path, camera: &Path) -> bool {
         .is_ok_and(|class| class.starts_with("sys/devices/virtual"))
 }
 
-/// What `v4l2-ctl` is asked of `camera`: a loopback's five frames past its
+/// The program the camera is asked through: `v4l2-ctl`, by a link the
+/// package names for what it does (package.nix). The desktop names a
+/// camera's reader by its program's name, and a camera lit up by a
+/// program called `v4l2-ctl` doesn't say why it came on, so this one says
+/// it's a check.
+const READER: &str = "camera-check";
+
+/// What `READER` is asked of `camera`: a loopback's five frames past its
 /// splash, each to /dev/null, and any other camera only what it sends.
 pub fn asked(camera: &Path, read: bool) -> Vec<String> {
     let device = camera.to_string_lossy().into_owned();
@@ -503,7 +510,7 @@ fn within_until(
 /// milliseconds `read_by` gives, isn't begun.
 pub fn gives(camera: &Path, read: bool, by: u64) -> Result<(), Fault> {
     if !read {
-        return within("v4l2-ctl", &asked(camera, false), ANSWER);
+        return within(READER, &asked(camera, false), ANSWER);
     }
     let before = relay_run();
     // Judged last before the read, since the asks before it can be slow
@@ -512,7 +519,7 @@ pub fn gives(camera: &Path, read: bool, by: u64) -> Result<(), Fault> {
         return Err(Fault::Paused);
     }
     let cut = SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(by));
-    let gave = within_until("v4l2-ctl", &asked(camera, true), WAIT, cut);
+    let gave = within_until(READER, &asked(camera, true), WAIT, cut);
     // A camera silent the whole wait is told whichever run it was on, so
     // the relay isn't asked again and the notice isn't held up.
     if gave == Err(Fault::Silent) {
