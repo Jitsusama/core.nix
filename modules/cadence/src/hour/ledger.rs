@@ -100,7 +100,7 @@ pub(super) fn unless_whole(all: &mut [Measure], why: Option<&str>) {
     let Some(why) = why else {
         return;
     };
-    for measure in all.iter_mut() {
+    for measure in &mut *all {
         let key = measure.key.strip_suffix("-derived").unwrap_or(&measure.key);
         if FROM_ASKS.contains(&key) {
             measure.target = None;
