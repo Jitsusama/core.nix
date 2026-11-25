@@ -517,6 +517,60 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     held_once(told)
 
 
+def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> None:
+    """Focusing a column off the screen's edge, it keeps to its own window as niri scrolls.
+
+    Joel, 2026-11-14 17:24: "is the kitty supposed to be climbing down the sides of windows
+    yet? ... focusing to a window off the left or right edge". niri lays a workspace's columns
+    out on one strip and scrolls it, so through the rest it stands on the window it sat on
+    wherever the scroll has it, never left in the air where that window was or put down on
+    another it never walked to, and once the keys rest it walks the strip to the column they
+    went to, a step at a time and never nowhere. How it rides is MarginCatFalls.js's, held in
+    Qt's engine; here, only that niri's scroll reaches it.
+    """
+    first = three_columns(shell, "a walk off the edge")
+    windows = {window["title"]: window for window in shell.windows()}
+    third = windows["a column a walk off the edge sets off from"]
+    across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
+    off = laid_out(shell, first)["tile_pos_in_workspace_view"][0]
+    assert off < 0, f"the first column was on the screen, at {off} of {across}: the case's own"
+    wake(shell)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-column-first")
+    # Once niri's scroll is still, and before the keys rest, it stands where niri has the
+    # window it sat on: over it, or off the screen beyond the edge with it.
+    gone = laid_out(shell, third)
+    left, top = gone["tile_pos_in_workspace_view"]
+    width = gone["tile_size"][0]
+    said, _ = shell.said_since(since)
+    sat = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    assert sat, "the cat said nothing as niri scrolled"
+    last = sat[-1]
+    assert last is not None, f"the cat went from the screen as niri scrolled: {said[-3:]}"
+    assert not last.get("walk"), f"the cat set off before niri's scroll was still: {last}"
+    middle = last["x"] + last["size"] / 2
+    stands = last["y"] + last["size"] + last["air"]
+    beyond = left >= across and middle >= across
+    assert beyond or (left <= middle <= left + width and abs(stands - top) < FLUSH), (
+        f"niri scrolled its window to {left}, {top}, {width} wide, on a screen {across} wide,"
+        f" and left the cat at {last['x']}, {last['y']}"
+    )
+    sits_over(shell, first, since)
+    said, _ = shell.said_since(since)
+    reports = [report[len(SITS) :] for report in said if report.startswith(SITS)]
+    nowhere = [report for report in reports if placed(report) is None]
+    assert not nowhere, f"the cat went from the screen: {nowhere[:2]}"
+    walked = steps(shell, since)
+    assert walked, "the cat took no step to the column off the edge"
+    jumps = [
+        (before["x"], after["x"])
+        for before, after in itertools.pairwise(walked)
+        if math.hypot(after["x"] - before["x"], after["y"] - before["y"])
+        > STEPS_ON * before["size"]
+    ]
+    assert not jumps, f"the cat jumped along the strip: {jumps[:3]}"
+
+
 def walked_report(shell: Shell, since: int) -> Json:
     """Wait for the cat to tell of a walk since the mark, and give the one it told of."""
     shell.reported(WALKED, lambda _: True, since, timedelta(seconds=TOLD))
