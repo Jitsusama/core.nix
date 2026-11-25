@@ -2632,6 +2632,8 @@ FIRST_GROUP = "Smileys & Emotion"
 EMOJI_MADE_MOST = 20
 # How many emoji Desktop's Emoji says it holds at least, though its own rows are its groups.
 EMOJI_LISTED_LEAST = 1000
+# How each of Emoji's group rows' keys begins (clipboard/src/emoji.rs), and no emoji's does.
+EMOJI_GROUP_KEY = "row:emoji:group:"
 
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
@@ -2760,8 +2762,18 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     shell.normal()
     shell.send_chars("j")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") != FIRST_GROUP)
+    # The selection's actions are read a moment after it moves (Launcher.qml's
+    # readSelectedActions, called later), which would make every emoji of a group they read,
+    # so what moving made is judged once Emoji has stopped making rows, and by each row's key:
+    # its groups' rows may be made again, but none of their emoji.
+    shell.made_settled("emoji")
     moved = shell.rows_made("emoji") - before
-    assert moved < EMOJI_MADE_MOST, f"moving to the next group made {moved - made} of its emoji"
+    assert moved - made <= launcher_on_niri.LATELY_KEPT, (
+        f"moving to the next group made {moved - made} rows: {shell.made_lately('emoji')}"
+    )
+    made_moving = shell.made_since("emoji", before + made)
+    emoji = [key for key in made_moving if not key.startswith(EMOJI_GROUP_KEY)]
+    assert not emoji, f"moving to the next group made {len(emoji)} of its emoji: {emoji}"
     shell.send_chars("k")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
     shell.step_in()
@@ -2826,18 +2838,21 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     shell.normal()
     # The head judged is the one the wait passed on, as a later showing() could come after the
     # answer was let go and say nothing.
-    heads: list[str] = []
+    heads: list[Json] = []
 
     def says_found(shown: Json) -> bool:
-        heads.append(cast("str", shown["found"]))
-        return heads[-1] != ""
+        heads.append(shown)
+        return shown["found"] != ""
 
     shell.launcher_until(says_found)
-    said = heads[-1]
+    said, listed = cast("str", heads[-1]["found"]), int(heads[-1]["count"])
     shell.close_launcher()
     counted = FOUND_OF.fullmatch(said)
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
     shown, found = (int(part) for part in counted.groups())
+    # The head says "N of M" only where M is more, so what pins it is that N is the list it
+    # stood over, its groups found with the history's hundred.
+    assert shown == listed, f"the head said {shown} of {found} found over {listed} rows: {said}"
     assert shown < found, f"the head said {shown} of {found} found: {said}"
 
 
