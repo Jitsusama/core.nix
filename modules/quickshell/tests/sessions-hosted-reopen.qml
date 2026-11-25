@@ -961,11 +961,14 @@ ShellRoot {
         Expect.expect("and each is said, by why: no app id, no words, its viewer coming",
             JSON.stringify(root.unhostedSaid) === JSON.stringify(["s.unnamed unnamed",
                 "s-wordless hostless", "s-coming opening"]), JSON.stringify(root.unhostedSaid));
-        // What the held-back one left is put back, so no later stage takes
-        // a viewer as coming, nor a window as Go To's.
-        const attaching = Object.assign({}, Sessions.attaching);
-        delete attaching["pi-hosted.s-coming"];
-        Sessions.attaching = attaching;
+        // What the held-back one left is put back, its ask and the press it
+        // took over gone, so no later stage takes a viewer as coming, a
+        // give-up as said to a press, nor a window as Go To's.
+        Sessions.forgetAsk("pi-hosted.s-coming");
+        Expect.expect("and nothing of the held-back one's ask is left",
+            !Sessions.viewerComing("pi-hosted.s-coming")
+            && !("pi-hosted.s-coming" in Sessions.pressedFor),
+            `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Sessions.pressedFor)}`);
         Sessions.goingTo = goingTo;
     }
 

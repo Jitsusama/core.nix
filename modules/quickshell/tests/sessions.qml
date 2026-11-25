@@ -1156,7 +1156,9 @@ ShellRoot {
     // didn't draw is never taken for a viewer: not raised or focused, not
     // let go of as one come, nor a running session's window. The pid read
     // is kept through a restart, so the case lets it go as it ends, leaving
-    // any case after it the app id alone.
+    // any case after it the app id alone. Each window is heard as niri's
+    // signal hears it, but called, so a throw fails the check rather than
+    // passing as the signal's warning.
     function drawn() {
         const view = ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
             "--session", "s-forged"];
@@ -1182,14 +1184,14 @@ ShellRoot {
         // As Go To asks for its viewer, so the one coming is focused.
         Sessions.goingTo = { app: named, at: Date.now(), from: Niri.focused };
         Niri.acted = null;
-        Niri.windowOpenedOrChanged(forged);
+        Sessions.windowHeard(forged);
         expect("nor is it taken for the viewer come, nor focused as Go To's",
             Sessions.viewerComing(named) && Niri.acted === null
             && Sessions.goingTo?.app === named,
             `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Niri.acted)}`);
         const drawnHere = { id: 89, pid: 4242, opened: named };
         Niri.windows = Object.assign({}, unforged, { "88": forged, "89": drawnHere });
-        Niri.windowOpenedOrChanged(drawnHere);
+        Sessions.windowHeard(drawnHere);
         expect("while the one the sessions' kitty drew is taken as come, and focused",
             !Sessions.viewerComing(named) && Sessions.goingTo === null && focused(89),
             `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Niri.acted)}`);
@@ -1230,10 +1232,7 @@ ShellRoot {
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         root.unhosted = "";
         root.unhostedWhy = "";
-        // Heard directly first, so a throw in it fails the check rather
-        // than passing as a warning of the signal's.
-        Sessions.heardWindow(cameRefused);
-        Niri.windowOpenedOrChanged(cameRefused);
+        Sessions.windowHeard(cameRefused);
         expect("the press waiting on it is told its own came refused",
             root.unhosted === "FORGED" && root.unhostedWhy === "disowned",
             `${root.unhosted} ${root.unhostedWhy}`);
@@ -1329,7 +1328,7 @@ ShellRoot {
             { [stale]: Date.now() - Sessions.viewPatience - 1 });
         const lateStray = { id: 94, pid: 880, opened: stale };
         Niri.windows = Object.assign({}, unforged, { "94": lateStray });
-        Niri.windowOpenedOrChanged(lateStray);
+        Sessions.windowHeard(lateStray);
         expect("a stray come after its ask's patience is no ask's own refused",
             !(stale in Sessions.refusedAsks), JSON.stringify(Sessions.refusedAsks));
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
@@ -1364,7 +1363,7 @@ ShellRoot {
             { "88": forged, "93": cameRefused, "95": listedStray });
         const askedBefore = Sessions.viewWith(view.slice(0, -1).concat(["s-before"]), before,
             null, "before");
-        Niri.windowOpenedOrChanged(listedStray);
+        Sessions.windowHeard(listedStray);
         expect("a stray listed before its ask is no ask's own refused as it changes",
             askedBefore && !(before in Sessions.refusedAsks),
             `${askedBefore} ${JSON.stringify(Sessions.refusedAsks)}`);
@@ -1398,8 +1397,7 @@ ShellRoot {
             null, "walk");
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused,
             "97": refusedWalk });
-        Sessions.heardWindow(refusedWalk);
-        Niri.windowOpenedOrChanged(refusedWalk);
+        Sessions.windowHeard(refusedWalk);
         const goneOnRefused = Sessions.reopening?.waiting === null
             && Sessions.reopening?.late.includes(waitedRefused) === false
             && waitedRefused.opened === null
@@ -1582,7 +1580,7 @@ ShellRoot {
             !Sessions.drawnHere(anew) && Sessions.sessionsKittyPid === "4242",
             Sessions.sessionsKittyPid);
         Niri.windows = Object.assign({}, unforged, { "90": anew });
-        Niri.windowOpenedOrChanged(anew);
+        Sessions.windowHeard(anew);
         expect("one drawn by the kitty started again is taken as come",
             !Sessions.viewerComing(named), JSON.stringify(Sessions.attaching));
         // Go To reads it again first, its viewer drawn by a kitty since
@@ -1609,7 +1607,7 @@ ShellRoot {
         Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
         const between = { id: 91, pid: 880, opened: named };
         Niri.windows = Object.assign({}, unforged, { "91": between });
-        Niri.windowOpenedOrChanged(between);
+        Sessions.windowHeard(between);
         Niri.windows = unforged;
         expect("while it says none, another program's is still no viewer",
             Sessions.refusedAsks[named] === "91" && Sessions.sessionsKittyPid === "7171",
@@ -1618,7 +1616,7 @@ ShellRoot {
         // stray one retitling would read the file with every title.
         kittyPidFile.setText("880\n");
         Niri.windows = Object.assign({}, unforged, { "91": between });
-        Niri.windowOpenedOrChanged(between);
+        Sessions.windowHeard(between);
         Niri.windows = unforged;
         expect("a window refused once reads no file as it changes",
             Sessions.sessionsKittyPid === "7171", Sessions.sessionsKittyPid);
