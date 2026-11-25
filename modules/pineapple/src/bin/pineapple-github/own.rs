@@ -40,8 +40,9 @@ const OWN_LAG: u64 = 60 * 60;
 /// GitHub's thousand is followed by one of what changed before the oldest
 /// it gave. Two take in a flood of two thousand in twenty pages, within
 /// the thirty a minute his search limit allows; a larger one leaves the
-/// oldest unread rather than hold every round back, as keeping the reach
-/// keeps the flood in every later search.
+/// oldest unread that round rather than hold every round back, as keeping
+/// the reach keeps the flood in every later search. Reading two thousand
+/// can still spend the hour's core limit, which fails the round.
 const SEARCHES: usize = 2;
 
 /// The words that stop, as the journal names them.
@@ -60,11 +61,12 @@ pub(super) struct Searched {
 }
 
 /// What one search found: each pull request or issue to read, when each
-/// it named had last changed, and whether it was whole.
+/// it named had last changed, and whether its first search answered, so
+/// the round moves on, as it does from one cut short.
 pub(super) struct Found {
     pub(super) threads: Vec<Thread>,
     pub(super) seen: HashMap<String, String>,
-    pub(super) whole: bool,
+    pub(super) answered: bool,
 }
 
 impl Searched {
@@ -116,7 +118,7 @@ impl Searched {
         let mut found = Found {
             threads: Vec::new(),
             seen: HashMap::new(),
-            whole: true,
+            answered: true,
         };
         // Up to when the search before was cut short, none at first.
         let mut before: Option<String> = None;
@@ -136,15 +138,17 @@ impl Searched {
                          again next round: {why}",
                         github.name
                     );
-                    found.whole = false;
+                    found.answered = false;
                     return found;
                 }
                 // A later one failing leaves what's older unread, as one
-                // cut short would, rather than hold every round back.
+                // cut short would, rather than hold every round back on a
+                // wide search that may keep failing.
                 Err(Unread::Gone(why) | Unread::Failed(why)) => {
                     eprintln!(
-                        "<4>couldn't search {} for what Joel said changed {changed}, so on \
-                         threads changed then what he said isn't heard: {why}",
+                        "<4>couldn't search {} for what Joel said changed {changed}, so threads \
+                         the search before left out are searched again only from where the next \
+                         round reaches: {why}",
                         github.name
                     );
                     return found;
@@ -166,17 +170,14 @@ impl Searched {
             if u64::try_from(gave).is_ok_and(|gave| gave >= all) {
                 return found;
             }
-            // More than a second's worth at its oldest can't be cut finer.
             match oldest {
-                Some(oldest) if searching < SEARCHES && before.as_ref() != Some(&oldest) => {
-                    before = Some(oldest);
-                }
+                Some(oldest) if searching < SEARCHES => before = Some(oldest),
                 oldest => {
                     let oldest = oldest.unwrap_or_else(|| reach.clone());
                     eprintln!(
                         "<4>{}'s search for what Joel said found {all} but gave {gave}, back to \
-                         {oldest}, so on threads it left out, changed from {reach} to then, what \
-                         he said isn't heard",
+                         {oldest}, so threads it left out, changed from {reach} to then, are \
+                         searched again only from where the next round reaches",
                         github.name
                     );
                     return found;
@@ -187,9 +188,9 @@ impl Searched {
     }
 
     /// Moves on to a round begun at `began` once what it `found` was
-    /// whole, knowing what that read as read.
+    /// answered, knowing what that read as read.
     pub(super) fn moved_on(&mut self, began: u64, found: Found) {
-        if found.whole {
+        if found.answered {
             self.from = began;
             self.read = found.seen;
         }

@@ -306,23 +306,36 @@ static CUT_ONCE: AtomicU64 = AtomicU64::new(0);
 /// When the thread a cut search gives in [`cut_twice`] last changed.
 static CUT_TWICE: AtomicU64 = AtomicU64::new(0);
 
-/// Where a search for Joel's words finds two threads but gives only
-/// example/shop#12, changed when `changed` first holds and never since,
-/// as GitHub gives at most a thousand; one of what changed before then
-/// finds `older` and gives #13, changed 500 seconds before #12.
-fn searched_short(line: &str, now: u64, changed: &AtomicU64, older: u64) -> Value {
+/// When the thread a cut search gives in [`cut_then_failing`] last
+/// changed.
+static CUT_FAILING: AtomicU64 = AtomicU64::new(0);
+
+/// A pull request of example/shop's, as a search gives it, last changed
+/// `at`.
+fn thread_at(number: u64, at: u64) -> Value {
+    json!({"number": number, "pull_request": {}, "updated_at": stamp(at),
+        "repository_url": "https://api.example.com/repos/example/shop"})
+}
+
+/// Where a search for Joel's words finds three threads but gives only
+/// example/shop#12 and #11, newest first, changed when `changed` first
+/// holds and 100 seconds before, and never since, as GitHub gives at most
+/// a thousand. One of what changed before #11, which GitHub's range takes
+/// in at both ends, finds `older` and gives #11 again and #13, 500
+/// seconds before #12; with no `older`, it comes back incomplete.
+fn searched_short(line: &str, now: u64, changed: &AtomicU64, older: Option<u64>) -> Value {
     if line.contains(" /search/issues?") {
         let changed = changed
             .compare_exchange(0, now - 1000, Ordering::SeqCst, Ordering::SeqCst)
             .map_or_else(|changed| changed, |_| now - 1000);
-        let (number, at, all) = if line.contains("..") {
-            (13, changed - 500, older)
-        } else {
-            (12, changed, 2)
-        };
-        return json!({"total_count": all, "items": [{"number": number, "pull_request": {},
-            "updated_at": stamp(at),
-            "repository_url": "https://api.example.com/repos/example/shop"}]});
+        let mid = thread_at(11, changed - 100);
+        if !line.contains("..") {
+            return json!({"total_count": 3, "items": [thread_at(12, changed), mid]});
+        }
+        return older.map_or_else(
+            || json!({"incomplete_results": true, "total_count": 0, "items": []}),
+            |all| json!({"total_count": all, "items": [mid, thread_at(13, changed - 500)]}),
+        );
     }
     if line.contains(" /notifications?") {
         return json!([]);
@@ -332,12 +345,17 @@ fn searched_short(line: &str, now: u64, changed: &AtomicU64, older: u64) -> Valu
 
 /// A search cut short whose search of what's older is whole.
 fn cut_once(line: &str, now: u64) -> Value {
-    searched_short(line, now, &CUT_ONCE, 1)
+    searched_short(line, now, &CUT_ONCE, Some(2))
 }
 
 /// A search cut short whose search of what's older is cut short too.
 fn cut_twice(line: &str, now: u64) -> Value {
-    searched_short(line, now, &CUT_TWICE, 5)
+    searched_short(line, now, &CUT_TWICE, Some(5))
+}
+
+/// A search cut short whose search of what's older fails.
+fn cut_then_failing(line: &str, now: u64) -> Value {
+    searched_short(line, now, &CUT_FAILING, None)
 }
 
 /// How many times the comments of example/shop#`number` were asked for.
@@ -363,13 +381,13 @@ fn github_a_search_cut_short_reads_what_changed_before_its_oldest_and_moves_on()
     reading.wait().expect("the reader is gone");
 
     let reach = stamp(last - 3600).replace(':', "%3A");
-    let changed = stamp(CUT_ONCE.load(Ordering::SeqCst)).replace(':', "%3A");
+    let oldest = stamp(CUT_ONCE.load(Ordering::SeqCst) - 100).replace(':', "%3A");
     let searched = searches(&asked);
     assert!(
         searched[0].contains(&format!("updated%3A%3E%3D{reach}"))
-            && searched[1].contains(&format!("updated%3A{reach}..{changed}")),
+            && searched[1].contains(&format!("updated%3A{reach}..{oldest}")),
         "a search cut short is followed by one of what changed from its reach to the oldest \
-         it gave: {searched:?}"
+         it gave, not its newest: {searched:?}"
     );
     assert!(
         searched[2].contains("updated%3A%3E%3D") && !searched[2].contains(&reach),
@@ -377,14 +395,15 @@ fn github_a_search_cut_short_reads_what_changed_before_its_oldest_and_moves_on()
          {searched:?}"
     );
     assert_eq!(
-        (read(&asked, 12), read(&asked, 13)),
-        (1, 1),
-        "each thread either search gave is read, and once, as it's unchanged since"
+        (read(&asked, 11), read(&asked, 12), read(&asked, 13)),
+        (1, 1, 1),
+        "each thread either search gave is read, and once, though both gave #11 and it's \
+         unchanged since"
     );
     let said = journal(&home);
     assert!(
-        !said.contains("isn't heard"),
-        "a search of what's older that's whole leaves nothing unheard: {said}"
+        !said.contains("searched again only from where the next round reaches"),
+        "a search of what's older that's whole leaves nothing unread: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
@@ -406,8 +425,8 @@ fn github_a_search_cut_short_twice_says_what_it_left_unread_and_moves_on() {
     let oldest = stamp(CUT_TWICE.load(Ordering::SeqCst) - 500);
     let said = journal(&home);
     let left = format!(
-        "found 5 but gave 1, back to {oldest}, so on threads it left out, changed from \
-         {reach} to then, what he said isn't heard"
+        "found 5 but gave 2, back to {oldest}, so threads it left out, changed from {reach} \
+         to then, are searched again only from where the next round reaches"
     );
     assert!(
         said.contains(&left),
@@ -424,6 +443,45 @@ fn github_a_search_cut_short_twice_says_what_it_left_unread_and_moves_on() {
         read(&asked, 13),
         1,
         "what the older search gave is read: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
+    let (origin, asked) = answering(cut_then_failing);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let reach = stamp(last - 3600);
+    let oldest = stamp(CUT_FAILING.load(Ordering::SeqCst) - 100);
+    let said = journal(&home);
+    let failed = format!(
+        "for what Joel said changed {reach}..{oldest}, so threads the search before left out \
+         are searched again only from where the next round reaches"
+    );
+    assert!(
+        said.contains(&failed),
+        "the journal names the search that failed: {said}"
+    );
+    let searched = searches(&asked);
+    assert!(
+        searched[2].contains("updated%3A%3E%3D")
+            && !searched[2].contains(&reach.replace(':', "%3A")),
+        "the next round moves on rather than hold every round back on a wide search that \
+         may keep failing: {searched:?}"
+    );
+    assert_eq!(
+        (read(&asked, 11), read(&asked, 12)),
+        (1, 1),
+        "what the first search gave is read: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

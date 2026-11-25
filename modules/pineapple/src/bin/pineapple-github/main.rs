@@ -33,7 +33,8 @@
 //! changed since it was read), one more for each repository where
 //! something on one is to be judged, and a page more for each hundred of
 //! a long list. One his limit refuses is tried again whole, so nothing it
-//! couldn't read is skipped.
+//! couldn't read is skipped, but for a search of what's older than one
+//! GitHub cut short (src/bin/pineapple-github/own.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -573,7 +574,7 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on only once every pull request and issue it
-/// named was read; Joel's own search only once it was whole too.
+/// named was read; Joel's own search only once its first search answered.
 fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own: &mut Searched) {
     let began = seconds();
     let Some(login) = who(github, how) else {
