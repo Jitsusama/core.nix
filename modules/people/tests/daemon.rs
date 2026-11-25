@@ -342,7 +342,7 @@ fn a_watch_asks_ahead_says_what_is_held_and_gathers_a_burst_into_one_change() {
 fn a_source_signed_out_is_never_waited_on() {
     let running = Running::with("signed-out", &[("slack", KNOWING), ("vault", SIGNED_OUT)]);
     let mut client = running.client();
-    // The first ask has the refused source say so.
+    // The first ask has the signed-out source say so.
     client
         .ask(&json!({"id": 1, "ask": "get", "keys": ["person:ada@example.com"], "patience": 2000}));
     let began = Instant::now();
