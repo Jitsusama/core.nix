@@ -15,9 +15,11 @@ pub(super) enum Shell {
     /// `"..."`, where a backslash escapes, and `$(`, `${` and a backtick
     /// open code again.
     Double,
-    /// `$(...)`, code, with how many brackets of its own it holds open,
-    /// which close before it does.
-    Command(usize),
+    /// `$(...)`, code.
+    Command,
+    /// A bracket a command substitution's code opens, as `(cd x)`'s does,
+    /// code whose `)` closes it rather than the substitution.
+    Subshell,
     /// A backtick's command, code until the next backtick.
     Backtick,
     /// `${...}`, where quotes open as in code but a `#` is the
@@ -25,13 +27,20 @@ pub(super) enum Shell {
     /// inside double quotes, as `"${x:-it's}"` does, though a POSIX shell
     /// wouldn't.
     Parameter,
-    /// `((...))` or `$((...))`, arithmetic, with how many brackets of its
-    /// own it holds open, where substitutions open but `<<` shifts and `#`
-    /// is a number's base.
-    Arithmetic(usize),
-    /// A `case` in a command substitution, code whose patterns' `)` close
-    /// nothing, until its `esac`.
+    /// `((...))` or `$((...))`, arithmetic, where substitutions open but
+    /// `<<` shifts and `#` is a number's base.
+    Arithmetic,
+    /// A bracket arithmetic opens, as `(1 + 2)` does, arithmetic whose `)`
+    /// closes it, so a `))` past it closes the sum no sooner.
+    Grouping,
+    /// A `case` in a command substitution, from its own word to its `in`.
     Case,
+    /// A case's patterns, until the `)` ending them or the case's `esac`,
+    /// where no reserved word but `esac` is one.
+    Pattern,
+    /// A pattern's commands, until the `;;`, `;&` or `;;&` ending them or
+    /// the case's `esac`.
+    Branch,
 }
 
 impl Shell {
@@ -39,17 +48,17 @@ impl Shell {
     /// with `#` is a comment: outside every quote, or in a command
     /// substitution's lines.
     pub(super) fn code(within: Option<Shell>) -> bool {
-        matches!(
-            within,
-            None | Some(Shell::Command(_) | Shell::Backtick | Shell::Case)
-        )
+        Self::runs(within) || matches!(within, Some(Shell::Case | Shell::Pattern))
     }
 
-    /// `within` with this standing innermost in place of what did.
-    fn innermost_in(self, within: &mut [Shell]) {
-        if let Some(last) = within.last_mut() {
-            *last = self;
-        }
+    /// Whether commands run where what stands `within` this is: outside
+    /// every quote, or in a command substitution's commands or a case
+    /// branch's, but not in a case's subject or its patterns.
+    fn runs(within: Option<Shell>) -> bool {
+        matches!(
+            within,
+            None | Some(Shell::Command | Shell::Subshell | Shell::Backtick | Shell::Branch)
+        )
     }
 }
 
@@ -74,16 +83,31 @@ pub(super) fn shell_line(
     // substitution begins, or past a blank or an operator.
     let mut word_starts = true;
     // Whether a command may begin here: where a word does, but not past a
-    // word and blanks, so `case` opens a case and `echo case` doesn't.
-    let mut command_starts = true;
+    // word and blanks, so `case` opens a case and `echo case` doesn't, nor
+    // past a redirection, whose word is its target. In a case's patterns,
+    // where a pattern list may begin. A line inside a case before its `in`
+    // starts past the case's subject, since bash takes the subject only on
+    // the case's own line and its `in` past any newlines.
+    let mut command_starts = within.last() != Some(&Shell::Case);
+    // Whether the character before was a redirection's, which `>|`, `>&`
+    // and `<&` run on through.
+    let mut redirected = false;
     let mut at = 0;
     while let Some(c) = line[at..].chars().next() {
         let rest = &line[at..];
         let mut step = c.len_utf8();
         let mut starts = false;
+        // Whether no command or pattern list begins past this, though a
+        // word may: past a redirection, or a pattern's `(` or `|`.
+        let mut ends_none = false;
+        let mut redirects = false;
         let innermost = within.last().copied();
         if let Some(counted) = bracket(innermost, rest, within) {
             (step, starts) = counted;
+        } else if let Some(turned) =
+            case_part(innermost, rest, (word_starts, command_starts), within)
+        {
+            (step, starts, ends_none) = turned;
         } else {
             match innermost {
                 Some(Shell::Single | Shell::Ansi) if c == '\'' => {
@@ -110,10 +134,6 @@ pub(super) fn shell_line(
                 Some(Shell::Parameter) if c == '}' => {
                     within.pop();
                 }
-                Some(Shell::Case) if command_starts && whole_word(rest, "esac") => {
-                    within.pop();
-                    step = 4;
-                }
                 // Code: outside quotes, or in a substitution's.
                 _ if c == '\\' => step = escaped(rest),
                 _ if c == '\'' => within.push(Shell::Single),
@@ -125,7 +145,7 @@ pub(super) fn shell_line(
                 // A `#` opens a comment only where a word begins, in code.
                 _ if c == '#' && word_starts && Shell::code(innermost) => break,
                 _ if rest.starts_with("((") && Shell::code(innermost) => {
-                    within.push(Shell::Arithmetic(0));
+                    within.push(Shell::Arithmetic);
                     step = 2;
                 }
                 _ if rest.starts_with("<<") && Shell::code(innermost) => {
@@ -135,26 +155,40 @@ pub(super) fn shell_line(
                         step += length;
                     }
                 }
+                // A word begins past it, which may be the case's subject
+                // alone, whatever it reads.
                 _ if command_starts
-                    && matches!(innermost, Some(Shell::Command(_) | Shell::Case))
-                    && whole_word(rest, "case") =>
+                    && matches!(
+                        innermost,
+                        Some(Shell::Command | Shell::Subshell | Shell::Branch)
+                    )
+                    && reserved(rest, "case", false) =>
                 {
                     within.push(Shell::Case);
-                    step = 4;
+                    (step, starts) = (4, true);
                 }
                 _ => {
                     if let Some(opened) = substitution(rest, within) {
                         (step, starts) = opened;
+                    } else if let Some(length) =
+                        leads_a_command(rest).filter(|_| command_starts && Shell::runs(innermost))
+                    {
+                        // A command may begin past a reserved word leading
+                        // one, so a `case` past `then` opens a case.
+                        (step, starts) = (length, true);
                     } else {
                         starts = c.is_whitespace() || ";&|()<>".contains(c);
+                        redirects = "<>".contains(c) || (redirected && "|&".contains(c));
+                        ends_none = redirects;
                     }
                 }
             }
         }
         kept = kept.min(within.len());
         if !c.is_whitespace() {
-            command_starts = starts;
+            command_starts = starts && !ends_none;
         }
+        redirected = redirects;
         word_starts = starts;
         at += step;
     }
@@ -165,40 +199,96 @@ pub(super) fn shell_line(
     (heredocs, kept)
 }
 
-/// The bracket `rest` opens with, counted in what stands `innermost`, a
-/// command substitution's own or arithmetic's, pushed onto or popped from
+/// The bracket `rest` opens with in what stands `innermost`, a command
+/// substitution's code or arithmetic, pushed onto or popped from
 /// `within`: how long it is, and whether a word begins past it. None for
-/// any other text. A count changes in place, so what stands innermost is
-/// the same opening, still blamed on the line that opened it.
+/// any other text. Each bracket stands open as an entry of its own, so the
+/// line that opened it is named with the rest should the file never close
+/// it.
 fn bracket(innermost: Option<Shell>, rest: &str, within: &mut Vec<Shell>) -> Option<(usize, bool)> {
-    let (counted, starts) = match innermost? {
-        Shell::Command(0) if rest.starts_with(')') => {
-            within.pop();
+    let (length, starts) = match innermost? {
+        Shell::Command | Shell::Subshell | Shell::Branch
+            if rest.starts_with('(') && !rest.starts_with("((") =>
+        {
+            within.push(Shell::Subshell);
+            return Some((1, true));
+        }
+        // Past a substitution's close the word runs on; past a subshell's,
+        // which is an operator, one begins. A sum's own bracket closes at
+        // its `)`, a `))` past it closing the sum no sooner.
+        Shell::Command | Shell::Grouping if rest.starts_with(')') => (1, false),
+        Shell::Subshell if rest.starts_with(')') => (1, true),
+        Shell::Arithmetic | Shell::Grouping if rest.starts_with('(') => {
+            within.push(Shell::Grouping);
             return Some((1, false));
         }
-        Shell::Command(open) if rest.starts_with(')') => (Shell::Command(open - 1), true),
-        Shell::Command(open) if rest.starts_with('(') && !rest.starts_with("((") => {
-            (Shell::Command(open + 1), true)
-        }
-        Shell::Arithmetic(0) if rest.starts_with("))") => {
-            within.pop();
-            return Some((2, false));
-        }
-        Shell::Arithmetic(open) if rest.starts_with(')') && open > 0 => {
-            (Shell::Arithmetic(open - 1), false)
-        }
-        Shell::Arithmetic(open) if rest.starts_with('(') => (Shell::Arithmetic(open + 1), false),
+        Shell::Arithmetic if rest.starts_with("))") => (2, false),
         _ => return None,
     };
-    counted.innermost_in(within);
-    Some((1, starts))
+    within.pop();
+    Some((length, starts))
 }
 
-/// Whether `rest` opens with `word` whole, no letter, digit or underscore
-/// running on past it.
-fn whole_word(rest: &str, word: &str) -> bool {
-    rest.strip_prefix(word)
-        .is_some_and(|past| !past.starts_with(|c: char| c.is_alphanumeric() || c == '_'))
+/// The turn of a case in a command substitution that `rest` opens with,
+/// where `innermost` is a part of it, and `within` turned to match: how
+/// long it is, whether a word begins past it, and whether neither a
+/// command nor a pattern list does. None for any other text. A case's
+/// subject is the first word past it, so only an `in` past a word ends
+/// it, whatever the word reads. A pattern list begins past that `in`, past
+/// the `;;`, `;&` or `;;&` ending a branch, and at a line's start, and an
+/// `esac` there, or where a branch's command may begin, closes the case.
+/// `starts` says whether a word, and a command or a pattern list, may
+/// begin here.
+fn case_part(
+    innermost: Option<Shell>,
+    rest: &str,
+    (word_starts, command_starts): (bool, bool),
+    within: &mut Vec<Shell>,
+) -> Option<(usize, bool, bool)> {
+    let c = rest.chars().next()?;
+    let (turned, length) = match innermost? {
+        Shell::Pattern | Shell::Branch if command_starts && reserved(rest, "esac", true) => {
+            within.pop();
+            return Some((4, false, false));
+        }
+        Shell::Case if word_starts && !command_starts && reserved(rest, "in", true) => {
+            (Shell::Pattern, 2)
+        }
+        Shell::Pattern if c == ')' => (Shell::Branch, 1),
+        // Another pattern stands past a pattern's own `(` or a `|`.
+        Shell::Pattern if c == '(' || c == '|' => return Some((1, true, true)),
+        // A `;;&` is a `;;` and an operator past it.
+        Shell::Branch if rest.starts_with(";;") || rest.starts_with(";&") => (Shell::Pattern, 2),
+        _ => return None,
+    };
+    within.pop();
+    within.push(turned);
+    Some((length, true, false))
+}
+
+/// How long the reserved word `rest` opens with is, where it's one past
+/// which a command may begin: a keyword ending at a blank or an operator,
+/// or `!` or `{` ending at a blank, as bash reads them.
+fn leads_a_command(rest: &str) -> Option<usize> {
+    const KEYWORDS: [&str; 8] = ["if", "then", "else", "elif", "do", "while", "until", "time"];
+    KEYWORDS
+        .iter()
+        .find(|word| reserved(rest, word, true))
+        .or_else(|| ["!", "{"].iter().find(|word| reserved(rest, word, false)))
+        .map(|word| word.len())
+}
+
+/// Whether `rest` opens with the reserved `word`, ending at a blank or the
+/// line's end, or at an operator too where `operator` says, as bash ends
+/// one: `case=1` or `case.sh` is a plain word. A `case` an operator ends
+/// is a pattern, as `case)` is, or no command bash runs, so only a blank
+/// ends one.
+fn reserved(rest: &str, word: &str, operator: bool) -> bool {
+    rest.strip_prefix(word).is_some_and(|past| {
+        past.chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || (operator && ";&|()<>".contains(c)))
+    })
 }
 
 /// The substitution `rest` opens, pushed onto `within`: how long its
@@ -206,10 +296,10 @@ fn whole_word(rest: &str, word: &str) -> bool {
 /// command's start.
 fn substitution(rest: &str, within: &mut Vec<Shell>) -> Option<(usize, bool)> {
     if rest.starts_with("$((") {
-        within.push(Shell::Arithmetic(0));
+        within.push(Shell::Arithmetic);
         Some((3, false))
     } else if rest.starts_with("$(") {
-        within.push(Shell::Command(0));
+        within.push(Shell::Command);
         Some((2, true))
     } else if rest.starts_with("${") {
         within.push(Shell::Parameter);

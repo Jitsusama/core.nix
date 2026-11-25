@@ -136,6 +136,18 @@ fn help() -> Help {
     )
 }
 
+/// What the gate says of the files whose comments couldn't be read, should
+/// there be any.
+fn unread_said(unread: &[String]) -> Option<String> {
+    if unread.is_empty() {
+        return None;
+    }
+    let mut said =
+        vec!["These files' comments couldn't be read; what waits in them stands:".to_owned()];
+    said.extend(unread.iter().map(|file| format!("  {file}")));
+    Some(said.join("\n") + "\n")
+}
+
 /// `code-health stale TREE WAITING`: each comment in `tree` naming a path
 /// that's gone, but those `waiting` lists, said and failed on, as is each
 /// line of `waiting` listed more often than it's found.
@@ -152,7 +164,16 @@ fn stale_held(context: &Context, tree: &str, waiting: &str) -> Result<(), Failur
         .filter(|line| !line.is_empty())
         .map(str::to_owned)
         .collect();
-    let (new, gone) = tree::held(&stale::stale(&paths, &files), &listed);
+    let stale = stale::stale(&paths, &files);
+    let (new, gone) = tree::held(&stale.gone, &stale.unread, &listed);
+    // A file that couldn't be read is this tool's misreading, not the
+    // tree's fault, so it's said without refusing the change, and what the
+    // list holds of it stands.
+    if let Some(unread) = unread_said(&stale.unread) {
+        context.say(&unread).map_err(|error| {
+            Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
+        })?;
+    }
     let mut said = Vec::new();
     if !new.is_empty() {
         said.push("These comments name what isn't there; name where it is now:".to_owned());
@@ -537,6 +558,25 @@ fn written(into: &Path, file: &str, text: &str) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::measure::NAMED;
+
+    #[test]
+    fn the_gate_names_each_file_it_couldnt_read_or_says_nothing() {
+        assert_eq!(
+            (
+                unread_said(&[]),
+                unread_said(&["a.sh".to_owned(), "b/c.py".to_owned()])
+            ),
+            (
+                None,
+                Some(
+                    "These files' comments couldn't be read; what waits in them stands:\n  \
+                     a.sh\n  b/c.py\n"
+                        .to_owned()
+                )
+            ),
+            "the files whose comments couldn't be read weren't each named, or were said of none"
+        );
+    }
 
     #[test]
     fn a_tools_lines_are_joined_for_a_warning() {

@@ -182,7 +182,7 @@ pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
     let count = bare.len();
     health.put("folders-without-notes", bare, count);
 
-    let gone = stale::stale(paths, files);
+    let gone = stale_paths(stale::stale(paths, files));
     let count = gone.len();
     health.put("stale-paths", gone, count);
 
@@ -433,6 +433,20 @@ fn duplicated(code: &[&File]) -> (usize, Vec<String>) {
     (repeated.len(), places)
 }
 
+/// The comments naming what's gone, and each file whose comments can't be
+/// known, counted once: what such a file names can't be told, so it may
+/// count less than it held, but it can't drop out of the figure unseen.
+fn stale_paths(stale: stale::Stale) -> Vec<String> {
+    let mut gone = stale.gone;
+    gone.extend(
+        stale
+            .unread
+            .iter()
+            .map(|file| format!("{file}: its comments can't be known")),
+    );
+    gone
+}
+
 /// A count as a figure; no repository holds four billion of anything.
 fn figure(count: usize) -> f64 {
     f64::from(u32::try_from(count).unwrap_or(u32::MAX))
@@ -449,6 +463,19 @@ mod tests {
 
     fn paths(files: &[File]) -> Vec<String> {
         files.iter().map(|file| file.path.clone()).collect()
+    }
+
+    #[test]
+    fn a_file_whose_comments_cant_be_known_counts_among_the_stale_paths() {
+        let stale = stale::Stale {
+            gone: vec!["a.sh:1: modules/b".to_owned()],
+            unread: vec!["c.sh".to_owned()],
+        };
+        assert_eq!(
+            stale_paths(stale),
+            ["a.sh:1: modules/b", "c.sh: its comments can't be known"],
+            "a file whose comments can't be known dropped out of the stale paths"
+        );
     }
 
     /// A whole repository's health, read from no folder in particular.

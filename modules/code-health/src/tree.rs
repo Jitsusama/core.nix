@@ -56,14 +56,22 @@ pub fn files(tree: &Path) -> Result<(Vec<String>, Vec<File>), String> {
 /// holds. Each of `found` (`file:line: path`, as the measure names it)
 /// whose file and path are named more often than the list holds them,
 /// all its mentions told since none says which is new, and each line the
-/// list holds more often than it's found, so the list only shrinks.
-pub fn held(found: &[String], waiting: &[String]) -> (Vec<String>, Vec<String>) {
+/// list holds more often than it's found, so the list only shrinks. A line
+/// of a file in `unread`, whose comments couldn't be known, stands: none
+/// of its file's mentions can be told gone.
+pub fn held(found: &[String], unread: &[String], waiting: &[String]) -> (Vec<String>, Vec<String>) {
     let mut found_of: BTreeMap<String, Vec<&String>> = BTreeMap::new();
     for named in found {
         found_of.entry(keyed(named)).or_default().push(named);
     }
+    // The path a line names never holds a space, so its file is all
+    // before the last.
+    let of_unread = |line: &str| {
+        line.rsplit_once(' ')
+            .is_some_and(|(file, _)| unread.iter().any(|unread| unread == file))
+    };
     let mut listed: BTreeMap<&str, usize> = BTreeMap::new();
-    for line in waiting {
+    for line in waiting.iter().filter(|line| !of_unread(line)) {
         *listed.entry(line.as_str()).or_default() += 1;
     }
     let new = found_of
@@ -172,13 +180,33 @@ mod tests {
             "modules/c/z.sh tests/fixed.nix".to_owned(),
         ];
         assert_eq!(
-            held(&found, &waiting),
+            held(&found, &[], &waiting),
             (
                 vec!["modules/b/y.nix:12: tests/vm/gone.nix".to_owned()],
                 vec!["modules/c/z.sh tests/fixed.nix (found nowhere: take it off)".to_owned()],
             ),
             "a listed path wasn't let wait, an unlisted one was, or a line nothing \
              matches stayed on the list"
+        );
+    }
+
+    #[test]
+    fn what_waits_in_a_file_whose_comments_cant_be_known_stands() {
+        // modules/c/z.sh couldn't be read, and modules/c/z.sh.bak, whose
+        // name it begins, could.
+        let waiting = [
+            "modules/c/z.sh tests/gone.nix".to_owned(),
+            "modules/c/z.sh tests/gone.nix".to_owned(),
+            "modules/c/z.sh.bak tests/gone.nix".to_owned(),
+        ];
+        assert_eq!(
+            held(&[], &["modules/c/z.sh".to_owned()], &waiting),
+            (
+                Vec::<String>::new(),
+                vec!["modules/c/z.sh.bak tests/gone.nix (found nowhere: take it off)".to_owned()],
+            ),
+            "what waits in a file that couldn't be read was told gone, or what waits in \
+             another beginning with its name stood"
         );
     }
 
@@ -198,7 +226,7 @@ mod tests {
             "modules/c/z.sh tests/fixed.nix".to_owned(),
         ];
         assert_eq!(
-            held(&found, &waiting),
+            held(&found, &[], &waiting),
             (
                 vec![
                     "modules/a/x.rs:3: modules/a/gone.rs".to_owned(),

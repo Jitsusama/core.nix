@@ -8,8 +8,43 @@ fn paths(files: &[File]) -> Vec<String> {
     files.iter().map(|file| file.path.clone()).collect()
 }
 
+/// The comments of `files` naming what's gone, once every file's comments
+/// were known, as each test but the reader's own misreadings needs.
+fn stale(paths: &[String], files: &[File]) -> Vec<String> {
+    let stale = super::stale(paths, files);
+    assert_eq!(
+        stale.unread,
+        Vec::<String>::new(),
+        "a file's comments couldn't be known"
+    );
+    stale.gone
+}
+
 #[path = "stale_shell_tests.rs"]
 mod shell;
+
+#[test]
+fn a_file_whose_comments_cant_be_known_is_named_apart_from_what_is_gone() {
+    let files = [
+        file("modules/a/x.sh", "# Read by modules/a/gone.sh.\n"),
+        file("modules/a/y.sh", "# Read by modules/a/gone.sh.\n"),
+    ];
+    let found = stale_by(&paths(&files), &files, |file| {
+        if file.path.ends_with("x.sh") {
+            None
+        } else {
+            comments(file)
+        }
+    });
+    assert_eq!(
+        (found.gone, found.unread),
+        (
+            vec!["modules/a/y.sh:1: modules/a/gone.sh".to_string()],
+            vec!["modules/a/x.sh".to_string()]
+        ),
+        "a file whose comments can't be known wasn't named alone, apart from what's gone"
+    );
+}
 
 #[test]
 fn a_comment_naming_a_path_gone_is_stale() {
@@ -665,5 +700,39 @@ fn a_path_is_cut_where_its_characters_end() {
         stale(&paths(&files), &files),
         ["tools/a.sh:1: tools/x/b"],
         "a path was cut in the wrong place or named mid-word"
+    );
+}
+
+#[test]
+fn a_reading_naming_new_lines_is_read_again_until_it_reads_whole() {
+    let mut asked = Vec::new();
+    let lines = settled(|unopened| {
+        let mut seen: Vec<usize> = unopened.iter().copied().collect();
+        seen.sort_unstable();
+        asked.push(seen);
+        match asked.len() {
+            1 => Err(vec![3]),
+            2 => Err(vec![7]),
+            _ => Ok(vec![(1, "# read")]),
+        }
+    });
+    assert_eq!(
+        (lines, asked),
+        (Some(vec![(1, "# read")]), vec![vec![], vec![3], vec![3, 7]]),
+        "a reading naming new lines wasn't read again with them unopened"
+    );
+}
+
+#[test]
+fn a_reading_naming_only_lines_named_before_leaves_the_comments_unknown() {
+    let mut readings = 0;
+    let lines = settled(|_| {
+        readings += 1;
+        Err(vec![4])
+    });
+    assert_eq!(
+        (lines, readings),
+        (None, 2),
+        "a reading naming only a line named before was read again, or taken for whole"
     );
 }

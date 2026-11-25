@@ -36,9 +36,30 @@ mod shell;
 
 use shell::{Closers, Shell, ends_heredoc, shell_line};
 
-/// Every comment of `files` naming a path `paths` doesn't hold, as the
-/// file, its line and the path named.
-pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
+/// What the comments of a tree's files say of the paths they name.
+pub struct Stale {
+    /// Each comment naming a path the tree doesn't hold, as the file, its
+    /// line and the path named.
+    pub gone: Vec<String>,
+    /// Each file whose comments can't be known, which only a misreading of
+    /// this reader's own leaves: what a waiting list holds of it stands,
+    /// since none of it can be told fixed.
+    pub unread: Vec<String>,
+}
+
+/// Every comment of `files` naming a path `paths` doesn't hold, and every
+/// file whose comments can't be known.
+pub fn stale(paths: &[String], files: &[File]) -> Stale {
+    stale_by(paths, files, comments)
+}
+
+/// What reads a file's comments, each by its line, or None when they
+/// can't be known.
+type Reader = fn(&File) -> Option<Vec<(usize, &str)>>;
+
+/// The same, each file's comments read by `comments`, so a test can give
+/// one that can't be known, which no file known reads as.
+fn stale_by(paths: &[String], files: &[File], comments: Reader) -> Stale {
     let mut there: HashSet<&str> = HashSet::new();
     let mut tops: HashSet<&str> = HashSet::new();
     for path in paths {
@@ -77,8 +98,13 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
             .any(|path| starts.iter().any(|start| path.starts_with(start.as_str())))
     };
     let mut gone = Vec::new();
+    let mut unread = Vec::new();
     for file in files {
-        for (number, comment) in comments(file) {
+        let Some(comments) = comments(file) else {
+            unread.push(file.path.clone());
+            continue;
+        };
+        for (number, comment) in comments {
             for (named, prefix) in named(comment, &tops) {
                 // The folder under the top one the path names.
                 let below = named
@@ -94,7 +120,7 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
             }
         }
     }
-    gone
+    Stale { gone, unread }
 }
 
 /// A file's comment lines, numbered from one, block comments and
@@ -104,42 +130,52 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
 /// heredoc, a string or a shell quote the file never closes is taken for
 /// a misreading, as a `/*` in a string or a `<<` the shell reads otherwise
 /// would be, and the file is read again as if its line opened nothing, so
-/// it hides nothing after it.
-fn comments(file: &File) -> Vec<(usize, &str)> {
+/// it hides nothing after it. None for a file whose comments can't be
+/// known, which only a reading that names no line it hasn't named before
+/// would leave.
+fn comments(file: &File) -> Option<Vec<(usize, &str)>> {
     let extension = extension(&file.path);
     let (mark, blocks) = match extension {
         "rs" | "js" | "ts" | "qml" | "c" | "h" => ("//", true),
         "nix" => ("#", true),
         "sh" | "bash" | "py" | "toml" | "yaml" | "yml" => ("#", false),
-        _ => return Vec::new(),
+        _ => return Some(Vec::new()),
     };
     // A byte-order mark opens a file as nothing at all.
     let content = file.text.strip_prefix('\u{feff}').unwrap_or(&file.text);
     let closers = Closers::of(content, matches!(extension, "sh" | "bash"), blocks);
-    // Each reading names lines not named before, since a line named opens
-    // nothing, so there are no more readings than lines.
+    settled(|unopened| read(content, extension, (mark, blocks), &closers, unopened))
+}
+
+/// What `read` gives once it reads whole, read again each time it names
+/// the lines that opened what never closed, as opening nothing. Each
+/// reading names lines not named before, since a line named opens nothing,
+/// so there are no more readings than lines. A reading naming only lines
+/// named already is a misreading of this reader's own, and the next would
+/// read as it did, so rather than read forever, or take down the measure
+/// of every repository, it gives None: the comments can't be known.
+fn settled<'a>(
+    mut read: impl FnMut(&HashSet<usize>) -> Result<Vec<(usize, &'a str)>, Vec<usize>>,
+) -> Option<Vec<(usize, &'a str)>> {
     let mut unopened = HashSet::new();
     loop {
-        match read(content, extension, (mark, blocks), &closers, &unopened) {
-            Ok(lines) => return lines,
-            Err(openers) => {
-                for opener in openers {
-                    assert!(
-                        unopened.insert(opener),
-                        "line {opener} of {} opened something though named",
-                        file.path
-                    );
-                }
-            }
+        let openers = match read(&unopened) {
+            Ok(lines) => return Some(lines),
+            Err(openers) => openers,
+        };
+        let named = unopened.len();
+        unopened.extend(openers);
+        if unopened.len() == named {
+            return None;
         }
     }
 }
 
 /// The comment lines of a file's `content`, read with the comment `mark`
 /// and `blocks`, or the lines that opened a docstring, a block comment, a
-/// heredoc, a string or a shell quote the file never closes. No line in
-/// `unopened` opens one, and `closers` says where what a line opens could
-/// close.
+/// string or a shell quote the file never closes. No line in `unopened`
+/// opens one, and `closers` says where what a line opens could close, so
+/// a heredoc is opened only where it closes.
 fn read<'a>(
     content: &'a str,
     extension: &str,
@@ -155,6 +191,8 @@ fn read<'a>(
     let mut block = false;
     // The words closing the heredocs a line of shell opened, in the order
     // their bodies follow, each with whether `<<-` lets tabs indent it.
+    // Each is kept only where a later line closes it in turn, so none is
+    // open at the file's end.
     let mut heredocs: VecDeque<(String, bool)> = VecDeque::new();
     // What a line of shell left open, innermost last: in a quote, its
     // lines up to the close are a string's, so neither comment nor opening
@@ -171,9 +209,9 @@ fn read<'a>(
     // a backslash carries it on, and whether it opened as a header.
     let mut logical = Logical::default();
     let mut lines = Vec::new();
-    // The line that last opened a docstring, a block comment, a heredoc, a
-    // string or a quote, which is the one still open at the file's end, if
-    // any is.
+    // The line that last opened a docstring, a block comment or a string,
+    // which is the one still open at the file's end, if any is. A shell
+    // quote's are in `opened_at`.
     let mut opener = 0;
     for (number, line) in content.lines().enumerate() {
         let opens_here = !unopened.contains(&number);
@@ -263,11 +301,7 @@ fn read<'a>(
                     let (words, kept) = shell_line(line, &mut quoted, opens_here);
                     opened_at.truncate(kept);
                     opened_at.resize(quoted.len(), number);
-                    let words = closers.closing(words, number);
-                    if !words.is_empty() || quoted.len() > kept {
-                        opener = number;
-                    }
-                    heredocs.extend(words);
+                    heredocs.extend(closers.closing(words, number));
                 }
                 comment.then_some(line)
             }
@@ -284,11 +318,14 @@ fn read<'a>(
     if !quoted.is_empty() {
         // What a quote or a substitution holds is read alike whatever it
         // stands in, so each line holding open what the file never closes
-        // opened it on a misreading, and all are named at once, rather
-        // than the file read again for each.
+        // is taken to have opened it on a misreading, and all are named at
+        // once, rather than the file read again for each. A quote truly
+        // opened around the misreading is named with it, and its lines
+        // read as code: the price of knowing a file of thousands of
+        // openings from one reading rather than thousands.
         opened_at.dedup();
         Err(opened_at)
-    } else if docstring.is_some() || block || !heredocs.is_empty() || string.is_some() {
+    } else if docstring.is_some() || block || string.is_some() {
         Err(vec![opener])
     } else {
         Ok(lines)
