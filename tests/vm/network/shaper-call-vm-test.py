@@ -110,6 +110,8 @@ UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
+# The client's count of what its link to the router took in, as the shaper's recorder reads it.
+RX_BYTES = "/sys/class/net/eth1/statistics/rx_bytes"
 # How long the client may take to boot to its first queues, and the loads to take that in.
 COMING_UP = dt.timedelta(seconds=30)
 FILLING = dt.timedelta(seconds=60)
@@ -123,9 +125,9 @@ STANDS = 5
 # The file the client's stand-in for a-call-is-on reads: a call is on while it's there.
 CALL_FLAG = "/run/call-is-on"
 # What the shaper's journal says as it holds the download for a call: nine tenths of the
-# line's declared 90 Mbit/s (ROOM in src/room.rs).
-ROOM_HELD = "held to 81000 kbit/s, where its own queue puts the call first"
-ROOM_KBIT = 81_000
+# line's declared 75 Mbit/s (ROOM in src/room.rs), which the download must carry first.
+ROOM_HELD = "held to 67500 kbit/s, where its own queue puts the call first"
+ROOM_KBIT = 67_500
 # Where the client notes, once a second while the calls run, whether the download is held
 # for them (Rig.watch).
 WATCHED = "/run/room-watched"
@@ -613,6 +615,55 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
     return now
 
 
+def carried(rig: Rig) -> int:
+    """Give the kbit/s the client took in over about a second, timed by its own clock.
+
+    The counter and the clock are read by the shell's builtins, with no command forked between
+    them, and the window is divided by its own length rather than taken for a second, as a
+    starved builder stretches it most (call fills round 1's F2, F6, F14 and F16). The clock is
+    the kernel's uptime, in hundredths of a second whatever the locale, which no step of the
+    wall clock moves (call fills round 2's F2, F8 and F12).
+    """
+    read = f"read -r a < {RX_BYTES}; read -r t _ < /proc/uptime; sleep 1"
+    again = f"read -r b < {RX_BYTES}; read -r u _ < /proc/uptime"
+    hundredths = "(10#${u/./} - 10#${t/./})"
+    return int(rig.client.succeed(f"{read}; {again}; echo $(((b - a) * 8 / {hundredths} / 10))"))
+
+
+@dataclass
+class Filling:
+    """A wait for the loads to fill the line, and with room, to fill it as far as the room.
+
+    It's met once the client has taken in a few seconds of the line and, with room, once a
+    second carries the room too, as the shaper gives none to a download short of it, or once
+    the shaper already holds the room, as it does from the controller's cut too. A builder too
+    starved for either fails saying so, with its best second, rather than as a hold that never
+    came (#4228; call fills round 1's F1, F5, F13 and F17). A second is sampled only while
+    neither has come, as each sample takes one (call fills round 1's F7 and F18, and round 2's
+    F3, F5 and F11).
+    """
+
+    rig: Rig
+    first: int
+    room: bool
+    best: int = 0
+
+    def __call__(self, last_try: bool) -> bool:
+        """Give whether the wait is met, saying what fell short with the trace on its last try."""
+        given = not self.room or self.rig.room() == ROOM_KBIT
+        if not given and self.best < ROOM_KBIT:
+            self.best = max(self.best, carried(self.rig))
+        given = given or self.best >= ROOM_KBIT
+        now = int(self.rig.client.succeed(f"cat {RX_BYTES}")) - self.first >= FULL_BYTES
+        short = f", carrying {self.best} kbit/s at best of the {ROOM_KBIT} its room needs"
+        return met(
+            self.rig,
+            now=now and given,
+            last_try=last_try,
+            otherwise="the loads never filled the line" + ("" if given else short),
+        )
+
+
 def under_load(
     rig: Rig,
     *,
@@ -630,16 +681,16 @@ def under_load(
     as the calls start, so what it counts from there is the hold's alone.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
-    a connection that's full, as a busy afternoon's is, rather than one with room to spare.
-    They run on until the controller holds the link too, as it has all day on a
-    connection the jobs keep full: a call that starts in the seconds before it does crosses
-    the router's queue as an unshaped one would. The loads stop however the calls end, so a
-    test that fails here leaves the next its own loads to start.
+    a connection that's full, as a busy afternoon's is, rather than one with room to spare,
+    and with room, until the line is filled as far as the room (Filling). They run on until
+    the controller holds the link too, as it has all day on a connection the jobs keep full:
+    a call that starts in the seconds before it does crosses the router's queue as an unshaped
+    one would. The loads stop however the calls end, so a test that fails here leaves the next
+    its own loads to start.
     """
     download = f"{BIN}/cat < /dev/tcp/{FAR}/{SOURCE_PORT} > /dev/null"
     upload = f"{BIN}/cat /dev/zero > /dev/tcp/{FAR}/{SINK_PORT}"
-    rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
-    first = int(rig.client.succeed(rx))
+    first = int(rig.client.succeed(f"cat {RX_BYTES}"))
     rig.since = rig.counted()
     loads = [
         ("jobs-downloads", "jobs.slice", JOBS_DOWNLOADS, download),
@@ -651,15 +702,7 @@ def under_load(
     try:
         for unit, slice_name, flows, script in loads:
             rig.start(unit, slice_name, flows, script)
-        retry(
-            lambda last_try: met(
-                rig,
-                now=int(rig.client.succeed(rx)) - first >= FULL_BYTES,
-                last_try=last_try,
-                otherwise="the loads never filled the line",
-            ),
-            timeout=FILLING,
-        )
+        retry(Filling(rig, first, room), timeout=FILLING)
         retry(
             lambda last_try: met(
                 rig,
@@ -837,7 +880,7 @@ def test_a_call_loses_little(rig: Rig) -> None:
     of the builder's CPU does, is only printed. Every queue of the shaper's is before the hook.
 
     A call is on, as Joel's would be, so the shaper holds the download under the line's
-    declared 90 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
+    declared 75 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
     Left straight in, the download queued in the router's fq_codel, and on 23 November the
     media call lost 332 of 5,213 datagrams there, as one shares a bulk flow's queue about
     one run in fifty.
