@@ -738,10 +738,12 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
 }
 
 #[test]
-fn a_filling_disks_pass_that_leaves_nothing_to_clear_rests_an_hour() {
+fn a_filling_disk_whose_passes_twice_running_leave_nothing_to_clear_rests_an_hour() {
     // On 25 November a reach pass freed 0 B and found nothing left, and
     // the next came 17 minutes on and read 15 GB of the disk's metadata
-    // in 24 minutes, while evaluations and pushes needed it.
+    // in 24 minutes, while evaluations and pushes needed it. The first
+    // such pass still rests only a minute: the machine's guard expiring
+    // generations leaves garbage only its next pass can take.
     let home = Home::new();
     fs::create_dir_all(home.root.join("scratch")).unwrap();
     let mut guard = home.guard(home.config("100%", "100%"));
@@ -752,7 +754,7 @@ fn a_filling_disks_pass_that_leaves_nothing_to_clear_rests_an_hour() {
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3661.0, 4600.0, 7199.0, 7201.0] {
+    for at in [3600.0, 3661.0, 4600.0, 7260.0, 7262.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
         assert_eq!(
@@ -763,8 +765,8 @@ fn a_filling_disks_pass_that_leaves_nothing_to_clear_rests_an_hour() {
     }
     assert_eq!(
         seen,
-        [1, 1, 1, 1, 2],
-        "a filling disk left with nothing rested less than an hour"
+        [1, 2, 2, 2, 3],
+        "a filling disk rested other than a minute, then an hour once left with nothing twice"
     );
 }
 

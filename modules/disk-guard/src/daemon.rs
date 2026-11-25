@@ -77,9 +77,12 @@ struct Rest {
     /// twice in a row, so a daemon whose word keeps failing costs a survey
     /// a rest, not one a step.
     unvouched: bool,
-    /// Whether the pass found nothing left to clear on a filling disk, so
-    /// the disk rests the hour and the status says it has cleared all it
-    /// may, whatever passes run on other disks meanwhile.
+    /// Whether the pass ended with nothing left it may clear, so a second
+    /// such pass in a row on a filling disk empties it.
+    exhausted: bool,
+    /// Whether a second pass in a row found nothing left to clear on a
+    /// filling disk, so the disk rests the hour and the status says it has
+    /// cleared all it may, whatever passes run on other disks meanwhile.
     emptied: bool,
 }
 
@@ -89,11 +92,13 @@ struct Rest {
 /// the band, the sooner it looks again, since what's in use there may
 /// stop being so any moment and the disk can't wait long.
 const FIRST_REST: f64 = 60.0;
-/// How long a filling disk rests once a pass finds nothing more it may
-/// clear there. Each pass reads the metadata of everything it
-/// judges, and on 25 November one 17 minutes after a pass that freed
-/// 0 B read 15 GB of it in 24 minutes. A filling disk has a tenth of its
-/// room or more, and a worse band ends the rest at once.
+/// How long a filling disk rests once a second pass in a row finds
+/// nothing more it may clear there. Each pass reads the metadata of
+/// everything it judges, and on 25 November one 17 minutes after a pass
+/// that freed 0 B read 15 GB of it in 24 minutes. The first such pass
+/// rests only a minute, since one that expired generations or a build that
+/// ended leaves garbage only the next can take. A filling disk has a tenth
+/// of its room or more, and a worse band ends the rest at once.
 const EMPTY_REST: f64 = 3600.0;
 fn longest_rest(band: Band) -> f64 {
     match band {
@@ -2646,9 +2651,11 @@ impl Guard {
                 // stop or to its own length fell short of nothing; its disk
                 // is due again.
                 let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
+                let exhausted = matches!(end, End::Exhausted);
                 // Filling only: a healthy disk's rest goes at its next
                 // measure, so an hour promised there would never hold.
-                let emptied = matches!(end, End::Exhausted)
+                let emptied = exhausted
+                    && watched.rest.is_some_and(|rest| rest.exhausted)
                     && band <= Band::Filling
                     && watched.band == Band::Filling;
                 watched.rest = fell_short.then(|| {
@@ -2664,6 +2671,7 @@ impl Guard {
                         seconds,
                         band,
                         unvouched,
+                        exhausted,
                         emptied,
                     }
                 });
