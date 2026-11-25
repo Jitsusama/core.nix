@@ -33,6 +33,8 @@ const OUT_OF_REACH = "out of reach";
 /** The most machines out of reach the one look for them names, the rest counted. */
 const AWAY_LISTED = 3;
 
+/** The item a side ends with when it had more than it lists, as the daemon says it. */
+const MORE = /^and \d+ more worth a look$/u;
 // The note a part carries when read from its owner's last answer, as
 // modules/system/src/kept.rs words it.
 const KEPT = /^as read at /u;
@@ -252,7 +254,9 @@ function partLooks(part: Part): readonly Look[] {
   const kept = part.side.find((words) => KEPT.test(words));
   const asRead = kept === undefined ? "" : `, ${kept.split(";")[0]}`;
   const own = part.side.filter((words) => !KEPT.test(words));
-  return keyed(own).map(({ words, key }) => lookOf(part, part.health, `${words}${asRead}`, key));
+  // How many more the daemon counts is no look read at a time of its own.
+  const when = (words: string): string => (MORE.test(words) ? words : `${words}${asRead}`);
+  return keyed(own).map(({ words, key }) => lookOf(part, part.health, when(words), key));
 }
 
 /**

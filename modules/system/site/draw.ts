@@ -380,6 +380,8 @@ function partsOf(system: System, when: (at: string) => string): string {
  * act, the launcher's row for its machine, each where the daemon gives it.
  * The act names its machine, so each reads alone in a list of links; it is
  * no row of the cursor's, which steps from look to look, and Tab reaches it.
+ * Its words are one span, since the link is a flex box, which would make
+ * each run of text an item of its own and drop the spaces between them.
  */
 function lookRow(look: Look): string {
   const machine = look.machine ? ' translate="no"' : "";
@@ -387,10 +389,9 @@ function lookRow(look: Look): string {
   const row = `<a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a>`;
   const matters = look.matters === "" ? "" : `<span>${escaped(look.matters)}</span>`;
   const name = `<span${machine}>${escaped(look.whose)}</span>`;
+  const words = `<span>Open ${name} in the Launcher</span>`;
   const act =
-    look.act === undefined
-      ? ""
-      : `<a class="launch" href="${escaped(look.act)}">Open ${name} in the Launcher</a>`;
+    look.act === undefined ? "" : `<a class="launch" href="${escaped(look.act)}">${words}</a>`;
   const why = matters === "" && act === "" ? "" : `<p class="why">${matters}${act}</p>`;
   return `<li>${row}${why}</li>`;
 }

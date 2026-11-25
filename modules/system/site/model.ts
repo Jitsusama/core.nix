@@ -140,22 +140,24 @@ function capital(said: string): string {
 }
 
 /**
- * A thing's looks, or none when its record carries no list of them. A look
- * missing its words is left out, and one missing its why is kept with none,
- * so a record half-read still lists what it holds.
+ * A thing's looks, or none when its record carries no list of them, or one
+ * with a look missing its words: its side then says them all, as from a
+ * daemon that lists none, rather than a list that leaves one out. A look
+ * missing its why is kept with none.
  */
 function looksOf(record: Fields): readonly ThingLook[] | undefined {
   const looks: unknown = record["looks"];
   if (!Array.isArray(looks)) {
     return undefined;
   }
-  return looks.flatMap((look: unknown) => {
+  const read = looks.flatMap((look: unknown) => {
     const side = isObject(look) ? text(look, "side") : undefined;
     if (!isObject(look) || side === undefined || side === "") {
       return [];
     }
     return [{ side, matters: text(look, "matters") ?? "" }];
   });
+  return read.length === looks.length ? read : undefined;
 }
 
 /**

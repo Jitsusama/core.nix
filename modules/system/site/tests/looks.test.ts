@@ -11,6 +11,8 @@ import type { Part, System, Thing } from "../model.ts";
 import { tiesOf } from "../ties.ts";
 
 const deeper = { command: "net", site: "network/", launcher: "Network" };
+/** An act drawn as a row of the cursor's, which it must never be. */
+const ACT_AS_ROW = /<a class="launch"[^>]*data-row/u;
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
   return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf({}) };
@@ -126,6 +128,11 @@ it("lists no kept answer, and says the machines' where the page says how it was 
     said,
     "the note leaves out how many more, which the daemon counts after it",
   );
+  assert.equal(
+    kept(machinesOf([], ["wren out of reach", note])),
+    said,
+    "the note is the part's kept answer alone, not a machine it names that the page doesn't",
+  );
   const coming: Part = { ...machinesOf([], ["wren out of reach"]), named: ["wren"], untold: 1 };
   assert.deepEqual(listed(coming), [], "a machine named before its record waits for it");
   assert.equal(kept(coming), "", "nor is a machine named before its record a note");
@@ -139,6 +146,17 @@ it("lists no kept answer, and says the machines' where the page says how it was 
     listed(machinesOf([], []), part("network", "watch", ["the hall point is weak", net])),
     [["watch", "Network", "The hall point is weak, as read at 11:56"]],
     "a part read from a kept answer lists its looks, saying when, never its note",
+  );
+  assert.deepEqual(
+    listed(
+      machinesOf([], []),
+      part("network", "watch", ["the hall point is weak", net, "and 2 more worth a look"]),
+    ),
+    [
+      ["watch", "Network", "The hall point is weak, as read at 11:56"],
+      ["watch", "Network", "And 2 more worth a look"],
+    ],
+    "how many more it counts is said with no time of its own",
   );
   const rows = (side: string[]): (string | undefined)[] =>
     looksOf({ ...system([]), parts: [part("network", "watch", side)] }, 8).looks.map(
@@ -291,11 +309,12 @@ it("says why each machine's look matters, with its one act, the machine's launch
     ],
     "every look the daemon judged, past the side's three; a part's leads to its site alone",
   );
-  const old = looksOf(system([machine("kestrel", "watch", ["on battery at 9%"])]), 8).looks[0];
+  const aged = { ...judged("kestrel", "watch", undefined), side: ["on battery at 9%"] };
+  const old = looksOf(system([aged]), 8).looks[0];
   assert.deepEqual(
     [old?.words, old?.matters, old?.act],
-    ["On battery at 9%", "", undefined],
-    "a daemon too old to list its looks leaves the side to say them, with no why",
+    ["On battery at 9%", "", link],
+    "a daemon too old to list its looks leaves the side to say them, with no why but its act",
   );
 });
 
@@ -339,17 +358,14 @@ it("draws a look's why and act under its words, escaped, and no line where it ha
     "the act opens the machine's launcher row",
   );
   holds(
-    'Open <span translate="no">&lt;b&gt;kestrel&lt;/b&gt;</span> in the Launcher</a>',
-    "the act names its machine, untranslated",
+    '<span>Open <span translate="no">&lt;b&gt;kestrel&lt;/b&gt;</span> in the Launcher</span></a>',
+    "the act names its machine, untranslated, in one run of words a flex box keeps spaced",
   );
   assert.ok(
     !(drawn.includes("<b>") || drawn.includes("<i>")),
     "no record's markup reaches the page",
   );
-  assert.ok(
-    !drawn.includes('class="launch" data-row'),
-    "the act is no cursor row, so j and k step from look to look",
-  );
+  assert.ok(!ACT_AS_ROW.test(drawn), "the act is no cursor row, so j and k step from look to look");
   const bare = looksDrawn(looksOf(system([], [part("network", "bad", ["the modem is down"])]), 8));
   assert.ok(!bare.includes('class="why"'), "a look with no why and no act draws no line for them");
 });

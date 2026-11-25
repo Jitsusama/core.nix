@@ -363,6 +363,17 @@ def test_a_kept_answer_is_no_look(system_page: Page, system_daemon: StandIn) -> 
 THUMB = 44
 
 
+# A why told afresh, so the list redraws under a focused act.
+ANEW = "What ran there may have ended without warning, as it did again."
+# The key of the row after kestrel's look among every row the keys step
+# through, or its own where it is the last.
+AFTER_KESTREL = """() => {
+  const rows = [...document.querySelectorAll('#looks a[data-row], #parts a[data-row]')];
+  const at = rows.findIndex((row) => row.matches('a.look') && row.textContent.includes('kestrel'));
+  return rows[Math.min(at + 1, rows.length - 1)]?.dataset.row ?? null;
+}"""
+
+
 @pytest.mark.parametrize("size", SIZES, ids=[f"{width}px" for width, _ in SIZES])
 def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
     browser: Browser, system_served: Served, system_daemon: StandIn, size: tuple[int, int]
@@ -396,7 +407,23 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         # Under the words, in their column, so the reason reads as this look's.
         assert abs(drawn["x"] - words["x"]) < 1, "the why stood apart from its look's words"
         assert drawn["y"] >= words["y"] + words["height"] - 1, "the why ran beside its words"
+        # As drawn, not as named: a flex box drops the spaces between runs of
+        # text, which the name read aloud keeps.
+        assert launch.inner_text() == "Open kestrel in the Launcher", launch.inner_text()
         opened.passes_the_skills_checks()
+        # The act is the look's, so a redraw keeps focus on it, and the keys
+        # step on from it as from its look.
+        launch.focus()
+        system_daemon.tell(
+            "machine",
+            changed=[{"key": "machine:kestrel", "looks": [{"side": firmware, "matters": ANEW}]}],
+        )
+        expect(why, "the look's why wasn't redrawn").to_contain_text(ANEW, timeout=PACE_MS)
+        expect(launch, "a redraw took focus off the look's act").to_be_focused()
+        after = page.evaluate(AFTER_KESTREL)
+        page.keyboard.press("j")
+        held = page.evaluate("document.activeElement?.dataset?.row ?? null")
+        assert held == after, f"j from the act went to {held}, not {after}"
     finally:
         opened.close()
 
