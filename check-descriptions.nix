@@ -740,7 +740,10 @@
     doesn't stop it, a Chrome still quitting is waited for, as is one whose maps can't be read,
     one still quitting after half a minute is given up on, the run starting over if that Chrome
     quits during the run's last look, and with Chrome running, or started again as the old one
-    quits, nothing in the profile is touched, so no folder is swapped under it; the unit starts
+    quits, no cache is touched, so none is swapped under it, while BrowserMetrics, which Chrome
+    deletes itself as it runs, moves whenever nothing of Chrome's maps a file still in it, a
+    mapped file keeping it on the disk and a deleted one not, and what a session left in memory
+    goes unless it's mapped; the unit starts
     with the account's manager, before the graphical session, and again on each change in the profile's folder, as
     when Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
   '';
