@@ -3,8 +3,8 @@
 subvolumes.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The account's folders are made once a run, one
 held open by a process of its own, one it only maps, one whose writer runs and one with a file it
-can't read, then each folder's move runs as a login or a switch runs it, so any test runs alone with `-k`.
-The tests need no value from Nix.
+can't read, then each folder's move runs as a login or a switch runs it, so any test runs alone
+with `-k`. The tests need no value from Nix.
 """
 
 from __future__ import annotations
