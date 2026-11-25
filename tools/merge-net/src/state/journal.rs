@@ -123,10 +123,10 @@ fn forget_fault(root: &Path) {
 }
 
 /// Say `what` in the net.log under `root` unless it was the last fault
-/// said there, and no read has reached the journal's end since. A journal that stays unreadable is asked of on every query,
-/// and net.log is never trimmed; its time is also the hang guard's sign
-/// that the watch lives, which a line per query would keep fresh for a
-/// watch that's stuck.
+/// said there, and no read has reached the journal's end since. A journal
+/// that stays unreadable is asked of on every query, and net.log is never
+/// trimmed; its time is also the hang guard's sign that the watch lives,
+/// which a line per query would keep fresh for a watch that's stuck.
 fn say_unrepeated(root: &Path, what: &str) {
     let mut said = LAST_SAID
         .lock()
