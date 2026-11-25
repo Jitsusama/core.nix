@@ -282,11 +282,21 @@ mod tests {
             "--repo core=/src/core --target core=96",
             "--repo core=/src/core --target core/long-files=many",
             "--repo core=/src/core --owner other=someone",
-            // As home.nix would hand a measure renamed on code-health's side.
-            "--repo core=/src/core --owner core/unread-comment=someone",
         ] {
             assert!(parse(&said(given)).is_err(), "{given} was taken");
         }
+    }
+
+    #[test]
+    fn an_owner_for_a_measure_code_health_lacks_is_refused_for_it() {
+        // Any name code-health has no measure by, as a name home.nix kept
+        // handing would be once the measure was renamed here.
+        let refused = parse(&said("--repo core=/src/core --owner core/nosuch=someone"))
+            .expect_err("an owner for no measure was taken");
+        assert!(
+            refused.starts_with("--owner names nosuch, which isn't a measure"),
+            "the refusal didn't name the measure it lacks: {refused}"
+        );
     }
 
     #[test]
