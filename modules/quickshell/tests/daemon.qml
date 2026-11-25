@@ -498,9 +498,10 @@ ShellRoot {
             // pinned here, since connectAgain sets the loader's `active`,
             // which drops its binding. This step only lets it go: what its
             // going said, and at what level, checks/shell.nix reads from the
-            // log. It comes before the daemon stops, while the link has had
-            // it since the first steps: once it starts again, the link tries
-            // only at its next turn, 14 s or more on, past a step's ten.
+            // log. It comes before the daemon stops, while the link holds
+            // the connection it made in the first steps: after the restart,
+            // when it connects again rests on its watch of a symlinked
+            // socket or on its tries, which no step waits on.
             what: "a connection the shell lets go with an ask in flight goes, its ask given none",
             holds: () => {
                 if (!root.letGo && lettingGo.wire !== null) {
