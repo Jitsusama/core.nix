@@ -367,8 +367,15 @@ pub fn job(folder: &Path) -> i32 {
     // Written aside and moved into place, so root never reads it half
     // written as a job that ended saying nothing.
     let aside = folder.join(format!("{STATUS}.new"));
-    if fs::write(&aside, format!("{status}\n")).is_ok() {
-        let _ = fs::rename(&aside, folder.join(STATUS));
+    let said = format!("{status}\n");
+    if fs::write(&aside, &said)
+        .and_then(|()| fs::rename(&aside, folder.join(STATUS)))
+        .is_err()
+    {
+        // One that can't be moved into place, as on a full disk, is written
+        // where it goes: root reads however much lands as the job's end at
+        // once, rather than waiting out its hour on a job that ended.
+        let _ = fs::write(folder.join(STATUS), said);
     }
     status
 }
@@ -736,6 +743,21 @@ mod tests {
         assert!(
             !folder.path().join("status.new").exists(),
             "the status written aside was left beside it"
+        );
+    }
+
+    #[test]
+    fn a_status_that_cant_be_written_aside_is_written_in_place() {
+        let folder = tempfile::tempdir().unwrap();
+        // A folder where the status goes aside, so writing it there fails.
+        fs::create_dir(folder.path().join("status.new")).unwrap();
+        assert_eq!(job(folder.path()), 127);
+        assert_eq!(
+            fs::read_to_string(folder.path().join(STATUS))
+                .ok()
+                .as_deref(),
+            Some("127\n"),
+            "a status that couldn't be written aside wasn't written in place"
         );
     }
 
