@@ -11,7 +11,7 @@ function shown(error) {
         const at = `${error?.stack ?? ""}`.split("\n")[0];
         const message = `${error?.message ?? error}`.split("\n")[0];
         return at === "" ? message : `${message} at ${at}`;
-    } catch (unsaid) {
+    } catch (_unsaid) {
         return "a value that can't be said as text";
     }
 }
