@@ -27,6 +27,12 @@ function runsOn(raw, kept, spaced) {
     return !PARAGRAPH_BREAK.test(rest) ? rest : spaced === true ? " " : null;
 }
 
+// What a line that ends its paragraph or its text holds past its `kept`
+// letters, before its break.
+function trailing(raw, kept) {
+    return "";
+}
+
 // Pieces as lines, top to bottom, those sharing a baseline one line, each
 // line's pieces its parts from left to right. Each piece keeps what it
 // wrapped at, its `on`, which a search runs on across into its own words'
