@@ -1490,8 +1490,9 @@ def test_a_closing_ends_the_keys_its_answers_came_late_for(shell: Shell) -> None
     """A key listed without the notices' answer is let go when the launcher closes.
 
     Its answer, come after the closing, is no key's being late: nobody waits on it. Kept, the
-    launcher would say it came late whenever the notices next answered unheld, as they do when
-    a notice arrives with what's typed shown, however many hours on.
+    mark is said late by the first unheld notices' answer: the stopped daemon's, as it resumes
+    with the launcher shut, where that answers the words still wanted, and otherwise one asked
+    as a notice arrives with what's typed shown, however many hours on, as the new notice is.
     """
     with shell.told("shows card Windows of the past"):
         shell.as_account("notify-send --expire-time=1000 'Windows of the past' 'a late notice'")

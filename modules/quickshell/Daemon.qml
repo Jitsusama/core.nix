@@ -109,7 +109,7 @@ Scope {
         link.active = false;
         child.active = false;
         if (wire !== null)
-            gone(true);
+            gone();
     }
     // What a watch begun waits on, when it's begun by what Joel pressed:
     // something with `afterFrame(then)`, as the launcher is, which runs
@@ -580,7 +580,9 @@ Scope {
                 daemon.greet();
             }
             onExited: code => {
-                console.warn(`${daemon.command[0]} ended with ${code}, so it starts again`);
+                // Stopped as the shell let it go (connects), it isn't started again.
+                if (daemon.connects)
+                    console.warn(`${daemon.command[0]} ended with ${code}, so it starts again`);
                 daemon.gone();
                 daemon.tryAgain();
             }
@@ -598,13 +600,16 @@ Scope {
 
     // Gone: said so, and every answer awaited given none. The watch went
     // with the wire, so what's held waits for the next watch's answer.
-    // `chosen` where the shell let the connection go itself (connects).
-    function gone(chosen) {
+    function gone() {
         // Its asks are answered with nothing below; said, since each went
         // unanswered and the connection's going says nothing of its own,
-        // as a warning only where nobody chose it (Hearing.goneSaid).
-        const said = Hearing.goneSaid(heardAs, Object.keys(awaited), chosen === true);
-        if (said !== "" && chosen === true)
+        // as a warning only where nobody chose it (Hearing.goneSaid). One
+        // the shell let go (connects) is read from connects, not from who
+        // called: the loaders' bindings may take the socket or child down
+        // before onConnectsChanged runs, and their own handlers call this.
+        const chosen = !connects;
+        const said = Hearing.goneSaid(heardAs, Object.keys(awaited), chosen);
+        if (said !== "" && chosen)
             console.info(said);
         else if (said !== "")
             console.warn(said);

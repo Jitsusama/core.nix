@@ -8236,10 +8236,15 @@ Scope {
             // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
             waited.firedAt = KeyTimes.now();
-            // A wait ended after its closing marks nothing late (onOpenChanged).
-            if (root.open)
-                root.answersLate = { text: waited.text, sources: waited.sources,
-                    began: waited.began };
+            // A wait ended after its closing lists nothing, so it marks
+            // nothing late and says no key listed (onOpenChanged); the
+            // held key is let go as searchAwaited lets one go shut.
+            if (!root.open) {
+                root.searchAwaited();
+                return;
+            }
+            root.answersLate = { text: waited.text, sources: waited.sources,
+                began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
             const places = waited.sources.map(one => one.settings?.name ?? "");
             console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
