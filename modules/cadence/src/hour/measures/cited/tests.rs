@@ -266,6 +266,21 @@ fn each_item_put_to_joel_names_a_message_its_owner_sent() {
 }
 
 #[test]
+fn an_indented_list_is_read_item_by_item_with_its_points_carrying_each_on() {
+    let note = "**For you:**\n  - Pick one.\n    - the first\n    - the second\n  - Read it.\n";
+    let m = judged(&[], note, "", &BTreeMap::new());
+    assert_eq!(
+        m.behind,
+        [
+            "for you this morning: Pick one. - the first - the second, naming no owner's message \
+             · WCJQSG",
+            "for you this morning: Read it, naming no owner's message · WCJQSG",
+        ],
+        "an indented list was read as none, or its points as items of their own"
+    );
+}
+
+#[test]
 fn only_the_messages_cited_are_asked_of_the_mesh() {
     let cites = cited(&[(NOW, "80ECO2", "aa11bb22", "12:00")]);
     assert_eq!(
@@ -470,11 +485,22 @@ fn what_can_t_be_read_leaves_the_measure_unjudged_saying_why() {
     machine(root.path(), NOW - 600);
     let mission = root.path().join("state/mission");
     write_mission(root.path(), "cited.jsonl", "{\"ts\": \"not a time\"}\n");
+    let says = read_at(root.path()).map(|m| m.says).unwrap_or_default();
+    assert!(
+        says.ends_with("(1 line of cited.jsonl can't be read, backing nothing)"),
+        "a citation that can't be read took the measure off the card, or went unsaid: {says}"
+    );
+    write_mission(
+        root.path(),
+        "morning-2026-11-25.md",
+        "## Today\n- An item.\n",
+    );
     assert_eq!(
         unread(root.path()),
-        "line 1 of cited.jsonl can't be read",
-        "a citation that can't be read wasn't said unread"
+        "the morning note has no line opening \"For you\"",
+        "a morning note in another shape was read as putting nothing to Joel"
     );
+    fs::remove_file(mission.join("morning-2026-11-25.md")).expect("the note is removed");
     fs::remove_file(mission.join("cited.jsonl")).expect("the citations are removed");
     fs::create_dir(mission.join("cited.jsonl")).expect("a folder stands in for the citations");
     assert!(
