@@ -111,14 +111,14 @@ def first_place(shell: Shell) -> Json:
 def assert_walk_said_by_kind(line: str, start: str, place: Json) -> None:
     """Check a one-row walk's line says its row by its key, or its key's kind, and not its name.
 
-    A place's key is the launcher's own, `place:<id>`, said whole, and another's is said by its
-    kind, so either way the id starts with what the line says, which is one step and not none.
+    A place at the launcher's top is keyed by its own id, `place:<id>`, said whole to its 64th
+    letter, so the line says exactly that much of the id, never only its start.
     """
     step = line.removeprefix(f"launcher: {start}")
     assert str(place["words"]) not in line, f"the walk said its row's name: {line}"
     assert step, f"the walk said no row: {line}"
     assert "\u203a" not in step, f"a walk of one row said more than one: {line}"
-    assert str(place["id"]).startswith(step), f"the walk said another row than its own: {line}"
+    assert step == str(place["id"])[:64], f"the walk said another row than its own: {line}"
 
 
 def test_a_catalogue_walk_says_its_rows_by_kind(shell: Shell) -> None:
