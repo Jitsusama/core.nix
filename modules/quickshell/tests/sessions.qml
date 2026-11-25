@@ -1374,6 +1374,43 @@ ShellRoot {
             `${keptAsked} ${keptBack} ${keptSpawns()}`);
         Sessions.forgetAsk(keptNamed);
         Sessions.keepPlaces(keptBeforeUntaken);
+        // A stray come for an ask while its press waits is said disowned at
+        // once, as a pid read wrong is likelier. A press again meanwhile is
+        // said so too, but takes the focus its own would; and its own come
+        // after, the stray still listed, is focused and said come, so the
+        // foot doesn't keep saying it isn't viewed.
+        const cameAfter = "pi-hosted.s-came-after";
+        const cameAfterWords = view.slice(0, -1).concat(["s-came-after"]);
+        const cameAfterRow = { address: "CAMEAFTER", here: true, attach: cameAfterWords,
+            presence: { hosted: true, session: "s-came-after" }, window: null };
+        const listedBeforeAfter = Niri.windows;
+        const goingBeforeAfter = Sessions.goingTo;
+        Sessions.viewWith(cameAfterWords, cameAfter, null, "Reef", { address: "FIRSTPRESS" });
+        const strayFirst = { id: 104, pid: 880, opened: cameAfter };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "104": strayFirst });
+        root.unhostedWhy = "";
+        Sessions.windowHeard(strayFirst);
+        const saidFirst = `${root.unhosted} ${root.unhostedWhy}`;
+        Sessions.goingTo = null;
+        root.unhostedWhy = "";
+        Sessions.goTo(cameAfterRow);
+        const saidAgain = `${root.unhosted} ${root.unhostedWhy}`;
+        const tookFocus = Sessions.goingTo?.app === cameAfter;
+        const ownAfter = { id: 105, pid: 4242, opened: cameAfter };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "104": strayFirst, "105": ownAfter });
+        Niri.acted = null;
+        root.unhostedWhy = "";
+        Sessions.windowHeard(ownAfter);
+        expect("a stray come for an ask is said disowned at once",
+            saidFirst === "FIRSTPRESS disowned", saidFirst);
+        expect("a press again meanwhile is said disowned, taking the focus its own would",
+            saidAgain === "CAMEAFTER disowned" && tookFocus, `${saidAgain} ${tookFocus}`);
+        expect("its own come after is focused, and said come after the stray",
+            focused(105) && root.unhosted === "CAMEAFTER" && root.unhostedWhy === "cameAfter",
+            `${JSON.stringify(Niri.acted)} ${root.unhosted} ${root.unhostedWhy}`);
+        Sessions.forgetAsk(cameAfter);
+        Sessions.goingTo = goingBeforeAfter;
+        Niri.windows = listedBeforeAfter;
         // A stray come long after an ask that never came isn't taken for
         // that ask's own refused, so Go To would open its own beside it.
         const stale = "pi-hosted.s-stale";
