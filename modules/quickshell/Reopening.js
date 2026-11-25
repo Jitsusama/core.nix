@@ -271,7 +271,10 @@ function queuedOnce(queue, more, begun) {
 // it won't look for again (queuedOnce) and so can never find gone: a
 // folder found gone among them would otherwise be said reopened. One begun
 // and still findable, its folder looked for now or one queued afresh for
-// it, counts, so its folder found gone is told.
+// it, counts, so its folder found gone is told. So a list given just after
+// one the walk used up within the same turn, as one whose every session
+// another machine holds, counts afresh, none that walk began among them,
+// though the two were pressed as one.
 function tallyOf(walk, ids, tell) {
     const own = walk?.tally ?? null;
     const idOf = entry => entry.one.afreshFor ?? entry.one.id;

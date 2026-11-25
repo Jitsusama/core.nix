@@ -231,9 +231,10 @@ Scope {
     // with nothing drawn to step back to, and only rows made before. A place whose rows change
     // each second leaves it off, since each change would be made with nobody seeing it.
     property bool madeAhead: false
-    // The rows owed so, by key, and how many are made a turn.
+    // The rows owed so, by key, and how many are made a turn, which a case sets lower to see
+    // a batch span turns.
     readonly property var owedAhead: ({})
-    readonly property int aheadEachTurn: 8
+    property int aheadEachTurn: 8
     // Elsewhere is a step held in another place, settled, not only these rows unwanted: they're
     // unwanted too as a kept opening fills in at home, before their turn to wake, and under a
     // viewer's command line (Wanted.js), and a chord or a kept opening holds its place's step
@@ -261,22 +262,26 @@ Scope {
             return;
         }
         aheadWaiting = true;
-        // Felt as "<its name> ahead", so a frame its rows stall says who held it, as Agents'
-        // wraps do.
         maker.launcher.afterFrame(() => {
             aheadWaiting = false;
-            if (typeof maker.felt === "function")
-                maker.felt("ahead", makeAhead);
-            else
-                makeAhead();
+            aheadFelt();
         });
     }
     property bool aheadWaiting: false
 
+    // Felt as "<its name> ahead", so a frame its rows stall says who held it, as Agents'
+    // wraps do.
+    function aheadFelt() {
+        if (typeof maker?.felt === "function")
+            maker.felt("ahead", makeAhead);
+        else
+            makeAhead();
+    }
+
     Timer {
         id: aheadTurn
         interval: 0
-        onTriggered: ready.makeAhead()
+        onTriggered: ready.aheadFelt()
     }
 
     // A close runs what waits on a frame in its own turn, which can come before `drawn` has
@@ -291,9 +296,16 @@ Scope {
                 return;
             }
             delete owedAhead[key];
-            if (!(key in made) && served(key) !== null) {
+            if (key in made || served(key) === null)
+                continue;
+            count += 1;
+            // One row that throws is said and left to its step back, since this runs among
+            // what else waits on the launcher's frame (Launcher.qml's afterFramesDue), which a
+            // throw would cut short, and the rest owed would wait for the next row told.
+            try {
                 rowAt(key);
-                count += 1;
+            } catch (error) {
+                console.warn(`${place}: ${key} not made ahead: ${error}`);
             }
         }
     }
