@@ -1884,6 +1884,32 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
         expect(foraged, "the cell's drawer kept a forage that went").to_have_count(0)
+        # A forage saying only what the cell split from grows the same branch,
+        # since a sprout's start can go unsaid while its split stays, and both
+        # drawers say it split, never that anybody started it.
+        split = {"started_by": None, "split_from": GROWN_BY, "parent": None}
+        forage_node.tell("forage", changed=[{**forage, "lineage": split}])
+        expect(hub, "the network never grew out of the one it split from").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        page.evaluate(f"location.hash = '#net={GROWN}'")
+        expect(body, "the branch's drawer never said what its cell split from").to_contain_text(
+            f"Split from {GROWN_BY_TITLE}: 1 of its 2 cells", timeout=PACE_MS
+        )
+        expect(body, "the branch's drawer said a split was a start").not_to_contain_text(
+            "Started by"
+        )
+        page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
+        said = body.locator("dl.facts > div", has=page.locator("dt", has_text="Split from"))
+        expect(said, "the cell's drawer never said what it split from").to_contain_text(
+            GROWN_BY_TITLE, timeout=PACE_MS
+        )
+        expect(body, "a split was said to be a start").not_to_contain_text(f"by {GROWN_BY_TITLE}")
+        forage_node.tell("forage", gone=[key])
+        expect(hub, "the branch outlived the split that grew it").not_to_have_attribute(
+            "data-branch-of", re.compile("."), timeout=PACE_MS
+        )
+        expect(said, "the cell's drawer kept a split that went").to_have_count(0)
     finally:
         opened.close()
 

@@ -43,6 +43,11 @@ Nothing on it acts on the network.
   branch grows across machines alike. A node too old to say so of its
   cells says it only of its own machine's, so a realm with such a node in
   it grows branches from that machine's cells only on that machine's map.
+  A cell whose purpose split from another's, as a cell sprouted from
+  another's work does, grows the same branch where no start is said. Both
+  drawers say it split rather than that anybody started it, since a split
+  is not a start. Only the cell's forage says a split, so only this
+  machine's splits are drawn.
 - **Lines thin as the map steps out past its own size.** What each line
   carries past a hairline thins with the zoom, as the cells shrink with
   it, so the cells read first: a heavier line still reads heavier than a

@@ -7,7 +7,14 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { grownOf, isLaterCopy, type Network, oneCopyEach, type Started } from "../lineage.ts";
+import {
+  grownOf,
+  isLaterCopy,
+  type Network,
+  oneCopyEach,
+  originsOf,
+  type Started,
+} from "../lineage.ts";
 import { nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-19T01:00:00Z");
@@ -215,6 +222,48 @@ it("a cell nobody started, or one said to have started itself, names no starter"
   assert.deepEqual(nowOf(told(these), AT).started, []);
 });
 
+it("a cell's forage says what it split from, else the first forage listing it split into", () => {
+  const these = [
+    forage("KESTRL", { split_into: ["TERNAA", "SKIFFS", "GULL01"] }),
+    forage("OSPREY", { split_into: ["SKIFFS"] }),
+    forage("TERNAA", { split_from: "KESTRL" }),
+    forage("GULL01", { split_from: "OSPREY" }),
+  ];
+  assert.deepEqual(
+    nowOf(told(these), AT).split,
+    [
+      { cell: "TERNAA", from: "KESTRL" },
+      { cell: "GULL01", from: "OSPREY" },
+      { cell: "SKIFFS", from: "KESTRL" },
+    ],
+    "a cell's own split_from should stand, and a cell naming none take its first lister",
+  );
+});
+
+it("a split naming the cell itself, a blank or anything but words names nothing", () => {
+  const these = [
+    forage("SELF01", { split_from: "SELF01", split_into: ["SELF01", "", 7] }),
+    forage("BLANK1", { split_from: "", split_into: "TERNAA" }),
+    forage("NUMBER", { split_from: 7, split_into: null }),
+    forage("ALONE1", { split_from: null }),
+    { key: "forage:NOCELL", kind: "forage", heard: AT, lineage: { split_into: ["GULL01"] } },
+  ];
+  assert.deepEqual(nowOf(told(these), AT).split, []);
+  assert.deepEqual(nowOf(told(undefined), AT).split, [], "a node serving no forage says no split");
+});
+
+it("a cell's origin is who started it, else what it split from, one a cell", () => {
+  const started = [{ cell: "HERON1", by: "SKIFF1" }];
+  const splits = [
+    { cell: "HERON1", from: "GULL01" },
+    { cell: "TERNAA", from: "KESTRL" },
+  ];
+  assert.deepEqual(originsOf(started, splits), [
+    { cell: "HERON1", by: "SKIFF1" },
+    { cell: "TERNAA", by: "KESTRL", split: true },
+  ]);
+});
+
 /** A network the node sets within `within`, named `name`, its cells drawn in it. */
 function network(
   key: string,
@@ -235,6 +284,28 @@ function grown(networks: readonly Network[], started: readonly Started[]) {
 function startedBy(by: string, ...cells: string[]): Started[] {
   return cells.map((cell) => ({ cell, by }));
 }
+
+it("a network whose cell split from another's, no start said, grows out of it", () => {
+  const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
+  const origins = originsOf([], [{ cell: "HERON1", from: "SKIFF1" }]);
+  assert.deepEqual(grown(networks, origins), {
+    heron: { from: "skiff", by: [], cells: 1, split: { from: ["SKIFF1"], cells: 1 } },
+  });
+});
+
+it("a network some of whose cells were started there and some split from it says each", () => {
+  const networks = [
+    network("skiff", ["SKIFF1", "SKIFF2"]),
+    network("heron", ["HERON1", "HERON2", "HERON3"]),
+  ];
+  const origins = originsOf(startedBy("SKIFF1", "HERON1"), [
+    { cell: "HERON1", from: "SKIFF2" },
+    { cell: "HERON2", from: "SKIFF2" },
+  ]);
+  assert.deepEqual(grown(networks, origins), {
+    heron: { from: "skiff", by: ["SKIFF1"], cells: 2, split: { from: ["SKIFF2"], cells: 1 } },
+  });
+});
 
 it("a network whose cell another network's cell started grows out of that network", () => {
   const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];

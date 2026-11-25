@@ -22,7 +22,7 @@ which leaves this note behind.
 | `spend.ts`     | what each spent today, most first, as the drawer lists it   |
 | `waits.ts`     | what waits on each cell and what holds stand, in words      |
 | `reach.ts`     | whether the drawing reaches every cell, said when asked     |
-| `lineage.ts`   | who started each cell, from its record, else its forage     |
+| `lineage.ts`   | who started each cell, and what it split from, its branches |
 | `balance.ts`   | the realm's balance, and each machine's share of the work   |
 | `sprout.ts`    | the link that hands new work to the Launcher, and its words |
 | `acts.ts`      | what a cell's drawer offers, in order, and what it asks     |
