@@ -189,13 +189,16 @@ fn named(status: &str) -> Option<(&str, u32)> {
 }
 
 /// The process at the other end of `stream`: its pidfd and pid, or where
-/// the kernel names no peer by pidfd (before Linux 6.5, as the lent
-/// builders run), the pid it named at connect, which is all the node
-/// ever reads of who asks it (mycelium's src/node/mod.rs, `peer_cred`).
+/// the kernel refuses to name a peer by pidfd at all (before Linux 6.5,
+/// as the lent builders run), the pid it named at connect, which is all
+/// the node ever reads of who asks it (mycelium's src/node/mod.rs,
+/// `peer_cred`). Any other failure to get the pidfd refuses, so the pid
+/// alone stands only where nothing better can be had (ISXEG8, 25
+/// November).
 fn asker_of(stream: &UnixStream) -> io::Result<(Option<OwnedFd>, u32)> {
     match pidfd_of(stream) {
         Ok((pidfd, pid)) => Ok((Some(pidfd), pid)),
-        Err(error) if error.kind() == io::ErrorKind::Unsupported => {
+        Err(error) if no_pidfd(&error) => {
             let mut cred = libc::ucred {
                 pid: 0,
                 uid: 0,
@@ -364,17 +367,7 @@ fn pidfd_of(stream: &UnixStream) -> io::Result<(OwnedFd, u32)> {
         )
     };
     if read != 0 || fd < 0 {
-        let error = io::Error::last_os_error();
-        // A pid alone could be another process's by the time it's read,
-        // so a kernel before 6.5 is refused rather than trusted.
-        return Err(if error.raw_os_error() == Some(libc::ENOPROTOOPT) {
-            io::Error::new(
-                io::ErrorKind::Unsupported,
-                "this kernel names no peer by pidfd (Linux 6.5 and later do)",
-            )
-        } else {
-            error
-        });
+        return Err(unpidfd(read, io::Error::last_os_error()));
     }
     // SAFETY: the kernel just handed this descriptor to this process, and
     // nothing else holds it.
@@ -403,6 +396,39 @@ fn alive(pidfd: &OwnedFd) -> bool {
     let ready = unsafe { libc::poll(&raw mut asked, 1, 0) };
     ready == 0
 }
+
+/// What a failed ask for a pidfd, `read` as getsockopt returned and
+/// `error` as it left errno, is told: the kernel's refusal of the option
+/// itself as [`NoPidfd`], and any other failure as itself. A pid alone
+/// could be another process's by the time it's read, so the shell's
+/// check refuses either way, and only Joel's words' check falls back.
+fn unpidfd(read: libc::c_int, error: io::Error) -> io::Error {
+    let refused =
+        read != 0 && matches!(error.raw_os_error(), Some(libc::ENOPROTOOPT | libc::EINVAL));
+    if refused {
+        io::Error::new(io::ErrorKind::Unsupported, NoPidfd)
+    } else {
+        error
+    }
+}
+
+/// Whether `error` is the kernel's refusal of `SO_PEERPIDFD` itself.
+fn no_pidfd(error: &io::Error) -> bool {
+    error.get_ref().is_some_and(|why| why.is::<NoPidfd>())
+}
+
+/// The kernel's refusal of `SO_PEERPIDFD` itself, as before Linux 6.5,
+/// and never any other failure to get a pidfd.
+#[derive(Debug)]
+struct NoPidfd;
+
+impl std::fmt::Display for NoPidfd {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("this kernel names no peer by pidfd (Linux 6.5 and later do)")
+    }
+}
+
+impl std::error::Error for NoPidfd {}
 
 fn gone() -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, "the process asking ended")
@@ -619,6 +645,26 @@ mod tests {
                 lineage(&[(50, "bash", 49), (49, "bash", 50)])
             )),
             "its forebears never end"
+        );
+    }
+
+    #[test]
+    fn only_the_kernels_refusal_of_a_pidfd_falls_back() {
+        for errno in [libc::ENOPROTOOPT, libc::EINVAL] {
+            assert!(
+                no_pidfd(&unpidfd(-1, io::Error::from_raw_os_error(errno))),
+                "getsockopt refusing the option, {errno}"
+            );
+        }
+        for (read, errno) in [(-1, libc::EPERM), (-1, libc::EBADF), (0, libc::EINVAL)] {
+            assert!(
+                !no_pidfd(&unpidfd(read, io::Error::from_raw_os_error(errno))),
+                "{errno} after getsockopt gave {read} refuses"
+            );
+        }
+        assert!(
+            !no_pidfd(&io::Error::from(io::ErrorKind::Unsupported)),
+            "another unsupported failure refuses"
         );
     }
 
