@@ -55,10 +55,12 @@ fn refused_why(reason: &str) -> Option<String> {
 /// reason. When going back failed too, or there was nothing to go back to,
 /// the reason's own failure is said, with that beside it kept whole however
 /// long the failure, since only then is the machine left off the commit it
-/// ran and waiting on a person. Its lines then hold going back's after the
-/// switch's own, with nothing between to tell them apart (update-to-main's
-/// update.rs `going_back`), so a switch whose own lines hold no error would
-/// take going back's as its cause: the reason names the step that failed.
+/// ran and waiting on a person. When going back failed, its lines follow
+/// the switch's own with nothing between to tell them apart
+/// (update-to-main's update.rs `going_back`), so a switch whose own lines
+/// hold no error would take going back's as its cause: the reason names the
+/// step that failed. With nothing to go back to, none ran, so every line is
+/// the switch's own and its first error says why.
 fn failed_why(updated: &Value, reason: Option<&str>) -> Option<String> {
     let stranded = reason.and_then(|reason| {
         STRANDED
@@ -66,7 +68,13 @@ fn failed_why(updated: &Value, reason: Option<&str>) -> Option<String> {
             .find_map(|left| reason.find(left).map(|at| reason.split_at(at)))
     });
     match stranded {
-        Some((failure, left)) => beside(failure, "; ", left),
+        Some((failure, left)) => {
+            let own = left
+                .starts_with(NOTHING_BACK)
+                .then(|| first_error(updated))
+                .flatten();
+            beside(own.as_deref().unwrap_or(failure), "; ", left)
+        }
         None => first_error(updated)
             .as_deref()
             .map_or_else(|| reason.and_then(plain), plain),
@@ -75,7 +83,11 @@ fn failed_why(updated: &Value, reason: Option<&str>) -> Option<String> {
 
 /// How update-to-main says a failed switch left the machine on no system
 /// it ran, which a reason carries after the failure itself.
-const STRANDED: [&str; 2] = ["going back failed too", "there was no system to go back to"];
+const STRANDED: [&str; 2] = ["going back failed too", NOTHING_BACK];
+
+/// How update-to-main says a failed switch had no system to go back to, so
+/// tried none.
+const NOTHING_BACK: &str = "there was no system to go back to";
 
 /// The first error in a failed update's lines with words in it, passing
 /// over each that is only a piece waiting on one that failed: the lines
@@ -202,11 +214,12 @@ fn cut_to(why: &str, at_most: usize) -> Option<String> {
     let keep = at_most.saturating_sub(1);
     let cut: String = said.chars().take(keep).collect();
     // A cut that ends a word whole, before a space or a clause's mark, keeps
-    // it; one inside a word goes back to the word before.
+    // it; one inside a word, even before its apostrophe, dash or slash, goes
+    // back to the word before.
     let word = if said
         .chars()
         .nth(keep)
-        .is_some_and(|next| !next.is_alphanumeric())
+        .is_some_and(|next| next.is_whitespace() || CLAUSE_ENDS.contains(&next))
     {
         cut.as_str()
     } else {
@@ -217,6 +230,9 @@ fn cut_to(why: &str, at_most: usize) -> Option<String> {
 
 /// What marks a why cut short.
 const CUT: char = '\u{2026}';
+
+/// The marks a clause can end on, which end a word as a space does.
+const CLAUSE_ENDS: [char; 4] = ['.', ';', ':', ','];
 
 /// `words` trimmed of space and of the marks a clause can end on.
 fn unended(words: &str) -> &str {
@@ -324,8 +340,16 @@ mod tests {
                                   back to"});
         assert_eq!(
             why_of(&gone),
+            json!("the switch was cut off, there was no system to go back to"),
+            "a machine with nothing to go back to says the switch's own error beside it"
+        );
+        let mute = json!({"step": "failed", "lines": ["error:"],
+                          "why": "switching failed (exit status: 4); there was no system to go \
+                                  back to"});
+        assert_eq!(
+            why_of(&mute),
             json!("switching failed (exit status: 4), there was no system to go back to"),
-            "a machine with nothing to go back to says so beside the step that failed"
+            "and the step that failed when its lines say nothing"
         );
         let old = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
                          "lines": ["error: builder for '/nix/store/x.drv' failed with exit \
@@ -360,7 +384,7 @@ mod tests {
             "an error after a waiting piece is said"
         );
         let long = "x ".repeat(115);
-        let lost = json!({"step": "failed", "lines": ["error: going back's own"],
+        let lost = json!({"step": "failed", "lines": [],
                           "why": format!("switching failed: {long}; there was no system to \
                                           go back to")});
         let lost = why_of(&lost);
@@ -573,5 +597,12 @@ mod tests {
             json!(format!("b {word}\u{2026}")),
             "so is one a clause's mark ends"
         );
+        for inside in ['\'', '-', '/'] {
+            assert_eq!(
+                why_of(&json!({"step": "refused", "why": format!("b {word}{inside}t rest")})),
+                json!("b\u{2026}"),
+                "a word cut at its {inside} goes back to the word before"
+            );
+        }
     }
 }
