@@ -165,12 +165,13 @@ fn kept(path: &Path, most: u64) -> Option<String> {
 /// in those bytes, as any command is. Any other failure that brought no
 /// lines of its own, a job that didn't end above all, is told with the
 /// last lines the job had said by then, the newest nearest what it waited
-/// on; or that it had written nothing, which points to a prompt rather
-/// than Nix; or, when neither of its files is there, that it left none,
-/// which a job that never started leaves too. On 24 November three that
-/// waited an hour each left only "didn't end", and whether they waited on
-/// a prompt or on Nix couldn't be read afterwards. A failure with lines of
-/// its own, as launchctl's refusal to start the job, keeps them.
+/// on; or that it had written nothing, which fits a prompt or a fetch that
+/// prints nothing without a terminal, rather than Nix failing; or, when
+/// neither of its files is there, that it left none, which a job that
+/// never started leaves too. On 24 November three that waited an hour each
+/// left only "didn't end", and whether they waited on a prompt or on Nix
+/// couldn't be read afterwards. A failure with lines of its own, as
+/// launchctl's refusal to start the job, keeps them.
 fn said_by(
     ended: Result<i32, Failure>,
     what: &str,
@@ -724,6 +725,9 @@ mod tests {
     #[test]
     fn a_job_that_cant_run_still_says_it_ended() {
         let folder = tempfile::tempdir().unwrap();
+        // One left from before is there, so a status written in place
+        // rather than moved from aside leaves it and fails.
+        fs::write(folder.path().join("status.new"), "0\n").unwrap();
         assert_eq!(job(folder.path()), 127);
         assert_eq!(
             fs::read_to_string(folder.path().join(STATUS)).unwrap(),
