@@ -33,14 +33,16 @@ mkdir -p "${state}"
 # running it was wrong of any kind, kept as
 # "<check> <rounds> <red> <outcome> <wrong rounds>". A count that isn't a
 # number is read as none, since bash's arithmetic would run what it holds,
-# and a line naming no check is passed over, since bash refuses an empty
-# key and the round would end before it kept anything.
+# and so is one opening with a zero, which it reads as octal and refuses
+# past 7, ending the round; a line naming no check is passed over, since
+# bash refuses an empty key and the round would end before it kept
+# anything.
 declare -A running=() red=() kind=() bad=()
 if [[ -r "${state}/running" ]]; then
   while read -r check count was outcome any; do
     [[ -n ${check} ]] || continue
-    [[ ${count} =~ ^[0-9]+$ ]] || count=0
-    [[ ${any-} =~ ^[0-9]+$ ]] || any=${count}
+    [[ ${count} =~ ^(0|[1-9][0-9]*)$ ]] || count=0
+    [[ ${any-} =~ ^(0|[1-9][0-9]*)$ ]] || any=${count}
     running[${check}]=${count}
     red[${check}]=${was-no}
     kind[${check}]=${outcome-}
