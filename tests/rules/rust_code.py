@@ -74,5 +74,5 @@ if __name__ == "__main__":
     # Run alone, it names what only the tests of the crate under the src
     # it's given read, so a planted crate can be held to what it declares.
     given = Path(sys.argv[1]).resolve()
-    for file in sorted(read_by_tests_alone(given)):
-        print(file.relative_to(given))
+    for name in sorted(str(file.relative_to(given)) for file in read_by_tests_alone(given)):
+        print(name)

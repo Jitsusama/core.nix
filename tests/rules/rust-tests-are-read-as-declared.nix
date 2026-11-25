@@ -17,6 +17,8 @@ let
       mod real_tests;
       #[cfg(test)]
       mod checks;
+      #[cfg(test)]
+      mod fixtures;
       #[cfg(all(test, target_os = "linux"))]
       #[path = "elsewhere/linux.rs"]
       mod linux;
@@ -27,9 +29,17 @@ let
     '';
     # Real code, though its name says tests.
     "real_tests.rs" = "";
-    # A module a test module declares is read by tests alone too.
-    "checks.rs" = "mod helper;";
+    # A module a test module declares is read by tests alone too, and one it
+    # gives a path is read from beside it, not from its folder.
+    "checks.rs" = ''
+      mod helper;
+      #[path = "shared.rs"]
+      mod shared;
+    '';
     "checks/helper.rs" = "";
+    "shared.rs" = "";
+    # A module with no file of its name is read from its folder's mod.rs.
+    "fixtures/mod.rs" = "";
     "elsewhere/linux.rs" = "";
     "inline/nested.rs" = "";
     # A mod.rs finds its modules beside it.
@@ -52,7 +62,9 @@ let
     checks/helper.rs
     deep/golden.rs
     elsewhere/linux.rs
+    fixtures/mod.rs
     inline/nested.rs
+    shared.rs
   '';
   planted = lib.concatStrings (
     lib.mapAttrsToList (file: text: ''
