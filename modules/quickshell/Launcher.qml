@@ -7647,8 +7647,13 @@ Scope {
         const due = afterFramesDrawing.concat(afterFrames);
         afterFramesDrawing = [];
         afterFrames = [];
-        for (const then of due)
-            then();
+        afterFramesRun(due);
+    }
+    // Each in turn, one that throws said and the rest run still
+    // (launcher/Pacing.js's runEach).
+    function afterFramesRun(due) {
+        Pacing.runEach(due, said => console.warn(
+            `launcher: what waited on a frame threw: ${said}`));
     }
 
     // When each of the last keys reached its frame, oldest first, for the
@@ -14164,8 +14169,7 @@ Scope {
                 root.actsFrameSwapped();
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
-                for (const then of due)
-                    then();
+                root.afterFramesRun(due);
                 if (root.afterFrames.length > 0)
                     card.Window.window?.update();
             }

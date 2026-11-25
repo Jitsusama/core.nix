@@ -166,6 +166,28 @@ function frameSwapped(acts) {
     return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
 }
 
+// What waited on a frame, each run in turn, one that throws said in a line and the rest run
+// still: the list is let go before it runs, so a throw ending the loop dropped the rest for
+// good, as Quests' rows made ahead, whose callback alone clears its wait, would never be
+// made ahead again (core.nix#6524's F17).
+function runEach(due, said) {
+    for (const then of due) {
+        try {
+            then();
+        } catch (error) {
+            said(threw(error));
+        }
+    }
+}
+
+// A throw in one line, its message's first line and where it was thrown, as the journal's
+// other warnings are one each.
+function threw(error) {
+    const at = `${error?.stack ?? ""}`.split("\n")[0];
+    const message = `${error?.message ?? error}`.split("\n")[0];
+    return at === "" ? message : `${message} at ${at}`;
+}
+
 // A drawer coming the frame after its key's waited one whole refresh for
 // its swap, niri's callback for the key's frame: 16 ms of every drawer's
 // median of 69 from the key, against Joel's 50 (2026-11-12), where its

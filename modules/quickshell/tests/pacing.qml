@@ -6,8 +6,9 @@
 // changes is taken a pace apart, and never two refreshes closer than that,
 // however the first was asked for; a source's rows are wanted only where
 // they're shown or searched, so a change nobody sees asks none; a key's
-// act is said shown by the first frame begun after its refresh; and an
-// opening says its parts slowest first, and weighs the foot's verbs only
+// act is said shown by the first frame begun after its refresh, and what
+// waits on a frame runs each in turn, one that throws said and the rest
+// run still; and an opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
 // what's typed, the steps and the mode; an opening's stall is said by the
 // work it ran into, each frame's rows laid out and its sync apart, and its
@@ -773,6 +774,18 @@ QtObject {
             names(swapped.acts.waiting), "wifi");
         check(failures, "which the next frame shows",
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
+        // What waited on the frame runs each in turn, one that throws said
+        // in a line, its place with it, and the rest run still, as Quests'
+        // rows made ahead, queued after it, clear their wait only as they run.
+        const ran = [];
+        const said = [];
+        Pacing.runEach([() => ran.push("first"), () => {
+            throw new Error("a row broke\nits second line");
+        }, () => ran.push("last")], line => said.push(line));
+        check(failures, "one that throws stops none after it", ran.join(" "), "first last");
+        check(failures, "and is said once, in one line, where it was thrown",
+            [said.length, said[0]?.startsWith("a row broke at "), said[0]?.includes("\n")]
+                .join(), "1,true,false");
     }
 
     // A daemon's changes are timed from the first line the draw shows,
