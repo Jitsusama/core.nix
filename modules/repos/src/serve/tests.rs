@@ -151,17 +151,65 @@ fn one_checkout(name: &str) -> (PathBuf, repos::model::Record) {
     (at, disk.record())
 }
 
+/// A pace for what works in each tree short enough that a case sees
+/// several readings in well under a second.
+const BRISK: Duration = Duration::from_millis(20);
+
+#[test]
+fn what_works_is_read_at_its_own_pace_however_long_the_disk_takes() {
+    // A whole reading of a busy disk took over three minutes on 25 Nov,
+    // longer than two readings of /proc may be apart and still measure a
+    // share, so they keep a clock of their own rather than waiting on it.
+    // Each reading here says a pace of waking time passed, in which the
+    // process worked all of it.
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let counting = std::sync::Arc::clone(&calls);
+    let folder = PathBuf::from("/home/someone/trees/fix");
+    let mut working = Working::start(BRISK, vec![folder.clone()], move |folders: &[PathBuf]| {
+        let call = counting.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Sample {
+            at: 100 + call * 2,
+            awake: Some(100 + call * 2),
+            processes: vec![Process {
+                pid: 1,
+                parent: 0,
+                folder: folders.first().cloned(),
+                started: 1,
+                own: call * 2,
+                children: 0,
+                memory: Some(4_096),
+            }],
+        }
+    });
+    working.read(vec![folder.clone()]);
+    // The disk's whole reading takes ten paces.
+    std::thread::sleep(BRISK * 10);
+    working.read(vec![folder.clone()]);
+    let read = calls.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(
+        read >= 4,
+        "/proc was read {read} times in ten paces, so only as the disk was"
+    );
+    assert!(working.measured, "a share went unmeasured");
+    assert_eq!(
+        working.used.get(&folder).and_then(|used| used.cpu),
+        Some(1.0),
+        "the share wasn't of the pace before the newest reading"
+    );
+}
+
 #[test]
 fn what_works_is_unread_until_a_first_reading_answers() {
     // A daemon restarted while a process holds its memory map reaches
     // that process again, so nothing it has read says nothing works.
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
-    let mut working = Working::start(move |_: &[PathBuf]| {
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let mut working = Working::start(BRISK, folders.clone(), move |_: &[PathBuf]| {
         let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
         Sample::default()
     });
-    working.read(vec![PathBuf::from("/home/someone/trees/fix")]);
+    working.read(folders);
     let (at, record) = one_checkout("first");
     let said = working.said(&record);
     let using = said.iter().find(|said| said["kind"] == "using");
@@ -181,7 +229,8 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
     let calls = std::sync::atomic::AtomicU64::new(0);
-    let mut working = Working::start(move |folders: &[PathBuf]| {
+    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
+    let mut working = Working::start(BRISK, folders.clone(), move |folders: &[PathBuf]| {
         let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if call > 0 {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
@@ -203,7 +252,6 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
             }],
         }
     });
-    let folders = vec![PathBuf::from("/home/someone/trees/fix")];
     working.read(folders.clone());
     assert_eq!(working.used.len(), 1, "the first reading wasn't taken");
 

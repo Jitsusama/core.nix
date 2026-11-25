@@ -15,12 +15,15 @@
 //! watched: a checkout cloned under a root, and when a tree was last
 //! written, which moves with its index.
 //!
-//! Each pace reads what works in each checkout and tree too (using.rs),
-//! from `/proc`, and says it as each repository's `using:` record, so the
-//! Code page shows the processor and memory beside the space. It's read
-//! only at the pace, as a share of time wants two readings a while apart,
+//! What works in each checkout and tree is read too (using.rs), from
+//! `/proc`, and said as each repository's `using:` record, so the Code
+//! page shows the processor and memory beside the space. It's read once a
+//! pace on a clock of its own, as a share of time wants two readings a
+//! pace apart: a whole reading of a busy disk took over three minutes on
+//! 25 Nov, longer than two readings may be apart and still measure one,
 //! and a reading of every process at each commit would cost the disk's
-//! busiest minutes most.
+//! busiest minutes most. Each whole reading hands it the folders found
+//! and takes what it read last.
 //!
 //! Each reading writes Code's homes too, where `REPOS_HOMES` names a file
 //! for them, whenever they changed (homes.rs): so they move with the disk,
@@ -116,8 +119,9 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut homes = homes_named();
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-    let mut working =
-        Working::start(|folders: &[PathBuf]| using::sample(Path::new("/proc"), folders));
+    let mut working = Working::start(PACE, folders_of(&record), |folders: &[PathBuf]| {
+        using::sample(Path::new("/proc"), folders)
+    });
     // What works in each is said unread until /proc answers, which may
     // take its second or never, so the daemon is ready on the disk alone.
     shared.change(working.said(&record), feed::sources(&record));
@@ -166,7 +170,8 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     }
 }
 
-/// How long the loop waits at the pace for what works in each tree.
+/// How long the loop waits for the first reading of what works in each
+/// tree, so the daemon's first answers say it where `/proc` is quick.
 const SAMPLED: Duration = Duration::from_secs(1);
 
 /// How many paces may pass with no reading before what was last read
@@ -189,16 +194,21 @@ fn folders_of(record: &Record) -> Vec<PathBuf> {
 /// What one reading found in each folder, and whether it measured a share.
 type Measured = (BTreeMap<PathBuf, Use>, bool);
 
-/// What worked in each checkout and tree at the last pace. It's read on a
-/// thread of its own, since a read of a process's memory waits while the
-/// process holds its memory map, which may be never, and the loop answers
-/// every view.
+/// What worked in each checkout and tree at the last reading. It's read on
+/// a thread of its own, at its own pace, since a read of a process's
+/// memory waits while the process holds its memory map, which may be
+/// never, the loop answers every view, and a whole reading of the disk
+/// may take longer than two readings of `/proc` may be apart.
 struct Working {
-    ask: mpsc::Sender<Vec<PathBuf>>,
+    /// The folders the next reading places processes in, as the last whole
+    /// reading of the disk found them: held rather than sent, so a reading
+    /// stuck for hours leaves no pile of them behind.
+    folders: Arc<Mutex<Vec<PathBuf>>>,
     told: Receiver<Measured>,
-    /// Whether a reading was asked for and hasn't answered.
-    asked: bool,
-    /// Paces in a row with no reading taken.
+    /// Whether the first reading has been waited on.
+    waited: bool,
+    /// Whole readings of the disk in a row that found no reading of
+    /// `/proc` new since the one before.
     missed: u32,
     /// Whether any reading has answered since the daemon started: until
     /// one has, nothing says what works, which isn't that nothing does.
@@ -208,12 +218,20 @@ struct Working {
 }
 
 impl Working {
-    fn start(mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static) -> Self {
-        let (ask, asked) = mpsc::channel::<Vec<PathBuf>>();
-        let (tell, told) = mpsc::channel();
+    /// Starts reading what works in each of `folders` every `pace`, until
+    /// it's dropped.
+    fn start(
+        pace: Duration,
+        folders: Vec<PathBuf>,
+        mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
+    ) -> Self {
+        let folders = Arc::new(Mutex::new(folders));
+        let (held, (tell, told)) = (Arc::clone(&folders), mpsc::channel());
         std::thread::spawn(move || {
             let mut last: Option<Sample> = None;
-            for folders in asked {
+            loop {
+                let began = Instant::now();
+                let folders = held.lock().map_or_else(|_| Vec::new(), |held| held.clone());
                 let now = sample(&folders);
                 let found = (
                     using::using(last.as_ref(), &now),
@@ -223,12 +241,13 @@ impl Working {
                 if tell.send(found).is_err() {
                     return;
                 }
+                std::thread::sleep(pace.saturating_sub(began.elapsed()));
             }
         });
         Self {
-            ask,
+            folders,
             told,
-            asked: false,
+            waited: false,
             missed: 0,
             answered: false,
             used: BTreeMap::new(),
@@ -236,23 +255,20 @@ impl Working {
         }
     }
 
-    /// Reads what works in each of `folders`, waiting `SAMPLED` at most,
-    /// and only while no earlier reading is still out: one stuck holds up
-    /// the loop once. Its processor time is measured once time has passed
-    /// since the last, and what was read goes unsaid once `STALE` paces
-    /// pass without a reading.
+    /// Takes the newest reading of what works in each folder, and hands
+    /// the next ones `folders`. Only the first is waited on, `SAMPLED` at
+    /// most, so one stuck holds up the loop once. Its processor time is
+    /// measured over the pace before it, and what was read goes unsaid once
+    /// `STALE` whole readings in a row find nothing new.
     fn read(&mut self, folders: Vec<PathBuf>) {
+        if let Ok(mut held) = self.folders.lock() {
+            *held = folders;
+        }
         let mut found = self.told.try_iter().last();
-        if found.is_some() {
-            self.asked = false;
+        if found.is_none() && !self.waited {
+            found = self.told.recv_timeout(SAMPLED).ok();
         }
-        if !self.asked && self.ask.send(folders).is_ok() {
-            self.asked = true;
-            if let Ok(now) = self.told.recv_timeout(SAMPLED) {
-                found = Some(now);
-                self.asked = false;
-            }
-        }
+        self.waited = true;
         if let Some((used, measured)) = found {
             if self.missed >= STALE {
                 eprintln!("repos: the reading of /proc answers again");
