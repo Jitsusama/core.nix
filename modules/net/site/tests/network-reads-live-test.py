@@ -280,6 +280,65 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         opened.close()
 
 
+# The device drawn lowest on the map, which a narrowed window stacks out of its first sight.
+LOWEST = """() => {
+  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")];
+  boxes.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
+  return boxes[0]?.dataset.id ?? null;
+}"""
+# How far the device the keys are on stands outside the map's room, and whether the map
+# overflows it, so standing in view is something the view had to do.
+HERE_PAST = """() => {
+  const view = document.querySelector("#map-view");
+  const here = document.querySelector("#map-draw [data-here]");
+  if (view === null || here === null) return null;
+  const room = view.getBoundingClientRect();
+  const box = here.getBoundingClientRect();
+  return {
+    past: Math.max(room.top - box.top, box.bottom - room.bottom, room.left - box.left,
+      box.right - room.right),
+    overflows: view.scrollHeight > view.clientHeight || view.scrollWidth > view.clientWidth,
+  };
+}"""
+
+
+def the_keys_device_stands_in_view(page: Page, where: str) -> None:
+    here = page.evaluate(HERE_PAST)
+    assert here is not None, f"{where}'s map marks no device the keys are on"
+    assert here["past"] <= 1, f"the keys' device stands {here['past']} px out of {where}'s map"
+
+
+def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    desk, phone = SIZES[-1], SIZES[0]
+    opened = Opened(browser, f"{root}network/", desk, "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_device_drawn(page)
+        lowest = page.evaluate(LOWEST)
+        assert lowest is not None, "the map drew no device"
+        opened_on(page, lowest)
+        expect(placed(page, lowest), "opening a device put no keys on it").to_have_attribute(
+            "data-here", ""
+        )
+        page.set_viewport_size({"width": phone[0], "height": phone[1]})
+        stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
+        page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
+        here = page.evaluate(HERE_PAST)
+        assert here is not None, "the narrowed map lost the keys' device"
+        assert here["overflows"], "the narrowed map fits whole, so its view proves nothing"
+        the_keys_device_stands_in_view(page, "a narrowed window")
+        page.set_viewport_size({"width": desk[0], "height": desk[1]})
+        across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
+        page.wait_for_function(across, arg=KESTREL, timeout=PACE_MS)
+        the_keys_device_stands_in_view(page, "a widened window")
+    finally:
+        opened.close()
+
+
 # The room across takes at the smallest zoom, in units (grid.ts's ACROSS_LEAST, and the same
 # less its floors' names' column), and that zoom (view.ts's ZOOMS[0]). A window whose map's room
 # falls between the two must stack, or the names' column is left out of the measure again.

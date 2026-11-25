@@ -79,6 +79,11 @@ class MapView {
 
   /** The drawing the view now shows, the keys kept where it still has them. */
   shows(drawn: Drawn): void {
+    // The way back an arrow retraces was walked across the old layout; drawn
+    // the other way, the device it would step back to is somewhere else.
+    if (this.#drawn !== undefined && this.#drawn.stacked !== drawn.stacked) {
+      this.#trail = null;
+    }
     this.#drawn = drawn;
     if (this.cursor !== null && !drawn.at.has(this.cursor)) {
       this.cursor = null;
