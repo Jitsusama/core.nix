@@ -3176,7 +3176,10 @@
     given with its secrets on, answers over its standard input and output as the shell runs it, a
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
-    before reading any secret while no copier is named, can't be read through /proc by the
+    before reading any secret while no copier is named, types a password only into the niri
+    window it was asked for once the launcher has let go of the keys and while that window still
+    has them, never into one a pi session runs in or under, nor a kitty whose foreground runs
+    one or that can't say, and writes one journal line for each type naming no secret, can't be read through /proc by the
     account's other processes nor write a core dump, says nothing of its own on the shell's pipe
     whether it ends well, fails or panics, ends once whatever ran it closes its end,
     says a one-time code's period, gives a one-time code's detail as its code and
@@ -3212,7 +3215,8 @@
   passwords-runs-each-password-manager = ''
     on a machine with 1Password, the launcher's Passwords place runs the passwords daemon as the
     shell's own child with 1Password's manager through the system's op, with no unit and no
-    socket, names no copier, stays off until agents are fenced, and knows 1Password's program
+    socket, names no copier, is on, types through wtype and asks kitty through kitten, and knows
+    1Password's program
   '';
   pause-all-agents-asks-once-on-a-second-return = ''
     in a nested niri, Pause All Agents is found by typing, arms on a first Return asking nothing,
@@ -5581,14 +5585,20 @@
   '';
   the-passwords-answer-no-ipc = ''
     nothing of the Passwords place, the daemon interface it asks through, nor Asks, how it says a
-    line was shown and the ready rows it acts through answers the shell's IPC
+    line was shown and the ready rows it acts through answers the shell's IPC, so no IPC reaches
+    typing a password
+  '';
+  the-passwords-daemon-binds-no-socket = ''
+    none of the passwords daemon's source binds a socket of any kind, so only the shell that
+    runs it, through its standard input, can ask it to type a password
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place runs the passwords daemon as the shell's own child and
     asks it nothing until Joel steps in,
     then lists once as his, leads with the locked manager's row, whose Return unlocks it, one
-    refused saying why the next time the launcher opens, copies
-    an entry's password on Return through the daemon to the clipboard as the launcher goes, the
+    refused saying why the next time the launcher opens, types an entry's password on Return
+    into the window the launcher opened over, landing on the row from the find first, copies it
+    by Copy the Password through the daemon to the clipboard as the launcher goes, the
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
@@ -5605,7 +5615,7 @@
     whose Return, with nothing to open, puts the keys in its drawer, which says why
   '';
   the-passwords-place-says-why-its-off-on-niri = ''
-    on a nested niri, with the Passwords place off as the module leaves it, Home's Passwords row
+    on a nested niri, with the Passwords place set off, Home's Passwords row
     and the place's one row each have a drawer saying why it's off and that Return opens a
     stand-in Chrome, where 1Password's extension fills in sign-ins
   '';
@@ -5615,7 +5625,8 @@
     password manager only while two are on the machine, an entry's acts come in the design's
     order, each only where it has what it needs, opening it in the browser its manager fills in
     only on an http or https website, its manager's link is filled only where the entry
-    says every part, its drawer's eyebrow says its vault and kind, and its facts every figure but
+    says every part, Type the Password leads only where there's a window under the launcher and
+    the entry has a password, the foot saying why a type was refused, its drawer's eyebrow says its vault and kind, and its facts every figure but
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,
     each in the warning's role, its password reused or breached as its health once every password

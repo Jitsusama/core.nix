@@ -22,6 +22,13 @@ onLinux {
   # get asks no manager anything; a secret goes only to the ask for it,
   # never to a watch, or to the clipboard marked sensitive, cleared when
   # its time is up, and copying is refused while no copier is named;
+  # a password is typed on the typist's standard input alone, never its
+  # arguments, into the window niri says has the keys once the launcher
+  # has let go of them, and nothing is typed, nor any secret read, while
+  # no typist is named, while the launcher keeps the keys, where another
+  # window has them, into a window beneath a pi session, or into a
+  # terminal running one or whose kitty can't say what runs in it, each
+  # type a journal line naming the entry and the window, never the secret;
   # a one-time code says its period, and its detail gives the code, never
   # its seed; a manager signed out is said so and
   # gives no secret; a watch hears entries arrive; an ask or kind it
@@ -102,8 +109,9 @@ onLinux {
   # On a machine with 1Password, the launcher's Passwords provider runs the
   # daemon itself, with 1Password's manager, and nothing else can: there's
   # no unit and no socket for it, and no copier is named, so nothing is
-  # copied until agents are fenced off the clipboard. The place stays off
-  # meanwhile, and the provider knows 1Password's program.
+  # copied until agents are fenced off the clipboard. The place is on, its
+  # Return typing through wtype and asking kitty's kitten what a terminal
+  # runs, and the provider knows 1Password's program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -117,7 +125,9 @@ onLinux {
         && !(home.systemd.user.services ? passwords)
         && !(home.systemd.user.sockets ? passwords)
         && !(provider ? copier)
-        && (provider.off or false)
+        && !(provider.off or false)
+        && lib.hasSuffix "/bin/wtype" (provider.typist or "")
+        && lib.hasSuffix "/bin/kitten" (provider.kitty or "")
         && home.jitsusama.passwords.managers ? "1password"
         && lib.any (lib.hasSuffix "/op") home.jitsusama.passwords.managers."1password".command
         && map (manager: manager.program) (provider.managers or [ ]) == [ "com.onepassword.OnePassword" ]
@@ -142,10 +152,10 @@ onLinux {
             ];
           }
         ]);
-      off = releasing { };
-      on = releasing {
-        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkForce false;
+      off = releasing {
+        jitsusama.quickshell.launcher.providers.passwords.off = true;
       };
+      on = releasing { };
       offProviders = off.jitsusama.quickshell.launcher.providers;
       onProviders = on.jitsusama.quickshell.launcher.providers;
     in
@@ -168,7 +178,15 @@ onLinux {
   # today, until the agent fence covers every session.
   the-passwords-place-off-gives-the-shell-no-daemon =
     let
-      shellConfig = (account graphical).xdg.configFile."quickshell/Providers.qml".text;
+      offAccount = account (bareNixos [
+        self.nixosModules.graphical
+        {
+          home-manager.sharedModules = [
+            { jitsusama.quickshell.launcher.providers.passwords.off = true; }
+          ];
+        }
+      ]);
+      shellConfig = offAccount.xdg.configFile."quickshell/Providers.qml".text;
     in
     holds "the-passwords-place-off-gives-the-shell-no-daemon"
       "The shell's config names the passwords daemon while the Passwords place is off."
@@ -176,7 +194,9 @@ onLinux {
   # Nothing of the Passwords place, nor the daemon interface it asks its
   # daemon through, answers the shell's IPC, so no `qs ipc call` another
   # process makes reaches a secret or lets a manager in, now or once
-  # something is added: only Joel's keys in the launcher do. Nor do Asks,
+  # something is added: only Joel's keys in the launcher do, typing a
+  # password included, which the place refuses while a walk from outside
+  # runs its act (Passwords.qml's typeSecret). Nor do Asks,
   # which draws this daemon's secret asks, how it says a line was shown,
   # or the ready rows it acts through, so no IPC says yes to an ask; the
   # launcher's own do and run, walked from outside, have the shell withhold
@@ -196,13 +216,43 @@ onLinux {
     holds "the-passwords-answer-no-ipc"
       "The Passwords place or its daemon's interface answers the shell's IPC."
       (!lib.any (text: lib.hasInfix "IpcHandler" text || lib.hasInfix "Ipc." text) read);
+  # The passwords daemon listens nowhere: none of its sources binds a
+  # socket of any kind, so only the shell that runs it, over the daemon's
+  # own standard input and output, can ask it to copy, type or release a
+  # secret, and no other process can reach it to.
+  the-passwords-daemon-binds-no-socket =
+    let
+      read = map builtins.readFile [
+        ./src/lib.rs
+        ./src/main.rs
+        ./src/asks.rs
+        ./src/asks/emptied.rs
+        ./src/asks/npmrc.rs
+        ./src/asks/sweep.rs
+        ./src/audit.rs
+        ./src/cli.rs
+        ./src/cli/keys.rs
+        ./src/rows.rs
+        ./src/typing.rs
+      ];
+      binding = [
+        "UnixListener"
+        "UnixDatagram"
+        "TcpListener"
+        "UdpSocket"
+        ".bind("
+      ];
+    in
+    holds "the-passwords-daemon-binds-no-socket" "The passwords daemon binds a socket." (
+      !lib.any (text: lib.any (bind: lib.hasInfix bind text) binding) read
+    );
   # Each kind's mark, who's listed with nothing typed and in what order,
   # what a row says, an entry's acts and their order, opening it where its
   # manager fills only on a web page, its link in its manager's program, its drawer's eyebrow, and its facts saying every
   # figure and never a secret, its health and a weak strength warning,
   # its password reused and breached once every password is checked and
-  # nothing before, those needing attention and the foot counting a copy
-  # down are Passwords.js's, a manager's entries by vault and what its
+  # nothing before, those needing attention, the foot counting a copy
+  # down and saying how a type stands are Passwords.js's, a manager's entries by vault and what its
   # drawer says it holds and what the place's one row opens while it's off
   # Managers.js's, and For You's one to-do for what
   # the last check found, whether it stands or is done, its side and its

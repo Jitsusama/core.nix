@@ -1,0 +1,392 @@
+//! Whether a secret may be typed into the window the launcher opened over,
+//! as Type the Password does while copying is off (ISXEG8's terms for
+//! R-type-password, 2026-11-24). A typed password reaches whatever reads
+//! that window's keys, so the daemon types only into the window Joel
+//! chose, once the launcher has let go of the keys, and never into one a
+//! pi session reads: a model would see the password and send it on to its
+//! provider. A window is a session's when pi is the program behind it or
+//! among its forebears, as a fenced agent's window is, whose client is
+//! the fenced command. A terminal is asked what it runs in its focused
+//! window instead, since every kitty window shares the one kitty process,
+//! whose forebears say nothing of what runs inside: refused when it runs
+//! pi, or mycelium, which holds and attaches pi sessions, and when kitty
+//! can't say.
+
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::net::UnixStream;
+use std::path::Path;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+use serde_json::Value;
+
+/// The layer the launcher draws on, as it names itself to niri, which
+/// holds the keys while it's open.
+const LAUNCHER: &str = "launcher";
+
+/// How long the launcher has to let go of the keys before a type is
+/// refused rather than typed into it, as long as a paste waits
+/// (modules/quickshell/clipboard): on a loaded builder the launcher took
+/// 0.9 s to close.
+pub const LETTING_GO: Duration = Duration::from_secs(3);
+
+/// How long kitty has to say what runs in a window.
+const KITTY_ANSWERS: Duration = Duration::from_secs(2);
+
+/// The programs that are a session, or hold one: pi itself, and mycelium,
+/// which holds pi sessions and attaches a window to one running elsewhere.
+const SESSIONS: [&str; 2] = ["pi", "mycelium"];
+
+/// kitty's process, by the name Linux gives it: Nix's wrapper renames it.
+const KITTIES: [&str; 2] = ["kitty", ".kitty-wrapped"];
+
+/// Why a type is refused while the keys are elsewhere: in no window, as
+/// while 1Password's own prompt for Joel's leave closes, or another one.
+pub const NOWHERE: &str = "no window has the keys";
+pub const MOVED: &str = "the keys went to another window";
+
+/// Whether a refusal is the keys being elsewhere, which may pass: once
+/// 1Password's prompt goes, niri gives them back to the window before it.
+#[must_use]
+pub fn elsewhere(why: &str) -> bool {
+    why == NOWHERE || why == MOVED
+}
+
+/// The window the keys are in, as niri says it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Window {
+    pub id: u64,
+    pub pid: Option<u32>,
+    pub app_id: String,
+}
+
+/// Asks niri one question, `ask` as its socket takes it, and answers its
+/// reply, or none where niri can't be asked.
+fn asked_niri(socket: &Path, ask: &[u8]) -> Option<String> {
+    let mut stream = UnixStream::connect(socket).ok()?;
+    stream.set_read_timeout(Some(LETTING_GO)).ok()?;
+    stream.write_all(ask).ok()?;
+    let mut answer = String::new();
+    BufReader::new(stream).read_line(&mut answer).ok()?;
+    Some(answer)
+}
+
+/// Whether niri's answer to `Layers` says the launcher holds no keys:
+/// none when it isn't an answer to that.
+#[must_use]
+pub fn let_go(answer: &str) -> Option<bool> {
+    let answer: Value = serde_json::from_str(answer).ok()?;
+    let layers = answer.get("Ok")?.get("Layers")?.as_array()?;
+    Some(!layers.iter().any(|layer| {
+        layer.get("namespace").and_then(Value::as_str) == Some(LAUNCHER)
+            && layer.get("keyboard_interactivity").and_then(Value::as_str) != Some("None")
+    }))
+}
+
+/// The window niri's answer to `FocusedWindow` says has the keys: an
+/// inner none where none has, an outer none when it isn't an answer.
+#[must_use]
+pub fn focused(answer: &str) -> Option<Option<Window>> {
+    let answer: Value = serde_json::from_str(answer).ok()?;
+    let window = answer.get("Ok")?.get("FocusedWindow")?;
+    if window.is_null() {
+        return Some(None);
+    }
+    Some(Some(Window {
+        id: window.get("id")?.as_u64()?,
+        pid: window
+            .get("pid")
+            .and_then(Value::as_u64)
+            .and_then(|pid| u32::try_from(pid).ok()),
+        app_id: window
+            .get("app_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned(),
+    }))
+}
+
+/// Waits until niri says the launcher has let go of the keys, asking
+/// afresh each few milliseconds, as niri answers one question a
+/// connection. Answers whether it did within `LETTING_GO`.
+#[must_use]
+pub fn keys_let_go(niri: &Path) -> bool {
+    let deadline = Instant::now() + LETTING_GO;
+    while Instant::now() < deadline {
+        if asked_niri(niri, b"\"Layers\"\n")
+            .as_deref()
+            .and_then(let_go)
+            == Some(true)
+        {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    false
+}
+
+/// The window niri says has the keys now, or why that can't be told.
+///
+/// # Errors
+///
+/// Where niri can't be asked or gave no answer it could read.
+pub fn focused_now(niri: &Path) -> Result<Option<Window>, String> {
+    asked_niri(niri, b"\"FocusedWindow\"\n")
+        .as_deref()
+        .and_then(focused)
+        .ok_or_else(|| "niri didn't say which window has the keys".to_owned())
+}
+
+/// A process's name as Linux gives it, or "" for one that's gone.
+fn program(pid: u32) -> String {
+    std::fs::read_to_string(format!("/proc/{pid}/comm"))
+        .map(|comm| comm.trim_end().to_owned())
+        .unwrap_or_default()
+}
+
+/// A process's parent, or none for the first or one that's gone. Its
+/// name, in brackets, may hold anything, so it's read past the last.
+fn parent(pid: u32) -> Option<u32> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let after = &stat[stat.rfind(')')? + 1..];
+    after.split_whitespace().nth(1)?.parse().ok()
+}
+
+/// A process's arguments, its program first, or none for one that's gone.
+fn arguments(pid: u32) -> Vec<String> {
+    std::fs::read(format!("/proc/{pid}/cmdline"))
+        .map(|line| {
+            line.split(|byte| *byte == 0)
+                .filter(|word| !word.is_empty())
+                .map(|word| String::from_utf8_lossy(word).into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The process at `pid` or among its forebears that is pi, up to the
+/// first, or none.
+#[must_use]
+pub fn session_above(pid: u32) -> Option<u32> {
+    let mut at = Some(pid);
+    // A loop in what /proc says can't be, but is never followed forever.
+    for _ in 0..4096 {
+        let here = at?;
+        if program(here) == "pi" {
+            return Some(here);
+        }
+        at = parent(here).filter(|up| *up != 0 && *up != here);
+    }
+    None
+}
+
+/// Whether a program named so, with these arguments, is a session or
+/// holds one: pi or mycelium by its name, or by any word naming one, as
+/// ssh running mycelium on another machine does.
+#[must_use]
+pub fn a_sessions(name: &str, words: &[String]) -> bool {
+    let named = |word: &str| {
+        let base = word.rsplit('/').next().unwrap_or(word);
+        SESSIONS.contains(&base)
+    };
+    named(name) || words.iter().any(|word| named(word))
+}
+
+/// Whether the process at `pid` is kitty.
+#[must_use]
+pub fn kitty(pid: u32) -> bool {
+    KITTIES.contains(&program(pid).as_str())
+}
+
+/// Where kitty at `pid` listens for remote control: what it was started
+/// with, else the address kitty.conf's `listen_on` names by its pid.
+#[must_use]
+pub fn listens_on(words: &[String], pid: u32) -> String {
+    let mut given = words.iter();
+    while let Some(word) = given.next() {
+        if let Some(address) = word.strip_prefix("--listen-on=") {
+            return address.to_owned();
+        }
+        if word == "--listen-on"
+            && let Some(address) = given.next()
+        {
+            return address.clone();
+        }
+    }
+    format!("unix:@kitty-{pid}")
+}
+
+/// What kitty's `ls` says runs in the window that has its keys: each
+/// foreground process's id and arguments, from its focused OS window's
+/// active tab's active window. None where it names no such window.
+#[must_use]
+pub fn foreground(listed: &str) -> Option<Vec<(Option<u32>, Vec<String>)>> {
+    let listed: Value = serde_json::from_str(listed).ok()?;
+    let flag = |of: &Value, name: &str| of.get(name).and_then(Value::as_bool) == Some(true);
+    let os = listed
+        .as_array()?
+        .iter()
+        .find(|os| flag(os, "is_focused"))?;
+    let tab = os
+        .get("tabs")?
+        .as_array()?
+        .iter()
+        .find(|tab| flag(tab, "is_focused") || flag(tab, "is_active"))?;
+    let window = tab
+        .get("windows")?
+        .as_array()?
+        .iter()
+        .find(|window| flag(window, "is_focused") || flag(window, "is_active"))?;
+    let processes = window.get("foreground_processes")?.as_array()?;
+    Some(
+        processes
+            .iter()
+            .map(|process| {
+                let pid = process
+                    .get("pid")
+                    .and_then(Value::as_u64)
+                    .and_then(|pid| u32::try_from(pid).ok());
+                let words = process
+                    .get("cmdline")
+                    .and_then(Value::as_array)
+                    .map(|words| {
+                        words
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                (pid, words)
+            })
+            .collect(),
+    )
+}
+
+/// What kitty at `pid` says runs in its focused window, asked through
+/// `kitty`, the program, within `KITTY_ANSWERS`.
+fn kitty_says(kitty: &str, pid: u32) -> Result<String, String> {
+    let address = listens_on(&arguments(pid), pid);
+    let mut asked = Command::new(kitty)
+        .args(["@", "--to", &address, "ls"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|why| format!("kitty can't be asked what runs in it: {why}"))?;
+    let mut out = asked.stdout.take();
+    let reading = std::thread::spawn(move || {
+        let mut said = String::new();
+        if let Some(out) = out.as_mut() {
+            let _ = out.read_to_string(&mut said);
+        }
+        said
+    });
+    let deadline = Instant::now() + KITTY_ANSWERS;
+    loop {
+        match asked.try_wait() {
+            Ok(Some(ended)) if ended.success() => break,
+            Ok(Some(_)) => return Err("kitty didn't say what runs in it".to_owned()),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            _ => {
+                let _ = asked.kill();
+                let _ = asked.wait();
+                return Err("kitty didn't say what runs in it in time".to_owned());
+            }
+        }
+    }
+    reading
+        .join()
+        .map_err(|_| "kitty didn't say what runs in it".to_owned())
+}
+
+/// Whether a secret may be typed into `window`, the one the launcher
+/// opened over, as niri says it has the keys now: answers its app id, or
+/// why not with the app id as far as it's known. `kitty_program` is the
+/// program to ask a terminal with, none where none is named, which
+/// refuses any terminal.
+///
+/// # Errors
+///
+/// Where another window has the keys, niri says not whose it is, pi reads
+/// it, or it's a terminal that runs a session or can't say what it runs.
+pub fn fit(
+    niri: &Path,
+    window: u64,
+    kitty_program: Option<&str>,
+) -> Result<String, (String, String)> {
+    let unknown = |why: String| (String::new(), why);
+    let Some(focused) = focused_now(niri).map_err(unknown)? else {
+        return Err(unknown(NOWHERE.to_owned()));
+    };
+    let app = focused.app_id;
+    let refused = |why: &str| Err((app.clone(), why.to_owned()));
+    if focused.id != window {
+        return refused(MOVED);
+    }
+    let Some(pid) = focused.pid else {
+        return refused("niri didn't say whose window it is");
+    };
+    if session_above(pid).is_some() {
+        return refused("a pi session reads that window");
+    }
+    if !kitty(pid) {
+        return Ok(app);
+    }
+    let Some(kitty_program) = kitty_program else {
+        return refused("kitty can't be asked what runs in it");
+    };
+    let said = match kitty_says(kitty_program, pid) {
+        Ok(said) => said,
+        Err(why) => return refused(&why),
+    };
+    let Some(running) = foreground(&said) else {
+        return refused("kitty didn't say what runs in its window");
+    };
+    let session = running.iter().any(|(pid, words)| {
+        let name = pid.map(program).unwrap_or_default();
+        a_sessions(&name, words) || pid.and_then(session_above).is_some()
+    });
+    if session {
+        return refused("a pi session runs in that terminal");
+    }
+    Ok(app)
+}
+
+/// One journal line for one type, as journald's native socket takes it:
+/// the entry's title, the window's app id and how it ended, never the
+/// secret. Each value is made one line, since a newline would start
+/// another field.
+#[must_use]
+pub fn journal_line(title: &str, app: &str, outcome: &str, why: &str) -> String {
+    let plain = |value: &str| value.replace(|c: char| c.is_control(), " ");
+    let (title, app, why) = (plain(title), plain(app), plain(why));
+    let message = if why.is_empty() {
+        format!("{outcome} {title:?} into {app}")
+    } else {
+        format!("{outcome} {title:?} into {app}: {why}")
+    };
+    [
+        ("SYSLOG_IDENTIFIER", "passwords".to_owned()),
+        (
+            "PRIORITY",
+            if why.is_empty() { "6" } else { "5" }.to_owned(),
+        ),
+        ("MESSAGE", message),
+        ("PASSWORDS_TYPED_TITLE", title),
+        ("PASSWORDS_TYPED_APP_ID", app),
+        ("PASSWORDS_TYPED", outcome.to_owned()),
+    ]
+    .iter()
+    .fold(String::new(), |mut said, (field, value)| {
+        use std::fmt::Write as _;
+        let _ = writeln!(said, "{field}={value}");
+        said
+    })
+}
+
+#[cfg(test)]
+#[path = "typing_tests.rs"]
+mod tests;

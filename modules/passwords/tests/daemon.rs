@@ -20,11 +20,12 @@
 //! again; and since when trouble's been found holds while it does, and
 //! clears once a check finds none, each told to a watch. Secret asks the
 //! daemon answers are their own module's (asks/mod.rs), and so are the
-//! copies it makes (copies/mod.rs).
+//! copies it makes (copies/mod.rs) and what it types (types/mod.rs).
 
 mod asks;
 mod common;
 mod copies;
+mod types;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;

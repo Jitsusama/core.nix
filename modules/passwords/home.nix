@@ -249,10 +249,12 @@ in
     jitsusama.quickshell.launcher.providers.passwords = {
       order = 48;
       source = ./Passwords.qml;
-      # Off, reaching no daemon, until agents are fenced off Joel's runtime
-      # folder and Wayland; the checks that walk it turn it on, where no
-      # agent runs and no secret is real.
-      off = true;
+      # On, its entries' Return typing a password into the window the
+      # launcher opened over, with nothing copied while no copier is named,
+      # as copying waits until agents are fenced off the clipboard. Only
+      # Joel's keys in the launcher reach a type, and nothing is typed into
+      # a pi session's window (src/typing.rs). A machine sets off to true
+      # for the place to reach no daemon at all.
       managers = map (manager: {
         inherit (manager)
           name
@@ -267,6 +269,13 @@ in
       # on the place's own connection, which Asks draws them over; an off
       # place runs no daemon, so it needn't say the place is on.
       answersAsks = config.jitsusama.passwords.releases != [ ];
+      # What types a password into the window the launcher opened over, as
+      # an entry's Return does while copying is off: wtype, reading it on
+      # its standard input, never its arguments; and kitten, which asks a
+      # kitty what runs in its window, so nothing is typed into a terminal
+      # running a pi session (src/typing.rs).
+      typist = lib.getExe pkgs.wtype;
+      kitty = lib.getExe' pkgs.kitty "kitten";
       # The daemon the place runs as its own child, for the shell's life.
       daemon = [
         (lib.getExe passwords)
@@ -295,8 +304,7 @@ in
     warnings = lib.optional (config.jitsusama.passwords.releases != [ ] && !answersAsks) ''
       jitsusama.passwords.releases lists releases, but the launcher's
       Passwords place is off, so no secret ask is answered or drawn until
-      jitsusama.quickshell.launcher.providers.passwords.off is lib.mkForce false,
-      since this module already sets it to true.
+      jitsusama.quickshell.launcher.providers.passwords.off is false.
     '';
   };
 }

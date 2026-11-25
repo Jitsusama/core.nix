@@ -80,8 +80,14 @@ Provider {
         // Never run while the place is off. It copies nothing unless a
         // copier is named, which only the checks do until agents are
         // fenced off the clipboard; null keeps one out of its environment.
+        // It types through the typist named, asking kitty what runs in a
+        // terminal before it types there (src/typing.rs).
         command: provider.off ? [] : provider.settings.daemon ?? []
-        environment: ({ PASSWORDS_COPIER: provider.settings.copier ?? null })
+        environment: ({
+            PASSWORDS_COPIER: provider.settings.copier ?? null,
+            PASSWORDS_TYPIST: provider.settings.typist ?? null,
+            PASSWORDS_KITTY: provider.settings.kitty ?? null
+        })
         // Where secret asks are listed, its asks' rows come beside the
         // entries, which Asks draws over this one connection (asksLink),
         // so the asks folder is watched once, by this daemon.
@@ -111,11 +117,14 @@ Provider {
     readonly property bool answersAsks: settings.answersAsks === true
     readonly property var asksLink: answersAsks ? daemon : null
 
-    // Whether the place is off, as it is until agents are fenced off Joel's
-    // runtime folder and Wayland: every agent runs as his uid, so a daemon
-    // his manager let in would answer any of them (2026-11-10, Joel: "we
-    // can't have a password backdoor here"). It then holds one row, saying
-    // so and opening the browser his manager's own extension fills in.
+    // Whether the place is off, as a machine may set it. It's on by default:
+    // the daemon is the shell's own child with no socket, and no IPC reaches
+    // what asks it, so an agent running as Joel's uid has neither to ask it
+    // through (2026-11-10, Joel: "we can't have a password backdoor here";
+    // ISXEG8's R-type-password holds what's left, keys typed into the
+    // launcher by another program).
+    // Off, it holds one row, saying so and opening the browser his
+    // manager's own extension fills in.
     readonly property bool off: settings.off === true
     // Whether the launcher is walked from outside it, as `qs ipc call
     // launcher run`, `doing` and `show` walk it for any process of the
@@ -555,8 +564,11 @@ Provider {
             // What y takes: its username, which is no secret.
             operands: () => named === "" ? [] : [copyOperand("fact:passwords:username", named)]
         });
+        // Return types its password into the window the launcher opened
+        // over, which copying it can't while copying is off, and copies it
+        // as before where it opened over none.
         Object.assign(row, Passwords.passworded(record)
-            ? { returns: provider.act(key, "password") }
+            ? { returns: provider.act(key, "type") }
             : { verb: "more", stays: true, run: () => provider.launcher?.enter(row) });
         // The words it's found by besides its title, and its drawer, each
         // made when first asked for, since most entries are never searched
@@ -590,7 +602,7 @@ Provider {
             return [];
         const manager = managerNamed(record.manager);
         const link = Passwords.shows(record, manager?.shows ?? "");
-        return Passwords.acts(record, link).map(id => act(key, id, link));
+        return Passwords.acts(record, link, Niri.current !== null).map(id => act(key, id, link));
     }
 
     // One act inside an entry, by its id in Passwords.js's acts. A
@@ -637,6 +649,18 @@ Provider {
         });
         const opening = link => ({ later: true, run: () => Niri.spawn(["xdg-open", link]) });
         const made = {
+            // The password typed into the window under the launcher, by
+            // the daemon once the launcher has gone (typeSecret).
+            // Opened over no window, as Return's act it copies instead, as
+            // it did before it typed, so Return is never left with nothing.
+            type: () => ({
+                state: () => provider.footFor(key, ""),
+                run: () => Niri.current === null
+                    ? provider.copySecret(key, Passwords.password(record)?.id ?? null,
+                        said.password ?? "")
+                    : provider.typeSecret(key, Passwords.password(record)?.id ?? null,
+                        said.password ?? "")
+            }),
             // What an entry is for, so it leads its step though it copies
             // (Launcher.qml's copying).
             password: () => Object.assign(copying(Passwords.password(record)?.id ?? null,
@@ -687,10 +711,53 @@ Provider {
         });
     }
 
-    // What the foot says for a row of this entry: how its copy stands while
-    // there's something to say of it (Passwords.js's speaks), else
-    // `otherwise`.
+    // The last type asked of the daemon: { key, title, detail, why, done },
+    // as Passwords.js's typeTold reads it, never the secret.
+    property var typed: null
+
+    // Asks the daemon to type an entry's password, or a detail of it, into
+    // the window the launcher opened over, niri's by its id, which the
+    // daemon types into only once the launcher has let go of the keys and
+    // while that window still has them, and never into a pi session's
+    // (modules/passwords/src/typing.rs). Only Joel's own keys type one: an
+    // act walked from outside the launcher is refused and says so, as a
+    // yes to a secret ask is withheld (secret-asks/Shown.js), and no IPC
+    // reaches this (the-passwords-answer-no-ipc).
+    function typeSecret(key, detail, what) {
+        if (provider.launcher?.cataloguing ?? true) {
+            provider.launcher?.walkRefused?.(said.walked ?? "");
+            return;
+        }
+        const record = recordOf(key);
+        if (record === null)
+            return;
+        const typing = { key: key, title: Passwords.titleOf(record), detail: what, why: "" };
+        const window = Niri.current;
+        if (window === null) {
+            provider.typed = Object.assign(typing, { why: said.nowhere ?? "" });
+            return;
+        }
+        provider.typed = typing;
+        const asked = { ask: "type", key: key, window: window };
+        if (detail !== null)
+            asked.detail = detail;
+        handOver();
+        daemon.ask(asked, answer => {
+            if (provider.typed?.key !== key)
+                return;
+            const told = Passwords.answered(typing, answer, Date.now(), said.away ?? "");
+            provider.typed = Object.assign(told, { done: (told.why ?? "") === "" });
+        });
+    }
+
+    // What the foot says for a row of this entry: how its type stands, or
+    // its copy, while there's something to say of it (Passwords.js's
+    // typeTold and speaks), else `otherwise`.
     function footFor(key, otherwise) {
+        const typing = provider.typed?.key === key
+            ? Passwords.typeTold(provider.typed, said) : "";
+        if (typing !== "")
+            return typing;
         const copy = Clearing.copied?.key === key ? Clearing.copied : null;
         return Passwords.speaks(copy) ? Passwords.told(copy, Clearing.now, said) : otherwise;
     }
