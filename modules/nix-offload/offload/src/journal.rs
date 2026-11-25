@@ -73,8 +73,13 @@ pub fn note(path: &Path, at: u64, event: Event, name: &str, ran: Option<Ran>) ->
             line["rate"] = rate.into();
         }
     }
-    let mut journal = OpenOptions::new().create(true).append(true).open(path)?;
-    writeln!(journal, "{line}")
+    // One write, so a run beside this one never splits a line of it:
+    // `writeln!` writes a line in pieces.
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?
+        .write_all(format!("{line}\n").as_bytes())
 }
 
 /// A builder this asked for and hasn't seen gone.

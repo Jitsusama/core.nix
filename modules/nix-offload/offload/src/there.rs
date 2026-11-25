@@ -5901,6 +5901,14 @@ pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &
     if let Some(waited) = waited {
         line["waited"] = waited.into();
     }
+    journal_line(journal, &line);
+}
+
+/// Appends `line` to `journal` in one write, so runs ending together
+/// never split each other's lines. `writeln!` writes a line in pieces, and
+/// on 24 November two runs' lines of `there.jsonl` were written into
+/// each other, leaving one that no reader could parse.
+fn journal_line(journal: &Path, line: &serde_json::Value) {
     let written = journal
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
@@ -5910,7 +5918,7 @@ pub fn note(journal: &Path, at: u64, seconds: u64, waited: Option<u64>, asked: &
                 .append(true)
                 .open(journal)
         })
-        .and_then(|mut file| writeln!(file, "{line}"));
+        .and_then(|mut file| file.write_all(format!("{line}\n").as_bytes()));
     if let Err(error) = written {
         eprintln!(
             "nix-offload: couldn't journal the build in {}: {error}",
@@ -5932,22 +5940,7 @@ pub fn note_already(journal: &Path, at: u64, asked: &Asked, already: &[String]) 
         "sent": null,
         "already": true,
     });
-    let written = journal
-        .parent()
-        .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| {
-            fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(journal)
-        })
-        .and_then(|mut file| writeln!(file, "{line}"));
-    if let Err(error) = written {
-        eprintln!(
-            "nix-offload: couldn't journal the build in {}: {error}",
-            journal.display()
-        );
-    }
+    journal_line(journal, &line);
 }
 
 /// Where the flake in `folder` is when its git tree is its commit: none
@@ -8750,6 +8743,35 @@ mod tests {
             ),
             "{said}"
         );
+    }
+
+    #[test]
+    fn runs_journalling_together_keep_each_line_whole() {
+        // On 24 November two runs' lines of there.jsonl were written into
+        // each other, since a line went in several writes.
+        let folder = tempfile::tempdir().unwrap();
+        let journal = folder.path().join("there.jsonl");
+        let long = "x".repeat(1500);
+        thread::scope(|scope| {
+            for run in 0..8 {
+                let (journal, long) = (&journal, &long);
+                scope.spawn(move || {
+                    for line in 0..50 {
+                        journal_line(
+                            journal,
+                            &serde_json::json!({ "run": run, "line": line, "long": long }),
+                        );
+                    }
+                });
+            }
+        });
+        let written = fs::read_to_string(&journal).unwrap();
+        let torn: Vec<&str> = written
+            .lines()
+            .filter(|line| serde_json::from_str::<serde_json::Value>(line).is_err())
+            .collect();
+        assert!(torn.is_empty(), "{} lines were torn", torn.len());
+        assert_eq!(written.lines().count(), 400, "a line went missing");
     }
 
     #[test]

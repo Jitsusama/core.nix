@@ -518,7 +518,8 @@ fn journalled(places: &Places, quest: &str, request: Option<&Request>, found: &F
     let journal = places.state.join("journal.jsonl");
     if let Ok(mut file) = unlinked().create(true).append(true).open(&journal) {
         // A journal that can't be written loses a line, never the gate.
-        let _ = writeln!(file, "{line}");
+        // One write, so a gate beside this one never splits a line of it.
+        let _ = file.write_all(format!("{line}\n").as_bytes());
     }
 }
 
