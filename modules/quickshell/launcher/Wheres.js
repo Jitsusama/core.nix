@@ -28,8 +28,10 @@ const CHECKOUT = "checkout";
 // (its sprout.rs), and one word, so what's started is what's drawn.
 const ZONE_NAMED = /^\/\/\S+$/u;
 
-// Why a refusal that gives none is journalled, so each still says one.
+// Why a refusal that gives none is journalled, so each still says one,
+// and why no answer at all is: the daemon gone, or never there.
 const NO_WHY = "the agents daemon gave no reason";
+const NO_ANSWER = "the agents daemon isn't answering";
 
 // Whether `text` is a plain, non-empty line of at most MOST_NAMED
 // characters: nothing a control, format or blank character would hide,
@@ -61,8 +63,16 @@ function heard(latest, asked, unlisted, answer) {
     if (Array.isArray(answer?.places)) {
         return { places: listable(answer.places), unlisted: "", journal: null };
     }
-    const why = String(answer?.error?.message ?? "").trim() || NO_WHY;
+    const why = answer === null || answer === undefined ? NO_ANSWER
+        : String(answer?.error?.message ?? "").trim() || NO_WHY;
     return { places: null, unlisted: why, journal: why === unlisted ? null : why };
+}
+
+// Whether the places `now` differ from those listed `before`, so a list
+// landing while Joel is inside Start New Work draws its rows again
+// (Agents.qml's askPlaces) and one the same as the last costs nothing.
+function differs(before, now) {
+    return JSON.stringify(before) !== JSON.stringify(now);
 }
 
 // The checkout of the node's `checkouts` a `folder` is in, the innermost,
@@ -90,7 +100,9 @@ function checkoutOf(checkouts, folder) {
 // checkouts share, which its name alone wouldn't say, so its row is named
 // by where it is, its checkout's name then the rest of its folder. A zone
 // not checked out that two checkouts share is one row: the node starts
-// either by the one name.
+// either by the one name. A zone not checked out whose name isn't one the
+// node starts by is left out: its folder isn't there yet, so the node
+// would refuse it.
 function wheres(quests, places) {
     const named = Array.isArray(places) ? places : [];
     const zones = new Map();
@@ -126,7 +138,9 @@ function wheres(quests, places) {
         add(one.folder, one.name);
     }
     for (const one of named) {
-        add(one.folder, one.name);
+        if (!(one.kind === ZONE && one.out === true && !zones.has(one.folder))) {
+            add(one.folder, one.name);
+        }
     }
     return listed;
 }

@@ -63,10 +63,16 @@ QtObject {
         Expect.same("a folder the node calls two zones is the first's, named and started alike",
             Wheres.wheres([], [pond, Object.assign({}, pond, { name: "//system/lake" })]),
             [{ folder: pond.folder, name: "//system/pond", start: "//system/pond" }]);
-        Expect.same("a zone's name padded or split by blanks is started by its folder",
-            Wheres.wheres([], [Object.assign({}, pond, { name: " //system/pond" }),
-                Object.assign({}, unchecked, { name: "//system/reef now" })])
-                .map(one => one.start), [pond.folder, unchecked.folder]);
+        Expect.same("a checked-out zone's name padded by blanks is started by its folder",
+            Wheres.wheres([], [Object.assign({}, pond, { name: " //system/pond" })])
+                .map(one => one.start), [pond.folder]);
+        Expect.same("one not checked out that can't be started by its name isn't listed",
+            Wheres.wheres([], [Object.assign({}, unchecked, { name: "//system/reef now" }),
+                Object.assign({}, unchecked, { name: "reef" })]), []);
+        Expect.same("but a quest's folder there still is, as the quest's",
+            Wheres.wheres([{ folder: unchecked.folder, name: "~/big/reef" }],
+                [Object.assign({}, unchecked, { name: "reef" })]).map(one => one.start),
+            [unchecked.folder]);
         const otherReef = Object.assign({}, unchecked,
             { folder: "/home/j/big2/src/areas/system/reef" });
         Expect.same("one not checked out that two share is one row, started by name",
@@ -114,8 +120,15 @@ QtObject {
         Expect.same("a refusal giving no why still journals one",
             Wheres.heard(1, 1, "", { error: { message: "" } }).journal,
             "the agents daemon gave no reason");
-        Expect.same("no answer at all keeps the last list",
-            Wheres.heard(1, 1, "", undefined).places, null);
+        Expect.same("no answer at all keeps the last list, and says the daemon isn't answering",
+            Wheres.heard(1, 1, "", null),
+            { places: null, unlisted: "the agents daemon isn't answering",
+                journal: "the agents daemon isn't answering" });
+        Expect.same("a list the same as the last changes nothing drawn",
+            Wheres.differs([harness], Wheres.listable([Object.assign({}, harness)])), false);
+        Expect.same("a list with a place more is drawn again",
+            Wheres.differs([harness], [harness, pond]), true);
+        Expect.same("the first list, after none, is drawn", Wheres.differs([], [harness]), true);
         Expect.same("no quests' folders list the node's alone",
             Wheres.wheres(null, [harness]).map(one => one.name), ["~/src/harness"]);
 

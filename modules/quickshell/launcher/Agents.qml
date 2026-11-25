@@ -1990,19 +1990,31 @@ Provider {
     // answers, which leaves the quests' folders; where it can't, the last
     // list stays, why journalled once as each new why comes rather than at
     // every opening. An answer to an earlier ask, come after a later one's,
-    // is passed over (Wheres.heard).
+    // is passed over (Wheres.heard). One ask is out at a time, so a node
+    // that's stuck isn't asked again at each opening; the daemon answers
+    // every ask, with none when it goes (Daemon.qml's gone). A new list
+    // says the rows changed, so one landing while Joel is inside Start New
+    // Work is drawn there and then, not at the next opening.
     property var startPlaces: []
     property string startPlacesUnlisted: ""
     property int startPlacesAsked: 0
+    property bool startPlacesAsking: false
     function askPlaces() {
+        const daemon = rowsKind ?? null;
+        if (daemon === null || provider.startPlacesAsking)
+            return;
         const asked = ++provider.startPlacesAsked;
-        rowsKind?.ask({ ask: "places" }, answer => {
+        provider.startPlacesAsking = true;
+        daemon.ask({ ask: "places" }, answer => {
+            provider.startPlacesAsking = false;
             const heard = Wheres.heard(provider.startPlacesAsked, asked,
                 provider.startPlacesUnlisted, answer);
             if (heard === null)
                 return;
-            if (heard.places !== null)
+            if (heard.places !== null && Wheres.differs(provider.startPlaces, heard.places)) {
                 provider.startPlaces = heard.places;
+                provider.changed();
+            }
             provider.startPlacesUnlisted = heard.unlisted;
             if (heard.journal !== null)
                 console.info(`launcher: no places to start in: ${heard.journal}`);
