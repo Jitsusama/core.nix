@@ -2204,7 +2204,7 @@ Provider {
     // the session, which answers nothing. The session
     // says it took the answer by its want leaving, which takes the row
     // out of For You. Its answers are the agents daemon's, which takes the
-    // answer too, naming the want itself; the rows are still made here
+    // answer too, naming the want this row was made from; the rows are still made here
     // until it serves For You's rows ready, as it does Agents'.
     function answerRow(made, madeFrom, asked, resting, answers) {
         const key = `on:waiting:want:${madeFrom.address}`;

@@ -333,7 +333,7 @@ pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<V
         )));
     };
     match said["want"].as_str().filter(|named| !named.is_empty()) {
-        None => return Some(Err("an answer names the ask Joel was shown".to_owned())),
+        None => return Some(Err("an answer must name the ask Joel was shown".to_owned())),
         Some(named) if named != want => {
             return Some(Err(format!("{address} asks something else now")));
         }
@@ -768,7 +768,7 @@ mod tests {
                 &wants,
                 0
             ),
-            Some(Err("an answer names the ask Joel was shown".to_owned())),
+            Some(Err("an answer must name the ask Joel was shown".to_owned())),
             "one naming no want is refused, as it could answer a newer ask than he saw"
         );
         assert_eq!(
