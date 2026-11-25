@@ -129,14 +129,18 @@ ended() {
   # What it said instead goes with a failure, as the failure's reason.
   complained() { grep -qF -- "$1" err || { cat err; false; }; }
   placed() { grep -qE ' (runs in|was started from) /' err || { cat err; false; }; }
-  # A glob rather than compgen, which the build's non-interactive bash
-  # leaves out: its 127, negated, passed whatever the folder held.
+  # The folder this case's askpass made and named in its ask, by that
+  # name, so a folder moved elsewhere can't pass unseen, and a leak is
+  # blamed on the case that left it. No ask, so no name, fails too.
   folder_gone() {
-    local left
-    shopt -s nullglob
-    left=(run/*askpass*)
-    shopt -u nullglob
-    [ "${#left[@]}" = 0 ]
+    if [ -z "$reply" ]; then
+      echo "no ask reached the shell, so it named no folder to look for"
+      return 1
+    fi
+    [ -e "$reply" ] || return 0
+    echo "left behind: $reply, holding:"
+    ls -A "$reply"
+    false
   }
   between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 }
