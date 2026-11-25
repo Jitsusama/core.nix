@@ -1185,6 +1185,31 @@ fn a_kept_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs() 
 }
 
 #[test]
+fn a_listing_saved_before_its_length_was_capped_rests_no_longer_than_a_listing_runs() {
+    // A guard before the cap saved the three hours of a pass it heard a
+    // listing after, and the restart that brings the cap would rest the
+    // next listing nine times that, a day, on the guard's first read.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    let saved = format!(r#"{{"listed_at":{},"took":10800.0,"dead":[]}}"#, now());
+    fs::write(store.root.join("state/garbage.json"), saved).unwrap();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    listed_later(
+        &store,
+        &mut guard,
+        3.0 * 3600.0 + 9.0 * 1800.0 + 60.0,
+        &CALM,
+    );
+    assert_eq!(
+        lists(&store),
+        1,
+        "a saved listing rested past nine times the longest a listing runs: {:?}",
+        store.log()
+    );
+}
+
+#[test]
 fn a_listing_the_disk_cant_save_is_kept_all_the_same() {
     // Thrown away, it was listed again five minutes on, under Nix's lock
     // where Nix takes one, on the disk too full to save it again.
