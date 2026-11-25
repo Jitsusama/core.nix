@@ -62,11 +62,13 @@ pub const TRIAL: Duration = Duration::from_secs(300);
 /// choice ran up to a second later than the one two minutes on. A minute
 /// taken then reaches back `measure::MINUTE`, so at most half a second of
 /// the first minute is in it. A choice waits behind a measure, about 2 s
-/// where echoes go unanswered, as `measure::MINUTE` says; a move whose own
-/// choice waited more than the slack, by up to a minute, is judged a minute
-/// later, at its fourth minute, still inside `TRIAL`. The slack isn't wider
-/// because each second of it lets another second of the first minute on the
-/// point into a judged minute, the minute a trial is meant to judge none of.
+/// where echoes go unanswered, as `measure::MINUTE` says, so choices drift
+/// against each other; a move whose own choice ran later than the one two
+/// minutes on by more than the slack, and by up to a minute, is judged a
+/// minute later, at its fourth minute, still inside `TRIAL`. The slack
+/// isn't wider because each second of it lets another second of the first
+/// minute on the point into a judged minute, the minute a trial is meant to
+/// judge none of.
 /// Measured from when the move is asked, so wherever in the minute it fell,
 /// the seconds the roam itself takes, which the chooser doesn't see, are in
 /// that first minute.
