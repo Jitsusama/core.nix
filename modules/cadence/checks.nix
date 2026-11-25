@@ -105,24 +105,54 @@ onLinux {
           && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
         ) environment
       );
-  # A switch leaves each of cadence's runs be, the tick, day, review and
-  # hour and any added, since waiting on its start would outlast
+  # A switch leaves each run a cadence timer starts be, the tick, day,
+  # review and hour and any added, since waiting on its start would outlast
   # home-manager's patience under load and send the whole switch back;
-  # each timer starts the new unit next. With no switch to end one, each
-  # has a timeout to end a hang.
+  # each timer starts the new unit next, so a changed unit reaches the next
+  # run, not one under way. With no switch to end one, each has a timeout
+  # that ends a hang: none, zero or infinity switches it off. The runs are
+  # found by their timers, whatever their Type, and the four known ones
+  # must each be among them. The check reads the units as declared; that
+  # sd-switch keeps an old run it is told to rests on sd-switch.
   cadence-outlasts-a-switch =
     let
-      services = exampleLaptop.config.home-manager.users.joel.systemd.user.services;
-      runs = lib.filterAttrs (
-        name: service:
-        (name == "cadence" || lib.hasPrefix "cadence-" name) && (service.Service.Type or null) == "oneshot"
-      ) services;
-      kept =
-        service: (service.Unit.X-SwitchMethod or null) == "keep-old" && service.Service ? TimeoutStartSec;
+      user = exampleLaptop.config.home-manager.users.joel.systemd.user;
+      cadences = lib.filterAttrs (name: _: name == "cadence" || lib.hasPrefix "cadence-" name);
+      started = lib.unique (
+        lib.mapAttrsToList (
+          name: timer: lib.removeSuffix ".service" (timer.Timer.Unit or "${name}.service")
+        ) (cadences user.timers)
+      );
+      known = [
+        "cadence"
+        "cadence-day"
+        "cadence-review"
+        "cadence-hour"
+      ];
+      timeout = service: toString (service.Service.TimeoutStartSec or "");
+      wrong =
+        name:
+        let
+          service = user.services.${name};
+        in
+        if !user.services ? ${name} then
+          [ "${name} has a timer but no unit" ]
+        else
+          lib.optional (
+            (service.Unit.X-SwitchMethod or null) != "keep-old"
+          ) "a switch restarts ${name} and waits on it"
+          ++ lib.optional (lib.elem (timeout service) [
+            ""
+            "0"
+            "0s"
+            "infinity"
+          ]) "${name} has no timeout to end a hang";
+      unstarted = lib.subtractLists started known;
+      problems =
+        lib.concatMap wrong started
+        ++ map (name: "no timer starts ${name}, so it went unchecked") unstarted;
     in
-    holds "cadence-outlasts-a-switch"
-      "A switch restarts one of cadence's runs and waits on it, or one has no timeout to end a hang, or fewer than its four runs were found."
-      (builtins.length (builtins.attrNames runs) >= 4 && builtins.all kept (builtins.attrValues runs));
+    holds "cadence-outlasts-a-switch" (lib.concatStringsSep "; " problems) (problems == [ ]);
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or
