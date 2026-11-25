@@ -4420,6 +4420,11 @@
     every design Joel stated for the margin cat, dated, is held by a phrase one of its cases says
     outside a comment, or owed since a date, and the owed ones are listed
   '';
+  the-cat-runner-names-how-each-case-ended = ''
+    the margin cat's case runner fails a run with a case that failed, ran past its own processor
+    time, was killed from outside or hung past the clock's guard, names each by how it ended and
+    says every case's time, and stops at a hang, naming the cases it left unrun
+  '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
     frozen quoted words, either isn't found outside a comment, a word holds a space or

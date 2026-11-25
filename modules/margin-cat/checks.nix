@@ -86,6 +86,16 @@ onLinux {
       touch $out
     '';
 
+  # What the cat's case runner says of each way a case ends, past its own
+  # time, killed, hung or failed, over stand-ins in a few seconds, as
+  # tests/runs-every-case-test.sh holds it.
+  the-cat-runner-names-how-each-case-ended =
+    pkgs.runCommandLocal "the-cat-runner-names-how-each-case-ended" { }
+      ''
+        $BASH ${./tests/runs-every-case-test.sh} ${./tests/runs-every-case.sh}
+        touch $out
+      '';
+
   # Every design Joel stated for the cat, under the guide's "Joel's Words",
   # is held by a phrase a case says, or owed with the date it was asked for,
   # so a ruling that would drop one fails a named case rather than going
