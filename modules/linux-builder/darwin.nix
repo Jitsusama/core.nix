@@ -7,10 +7,14 @@
 # It's written for a Mac whose Nix nix-darwin doesn't manage (`nix.enable =
 # false`), where nix-darwin's own `nix.linux-builder` can't run and nix-darwin
 # writes no nix.conf. So it runs the builder as nix-darwin would, and writes
-# its line to /etc/nix/linux-builder.conf, which the machine's own
+# its settings to /etc/nix/linux-builder.conf, which the machine's own
 # nix.custom.conf includes:
 #
 #   !include linux-builder.conf
+#
+# Those name a file of builders that holds the builder's line only while the
+# Mac has room, as a job every 15 seconds judges it (room.sh), so a Mac
+# short of memory isn't sent more builds for a VM that keeps what it takes.
 #
 # It offers `big-parallel` and `benchmark`, never `kvm`: Rosetta runs no
 # x86_64 VM, so a VM test is never sent there to crawl. Nor `uid-range` and
@@ -422,7 +426,7 @@ in
       read=$(/usr/bin/shasum -a 256 /etc/nix/linux-builder.conf | /usr/bin/cut -d' ' -f1)
       if [ "$read" != "$(/bin/cat ${home}/read-by-nix 2>/dev/null)" ] &&
         /bin/launchctl print system/${cfg.nixDaemon} >/dev/null 2>&1; then
-        echo "restarting ${cfg.nixDaemon}, so it reads the Linux builder's line" >&2
+        echo "restarting ${cfg.nixDaemon}, so it reads the Linux builder's settings" >&2
         /bin/launchctl kickstart -k system/${cfg.nixDaemon} && echo "$read" > ${home}/read-by-nix
       fi
     '';
@@ -505,7 +509,10 @@ in
     '';
 
     # Every 15 seconds, so a Mac that starts swapping stops taking builds
-    # within that. It writes its log only when the offer changes.
+    # within that. It writes its log only when the offer changes. A first
+    # look counts as short, so after the switch that brings it the builder
+    # waits out the hold before it's offered, and a Linux build meanwhile
+    # fails for want of it.
     launchd.daemons.linux-builder-room.serviceConfig = {
       ProgramArguments = [
         (lib.getExe pkgs.bash)
@@ -525,5 +532,12 @@ in
       RunAtLoad = true;
       StandardErrorPath = "/var/log/linux-builder-room.log";
     };
+    # A few lines at each change of offer, which a Mac at its line could
+    # make every 15 seconds, so macOS's newsyslog moves it aside past
+    # 512 KB, keeping three before it. The job opens it anew at each run.
+    environment.etc."newsyslog.d/linux-builder-room.conf".text = ''
+      # logfilename                    mode count size(KB) when flags
+      /var/log/linux-builder-room.log  644  3     512      *    N
+    '';
   };
 }

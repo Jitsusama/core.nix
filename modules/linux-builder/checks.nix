@@ -97,13 +97,11 @@ in
         && collecting.nix.settings.min-free != cached.nix.settings.min-free
       );
 
-  # The collection does what each ask says and prints the store's free
-  # bytes; anything else is refused before it runs a thing.
   # The Mac's Nix reads its builders from the file the room job writes,
   # which holds the builder's line only while the Mac has room: under the
-  # floor or swapping, it's emptied at once, and the line comes back only
-  # after the hold (room-test.sh). The job runs every 15 seconds with the
-  # floor and hold the options give.
+  # floor, swapping or unread, it holds none at once, and the line comes
+  # back only after the hold (room-test.sh). The job runs every 15 seconds
+  # with the floor and hold the options give, each in its place.
   linux-builder-is-offered-only-with-room =
     let
       mac = macOf {
@@ -113,21 +111,32 @@ in
         };
       };
       job = mac.launchd.daemons.linux-builder-room.serviceConfig;
+      # What room.sh is given after bash and itself, in its order.
+      given = [
+        "/usr/sbin/sysctl"
+        "/usr/bin/vm_stat"
+        "/etc/nix/linux-builder.line"
+        "/var/lib/linux-builder-vz/offered"
+        "/var/lib/linux-builder-vz"
+        "40"
+        "900"
+      ];
     in
     assert lib.assertMsg (lib.hasInfix "builders = @/var/lib/linux-builder-vz/offered"
       mac.environment.etc."nix/linux-builder.conf".text
     ) "The Mac's Nix reads the builder's line itself, not the file the room job writes.";
     assert lib.assertMsg (
       job.StartInterval == 15
-      && lib.elem "40" job.ProgramArguments
-      && lib.elem "900" job.ProgramArguments
-      && lib.elem "/etc/nix/linux-builder.line" job.ProgramArguments
-    ) "The room job doesn't run every 15 seconds with the floor, the hold and the builder's line.";
+      && lib.drop 2 job.ProgramArguments == given
+      && lib.hasSuffix "room.sh" (builtins.elemAt job.ProgramArguments 1)
+    ) "The room job doesn't run room.sh each 15 s with its line, file, floor and hold.";
     pkgs.runCommandLocal "linux-builder-is-offered-only-with-room" { } ''
       $BASH ${./room-test.sh} ${./room.sh}
       touch $out
     '';
 
+  # The collection does what each ask says and prints the store's free
+  # bytes; anything else is refused before it runs a thing.
   linux-builder-collects-only-what-it-is-asked =
     pkgs.runCommandLocal "linux-builder-collects-only-what-it-is-asked" { }
       ''
