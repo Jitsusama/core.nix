@@ -54,18 +54,24 @@ QtObject {
 
     // When its rest begins, which a pet waits on: on niri's answer for the
     // first frame synced after it sat, never one a walk began, and never
-    // by asking for frame after frame (2026-11-24, #6382's round).
+    // by asking for frame after frame (2026-11-24, #6382's rounds).
     function rests(expect) {
         // It sat at 1000 ms with 40 frames begun.
-        const rest = (frame, synchronizing) => MarginCat.restFrom(frame, synchronizing, 40, 1000);
-        expect("a frame synced as it sat or after begins it",
-            [rest(41, 1000), rest(42, 1016.5)], ["begins", "begins"]);
-        expect("one that took the ask but synced before it sat asks again",
-            [rest(41, 999.9), rest(41, 0)], ["asks", "asks"]);
-        expect("a walk's frame begun before it sat is only heard, however late",
-            [rest(40, 990), rest(39, 1200), rest(40, undefined)], ["waits", "waits", "waits"]);
-        expect("one nothing was kept of begins it rather than asking on",
-            rest(41, undefined), "begins");
+        const rest = (frame, synchronizing, asked) =>
+            MarginCat.restFrom(frame, { synchronizing, asked }, 40, 1000);
+        expect("a frame synced as it sat or after begins it, ask or none",
+            [rest(41, 1000, true), rest(42, 1016.5, false)], ["begins", "begins"]);
+        expect("one that took the ask but synced before it sat asks again, the 40th too",
+            [rest(41, 999.9, true), rest(40, 0, true)], ["asks", "asks"]);
+        expect("a walk's frame synced before it sat is only heard, the 40th too",
+            [rest(40, 990, false), rest(39, 0, false)], ["waits", "waits"]);
+        expect("one begun before the 40th that took an earlier sitting's ask is only heard",
+            [rest(39, 990, true), rest(39, 0, true)], ["waits", "waits"]);
+        expect("a walk's frame begun before the 40th, its times overwritten, is only heard",
+            MarginCat.restFrom(39, {}, 40, 1000), "waits");
+        expect("from the 40th on, one nothing was kept of begins it rather than asking on",
+            [MarginCat.restFrom(40, {}, 40, 1000), MarginCat.restFrom(41, {}, 40, 1000)],
+            ["begins", "begins"]);
     }
 
     // Its lean toward the hand (VKCF3Z, 10bacc58): only its head moves, so
