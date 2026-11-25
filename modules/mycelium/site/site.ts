@@ -26,6 +26,7 @@
 // a cell's own under it, as view.js says what's open with each drawing.
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { watchForKeys } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { clockTime, said, tell } from "../../local-sites/kit/status.ts";
 import { asksOnceOneWaits } from "../../local-sites/kit/waits.ts";
@@ -243,6 +244,9 @@ document.addEventListener("visibilitychange", () => {
 });
 sayHow();
 followTheAsks();
+// The map answers its keys in the drawing (view.js), so the kit is told of
+// the first one here: a touch screen shows the head's key line once typed on.
+watchForKeys();
 // Opened to be checked, the page says whether it reaches every cell.
 if (asked(location.search)) {
   sayReach(document.documentElement, document);

@@ -48,7 +48,9 @@ REOPENED = "crashed and was opened once more"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
 # What a first visit to the page may cost, drawn from the three murmurs. The quiet
-# day's line is two of the elements and one of the kilobytes.
+# day's line is two of the elements and one of the kilobytes. The kit's head.css, the head
+# every live page shares, is one of the files and a few of the kilobytes, within the room the
+# budget held before it, as the page dropped its own head rules for it.
 BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
@@ -253,7 +255,12 @@ def test_a_murmurs_words_are_drawn_as_words(
     hostile_murmur = murmur(
         "HERONS", now, hostile, settled=hostile, purpose=hostile, tied_to=[f"QEST-{hostile}"]
     )
-    murmuring_node.tell("murmur", changed=[hostile_murmur])
+    # One still in the air and newest, so the lede quotes its words and quest.
+    in_the_air = murmur("EGRETS", now + 1, hostile, purpose=hostile)
+    murmuring_node.tell("murmur", changed=[hostile_murmur, in_the_air])
+    expect(page.locator("#lede"), "the hostile murmur never reached the lede").to_contain_text(
+        f"from {hostile}", timeout=PACE_MS
+    )
     row = page.locator(f'#murmurs [data-key="murmur:HERONS:{now}"]')
     expect(row.locator(".words"), "the murmur's words never reached its row").to_have_text(
         hostile, timeout=PACE_MS

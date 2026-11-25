@@ -9,8 +9,8 @@ live with every device drawn in its tree and on its map, a name anyone on the
 Wi-Fi chose drawn as words, drop a device that goes with its link,
 say in a machine's panel what runs there as the node moves and link it to its
 place on the mycelium map, say broken when net stops and live again, its
-devices read again, when it's back, say stale when the server goes and keep
-what it drew, keep to its budget, and pass the web-design skill's page checks
+devices read again, when it's back, say in its lede when net has never answered,
+say stale when the server goes and keep what it drew, keep to its budget, and pass the web-design skill's page checks
 at a phone's width and a desk's in both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
@@ -48,7 +48,9 @@ TV = "mac:00:00:5e:00:53:30"
 TV_NAME = "<b>Den</b> TV"
 # The laptop mycelium runs on, by the id net gives it and the name both give it.
 KESTREL = "mac:00:00:5e:00:53:20"
-# What a first visit to the network page may cost, drawn from the stand-in's house.
+# What a first visit to the network page may cost, drawn from the stand-in's house. The kit's
+# head.css, the head every live page shares, is one of the files and a few of the kilobytes,
+# within the room the budget held before it.
 BUDGET = Budget(files=36, kilobytes=505, elements=335)
 
 
@@ -62,12 +64,17 @@ def mycelium_node(tmp_path: Path) -> Iterator[StandIn]:
     yield from standing_in(tmp_path / "node.sock", "node", HERE / "node.json")
 
 
+def feeds_of(net: StandIn, node: StandIn) -> dict[str, object]:
+    """The server's feeds from `net` and `node`, each trimmed to the kinds home.nix declares."""
+    return {
+        "net": {"socket": str(net.path), "kinds": json.loads(os.environ["NET_KINDS"])},
+        "node": {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])},
+    }
+
+
 @pytest.fixture
 def network_served(tmp_path: Path, net_daemon: StandIn, mycelium_node: StandIn) -> Iterator[Served]:
-    feeds = {
-        "net": {"socket": str(net_daemon.path), "kinds": json.loads(os.environ["NET_KINDS"])},
-        "node": {"socket": str(mycelium_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])},
-    }
+    feeds = feeds_of(net_daemon, mycelium_node)
     with serving(tmp_path, {"network": os.environ["NETWORK_SITE"]}, feeds) as served:
         yield served
 
@@ -172,6 +179,22 @@ def test_a_net_that_stops_is_said_broken_then_live(network_page: Page, net_daemo
         0, timeout=PACE_MS
     )
     expect(device(network_page, "modem"), "the modem went with the printer").to_have_count(1)
+
+
+def test_a_net_that_never_answers_says_so_in_the_lede(
+    browser: Browser, tmp_path: Path, net_daemon: StandIn, mycelium_node: StandIn
+) -> None:
+    net_daemon.leave()
+    feeds = feeds_of(net_daemon, mycelium_node)
+    with serving(tmp_path, {"network": os.environ["NETWORK_SITE"]}, feeds) as (root, _):
+        opened = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+        try:
+            lede = opened.page.locator("#lede")
+            expect(lede, "the lede still said net was being reached").to_have_text(
+                "Net hasn't answered, so no device is drawn.", timeout=BACK_MS
+            )
+        finally:
+            opened.close()
 
 
 def test_a_sites_server_that_goes_is_said_stale(
