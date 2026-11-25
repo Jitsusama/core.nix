@@ -653,7 +653,7 @@ fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
         rows[2]["why"],
         "The safe word never read parts of what tagged you in Slack without saying pineapple \
          in the 18 minutes before this was raised, as more was said than it could read, so a \
-         stop said in them wasn't heard",
+         stop said then wasn't heard",
         "a read stretch lies between, so it's said as parts, raised as the newest was"
     );
     assert_eq!(rows[2]["whole"], false, "and kept so as written again");
@@ -664,4 +664,108 @@ fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
         "a row once said as parts stays so, though the next overlaps it: {again:?}"
     );
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// What `kept` rows, then `row` kept at `AT`, leave in a file of their own.
+fn kept_after(
+    name: &str,
+    kept: &[serde_json::Value],
+    row: serde_json::Value,
+) -> Vec<serde_json::Value> {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-{name}-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    let earlier = serde_json::json!({"v": 2, "items": kept});
+    std::fs::write(&file, earlier.to_string()).expect("the earlier rows are written");
+    keep_missed(&file, row, AT).expect("written");
+    let rows = rows_in(&file);
+    let _ = std::fs::remove_dir_all(&folder);
+    rows
+}
+
+#[test]
+fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
+    let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
+    let earlier = tag(30 * MINUTE, 20 * MINUTE);
+    let met = kept_after("edge", &[earlier.clone()], tag(10 * MINUTE, 5 * MINUTE));
+    assert!(
+        met.len() == 1 && met[0]["whole"] == false,
+        "exactly ten minutes apart they meet, as parts: {met:?}"
+    );
+    let apart = kept_after("past", &[earlier.clone()], tag(10 * MINUTE - 1, 5 * MINUTE));
+    assert_eq!(
+        apart.len(),
+        2,
+        "a millisecond farther they don't: {apart:?}"
+    );
+    let touching = kept_after("touch", &[earlier.clone()], tag(20 * MINUTE, 10 * MINUTE));
+    assert!(
+        touching.len() == 1 && touching[0]["whole"] == true,
+        "one beginning where the other ends is said whole: {touching:?}"
+    );
+    let mut legacy = earlier.clone();
+    legacy.as_object_mut().expect("a row").remove("whole");
+    let old = kept_after("legacy", &[legacy], tag(25 * MINUTE, 10 * MINUTE));
+    assert!(
+        old.len() == 1 && old[0]["whole"] == true,
+        "a row written before rows met is taken as whole: {old:?}"
+    );
+
+    let days = 3 * 24 * 60 * MINUTE;
+    let dated = tag(days + 10 * MINUTE, days);
+    let unknown = missed(Search::Tag, None, Some(AT - MINUTE), AT);
+    let both = kept_after("unknown", &[dated.clone()], unknown.clone());
+    assert_eq!(
+        both.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [dated["id"].clone(), unknown["id"].clone()],
+        "one whose start can't be told takes in no dated row"
+    );
+    let again = kept_after("unknown-again", &[unknown.clone()], unknown.clone());
+    assert_eq!(again.len(), 1, "though it's the same row written again");
+    let after = kept_after(
+        "after-unknown",
+        &[missed(
+            Search::Tag,
+            None,
+            Some(AT - 20 * MINUTE),
+            AT - 20 * MINUTE,
+        )],
+        tag(15 * MINUTE, 10 * MINUTE),
+    );
+    assert_eq!(
+        after.len(),
+        2,
+        "nor does a dated one take in a row whose start can't be told: {after:?}"
+    );
+}
+
+#[test]
+fn rows_written_before_rows_met_are_folded_into_one() {
+    let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
+    let rows = kept_after(
+        "chain",
+        &[
+            tag(60 * MINUTE, 45 * MINUTE),
+            tag(46 * MINUTE, 30 * MINUTE),
+            tag(31 * MINUTE, 15 * MINUTE),
+        ],
+        tag(16 * MINUTE, 0),
+    );
+    assert_eq!(
+        rows.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [serde_json::json!(format!(
+            "pineapple-slack-missed-tag-{}-{AT}",
+            AT - 60 * MINUTE
+        ))],
+        "the first two meet only once those after them are taken, and are taken too: \
+         {rows:?}"
+    );
+    assert_eq!(
+        rows[0]["whole"], true,
+        "each overlapping the next, it's whole"
+    );
 }
