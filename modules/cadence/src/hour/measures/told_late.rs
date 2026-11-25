@@ -1,8 +1,8 @@
 //! The dates the asks list was told of too late to warn whoever waits on
-//! them: each moved with a quarter of an hour or less left, or after it
-//! passed, as one moved six minutes before its date on 25 November with
-//! no word. A date that passes with no move at all is a slip, which the
-//! slips measure counts, so it isn't counted here too.
+//! them: each moved later with a quarter of an hour or less left, as one
+//! moved six minutes before its date on 25 November with no word. A date
+//! that passes before it moves, or never moves, is a slip, which the slips
+//! measure counts, so it isn't counted here too.
 
 use std::collections::BTreeMap;
 
@@ -23,8 +23,9 @@ type Late = (i64, String, String);
 
 /// The dates of asks of the kind `which` in the asks list `text` told
 /// late by `now`: each move said in the day before `now` with `LEFT` or
-/// less to go before the date it moved, or after it. A move is when the
-/// date after it was `given`, from the ask's `promised`. A date its ask
+/// less to go before the date it moved. A move is when the date after it
+/// was `given`, from the ask's `promised`, to a later date, since one given
+/// again or brought forward keeps nobody waiting longer. A date its ask
 /// landed by, or its owner said was `met`, before the move needs none, so
 /// it isn't counted; nor is any date of an ask [`parked`] on a ruling,
 /// which owes none while it stands, or of one put down. Each ask is read
@@ -49,8 +50,7 @@ pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     Measure {
         key: which.key(KEY),
         class: Class::Slip,
-        says: "dates moved with 15 minutes or less left, or after they passed, in the last day"
-            .to_owned(),
+        says: "dates moved later with 15 minutes or less left, in the last day".to_owned(),
         now: count(late.len()),
         target: Some(0.0),
         owner: late.first().map(|(_, _, o)| o.clone()).unwrap_or_default(),
@@ -67,10 +67,11 @@ fn moved_late(ask: &Value, now: i64) -> Vec<Late> {
     promised(ask)
         .iter()
         .filter_map(|promise| {
-            let moved = promise.moved?;
+            let (moved, due_after) = (promise.moved?, promise.to?);
             let kept = landed.is_some_and(|landed| landed <= moved)
                 || promise.met.is_some_and(|met| met <= moved);
-            let told = moved <= now && moved > now - DAY && moved >= promise.expected - LEFT;
+            let near = (promise.expected - LEFT..promise.expected).contains(&moved);
+            let told = moved <= now && moved > now - DAY && near && due_after > promise.expected;
             (told && !kept).then(|| {
                 let left = moved_left(promise.expected - moved);
                 (moved, format!("{words}, {left} · {owner}"), owner.clone())
@@ -83,10 +84,8 @@ fn moved_late(ask: &Value, now: i64) -> Vec<Late> {
 fn moved_left(left: i64) -> String {
     if left >= 60 {
         format!("moved {} min before its date", left / 60)
-    } else if left > 0 {
-        "moved in its last minute".to_owned()
     } else {
-        "moved after its date passed".to_owned()
+        "moved in its last minute".to_owned()
     }
 }
 
