@@ -46,6 +46,8 @@ const AT_ONCE: usize = 2;
 const KEPT: Duration = Duration::from_hours(7 * 24);
 /// The most of a run's log a gate's folder carries back: the end.
 const LARGEST_LOG: u64 = 8 << 20;
+/// The journal of gates, in the state: a line for each gate answered.
+const JOURNAL: &str = "journal.jsonl";
 /// What a gate exits with when the forge or git couldn't be reached:
 /// sysexits.h's unavailable service.
 const UNREACHED: u8 = 69;
@@ -523,7 +525,7 @@ fn journalled(
         "said": found.said,
         "why": why,
     });
-    let journal = places.state.join("journal.jsonl");
+    let journal = places.state.join(JOURNAL);
     if let Ok(mut file) = unlinked().create(true).append(true).open(&journal) {
         // A journal that can't be written loses a line, never the gate.
         let _ = writeln!(file, "{line}");
@@ -553,13 +555,65 @@ fn said_of(exit: u8) -> String {
 /// scratch another machine reads, so they go to the journal instead
 /// (security review, 24 November).
 fn refusal_said(exit: u8) -> String {
-    let kind = match exit {
-        NOT_NOW => "it couldn't be gated now, being gated already or with no room; ask again",
-        UNREACHED => "the gate couldn't reach the forge or git",
-        UNTRUSTED => "the gate couldn't trust its own state",
-        _ => "the gate refused the request, its bundle or its commit",
+    match exit {
+        NOT_NOW => {
+            "it couldn't be gated now, being gated already or with no room; ask again".to_owned()
+        }
+        // With no state it trusts there's no journal to keep the detail,
+        // so `left` prints it where the answer was started.
+        UNTRUSTED => "the gate couldn't trust its own state, so it kept no journal; what its \
+                      answer printed on the machine that answered says why"
+            .to_owned(),
+        kind => {
+            let kind = if kind == UNREACHED {
+                "the gate couldn't fetch the commit or run git"
+            } else {
+                "the gate refused the request, its bundle or its commit"
+            };
+            format!(
+                "{kind}; the journal of gates on the machine that answered, nix-offload/gates/\
+                 {JOURNAL} in its state, says why"
+            )
+        }
+    }
+}
+
+/// Leaves what the gate of `commit` for `quest` came to, `gone`: its
+/// result in `gate`, in fixed words where it was refused, with the run's
+/// log where one ran, and its line in the journal, the refusal's own
+/// words with it. Where the state can't be trusted, so no journal is
+/// kept, the refusal's words are printed instead, for whoever started
+/// the answer here, never to the gate's folder another machine reads.
+fn left(
+    places: &Places,
+    gate: &GateFolder,
+    (quest, commit): (&str, &str),
+    request: Option<&Request>,
+    gone: Result<u8, Refusal>,
+) -> Found {
+    let (exit, said, why) = match gone {
+        Ok(exit) => (exit, said_of(exit), None),
+        Err((exit, why)) => (exit, refusal_said(exit), Some(why)),
     };
-    format!("{kind}; the journal of gates on the machine that answered says why")
+    // A refused gate ran nothing, so a log in its work folder is an
+    // earlier run's, and would say another run's end.
+    if why.is_none() && trusted_work(places, commit) {
+        carried_log(&places.work(commit).join(LOG), gate);
+    }
+    let found = Found {
+        commit: commit.to_owned(),
+        exit,
+        said,
+    };
+    if places.owned().is_ok() {
+        journalled(places, quest, request, &found, why.as_deref());
+    } else if let Some(why) = &why {
+        eprintln!("nix-offload: answer refused {commit}: {why}");
+    }
+    if let Err(error) = gate.write_whole(RESULT, found.json().as_bytes()) {
+        eprintln!("nix-offload: answer couldn't leave its result: {error}");
+    }
+    found
 }
 
 /// `answer`: the gate for `QUEST COMMIT`, its result left beside the
@@ -607,27 +661,15 @@ pub fn answer(arguments: &[String], state: &Path) -> Result<(), Failure> {
         .as_ref()
         .map_err(|why| refused(why.clone()))
         .and_then(|request| gated(&fence, &places, &gate, request, (quest, commit), &mut ran));
-    let (exit, said, why) = match gone {
-        Ok(exit) => (exit, said_of(exit), None),
-        Err((exit, why)) => (exit, refusal_said(exit), Some(why)),
-    };
-    let request = request.ok();
-    if trusted_work(&places, commit) {
-        carried_log(&places.work(commit).join(LOG), &gate);
-    }
-    let found = Found {
-        commit: commit.clone(),
-        exit,
-        said,
-    };
-    if places.owned().is_ok() {
-        journalled(&places, quest, request.as_ref(), &found, why.as_deref());
-    }
-    if let Err(error) = gate.write_whole(RESULT, found.json().as_bytes()) {
-        eprintln!("nix-offload: answer couldn't leave its result: {error}");
-    }
+    let found = left(
+        &places,
+        &gate,
+        (quest.as_str(), commit.as_str()),
+        request.ok().as_ref(),
+        gone,
+    );
     println!("{}", found.said);
-    crate::ended::coded(exit, || {
+    crate::ended::coded(found.exit, || {
         format!("the gate of {commit} didn't pass, as the line above and its log say")
     })
 }

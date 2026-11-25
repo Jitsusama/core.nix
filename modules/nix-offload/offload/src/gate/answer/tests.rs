@@ -227,10 +227,44 @@ fn a_refusal_tells_the_asker_its_kind_and_none_of_this_machines_paths() {
         why.contains(&*state.to_string_lossy()),
         "the refusal itself should name the folder, as the journal keeps it: {why}"
     );
-    let said = refusal_said(exit);
+    // The work folder holds an earlier run's log, which a refusal ran
+    // none to replace.
+    fs::remove_file(state.join("work")).expect("the link goes");
+    let places = forge.places();
+    fs::create_dir_all(places.work(&head)).expect("an earlier run's folder");
+    fs::write(places.work(&head).join(LOG), "an earlier run").expect("its log");
+    assert_eq!(exit, UNTRUSTED, "{why}");
+    let found = left(
+        &places,
+        &gate,
+        (QUEST, &head),
+        None,
+        Err((REFUSED, why.clone())),
+    );
+    let result =
+        String::from_utf8(gate.read(RESULT, 1 << 20).expect("a result is left")).expect("words");
+    assert_eq!(found.exit, REFUSED);
     assert!(
-        !said.contains('/') && !said.contains(&why),
-        "what goes back to the asker should name no path: {said}"
+        result.contains(&refusal_said(REFUSED)) && !result.contains(&*state.to_string_lossy()),
+        "the asker should be told the kind in fixed words and no path of this machine's: {result}"
+    );
+    assert!(
+        !gate.holds(LOG),
+        "nor an earlier run's log, as if this one ran"
+    );
+    let journal = fs::read_to_string(state.join(JOURNAL)).expect("a journal is kept");
+    let line: serde_json::Value =
+        serde_json::from_str(journal.lines().last().expect("a line")).expect("a line of json");
+    assert_eq!(
+        line["why"].as_str(),
+        Some(why.as_str()),
+        "the journal should keep the refusal's own words"
+    );
+    let ran = left(&places, &gate, (QUEST, &head), None, Ok(0));
+    assert_eq!(ran.said, said_of(0));
+    assert!(
+        gate.holds(LOG),
+        "a gate that ran carries its run's log back"
     );
     let kinds = [REFUSED, NOT_NOW, UNREACHED, UNTRUSTED].map(refusal_said);
     assert!(
