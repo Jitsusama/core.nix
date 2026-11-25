@@ -7,7 +7,7 @@ use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use crate::{QUEST_SLICE, client_of_build};
+use crate::{QUEST_SLICE, client_of_build, first_process};
 
 /// The tier the work of quests no tier names goes in, and of work for no
 /// quest, which sits in its slice directly, as jobs-sorter's tiers.rs
@@ -285,9 +285,11 @@ fn asker(cmdline: &[u8], cgroup: &[u8]) -> Asker {
     }
 }
 
-/// Whether a build's cgroup holds a process to follow to its client.
+/// Whether a build's cgroup, or one under it, holds a process to follow to
+/// its client: the same process the client is found through, so a build
+/// that moved its processes down isn't said to be too short to see.
 fn has_a_process(build: &Path) -> bool {
-    fs::read_to_string(build.join("cgroup.procs")).is_ok_and(|procs| !procs.trim().is_empty())
+    first_process(build).is_some()
 }
 
 /// Who asked for a build, while its client is still there to ask.

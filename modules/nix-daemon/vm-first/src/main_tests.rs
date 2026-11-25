@@ -156,6 +156,7 @@ fn a_flag_asked_wrongly_is_a_usage_failure() {
         "--cgroup sys/fs/cgroup/build.slice",
         "--cgroup /sys/fs/cgroup/../build.slice",
         "--cgroup /run/build.slice",
+        "--cgroup /sys/fs/cgroupx/build.slice",
     ] {
         let exit = settings(&words(line)).err().map(|failure| failure.exit);
         assert_eq!(
@@ -437,23 +438,73 @@ fn finds_every_process_under_a_build_its_containers_too() {
 }
 
 #[test]
-fn a_builds_first_process_is_its_own_else_the_first_under_it() {
+fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
-    let payload = root.join("payload");
-    fs::create_dir_all(&payload).unwrap();
-    fs::write(root.join("cgroup.procs"), "10\n11\n").unwrap();
-    fs::write(payload.join("cgroup.procs"), "30\n").unwrap();
+    // `a` sorts first but holds its process a cgroup further down than `b`.
+    let (a, deep, b) = (root.join("a"), root.join("a/deep"), root.join("b"));
+    fs::create_dir_all(&deep).expect("the temp folder takes a folder");
+    fs::create_dir_all(&b).expect("the temp folder takes a folder");
+    let procs = |cgroup: &Path, pids: &str| {
+        fs::write(cgroup.join("cgroup.procs"), pids).expect("the temp folder takes a file");
+    };
+    procs(&root, "10\n11\n");
+    procs(&a, "");
+    procs(&deep, "50\n");
+    procs(&b, "40\n");
     let own = first_process(&root);
-    fs::write(root.join("cgroup.procs"), "").unwrap();
-    let moved = first_process(&root);
-    fs::write(payload.join("cgroup.procs"), "").unwrap();
+    procs(&root, "");
+    let nearest = first_process(&root);
+    procs(&b, "");
+    let deeper = first_process(&root);
+    procs(&deep, "");
     let none = first_process(&root);
-    fs::remove_dir_all(&root).unwrap();
-
+    fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(
-        (own, moved, none),
-        (Some(10), Some(30), None),
-        "a build's first process wasn't its own, else the first under it"
+        (own, nearest, deeper, none),
+        (Some(10), Some(40), Some(50), None),
+        "a build's first process wasn't its own, else the nearest under it"
+    );
+}
+
+#[test]
+fn a_cgroup_under_the_cgroup_root_is_kept_as_asked() {
+    for asked in [
+        "/sys/fs/cgroup/build.slice",
+        "/sys/fs/cgroup/build.slice/",
+        "/sys/fs/cgroup/./build.slice",
+    ] {
+        let kept = settings(&words(&format!("--cgroup {asked}")))
+            .ok()
+            .map(|settings| settings.cgroup);
+        assert_eq!(
+            (kept, in_cgroup("0::/build.slice/x\n", Path::new(asked))),
+            (Some(PathBuf::from(asked)), true),
+            "{asked} wasn't kept, or a process under it wasn't read as in it"
+        );
+    }
+}
+
+// Only Linux reads a folder's files through its open descriptor.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stat_whose_name_isnt_utf8_is_read_as_text_past_it() {
+    let folder = std::env::temp_dir().join(format!("vm-first-stat-{}", std::process::id()));
+    fs::create_dir_all(&folder).expect("the temp folder takes a folder");
+    let stat = [
+        b"4242 (a\xff\xfe) S 1 4242 4242 0 -1 4194560".as_slice(),
+        b" 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2",
+    ]
+    .concat();
+    fs::write(folder.join("stat"), stat).expect("the temp folder takes a file");
+    let text = fs::File::open(&folder)
+        .ok()
+        .and_then(|opened| Proc(opened).text("stat"));
+    fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
+    assert_eq!(
+        text.as_deref()
+            .map(|text| (parse_started(text), parse_ppid(text))),
+        Some((Some(98765), Some(1))),
+        "a stat whose name isn't UTF-8 wasn't read as text past it"
     );
 }
 

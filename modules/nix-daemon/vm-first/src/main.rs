@@ -43,7 +43,7 @@
 //! `vm-first --help` says its flags; it takes the command kit's shape
 //! (docs/commands.md), and what it does goes to its journal on stderr.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
 use std::os::fd::AsRawFd;
@@ -270,11 +270,29 @@ fn client_of_build(build: &Path) -> Option<Proc> {
     None
 }
 
-/// The first process a build's cgroup lists, else the first a cgroup under
-/// it lists, so a build that moves every process into a cgroup of its own
-/// is still weighed by its quest.
+/// The first process a build's cgroup lists, else the first the cgroups
+/// under it list, the nearest first, so a build that moves every process
+/// into a cgroup of its own is still weighed by its quest. The walk ends
+/// at the first process found, since it's taken for each build twice a
+/// second.
 fn first_process(build: &Path) -> Option<u32> {
-    pids_under(build).first()?.parse().ok()
+    let mut cgroups = VecDeque::from([build.to_path_buf()]);
+    while let Some(cgroup) = cgroups.pop_front() {
+        let procs = fs::read_to_string(cgroup.join("cgroup.procs")).unwrap_or_default();
+        if let Some(pid) = procs.lines().find_map(|pid| pid.trim().parse().ok()) {
+            return Some(pid);
+        }
+        let mut under: Vec<PathBuf> = fs::read_dir(&cgroup)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .map(|entry| entry.path())
+            .collect();
+        under.sort();
+        cgroups.extend(under);
+    }
+    None
 }
 
 /// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
