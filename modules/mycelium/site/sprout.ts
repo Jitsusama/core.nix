@@ -1,7 +1,8 @@
 // New work Joel starts from the map, said as the link the desktop hands the
 // launcher (modules/quickshell/mycelium-link): `mycelium:sprout` opens Start
-// New Work with his words filled in, and from the cell it is started from
-// where one is open. A page reads and never acts, so the map can't ask the
+// New Work with his words filled in, from the cell it is started from
+// where one is open, and on the machine it is started on where a machine's
+// drawer asked, `cloud` for any of the cloud's. A page reads and never acts, so the map can't ask the
 // node to sprout; the launcher's own Return, pressed by him, is what starts
 // anything, as it is when he types there himself. What follows shapes only
 // the links this page writes: any page can write one, so mycelium-link and
@@ -10,6 +11,9 @@
 // A cell's address, as mycelium-link lets one through: 1 to 12 capitals
 // and digits.
 const ADDRESS = /^[A-Z0-9]{1,12}$/u;
+// A machine's name, as mycelium-link lets one through: up to 64 letters,
+// digits, dots, hyphens and underscores, a letter or a digit first.
+const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 // Any run of spaces, tabs or line breaks, which a line of words reads as
 // one: Unicode's White_Space, as Rust's `char::is_whitespace` splits
 // plain.rs's words, so U+0085 parts words and U+FEFF is left out below.
@@ -28,6 +32,18 @@ export const LONGEST_WORDS = 1000;
 /** Whether `from` is a cell's address as mycelium-link lets one through. */
 export const isAddress = (from: string | null): from is string =>
   from !== null && ADDRESS.test(from);
+
+/** What names any of the cloud's machines, as the Launcher reads it. */
+export const CLOUD = "cloud";
+
+/** Whether `on` is a machine's name as mycelium-link lets one through. */
+export const isMachine = (on: string | null): on is string => on !== null && MACHINE.test(on);
+
+// The machine new work starts on, said as a place.
+const placeWords = (on: string): string => (on === CLOUD ? "the cloud" : on);
+
+/** Where new work starts, as the map's tick says it: on a machine, or the cloud. */
+export const onWords = (on: string): string => `On ${placeWords(on)}`;
 
 /**
  * The words as one line, spaces between them, or "" when there are none,
@@ -49,28 +65,36 @@ export const sproutWords = (typed: string): string =>
 
 /**
  * The link that hands the launcher new work: its words, percent-encoded,
- * and the cell it comes from when `from` is an address, or null when no
- * words were typed, since Start New Work opened empty asks nothing of it.
- * An address that isn't one is left out rather than sent for the launcher
- * to refuse, so the work still starts, from nowhere.
+ * the cell it comes from when `from` is an address, and the machine it
+ * starts on when `on` is a machine's name, or null when no words were
+ * typed, since Start New Work opened empty asks nothing of it. An address
+ * that isn't one is left out rather than sent for the launcher to refuse,
+ * so the work still starts, from nowhere; so is a misshaped machine, so it
+ * starts where new work does when Joel names none, as he can see there.
  */
-export const sproutLink = (typed: string, from: string | null): string | null => {
+export const sproutLink = (
+  typed: string,
+  from: string | null,
+  on: string | null = null,
+): string | null => {
   const words = sproutWords(typed);
   if (words === "") {
     return null;
   }
   const link = `mycelium:sprout?words=${encodeURIComponent(words)}`;
-  return isAddress(from) ? `${link}&from=${from}` : link;
+  const fromLink = isAddress(from) ? `${link}&from=${from}` : link;
+  return isMachine(on) ? `${fromLink}&on=${on}` : fromLink;
 };
 
 /**
- * What the map says once it has sent the work on, `from` its cell's name. A
- * page can't know whether the launcher opened, and mycelium-link lets go of
- * a link that follows another within a few seconds, so it says how to send
- * the words again.
+ * What the map says once it has sent the work on, `from` its cell's name
+ * and `on` the machine it starts on. A page can't know whether the
+ * launcher opened, and mycelium-link lets go of a link that follows
+ * another within a few seconds, so it says how to send the words again.
  */
-export const handedWords = (from: string | null): string =>
-  `Sent to the Launcher's Start New Work${from === null ? "" : `, from ${from}`}; ` +
+export const handedWords = (from: string | null, on: string | null = null): string =>
+  `Sent to the Launcher's Start New Work${from === null ? "" : `, from ${from}`}` +
+  `${on === null ? "" : `, on ${placeWords(on)}`}; ` +
   "nothing starts until you press Return there. " +
   "If it didn't open, wait a moment, then s brings the words back.";
 

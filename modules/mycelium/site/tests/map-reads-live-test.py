@@ -1715,6 +1715,11 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(
             body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
         ).to_have_count(0)
+        # New work from it starts on any of the cloud's machines.
+        cloud = body.get_by_role("button", name="Start New Work on the Cloud")
+        expect(cloud, "the basin didn't start work on the cloud").to_have_attribute(
+            "data-sprout-on", "cloud"
+        )
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -2311,6 +2316,44 @@ def test_a_kept_cloud_machine_says_so_and_opens_its_row(
         )
     finally:
         opened.close()
+
+
+def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    here = page.locator("#panel-body").get_by_role("button", name="Start New Work Here")
+    here.click()
+    expect(page.locator("#sprout-on-words"), "osprey wasn't offered").to_have_text("On osprey")
+    expect(page.locator("#sprout-from-line"), "a machine offered a cell").to_be_hidden()
+    page.keyboard.type("tidy the rows")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    want = "mycelium:sprout?words=tidy%20the%20rows&on=osprey"
+    assert handed == want, f"the machine's drawer handed {handed}, not {want}"
+    expect(page.locator("#where"), "the hand-off didn't name its machine").to_have_text(
+        f"{HANDED}, on osprey{HANDED_END}"
+    )
+    expect(here, "the keys didn't go back to the drawer's button").to_be_focused()
+    # s on the machine's drawer offers it too, and a tick lets it go, so
+    # the work starts where new work does when Joel names none.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "s didn't offer the open machine").to_be_visible()
+    page.locator("#sprout-on").uncheck()
+    page.locator("#sprout").fill("anywhere")
+    page.locator("#sprout").press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == "mycelium:sprout?words=anywhere", f"the cleared tick handed {handed}"
+    # The whole map names no machine.
+    page.evaluate("location.hash = ''")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "the whole map offered a machine").to_be_hidden()
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

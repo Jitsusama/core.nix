@@ -98,6 +98,13 @@ opening 'mycelium:sprout?words=-rf+now&from=tern02' \
   '[ipc][call][launcher][newWork][words:-rf now][from:]'
 opening 'mycelium:sprout?from=TERN02' ''
 opening 'mycelium:sprout?words=tidy&words=reboot' ''
+# Its Start New Work Here, on a machine's drawer: the machine after a fixed
+# word too, in the launcher's call naming one, and a misshaped one refused.
+opening 'mycelium:sprout?words=tidy&on=osprey' \
+  '[ipc][call][launcher][newWorkOn][words:tidy][from:][on:osprey]'
+opening 'mycelium:sprout?words=tidy&from=TERN02&on=cloud' \
+  '[ipc][call][launcher][newWorkOn][words:tidy][from:TERN02][on:cloud]'
+opening 'mycelium:sprout?words=tidy&on=-h' ''
 # Code's page's Open it in the launcher, on a repository's row.
 opening 'mycelium:repository/github:someone/thing' \
   '[ipc][call][launcher][code][github:someone/thing]'

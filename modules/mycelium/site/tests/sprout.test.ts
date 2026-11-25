@@ -5,7 +5,16 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
-import { handedWords, isAddress, LONGEST_WORDS, sproutLink, sproutWords } from "../sprout.ts";
+import {
+  CLOUD,
+  handedWords,
+  isAddress,
+  isMachine,
+  LONGEST_WORDS,
+  onWords,
+  sproutLink,
+  sproutWords,
+} from "../sprout.ts";
 
 it("reads the typed words as one line", () => {
   assert.equal(
@@ -93,6 +102,36 @@ it("says the cell it comes from only when that is an address", () => {
       `${JSON.stringify(from)} isn't an address, so it should be left out`,
     );
   }
+});
+
+it("says the machine it starts on only when that is a machine's name", () => {
+  assert.equal(
+    sproutLink("tidy the rows", null, "osprey"),
+    "mycelium:sprout?words=tidy%20the%20rows&on=osprey",
+    "a machine's name should go with the words",
+  );
+  assert.equal(
+    sproutLink("tidy", "TERN02", CLOUD),
+    "mycelium:sprout?words=tidy&from=TERN02&on=cloud",
+    "the cloud should go as cloud, after the cell",
+  );
+  assert.equal(
+    sproutLink("tidy", null, "v2s-gcp-provider-s99ia2-1795647845"),
+    "mycelium:sprout?words=tidy&on=v2s-gcp-provider-s99ia2-1795647845",
+    "a cloud machine's own name should go as it is",
+  );
+  assert.equal(isMachine(null), false, "no machine should be no name");
+  assert.equal(isMachine("a".repeat(64)), true, "64 letters should be a name");
+  for (const on of ["", "-help", ".hidden", "os prey", "osprey&words=x", "a".repeat(65)]) {
+    assert.equal(
+      sproutLink("tidy", null, on),
+      "mycelium:sprout?words=tidy",
+      `${JSON.stringify(on)} isn't a machine's name, so it should be left out`,
+    );
+  }
+  assert.equal(sproutLink("", null, "osprey"), null, "no words should hand nothing");
+  assert.equal(onWords("osprey"), "On osprey", "a machine should be said by its name");
+  assert.equal(onWords(CLOUD), "On the cloud", "the cloud should be said as a place");
 });
 
 /** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */
@@ -190,5 +229,13 @@ it("says where the work went, that nothing starts yet, and how to send it again"
   assert.equal(
     handedWords("Heron"),
     `${fromHeron}nothing starts until you press Return there.${again}`,
+  );
+  assert.equal(
+    handedWords(null, "osprey"),
+    `Sent to the Launcher's Start New Work, on osprey; nothing starts until you press Return there.${again}`,
+  );
+  assert.equal(
+    handedWords("Heron", CLOUD),
+    `Sent to the Launcher's Start New Work, from Heron, on the cloud; nothing starts until you press Return there.${again}`,
   );
 });

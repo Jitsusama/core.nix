@@ -75,7 +75,7 @@ import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { FULL_WORDS, handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
+import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, LONGEST_WORDS, NO_WORDS, onWords, sproutLink } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -162,12 +162,18 @@ import {
   const sproutFromLine = document.getElementById("sprout-from-line");
   const sproutFromBox = document.getElementById("sprout-from");
   const sproutFromWords = document.getElementById("sprout-from-words");
+  const sproutOnLine = document.getElementById("sprout-on-line");
+  const sproutOnBox = document.getElementById("sprout-on");
+  const sproutOnWords = document.getElementById("sprout-on-words");
   const sproutGo = document.getElementById("sprout-link");
   const sproutControl = document.getElementById("sprout-control");
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
-  // The words last handed on and the cell they went from, kept to send
-  // again, and whether the line offers that cell now.
+  // The machine new work would start on, the one whose drawer opened it.
+  let sproutOn = null;
+  // The words last handed on, the cell they went from and the machine
+  // they went to, kept to send again, and whether the line offers those
+  // now.
   let sproutKept = null;
   let sproutKeptFromOffered = false;
   let sproutOpener = null;
@@ -3310,6 +3316,9 @@ import {
       // A basin's stand is named "<basin> basin", which no row is: the space
       // in it is one no machine's name holds, so linkOf offers no link.
       launcherLink("machine", name, "Open It in the Launcher") +
+      // New work starts on it, or on any of the cloud's for a basin's
+      // stand, from the Launcher's Start New Work as any new work does.
+      sproutOnButton(pool ? CLOUD : name, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3338,6 +3347,9 @@ import {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
+  // A machine's name mycelium-link would refuse is never offered.
+  const sproutOnButton = (on, words) =>
+    isMachine(on) ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3700,8 +3712,20 @@ import {
     // is there to see too.
     sproutFromLine.title = sproutFrom ? `${short} (${sproutFrom})` : "";
   };
-  // `named` is a drawer's button, which names its own cell.
-  const openSprout = (from, { named = false } = {}) => {
+  // The machine a drawer's Start New Work Here names, offered as the
+  // cell is, with a tick that lets go of it so the work starts where new
+  // work does when none is named.
+  const drawerOn = () => panelBody.querySelector("[data-sprout-on]")?.dataset.sproutOn ?? null;
+  const offerOn = (on, { kept = false } = {}) => {
+    sproutOn = isMachine(on) && (kept || on === drawerOn()) ? on : null;
+    sproutOnLine.hidden = sproutOn === null;
+    sproutOnBox.checked = true;
+    sproutOnWords.textContent = sproutOn ? onWords(sproutOn) : "";
+    sproutOnLine.title = sproutOnWords.textContent;
+  };
+  // `named` is a drawer's button, which names its own cell, or its own
+  // machine as `on`.
+  const openSprout = (from, { named = false, on = null } = {}) => {
     // Asked again while open, it only takes the keys back, so a cleared
     // tick stays cleared, unless a drawer's button names another cell,
     // which it then offers, the keys going back to it on close.
@@ -3711,6 +3735,8 @@ import {
         sproutKeptFromOffered = false;
         if (from === sproutFrom) sproutFromBox.checked = true;
         else offerFrom(from);
+        if (on === sproutOn) sproutOnBox.checked = true;
+        else offerOn(on);
       }
       holdKeysDown();
       sproutInput.focus();
@@ -3725,6 +3751,7 @@ import {
     sproutKeptFromOffered =
       sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
     offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
+    offerOn(sproutKeptFromOffered ? sproutKept.on : on, { kept: sproutKeptFromOffered });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3738,7 +3765,12 @@ import {
   // its place; else to the map.
   const sproutBack = () => {
     const address = sproutOpener?.dataset?.sproutFrom;
-    const again = address ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`) : null;
+    const machine = sproutOpener?.dataset?.sproutOn;
+    const again = address
+      ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`)
+      : machine
+        ? panelBody.querySelector(`[data-sprout-on="${CSS.escape(machine)}"]`)
+        : null;
     const stands = sproutOpener?.isConnected && sproutOpener !== document.body && sproutOpener.checkVisibility();
     (stands ? sproutOpener : again || view).focus({ preventScroll: true });
   };
@@ -3757,16 +3789,19 @@ import {
     sproutLine.hidden = true;
     trail.inert = false;
     sproutFrom = null;
+    sproutOn = null;
     sproutControl.setAttribute("aria-expanded", "false");
     if (inLine) sproutBack();
     sproutOpener = null;
     if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
   }
-  const toggleSprout = () => (sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null) : closeSprout());
+  const toggleSprout = () =>
+    sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null, { on: drawerOn() }) : closeSprout();
   sproutLine.addEventListener("submit", (e) => {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
-    const link = sproutLink(sproutInput.value, from);
+    const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
+    const link = sproutLink(sproutInput.value, from, on);
     // No words is said where they go, in the field's own bubble, and once
     // to a screen reader, until a word is typed.
     if (!link) {
@@ -3777,10 +3812,10 @@ import {
     }
     sproutGo.href = link;
     sproutGo.click();
-    sproutKept = { words: sproutInput.value, from };
+    sproutKept = { words: sproutInput.value, from, on };
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
-    where.textContent = handedWords(short);
+    where.textContent = handedWords(short, on);
   });
   // The field leaves off what would take it past the cap by itself, so
   // that is said, only when something was left off.
@@ -3799,8 +3834,11 @@ import {
     if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
       sproutKeptFromOffered = false;
       const ticked = sproutFromBox.checked;
+      const onTicked = sproutOnBox.checked;
       offerFrom(chosen?.kind === "cell" ? chosen.id : null);
+      offerOn(drawerOn());
       sproutFromBox.checked = ticked;
+      sproutOnBox.checked = onTicked;
     }
   });
   // A key that opens, closes or sends the line does so once, whatever
@@ -4065,6 +4103,11 @@ import {
     const sprout = e.target.closest("[data-sprout-from]");
     if (sprout) {
       openSprout(sprout.dataset.sproutFrom, { named: true });
+      return;
+    }
+    const sproutHere = e.target.closest("[data-sprout-on]");
+    if (sproutHere) {
+      openSprout(null, { named: true, on: sproutHere.dataset.sproutOn });
       return;
     }
     // The way back to the whole map is the way to Now, as it says.
