@@ -537,7 +537,8 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     assert off < 0, f"the first column was on the screen, at {off} of {across}: the case's own"
     wake(shell)
     since = shell.mark()
-    shell.as_account("niri msg action focus-column-first")
+    # By its id, since the cases before leave windows of their own on the strip ahead of it.
+    shell.as_account(f"niri msg action focus-window --id {first['id']}")
     # Once niri's scroll is still, and before the keys rest, it stands where niri has the
     # window it sat on: over it, or off the screen beyond the edge with it.
     gone = laid_out(shell, third)
