@@ -20,9 +20,11 @@ function paragraphs(text) {
 // null where it ends a paragraph or a line another program broke. A line
 // the drawer broke itself, as it lays a run, an identifier or an item's
 // value, ends at a break too, so a search stops there as the wash does.
-function runsOn(raw, kept) {
+// A `spaced` text's break stands for the space it was laid at, as a
+// title's does (Identifier.titleLines), so it runs on with that space.
+function runsOn(raw, kept, spaced) {
     const rest = raw.slice(kept);
-    return PARAGRAPH_BREAK.test(rest) ? null : rest;
+    return !PARAGRAPH_BREAK.test(rest) ? rest : spaced === true ? " " : null;
 }
 
 // Pieces as lines, top to bottom, those sharing a baseline one line, each
