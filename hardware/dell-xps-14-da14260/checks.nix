@@ -526,18 +526,14 @@ in
   # that failed isn't asked for again, and blocks above a page are asked
   # for without retrying. No test runs the fallback itself: it needs memory
   # fragmented on cue, and no VM here has a camera on videobuf2's scattered
-  # allocator.
+  # allocator (tests/camera-buffers-never-ask-twice.sh).
   camera-buffers-never-ask-twice-for-big-pages =
     let
       allocator = "drivers/media/common/videobuf2/videobuf2-dma-sg.c";
+      file = "${kernelSource [ allocator ]}/${allocator}";
     in
     pkgs.runCommandLocal "camera-buffers-never-ask-twice-for-big-pages" { } ''
-      cd ${kernelSource [ allocator ]}
-      fail() { echo "The camera's buffers $1, so opening it can compact for seconds."; exit 1; }
-      grep -qF 'order = min(order, max_order);' ${allocator} || fail "ask again for a failed size"
-      grep -qF 'max_order = order;' ${allocator} || fail "forget which size failed"
-      grep -qF 'alloc_pages(order ? gfp | __GFP_NORETRY : gfp,' ${allocator} ||
-        fail "retry for blocks above a page"
+      ${lib.getExe pkgs.bash} ${./tests/camera-buffers-never-ask-twice.sh} ${file}
       touch $out
     '';
 
