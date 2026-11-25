@@ -2030,12 +2030,13 @@
     couldn't read or set is said, and a set tried, once in five minutes
   '';
   local-name-is-kept-by-a-job = ''
-    a Mac with a local name runs a root job under bash that sets it back, by that name and not
-    the host name, from its start, whenever macOS writes its network settings and once a
-    minute, finding its tools only in macOS's own folders and saying what it does in its log,
-    given nothing else, and a Mac with none runs nothing; the module adds or changes no launchd
-    plist but that job's, nor any agent of the account's, the job's plist is on, is the text its
-    options lower to and opens no socket, and keep.sh names, in any case, none of dns-sd,
+    a Mac with a local name runs a root job, labelled as nix-darwin labels it, under the Mac's
+    own bash that sets it back, by that name and not the host name, from its start, whenever
+    macOS writes its network settings and once a minute, finding its tools only in macOS's own
+    folders and saying what it does in its log, given nothing else, and a Mac with none runs
+    nothing; the module adds or changes no launchd plist but that job's, nor any agent of the
+    account's, the job's plist is on, is the text its options lower to, is written from that
+    text and opens no socket, and keep.sh names, in any case, none of dns-sd,
     launchctl, systemsetup's remote switches, Remote Management's kickstart or the sharing
     command, since any of those could advertise for the host
   '';
