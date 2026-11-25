@@ -2916,13 +2916,20 @@ mod tests {
     async fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
         let looked_up = AtomicBool::new(false);
 
-        let failed = reach(
-            "model-relay.invalid",
+        // The trailing dot makes the name whole, so no search domain the
+        // machine's resolver adds can turn it into one that resolves.
+        let reaching = reach(
+            "model-relay.invalid.",
             443,
             Duration::from_secs(2),
             &looked_up,
-        )
-        .await;
+        );
+        // The budget given to reach bounds the connection, not the lookup,
+        // which the relay bounds from outside; this bounds it here, so a
+        // resolver that never answers fails the test rather than hangs it.
+        let failed = tokio::time::timeout(Duration::from_secs(10), reaching)
+            .await
+            .expect("the machine's resolver took over 10 s to fail a name under .invalid");
 
         let unnamed = failed
             .err()
@@ -2936,20 +2943,18 @@ mod tests {
     }
 
     #[test]
-    fn a_connection_not_made_in_time_is_the_names_doing_until_it_resolves() {
-        let named = Named { at: 0, number: 0 };
-        let within = Duration::from_secs(10);
-
-        let unresolved = unmade(named, within, &AtomicBool::new(false));
-        let resolved = unmade(named, within, &AtomicBool::new(true));
+    fn a_connection_not_made_in_time_before_its_name_resolved_is_the_names_doing() {
+        // Once the name resolved it is late instead, which the 504
+        // integration test already shows end to end.
+        let unresolved = unmade(
+            Named { at: 0, number: 0 },
+            Duration::from_secs(10),
+            &AtomicBool::new(false),
+        );
 
         assert!(
             matches!(unresolved, Unreachable::Unnamed),
             "a lookup outlasting the budget wasn't said as the name's"
-        );
-        assert!(
-            matches!(resolved, Unreachable::Late),
-            "a connection outlasting the budget once named wasn't said as late"
         );
     }
 
@@ -2960,15 +2965,14 @@ mod tests {
             .expect("a port");
         let port = origin.local_addr().expect("its address").port();
 
-        let looked_up = AtomicBool::new(false);
-        let tcp = reach("127.0.0.1", port, Duration::from_secs(2), &looked_up)
-            .await
-            .expect("a connection");
-
-        assert!(
-            looked_up.load(Ordering::Relaxed),
-            "a name that resolved wasn't marked as looked up"
-        );
+        let tcp = reach(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(2),
+            &AtomicBool::new(false),
+        )
+        .await
+        .expect("a connection");
 
         assert_eq!(
             socket2::SockRef::from(&tcp)

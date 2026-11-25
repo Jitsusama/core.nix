@@ -668,6 +668,12 @@ impl Relay {
         let watching = Arc::clone(&done);
         let pid = self.child.id().to_string();
         let awaited = mark.to_owned();
+        // libtest names each test's thread after it, and the note below
+        // lands among every other test's lines, so it says whose it is.
+        let test = std::thread::current()
+            .name()
+            .unwrap_or("a test")
+            .to_owned();
         std::thread::spawn(move || {
             // The read below waits on the relay's log, which a relay that
             // never says the mark leaves open for ever; stopping it closes
@@ -685,7 +691,7 @@ impl Relay {
                 // stderr that can't be written leaves nowhere to say it.
                 let _ = writeln!(
                     io::stderr(),
-                    "the relay never said {awaited:?} within {within:?}, {then}"
+                    "{test}: the relay never said {awaited:?} within {within:?}, {then}"
                 );
             }
         });
