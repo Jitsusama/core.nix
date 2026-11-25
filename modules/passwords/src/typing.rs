@@ -256,33 +256,49 @@ fn in_jobs(group: &str) -> bool {
     })
 }
 
-/// Whether the process at `pid` is an agent's, as /proc says. kitty's
-/// own is judged by the jobs' slice alone, since the sessions' kitty
-/// lives in the agents' slice.
-fn an_agent(pid: u32) -> bool {
+/// Whether a process named so, run from `exe`, with these arguments, in
+/// this control group, is an agent's, as `agents` says, its group set
+/// aside only for a kitty believed by its program's path and group
+/// (`kitty_believed`, `from` as it takes it), since the sessions' kitty
+/// lives in the agents' slice. Its name is the process's own to change,
+/// so an agent renamed kitty in the agents' slice is still an agent's
+/// (ISXEG8's (63), 2026-11-25).
+#[must_use]
+pub fn agents_judged(
+    name: &str,
+    exe: &str,
+    words: &[String],
+    group: &str,
+    from: Option<&Path>,
+) -> bool {
+    let believed = kitty_believed(name, exe, group, from);
+    agents(name, words, if believed { "" } else { group })
+}
+
+/// Whether the process at `pid` is an agent's, as /proc says, `from`
+/// being the package the daemon's kitten comes from, as `kitty` takes it.
+fn an_agent(pid: u32, from: Option<&Path>) -> bool {
     let name = program(pid);
     let group = cgroup(pid);
-    let group = if KITTIES.contains(&name.as_str()) && !in_jobs(&group) {
-        String::new()
-    } else {
-        group
-    };
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let mut words = arguments(pid);
-    if let Ok(path) = std::fs::read_link(format!("/proc/{pid}/exe")) {
-        words.push(path.to_string_lossy().into_owned());
+    if !exe.is_empty() {
+        words.push(exe.clone());
     }
-    agents(&name, &words, &group)
+    agents_judged(&name, &exe, &words, &group, from)
 }
 
 /// The process at `pid` or among its forebears that is an agent's, up to
-/// the first, or none.
+/// the first, or none, `from` as `an_agent` takes it.
 #[must_use]
-pub fn session_above(pid: u32) -> Option<u32> {
+pub fn session_above(pid: u32, from: Option<&Path>) -> Option<u32> {
     let mut at = Some(pid);
     // A loop in what /proc says can't be, but is never followed forever.
     for _ in 0..4096 {
         let here = at?;
-        if an_agent(here) {
+        if an_agent(here, from) {
             return Some(here);
         }
         at = parent(here).filter(|up| *up != 0 && *up != here);
@@ -310,7 +326,8 @@ fn descends(pid: u32, forebear: u32) -> bool {
 /// sessions run beside the terminal rather than below it. A terminal
 /// other than kitty can't be asked what it runs, and what kitty says runs
 /// in its window may have more below it, so both are read this way.
-fn below(pid: u32) -> Option<&'static str> {
+/// `from` is as `an_agent` takes it.
+fn below(pid: u32, from: Option<&Path>) -> Option<&'static str> {
     let Ok(entries) = std::fs::read_dir("/proc") else {
         return Some(UNREAD);
     };
@@ -328,7 +345,7 @@ fn below(pid: u32) -> Option<&'static str> {
             .filter(|(child, up)| *up == at && *child != at)
         {
             let (name, words) = (program(*child), arguments(*child));
-            if an_agent(*child) || a_sessions(&name, &words) {
+            if an_agent(*child, from) || a_sessions(&name, &words) {
                 return Some(AGENT_RUNS);
             }
             if multiplexes(&name, &words) {
@@ -427,21 +444,7 @@ pub fn listens_on(words: &[String], pid: u32) -> String {
 #[must_use]
 pub fn foreground(listed: &str) -> Option<Vec<(Option<u32>, Vec<String>)>> {
     let listed: Value = serde_json::from_str(listed).ok()?;
-    let flag = |of: &Value, name: &str| of.get(name).and_then(Value::as_bool) == Some(true);
-    let os = listed
-        .as_array()?
-        .iter()
-        .find(|os| flag(os, "is_focused"))?;
-    let tab = os
-        .get("tabs")?
-        .as_array()?
-        .iter()
-        .find(|tab| flag(tab, "is_focused") || flag(tab, "is_active"))?;
-    let window = tab
-        .get("windows")?
-        .as_array()?
-        .iter()
-        .find(|window| flag(window, "is_focused") || flag(window, "is_active"))?;
+    let (_, window) = keyed(&listed)?;
     let processes = window.get("foreground_processes")?.as_array()?;
     Some(
         processes
@@ -466,6 +469,63 @@ pub fn foreground(listed: &str) -> Option<Vec<(Option<u32>, Vec<String>)>> {
             })
             .collect(),
     )
+}
+
+/// The tab and the window in it that kitty's `ls` says have its keys:
+/// its focused OS window's active tab, and that tab's active window.
+fn keyed(listed: &Value) -> Option<(&Value, &Value)> {
+    let flag = |of: &Value, name: &str| of.get(name).and_then(Value::as_bool) == Some(true);
+    let os = listed
+        .as_array()?
+        .iter()
+        .find(|os| flag(os, "is_focused"))?;
+    let tab = os
+        .get("tabs")?
+        .as_array()?
+        .iter()
+        .find(|tab| flag(tab, "is_focused") || flag(tab, "is_active"))?;
+    let window = tab
+        .get("windows")?
+        .as_array()?
+        .iter()
+        .find(|window| flag(window, "is_focused") || flag(window, "is_active"))?;
+    Some((tab, window))
+}
+
+/// The window kitty's `ls` says has its keys, by kitty's own id, and
+/// whether it stands alone: the only window in its group of the tab's.
+/// An overlay shares its window's group, and one put behind still takes
+/// the keys (kitty's `overlay_behind`), so any other window there counts.
+/// None where kitty names no such window or no id for it.
+#[must_use]
+pub fn kitty_window(listed: &str) -> Option<(u64, bool)> {
+    let listed: Value = serde_json::from_str(listed).ok()?;
+    let (tab, window) = keyed(&listed)?;
+    let id = window.get("id")?.as_u64()?;
+    let alone = tab
+        .get("groups")
+        .and_then(Value::as_array)
+        .is_some_and(|groups| {
+            groups.iter().any(|group| {
+                group
+                    .get("windows")
+                    .and_then(Value::as_array)
+                    .is_some_and(|windows| windows.len() == 1 && windows[0].as_u64() == Some(id))
+            })
+        });
+    Some((id, alone))
+}
+
+/// Why a kitty window is refused while another lies over it, or kitty
+/// doesn't say none does.
+pub const OVERLAID: &str = "another window may lie over that one in kitty";
+
+/// A window a secret may be typed into: its app id, and kitty's own id
+/// for the window in it with the keys, where it's a kitty's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fit {
+    pub app: String,
+    pub kitty: Option<u64>,
 }
 
 /// What kitty at `pid` says runs in its focused window, asked through
@@ -517,18 +577,21 @@ fn kitty_says(kitty: &str, pid: u32) -> Result<String, String> {
 ///
 /// Where another window has the keys, niri says not whose it is, an agent
 /// reads it, or it's a terminal that runs an agent, a multiplexer, or
-/// can't say what it runs.
-pub fn fit(
-    niri: &Path,
-    window: u64,
-    kitty_program: Option<&str>,
-) -> Result<String, (String, String)> {
+/// can't say what it runs, or a kitty window another may lie over.
+pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit, (String, String)> {
     let unknown = |why: String| (String::new(), why);
     let Some(focused) = focused_now(niri).map_err(unknown)? else {
         return Err(unknown(NOWHERE.to_owned()));
     };
     let app = focused.app_id;
+    let from = kitty_program.and_then(kittys_package);
     let refused = |why: &str| Err((app.clone(), why.to_owned()));
+    let fits = || {
+        Ok(Fit {
+            app: app.clone(),
+            kitty: None,
+        })
+    };
     if focused.id != window {
         return refused(MOVED);
     }
@@ -539,20 +602,20 @@ pub fn fit(
     if x11s(&name) {
         return refused("that window is X11's, where any X program can read its keys");
     }
-    if session_above(pid).is_some() {
+    if session_above(pid, from).is_some() {
         return refused("an agent reads that window");
     }
     let Some(kitty_program) = kitty_program else {
         if KITTIES.contains(&name.as_str()) {
             return refused("kitty can't be asked what runs in it");
         }
-        return below(pid).map_or(Ok(app.clone()), refused);
+        return below(pid, from).map_or_else(fits, refused);
     };
-    if !kitty(pid, kittys_package(kitty_program)) {
+    if !kitty(pid, from) {
         if KITTIES.contains(&name.as_str()) {
             return refused("that kitty isn't the one kitten asks");
         }
-        return below(pid).map_or(Ok(app.clone()), refused);
+        return below(pid, from).map_or_else(fits, refused);
     }
     let said = match kitty_says(kitty_program, pid) {
         Ok(said) => said,
@@ -561,6 +624,12 @@ pub fn fit(
     let Some(running) = foreground(&said) else {
         return refused("kitty didn't say what runs in its window");
     };
+    let Some((kitty_window, alone)) = kitty_window(&said) else {
+        return refused("kitty didn't say which of its windows has the keys");
+    };
+    if !alone {
+        return refused(OVERLAID);
+    }
     // What kitty says runs there must be kitty's own, each by its id, or
     // whatever answered as kitty could name anything.
     if running.is_empty()
@@ -578,19 +647,22 @@ pub fn fit(
         return refused("kitty can't see past the multiplexer in that terminal");
     }
     let session = running.iter().any(|(pid, words)| {
-        a_sessions(&named(pid), words) || pid.and_then(session_above).is_some()
+        a_sessions(&named(pid), words) || pid.and_then(|pid| session_above(pid, from)).is_some()
     });
     if session {
         return refused("an agent runs in that terminal");
     }
     match running
         .iter()
-        .find_map(|(process, _)| process.and_then(below))
+        .find_map(|(process, _)| process.and_then(|process| below(process, from)))
     {
         Some(UNSEEN) => refused("kitty can't see past the multiplexer in that terminal"),
         Some(UNREAD) => refused(UNREAD),
         Some(_) => refused("an agent runs in that terminal"),
-        None => Ok(app),
+        None => Ok(Fit {
+            app: app.clone(),
+            kitty: Some(kitty_window),
+        }),
     }
 }
 

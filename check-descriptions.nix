@@ -3396,8 +3396,11 @@
     into the niri window it was asked for once the launcher has let go of the keys and while
     that window still has them, refusing a second while one is under way, never into one an
     agent's process is behind, above or below (pi, pi-spawner,
-    mycelium, the hosted runtime, or the agents' or jobs' slices), nor a kitty whose foreground
-    runs one or a multiplexer or that can't say, and writes one journal line for each type
+    mycelium, the hosted runtime, or the agents' or jobs' slices, which only kitten's own kitty
+    is let off, never one only named kitty), nor a kitty whose foreground runs one or a
+    multiplexer or that can't say, nor a kitty window another may lie over or that isn't the
+    one the first look found, nor more than 5 s after it was asked, and writes one journal line
+    for each type
     naming no secret, can't be read through /proc by the
     account's other processes nor write a core dump, says nothing of its own on the shell's pipe
     whether it ends well, fails or panics, ends once whatever ran it closes its end,

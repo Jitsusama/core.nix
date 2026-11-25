@@ -6,10 +6,13 @@
 //! below it, a session reached by ssh or a multiplexer below it, where
 //! it's X11's, where it's kitty and kitty says an agent or a multiplexer
 //! runs in it, names what isn't its own or can't say what does, where
-//! something named kitty isn't the kitty kitten asks, and where the keys
-//! move once the secret is read;
+//! something named kitty isn't the kitty kitten asks, where another
+//! window may lie over kitty's, where the keys move once the secret is
+//! read, to another window or another of kitty's, and where the secret
+//! comes more than 5 s after its ask;
 //! and a journal line for each, naming the entry and the window's app id,
-//! never the secret (ISXEG8's terms for R-type-password, 2026-11-24).
+//! never the secret (ISXEG8's terms for R-type-password, 2026-11-24, and
+//! its must-closes before the place turns on, 2026-11-25).
 //! niri, the typist and kitty are stand-ins, and each window's process is
 //! one of the test's own, its forebears made as each case needs. They run
 //! in the build's sandbox: run beneath an agent, every window is refused.
@@ -47,10 +50,14 @@ cat >> "$TYPED"
 
 /// A stand-in kitty's remote control: what it was asked goes to its file,
 /// and it says what its `ls` file holds, failing where there's none, as
-/// kitty does when it can't be reached.
+/// kitty does when it can't be reached. Its nth ask is answered from the
+/// file's nth copy where there's one, as when kitty's windows change
+/// between the daemon's two looks.
 const KITTEN: &str = r#"#!/bin/sh
 printf '%s\n' "$*" > "$KITTY_ASKED"
-cat "$KITTY_SAYS"
+n=$(($(cat "$KITTY_SAYS.asked" 2>/dev/null || echo 0) + 1))
+echo "$n" > "$KITTY_SAYS.asked"
+if [ -e "$KITTY_SAYS.$n" ]; then cat "$KITTY_SAYS.$n"; else cat "$KITTY_SAYS"; fi
 "#;
 
 /// A stand-in pi, which starts one process beneath it and says its id,
@@ -314,11 +321,25 @@ impl Desk {
         *self.focused.lock().unwrap() = json!({"id": id, "pid": pid, "app_id": app});
     }
 
-    /// kitty's `ls`, its focused window running these processes.
+    /// kitty's `ls`, its focused window, its first, running these
+    /// processes alone in its group.
     fn kitty_runs(&self, processes: &Value) {
-        let listed = json!([{"is_focused": true, "tabs": [{"is_focused": true, "windows": [
-            {"is_focused": true, "foreground_processes": processes}]}]}]);
-        std::fs::write(self.folder.join("kitty-says"), listed.to_string()).unwrap();
+        self.kitty_lists(None, 1, &json!([1]), processes);
+    }
+
+    /// kitty's `ls`, its focused window `window`, in a group of the tab's
+    /// holding `group`, running these processes: said to every ask, or
+    /// to its `nth` alone.
+    fn kitty_lists(&self, nth: Option<usize>, window: u64, group: &Value, processes: &Value) {
+        let listed = json!([{"is_focused": true, "tabs": [{"is_focused": true,
+            "groups": [{"id": 1, "windows": group}],
+            "windows": [{"id": window, "is_focused": true,
+                "foreground_processes": processes}]}]}]);
+        let file = nth.map_or_else(
+            || "kitty-says".to_owned(),
+            |nth| format!("kitty-says.{nth}"),
+        );
+        std::fs::write(self.folder.join(file), listed.to_string()).unwrap();
     }
 
     fn typed(&self) -> Option<String> {
@@ -738,6 +759,103 @@ fn a_type_asked_while_one_is_under_way_is_refused_and_typed_once() {
     );
     let reveals = running.asked_of("keeping").matches("\"reveal\"").count();
     assert_eq!(reveals, 1, "the secret was read for the refused type too");
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_window_another_lies_over() {
+    // An overlay shares its window's group, and one put behind it still
+    // takes the keys, so a second window there refuses the type.
+    let mut desk = Desk::new("kitty-overlaid");
+    let (kitty, shell) = desk.kitty("sleep 1000");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_lists(
+        None,
+        1,
+        &json!([1, 2]),
+        &json!([{"pid": shell, "cmdline": ["-zsh"]}]),
+    );
+    let (running, _journal) = running("kitty-overlaid", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "may lie over that one");
+    assert!(desk.typed().is_none(), "it was typed under an overlay");
+}
+
+#[test]
+fn nothing_is_typed_where_kitty_changes_its_window_once_the_secret_is_read() {
+    // kitty's first look finds its first window alone, and its second
+    // another window of its, or the first with an overlay over it, as
+    // when its remote control moves the keys while the manager answers.
+    for (test, window, group, why) in [
+        (
+            "kitty-moves-after",
+            2,
+            json!([2]),
+            "another window in that kitty",
+        ),
+        (
+            "kitty-overlaid-after",
+            1,
+            json!([1, 2]),
+            "may lie over that one",
+        ),
+    ] {
+        let mut desk = Desk::new(test);
+        let (kitty, shell) = desk.kitty("sleep 1000");
+        desk.focus(WINDOW, kitty, "kitty");
+        let shell_runs = json!([{"pid": shell, "cmdline": ["-zsh"]}]);
+        desk.kitty_runs(&shell_runs);
+        desk.kitty_lists(Some(2), window, &group, &shell_runs);
+        let (running, _journal) = running(test, &desk, &[]);
+        let refused = type_github(&running);
+        assert_eq!(refused["error"]["code"], "refused", "{test}: {refused}");
+        assert!(
+            refused["error"]["message"]
+                .as_str()
+                .is_some_and(|said| said.contains(why)),
+            "{test}: the change wasn't said as {why:?}: {refused}"
+        );
+        holds_no_secret(&refused);
+        let asked = running.asked_of("keeping");
+        assert!(
+            asked.contains("\"reveal\""),
+            "{test}: the secret wasn't read, so the second look went untried: {asked}"
+        );
+        assert!(
+            desk.typed().is_none(),
+            "{test}: it was typed once kitty changed"
+        );
+    }
+}
+
+#[test]
+fn nothing_is_typed_more_than_five_seconds_after_its_return() {
+    // A manager six seconds to give the secret, as 1Password is while it
+    // asks Joel's leave: by then he may have moved on from where he
+    // pressed Return, so it's refused, and he presses it again.
+    let mut desk = Desk::new("late");
+    let window = desk.plain();
+    desk.focus(WINDOW, window, "firefox");
+    let slow = KEEPING.replace("reveal) printf", "reveal) sleep 6; printf");
+    assert_ne!(slow, KEEPING, "the manager's reveal wasn't slowed");
+    let env = desk.env();
+    let set: Vec<(&str, &str)> = env.iter().map(|(n, v)| (n.as_str(), v.as_str())).collect();
+    let running = Running::with_env("late", &[("keeping", &slow)], &set);
+    running
+        .client()
+        .ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    let refused = type_github(&running);
+    assert_eq!(refused["error"]["code"], "refused", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("more than 5 s passed since Return")),
+        "the late type wasn't said so: {refused}"
+    );
+    holds_no_secret(&refused);
+    assert!(
+        desk.typed().is_none(),
+        "it was typed six seconds after Return"
+    );
 }
 
 #[test]

@@ -67,6 +67,44 @@ fn only_the_focused_windows_foreground_is_read() {
 }
 
 #[test]
+fn a_kitty_window_stands_alone_only_in_a_group_of_its_own() {
+    let listed = |groups: Value, window: Value| {
+        json!([{"is_focused": true, "tabs": [{"is_active": true, "groups": groups,
+            "windows": [window]}]}])
+        .to_string()
+    };
+    let focused = json!({"id": 3, "is_active": true});
+    assert_eq!(
+        kitty_window(&listed(
+            json!([{"windows": [1]}, {"windows": [3]}]),
+            focused.clone()
+        )),
+        Some((3, true))
+    );
+    // An overlay shares its window's group, in front of it or behind.
+    assert_eq!(
+        kitty_window(&listed(json!([{"windows": [3, 4]}]), focused.clone())),
+        Some((3, false))
+    );
+    assert_eq!(
+        kitty_window(&listed(json!([{"windows": [4, 3]}]), focused.clone())),
+        Some((3, false))
+    );
+    // Groups kitty doesn't name can't say it stands alone.
+    assert_eq!(
+        kitty_window(&listed(json!(null), focused)),
+        Some((3, false))
+    );
+    assert_eq!(
+        kitty_window(&listed(
+            json!([{"windows": [3]}]),
+            json!({"is_active": true})
+        )),
+        None
+    );
+}
+
+#[test]
 fn a_session_is_pi_or_mycelium_by_name_or_by_any_word() {
     let words = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
     assert!(a_sessions("pi", &[]), "a process named pi wasn't a session");
@@ -131,6 +169,44 @@ fn an_agents_process_is_known_by_its_name_its_runtime_or_its_slice() {
     assert!(
         agents_group(&format!("{user}/agents.slice/kitty-4248-x.scope")),
         "a scope only named like kitty's window was let through"
+    );
+}
+
+#[test]
+fn only_a_kitty_believed_by_its_path_has_its_slice_set_aside() {
+    // The sessions' kitty lives in the agents' slice, so its group is set
+    // aside, but only for the kitty kitten comes with: a name is the
+    // process's own to change.
+    let user = "0::/user.slice/user-1000.slice/user@1000.service";
+    let sessions_kitty = format!("{user}/agents.slice/sessions-kitty.service");
+    let hosted = format!("{user}/agents.slice/pi-conversation-work-background@01a1.service");
+    let package = Path::new("/nix/store/k-kitty-0.50.0");
+    let kitty = "/nix/store/k-kitty-0.50.0/bin/.kitty-wrapped";
+    let node = "/nix/store/x-nodejs/bin/node";
+    let words = |exe: &str| vec![exe.to_owned()];
+    assert!(
+        !agents_judged(
+            ".kitty-wrapped",
+            kitty,
+            &words(kitty),
+            &sessions_kitty,
+            Some(package)
+        ),
+        "the sessions' kitty, from kitten's package, was taken for an agent"
+    );
+    assert!(
+        agents_judged("kitty", node, &words(node), &hosted, Some(package)),
+        "an agent renamed kitty in the agents' slice was let through"
+    );
+    assert!(
+        agents_judged(
+            ".kitty-wrapped",
+            kitty,
+            &words(kitty),
+            &sessions_kitty,
+            None
+        ),
+        "a kitty with no kitten to believe it by had its slice set aside"
     );
 }
 

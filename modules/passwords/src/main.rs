@@ -1475,15 +1475,21 @@ fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window:
 /// id and the detail's label, or the app id as far as it was known and
 /// why it wasn't typed. The window is checked before the secret is read,
 /// so a refused type reads none, and again just before the typist runs,
-/// so the keys can't have moved while its manager answered. That second
-/// check waits a moment for the keys to come back, since 1Password may
-/// have asked Joel's leave in a window of its own meanwhile.
+/// so the keys can't have moved while its manager answered: in a kitty,
+/// to the same window of its own as the first look found, with nothing
+/// over it. That second check waits a moment for the keys to come back,
+/// since 1Password may have asked Joel's leave in a window of its own
+/// meanwhile, and a type more than `RETURN_PATIENCE` after it was asked
+/// is refused (ISXEG8's (2) and (68), 2026-11-25).
 fn typed(
     shared: &Shared,
     key: &str,
     detail: Option<&str>,
     window: u64,
 ) -> Result<(String, String), (String, String)> {
+    // The shell asks at Joel's Return, and each ask is answered on its own
+    // thread, so this is as near his Return as the daemon can tell.
+    let returned = Instant::now();
     let unknown = |why: &str| (String::new(), why.to_owned());
     let program = typist().ok_or_else(|| unknown(TYPE_OFF))?;
     let niri = std::env::var_os("NIRI_SOCKET")
@@ -1497,24 +1503,33 @@ fn typed(
     }
     let fit = || passwords::typing::fit(&niri, window, kitty.as_deref());
     let first = fit()?;
-    let secret = secret(shared, key, detail).map_err(|(_, why)| (first.clone(), why))?;
+    let secret = secret(shared, key, detail).map_err(|(_, why)| (first.app.clone(), why))?;
+    // The typist types each character as a key, so a line break or a tab
+    // in a stored secret would press Return or Tab where Joel is, as past a
+    // terminal's password prompt.
+    if secret.value.chars().any(char::is_control) {
+        return Err((first.app, KEYS_IN_IT.to_owned()));
+    }
     let deadline = Instant::now() + passwords::typing::LETTING_GO;
-    let app = loop {
+    let now = loop {
         match fit() {
-            Ok(app) => break app,
+            Ok(now) => break now,
             Err((_, why)) if passwords::typing::elsewhere(&why) && Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(20));
             }
             Err(refused) => return Err(refused),
         }
     };
-    let failed = |why: String| (app.clone(), format!("couldn't type it: {why}"));
-    // The typist types each character as a key, so a line break or a tab
-    // in a stored secret would press Return or Tab where Joel is, as past a
-    // terminal's password prompt.
-    if secret.value.chars().any(char::is_control) {
-        return Err((app, KEYS_IN_IT.to_owned()));
+    // Nothing but the typist starting comes after these, so what they
+    // found is what the keys go to.
+    if now.kitty != first.kitty {
+        return Err((now.app, KITTY_MOVED.to_owned()));
     }
+    if returned.elapsed() > RETURN_PATIENCE {
+        return Err((now.app, LATE.to_owned()));
+    }
+    let app = now.app;
+    let failed = |why: String| (app.clone(), format!("couldn't type it: {why}"));
     let mut child = Command::new(program)
         .arg("-")
         .stdin(Stdio::piped())
@@ -1546,6 +1561,18 @@ fn typed(
     }
     Ok((app, secret.label))
 }
+
+/// How long after it's asked a secret may still be typed: past that,
+/// Joel may have moved on from where he pressed Return, so he presses it
+/// again, as he would after 1Password's prompt for his leave.
+const RETURN_PATIENCE: Duration = Duration::from_secs(5);
+
+/// Why a type isn't done once `RETURN_PATIENCE` has passed.
+const LATE: &str = "more than 5 s passed since Return";
+
+/// Why a type into kitty isn't done where its keys went to another of
+/// its windows after the first look.
+const KITTY_MOVED: &str = "the keys went to another window in that kitty";
 
 /// How long the typist may take to type a secret, well past wtype's
 /// time for the longest a manager holds.
