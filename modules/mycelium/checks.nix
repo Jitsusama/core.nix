@@ -1176,8 +1176,9 @@ in
           exit 1
         fi
         # Its own fault alone, so a second can't hide that the first went unseen.
-        if [ "$(grep -c '^- ' said)" != 1 ]; then
-          echo "On $1 the surfaces check found more than its own fault: $2"
+        faults=$(grep -c '^- ' said || true)
+        if [ "$faults" != 1 ]; then
+          echo "On $1 the surfaces check listed $faults faults, not its own alone: $2"
           cat said
           exit 1
         fi
