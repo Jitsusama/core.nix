@@ -492,8 +492,10 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     let mut guard = home.guard(config.clone());
     guard.step(&tick_at(3600.0), &CALM).unwrap();
     assert_eq!((runs(), passes()), (1, 1));
-    // Past the rest that pass earned, and within the hour.
-    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    // Past the rest that pass earned, and within the hour. Rests count
+    // from when a pass really ended, so each step after one leaves ten
+    // seconds for it to take on a loaded builder.
+    guard.step(&tick_at(3670.0), &CALM).unwrap();
     assert_eq!((runs(), passes()), (1, 2));
     drop(guard);
     let mut guard = home.guard(config);
@@ -730,7 +732,7 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3605.0, 3655.0, 3661.0, 3700.0, 3775.0, 3782.0] {
+    for at in [3600.0, 3605.0, 3655.0, 3670.0, 3700.0, 3785.0, 3800.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }
@@ -754,7 +756,7 @@ fn a_filling_disk_whose_passes_twice_running_leave_nothing_to_clear_rests_an_hou
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3661.0, 4600.0, 7260.0, 7262.0] {
+    for at in [3600.0, 3670.0, 4600.0, 7260.0, 7280.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
         assert_eq!(
@@ -793,7 +795,7 @@ fn passes_kept_short_by_an_unheard_system_daemon_never_rest_a_filling_disk_an_ho
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3661.0, 3790.0] {
+    for at in [3600.0, 3670.0, 3800.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }
@@ -838,10 +840,11 @@ fn a_rest_counts_from_when_its_pass_ended() {
     home.trashed("old.txt", "2001-09-09T01:46:40");
     home.trashed("older.txt", "2001-09-08T01:46:40");
     let mut config = home.config("100%", "100%");
-    // Not through `guard`, which takes the rest away: two seconds' pass.
+    // Not through `guard`, which takes the rest away: a pass of four
+    // seconds at least, resting between its two deletes.
     config.pacing = disk_guard::config::Pacing {
         files: 1,
-        rest: disk_guard::units::Span(std::time::Duration::from_secs(1)),
+        rest: disk_guard::units::Span(std::time::Duration::from_secs(4)),
     };
     let mut guard = Guard::new(config, &home.places()).unwrap();
     let passes = || {
@@ -851,14 +854,18 @@ fn a_rest_counts_from_when_its_pass_ended() {
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3661.0, 3663.5] {
+    // A rest counted from the step's start ended at 3660 s; from the
+    // pass's end, at 3664 s at the earliest. The last step leaves the
+    // pass most of a minute and a half, for a commit's wait on a loaded
+    // builder.
+    for at in [3600.0, 3663.0, 3760.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }
     assert_eq!(
         seen,
         [1, 1, 2],
-        "the minute's rest counted from before its pass's two seconds"
+        "the minute's rest counted from before its pass's four seconds"
     );
 }
 
@@ -1045,7 +1052,7 @@ fn a_pass_that_falls_short_when_critically_full_rests_a_minute_at_most() {
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3661.0, 3782.0, 3843.0, 3904.0] {
+    for at in [3600.0, 3670.0, 3790.0, 3860.0, 3930.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }
