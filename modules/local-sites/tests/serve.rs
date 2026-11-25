@@ -422,7 +422,7 @@ fn a_sandboxed_document_cant_open_a_feed() {
 const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-ancestors 'self'";
 
 /// The policy every page of the sites' own is served under.
-const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 #[test]
 fn every_document_runs_sandboxed_whatever_it_is_and_however_its_answered() {

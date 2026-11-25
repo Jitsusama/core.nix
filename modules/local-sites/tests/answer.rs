@@ -3,7 +3,13 @@
 //! daemon does and takes a steer as the node does: carried once, with the
 //! steer the launcher sends, and refused from a document's origin, from
 //! another site, without the cookie a page of the sites' own is given, for a
-//! value the look doesn't offer and a second time.
+//! value the look doesn't offer, not sent as JSON, and a second time.
+//!
+//! The server takes answers only where the kernel tells who holds a
+//! connection (src/peer.rs), so these run on Linux alone, as the build runs
+//! them: there the test, which presses, is the person's, below no agent's
+//! unit and no pi.
+#![cfg(target_os = "linux")]
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -157,6 +163,16 @@ fn asked(port: u16, ask: &str, extra: &str, body: &str) -> (String, String, Stri
     (status.to_owned(), headers.to_owned(), body.to_owned())
 }
 
+/// The cookie a page of the sites' own is given once it asks from this
+/// origin, as `name=value`.
+fn given(port: u16) -> String {
+    let ours = "Sec-Fetch-Site: same-origin\r\n";
+    let (status, headers, body) = asked(port, "GET /answer", ours, "");
+    assert_eq!(status, "HTTP/1.1 204 No Content", "{body}");
+    let given = cookie(&headers, "sites-answer").expect("the page was given nothing");
+    given.split(';').next().expect("its value").to_owned()
+}
+
 /// The cookie `name` that an answer's `headers` set, whole.
 fn cookie(headers: &str, name: &str) -> Option<String> {
     headers.lines().find_map(|line| {
@@ -175,34 +191,46 @@ fn pressing(value: &str) -> String {
 /// The header lines a page of the sites' own sends its answer with.
 fn from_a_page(port: u16, pressed: &str) -> String {
     format!(
-        "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\nCookie: {pressed}\r\n"
+        "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n\
+         Cookie: {pressed}\r\nContent-Type: application/json\r\n"
     )
 }
 
 #[test]
-fn only_a_page_of_the_sites_own_is_given_what_its_answers_carry() {
+fn only_a_page_asking_from_this_origin_is_given_what_its_answers_carry() {
     let served = served("given");
-    let (_, home, _) = asked(served.port, "GET /", "", "");
-    let given = cookie(&home, "sites-answer").expect("the home was given nothing to answer with");
+    let ours = "Sec-Fetch-Site: same-origin\r\n";
+    let (status, headers, _) = asked(served.port, "GET /answer", ours, "");
+    assert_eq!(status, "HTTP/1.1 204 No Content");
+    let given = cookie(&headers, "sites-answer").expect("the page was given nothing");
     assert!(
         given.contains("Path=/answer") && given.contains("HttpOnly"),
         "{given}"
     );
     assert!(given.contains("SameSite=Strict"), "{given}");
-    let (_, note, _) = asked(served.port, "GET /note/", "", "");
+    let elsewhere = "Sec-Fetch-Site: cross-site\r\n";
+    let (status, headers, body) = asked(served.port, "GET /answer", elsewhere, "");
+    assert_eq!(status, "HTTP/1.1 403 Forbidden", "{body}");
+    assert!(body.contains("\"refused\":\"site\""), "{body}");
     assert_eq!(
-        cookie(&note, "sites-answer"),
+        cookie(&headers, "sites-answer"),
         None,
-        "a document was given a page's cookie"
+        "another site was given it"
     );
+    for page in ["GET /", "GET /note/"] {
+        let (_, headers, _) = asked(served.port, page, "", "");
+        assert_eq!(
+            cookie(&headers, "sites-answer"),
+            None,
+            "{page} was given it unasked"
+        );
+    }
 }
 
 #[test]
 fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
     let served = served("carried");
-    let (_, home, _) = asked(served.port, "GET /", "", "");
-    let given = cookie(&home, "sites-answer").expect("its cookie");
-    let pressed = given.split(';').next().expect("its value").to_owned();
+    let pressed = given(served.port);
     let page = from_a_page(served.port, &pressed);
     let (status, _, body) = asked(served.port, "POST /answer", &page, &pressing("yes"));
     assert_eq!(status, "HTTP/1.1 200 OK", "{body}");
@@ -229,6 +257,10 @@ fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
         steer["at"].as_str().is_some_and(|at| at.ends_with('Z')),
         "{steer}"
     );
+    assert_eq!(
+        steer["via"], "sites",
+        "the steer didn't say it came by the sites"
+    );
     let (status, _, body) = asked(served.port, "POST /answer", &page, &pressing("no"));
     assert_eq!(
         status, "HTTP/1.1 409 Conflict",
@@ -241,42 +273,42 @@ fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
 #[test]
 fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
     let served = served("refused");
-    let (_, home, _) = asked(served.port, "GET /", "", "");
-    let given = cookie(&home, "sites-answer").expect("its cookie");
-    let pressed = given.split(';').next().expect("its value").to_owned();
+    let pressed = given(served.port);
     let port = served.port;
     let page = from_a_page(port, &pressed);
+    let json = "Content-Type: application/json\r\n";
+    let ours = format!("Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n");
     for (extra, value, word) in [
+        // A form sends no JSON, so an injected form can't press.
+        (
+            format!("{ours}Cookie: {pressed}\r\nContent-Type: text/plain\r\n"),
+            "yes",
+            "type",
+        ),
         // A document's script runs in an origin of no one's.
         (
-            format!("Origin: null\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n"),
+            format!("Origin: null\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n{json}"),
             "yes",
             "origin",
         ),
-        // A page elsewhere, carrying the cookie as a form it posts would.
+        // A page elsewhere, carrying the cookie as a request it sends would.
         (
             format!(
-                "Origin: http://evil.example\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n"
+                "Origin: http://evil.example\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n{json}"
             ),
             "yes",
             "origin",
         ),
         (
             format!(
-                "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-site\r\nCookie: {pressed}\r\n"
+                "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-site\r\nCookie: {pressed}\r\n{json}"
             ),
             "yes",
             "site",
         ),
+        (format!("{ours}{json}"), "yes", "cookie"),
         (
-            format!("Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n"),
-            "yes",
-            "cookie",
-        ),
-        (
-            format!(
-                "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\nCookie: sites-answer=0\r\n"
-            ),
+            format!("{ours}Cookie: sites-answer=0\r\n{json}"),
             "yes",
             "cookie",
         ),
@@ -296,7 +328,7 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
         status, "HTTP/1.1 404 Not Found",
         "a look nobody holds was answered"
     );
-    let (status, _, _) = asked(port, "GET /answer", &page, "");
+    let (status, _, _) = asked(port, "PUT /answer", &page, "");
     assert_eq!(status, "HTTP/1.1 405 Method Not Allowed");
     assert!(
         served.steered.lock().expect("the steers").is_empty(),

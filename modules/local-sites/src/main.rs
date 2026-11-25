@@ -28,6 +28,7 @@ mod files;
 mod gate;
 mod http;
 mod page;
+mod peer;
 mod upstream;
 
 use std::net::TcpListener;
@@ -44,6 +45,7 @@ use crate::answer::Answers;
 use crate::config::Config;
 use crate::door::Door;
 use crate::http::Server;
+use crate::peer::Processes;
 use crate::upstream::Upstreams;
 
 fn help() -> Help {
@@ -121,10 +123,20 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
         )
         .because(why.to_string())
     })?;
+    // Only a kernel that tells who holds a connection lets an answer be
+    // known as the person's (peer.rs); elsewhere the pages answer in For You.
+    let processes = Processes::here();
+    if config.answers.is_some() && processes.is_none() {
+        eprintln!("local-sites: takes no answers here, since it can't tell who presses one");
+    }
     let answers = config
         .answers
         .as_ref()
-        .map(|at| Answers::new(at.looks.clone(), at.node.clone()))
+        .zip(processes)
+        .map(|(at, processes)| {
+            let tell = Box::new(move |peer, server| processes.tell(peer, server));
+            Answers::new(at.looks.clone(), at.node.clone(), tell)
+        })
         .transpose()
         .map_err(|why| {
             Failure::new(Exit::Failed, "local-sites can't draw its answers' cookie")

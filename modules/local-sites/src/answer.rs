@@ -11,19 +11,26 @@
 //!   the browser says it came from this origin (`Sec-Fetch-Site`), so no
 //!   other site's page, nor a document, which runs in an origin of no
 //!   one's (http.rs), sent it;
-//! - it carries the cookie only a page of the sites' own is sent, which no
+//! - it says it's JSON (`Content-Type`), which no form can send, so an
+//!   injected form can't press;
+//! - it carries the cookie only a page of the sites' own is given, which no
 //!   script reads and no other site's page sends, minted fresh each time
-//!   the server starts;
+//!   the server starts and given only to the person's own process;
+//! - the process at the connection's other end is the person's, as the
+//!   kernel tells it (peer.rs), since every header above is an agent's to
+//!   forge from the loopback network a fence shares;
 //! - the look, read again from the looks' daemon as it stands now, waits on
 //!   him and offers the value, as the kit's ask.ts and For You read one;
 //! - no answer to that look was carried before, since the server started.
 //!
 //! The server asks no more of a page's answer than that one value: what it
-//! sends is built here, never taken from the page.
+//! sends is built here, never taken from the page, and says it came by the
+//! sites (`via`).
 
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{self, Read};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -31,6 +38,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use crate::page;
+use crate::peer::Told;
+
+/// Who holds the other end of a connection, by its two ends: the browser's,
+/// then the server's.
+pub type Teller = Box<dyn Fn(SocketAddr, SocketAddr) -> Told + Send + Sync>;
 
 /// The cookie a page of the sites' own carries its answers with.
 const COOKIE: &str = "sites-answer";
@@ -57,6 +69,8 @@ pub struct Answers {
     secret: String,
     /// The looks answered since the server started, each refused a second.
     answered: Mutex<BTreeSet<String>>,
+    /// Who pressed: the person, an agent, or nothing told.
+    tell: Teller,
 }
 
 /// What a request to answer says of itself.
@@ -67,6 +81,10 @@ pub struct Asked<'a> {
     /// `Sec-Fetch-Site`, as the browser writes it.
     pub fetch_site: Option<&'a str>,
     pub cookies: Option<&'a str>,
+    /// What its body is, as `Content-Type` says.
+    pub content_type: Option<&'a str>,
+    /// The connection's ends, the browser's then the server's.
+    pub ends: Option<(SocketAddr, SocketAddr)>,
     pub body: &'a [u8],
 }
 
@@ -81,36 +99,46 @@ pub struct Refused {
 
 impl Answers {
     /// Answers checked against the looks at `looks` and sent through the
-    /// node at `node`, with a cookie drawn fresh.
-    pub fn new(looks: PathBuf, node: PathBuf) -> io::Result<Self> {
+    /// node at `node`, pressed by whom `tell` says, with a cookie drawn fresh.
+    pub fn new(looks: PathBuf, node: PathBuf, tell: Teller) -> io::Result<Self> {
         let mut drawn = [0_u8; 16];
         File::open("/dev/urandom")?.read_exact(&mut drawn)?;
-        Ok(Self::holding(looks, node, hex(&drawn)))
+        Ok(Self::holding((looks, node), hex(&drawn), tell))
     }
 
-    fn holding(looks: PathBuf, node: PathBuf, secret: String) -> Self {
+    fn holding((looks, node): (PathBuf, PathBuf), secret: String, tell: Teller) -> Self {
         Self {
             looks,
             node,
             secret,
             answered: Mutex::new(BTreeSet::new()),
+            tell,
         }
     }
 
-    /// The cookie a page of the sites' own is sent with, so its answers say
-    /// where they came from: sent back only to `/answer`, by this site
-    /// alone, and read by no script.
-    pub fn cookie(&self) -> String {
-        format!(
+    /// The cookie a page of the sites' own asks for once a look waits, so its
+    /// answers say where they came from: given only to the person's own
+    /// process asking from this origin, sent back only to `/answer` by this
+    /// site alone, and read by no script.
+    pub fn cookie_for(&self, asked: &Asked) -> Result<String, Refused> {
+        if asked.fetch_site != Some("same-origin") {
+            return Err(refused("site", 403, "only this origin's pages answer"));
+        }
+        self.pressed_by_the_person(asked)?;
+        Ok(format!(
             "{COOKIE}={}; Path=/answer; SameSite=Strict; HttpOnly",
             self.secret
-        )
+        ))
     }
 
     /// Carries `asked` to the session that asked, answering what the node
     /// said, or why it wasn't carried.
     pub fn carry(&self, asked: &Asked) -> Result<Value, Refused> {
+        if !is_json(asked.content_type) {
+            return Err(refused("type", 415, "an answer is sent as JSON"));
+        }
         self.pressed_here(asked)?;
+        self.pressed_by_the_person(asked)?;
         let (id, value) = said(asked.body)?;
         // Held while the answer goes, so two presses can't both be carried.
         let mut answered = self.answered.lock().unwrap_or_else(PoisonError::into_inner);
@@ -128,7 +156,10 @@ impl Answers {
         let steer = json!({
             "ask": "steer",
             "address": address.to_uppercase(),
-            "steer": {"at": iso(now), "from": "joel", "act": "answer", "look": id, "value": value},
+            "steer": {
+                "at": iso(now), "from": "joel", "act": "answer", "look": id, "value": value,
+                "via": "sites",
+            },
         });
         let told = page::once(&self.node, &steer)
             .map_err(|why| refused("unreached", 502, &format!("the node doesn't answer: {why}")))?;
@@ -175,6 +206,30 @@ impl Answers {
             ));
         }
         Ok(())
+    }
+
+    /// Whether the process at the other end of `asked`'s connection is the
+    /// person's, as the kernel tells it.
+    fn pressed_by_the_person(&self, asked: &Asked) -> Result<(), Refused> {
+        let told = asked.ends.map(|(peer, server)| (self.tell)(peer, server));
+        match told {
+            Some(Told::Person) => Ok(()),
+            Some(Told::Agent(by)) => Err(refused(
+                "agent",
+                403,
+                &format!("{by}, an agent's, pressed it, and an agent can't answer as the person"),
+            )),
+            Some(Told::Untold(why)) => Err(refused(
+                "untold",
+                403,
+                &format!("who pressed it can't be told: {why}"),
+            )),
+            None => Err(refused(
+                "untold",
+                403,
+                "who pressed it can't be told: the connection has no ends",
+            )),
+        }
     }
 
     /// The look `id` as the looks' daemon holds it now.
@@ -380,6 +435,12 @@ fn hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// Whether `said`, a `Content-Type`, names JSON, whatever parameters follow.
+fn is_json(said: Option<&str>) -> bool {
+    said.and_then(|said| said.split(';').next())
+        .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("application/json"))
+}
+
 /// Whether `one` is `other`, in a time that doesn't say how much matched.
 fn same(one: &str, other: &str) -> bool {
     one.len() == other.len()
@@ -398,12 +459,26 @@ mod tests {
 
     const NOW: i64 = 1_764_025_800_000;
 
-    fn answers() -> Answers {
+    /// Answers whose presses `told` says who pressed.
+    fn answers_told(told: Told) -> Answers {
         Answers::holding(
-            Path::new("/nowhere/looks.sock").to_path_buf(),
-            Path::new("/nowhere/node.sock").to_path_buf(),
+            (
+                Path::new("/nowhere/looks.sock").to_path_buf(),
+                Path::new("/nowhere/node.sock").to_path_buf(),
+            ),
             "c0ffee".to_owned(),
+            Box::new(move |_, _| told.clone()),
         )
+    }
+
+    /// Answers pressed by the person.
+    fn answers() -> Answers {
+        answers_told(Told::Person)
+    }
+
+    fn ends() -> (SocketAddr, SocketAddr) {
+        let peer = "127.0.0.1:40000".parse().expect("the browser's end");
+        (peer, "127.0.0.1:8484".parse().expect("the server's end"))
     }
 
     fn pressed<'a>(
@@ -416,8 +491,21 @@ mod tests {
             origin,
             fetch_site: site,
             cookies,
+            content_type: Some("application/json"),
+            ends: Some(ends()),
             body: br#"{"look": "l1", "value": "yes"}"#,
         }
+    }
+
+    /// A press from a page of the sites' own, but for what `change` alters.
+    fn pressed_here_but(change: impl FnOnce(&mut Asked)) -> Asked<'static> {
+        let mut asked = pressed(
+            Some("http://sites.localhost:8484"),
+            Some("same-origin"),
+            Some("sites-answer=c0ffee"),
+        );
+        change(&mut asked);
+        asked
     }
 
     fn look() -> Value {
@@ -474,13 +562,75 @@ mod tests {
     }
 
     #[test]
-    fn the_cookie_goes_only_to_answers_and_to_no_script() {
-        let cookie = answers().cookie();
+    fn an_answer_not_sent_as_json_is_refused_so_no_form_can_press() {
+        for said in [
+            None,
+            Some("text/plain"),
+            Some("application/x-www-form-urlencoded"),
+        ] {
+            let asked = pressed_here_but(|asked| asked.content_type = said);
+            let why = answers().carry(&asked).expect_err("refused");
+            assert_eq!((why.word, why.status), ("type", 415), "{said:?}");
+        }
+        let asked =
+            pressed_here_but(|asked| asked.content_type = Some("Application/JSON; charset=utf-8"));
+        let why = answers().carry(&asked).expect_err("no daemon stands");
+        assert_eq!(
+            why.word, "unreached",
+            "JSON with a charset was refused: {}",
+            why.why
+        );
+    }
+
+    #[test]
+    fn an_answer_an_agent_pressed_or_nobody_can_be_told_of_is_refused() {
+        let agents = answers_told(Told::Agent("pi-host-abc.service".to_owned()));
+        let why = agents
+            .carry(&pressed_here_but(|_| ()))
+            .expect_err("refused");
+        assert_eq!((why.word, why.status), ("agent", 403), "{}", why.why);
+        assert!(why.why.contains("pi-host-abc.service"), "{}", why.why);
+        let untold = answers_told(Told::Untold("no process holds it"));
+        let why = untold
+            .carry(&pressed_here_but(|_| ()))
+            .expect_err("refused");
+        assert_eq!((why.word, why.status), ("untold", 403), "{}", why.why);
+        let endless = pressed_here_but(|asked| asked.ends = None);
+        let why = answers().carry(&endless).expect_err("refused");
+        assert_eq!(
+            why.word, "untold",
+            "a press with no ends was carried: {}",
+            why.why
+        );
+    }
+
+    #[test]
+    fn the_cookie_goes_only_to_the_persons_page_and_to_no_script() {
+        let asking = pressed_here_but(|asked| asked.origin = None);
+        let cookie = answers()
+            .cookie_for(&asking)
+            .expect("the person's page is given it");
         assert_eq!(
             cookie,
             "sites-answer=c0ffee; Path=/answer; SameSite=Strict; HttpOnly"
         );
-        let drawn = Answers::new(PathBuf::new(), PathBuf::new()).expect("a cookie drawn");
+        let elsewhere = pressed_here_but(|asked| asked.fetch_site = Some("cross-site"));
+        assert_eq!(
+            answers().cookie_for(&elsewhere).map_err(|why| why.word),
+            Err("site")
+        );
+        let agents = answers_told(Told::Agent("jobs".to_owned()));
+        assert_eq!(
+            agents.cookie_for(&asking).map_err(|why| why.word),
+            Err("agent")
+        );
+        let untold = answers_told(Told::Untold("nothing"));
+        assert_eq!(
+            untold.cookie_for(&asking).map_err(|why| why.word),
+            Err("untold")
+        );
+        let tell: Teller = Box::new(|_, _| Told::Person);
+        let drawn = Answers::new(PathBuf::new(), PathBuf::new(), tell).expect("a cookie drawn");
         assert_eq!(drawn.secret.len(), 32, "the cookie is drawn from 16 bytes");
         assert_ne!(drawn.secret, answers().secret);
     }

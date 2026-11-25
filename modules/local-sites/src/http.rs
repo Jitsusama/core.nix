@@ -25,7 +25,7 @@
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::{self, Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
@@ -47,6 +47,9 @@ const HEAD: usize = 16 * 1024;
 /// The status of a file the browser already holds.
 const NOT_MODIFIED: u16 = 304;
 
+/// How much of an answer pressed on a page the journal keeps.
+const JOURNALLED: usize = 256;
+
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -60,7 +63,7 @@ const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-a
 /// from here, none written into the page or evaluated from words, no
 /// plugin, no base moving its links, and no frame around it to press its
 /// buttons through.
-const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 /// The cookie saying a browser's storage was swept of what a document could
 /// have left there, so it's swept once.
@@ -105,6 +108,10 @@ struct Head {
     fetch_site: Option<String>,
     /// How long its body is, as `Content-Length` says, where it says.
     body_length: Option<usize>,
+    /// What its body is, as `Content-Type` says.
+    content_type: Option<String>,
+    /// The connection's ends, the asker's then the server's.
+    ends: Option<(SocketAddr, SocketAddr)>,
 }
 
 /// Answers one connection.
@@ -282,14 +289,6 @@ fn told_for(server: &Server, head: &Head, file: &Path, made: files::Made) -> Gua
                 headers.push(("Set-Cookie", SWEEPING.to_owned()));
                 whole = true;
             }
-            // Only a page of the sites' own is given what its answers carry,
-            // on every answer, kept or whole, so one opened before the server
-            // last started is given this run's.
-            if let Some(answers) = &server.answers
-                && kind.starts_with("text/html")
-            {
-                headers.push(("Set-Cookie", answers.cookie()));
-            }
         }
     }
     Guarded { headers, whole }
@@ -297,17 +296,9 @@ fn told_for(server: &Server, head: &Head, file: &Path, made: files::Made) -> Gua
 
 /// Carries an answer pressed on a page of the sites' own (answer.rs), and
 /// journals it, carried or refused with the word saying why, and that it
-/// came by the sites.
+/// came by the sites; or, asked with GET, gives the person's own page the
+/// cookie its answers carry.
 fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
-    if head.method != "POST" {
-        return send(
-            stream,
-            405,
-            "Method Not Allowed",
-            "text/plain",
-            b"an answer is posted\n",
-        );
-    }
     let Some(answers) = &server.answers else {
         return send(
             stream,
@@ -317,6 +308,18 @@ fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
             b"this server takes no answers\n",
         );
     };
+    if head.method == "GET" {
+        return given(answers, stream, head);
+    }
+    if head.method != "POST" {
+        return send(
+            stream,
+            405,
+            "Method Not Allowed",
+            "text/plain",
+            b"an answer is posted\n",
+        );
+    }
     let Some(length) = head.body_length.filter(|length| *length <= answer::LONGEST) else {
         return send(
             stream,
@@ -335,9 +338,13 @@ fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
         origin: head.origin.as_deref(),
         fetch_site: head.fetch_site.as_deref(),
         cookies: head.cookies.as_deref(),
+        content_type: head.content_type.as_deref(),
+        ends: head.ends,
         body: &body,
     };
-    let pressed = String::from_utf8_lossy(&body);
+    // Only so much of what was pressed is journalled, so a refused one
+    // can't fill the journal.
+    let pressed = String::from_utf8_lossy(&body[..body.len().min(JOURNALLED)]);
     match answers.carry(&asked) {
         Ok(told) => {
             eprintln!("local-sites: carried an answer pressed on the sites: {pressed:?}");
@@ -355,21 +362,68 @@ fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
                 refused.word, refused.why
             );
             let said = json!({"refused": refused.word, "why": refused.why});
-            let reason = match refused.status {
-                400 => "Bad Request",
-                403 => "Forbidden",
-                404 => "Not Found",
-                409 => "Conflict",
-                _ => "Bad Gateway",
-            };
+            send(
+                stream,
+                refused.status,
+                reason_for(refused.status),
+                "application/json",
+                said.to_string().as_bytes(),
+            );
+        }
+    }
+}
+
+/// Gives the page asking the cookie its answers carry, where the person's
+/// own process asks from this origin, saying why not otherwise.
+fn given(answers: &Answers, stream: &mut TcpStream, head: &Head) {
+    let asking = Asked {
+        host: head.host.as_deref().unwrap_or(""),
+        origin: head.origin.as_deref(),
+        fetch_site: head.fetch_site.as_deref(),
+        cookies: None,
+        content_type: None,
+        ends: head.ends,
+        body: &[],
+    };
+    match answers.cookie_for(&asking) {
+        Ok(cookie) => write_answer(
+            stream,
+            (204, "No Content"),
+            &Told {
+                kind: "text/plain",
+                body: b"",
+                sent: true,
+            },
+            &[("Set-Cookie", &cookie)],
+        ),
+        Err(refused) => {
+            eprintln!(
+                "local-sites: gave no page the answers' cookie ({}): {}",
+                refused.word, refused.why
+            );
+            let said = json!({"refused": refused.word, "why": refused.why});
+            let reason = reason_for(refused.status);
+            let body = said.to_string();
             send(
                 stream,
                 refused.status,
                 reason,
                 "application/json",
-                said.to_string().as_bytes(),
+                body.as_bytes(),
             );
         }
+    }
+}
+
+/// The reason phrase an answer's refusal is sent with, by its status.
+const fn reason_for(status: u16) -> &'static str {
+    match status {
+        400 => "Bad Request",
+        403 => "Forbidden",
+        404 => "Not Found",
+        409 => "Conflict",
+        415 => "Unsupported Media Type",
+        _ => "Bad Gateway",
     }
 }
 
@@ -507,6 +561,8 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     fetch_site: header("sec-fetch-site").map(str::to_owned),
                     body_length: header("content-length")
                         .and_then(|length| length.trim().parse().ok()),
+                    content_type: header("content-type").map(str::to_owned),
+                    ends: stream.peer_addr().ok().zip(stream.local_addr().ok()),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {
