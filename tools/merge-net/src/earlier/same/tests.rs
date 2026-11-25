@@ -5,12 +5,7 @@ use crate::tests::{commit, git_in};
 
 /// What the review gate says of `head` in `repo`, given the rounds of
 /// `read` and no mirror, asking `asks` about a pin.
-fn gated(
-    repo: &Path,
-    head: &str,
-    read: &[&str],
-    asks: &pins::tests::Fake,
-) -> Result<(), String> {
+fn gated(repo: &Path, head: &str, read: &[&str], asks: &pins::tests::Fake) -> Result<(), String> {
     let rounds: HashSet<seen::Read> = read.iter().map(|one| round(one, None)).collect();
     read_in_repo(
         repo,
@@ -352,8 +347,7 @@ fn a_head_read_only_from_no_base_is_told_apart_from_one_unread() {
     // A commit id is named short and once, a ref whole, a base that
     // was no commit id as such, and another commit's base not at all.
     assert!(
-        refused
-            .contains("read from: 0123456789ab, no commit id recorded, origin/release-2026)"),
+        refused.contains("read from: 0123456789ab, no commit id recorded, origin/release-2026)"),
         "the bases it read from weren't named: {refused}"
     );
     assert!(!refused.contains("elsewhere"), "{refused}");
