@@ -202,7 +202,10 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
                 && !items.iter().any(|item| item.contains(' '))
                 && room >= inset + GAP + longest
             {
-                let dots = lines.iter().map(|line| line.matches('·').count()).sum::<usize>();
+                let dots = lines
+                    .iter()
+                    .map(|line| line.matches('·').count())
+                    .sum::<usize>();
                 assert_eq!(
                     dots + lines.len() - 1,
                     items.len() - 1,
