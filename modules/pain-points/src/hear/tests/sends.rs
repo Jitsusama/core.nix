@@ -83,7 +83,7 @@ fn a_send_that_could_not_end_by_the_sends_end_waits_untried() {
     let ends = Instant::now() + Duration::from_secs(10);
     let mut node = Node::new(mycelium, Some("EAR001".into()), ends, limit);
     let sent = node.send("ABC123", "a finding", Put::Asked);
-    assert_eq!(sent, Sent::Held, "a send 20 s long can't start 10 s short");
+    assert_eq!(sent, Sent::Late, "a send 20 s long can't start 10 s short");
     assert_eq!(
         (node.held, node.out_of_time),
         (0, 1),
@@ -133,6 +133,29 @@ fn a_held_send_spends_no_try() {
     })
     .expect("a run");
     assert_eq!(to_owner, 1, "five held runs left the pain its three tries");
+}
+
+#[test]
+fn sends_late_for_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries() {
+    let place = Place::new("late-hour");
+    place.routes();
+    a_day(&place);
+    for _ in 0..5 {
+        let hour = hear_putting(&place.ears(), CELLS, &mut |_, _, _| Sent::Late).expect("a run");
+        assert!(
+            hour.troubles
+                .iter()
+                .any(|t| t.ends_with("sends wait for the next run, as its time for sends ran out")),
+            "a run too slow to send read as a clean hour: {hour:?}"
+        );
+    }
+    let mut to_owner = 0;
+    hear(&place.ears(), CELLS, &mut |to, _| {
+        to_owner += usize::from(to == "ABC123");
+        true
+    })
+    .expect("a run");
+    assert_eq!(to_owner, 1, "five late runs left the pain its three tries");
 }
 
 #[test]

@@ -31,9 +31,12 @@ pub enum Sent {
     Went,
     /// Tried and not taken, which spends one of the pain's tries.
     Failed,
-    /// Not tried this run, its tries kept: the node had stopped answering,
-    /// or no send could end by the run's end for sends.
+    /// Not tried this run, its tries kept: the node had stopped answering.
     Held,
+    /// Not tried this run, its tries kept, as no send could end by the
+    /// run's end for sends: a trouble of the hour's, so a run always too
+    /// slow to send is seen to be.
+    Late,
 }
 
 /// The machine's mycelium, sending as `from`. Once one ask outruns its
@@ -91,7 +94,7 @@ impl Node {
         }
         if Instant::now() + self.limit > self.ends {
             self.out_of_time += 1;
-            return Sent::Held;
+            return Sent::Late;
         }
         let Some(from) = self.from.as_deref() else {
             return Sent::Failed;

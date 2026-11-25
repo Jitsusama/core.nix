@@ -235,17 +235,14 @@ pub fn listen(
     // Sends held by a node that stopped answering are no trouble of their
     // own, as the ask that found it so failed, but they are said, so a
     // quiet line isn't read as nothing to send. Those held as the run ran
-    // out of time are a trouble, so runs always too slow to send fail.
+    // out of time are among the hour's troubles, in hour.json too, so runs
+    // always too slow to send fail and cadence's card says why.
     let held = match node.held {
         0 => String::new(),
         held => format!("; {held} sends wait for the next run, as the mycelium stopped answering"),
     };
-    let late = match node.out_of_time {
-        0 => String::new(),
-        late => format!("; {late} sends wait for the next run, as its time for sends ran out"),
-    };
-    let troubled = !hour.troubles.is_empty() || node.out_of_time > 0;
-    Ok(([said(&hour), held, late].concat(), troubled))
+    let troubled = !hour.troubles.is_empty();
+    Ok(([said(&hour), held].concat(), troubled))
 }
 
 /// The hour in a line for the journal.
@@ -376,14 +373,16 @@ pub fn hear_putting(
         &serde_json::to_string(&following).map_err(|e| e.to_string())?,
     )?;
     // Nothing reaches a cell the routes say never to, whichever way it
-    // was found, and each send that failed is counted for the hour.
-    let mut failed = 0;
+    // was found, and each send that failed, or waits as the run's time
+    // for sends ran out, is counted for the hour.
+    let (mut failed, mut late) = (0, 0);
     let mut guarded = |to: &str, text: &str, put: Put| {
         if routes.refuses(to) {
             return Sent::Failed;
         }
         let answer = send(to, text, put);
         failed += usize::from(answer == Sent::Failed);
+        late += usize::from(answer == Sent::Late);
         answer
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
@@ -417,7 +416,7 @@ pub fn hear_putting(
     hour.troubles = troubles(
         &ears.state,
         &routes,
-        (failed, given_up),
+        (failed, late, given_up),
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
@@ -628,7 +627,7 @@ fn route_waiting(
                 }
             }
             // Not tried, so its tries stand for the next run.
-            Sent::Held => {}
+            Sent::Held | Sent::Late => {}
         }
         let _ = keep(heard_at, kept);
     }
@@ -711,7 +710,7 @@ fn note_for_keeper(
                 kept[n].routed_at = Some(ears.at);
             }
             Sent::Failed => kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1,
-            Sent::Held => {}
+            Sent::Held | Sent::Late => {}
         }
     }
     let _ = keep(heard_at, kept);
@@ -735,7 +734,7 @@ fn ledger_note_of(
 fn wait_for_note(kept: &mut [Heard], of: &[usize], sent: Sent, at: i64) {
     for &n in of {
         kept[n].unnoted_since = match sent {
-            Sent::Held => kept[n].unnoted_since.or(Some(at)),
+            Sent::Held | Sent::Late => kept[n].unnoted_since.or(Some(at)),
             Sent::Went | Sent::Failed => None,
         };
     }
