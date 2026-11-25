@@ -48,7 +48,8 @@ ShellRoot {
 
     // Each window the shell spawns opens, as niri would say it, so the
     // walk goes on to the next rather than waiting out its patience; but
-    // s-late's viewer, which niri is slow to list.
+    // s-late's viewer, which niri is slow to list. Each is drawn by the one
+    // sessions' kitty, whose pid the check writes, as its unit does.
     function openSpawned() {
         for (const command of Niri.spawns) {
             const classed = /\/pi-sessions\/kitty\.sock (\S+) /.exec(command)?.[1] ?? "";
@@ -56,7 +57,7 @@ ShellRoot {
                 continue;
             const id = 100 + Object.keys(root.opened).length;
             root.opened = Object.assign({}, root.opened, { [classed]: Date.now() });
-            const window = { id, pid: id * 10, workspace_id: 40, session: true,
+            const window = { id, pid: 4242, workspace_id: 40, session: true,
                 opened: classed, layout: { pos_in_scrolling_layout: [2, 1] } };
             Niri.windows = Object.assign({}, Niri.windows, { [String(id)]: window });
             Niri.revision += 1;
@@ -90,6 +91,8 @@ ShellRoot {
         } catch (error) {
             console.log(`no decider to stand in: ${error.message}`);
         }
+        Expect.expect("the sessions' kitty's pid is known, so its windows are judged by it",
+            Sessions.sessionsKittyPid === "4242", Sessions.sessionsKittyPid);
         root.handedAt = Date.now();
         const taken = Sessions.handedOver(JSON.stringify({ sessions: [one("s-saved", false),
             one("s-hosted", true), one("s-stayed", true), one("s-broken", true),

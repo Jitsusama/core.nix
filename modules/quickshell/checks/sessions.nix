@@ -322,7 +322,10 @@ in
       cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/pi-sessions
+      # The sessions' kitty's pid, as its unit writes it, so each viewer is
+      # judged by the pid that drew it, as on Joel's desktop.
+      echo 4242 > $XDG_RUNTIME_DIR/pi-sessions/kitty.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       # Its walks go at the walk's pace, its named stages follow its led
@@ -429,7 +432,10 @@ in
         > $HOME/.config/pi/agentic-harness.pi/config.json
       export PATH=${lib.makeBinPath [ pkgs.bash ]}:$PATH
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/pi-sessions
+      # The sessions' kitty's pid, as its unit writes it, so each viewer is
+      # judged by the pid that drew it, as on Joel's desktop.
+      echo 4242 > $XDG_RUNTIME_DIR/pi-sessions/kitty.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
