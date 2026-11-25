@@ -83,6 +83,22 @@ fn names_a_client_by_its_command() {
 }
 
 #[test]
+fn every_separator_and_mark_turning_text_round_is_unsafe_and_its_neighbours_safe() {
+    let unsafe_ones = ['\u{061c}', '\u{200e}', '\u{200f}']
+        .into_iter()
+        .chain('\u{2028}'..='\u{202e}')
+        .chain('\u{2066}'..='\u{2069}');
+    for c in unsafe_ones {
+        assert!(unsafe_to_say(c), "{c:?} was said as it is");
+    }
+    for c in [
+        '\u{061b}', '\u{200d}', '\u{2027}', '\u{202f}', '\u{2065}', '\u{206a}', 'é',
+    ] {
+        assert!(!unsafe_to_say(c), "{c:?} was escaped");
+    }
+}
+
+#[test]
 fn a_long_command_is_cut_between_escapes() {
     // "nix build " and 106 x's are 116 characters, and the newline's escape
     // would end past the 117 a cut command keeps.

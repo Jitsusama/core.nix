@@ -33,21 +33,58 @@ fn a_process_is_read_through_its_open_folder_until_it_is_gone() {
 // Only Linux has a /proc to read.
 #[cfg(target_os = "linux")]
 #[test]
-fn a_process_named_is_opened_only_if_it_started_before_its_namer() {
+fn a_process_named_is_opened_only_if_it_started_no_later_than_its_namer() {
+    let started = |proc: &Proc| parse_started(&proc.text("stat").expect("no stat"));
     let own = Proc::open(std::process::id()).expect("this process's folder wouldn't open");
+    let own_at = started(&own).expect("this process's start wouldn't read");
+    // Start times count clock ticks of 10 ms, so a child made within one
+    // of this process starting would start in the same tick; made 30 ms
+    // after it, the child starts at least a tick later.
+    std::thread::sleep(std::time::Duration::from_millis(30));
     let mut child = std::process::Command::new("sleep")
         .arg("60")
         .spawn()
         .expect("sleep wouldn't start");
-    let younger = Proc::open_older(child.id(), &own).is_some();
-    let parent = Proc::open_older(std::os::unix::process::parent_id(), &own).is_some();
+    let child_at = Proc::open(child.id()).as_ref().and_then(started);
+    let younger = Proc::open_older(child.id(), own_at).is_some();
+    let itself = Proc::open_older(std::process::id(), own_at).is_some();
+    let parent = Proc::open_older(std::os::unix::process::parent_id(), own_at).is_some();
     child.kill().expect("the child wouldn't stop");
     child.wait().expect("the child wasn't reaped");
-    assert_eq!(
-        (younger, parent),
-        (false, true),
-        "a process started after the one naming it was opened, or its parent wasn't"
+    assert!(
+        child_at.is_some_and(|at| at > own_at),
+        "the child didn't start a tick later, so the test proves nothing"
     );
+    assert_eq!(
+        (younger, itself, parent),
+        (false, true, true),
+        "a process started later than the one naming it was opened, or one started in \
+         its tick or before wasn't"
+    );
+}
+
+#[test]
+fn a_build_s_first_process_counts_only_while_in_its_cgroup_or_one_under_it() {
+    let build = Path::new("/sys/fs/cgroup/build.slice/nix-daemon.service/nix-build-a.slice");
+    let at = |path: &str| format!("0::{path}\n");
+    assert!(in_cgroup(
+        &at("/build.slice/nix-daemon.service/nix-build-a.slice"),
+        build
+    ));
+    assert!(in_cgroup(
+        &at("/build.slice/nix-daemon.service/nix-build-a.slice/payload"),
+        build
+    ));
+    assert!(!in_cgroup(
+        &at("/build.slice/nix-daemon.service/nix-build-ab.slice"),
+        build
+    ));
+    assert!(!in_cgroup(&at("/user.slice"), build));
+    // Only the unified hierarchy's line says where a process sits.
+    assert!(!in_cgroup(
+        "1:cpu:/build.slice/nix-daemon.service/nix-build-a.slice\n0::/user.slice\n",
+        build
+    ));
 }
 
 #[test]
@@ -279,6 +316,18 @@ fn finds_the_quest_a_client_works_for() {
     assert_eq!(
         quest_slice("0::/system.slice/compiler-build.service\n"),
         None
+    );
+}
+
+#[test]
+fn a_tiered_quests_build_is_weighed_by_its_tier() {
+    let tier = "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-driving.slice";
+    assert_eq!(
+        quest_slice(&format!(
+            "0::{tier}/jobs-work-driving-qest20261024abc123.slice/work-1-2.scope\n"
+        )),
+        Some(tier),
+        "a tiered quest's build wasn't weighed by its tier, which ranks it among every quest"
     );
 }
 

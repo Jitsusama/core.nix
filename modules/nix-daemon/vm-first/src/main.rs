@@ -218,17 +218,21 @@ impl Proc {
         fs::read(format!("/proc/self/fd/{}/{name}", self.0.as_raw_fd())).ok()
     }
 
-    fn started(&self) -> Option<u64> {
-        parse_started(&String::from_utf8(self.read("stat")?).ok()?)
+    /// One of the process's files as text, any bytes not UTF-8 in its
+    /// name or its cgroup's path read as a stand-in, so the fields past
+    /// them still read.
+    fn text(&self, name: &str) -> Option<String> {
+        Some(String::from_utf8_lossy(&self.read(name)?).into_owned())
     }
 
-    /// The process `pid` names, should it have started no later than
-    /// `named_by`, which named it as its parent or its client: by then the
-    /// pid could be a process made since, which starts later, as only a
-    /// pid used again in the same clock tick could not.
-    fn open_older(pid: u32, named_by: &Proc) -> Option<Proc> {
+    /// The process `pid` names, should it have started no later than the
+    /// clock tick its namer did, `named_at`, the namer naming it as its
+    /// parent or its client: by then the pid could be a process made
+    /// since, which starts later, as only a pid used again in the same
+    /// clock tick could not.
+    fn open_older(pid: u32, named_at: u64) -> Option<Proc> {
         let opened = Proc::open(pid)?;
-        (opened.started()? <= named_by.started()?).then_some(opened)
+        (parse_started(&opened.text("stat")?)? <= named_at).then_some(opened)
     }
 }
 
@@ -241,28 +245,44 @@ impl Proc {
 /// read after, a build that wrote a worker's command line and ended would
 /// pass for one, but read before, the command line of a process gone by
 /// then won't read.
+///
+/// The walk starts at the first process the build's cgroup lists, opened
+/// only while its cgroup is still the build's or one under it, since by
+/// then its pid could be another's.
 fn client_of_build(build: &Path) -> Option<Proc> {
     let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
     let mut process = Proc::open(procs.lines().next()?.parse().ok()?)?;
+    if !in_cgroup(&process.text("cgroup")?, build) {
+        return None;
+    }
     for _ in 0..WORKER_DEPTH {
         let owner = process.owner()?;
+        let stat = process.text("stat")?;
+        let started = parse_started(&stat)?;
         if let Some(client) = process
             .read("cmdline")
             .and_then(|cmdline| client_of(&cmdline, owner))
         {
-            return Proc::open_older(client, &process);
+            return Proc::open_older(client, started);
         }
-        let stat = String::from_utf8(process.read("stat")?).ok()?;
-        process = Proc::open_older(parse_ppid(&stat)?, &process)?;
+        process = Proc::open_older(parse_ppid(&stat)?, started)?;
     }
     None
+}
+
+/// Whether a process's `/proc/<pid>/cgroup` puts it in `cgroup`, a path
+/// under the cgroup file system, or a cgroup under that one.
+fn in_cgroup(said: &str, cgroup: &Path) -> bool {
+    said.lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .is_some_and(|path| Path::new(&format!("{CGROUP_ROOT}{path}")).starts_with(cgroup))
 }
 
 /// The CPU weight of the quest that asked for a build, if its client sits
 /// in a quest's slice.
 fn weight_of_quest(build: &Path) -> Option<u64> {
     let client = client_of_build(build)?;
-    let cgroup = String::from_utf8(client.read("cgroup")?).ok()?;
+    let cgroup = client.text("cgroup")?;
     let slice = quest_slice(&cgroup)?;
     let weight = format!("{CGROUP_ROOT}{slice}/cpu.weight");
     fs::read_to_string(weight).ok()?.trim().parse().ok()
