@@ -1,7 +1,7 @@
 # Boots a machine whose /home is Btrfs, as a workstation's is, and checks an
 # account's folders are moved into subvolumes of their own as its manager
 # starts: one moves, its files all there and the folder as it was kept;
-# one a process holds open stays; one whose writer runs, holding nothing
+# one a process holds open stays, and one it only maps; one whose writer runs, holding nothing
 # open, stays, as at a switch; and one that can't be copied is left
 # whole, its unit failing, with the writer it comes before started all the
 # same. Each turns on Btrfs's own answers, a subvolume's root, a reflink
@@ -27,6 +27,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       jitsusama.subvolumes.folders = {
         moved.seconds = 30;
         held = { };
+        mapped = { };
         unreadable.before = [ "writer.service" ];
         missing = { };
         busy.before = [ "busy.service" ];

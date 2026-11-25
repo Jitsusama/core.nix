@@ -90,7 +90,10 @@ holding() {
     -printf '%p has %l open\n' -quit 2> /dev/null) || true
   if [ -z "$found" ]; then
     # A map's path starts at its line's first slash, and may hold spaces.
+    # Another account's maps, init's first among them, can't be opened, and
+    # gawk ends at a file it can't open unless told to pass it by.
     found=$(awk -v under="$1/" '
+      BEGINFILE { if (ERRNO != "") nextfile }
       index($0, "/") {
         path = substr($0, index($0, "/"))
         if (index(path, under) == 1 && path !~ / \(deleted\)$/) {

@@ -2,8 +2,8 @@
 
 subvolumes.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The account's folders are made once a run, one
-held open by a process of its own, one whose writer runs and one with a file it can't read,
-then each folder's move runs as a login or a switch runs it, so any test runs alone with `-k`.
+held open by a process of its own, one it only maps, one whose writer runs and one with a file it
+can't read, then each folder's move runs as a login or a switch runs it, so any test runs alone with `-k`.
 The tests need no value from Nix.
 """
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from test_driver.machine import BaseMachine
 
 HOME = "/home/joel"
-FREE = ("moved", "held", "missing", "busy")
+FREE = ("moved", "held", "mapped", "missing", "busy")
 
 
 def unit(folder: str) -> str:
@@ -44,7 +44,7 @@ def moved(machine: BaseMachine) -> BaseMachine:
     machine.wait_for_unit("user@1000.service")
     as_account(
         machine,
-        "mkdir -p moved/deep held unreadable busy && echo kept > moved/deep/file"
+        "mkdir -p moved/deep held mapped unreadable busy && echo kept > moved/deep/file"
         " && echo written > busy/file"
         " && ln moved/deep/file moved/linked && ln -s deep/file moved/pointing"
         " && echo open > held/file && echo hidden > unreadable/file && chmod 000 unreadable/file",
@@ -56,6 +56,12 @@ def moved(machine: BaseMachine) -> BaseMachine:
     )
     holds = "test -e /proc/$(systemctl --user show -P MainPID holder)/fd/3"
     as_account(machine, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    # A program run from the folder maps it with no file in it open, as Chrome maps its
+    # histograms; the process's own maps are readable to the account, init's aren't.
+    as_account(machine, "cp $(readlink -f $(command -v sleep)) mapped/sleep")
+    as_account(machine, f"systemd-run --user --unit mapper {HOME}/mapped/sleep infinity")
+    maps = "grep -q mapped/sleep /proc/$(systemctl --user show -P MainPID mapper)/maps"
+    as_account(machine, f"timeout 30 sh -c 'until {maps}; do sleep 0.2; done'")
     as_account(machine, "systemctl --user stop writer.service")
     # The busy folder's writer runs, as a switch finds it, so its move is started under it.
     as_account(machine, "systemctl --user start busy.service")
@@ -104,6 +110,13 @@ def test_a_folder_held_open_stays_and_says_why(moved: BaseMachine) -> None:
     nothing_beside(moved, "held")
 
 
+def test_a_folder_only_mapped_stays_and_says_why(moved: BaseMachine) -> None:
+    """A folder a process of the account's maps, with nothing in it open, is left where it is."""
+    assert inode(moved, f"{HOME}/mapped") != "256"
+    assert "maps " in said(moved, "mapped")
+    nothing_beside(moved, "mapped")
+
+
 def test_a_folder_whose_writer_runs_stays_though_nothing_is_open(moved: BaseMachine) -> None:
     """A writer running between writes holds nothing open, so its running keeps its folder."""
     assert inode(moved, f"{HOME}/busy") != "256"
@@ -133,11 +146,13 @@ def test_a_folder_that_cant_be_copied_is_left_whole_and_its_writer_starts(
 def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     """A subvolume's root isn't copied again, and folders freed since move at the next run."""
     before = moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*")
-    as_account(moved, "chmod 600 unreadable/file && systemctl --user stop holder writer busy")
-    freed = ("moved", "held", "unreadable", "busy")
+    as_account(moved, "chmod 600 unreadable/file")
+    as_account(moved, "systemctl --user stop holder mapper writer busy")
+    freed = ("moved", "held", "mapped", "unreadable", "busy")
     as_account(moved, "systemctl --user restart " + " ".join(unit(f) for f in freed))
     assert moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*") == before
     assert inode(moved, f"{HOME}/held") == "256"
+    assert inode(moved, f"{HOME}/mapped") == "256"
     assert inode(moved, f"{HOME}/unreadable") == "256"
     assert inode(moved, f"{HOME}/busy") == "256"
     assert moved.succeed(f"cat {HOME}/busy/file").strip() == "written"
