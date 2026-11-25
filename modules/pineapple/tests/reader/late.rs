@@ -1,7 +1,8 @@
 //! pineapple-slack hearing a stop of Joel's only after he resumed
 //! everything, though he said it just before: it's kept as he left it,
-//! resumed, while his stop said an hour before, his edited one, someone
-//! else's and his one said after the resume all stand.
+//! resumed, while his edited one, someone else's and his one said after
+//! the resume all stand. One said too long before it is in src/resume.rs,
+//! as a first start reads back only ten minutes.
 
 use std::path::Path;
 use std::thread;
@@ -36,11 +37,11 @@ pub(super) fn kept(state: &Path, count: usize) -> Vec<Value> {
 }
 
 /// What Slack would answer: in the safe word's search, Joel's own stops
-/// said an hour, a minute and 20 seconds back, one of his said 55 seconds
-/// back and edited since, and someone else's said 50 seconds back, which
-/// alone tags him; anything else as the stand-in answers it.
+/// said a minute and 20 seconds back, one of his said 55 seconds back and
+/// edited since, and someone else's said 50 seconds back, which alone
+/// tags him; anything but a search as the stand-in answers it.
 fn joels_and_others(line: &str, now: u64) -> Value {
-    if line.contains("/api/conversations") {
+    if !line.contains("query=") {
         return answer(line, now);
     }
     let joels = |ago: u64, thread: &str| {
@@ -58,7 +59,6 @@ fn joels_and_others(line: &str, now: u64) -> Value {
             theirs,
             edited,
             joels(60, "1700000000.000001"),
-            joels(3600, "1700000000.000002"),
         ]
     } else {
         vec![theirs]
@@ -85,7 +85,7 @@ fn a_stop_of_joels_said_before_his_resume_and_heard_after_is_kept_resumed() {
     )
     .expect("a resume written");
     let mut reading = reader(&home, &origin);
-    let records = kept(&state, 5);
+    let records = kept(&state, 4);
     reading.kill().expect("the reader stops");
     reading.wait().expect("the reader is gone");
 
@@ -95,14 +95,13 @@ fn a_stop_of_joels_said_before_his_resume_and_heard_after_is_kept_resumed() {
             .map(|record| record["resumed"].clone())
             .collect::<Vec<_>>(),
         [
-            Value::Null,
             json!({"at": at, "by": "launcher"}),
             Value::Null,
             Value::Null,
             Value::Null
         ],
-        "only his stop said shortly before his resume is kept resumed; his hour-old one, \
-         his edited one, someone else's and his one said after stand: {records:?}"
+        "only his stop said shortly before his resume is kept resumed; his edited one, \
+         someone else's and his one said after stand: {records:?}"
     );
     assert!(
         journal(&home).contains("said before Joel resumed it, kept as resumed"),
