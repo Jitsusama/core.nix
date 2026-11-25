@@ -25,6 +25,7 @@ mod meetings;
 
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use terminal_kit::{Exit, Failure, Help};
@@ -139,6 +140,13 @@ fn now() -> u64 {
 }
 
 /// Guards `paths` for as long as it runs.
+///
+/// The calendar is asked on a thread of its own, one ask at a time, so a
+/// daemon that stalls mid-answer never stops the looks: a meeting already
+/// known still puts the guard up on time. An ask still out when the next is
+/// due is heard as the calendar not answering, so the meetings last said
+/// stand, and no other is sent until it ends, so a stalled daemon holds one
+/// thread, not one a minute.
 fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
     let mut watch = guard::Watch::from(meetings::kept(kept).unwrap_or_else(|why| {
         println!(
@@ -147,16 +155,45 @@ fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
         Vec::new()
     }));
     let mut asked: Option<Instant> = None;
+    let mut out: Option<mpsc::Receiver<Result<Vec<meetings::Meeting>, String>>> = None;
+    // Whether the meetings heard are still to be kept, after a write failed.
+    let mut unkept = false;
     loop {
-        if asked.is_none_or(|at| at.elapsed() >= ASK_EVERY) {
-            let answer = meetings::ask(socket).and_then(|answer| meetings::read(&answer));
+        let answer = match out.as_ref().map(mpsc::Receiver::try_recv) {
+            Some(Ok(answer)) => {
+                out = None;
+                Some(answer)
+            }
+            Some(Err(mpsc::TryRecvError::Disconnected)) => {
+                out = None;
+                Some(Err("the calendar's ask ended with no answer".to_owned()))
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) => asked
+                .is_some_and(|at| at.elapsed() >= ASK_EVERY)
+                .then(|| Err(format!("{} hasn't answered in a minute", socket.display()))),
+            None => None,
+        };
+        if let Some(answer) = answer {
             let (said, changed) = watch.heard(answer);
             for line in said {
                 println!("{line}");
             }
-            if changed && let Err(why) = meetings::keep(kept, &watch.meetings) {
-                println!("<4>the meetings couldn't be kept for the next run: {why}");
+            if changed || unkept {
+                unkept = meetings::keep(kept, &watch.meetings)
+                    .map_err(|why| {
+                        println!("<4>the meetings couldn't be kept for the next run: {why}");
+                    })
+                    .is_err();
             }
+        }
+        if out.is_none() && asked.is_none_or(|at| at.elapsed() >= ASK_EVERY) {
+            let (tell, hear) = mpsc::channel();
+            let socket = socket.to_owned();
+            thread::spawn(move || {
+                // The guard may have stopped listening; nothing is lost.
+                let _ = tell.send(meetings::ask(&socket).and_then(|said| meetings::read(&said)));
+            });
+            out = Some(hear);
             asked = Some(Instant::now());
         }
         for line in watch.look(program, paths, now()) {
@@ -213,6 +250,7 @@ mod tests {
             &["joel", "."],
             &["joel", "app.slice"],
             &["joel", "app.slice/app-meet.slice"],
+            &["joel", "jobs.slice/../app.slice"],
             &["joel", "jobs.slice/jobs.service"],
         ] {
             let (exit, error) = started(said);

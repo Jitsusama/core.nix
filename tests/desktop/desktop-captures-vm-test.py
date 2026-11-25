@@ -907,7 +907,8 @@ def test_no_agent_opens_a_camera_near_a_meeting_and_joels_programs_still_do(
     machine = desktop.machine
     # A process in each of the agents' slices, as pi's always are on the laptop, so the cgroups
     # are there for the guard to find.
-    for slice_ in ("agents.slice", "jobs-work.slice"):
+    agents = ("agents.slice", "jobs-work.slice", "shared.slice")
+    for slice_ in agents:
         desktop.as_account(
             f"systemd-run --user --slice={slice_} --unit=agent-in-{slice_.removesuffix('.slice')}"
             " sleep infinity"
@@ -923,6 +924,7 @@ def test_no_agent_opens_a_camera_near_a_meeting_and_joels_programs_still_do(
         machine.succeed("systemctl restart camera-guard")
         machine.wait_until_fails(opens("agents.slice"), timeout=timedelta(seconds=30))
         machine.fail(opens("jobs-work.slice"))
+        machine.fail(opens("shared.slice"))
         machine.succeed(opens("app.slice"))
         said = machine.succeed("journalctl -u camera-guard --no-pager --output=cat")
         assert "agents may open no camera until Design Review ends" in said, said
@@ -932,7 +934,11 @@ def test_no_agent_opens_a_camera_near_a_meeting_and_joels_programs_still_do(
         machine.succeed("rm -f /var/lib/camera-guard/meetings.json")
         machine.succeed("systemctl restart camera-guard")
         machine.wait_until_succeeds(opens("agents.slice"), timeout=timedelta(seconds=30))
-        desktop.as_account("systemctl --user stop agent-in-agents agent-in-jobs-work")
+        for slice_ in agents[1:]:
+            machine.succeed(opens(slice_))
+        desktop.as_account(
+            "systemctl --user stop agent-in-agents agent-in-jobs-work agent-in-shared"
+        )
 
 
 def test_quickshell_warned_of_nothing_it_drew_all_along(desktop: Desktop) -> None:

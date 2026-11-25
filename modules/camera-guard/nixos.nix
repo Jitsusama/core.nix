@@ -54,9 +54,14 @@ in
       ];
       Restart = "always";
       RestartSec = 5;
+      # Started wrongly or for an account that isn't there, a restart can't
+      # mend it, so the unit fails where systemctl --failed shows it.
+      RestartPreventExitStatus = "64 78";
       # The meetings last said, so a restart while the calendar can't be
       # read still knows the meeting under way.
       StateDirectory = "camera-guard";
+      # They hold Joel's meetings' titles, which are his alone.
+      StateDirectoryMode = "0700";
       # bpf(2) to load the program and put it on a cgroup, and to find an
       # earlier run's by its id; reading past the account's own runtime
       # folder, which is its alone, to ask its google daemon.
