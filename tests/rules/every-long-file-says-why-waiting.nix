@@ -9,7 +9,6 @@
   "modules/disk-guard/src/survey.rs"
   "modules/disk-guard/tests/guard/collecting.rs"
   "modules/disk-guard/tests/guard/daemon.rs"
-  "modules/git-engine/src/status.rs"
   "modules/hibernate/unlock/src/main.rs"
   "modules/litra/litra.rs"
   "modules/machine/src/main.rs"
