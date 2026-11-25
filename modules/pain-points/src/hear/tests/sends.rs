@@ -141,15 +141,18 @@ fn a_keeper_s_note_held_goes_with_the_next_run_s() {
     place.routes();
     a_day(&place);
     let note = |to: &str, text: &str| to == "ORCH01" && text.contains(route::FOR_THE_KEEPER);
+    let mut held = 0;
     let hour = hear_putting(&place.ears(), CELLS, &mut |to, text, _| {
         if note(to, text) {
+            held += 1;
             Sent::Held
         } else {
             Sent::Went
         }
     })
     .expect("a run");
-    assert_eq!(hour.routed, 1, "the pain went to its owner: {hour:?}");
+    assert_eq!(hour.routed, 3, "the day's pains were routed: {hour:?}");
+    assert_eq!(held, 1, "the keeper's one note was held: {hour:?}");
     let mut notes = Vec::new();
     hear(&place.ears(), CELLS, &mut |to, text| {
         if note(to, text) {
