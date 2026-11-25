@@ -140,6 +140,7 @@
 #include <cstdint>
 #include <cstring>
 #include <dlfcn.h>
+#include <optional>
 #include <utility>
 #include <private/qqmldata_p.h>
 #include <private/qqmlvmemetaobject_p.h>
@@ -222,25 +223,56 @@ std::size_t freePages(const QV4::BlockAllocator &allocator) {
 }
 
 // The resident bytes in `length` bytes from `start`, as mincore says, or
-// none when it can't say.
-std::size_t residentAt(void *start, std::size_t length) {
+// nothing when it won't say, which is warned of once a process, so a
+// refusal never reads as pages the kernel took.
+std::optional<std::size_t> residentAt(void *start, std::size_t length) {
+    static bool warned = false;
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
     std::vector<unsigned char> resident((length + page - 1) / page);
-    if (resident.empty() || mincore(start, length, resident.data()) != 0)
+    if (resident.empty())
         return 0;
+    if (mincore(start, length, resident.data()) != 0) {
+        if (!warned) {
+            warned = true;
+            qWarning("heap: the kernel wouldn't say which of the heap's pages are resident: %s",
+                     std::strerror(errno));
+        }
+        return std::nullopt;
+    }
     const auto pages = std::count_if(resident.begin(), resident.end(),
                                      [](unsigned char each) { return (each & 1) != 0; });
     return page * static_cast<std::size_t>(pages);
 }
 
-// The resident bytes in every chunk and large item the heap holds.
-std::size_t residentHeld(const QV4::MemoryManager &manager) {
+// The bytes a large item's chunk spans. One with a segment of its own spans
+// its `size`, already its header and item to a page; the chunk allocator
+// makes the others its header and item to a page, and a whole chunk at the
+// least, but keeps only the item's size (Qt's requiredChunkSize, qv4mm.cpp).
+std::size_t spanOf(const QV4::HugeItemAllocator::HugeChunk &huge) {
+    if (huge.segment != nullptr)
+        return huge.size;
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    const std::size_t span = (huge.size + QV4::Chunk::HeaderSize + page - 1) & ~(page - 1);
+    return std::max<std::size_t>(span, QV4::Chunk::ChunkSize);
+}
+
+// The resident bytes in every chunk and large item the heap holds, or
+// nothing when the kernel won't say for any of them.
+std::optional<std::size_t> residentHeld(const QV4::MemoryManager &manager) {
     std::size_t bytes = 0;
     for (const QV4::BlockAllocator *allocator : {&manager.blockAllocator, &manager.icAllocator})
-        for (QV4::Chunk *chunk : allocator->chunks)
-            bytes += residentAt(chunk, QV4::Chunk::ChunkSize);
-    for (const auto &huge : manager.hugeItemAllocator.chunks)
-        bytes += residentAt(huge.chunk, huge.size);
+        for (QV4::Chunk *chunk : allocator->chunks) {
+            const std::optional<std::size_t> resident = residentAt(chunk, QV4::Chunk::ChunkSize);
+            if (!resident)
+                return std::nullopt;
+            bytes += *resident;
+        }
+    for (const auto &huge : manager.hugeItemAllocator.chunks) {
+        const std::optional<std::size_t> resident = residentAt(huge.chunk, spanOf(huge));
+        if (!resident)
+            return std::nullopt;
+        bytes += *resident;
+    }
     return bytes;
 }
 
@@ -292,10 +324,11 @@ QVariantMap Heap::weigh() const {
     // Not `slots`, which is Qt's keyword macro.
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    const std::optional<std::size_t> resident = residentHeld(*manager);
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
-        {QStringLiteral("resident"), megabytes(residentHeld(*manager))},
+        {QStringLiteral("resident"), resident ? megabytes(*resident) : -1.0},
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
