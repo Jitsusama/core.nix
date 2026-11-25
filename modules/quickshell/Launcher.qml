@@ -10170,9 +10170,11 @@ Scope {
             // where asksUnread is. The three are read over the launcher's
             // ungated ipc, by any process of his, and that's accepted: they
             // say only when his own move timed a line, and an ask from
-            // outside forgets that arming (Asks.qml's forget) while a
-            // changed row starts its clock afresh, so knowing the moment
-            // releases nothing. selected, armed and returned told as much.
+            // outside forgets that arming (Asks.qml's forget) while a yes
+            // is timed only by a frame of the very row it answers
+            // (Shown.js's stamped), so knowing the moment releases nothing.
+            // It's one bit the showing didn't say before: its own armed is
+            // the launcher's first Return, not this.
             asksArmed: root.sourcesNamed.asks?.overPasswords
                 ? root.sourcesNamed.asks.armed !== "" : null,
             // Super+S's talk line (TalkLine.qml).

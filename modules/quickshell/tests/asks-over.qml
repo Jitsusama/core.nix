@@ -289,9 +289,9 @@ ShellRoot {
             moved, changed, stepping, stepped, steppedBack, movedBack, drawn, outside, refused,
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
             walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
-            typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
-            typedWithReturn, typedWithReturnShown, movedWithReturn, movedWithReturnShown,
-            movedThenOpened, movedThenOpenedShown,
+            typedAfter, typedThenEscaped, movedAgain, typedBeforeItsFrame, typedThenShown,
+            movedOnceMore, typedWithReturn, typedWithReturnShown, movedAlone, movedAloneShown,
+            movedWithReturn, movedWithReturnShown, movedThenOpened, movedThenOpenedShown,
             overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
             landedThenShown, commanded, commandedThenRun, commandedThenMoved,
             commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
@@ -560,6 +560,13 @@ ShellRoot {
         same("typing after a move starts the line's time again", shownNow(), undefined);
     }
 
+    // His Escape again, since the ask from outside above, so each move
+    // below would arm on its own: what keeps the line untimed is what
+    // follows it, never a move that couldn't arm.
+    function typedThenEscaped() {
+        stage.toRows();
+    }
+
     // A move, then a letter before the frame the move asked for reaches the screen.
     function movedAgain() {
         stage.press("j", true);
@@ -590,9 +597,20 @@ ShellRoot {
             undefined);
     }
 
+    // A move read alone arms the line, so the case after it can fail.
+    function movedAlone() {
+        stage.press("j", true);
+    }
+
+    function movedAloneShown() {
+        stage.present(600);
+        same("a move read alone after his Escape times the line", since(shownNow(), 600),
+            true);
+    }
+
     // A move and a Return taken in one turn, as a busy shell takes them,
-    // are read together, so the move arms nothing: a frame after them
-    // times no line, where a move read alone would have armed one.
+    // are read together, so they start the line's time again, where the
+    // Return alone would have left the time the move above started.
     function movedWithReturn() {
         stage.press("j", true);
         stage.press("Return", false);
@@ -600,7 +618,8 @@ ShellRoot {
 
     function movedWithReturnShown() {
         stage.present(600);
-        same("a move read with the Return after it arms nothing", shownNow(), undefined);
+        same("a move read with the Return after it starts the line's time again", shownNow(),
+            undefined);
     }
 
     // A move, and an ask from outside before Asks reads the move.

@@ -134,11 +134,18 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
     """
     path = f"{ASKS}/{ask}.answer.json"
     # The driver's wait is paced to the host already (vm_helpers.pace_the_driver), so a release
-    # slow on a busy builder isn't read as a yes that was lost.
+    # slow on a busy builder isn't read as a yes that was lost. A yes the shell refused is never
+    # answered, so its refusal (Launcher.qml's becameNot) ends the wait too, rather than the
+    # whole paced wait passing first.
+    refused = (
+        f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
+        f" | grep -qE {shlex.quote(f'not become ask:{re.escape(ask)}(: |$)')}"
+    )
     try:
         desktop.machine.wait_until_succeeds(
-            desktop.in_session(f"test -e {path}"), timeout=RELEASING
+            desktop.in_session(f"test -e {path} || {refused}"), timeout=RELEASING
         )
+        desktop.as_account(f"test -e {path}")
     except AssertionError as unanswered:
         # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
         # rather than a timeout of its own. The launcher's showings, each a whole state naming
@@ -195,11 +202,18 @@ def say_yes(desktop: Desktop, *, unmoved: bool = False) -> str:
     Return is asserted to have left Asks' line untimed, so a refusal can't rest on a frame that
     came too late to time it.
     """
+    taken = desktop.showing()["taken"]
     desktop.machine.send_key("ret")
     # The launcher arms as it takes the Return, and Asks reads it a turn
-    # later, so the wait holds until Asks has read it too.
+    # later, so the wait holds until Asks has read it too. What the last
+    # Return did outlives its opening, and nothing was unread before this
+    # one, so the count taken is what says the state is this Return's.
     desktop.launcher_until(
-        lambda shown: shown["returned"].get("act") == "armed" and shown["asksUnread"] == 0
+        lambda shown: (
+            shown["taken"] > taken
+            and shown["returned"].get("act") == "armed"
+            and shown["asksUnread"] == 0
+        )
     )
     if unmoved:
         armed = desktop.showing()["asksArmed"]
