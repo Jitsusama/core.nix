@@ -129,10 +129,10 @@ since() {
 
 # What a probe's exit, $1, says of probe $2 when it gave no address after
 # $3 ms, as `why`: timeout's 124 is no answer in time, as is 137, a probe
-# it killed once it outlived its TERM, but only past its time, since any
-# KILL, macOS's own under memory pressure among them, ends 137 too; 125
-# to 127 a program that couldn't run,
-# which is no lookup at all, so it's never said as the name failing. dig
+# it killed once it outlived its TERM, but only from when -k's KILL lands,
+# since any KILL, macOS's own under memory pressure among them, ends 137
+# too; 125 to 127 a program that couldn't run, which is no lookup at all,
+# so it's never said as the name failing. dig
 # ends 9 when the server never replied, within its own five seconds, and 10
 # on an error of its own. Any other end but 0 is said as it is, an address
 # printed beside it included.
@@ -141,10 +141,10 @@ why() {
     *:0) why="" ;;
     *:124) why="no answer within ${within} s" ;;
     *:137)
-      if [[ $3 -ge $((within * 1000)) ]]; then
+      if [[ $3 -ge $(((within + killed) * 1000)) ]]; then
         why="no answer within ${within} s, killed ${killed} s on"
       else
-        why="$2 was killed, exit 137, before its ${within} s ran out"
+        why="$2 was killed, exit 137, before timeout's own KILL at $((within + killed)) s"
       fi
       ;;
     *:125 | *:126 | *:127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;

@@ -4,8 +4,9 @@
 # running, each kind counted apart, and one that fails and lags by turns
 # from its third, a busy mDNSResponder only from its fifth, by its path or
 # its name, and a check well again once; a server answering only a CNAME,
-# only an IPv6 address, nothing or failing gave no IPv4 address; a probe
-# out of time, killed past its TERM, killed before its time, unable to run,
+# nothing, as a name with only an IPv6 address gets, or failing gave no IPv4
+# address, and an AAAA line is turned down; a probe out of time, killed past
+# its TERM five seconds on, killed by anything else, unable to run,
 # ending on an error of its own or ending otherwise says so, dig's no reply by name, and an
 # address beside a probe's nonzero end isn't believed; a state file with a
 # blank line, a count that isn't a number or a zero before other digits is
@@ -33,8 +34,9 @@ mkdir -p "${stand}" "${work}/answers"
 # so only its -k ends it, "stopped" for a round sent a TERM while
 # it waits on the lookup, "ends" for an address printed beside an exit of
 # 1, or for a server "cname" for an alias whose name has
-# no address, "aaaa" for one with only an IPv6 address, "nothing" for no
-# answer and "broken" for dig's own error; mDNSResponder's holds its share
+# no address, "aaaa" for an AAAA line, which no A query gets but the A
+# match must turn down, "nothing" for no answer, as a name with only an
+# IPv6 address gets, and "broken" for dig's own error; mDNSResponder's holds its share
 # of a core. dig fails as the real one does, saying why on stdout. timeout
 # is the system's own, so its -k is taken as it is. dscacheutil notes each
 # name it's asked, so a round's end shows how far it got.
@@ -50,6 +52,13 @@ case "\$(cat "${work}/answers/\$5" 2>/dev/null)" in
     trap '' TERM
     # Past timeout's time and its -k, so only -k's KILL ends it.
     exec sleep 60
+    ;;
+  lingers)
+    trap '' TERM
+    # Past timeout's TERM but short of its -k, so a KILL of its own, not
+    # timeout's, ends it there.
+    sleep 21
+    kill -KILL "\$\$"
     ;;
   stopped)
     kill -TERM "\$(<"${work}/round")"
@@ -162,8 +171,9 @@ quiet "a lookup well for two rounds said something"
 # A lookup out of time says so, and one that couldn't run says it wasn't
 # a lookup, rather than reading as the name failing.
 for answer in late:"no answer within 20 s)" \
-  killed:"dscacheutil was killed, exit 137, before its 20 s ran out)" \
+  killed:"dscacheutil was killed, exit 137, before timeout's own KILL at 25 s)" \
   ignores:"no answer within 20 s, killed 5 s on)" \
+  lingers:"dscacheutil was killed, exit 137, before timeout's own KILL at 25 s)" \
   missing:"timeout or dscacheutil couldn't run (exit 127), so this wasn't a lookup" \
   ends:"dscacheutil ended 1"; do
   echo "${answer%%:*}" >"${work}/answers/example.net"
