@@ -16,21 +16,30 @@
 }:
 let
   # A list is several commands, one ExecStart= line each, as NixOS and
-  # home-manager both write it, and an empty one resets those before it.
-  # Each is read without the prefixes systemd takes for how it runs one
-  # (-, @, :, +, !, |), and as the program alone or with a space after, so
-  # pipewire-pulse, or another program whose path begins the same, is none.
-  # A chain a NixOS unit declares through script runs a script of its own,
-  # so it's none either, and is granted only if PipeWire wants it beside it.
+  # home-manager both write it, and an empty one resets those before it, so
+  # only those after the last empty one run. Each is read without the
+  # prefixes systemd takes for how it runs one (-, @, :, +, !), and as the
+  # program alone or with a space after, bare or quoted as NixOS's
+  # escapeSystemdExecArgs writes it, so pipewire-pulse, or another program
+  # whose path begins the same, is none. A command marked | goes to the
+  # account's shell, which may run more than PipeWire, so it's none, as is
+  # a chain a NixOS unit declares through script, which runs a script of its
+  # own; each is granted only if PipeWire wants it beside it.
+  runs =
+    start:
+    lib.foldl' (after: command: if command == "" then [ ] else after ++ [ command ]) [ ] (
+      map toString (lib.toList start)
+    );
+  isPipewire = program: bare: bare == program || lib.hasPrefix "${program} " bare;
   runsPipewire =
     start:
     lib.any (
       command:
       let
-        bare = lib.head (builtins.match "[-@:+!|]*(.*)" (toString command));
+        bare = lib.head (builtins.match "[-@:+!]*(.*)" command);
       in
-      bare == pipewire || lib.hasPrefix "${pipewire} " bare
-    ) (lib.toList start);
+      isPipewire pipewire bare || isPipewire (builtins.toJSON pipewire) bare
+    ) (runs start);
   # A unit may name what wants it as a list or as one name.
   wanted = units: lib.elem "pipewire.service" (lib.toList units);
   sound =

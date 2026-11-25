@@ -63,6 +63,10 @@
         system = {
           chain = nixos "${pipewire} -c chain.conf" [ ] "app.slice";
           reset = nixos [ "" "${pipewire} -c reset.conf" ] [ ] "app.slice";
+          replaced = nixos [ "${pipewire} -c a.conf" "" "/bin/other" ] [ ] "app.slice";
+          alone = nixos "${pipewire}" [ ] "app.slice";
+          quoted = nixos "${builtins.toJSON pipewire} \"-c\" \"quoted.conf\"" [ ] "app.slice";
+          shelled = nixos "|${pipewire} -c a.conf & /bin/other" [ ] "app.slice";
           prefixed = nixos "-${pipewire} -c prefixed.conf" [ ] "app.slice";
           passed = nixos "/bin/env ${pipewire} -c passed.conf" [ ] "app.slice";
           beside = nixos "/bin/beside" [ "pipewire.service" ] "session.slice";
@@ -97,11 +101,13 @@
         }
         &&
           lib.sort lib.lessThan chosen.system == [
+            "alone"
             "beside"
             "chain"
             "pipewire"
             "pipewire-pulse"
             "prefixed"
+            "quoted"
             "reset"
             "wireplumber"
           ]
@@ -133,7 +139,12 @@
       chosen = if found == [ ] then null else builtins.fromJSON (lib.head (lib.head found));
     in
     holds "sound-services-are-read-from-the-machine"
-      "nixos.nix chose ${builtins.toJSON chosen}, not by the machine's PipeWire and login names."
+      (
+        if chosen == null then
+          "realtime.rules declares no var soundServices on one line for this check to read."
+        else
+          "nixos.nix chose ${builtins.toJSON chosen}, not by the machine's PipeWire and logins."
+      )
       (
         chosen != null
         && lib.elem "ours" chosen.system

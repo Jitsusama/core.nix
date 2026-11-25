@@ -609,10 +609,11 @@
   '';
   sound-services-are-what-runs-a-pipewire-or-sits-beside-it = ''
     sound-services.nix counts a unit that runs a PipeWire of its own wherever it sits, as one
-    command, a line of several after a reset or with a prefix systemd takes, and one PipeWire
-    wants in session.slice by a list or one name, but not one it wants in app.slice, a program
-    named like it, one naming PipeWire past its own program, or a NixOS unit switched off, and a
-    home's only for its account, in whatever order it chooses them
+    command, alone, quoted, a line of several after a reset or with a prefix systemd takes, and
+    one PipeWire wants in session.slice by a list or one name, but not one it wants in
+    app.slice, a program named like it, one naming PipeWire past its own program, one a later
+    reset replaced, one handed to the shell, or a NixOS unit switched off, and a home's only
+    for its account, in whatever order it chooses them
   '';
   sound-services-are-read-from-the-machine = ''
     the sound services are chosen by the PipeWire a machine runs, a stand-in's program counted
