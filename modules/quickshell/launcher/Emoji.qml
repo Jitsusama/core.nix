@@ -47,6 +47,8 @@ Provider {
         onSearched: words => provider.foundMore(
             Date.now() - Math.max(provider.askedAt, ready.typedAt) < provider.freshFor)
     }
+    // What the history serves, for a reader told of each change it hears.
+    readonly property alias served: ready
     property real askedAt: 0
     readonly property int freshFor: 50
     // What an emoji's drawer names its lines, made from its row as it's drawn (EmojiDrawer.js).
