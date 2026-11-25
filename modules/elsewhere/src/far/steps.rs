@@ -241,10 +241,11 @@ pub(super) const RUN: &str = ".run";
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
-/// taken, `copies`, true once no link stands at the copies' folder, and
-/// `stays`, saying where one can't be cleared that the copy stays. It
-/// comes first, before any step that clears, so each finds all three
-/// whichever runs first. `cleared` opens what its walk meets only below
+/// taken, `copies`, true once no link stands at the copies' folder,
+/// `placed`, true once none stands at the copy either, and `stays`,
+/// saying where one can't be cleared that the copy stays. It comes first,
+/// before any step that clears, so each finds all four whichever runs
+/// first. `cleared` opens what its walk meets only below
 /// each path, and a link met there as itself alone; a folder above a path
 /// is passed through as `rm` passes it.
 pub(super) const CLEARING: &str = r#"# Takes each path away whole,
@@ -268,6 +269,12 @@ cleared() {
 copies() {
   [ ! -L "${work%/*}" ] || rm -f "${work%/*}" 2>/dev/null
   [ ! -L "${work%/*}" ]
+}
+# True once the copy is a folder of its own at its name, no link
+# standing at it or at the copies' folder, as `copies` says: a job of
+# the quest may put one at either, which tar's -C and the job's cd follow.
+placed() {
+  copies && [ -d "$work" ] && [ ! -L "$work" ]
 }
 # Says the copy stays, as a link at the copies' folder couldn't be
 # cleared, and fails, so what would clear it is passed over.
@@ -337,13 +344,7 @@ stays() {
 /// is, as the run's file is.
 pub(super) fn copying() -> String {
     format!(
-        r#"# True once the copy is a folder of its own at its name, no link
-# standing at it or at the copies' folder, as `copies` says: a job of
-# the quest may put one at either, which tar's -C and the job's cd follow.
-placed() {{
-  copies && [ -d "$work" ] && [ ! -L "$work" ]
-}}
-copied() {{
+        r#"copied() {{
   left=$(cat "$job/{LEFT}") || return 2
   # Each pass runs in a subshell of its own, so it ends by exit, and its
   # answer is the pipe's.
