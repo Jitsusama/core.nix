@@ -699,6 +699,9 @@ Provider {
             detail: what, clears: 0, lapses: 0, period: 0 };
         Clearing.copied = copy;
         Clearing.now = Date.now();
+        // A copy asked is newer than any type before it, so the foot says
+        // the copy's own word, never an older type's refusal.
+        provider.typed = null;
         const asked = { ask: "copy", key: key };
         if (detail !== null)
             asked.detail = detail;

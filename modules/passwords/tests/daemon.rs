@@ -178,7 +178,16 @@ fn a_one_time_code_says_how_long_it_lasts() {
     let running = Running::with("code", &[("keeping", KEEPING)]);
     let mut client = running.client();
     let code = client.ask(&json!({"id": 1, "ask": "code", "key": "entry:keeping:gh"}));
-    assert_eq!(code["code"], "123456");
+    // How long it lasts alone, never the code, which only copying or
+    // typing hands on, as nothing secret goes back on the pipe.
+    assert!(
+        code["code"].is_null(),
+        "the code went back on the pipe: {code}"
+    );
+    assert!(
+        !code.to_string().contains("123456"),
+        "the code went back on the pipe: {code}"
+    );
     assert_eq!(code["period"], 30);
     assert_eq!(code["left"], 12);
 }

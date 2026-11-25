@@ -35,6 +35,17 @@ cat > "$TYPED"
 printf '%s\n' "$*" > "$TYPED.args"
 "#;
 
+/// A stand-in typist that says it's begun, then waits to be let go, or
+/// two seconds, before it types what it's given after anything typed
+/// before, as a type held up while a second is asked. It goes on alone
+/// after that, so a second type queued behind it ends rather than hangs.
+const SLOW_TYPIST: &str = r#"#!/bin/sh
+: > "$TYPED.begun"
+i=0
+while [ ! -e "$TYPED.go" ] && [ $i -lt 40 ]; do sleep 0.05; i=$((i + 1)); done
+cat >> "$TYPED"
+"#;
+
 /// A stand-in kitty's remote control: what it was asked goes to its file,
 /// and it says what its `ls` file holds, failing where there's none, as
 /// kitty does when it can't be reached.
@@ -672,6 +683,48 @@ fn nothing_is_typed_into_a_terminal_with_a_session_below_what_kitty_names() {
     let refused = type_github(&running);
     refused_reading_nothing(&running, &refused, "an agent runs in that terminal");
     assert!(desk.typed().is_none(), "it was typed above pi");
+}
+
+#[test]
+fn a_type_asked_while_one_is_under_way_is_refused_and_typed_once() {
+    let mut desk = Desk::new("twice");
+    let window = desk.plain();
+    desk.focus(WINDOW, window, "firefox");
+    let slow = desk.folder.join("slow-typist");
+    std::fs::write(&slow, SLOW_TYPIST).unwrap();
+    std::fs::set_permissions(&slow, PermissionsExt::from_mode(0o755)).unwrap();
+    let typist = slow.to_string_lossy().into_owned();
+    let (running, _journal) = running("twice", &desk, &[("PASSWORDS_TYPIST", &typist)]);
+    let mut client = running.client();
+    client.say(&json!({"id": 2, "ask": "type", "key": "entry:keeping:gh", "window": WINDOW}));
+    let begun = desk.folder.join("typed.begun");
+    until("the first type is under way", || begun.exists());
+    // Joel's Return again, while nothing seems to have happened.
+    let again =
+        client.ask(&json!({"id": 3, "ask": "type", "key": "entry:keeping:gh", "window": WINDOW}));
+    assert_eq!(again["error"]["code"], "refused", "{again}");
+    assert!(
+        again["error"]["message"]
+            .as_str()
+            .is_some_and(|said| said.contains("already under way")),
+        "the second type wasn't refused as one under way: {again}"
+    );
+    holds_no_secret(&again);
+    std::fs::write(desk.folder.join("typed.go"), "").unwrap();
+    let first = loop {
+        let heard = client.hear();
+        if heard["id"] == 2 {
+            break heard;
+        }
+    };
+    assert_eq!(first["typed"], true, "{first}");
+    assert_eq!(
+        desk.typed().as_deref(),
+        Some("hunter2"),
+        "it wasn't typed once"
+    );
+    let reveals = running.asked_of("keeping").matches("\"reveal\"").count();
+    assert_eq!(reveals, 1, "the secret was read for the refused type too");
 }
 
 #[test]

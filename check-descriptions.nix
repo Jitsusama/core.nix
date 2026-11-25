@@ -3178,14 +3178,15 @@
     watch, or to the clipboard marked sensitive and cleared when its time is up, refuses a copy
     before reading any secret while no copier is named, types a password only into the niri
     window it was asked for once the launcher has let go of the keys and while that window still
-    has them, never into one an agent's process is behind, above or below (pi, pi-spawner,
+    has them, refusing a second while one is under way, never into one an agent's process is
+    behind, above or below (pi, pi-spawner,
     mycelium, the hosted runtime, or the agents' or jobs' slices), nor a kitty whose foreground
     runs one or a multiplexer or that can't say, and writes one journal line for each type
     naming no secret, can't be read through /proc by the
     account's other processes nor write a core dump, says nothing of its own on the shell's pipe
     whether it ends well, fails or panics, ends once whatever ran it closes its end,
-    says a one-time code's period, gives a one-time code's detail as its code and
-    never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
+    says how long a one-time code lasts and never the code, gives a one-time code's detail as
+    its code and never its seed, says a manager signed out and gives no secret from it, tells a watch of entries as they arrive, and refuses an ask or a kind it doesn't know;
     serves each entry's row and drawer keyed by its place, in the account's own words and with no
     secret, rows spaced 1024 apart and one row moving told alone, a row with nothing to copy or
     open reading its details, and refuses rows where the words didn't read;

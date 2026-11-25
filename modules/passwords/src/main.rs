@@ -1349,6 +1349,9 @@ const TYPE_OFF: &str = "typing is off, since no typist is named";
 /// Held while a secret is typed, so no other type starts meanwhile.
 static TYPING: Mutex<()> = Mutex::new(());
 
+/// Why a type isn't started: another is under way.
+const TYPING_ALREADY: &str = "a type is already under way";
+
 /// Why no secret is handed back: only copied or typed, never on the pipe.
 const REVEALS_NOTHING: &str = "a secret is only copied or typed, never handed back";
 
@@ -1366,10 +1369,15 @@ fn typist() -> Option<String> {
 /// it, whether it was typed or why not, never the secret (typing.rs).
 fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window: u64) -> Value {
     // One type at a time: two at once would each check the window, then
-    // type into it together, one secret's keys among the other's.
-    let _one = TYPING
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // type into it together, one secret's keys among the other's. One
+    // asked while another is under way is refused, not queued, since a
+    // Return pressed again while nothing seems to happen would otherwise
+    // type the secret a second time once the first is done.
+    let _one = match TYPING.try_lock() {
+        Ok(one) => one,
+        Err(std::sync::TryLockError::Poisoned(one)) => one.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return error(id, "refused", TYPING_ALREADY),
+    };
     let title = lock(shared)
         .held
         .get(key)
@@ -1447,8 +1455,9 @@ fn typed(
     Ok((app, secret.label))
 }
 
-/// The one-time code an entry gives now, with its period and the seconds
-/// left in it.
+/// How long an entry's one-time code lasts: its period and the seconds
+/// left in it, never the code, which only copying or typing hands on, as
+/// reveal is refused (`REVEALS_NOTHING`).
 fn code(shared: &Shared, id: &Value, key: &str) -> Value {
     let Some((manager, entry)) = named(key) else {
         return error(id, "refused", &format!("{key} isn't an entry's key"));
@@ -1461,7 +1470,6 @@ fn code(shared: &Shared, id: &Value, key: &str) -> Value {
     ) {
         Ok(answer) => json!({
             "id": id,
-            "code": answer.get("code"),
             "period": answer.get("period"),
             "left": answer.get("left"),
         }),
