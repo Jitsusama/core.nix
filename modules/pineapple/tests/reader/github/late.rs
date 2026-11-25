@@ -6,8 +6,8 @@
 //! read by what Joel opened never searches, so keeps nothing of; a search
 //! cut short is followed by one of what changed before the oldest it
 //! gave, and moves on, saying what it left unread when that's cut too,
-//! and from when it's searched again, unless the first gives none it can
-//! read, which holds.
+//! and from when it's searched again once the round moves on, unless the
+//! first gives none it can read, which holds.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,7 +21,7 @@ use super::{
     CODE_SITE, LOGIN, MARK, answer_with, by_address, commented, github_reader, journal,
     read_lately, searches, until_asked,
 };
-use crate::{PATIENCE, answering, decisions, each, home, until_decided};
+use crate::{Answered, PATIENCE, answering, answering_whole, decisions, each, home, until_decided};
 
 /// The key of Joel's comment in these cases, as the journal names it.
 const HIS: &str = "github:example/shop#12:comment:5";
@@ -364,6 +364,35 @@ fn cut_then_failing(line: &str, now: u64) -> Value {
     searched_short(line, now, &CUT_FAILING, None)
 }
 
+/// How many times the stand-in of a cut whose round can't read a thread
+/// was searched, and when what it gives changed.
+static CUT_UNREAD: AtomicU64 = AtomicU64::new(0);
+
+/// How many times the stand-in of a cut whose older search gives nothing
+/// it can read was searched, and when what it gives changed.
+static CUT_EMPTY: AtomicU64 = AtomicU64::new(0);
+
+/// A search cut short twice, in a round that can never read #13.
+fn cut_twice_unread(line: &str, now: u64) -> Answered {
+    if line.contains(" /repos/example/shop/issues/13/comments?") {
+        return Answered {
+            status: 500,
+            headers: Vec::new(),
+            body: json!({"message": "Server Error"}),
+        };
+    }
+    Answered::ok(searched_short(line, now, &CUT_UNREAD, Some(5)))
+}
+
+/// A search cut short whose search of what's older is cut too, giving no
+/// thread it can read.
+fn cut_then_empty(line: &str, now: u64) -> Value {
+    if line.contains(" /search/issues?") && line.contains("..") {
+        return json!({"total_count": 2, "items": []});
+    }
+    searched_short(line, now, &CUT_EMPTY, Some(2))
+}
+
 /// A search cut short that gives no thread it can read.
 fn cut_unreadable(line: &str, now: u64) -> Value {
     if line.contains(" /search/issues?") {
@@ -490,12 +519,13 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
     let said = journal(&home);
     let searched = searches(&asked);
     let next = next_reach(&searched);
-    let failed = format!(
-        "for what Joel said changed {reach}..{oldest}, so threads the search before left out \
-         are searched again only from {next}, where the next round reaches"
+    let failed = format!("for what Joel said changed {reach}..{oldest} (");
+    let left = format!(
+        "), so threads the search before left out are searched again only from {next}, where \
+         the next round reaches"
     );
     assert!(
-        said.contains(&failed),
+        said.contains(&failed) && said.contains(&left),
         "the journal names the search that failed, and from when the next searches: {said}"
     );
     assert!(
@@ -508,6 +538,66 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
         (read(&asked, 11), read(&asked, 12)),
         (1, 1),
         "what the first search gave is read: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_cut_search_in_a_round_that_cant_read_a_thread_names_nothing_left_out() {
+    let (origin, asked) = answering_whole(cut_twice_unread);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let searched = searches(&asked);
+    assert_eq!(
+        searched_from(&searched[2]),
+        Some(stamp(last - 3600)),
+        "a round that couldn't read a thread holds, so searches it all again: {searched:?}"
+    );
+    let said = journal(&home);
+    assert!(
+        !said.contains("found 5 but gave 2"),
+        "nothing is named as left out, which the next round searches again: {said}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_cut_search_of_whats_older_giving_none_it_can_read_moves_on() {
+    let (origin, asked) = answering(cut_then_empty);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 3 {
+        assert!(began.elapsed() < PATIENCE, "it never searched three times");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let reach = stamp(last - 3600);
+    let oldest = stamp(CUT_EMPTY.load(Ordering::SeqCst) - 100);
+    let searched = searches(&asked);
+    let next = next_reach(&searched);
+    assert_ne!(
+        next, reach,
+        "it moves on rather than hold every round back: {searched:?}"
+    );
+    let said = journal(&home);
+    let left = format!(
+        "found 2 but gave 0, back to {oldest}, so threads it left out, changed from {reach} \
+         to then, are searched again only from {next}, where the next round reaches"
+    );
+    assert!(
+        said.contains(&left),
+        "it names what's left out, up to where the search before was cut: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

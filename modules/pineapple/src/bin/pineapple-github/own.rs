@@ -61,12 +61,14 @@ pub(super) struct Searched {
 }
 
 /// What one search found: each pull request or issue to read, when each
-/// it named had last changed, and whether its first search answered, so
-/// the round moves on, as it does from one cut short.
+/// it named had last changed, whether its first search answered, so the
+/// round moves on, as it does from one cut short, and what it left out,
+/// for the journal once the round knows where the next reaches.
 pub(super) struct Found {
     pub(super) threads: Vec<Thread>,
     pub(super) seen: HashMap<String, String>,
     pub(super) answered: bool,
+    left: Vec<String>,
 }
 
 impl Searched {
@@ -112,16 +114,14 @@ impl Searched {
     /// word and changed since they were last read, as a search finds
     /// them. One that fails doesn't cost what notified him: it's searched
     /// from as far back next round. One GitHub cuts short is followed by
-    /// one of what changed before the oldest it gave, up to [`SEARCHES`];
-    /// what they leave out, the journal says, is searched again only from
-    /// where a round that `began` then moves on to reaches.
-    pub(super) fn search(&self, github: &GitHub<'_>, site: &str, login: &str, began: u64) -> Found {
+    /// one of what changed before the oldest it gave, up to [`SEARCHES`].
+    pub(super) fn search(&self, github: &GitHub<'_>, site: &str, login: &str) -> Found {
         let reach = github::stamp(self.reach());
-        let next = github::stamp(began.saturating_sub(OWN_LAG).max(self.floor));
         let mut found = Found {
             threads: Vec::new(),
             seen: HashMap::new(),
             answered: true,
+            left: Vec::new(),
         };
         // Up to when the search before was cut short, none at first.
         let mut before: Option<String> = None;
@@ -148,12 +148,11 @@ impl Searched {
                 // cut short would, rather than hold every round back on a
                 // wide search that may keep failing.
                 Err(Unread::Gone(why) | Unread::Failed(why)) => {
-                    eprintln!(
-                        "<4>couldn't search {} for what Joel said changed {changed}, so threads \
-                         the search before left out are searched again only from {next}, where \
-                         the next round reaches: {why}",
+                    found.left.push(format!(
+                        "<4>couldn't search {} for what Joel said changed {changed} ({why}), so \
+                         threads the search before left out are",
                         github.name
-                    );
+                    ));
                     return found;
                 }
             };
@@ -187,12 +186,11 @@ impl Searched {
                 return found;
             };
             if searching == SEARCHES {
-                eprintln!(
+                found.left.push(format!(
                     "<4>{}'s search for what Joel said found {all} but gave {gave}, back to \
-                     {oldest}, so threads it left out, changed from {reach} to then, are \
-                     searched again only from {next}, where the next round reaches",
+                     {oldest}, so threads it left out, changed from {reach} to then, are",
                     github.name
-                );
+                ));
                 return found;
             }
             before = Some(oldest);
@@ -201,11 +199,18 @@ impl Searched {
     }
 
     /// Moves on to a round begun at `began` once what it `found` was
-    /// answered, knowing what that read as read.
+    /// answered, knowing what that read as read, and says in the journal
+    /// what its searches left out, from where the next round reaches. Only
+    /// here, as a round that couldn't read a thread holds, so searches
+    /// it all again; said before, the journal would name a later time.
     pub(super) fn moved_on(&mut self, began: u64, found: Found) {
         if found.answered {
             self.from = began;
             self.read = found.seen;
+            let next = github::stamp(self.reach());
+            for left in found.left {
+                eprintln!("{left} searched again only from {next}, where the next round reaches");
+            }
         }
     }
 
