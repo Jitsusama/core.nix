@@ -446,32 +446,42 @@ fn finds_every_process_under_a_build_its_containers_too() {
 #[test]
 fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
-    // `c` sorts first, though APFS lists `m` first by its names' hashes,
-    // and tmpfs by `m` made last; then, emptied, `c` holds its process a
-    // cgroup further down than `m`.
-    let (c, deep, m) = (root.join("c"), root.join("c/deep"), root.join("m"));
-    fs::create_dir_all(&deep).expect("the temp folder takes a folder");
-    fs::create_dir_all(&m).expect("the temp folder takes a folder");
+    // `c` sorts first but is made between `m` and `d`, so a folder listed
+    // in the order its folders were made, or the reverse, lists another
+    // first, as APFS does by its names' hashes, which put `m` before `c`;
+    // then, emptied, `c` holds its process a cgroup further down.
+    let (m, c, deep, d) = (
+        root.join("m"),
+        root.join("c"),
+        root.join("c/deep"),
+        root.join("d"),
+    );
+    for cgroup in [&m, &deep, &d] {
+        fs::create_dir_all(cgroup).expect("the temp folder takes a folder");
+    }
     let procs = |cgroup: &Path, pids: &str| {
         fs::write(cgroup.join("cgroup.procs"), pids).expect("the temp folder takes a file");
     };
     procs(&root, "10\n11\n");
     procs(&c, "30\n");
     procs(&deep, "50\n");
+    procs(&d, "35\n");
     procs(&m, "40\n");
     let own = first_process(&root);
     procs(&root, "");
     let sorted = first_process(&root);
     procs(&c, "");
     let nearest = first_process(&root);
+    procs(&d, "");
+    let next = first_process(&root);
     procs(&m, "");
     let deeper = first_process(&root);
     procs(&deep, "");
     let none = first_process(&root);
     fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(
-        (own, sorted, nearest, deeper, none),
-        (Some(10), Some(30), Some(40), Some(50), None),
+        (own, sorted, nearest, next, deeper, none),
+        (Some(10), Some(30), Some(35), Some(40), Some(50), None),
         "a build's first process wasn't its own, else the nearest under it, by name"
     );
 }

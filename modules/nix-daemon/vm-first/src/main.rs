@@ -240,13 +240,6 @@ impl Proc {
 /// The client that asked for a build, found through the daemon's worker
 /// its processes descend from. The client is opened by the pid the worker
 /// names, which is all a worker says of it.
-///
-/// A process's owner is read before its command line: Linux's
-/// `pid_getattr` says root owns the folder of a process that has gone, so
-/// read after, a build that wrote a worker's command line and ended would
-/// pass for one, but read before, the command line of a process gone by
-/// then won't read.
-///
 fn client_of_build(build: &Path) -> Option<Proc> {
     client_from(first_process(build)?, build)
 }
@@ -256,6 +249,12 @@ fn client_of_build(build: &Path) -> Option<Proc> {
 ///
 /// The walk starts at `first`, opened only while its cgroup is still the
 /// build's or one under it, since by then its pid could be another's.
+///
+/// A process's owner is read before its command line: Linux's
+/// `pid_getattr` says root owns the folder of a process that has gone, so
+/// read after, a build that wrote a worker's command line and ended would
+/// pass for one, but read before, the command line of a process gone by
+/// then won't read.
 fn client_from(first: u32, build: &Path) -> Option<Proc> {
     let mut process = Proc::open(first)?;
     if !in_cgroup(&process.text("cgroup")?, build) {
@@ -304,7 +303,8 @@ fn first_process(build: &Path) -> Option<u32> {
 /// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
 /// would, from the file system's root down and never back up it, without
 /// which every client would be taken for out of its build's cgroup. The
-/// root itself is refused, since every process on the machine is in it.
+/// root itself is refused: taken for the daemon's, every cgroup under it,
+/// the machine's own slices among them, would be taken for a build.
 fn under_cgroup_root(cgroup: &Path) -> bool {
     cgroup.starts_with(CGROUP_ROOT)
         && cgroup != Path::new(CGROUP_ROOT)
