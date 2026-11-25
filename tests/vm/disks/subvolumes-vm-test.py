@@ -65,6 +65,15 @@ def moved(machine: BaseMachine) -> BaseMachine:
     return machine
 
 
+def nothing_beside(machine: BaseMachine, name: str) -> None:
+    """Find neither a kept folder nor a half copy beside `name`.
+
+    Each is looked for alone, since ls fails when any one of several is missing.
+    """
+    machine.fail(f"ls -d {HOME}/{name}.before-subvolume-*")
+    machine.fail(f"test -e {HOME}/{name}.subvolume-new")
+
+
 def test_each_move_comes_with_the_manager_before_its_writers(moved: BaseMachine) -> None:
     """Each folder's move is wanted as the account's manager starts, ordered before its writers."""
     for folder in (*FREE, "unreadable"):
@@ -92,14 +101,14 @@ def test_a_folder_held_open_stays_and_says_why(moved: BaseMachine) -> None:
     """A folder a process of the account's holds a file in is left where it is."""
     assert inode(moved, f"{HOME}/held") != "256"
     assert "held/file open, so" in said(moved, "held")
-    moved.fail(f"ls -d {HOME}/held.before-subvolume-* {HOME}/held.subvolume-new")
+    nothing_beside(moved, "held")
 
 
 def test_a_folder_whose_writer_runs_stays_though_nothing_is_open(moved: BaseMachine) -> None:
     """A writer running between writes holds nothing open, so its running keeps its folder."""
     assert inode(moved, f"{HOME}/busy") != "256"
     assert "busy.service is running, so" in said(moved, "busy")
-    moved.fail(f"ls -d {HOME}/busy.before-subvolume-* {HOME}/busy.subvolume-new")
+    nothing_beside(moved, "busy")
 
 
 def test_a_folder_missing_is_left_and_its_unit_passes(moved: BaseMachine) -> None:
@@ -115,7 +124,7 @@ def test_a_folder_that_cant_be_copied_is_left_whole_and_its_writer_starts(
     assert inode(moved, f"{HOME}/unreadable") != "256"
     moved.succeed(f"test $(stat -c %a {HOME}/unreadable/file) = 0")
     # The half copy was a subvolume the account made and then removed itself.
-    moved.fail(f"ls -d {HOME}/unreadable.before-subvolume-* {HOME}/unreadable.subvolume-new")
+    nothing_beside(moved, "unreadable")
     assert "couldn't copy" in said(moved, "unreadable")
     as_account(moved, "systemctl --user start writer.service")
     assert as_account(moved, "systemctl --user is-active writer.service").strip() == "active"
@@ -132,3 +141,17 @@ def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     assert inode(moved, f"{HOME}/unreadable") == "256"
     assert inode(moved, f"{HOME}/busy") == "256"
     assert moved.succeed(f"cat {HOME}/busy/file").strip() == "written"
+
+
+def test_a_run_stopped_after_its_exchange_keeps_the_folder_as_it_was(moved: BaseMachine) -> None:
+    """Keep the folder as it was when a run stopped just after its exchange.
+
+    What it leaves where the copy was made is that folder, so the next run keeps it
+    beside the subvolume rather than clearing it.
+    """
+    as_account(moved, "mkdir moved.subvolume-new && echo older > moved.subvolume-new/file")
+    as_account(moved, f"systemctl --user restart {unit('moved')}")
+    moved.fail(f"test -e {HOME}/moved.subvolume-new")
+    kept = moved.succeed(f"grep -l older {HOME}/moved.before-subvolume-*/file").split()
+    assert len(kept) == 1, f"the folder left by the stopped run is kept once, not {kept}"
+    assert inode(moved, f"{HOME}/moved") == "256"

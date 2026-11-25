@@ -10,13 +10,12 @@
 # It fails open: a folder that's missing, isn't on Btrfs, is already a
 # subvolume's root, has a writer named running, has a file of the account's
 # open in it, changes while it's copied, or can't be copied in time is left
-# as it was, and the run
-# says why and goes on to the next. The rename that puts the subvolume in
-# the folder's place is the last step and atomic, so a run stopped at any
-# point before it leaves the folder whole, and the half-made copy is cleared
-# by the next run. The folder as it was is kept beside it, dated, for three
-# days, then removed by a later run, since it holds the data a second time
-# once the two part ways.
+# as it was, and the run says why and goes on to the next. One exchange
+# swaps the subvolume into the folder's place, so its path always names the
+# folder or the subvolume, never nothing, wherever a run stops; a half-made
+# copy is cleared by the next run. The folder as it was is kept beside it,
+# dated, for three days, then removed by a later run, since it holds the
+# data a second time once the two part ways.
 #
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand.
@@ -133,13 +132,23 @@ kept() {
 # Clears what a run stopped partway left, and the copies kept past three
 # days. An account removes a subvolume's root by emptying it, as rm does.
 tidy() {
-  local folder=$1 new beside name old
+  local folder=$1 new beside name old root
   new=$(making "$folder")
   beside=$(dirname "$folder")
   name=$(basename "$folder")
+  # A copy half made is a subvolume's root; anything else there is the
+  # folder as it was, left by a run stopped just after its exchange, and is
+  # kept as any other.
+  if [ -d "$new" ]; then
+    root=$(stat -c %i -- "$new") || return 0
+    if [ "$root" != 256 ]; then
+      old=$(kept "$folder")
+      mv -T -- "$new" "$old" || return 0
+    fi
+  fi
   rm -rf -- "$new"
   find "$beside" -maxdepth 1 -name "$name.before-subvolume-*" \
-    -ctime +3 -print0 2> /dev/null | while IFS= read -r -d '' old; do
+    -ctime +2 -print0 2> /dev/null | while IFS= read -r -d '' old; do
     rm -rf -- "$old" && echo "removed $old, kept three days since the move"
   done
 }
@@ -194,16 +203,17 @@ own() {
     echo "$folder changed as it was copied ($why), so it's left as it is until the next login"
     return 0
   fi
-  aside=$(kept "$real")
-  if ! mv -T -- "$real" "$aside"; then
+  # Two renames would leave no folder between them, for a run stopped there
+  # or a writer to make afresh; an exchange either swaps both or neither.
+  if ! mv --exchange -T -- "$new" "$real"; then
     rm -rf -- "$new"
-    echo "✕ couldn't move $folder aside, so it's left as it is" >&2
+    echo "✕ couldn't put the subvolume in $folder's place, so it's left as it is" >&2
     return 1
   fi
-  if ! mv -T -- "$new" "$real"; then
-    mv -T -- "$aside" "$real"
-    rm -rf -- "$new"
-    echo "✕ couldn't put the subvolume in $folder's place, so it's left as it was" >&2
+  # The folder as it was now sits where the copy was made.
+  aside=$(kept "$real")
+  if ! mv -T -- "$new" "$aside"; then
+    echo "✕ $folder is a subvolume now; the folder as it was, at $new, is kept by the next run" >&2
     return 1
   fi
   echo "$folder is a subvolume of its own now, the folder as it was kept at $aside"
