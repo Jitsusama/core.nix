@@ -187,9 +187,11 @@ fn runs_file(root: &Path) -> PathBuf {
     super::folder(root).join("runs")
 }
 
-/// Say that the train under `root` began a clear run at `began`.
+/// Say that the train under `root` began a clear run at `began`, whole,
+/// since a `ready` reading a file half written would find no run and let
+/// its change merge alone beside it.
 pub fn run_begins(root: &Path, began: u64) {
-    let _ = fs::write(runs_file(root), format!("{began}\n"));
+    let _ = crate::whole::write(&runs_file(root), &format!("{began}\n"));
 }
 
 /// Say that the train under `root` runs nothing clear.

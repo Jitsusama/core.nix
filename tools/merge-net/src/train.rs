@@ -517,8 +517,13 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         let began = crate::state::now();
         // Only a clear run takes changes that would merge alone, so none
         // boards a red's search or an outage only to fall with its riders.
+        // One that boards rides the next candidate, cut once this one ends.
         if splitting.clear() {
             right_of_way::run_begins(&root, began);
+            println!(
+                "merge-net: the train's run is clear, so a change that would merge alone \
+                 boards it until the run ends"
+            );
         }
         println!(
             "merge-net: the train runs changed-checks at {} over {}",
