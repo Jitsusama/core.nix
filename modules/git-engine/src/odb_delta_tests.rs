@@ -401,44 +401,97 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
     );
 }
 
+/// A pack entry's header of type `kind` for `size` bytes: the low four
+/// bits of the size first, then the rest in seven-bit groups, as git
+/// writes one.
+fn header(kind: u8, size: usize) -> Vec<u8> {
+    let low = u8::try_from(size & 0xf).expect("four bits fit a byte");
+    let mut header = vec![kind << 4 | low];
+    let mut rest = size >> 4;
+    while rest > 0 {
+        *header.last_mut().expect("a header has a first byte") |= 0x80;
+        header.push(low_seven(rest as u64));
+        rest >>= 7;
+    }
+    header
+}
+
+/// A size within a delta's data, in seven-bit groups, the lowest first.
+fn delta_size(mut size: usize) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    loop {
+        let low = low_seven(size as u64);
+        size >>= 7;
+        if size == 0 {
+            bytes.push(low);
+            return bytes;
+        }
+        bytes.push(0x80 | low);
+    }
+}
+
 #[test]
-fn a_copy_refused_memory_is_left_unmarked_as_is_a_delta_naming_it() {
+fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again() {
+    const COPIES: usize = 21;
     let names = names(2);
-    // names[0] a delta over names[1] in each pack, names[1]'s copy in the
-    // first spoilt and in the second sound, so the second copy of the
-    // delta meets a base already spent. The spoilt one's size takes two
-    // bytes, so its stream starts past where the sound one's does.
-    let mut spoilt = [vec![0xb1, 0x00], blob(b"a")[1..].to_vec()].concat();
-    *spoilt.last_mut().expect("a stream ends in its checksum") ^= 1;
-    // The pack's 12 bytes of header, the delta, then the blob's one.
-    let sound = 12 + over(names[1]).len() as u64 + 1;
-    let folders = packed_as(&[
-        (names.clone(), vec![over(names[1]), spoilt]),
-        (names.clone(), vec![over(names[1]), blob(b"a")]),
-    ]);
-    let objects = folders.0[0].clone();
-    let read = within(20, move || {
-        let mut odb = Odb::open(&objects);
-        let mut read = || {
-            let read = odb
-                .read(&Oid(names[0]))
-                .map(|object| object.map(|object| object.data))
-                .map_err(|error| error.to_string());
-            (read, odb.bad.len())
-        };
-        STARVED.with(|starved| starved.set(Some(sound)));
-        let starved = read();
-        STARVED.with(|starved| starved.set(None));
-        (starved, read())
-    });
-    assert_eq!(
-        read,
-        Ok((
-            (Err("pack object's stream".into()), 1),
-            (Ok(Some(b"x".to_vec())), 1)
-        )),
-        "a copy refused memory, or a delta over its object, was marked bad and not read again"
-    );
+    // names[1] a blob past the first 64 KiB its stream is given, and
+    // names[0] a delta over it copying it whole again and again, past the
+    // 1 MiB a delta's result is first given.
+    let base: Vec<u8> = (0..100_000u32).map(|at| low_seven(u64::from(at))).collect();
+    let copy = [&[0xf0][..], &base.len().to_le_bytes()[..3]].concat();
+    let delta = [
+        delta_size(base.len()),
+        delta_size(COPIES * base.len()),
+        copy.repeat(COPIES),
+    ]
+    .concat();
+    let compressed = |data: &[u8]| miniz_oxide::deflate::compress_to_vec_zlib(data, 1);
+    let entries = vec![
+        [
+            header(7, delta.len()),
+            names[1].to_vec(),
+            compressed(&delta),
+        ]
+        .concat(),
+        [header(3, base.len()), compressed(&base)].concat(),
+    ];
+    let folders = packed_as(&[(names.clone(), entries)]);
+    for (name, limit, refusal, size) in [
+        (names[1], 80_000, "no memory for a pack object", base.len()),
+        (
+            names[0],
+            1_500_000,
+            "no memory for a delta",
+            COPIES * base.len(),
+        ),
+    ] {
+        let objects = folders.0[0].clone();
+        let read = within(20, move || {
+            let read = |odb: &mut Odb| {
+                odb.read(&Oid(name))
+                    .map(|object| object.map(|object| object.data.len()))
+                    .map_err(|error| error.to_string())
+            };
+            let mut odb = Odb::open(&objects);
+            STARVED.with(|starved| starved.set(Some(limit)));
+            let starved = read(&mut odb);
+            STARVED.with(|starved| starved.set(None));
+            let kinds: Vec<_> = odb.bad.values().map(|(kind, _)| *kind).collect();
+            let again = read(&mut odb);
+            (starved, kinds, again, read(&mut Odb::open(&objects)))
+        });
+        assert_eq!(
+            read,
+            Ok((
+                Err(refusal.into()),
+                vec![io::ErrorKind::OutOfMemory],
+                Err(refusal.into()),
+                Ok(Some(size))
+            )),
+            "a copy refused memory past {limit} bytes wasn't marked with that refusal alone, \
+             or stayed marked once the store was opened again"
+        );
+    }
 }
 
 /// What reading each of `names` from a store opened once answers, and how

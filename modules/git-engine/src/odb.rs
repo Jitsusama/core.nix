@@ -273,29 +273,38 @@ impl Store {
 
 #[cfg(test)]
 thread_local! {
-    /// Where in a pack this thread's reads are refused memory for what a
-    /// stream inflates to, as an allocator out of it would refuse it, which
-    /// the tests set since nothing here asks for more than they can give.
-    static STARVED: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+    /// How many bytes this thread's objects and deltas may grow to before
+    /// more is refused, as an allocator out of memory would refuse it,
+    /// which the tests set since nothing here asks for more than they can
+    /// give.
+    static STARVED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Makes room for `more` bytes past what `out` holds, refused as `what`
+/// should the memory not be there.
+fn reserve(out: &mut Vec<u8>, more: usize, what: &str) -> io::Result<()> {
+    let refused = || io::Error::new(io::ErrorKind::OutOfMemory, format!("no memory for {what}"));
+    #[cfg(test)]
+    if STARVED
+        .with(std::cell::Cell::get)
+        .is_some_and(|cap| out.len().saturating_add(more) > cap)
+    {
+        return Err(refused());
+    }
+    out.try_reserve_exact(more).map_err(|_| refused())
 }
 
 /// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
 ///
 /// What it inflates to is grown as the stream fills it rather than made
 /// at the size its header says, so a size no stream fills, however large,
-/// takes at most twice what the stream gives, or 64 KiB, before it ends,
-/// and memory the allocator won't give for it is refused rather than
-/// ending the program. As git's `unpack_compressed_entry` does, it makes room for
-/// one byte past the size, and takes the object only where its stream
-/// ends there, so a stream giving more, or ending wrongly, is refused.
+/// takes at most twice what the stream gives, or 64 KiB, before it ends.
+/// Memory the allocator won't give for it fails the read rather than
+/// ending the program, and the copy is marked with that refusal. As git's
+/// `unpack_compressed_entry` does, it makes room for one byte past the
+/// size, and takes the object only where its stream ends there, so a
+/// stream giving more, or ending wrongly, is refused.
 fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
-    #[cfg(test)]
-    if STARVED.with(std::cell::Cell::get) == Some(offset) {
-        return Err(io::Error::new(
-            io::ErrorKind::OutOfMemory,
-            "no memory for a pack object",
-        ));
-    }
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
     let room = size
         .checked_add(1)
@@ -342,8 +351,7 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
 fn grow_toward(out: &mut Vec<u8>, size: usize) -> io::Result<()> {
     let len = out.len();
     let to = size.min(len.saturating_mul(2).max(len.saturating_add(1 << 16)));
-    out.try_reserve_exact(to - len)
-        .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "no memory for a pack object"))?;
+    reserve(out, to - len, "a pack object")?;
     out.resize(to, 0);
     Ok(())
 }
@@ -433,8 +441,7 @@ fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> 
         // Twice what it holds, never past `size`, as `grow_toward` grows,
         // rather than the doubling of what it was made with.
         let more = piece.len().max(out.len()).min(size - out.len());
-        out.try_reserve_exact(more)
-            .map_err(|_| io::Error::new(io::ErrorKind::OutOfMemory, "no memory for a delta"))?;
+        reserve(out, more, "a delta")?;
     }
     out.extend_from_slice(piece);
     Ok(())
@@ -457,7 +464,9 @@ pub struct Odb {
     /// from then on as git passes over a copy it has marked bad for as
     /// long as it runs. Each copy is unpacked to its failure once, so a
     /// chain of failing deltas, each with several copies, costs one
-    /// unpacking a copy rather than one for every path down to it.
+    /// unpacking a copy rather than one for every path down to it. A copy
+    /// refused memory is marked with that refusal too, and every mark goes
+    /// once the packs change, since the store is then opened again.
     bad: HashMap<Place, (io::ErrorKind, String)>,
 }
 
