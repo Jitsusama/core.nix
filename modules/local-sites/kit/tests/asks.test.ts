@@ -7,9 +7,10 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import type { Posted } from "../answer.ts";
-import { carry } from "../answer.ts";
+import { carry, ready } from "../answer.ts";
 import { asked } from "../ask.ts";
 import { drawAsk, followAsks, waiting } from "../asks.ts";
+import { asksOnceOneWaits } from "../waits.ts";
 import { Held } from "../records.ts";
 import { Hands } from "./hands.ts";
 import { StandIn } from "./stand-in.ts";
@@ -172,6 +173,50 @@ it("a press posts the look and the value alone, and a refusal is said with what 
   assert.match(none.words, /take no answers: answer in For You/u);
   const down = await carry(look("l1", "abc"), choice, NOW, () => Promise.reject(new Error("down")));
   assert.match(down.words, /can't be reached/u);
+  const agents = await carry(look("l1", "abc"), choice, NOW, answering(403, '{"refused":"agent"}'));
+  assert.match(agents.words, /one of your agents/u);
+  const form = await carry(look("l1", "abc"), choice, NOW, answering(415, '{"refused":"type"}'));
+  assert.match(form.words, /answer in For You/u);
+});
+
+/** A server that takes the page's answers. */
+const takes = (): Promise<Posted> => Promise.resolve({ status: 204, text: "" });
+
+it("a page asks once whether its answers are taken, and is told why not", async () => {
+  assert.equal(await ready(takes), null);
+  const none = await ready(() => Promise.resolve({ status: 404, text: "this server takes no answers\n" }));
+  assert.match(none ?? "", /take no answers: answer in For You/u);
+  const agents = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"agent"}' }));
+  assert.match(agents ?? "", /one of your agents/u);
+  const untold = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"untold"}' }));
+  assert.match(untold ?? "", /couldn't tell this press was yours/u);
+  const down = await ready(() => Promise.reject(new Error("down")));
+  assert.match(down ?? "", /can't be reached/u);
+});
+
+it("answers wait on the server taking them, and say why where it doesn't", async () => {
+  for (const [said, shown] of [
+    [{ status: 204, text: "" }, 2],
+    [{ status: 403, text: '{"refused":"agent"}' }, 0],
+  ] as const) {
+    let answer: (posted: Posted) => void = () => undefined;
+    const sockets: StandIn[] = [];
+    const holder = new Element("div");
+    const waits = () =>
+      new Promise<Posted>((then) => {
+        answer = then;
+      });
+    followAsks({ holder, make, reaching: { ...reaching(sockets), ready: waits } });
+    telling(sockets[0], look("l1", "abc"));
+    assert.equal(holder.all("button").length, 0, "answers showed before the server said it takes them");
+    answer(said);
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(holder.all("button").length, shown, `${said.status}`);
+    if (shown === 0) {
+      assert.match(holder.words(), /one of your agents/u);
+    }
+  }
 });
 
 it("answers show only while the feed is live and go once one is pressed", async () => {
@@ -196,8 +241,11 @@ it("answers show only while the feed is live and go once one is pressed", async 
         posted.push(body);
         return Promise.resolve({ status: 200, text: "{}" });
       },
+      ready: takes,
     },
   });
+  await Promise.resolve();
+  await Promise.resolve();
   const feed = socket as unknown as StandIn;
   feed.onopen?.();
   feed.tell({ id: 2, records: [{ key: "look:l1", kind: "look", look: look("l1", "abc") }] });
@@ -213,4 +261,65 @@ it("answers show only while the feed is live and go once one is pressed", async 
   assert.deepEqual(posted.map((body) => JSON.parse(body)), [{ look: "l1", value: "yes" }]);
   assert.match(holder.words(), /Answered Merge It/u);
   assert.deepEqual(counts.slice(-1), [1]);
+});
+
+/** The sockets a page opened, each a stand-in, in the order it opened them. */
+function reaching(sockets: StandIn[]): {
+  page: string;
+  clock: Hands;
+  connect: (url: string) => StandIn;
+  ready: () => Promise<Posted>;
+} {
+  const hands = new Hands();
+  hands.at = NOW;
+  return {
+    page: "http://sites.localhost:8484/",
+    clock: hands,
+    ready: takes,
+    connect: (url) => {
+      const socket = new StandIn(url);
+      sockets.push(socket);
+      return socket;
+    },
+  };
+}
+
+/** `socket` opened, told `looks` whole, then live. */
+function telling(socket: StandIn | undefined, ...looks: object[]): void {
+  socket?.onopen?.();
+  const records = looks.map((one) => ({ key: `look:${(one as { id: string }).id}`, kind: "look", look: one }));
+  socket?.tell({ id: 2, records });
+  socket?.tell({ id: 2, state: "live" });
+}
+
+it("a page narrowed to a cell shows only its asks, and every one widened again", () => {
+  const sockets: StandIn[] = [];
+  const holder = new Element("div");
+  const asks = followAsks({ holder, make, address: "abc", reaching: reaching(sockets) });
+  telling(sockets[0], look("mine", "abc"), look("theirs", "def"));
+  assert.equal(holder.all("article").length, 1, "a cell was shown another's asks");
+  asks.narrow(null);
+  assert.equal(holder.all("article").length, 2, "widened, the page didn't show every ask");
+  asks.narrow("def");
+  assert.deepEqual(holder.all("h3").length, 1);
+});
+
+it("the rows load only once a look waits, narrowed as the page narrowed them meanwhile", async () => {
+  const sockets: StandIn[] = [];
+  const holder = new Element("div");
+  const asks = asksOnceOneWaits({ holder, make, reaching: reaching(sockets) });
+  telling(sockets[0], { ...look("done", "abc"), state: "resolved" });
+  assert.equal(sockets.length, 1, "the rows loaded with nothing waiting");
+  asks.narrow("def");
+  sockets[0]?.tell({ id: 2, changed: [{ key: "look:l2", kind: "look", look: look("l2", "abc") }] });
+  assert.equal(sockets[0]?.closed, true, "the watch for a waiting look stayed open");
+  for (let turns = 0; turns < 20 && sockets.length < 2; turns += 1) {
+    await new Promise((then) => setTimeout(then, 5));
+  }
+  telling(sockets[1], look("l2", "abc"), look("l3", "def"));
+  assert.deepEqual(
+    holder.all("h3").length,
+    1,
+    "the rows forgot the cell the page narrowed to before they loaded",
+  );
 });

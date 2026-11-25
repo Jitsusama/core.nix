@@ -139,7 +139,12 @@ def serving(
         "names": ["sites.localhost"],
         "documents": str(documents),
         "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
-        "feeds": feeds,
+        # Every page watches the to-do feed for the looks waiting on Joel, as
+        # a machine serves it; a test that holds none is given one whose
+        # daemon isn't there, which the server says is broken, as a machine
+        # whose to-do daemon is down does, so no socket fails in the page.
+        "feeds": {"to-do": {"socket": str(folder / "no-to-do.sock"), "kinds": {"look": {}}}}
+        | dict(feeds),
         "home": None if home is None else str(home),
         "answers": None if answers is None else dict(answers),
     }

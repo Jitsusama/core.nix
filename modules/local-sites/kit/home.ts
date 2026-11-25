@@ -4,10 +4,10 @@
 // names can be pressed as well as typed, and the theme switch keeps its
 // look. The home loads it as /local-sites/kit/home.js; its sites are the
 // links in `.sites`, and its list of keys is the dialog `#keys`. The looks
-// waiting on Joel are drawn into `#asks`, answerable there (asks.ts), and
-// the part holding them shows only while one waits.
+// waiting on Joel are drawn into `#asks`, answerable there (asks.ts, fetched
+// once one waits by waits.ts), and the part holding them shows only then.
 
-import { followAsks } from "./asks.ts";
+import { asksOnceOneWaits } from "./waits.ts";
 import { listen, toggle } from "./keys.ts";
 import { answersAt, onTwice, pressable, stepped } from "./steps.ts";
 import { themeSwitch } from "./theme.ts";
@@ -64,7 +64,7 @@ function wire(): void {
   const asks = document.getElementById("asks");
   const part = asks?.closest<HTMLElement>(".waiting") ?? null;
   if (asks !== null && part !== null) {
-    followAsks<Element>({
+    asksOnceOneWaits<Element>({
       holder: asks,
       make: (tag) => document.createElement(tag),
       counted: (count) => {

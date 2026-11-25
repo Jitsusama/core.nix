@@ -8,6 +8,10 @@
 // as well, since it can't trust what any page posts. Each refusal is said
 // plainly with what to do next, and every one that the page can't mend
 // sends him to For You, which answers every look in place.
+//
+// Before it offers an answer, a page asks the server once (`ready`): the
+// server then gives it what its answers carry, only where it can tell this
+// browser is Joel's own and not one of his agents'.
 
 import { answering, type Choice } from "./ask.ts";
 import { isObject } from "./records.ts";
@@ -21,6 +25,9 @@ interface Posted {
 /** How an answer's body is posted, so a test can stand in for the server. */
 type Send = (body: string) => Promise<Posted>;
 
+/** How a page asks the server whether it takes its answers. */
+type Readying = () => Promise<Posted>;
+
 /** What came of a press, for the row to say. */
 interface Told {
   /** Whether the server carried it to the session that asked. */
@@ -30,6 +37,9 @@ interface Told {
 
 /** The status the server answers a carried answer with. */
 const CARRIED = 200;
+
+/** The status the server gives a page the cookie its answers carry with. */
+const GIVEN = 204;
 
 /** The status of a server that takes no answers, on a machine in no realm. */
 const TAKES_NONE = 404;
@@ -42,9 +52,14 @@ const NOT_SENT = "so nothing was sent";
 const NO_LONGER = `It no longer waits on you, ${NOT_SENT}.`;
 const NOT_OURS = `Only a page of your sites can answer, ${NOT_SENT}: ${FOR_YOU}.`;
 const UNREACHED = `It couldn't reach the session that asked: ${FOR_YOU}.`;
+const TAKES_NO_ANSWERS = `This machine's sites take no answers: ${FOR_YOU}.`;
+const UNSEEN = `The sites' server can't be reached, ${NOT_SENT}.`;
 
 /** What each word the server refuses with says to him. */
 const REFUSALS: Readonly<Record<string, string>> = {
+  type: `This page sent its answer in a way the server doesn't take: ${FOR_YOU}.`,
+  agent: `This browser runs as one of your agents, so it can't answer for you: ${FOR_YOU}.`,
+  untold: `The server couldn't tell this press was yours: ${FOR_YOU}.`,
   origin: NOT_OURS,
   site: NOT_OURS,
   cookie: "The sites' server restarted since this page opened: reload it to answer.",
@@ -73,6 +88,12 @@ async function browserSend(body: string): Promise<Posted> {
   return { status: answer.status, text: await answer.text() };
 }
 
+/** The browser's ask of the server that served the page, for its cookie. */
+async function browserAsk(): Promise<Posted> {
+  const answer = await fetch(ANSWER, { credentials: "same-origin" });
+  return { status: answer.status, text: await answer.text() };
+}
+
 /** What the server's refusal `posted` says to him. */
 function refusedAs(posted: Posted): string {
   let said: unknown = null;
@@ -87,8 +108,22 @@ function refusedAs(posted: Posted): string {
     return words;
   }
   return posted.status === TAKES_NONE
-    ? `This machine's sites take no answers: ${FOR_YOU}.`
+    ? TAKES_NO_ANSWERS
     : `It wasn't sent (the server answered ${posted.status}): ${FOR_YOU}.`;
+}
+
+/**
+ * Asks the server whether it takes this page's answers, and is given what
+ * they carry if so: null where it does, else the sentence saying why not.
+ */
+async function ready(ask: Readying = browserAsk): Promise<string | null> {
+  let asked: Posted;
+  try {
+    asked = await ask();
+  } catch {
+    return UNSEEN;
+  }
+  return asked.status === GIVEN ? null : refusedAs(asked);
 }
 
 /**
@@ -109,7 +144,7 @@ async function carry(
   try {
     posted = await send(JSON.stringify({ look: answer.look, value: answer.value }));
   } catch {
-    return { carried: false, words: `The sites' server can't be reached, ${NOT_SENT}.` };
+    return { carried: false, words: UNSEEN };
   }
   if (posted.status === CARRIED) {
     return { carried: true, words: `Answered ${choice.label}: sent to the session that asked.` };
@@ -117,5 +152,5 @@ async function carry(
   return { carried: false, words: refusedAs(posted) };
 }
 
-export type { Posted, Send, Told };
-export { carry };
+export type { Posted, Readying, Send, Told };
+export { carry, ready };

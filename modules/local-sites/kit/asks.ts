@@ -12,7 +12,7 @@
 // open stops asking at that moment, by a timer ask.ts's waitFor sets.
 
 import { type Ask, asked, type Choice, waitFor } from "./ask.ts";
-import { carry, type Send } from "./answer.ts";
+import { carry, type Readying, ready, type Send } from "./answer.ts";
 import { type Clock, follow, type Reaching, type State } from "./feed.ts";
 import { type Drawn, type Holder, keyed } from "./keyed.ts";
 import { type Held, isObject } from "./records.ts";
@@ -173,11 +173,11 @@ interface Asking<Item extends Drawn> {
   /** Where the rows are drawn; the list owns every child of it. */
   readonly holder: Holder<Item>;
   readonly make: Make<Item>;
-  /** Only the asks of the cell at this address; every one without it. */
+  /** Only the asks of the cell at this address, until narrowed again; every one without it. */
   readonly address?: string;
   /** Told how many rows show after each drawing, so a page can hide an empty part. */
   readonly counted?: (count: number) => void;
-  readonly reaching?: Reaching & { readonly send?: Send };
+  readonly reaching?: Reaching & { readonly send?: Send; readonly ready?: Readying };
 }
 
 const browserClock: Clock = {
@@ -188,14 +188,25 @@ const browserClock: Clock = {
   },
 };
 
+/** The asks a page follows: narrowed to one cell's or widened to all, and closed. */
+interface Following {
+  /** Shows only the asks of the cell at `address`, or every one for null. */
+  readonly narrow: (address: string | null) => void;
+  readonly close: () => void;
+}
+
 /** Follows the to-do feed's looks into `asking`'s rows, until closed. */
-function followAsks<Item extends Made<Item>>(asking: Asking<Item>): { close: () => void } {
+function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
   const reaching = asking.reaching ?? {};
+  let address = asking.address ?? null;
   const clock = reaching.clock ?? browserClock;
   const pressed = new Map<string, string>();
   let state: State = "connecting";
   let unwait: (() => void) | null = null;
   let held: Held | null = null;
+  // Whether the server takes this page's answers: unknown until it says,
+  // then null where it does, or the sentence saying why it doesn't.
+  let barred: string | null | undefined;
   const press = (row: Waiting, choice: Choice): void => {
     if (pressed.has(row.key)) {
       return;
@@ -210,9 +221,11 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): { close: () 
   const viewOf = (row: Waiting): View => {
     const told = pressed.get(row.key);
     const live = state === "live";
+    const offers = row.ask.choices.length > 0;
+    const refused = offers && typeof barred === "string" ? barred : null;
     return {
-      offering: told === undefined && live && row.ask.choices.length > 0,
-      told: told ?? unoffered(row.ask, live),
+      offering: told === undefined && live && offers && barred === null,
+      told: told ?? refused ?? unoffered(row.ask, live),
       press: (choice) => press(row, choice),
     };
   };
@@ -221,7 +234,7 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): { close: () 
       return;
     }
     const now = clock.now();
-    const rows = waiting(held, now, asking.address ?? null);
+    const rows = waiting(held, now, address);
     keyed(asking.holder, {
       rows,
       key: (row) => row.key,
@@ -249,7 +262,17 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): { close: () 
     reaching,
   );
   held = following.held;
+  ready(reaching.ready).then((said) => {
+    barred = said;
+    draw();
+  });
   return {
+    narrow: (next) => {
+      if (next !== address) {
+        address = next;
+        draw();
+      }
+    },
     close: () => {
       unwait?.();
       following.close();
@@ -257,5 +280,5 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): { close: () 
   };
 }
 
-export type { Asking, Made, Make, View, Waiting };
+export type { Asking, Following, Made, Make, View, Waiting };
 export { drawAsk, followAsks, waiting };
