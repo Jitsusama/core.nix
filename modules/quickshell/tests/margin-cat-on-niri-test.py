@@ -550,7 +550,7 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
         middle = at["x"] + at["size"] / 2
         stands = at["y"] + at["size"] + at["air"]
         beyond = left >= across and middle >= across
-        return beyond or (left <= middle <= left + width and abs(stands - top) < FLUSH)
+        return bool(beyond or (left <= middle <= left + width and abs(stands - top) < FLUSH))
 
     try:
         shell.reported(SITS, carried, since, timedelta(seconds=RESTS))
