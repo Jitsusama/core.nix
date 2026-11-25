@@ -210,19 +210,24 @@ QtObject {
             { key: "waits", held: "h3", since: now - 10000 },
             { key: "late", held: "h4", since: now - 2 * minutes },
             { key: "said", held: "h5", since: now - 3 * minutes, late: true },
-            { key: "gone", held: "h6", since: now - 15 * minutes, late: true }
+            { key: "gone", held: "h6", since: now - 15 * minutes, late: true },
+            { key: "unmarked", held: "h7", since: now - 2 * minutes },
+            { key: "watched", held: "h8", since: now - 16 * minutes, late: true }
         ];
-        const upAre = new Set(["h1", "h2"]);
+        const upAre = new Set(["h1", "h2", "h7", "h8"]);
         const found = one => upAre.has(one.held) ? { address: one.held } : null;
         const stood = Sprouting.settled(openings, found, now, times);
         Expect.same("each up opens, with its session, the slow one after its minute too",
             stood.up.map(one => [one.key, one.session.address]),
-            [["slow", "h1"], ["quick", "h2"]]);
+            [["slow", "h1"], ["quick", "h2"], ["unmarked", "h7"], ["watched", "h8"]]);
         Expect.same("one past the minute is late", stood.late.map(one => one.key), ["late"]);
         Expect.same("one watched a quarter hour is gone", stood.gone.map(one => one.key),
             ["gone"]);
-        Expect.same("one within the minute, or already said late, waits on",
-            stood.waiting.map(one => one.key), ["waits", "said"]);
+        Expect.same("one within the minute, or said late, waits on, and one late now too",
+            stood.waiting.map(one => [one.key, one.late === true]),
+            [["waits", false], ["late", true], ["said", true]]);
+        Expect.same("one said late is said late once", Sprouting.settled(stood.waiting,
+            () => null, now + 5000, times).late.length, 0);
         Expect.same("at the minute's own end, it's late", Sprouting.settled(
             [{ key: "x", since: now - minutes }], () => null, now, times).late.length, 1);
         }
@@ -385,6 +390,16 @@ QtObject {
             Sprouting.refusalActs().filter(key => String(written[key] ?? "").trim() === ""), []);
         Expect.same("and so is what asking where says",
             String(written.askedWhere ?? "").trim() !== "", true);
+        // What an opening says (Agents.qml's said): each written, each up one naming its
+        // session, and none filling more than it gives.
+        const opened = ["opening", "up", "upLater", "unopened", "lost"];
+        Expect.same("each word an opening says is written",
+            opened.filter(key => String(written[key] ?? "").trim() === ""), []);
+        Expect.same("each said once it's up names its session",
+            ["up", "upLater"].filter(key => !String(written[key]).includes("{title}")), []);
+        Expect.same("none fills more than machine, title and minutes", opened.filter(key =>
+            String(written[key]).replace(/\{(machine|title|minutes)\}/gu, "").includes("{")),
+            []);
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };

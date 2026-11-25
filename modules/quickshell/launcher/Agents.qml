@@ -1844,10 +1844,14 @@ Provider {
     property var sproutSaid: ({})
     property string sprouting: ""
     property int sprouts: 0
+    // When each act was last pressed, by its key, so a start still coming
+    // up never says over what a later Return on its act says (said, below).
+    property var sproutPressed: ({})
     function sproutSays(key, text) {
         sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
     }
     function sprout(key, said, folder) {
+        sproutPressed = Object.assign({}, sproutPressed, { [key]: Date.now() });
         const words = Words.of("agents:start-new-work").said ?? {};
         // Asked from outside, or with no launcher to say whose Return it
         // was, it starts nothing (Sprouting.fromJoel).
@@ -2150,8 +2154,8 @@ Provider {
     // launcher"). A list, so a second sprout never loses the first.
     property var openings: []
     // A minute before one still coming up is said to be, and a quarter hour,
-    // three times the slowest start seen on a loaded machine, before it's
-    // watched no more.
+    // near three times the slowest start seen (five and a half minutes, on
+    // a loaded machine), before it's watched no more.
     readonly property var openingPatience: ({ patience: 60000, watch: 15 * 60000 })
     // Each that's up opens and goes, but takes the keys only while Joel
     // still waits on its act in the launcher (Sprouting.waitsOn): once he's
@@ -2168,8 +2172,9 @@ Provider {
             openingPatience);
         if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
-        openings = stood.waiting.concat(stood.late.map(one => Object.assign({}, one,
-            { late: true })));
+        openings = stood.waiting;
+        stood.late.forEach(one => Report.say(`new work on ${one.machine} is still coming up`));
+        stood.gone.forEach(one => Report.say(`new work on ${one.machine} wasn't up in time`));
         const told = stood.late.map(one => said(one, "unopened"))
             .concat(stood.gone.map(one => said(one, "lost")));
         stood.up.forEach(one => {
@@ -2183,13 +2188,18 @@ Provider {
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
     }
-    // Says `word` of `one` on its act, and gives the words for the foot, its
-    // session named where it's up.
+    // Says `word` of `one` on its act, unless the act was pressed again
+    // since, and gives the words for the foot, its session named where it's
+    // up (footName). Each is filled by a function, so a title's `$&` is
+    // only text.
     function said(one, word) {
-        const title = one.session ? one.session.title || one.session.address : "";
-        const text = String(sproutWords()[word] ?? "").replace("{machine}", one.machine)
-            .replace("{title}", title);
-        sproutSays(one.key, text);
+        const fills = { machine: one.machine,
+            title: one.session ? footName(one.session) : "",
+            minutes: String(openingPatience.watch / 60000) };
+        const text = String(sproutWords()[word] ?? "")
+            .replace(/\{(machine|title|minutes)\}/gu, (_, name) => String(fills[name] ?? ""));
+        if ((sproutPressed[one.key] ?? 0) <= one.since)
+            sproutSays(one.key, text);
         return text;
     }
     // Opens `one`'s session if Joel still waits on its act, giving "", or
@@ -2197,10 +2207,14 @@ Provider {
     function openOne(one) {
         const launcher = provider.launcher ?? null;
         if (!Sprouting.waitsOn(launcher, one.key, one.letters)) {
-            Report.say(`new work's session ${one.session.address} is up; left for Go To`);
+            Report.say(`new work's session ${one.session.address} is up${one.late === true
+                ? " late" : ""}; left for Go To`);
             return said(one, one.late === true ? "upLater" : "up");
         }
         said(one, "opening");
+        // Its window answers what the foot said of it, so shutting the
+        // launcher for it notices none of that (sproutShut).
+        sproutFooted = null;
         launcher.open = false;
         Sessions.goTo(one.session);
         Report.say(`opening new work's session ${one.session.address}`);

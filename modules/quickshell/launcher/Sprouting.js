@@ -308,17 +308,14 @@ function sproutedOf(running, held, machine) {
 // in the ask included, could go into an agent's prompt.
 function waitsOn(launcher, key, letters) {
     const on = row => row?.key === key;
-    return (
-        launcher?.open === true &&
-        launcher.lettersAt === letters &&
-        (on(launcher.asking) || on(launcher.selected))
-    );
+    return launcher?.open === true && launcher.lettersAt === letters &&
+        (on(launcher.asking) || on(launcher.selected));
 }
 
 // How `openings` ({key, held, machine, since, late}) stand at `now`, by
 // `found` giving each one's session or null: `up` are up, however late;
-// `late` have waited `patience` with no `late` mark yet; `gone` have
-// waited `watch`; `waiting` are none of those.
+// `late` waited `patience` unmarked, and wait on in `waiting` marked `late`,
+// so each is said late once; `gone` waited `watch`; `waiting` wait on.
 function settled(openings, found, now, { patience, watch }) {
     const stood = { late: [], up: [], gone: [], waiting: [] };
     for (const one of openings) {
@@ -330,6 +327,7 @@ function settled(openings, found, now, { patience, watch }) {
             stood.gone.push(one);
         } else if (waited >= patience && one.late !== true) {
             stood.late.push(one);
+            stood.waiting.push(Object.assign({}, one, { late: true }));
         } else {
             stood.waiting.push(one);
         }
