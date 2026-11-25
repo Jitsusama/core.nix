@@ -1002,9 +1002,12 @@ import {
   // The mark says only whether it is chosen: it is never seen, so whether
   // it is far is the paint's to say, and a new choice leaves it alone.
   const cellMarkClass = (s) => (chosen?.kind === "cell" && chosen.id === s.address ? "cell chosen m-hit" : "cell m-hit");
+  // A receptor's mark says so, since the status sentence counts sessions
+  // alone as cells, and whatever checks the two against each other must too.
   const cellMarkup = (s, [x, y]) => {
     const net = esc(netOf(s)?.key || "");
-    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}"${s.standing === "asks" ? ' data-asks=""' : ""} cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
+    const receptor = s.kind === "receptor" ? ' data-receptor=""' : "";
+    return `<circle class="${cellMarkClass(s)}" data-key="c:${esc(s.address)}" data-level="${net || LOOSE_LEVEL}" data-within="${net}"${receptor}${s.standing === "asks" ? ' data-asks=""' : ""} cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${R + 4}"/>`;
   };
   // What a cell paints, innermost last: what changed, what waits on it,
   // its membrane and what it is doing.

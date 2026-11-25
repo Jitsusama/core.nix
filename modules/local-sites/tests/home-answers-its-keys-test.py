@@ -241,6 +241,8 @@ def test_a_tall_screen_keeps_the_whole_crest(browser: Browser, home: str) -> Non
     try:
         crest = opened.page.locator(".crest").bounding_box()
         assert crest, "the crest was drawn with no box"
-        assert crest["width"] == FULL_CREST_PX, f"a tall screen drew the crest {crest['width']} px"
+        # Within a pixel, since the browser lays boxes out in 1/64 px steps.
+        drawn = crest["width"]
+        assert abs(drawn - FULL_CREST_PX) < 1, f"a tall screen drew the crest {drawn} px"
     finally:
         opened.close()
