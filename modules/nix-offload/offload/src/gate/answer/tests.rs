@@ -259,6 +259,11 @@ fn a_refusal_keeps_its_words_in_the_journal_and_tells_the_asker_only_its_kind() 
     let result = result_of(&gate);
     assert_eq!(found.said, refusal_said(REFUSED, true));
     assert!(
+        found.said.contains(&format!("{GATES}/{JOURNAL}")) && !found.said.contains(&why),
+        "the words name where the journal really is, and not the refusal: {}",
+        found.said
+    );
+    assert!(
         result.contains(&found.said) && !result.contains(&*places.state.to_string_lossy()),
         "the asker is sent to the journal in fixed words, with no path of this machine's: {result}"
     );
@@ -286,17 +291,33 @@ fn a_refusal_with_no_state_to_trust_keeps_no_journal_and_says_so() {
 }
 
 #[test]
-fn a_refusal_whose_journal_line_cant_be_written_says_it_was_printed() {
+fn a_refusal_whose_journal_line_cant_be_written_says_nothing_kept_says_why() {
     let (forge, head, gate, (_, why)) = untrusted_refusal();
     let places = forge.places();
     fs::remove_file(places.state.join("work")).expect("the link goes");
     // A folder where the journal goes, so its line can't be added.
     fs::create_dir(places.state.join(JOURNAL)).expect("a folder in the journal's way");
-    let found = left(&places, &gate, (QUEST, &head), None, Err((REFUSED, why)));
+    let found = left(
+        &places,
+        &gate,
+        (QUEST, &head),
+        None,
+        Err((REFUSED, why.clone())),
+    );
     assert_eq!(found.said, refusal_said(REFUSED, false));
+    let result = result_of(&gate);
     assert!(
-        result_of(&gate).contains(&found.said),
-        "the result the run leaves says where the detail went"
+        found.said.contains("nothing kept says why") && !found.said.contains("journal of gates"),
+        "the words send the asker to no journal that holds nothing: {}",
+        found.said
+    );
+    assert!(
+        result.contains(&found.said) && !result.contains(&why),
+        "the result says the detail is lost, and never carries it: {result}"
+    );
+    assert!(
+        last_journalled(&places).is_none(),
+        "no line reached the journal in its way"
     );
 }
 
@@ -333,6 +354,10 @@ fn each_kind_of_refusal_says_words_of_its_own_wherever_its_detail_went() {
                 .all(|(at, said)| !kinds[..at].contains(said)),
             "{kinds:?}"
         );
+        // Each kind's words name what it is, so two swapped would fail.
+        for (said, word) in kinds.iter().zip(["refused", "ask again", "reach", "trust"]) {
+            assert!(said.contains(word), "{said} names {word}");
+        }
     }
 }
 

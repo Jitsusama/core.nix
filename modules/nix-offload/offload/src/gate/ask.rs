@@ -296,7 +296,7 @@ pub fn ask(arguments: &[String]) -> Result<(), Failure> {
     }
     println!("{}", found.said);
     crate::ended::coded(found.exit, || {
-        format!("the gate of {commit} didn't pass, as the line above and its log say")
+        format!("the gate of {commit} didn't pass, as the line above says")
     })
 }
 
