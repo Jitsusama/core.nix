@@ -279,7 +279,7 @@ pub struct Chooser {
     /// carrying worse than the point left, slower under load, badly for a
     /// wider band's room, or worse than the usual a second time, as each
     /// is a trial that didn't pay. Like `spurned`, a trusted network's is
-    /// kept on the disk (kept_off.rs) and taken up by the chooser begun
+    /// kept on the disk (`kept_off`) and taken up by the chooser begun
     /// after a restart of wifid, or a minute's tick finding the card
     /// unjoined, as on a resume (`carry_in`); another's starts every point
     /// afresh then. Its times are awake time, as `Instant` doesn't count a
@@ -840,7 +840,7 @@ impl Chooser {
     }
 
     /// What the card keeps off and has struck, in the machine's own time,
-    /// where either changed since last asked, for the disk (kept_off.rs).
+    /// where either changed since last asked, for the disk (`kept_off`).
     pub fn kept_off_lately(&mut self, now: Instant, wall: SystemTime) -> Option<Vec<Spurn>> {
         let held = (self.spurned.clone(), self.struck.clone());
         if self.written.as_ref() == Some(&held) {
@@ -5812,7 +5812,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             after.kept_for(DESK, now),
-            Some(HOUR - Duration::from_mins(10)),
+            Some(Duration::from_mins(50)),
             "ch52's keep-off didn't carry over the restart"
         );
     }
@@ -5912,7 +5912,7 @@ pub(crate) mod tests {
         let back = tried_ch52_and_back(&mut chooser, start);
         let spurns = chooser.kept_off_lately(back, wall);
         assert_eq!(
-            spurns.as_ref().map(|spurns| spurns.len()),
+            spurns.as_ref().map(Vec::len),
             Some(1),
             "a back wasn't asked for"
         );

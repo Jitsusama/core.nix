@@ -297,7 +297,7 @@ const TOLD: Duration = Duration::from_secs(60);
 /// each minute, and again as soon as a look its chooser asked for ends, so
 /// what the look heard is gone to without waiting out the minute. Each
 /// card's chooser is of the network it's on, begun with what a trusted
-/// one's access points were kept off for before (kept_off.rs).
+/// one's access points were kept off for before (`kept_off`).
 pub async fn follow(
     state: watch::Receiver<State>,
     calling: watch::Receiver<Calling>,
