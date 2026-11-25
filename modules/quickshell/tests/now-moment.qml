@@ -165,6 +165,8 @@ ShellRoot {
         property var wants: ({})
         property var answered: []
         property bool puts: true
+        // Whether an answer not put went unheard: sent, with nothing said of it.
+        property bool unheard: false
         // What it gives For You, as a source's `forYou` (ForYou.js's given).
         property var forYou: []
 
@@ -176,7 +178,7 @@ ShellRoot {
         function answerKept(address, fields, chose, then) {
             answered = answered.concat([{ address: address, fields: fields,
                 label: chose.label, want: chose.answers.want }]);
-            then(puts);
+            then(puts, "", !puts && unheard);
         }
 
         // Moved when a row's words move, as Agents' rows say they have.
@@ -2915,6 +2917,17 @@ ShellRoot {
         expect("an answer never put isn't said to be answered",
             agents.answered.length === 1 && theLauncher.said.length === 0,
             JSON.stringify([agents.answered, theLauncher.said]));
+        // One nothing said of may have arrived, so the foot says so, not answered.
+        agents.unheard = true;
+        inside[0].run();
+        expect("an answer nothing said of says it may not have arrived",
+            agents.answered.length === 2 && theLauncher.said.length === 1
+                && String(theLauncher.said[0]?.[0] ?? "").endsWith(
+                    "may not have your answer: nothing said whether it arrived"),
+            JSON.stringify([agents.answered, theLauncher.said]));
+        agents.unheard = false;
+        agents.answered = agents.answered.slice(0, 1);
+        theLauncher.said = [];
         agents.puts = true;
         inside[0].run();
         const answered = agents.answered[1] ?? {};
@@ -2929,7 +2942,7 @@ ShellRoot {
             JSON.stringify([agents.answered, theLauncher.said]));
         // Kept among the session's answers by its label, as a Talk's is, so a Talk opened after
         // shows it and sends no second (Agents.qml's answerKept).
-        expect("it's kept among the session's answers, by its label, to the want shown",
+        expect("it asks Agents to keep it among the session's answers, by its label, to the want shown",
             answered.label === "Yes, push it"
                 && answered.want === "question@2026-11-12T07:00:00.000Z",
             JSON.stringify(answered));

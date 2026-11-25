@@ -2225,9 +2225,14 @@ Provider {
         // shows it, and a Return there right after doesn't send a second.
         const answer = (fields, label) => {
             const agents = provider.source("agents");
-            const answered = put => {
+            // One nothing said of may have arrived, so the foot says so rather than nothing.
+            const answered = (put, why, unheard) => {
                 if (put)
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
+                else if (unheard === true)
+                    provider.launcher?.say([[filledIn(
+                        Words.of("verb:agent:talk").said?.unheardWhy ?? "",
+                        { name: session().title ?? address }), ""]]);
             };
             if (agents)
                 agents.answerKept(address, Object.assign({ want: answers.want }, fields),

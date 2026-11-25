@@ -645,7 +645,7 @@
         "answered": "answered",
         "working": "working on it",
         "unheard": "not known whether it arrived",
-        "unheardWhy": "{name} may not have your answer: the agents daemon went before it said"
+        "unheardWhy": "{name} may not have your answer: nothing said whether it arrived"
       }
     },
     {
