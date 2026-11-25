@@ -830,7 +830,7 @@ in
   desktop = {
     glyph = nerd "f01c4";
     console = "d";
-    means = "the desktop: its windows, columns, workspaces and screens, and the place holding them";
+    means = "the desktop: its windows, columns, workspaces and screens, and the place holding its windows";
   };
   touchscreen = {
     glyph = nerd "f0d76";

@@ -289,23 +289,14 @@ written to, called, met with and made a favourite.
 ## Desktop
 
 The screen and everything on it around the windows, the launcher among them.
-A window can be gone to, closed, floated or tiled, moved and sized; a screen's
-brightness, scale and rotation can be set; an item in a list, such as a notice
-or a copy, can be opened, copied or forgotten.
+A window can be gone to, closed, floated or tiled, moved and sized; an item in
+a list, such as a notice or a copy, can be opened, copied or forgotten. The
+screens themselves are the machine's, in Machine.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
-| screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
 | screen sharing | the screen shown to others, in a call or a cast, which niri tells the desktop of | screencast | niri's casts |
-| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
-| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
-| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
-| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
-| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
-| brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
-| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
-| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
 | window | a program's rectangle on the screen | | |
@@ -382,7 +373,8 @@ or a copy, can be opened, copied or forgotten.
 
 ## Machine
 
-The computer and its parts, its power and its sleep. A Bluetooth device is
+The computer and its parts, its screens, its power and its sleep. A screen's
+brightness, scale and rotation can be set. A Bluetooth device is
 paired, connected, disconnected and forgotten in Bluetooth, and used in its
 kind's place, such as a headset's volume in Sound; a setting can be set,
 raised and lowered; the machine can sleep, lock, log out, reboot and power
@@ -406,6 +398,15 @@ off.
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
 | display engine | the processor's part that sends each screen its picture | | |
+| screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
+| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
+| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
+| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
+| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
+| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
+| brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
+| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
+| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
 | power controller | the processor's part that sets its power and clocks | | |
 | held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long, apart from what an update or a sleep is blocked by | | `HeldBack` |
