@@ -131,6 +131,42 @@ it("a part's side and what it holds are read apart", () => {
   );
 });
 
+it("a machine's looks are read with their whys, and none from a record listing none", () => {
+  const osprey = {
+    key: "machine:osprey",
+    kind: "machine",
+    name: "osprey",
+    health: "bad",
+    says: "is out of reach",
+    looks: [
+      { side: "out of reach", matters: "What runs there can't be read from here." },
+      { side: "code failing" },
+      { matters: "A why with no look." },
+      { side: "", matters: "Words that say nothing." },
+      "a bare string",
+    ],
+  };
+  const { summary, part, machine } = told([
+    ...records.filter((record) => record.key !== "machine:osprey"),
+    osprey,
+  ]);
+  const things = systemOf(summary, part, machine)?.parts[0]?.things;
+  assert.deepEqual(
+    things?.map((thing) => [thing.name, thing.looks]),
+    [
+      ["kestrel", undefined],
+      [
+        "osprey",
+        [
+          { side: "out of reach", matters: "What runs there can't be read from here." },
+          { side: "code failing", matters: "" },
+        ],
+      ],
+    ],
+    "a look without words is dropped, and one without a why kept with none",
+  );
+});
+
 /** What `markup` reads as, its tags gone and its spaces run together. */
 function read(markup: string): string {
   return markup

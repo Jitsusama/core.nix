@@ -3,7 +3,9 @@
 // Joel first and then each machine (Joel, 2026-11-17). Each look is one
 // of the daemon's own, a machine's or a part's side, so the page judges
 // nothing the `system` command doesn't; each says whose it is and leads
-// to where it can be seen whole. Nothing here touches the page.
+// to where it can be seen whole, and a machine's says why it matters, as
+// the daemon does, with its one act, the launcher's row for that machine.
+// Nothing here touches the page.
 
 import { worstOf } from "./machine.ts";
 import {
@@ -14,6 +16,7 @@ import {
   type Part,
   type System,
   type Thing,
+  type ThingLook,
 } from "./model.ts";
 
 /** The most looks listed, so a bad night keeps the list a glance. */
@@ -48,6 +51,14 @@ interface Look {
   readonly href: string;
   /** The row's key, the same across redraws while the look stands. */
   readonly row: string;
+  /** Why it matters, as the daemon says it; empty where it says none. */
+  readonly matters: string;
+  /**
+   * Its one act, the launcher's row for its machine, where Joel updates it or
+   * starts a session there; none for a part's look, whose own site is where
+   * it leads, or for a machine whose record gives no launcher link.
+   */
+  readonly act: string | undefined;
 }
 
 /** The list: the looks listed, how many more there are, and whether it's settled. */
@@ -139,17 +150,22 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
       ? `#machine-${at + 1}`
       : `../mycelium/#machine=${encodeURIComponent(thing.name)}`;
   };
-  const own = (thing: Thing): readonly Look[] =>
-    keyed(thing.side)
+  const own = (thing: Thing): readonly Look[] => {
+    const looks = lookedOf(thing);
+    return keyed(looks.map((look) => look.side))
+      .map((keyedLook, at) => ({ ...keyedLook, matters: looks[at]?.matters ?? "" }))
       .filter(({ words }) => thing.ties.reached || words !== OUT_OF_REACH)
-      .map(({ words, key }) => ({
+      .map(({ words, key, matters }) => ({
         health: thing.health,
         whose: thing.name,
         machine: true,
         words: capital(words),
         href: hrefOf(thing),
         row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
+        matters,
+        act: thing.ties.acts.link,
       }));
+  };
   // Those in reach first, so within a health the few that need Joel lead.
   return [
     ...reached.flatMap(own),
@@ -158,7 +174,21 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
   ];
 }
 
-/** The one look for every machine out of reach: how many, and the first few by name. */
+/**
+ * A machine's looks, each with its why: every one the daemon judged, where
+ * its record lists them, or its side's, cut to a few and saying no why, from
+ * a daemon too old to list them.
+ */
+function lookedOf(thing: Thing): readonly ThingLook[] {
+  return thing.looks ?? thing.side.map((side) => ({ side, matters: "" }));
+}
+
+/**
+ * The one look for every machine out of reach: how many, and the first few
+ * by name. One alone says the daemon's why and opens in the launcher, as
+ * any machine's look does; several lead to where each is listed with its
+ * own, since the daemon's why speaks of one machine and no row is theirs.
+ */
 function awayLook(away: readonly Thing[]): Look {
   const [only] = away;
   if (only !== undefined && away.length === 1) {
@@ -169,6 +199,8 @@ function awayLook(away: readonly Thing[]): Look {
       words: capital(OUT_OF_REACH),
       href: "#away",
       row: "look:away",
+      matters: lookedOf(only).find((look) => look.side === OUT_OF_REACH)?.matters ?? "",
+      act: only.ties.acts.link,
     };
   }
   const names = away.slice(0, AWAY_LISTED).map((thing) => thing.name);
@@ -184,6 +216,8 @@ function awayLook(away: readonly Thing[]): Look {
     words: `${capital(OUT_OF_REACH)}: ${listed}`,
     href: "#away",
     row: "look:away",
+    matters: "",
+    act: undefined,
   };
 }
 
@@ -196,6 +230,8 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
     words: capital(words),
     href: siteOf(part),
     row: `look:part:${encodeURIComponent(part.part)}:${key}`,
+    matters: "",
+    act: undefined,
   };
 }
 

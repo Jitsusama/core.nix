@@ -4,8 +4,8 @@
 // case is proven in node, and a reading the page couldn't make sense of is
 // said rather than drawn as if it were whole.
 
-import type { Held } from "../../local-sites/kit/records.ts";
-import { object, text, texts } from "../../local-sites/kit/records.ts";
+import type { Fields, Held } from "../../local-sites/kit/records.ts";
+import { isObject, object, text, texts } from "../../local-sites/kit/records.ts";
 import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
@@ -18,10 +18,22 @@ interface Thing {
   readonly says: string;
   /** What in it is worth a look, worded for a side, worst first. */
   readonly side: readonly string[];
+  /**
+   * Every look in it, worst first, each with why it matters, as the daemon
+   * judged it; none from a daemon too old to say them, which leaves the
+   * side to say what is worth a look.
+   */
+  readonly looks: readonly ThingLook[] | undefined;
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
   /** What ties it to the other parts, a machine's (ties.ts). */
   readonly ties: Ties;
+}
+
+/** One look in a thing: its words for a side, and why it matters to Joel. */
+interface ThingLook {
+  readonly side: string;
+  readonly matters: string;
 }
 
 /** The ways deeper into a part. */
@@ -128,6 +140,25 @@ function capital(said: string): string {
 }
 
 /**
+ * A thing's looks, or none when its record carries no list of them. A look
+ * missing its words is left out, and one missing its why is kept with none,
+ * so a record half-read still lists what it holds.
+ */
+function looksOf(record: Fields): readonly ThingLook[] | undefined {
+  const looks: unknown = record["looks"];
+  if (!Array.isArray(looks)) {
+    return undefined;
+  }
+  return looks.flatMap((look: unknown) => {
+    const side = isObject(look) ? text(look, "side") : undefined;
+    if (!isObject(look) || side === undefined || side === "") {
+      return [];
+    }
+    return [{ side, matters: text(look, "matters") ?? "" }];
+  });
+}
+
+/**
  * The thing `key` names, read from its record. A thing not told yet is left
  * out unsaid: its part and its record are two watches, so a new machine can
  * reach its part one push before its own record arrives.
@@ -147,6 +178,7 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
+    looks: looksOf(record),
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
   };
@@ -221,5 +253,5 @@ function allTold(
   });
 }
 
-export type { Deeper, Health, Part, System, Thing };
+export type { Deeper, Health, Part, System, Thing, ThingLook };
 export { allTold, capital, named, numbered, systemOf, WORDS };

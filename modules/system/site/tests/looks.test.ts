@@ -13,7 +13,7 @@ import { tiesOf } from "../ties.ts";
 const deeper = { command: "net", site: "network/", launcher: "Network" };
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf({}) };
+  return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf({}) };
 }
 
 function part(name: string, health: Part["health"], side: string[], says = ""): Part {
@@ -243,6 +243,106 @@ it("names a part called like an Object key as itself", () => {
     looksOf(odd, 8).looks.map((look) => look.whose),
     ["toString", "constructor"],
   );
+});
+
+/** A machine whose record lists its looks, each with why, and gives its launcher link. */
+function judged(
+  name: string,
+  health: Thing["health"],
+  looks: Thing["looks"],
+  reached = true,
+): Thing {
+  const link = `mycelium:machine/${encodeURIComponent(name)}?from=system`;
+  const side = (looks ?? []).map((look) => look.side).slice(0, 3);
+  const ties = tiesOf({ reached, acts: { link } });
+  return { ...machine(name, health, side), looks, ties };
+}
+
+it("says why each machine's look matters, with its one act, the machine's launcher row", () => {
+  const why = (said: string): { side: string; matters: string } => ({
+    side: said,
+    matters: `Why ${said} matters.`,
+  });
+  const kestrel = judged("kestrel", "bad", [
+    why("nearly full disk, 3 GB free"),
+    why("on battery at 9%"),
+    why("code wants a look"),
+    why("no quest backup in 3 h"),
+  ]);
+  const listed = looksOf(system([kestrel], [part("network", "bad", ["the modem is down"])]), 8);
+  const link = "mycelium:machine/kestrel?from=system";
+  assert.deepEqual(
+    listed.looks.map((look) => [look.whose, look.words, look.matters, look.act]),
+    [
+      ["kestrel", "Nearly full disk, 3 GB free", "Why nearly full disk, 3 GB free matters.", link],
+      ["kestrel", "On battery at 9%", "Why on battery at 9% matters.", link],
+      ["kestrel", "Code wants a look", "Why code wants a look matters.", link],
+      ["kestrel", "No quest backup in 3 h", "Why no quest backup in 3 h matters.", link],
+      ["Network", "The modem is down", "", undefined],
+    ],
+    "every look the daemon judged, past the side's three; a part's leads to its site alone",
+  );
+  const old = looksOf(system([machine("kestrel", "watch", ["on battery at 9%"])]), 8).looks[0];
+  assert.deepEqual(
+    [old?.words, old?.matters, old?.act],
+    ["On battery at 9%", "", undefined],
+    "a daemon too old to list its looks leaves the side to say them, with no why",
+  );
+});
+
+it("gives the one look for a machine out of reach its why and act, and several neither", () => {
+  const away = (name: string): Thing =>
+    judged(
+      name,
+      "bad",
+      [{ side: "out of reach", matters: "What runs there can't be read from here." }],
+      false,
+    );
+  const [alone] = looksOf(system([away("osprey")]), 8).looks;
+  assert.deepEqual(
+    [alone?.words, alone?.matters, alone?.act],
+    [
+      "Out of reach",
+      "What runs there can't be read from here.",
+      "mycelium:machine/osprey?from=system",
+    ],
+  );
+  const [many] = looksOf(system([away("osprey"), away("tern")]), 8).looks;
+  assert.deepEqual(
+    [many?.words, many?.matters, many?.act],
+    ["Out of reach: osprey and tern", "", undefined],
+    "the daemon's why speaks of one machine, and no launcher row is theirs together",
+  );
+});
+
+it("draws a look's why and act under its words, escaped, and no line where it has neither", () => {
+  const kestrel = judged("<b>kestrel</b>", "bad", [
+    { side: "nearly full disk", matters: 'Builds <i>fail</i> "there".' },
+  ]);
+  const drawn = looksDrawn(looksOf(system([kestrel]), 8));
+  const holds = (words: string, why: string): void => assert.ok(drawn.includes(words), why);
+  holds(
+    '<p class="why"><span>Builds &lt;i&gt;fail&lt;/i&gt; &quot;there&quot;.</span>',
+    "the why escaped",
+  );
+  holds(
+    '<a class="launch" href="mycelium:machine/%3Cb%3Ekestrel%3C%2Fb%3E?from=system">',
+    "the act opens the machine's launcher row",
+  );
+  holds(
+    'Open <span translate="no">&lt;b&gt;kestrel&lt;/b&gt;</span> in the Launcher</a>',
+    "the act names its machine, untranslated",
+  );
+  assert.ok(
+    !drawn.includes("<b>") && !drawn.includes("<i>"),
+    "no record's markup reaches the page",
+  );
+  assert.ok(
+    !drawn.includes('class="launch" data-row'),
+    "the act is no cursor row, so j and k step from look to look",
+  );
+  const bare = looksDrawn(looksOf(system([], [part("network", "bad", ["the modem is down"])]), 8));
+  assert.ok(!bare.includes('class="why"'), "a look with no why and no act draws no line for them");
 });
 
 it("draws each look as a row of its own, every word escaped", () => {

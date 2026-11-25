@@ -8,7 +8,9 @@ turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
 page checks at a phone's width and a desk's in both looks. It must open with
 what is worth a look, each leading where it can be seen whole, a machine's
-long name leaving its look's words room at both widths, and a good part read
+long name leaving its look's words room at both widths, a machine's look
+saying why it matters with its one act, the launcher's row, at both widths,
+and a good part read
 from a kept answer never among them, its note said where it belongs. Its keys and
 places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
@@ -348,6 +350,48 @@ def test_a_kept_answer_is_no_look(system_page: Page, system_daemon: StandIn) -> 
     expect(system_page.locator("#looks"), "a kept answer was listed as a look").to_have_text(
         "Nothing is worth a look."
     )
+
+
+# A thumb's target, as WCAG 2.5.5 sizes one, in CSS pixels.
+THUMB = 44
+
+
+@pytest.mark.parametrize("size", SIZES, ids=[f"{width}px" for width, _ in SIZES])
+def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
+    browser: Browser, system_served: Served, system_daemon: StandIn, size: tuple[int, int]
+) -> None:
+    root, _ = system_served
+    opened = Opened(browser, f"{root}system/", size, "dark")
+    page = opened.page
+    try:
+        says_it_stands(page, "live")
+        firmware = "booted 3 hours ago after a firmware error"
+        matters = "What ran there may have ended without warning."
+        system_daemon.tell(
+            "machine",
+            changed=[{"key": "machine:kestrel", "looks": [{"side": firmware, "matters": matters}]}],
+        )
+        row = page.locator("#looks li").filter(has=page.locator("a.look", has_text="kestrel"))
+        why = row.locator(".why")
+        expect(why, "the look didn't say why it matters").to_contain_text(matters, timeout=PACE_MS)
+        expect(why, "the look's why was hidden").to_be_visible()
+        launch = why.get_by_role("link", name="Open kestrel in the Launcher")
+        expect(launch, "the look's act didn't open its launcher row").to_have_attribute(
+            "href", "mycelium:machine/kestrel?from=system"
+        )
+        box = launch.bounding_box()
+        assert box is not None, "the look's act wasn't drawn"
+        assert box["height"] >= THUMB, f"the act is {box['height']} px tall, under a thumb's"
+        words = row.locator(".words").bounding_box()
+        drawn = why.bounding_box()
+        assert words is not None, "the look's words weren't drawn"
+        assert drawn is not None, "the look's why wasn't drawn"
+        # Under the words, in their column, so the reason reads as this look's.
+        assert abs(drawn["x"] - words["x"]) < 1, "the why stood apart from its look's words"
+        assert drawn["y"] >= words["y"] + words["height"] - 1, "the why ran beside its words"
+        opened.passes_the_skills_checks()
+    finally:
+        opened.close()
 
 
 def test_a_machines_address_puts_the_cursor_on_it(browser: Browser, system_served: Served) -> None:
