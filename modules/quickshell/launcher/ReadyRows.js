@@ -8,6 +8,7 @@
 .import "../When.js" as When
 .import "Ago.js" as Ago
 .import "Interfaces.js" as Interfaces
+.import "Presented.js" as Presented
 .import "ActForms.js" as Forms
 
 const SECOND = 1000;
@@ -358,9 +359,13 @@ function opened(act, commandOf, words) {
     return { run: null, why: (words.missing ?? "").replace("{program}", act.program ?? "") };
 }
 
-// The key a served row is made with: its thing, else its key.
+// The key a served row is made with: its thing, else its key, as its daemon wrote them. One
+// claiming a kind of the launcher's own, as `place:`, is kept under `row:` as a daemon's record
+// is, since the journal says a key of those kinds whole as the launcher's id
+// (Presented.keyShown), and a daemon's may hold a name.
 function keyMade(row, key) {
-    return row.thing ?? key;
+    const made = row.thing ?? key;
+    return Presented.ownKind(made) === undefined ? made : `row:${made}`;
 }
 
 // Whether an ask shuts the launcher as it's asked, as a paste does, so the

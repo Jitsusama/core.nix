@@ -261,6 +261,12 @@ function intoKept(keyAt, into, whole) {
     return whole || keyAt - into < intoSoon ? into : undefined;
 }
 
+// Which of the launcher's own kinds a key is of, as `place:`, or undefined where it's of none.
+function ownKind(key) {
+    const text = String(key);
+    return KeysSaid.keysOwn.find(kind => text.startsWith(kind));
+}
+
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
 // shaped as an app's, and otherwise as app, since a program may give any words as its id; bare,
 // with what quoting escapes escaped, as actShown's, so a line break in it can't forge a line.
@@ -295,7 +301,7 @@ function keyShown(key, whole) {
     if (whole) {
         return text;
     }
-    const own = KeysSaid.keysOwn.find(kind => text.startsWith(kind));
+    const own = ownKind(text);
     if (own !== undefined) {
         return KeysSaid.ownId.test(text.slice(own.length))
             ? [...text].slice(0, KeysSaid.ownLength).join("")

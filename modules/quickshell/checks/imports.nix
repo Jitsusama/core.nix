@@ -280,6 +280,7 @@
     "launcher/ActForms.js"
     "launcher/Ago.js"
     "launcher/Interfaces.js"
+    "launcher/Presented.js"
   ];
   "launcher/ReadyRows.qml" = [
     "Confirm.js"
