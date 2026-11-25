@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Holds code-health's stale mode over the tree given, against its waiting
-# list, having first seen it refuse a planted tree both ways: a comment
-# naming what isn't there, and a waiting line nothing matches. So the check
-# is seen to fail before it's trusted to pass, even once the list is empty.
+# list, having first seen it refuse a planted tree three ways: a comment
+# naming what isn't there, a waiting line nothing matches, and a waiver for
+# a file that reads. So the check is seen to fail before it's trusted to
+# pass, even once the list is empty. No file can be planted that the reader
+# can't read, since each misreading found is mended; code-health's own
+# tests hold what the gate says of one (gate.rs).
 set -euo pipefail
 
 tree=$1
@@ -44,5 +47,7 @@ refuses "${scratch}/none" "modules/a/lib.rs:1: modules/a/gone.rs" ""
 printf '%s\n' 'modules/a/lib.rs modules/a/gone.rs' 'modules/a/lib.rs modules/b' \
   >"${scratch}/more"
 refuses "${scratch}/more" "modules/a/lib.rs modules/b (found nowhere" "modules/a/lib.rs:1:"
+printf '%s\n' 'modules/a/lib.rs modules/a/gone.rs' 'modules/a/lib.rs unread' >"${scratch}/waived"
+refuses "${scratch}/waived" "modules/a/lib.rs unread (read now: take it off)" "modules/a/lib.rs:1:"
 
 code-health stale "${tree}" "${waiting}"

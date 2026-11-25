@@ -19,7 +19,10 @@
   # The comments naming a path that's gone and waiting on their owner,
   # each `file path`, listed once for each mention, while each is pointed
   # at where the thing is now. The check fails on a mention not listed,
-  # and on a line listed more often than it's found.
+  # and on a line listed more often than it's found. It fails too on a file
+  # whose comments code-health's reader couldn't read, unless a line
+  # `file unread` lets it through until the reader learns it; that line
+  # fails once the file reads.
   waiting ? [ ],
   name ? "comments-name-what-exists",
 }:

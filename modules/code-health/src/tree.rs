@@ -71,7 +71,8 @@ pub fn held(found: &[String], unread: &[String], waiting: &[String]) -> (Vec<Str
             .is_some_and(|(file, _)| unread.iter().any(|unread| unread == file))
     };
     let mut listed: BTreeMap<&str, usize> = BTreeMap::new();
-    for line in waiting.iter().filter(|line| !of_unread(line)) {
+    let held_here = |line: &&String| !of_unread(line) && waiver(line).is_none();
+    for line in waiting.iter().filter(held_here) {
         *listed.entry(line.as_str()).or_default() += 1;
     }
     let new = found_of
@@ -97,6 +98,47 @@ pub fn held(found: &[String], unread: &[String], waiting: &[String]) -> (Vec<Str
         })
         .collect();
     (new, gone)
+}
+
+/// The files of `unread` that `waiting` doesn't let through, and each of
+/// its waivers to take off. A waiver is a line `file unread`: code-health's
+/// own reader can't read that file, which only a change to the reader can
+/// fix, so a repository built on core needn't wait on one meanwhile. Its
+/// last word holds no `/`, so it's never a path a comment names. One whose
+/// file reads now, or listed more than once, is to come off, so the list
+/// only shrinks.
+pub fn waived<'a>(unread: &'a [String], waiting: &[String]) -> (Vec<&'a String>, Vec<String>) {
+    let mut waivers: BTreeMap<&str, usize> = BTreeMap::new();
+    for file in waiting.iter().filter_map(|line| waiver(line)) {
+        *waivers.entry(file).or_default() += 1;
+    }
+    let unwaived = unread
+        .iter()
+        .filter(|file| !waivers.contains_key(file.as_str()))
+        .collect();
+    let spent = waivers
+        .iter()
+        .filter_map(|(file, times)| {
+            let line = format!("{file} {WAIVED}");
+            if !unread.iter().any(|unread| unread == file) {
+                Some(format!("{line} (read now: take it off)"))
+            } else if *times > 1 {
+                Some(format!("{line} (listed {times} times: list it once)"))
+            } else {
+                None
+            }
+        })
+        .collect();
+    (unwaived, spent)
+}
+
+/// The last word of a waiting line that lets an unread file through.
+const WAIVED: &str = "unread";
+
+/// The file a waiting line lets through unread, if it's a waiver.
+fn waiver(line: &str) -> Option<&str> {
+    line.rsplit_once(' ')
+        .and_then(|(file, last)| (last == WAIVED).then_some(file))
 }
 
 /// `file:line: path` as `file path`, cut at the last `": "`, since the

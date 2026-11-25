@@ -110,7 +110,9 @@ pub fn hour(
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
             let counted = named.get(repo).and_then(|named| named.get(measure));
             let had = earlier.map(|earlier| &earlier[repo][*measure]);
-            let gained = counted.and_then(|counted| gained_files(counted, had));
+            let gained = counted
+                .and_then(|counted| gained_files(counted, had))
+                .map(|gained| known_gained(gained, measure, earlier.map(|earlier| &earlier[repo])));
             let files =
                 counted.map_or_else(Vec::new, |counted| gained_first(counted, gained.as_ref()));
             if let Some(target) = target.filter(|target| now > target) {
@@ -175,6 +177,22 @@ fn gained_files<'a>(counted: &'a [String], had: Option<&Value>) -> Option<BTreeS
         u64::try_from(*now).unwrap_or(u64::MAX) > was
     };
     Some(now.into_iter().filter(more).map(|(file, _)| file).collect())
+}
+
+/// The files of `gained`, less, for the stale measure, those the stale
+/// reader couldn't read the day `then` counted: each counted none of its
+/// stale comments that day, so what it holds now isn't known to be new,
+/// and its folder's owner isn't handed it as if it were.
+fn known_gained<'a>(
+    mut gained: BTreeSet<&'a str>,
+    measure: &str,
+    then: Option<&Value>,
+) -> BTreeSet<&'a str> {
+    let unread = then.and_then(|then| then[UNREAD_COMMENTS].as_object());
+    if let (STALE_PATHS, Some(unread)) = (measure, unread) {
+        gained.retain(|file| !unread.contains_key(*file));
+    }
+    gained
 }
 
 /// The first of a measure's entries, each of a file that `gained`, first,
@@ -570,6 +588,46 @@ mod tests {
                 "me": ["modules/netting.rs:3", "c.sh:4"],
             }),
             "a gained entry wasn't given to its deepest folder's owner, or the measure's"
+        );
+    }
+
+    #[test]
+    fn a_file_unread_the_day_before_gains_no_stale_comment_by_being_read() {
+        let read = figures(&[("core", STALE_PATHS, 3.0), ("core", "long-files", 1.0)]);
+        let stale = [
+            "modules/a/x.sh:1: modules/a/gone.sh",
+            "modules/a/y.sh:2: modules/a/gone.sh",
+            "modules/a/y.sh:3: modules/a/gone.sh",
+        ];
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([
+                (STALE_PATHS, stale.map(str::to_owned).to_vec()),
+                ("long-files", vec!["modules/a/x.sh".to_owned()]),
+            ]),
+        )]);
+        // x.sh couldn't be read that day, so its one comment went uncounted;
+        // y.sh held one then and two now.
+        let earlier = json!({"core": {
+            STALE_PATHS: {"modules/a/y.sh": 1},
+            UNREAD_COMMENTS: {"modules/a/x.sh": 1},
+            "long-files": {},
+        }});
+        let judged = BTreeMap::from([("core".to_owned(), judged(&[], Some("me")))]);
+        let hour = hour("now", &read, &named, &judged, None, Some(&earlier), &[]);
+        assert_eq!(
+            (
+                &measure(&hour, "core", STALE_PATHS)["files"],
+                &measure(&hour, "core", STALE_PATHS)["by_owner"],
+                &measure(&hour, "core", "long-files")["by_owner"],
+            ),
+            (
+                &json!([stale[1], stale[2], stale[0]]),
+                &json!({"me": [stale[1], stale[2]]}),
+                &json!({"me": ["modules/a/x.sh"]}),
+            ),
+            "a file unread the day before was handed on as gaining stale comments, one that \
+             gained wasn't, or another measure lost what the file gained"
         );
     }
 
