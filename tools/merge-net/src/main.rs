@@ -67,6 +67,7 @@ mod lists;
 mod macs;
 mod movers;
 mod needs;
+mod origin;
 mod owners;
 mod places;
 mod quarantine;
@@ -299,8 +300,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         );
         return Ok(ExitCode::FAILURE);
     }
-    git(&["fetch", "--quiet", "origin", "main"])?;
-    let main = git(&["rev-parse", "refs/remotes/origin/main"])?;
+    let main = origin::main(&git)?;
     let holds = |older: &str, newer: &str| {
         Command::new("git")
             .args(["merge-base", "--is-ancestor", older, newer])
