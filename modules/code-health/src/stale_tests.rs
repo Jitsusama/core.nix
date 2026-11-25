@@ -121,6 +121,17 @@ fn a_heredocs_body_is_no_comment() {
              echo a#b <<K\n\
              # tests/kept/hash.sh, in one past a hash inside a word\n\
              K\n\
+             cat <<L\n\
+             # tests/kept/undashed.sh, in one a tabbed word closes not\n\
+             \tL\n\
+             # tests/kept/still.sh, in it still\n\
+             L\n\
+             cat <<E\"O\"F\n\
+             # tests/kept/partly.sh, in one partly quoted\n\
+             EOF\n\
+             cat <<- M\n\
+             # tests/kept/dashed.sh, in one dashed past a blank\n\
+             \tM\n\
              # tests/kept/past.sh, past them all\n",
         ),
         file("tests/kept/x.nix", "{ }\n"),
@@ -130,11 +141,12 @@ fn a_heredocs_body_is_no_comment() {
         [
             "tests/h.sh:6: tests/kept/after.sh",
             "tests/h.sh:10: tests/kept/untabbed.sh",
-            "tests/h.sh:37: tests/kept/past.sh"
+            "tests/h.sh:48: tests/kept/past.sh"
         ],
         "a heredoc's body was read as comment, or one spaced, tabbed, escaped, hyphenated, \
-         quoted, second on its line, past a shift, an escaped quote or a hash inside a \
-         word, or its word before an operator, was missed"
+         quoted, partly quoted, second on its line, past a shift, an escaped quote or a \
+         hash inside a word, or its word before an operator, was missed, or a tabbed word \
+         closed one without `<<-`"
     );
 }
 
@@ -158,6 +170,19 @@ fn only_a_heredocs_own_less_thans_open_one() {
              echo $((x << y))\n\
              # tests/kept/shift.sh, past a shift\n\
              y\n\
+             true;# feeds <<I\n\
+             # tests/kept/semi.sh, past a comment's after an operator\n\
+             I\n\
+             echo \"a\n\
+             <<J in a string\"\n\
+             # tests/kept/string.sh, past a string's over lines\n\
+             J\n\
+             echo \"b\n\
+             # tests/kept/inquote.sh, in a string\n\
+             \"\n\
+             echo \\'\n\
+             # tests/kept/escaped.sh, past an escaped quote\n\
+             echo \\'\n\
              cat <<NEVER\n\
              # tests/kept/rest.sh, past one never closed\n",
         ),
@@ -171,10 +196,15 @@ fn only_a_heredocs_own_less_thans_open_one() {
             "tests/p.sh:8: tests/kept/double.sh",
             "tests/p.sh:11: tests/kept/single.sh",
             "tests/p.sh:14: tests/kept/shift.sh",
-            "tests/p.sh:17: tests/kept/rest.sh"
+            "tests/p.sh:17: tests/kept/semi.sh",
+            "tests/p.sh:21: tests/kept/string.sh",
+            "tests/p.sh:27: tests/kept/escaped.sh",
+            "tests/p.sh:30: tests/kept/rest.sh"
         ],
-        "a here-string, a `<<` in a comment, in quotes or shifting in arithmetic opened a \
-         heredoc, or one never closed hid the rest of its file"
+        "a here-string, a `<<` in a comment, even one past an operator, in quotes, even \
+         over lines, or shifting in arithmetic opened a heredoc, a string's line was read as \
+         comment, an escaped quote opened one, or a heredoc never closed hid the rest of its \
+         file"
     );
 }
 
@@ -232,7 +262,8 @@ fn an_opening_the_file_never_closes_hides_nothing() {
              def f():\n\
              \x20   \"\"\"Closed, naming tests/kept/closed.nix.\"\"\"\n\
              def g(): \"\"\"Opens, naming tests/kept/doc.nix\n\
-             \x20   and never closes\n",
+             \x20   and never closes\n\
+             # tests/kept/past.nix, past it\n",
         ),
         file(
             "tests/p.nix",
@@ -249,7 +280,21 @@ fn an_opening_the_file_never_closes_hides_nothing() {
         ),
         file(
             "tests/u.py",
-            "# Naming tests/kept/u.nix.\n\"\"\"Opens, naming tests/kept/open.nix\n",
+            "# Naming tests/kept/u.nix.\n\"\"\"Opens, naming tests/kept/open.nix\n\
+             # tests/kept/beyond.nix, past it\n",
+        ),
+        file(
+            "tests/v.py",
+            "\"\"\"Opens, naming tests/kept/opens.nix\n\
+             ends\"\"\" + '''never\n\
+             # tests/kept/later.nix, past it\n",
+        ),
+        file(
+            "tests/y.py",
+            "x = \"\"\"\n\
+             # tests/kept/inside.nix, in a string\n\
+             \"\"\" + '''never\n\
+             # tests/kept/after.nix, past it\n",
         ),
         file("tests/kept/x.nix", "{ }\n"),
     ];
@@ -258,14 +303,56 @@ fn an_opening_the_file_never_closes_hides_nothing() {
         [
             "tests/o.py:1: tests/kept/first.nix",
             "tests/o.py:3: tests/kept/closed.nix",
+            "tests/o.py:6: tests/kept/past.nix",
             "tests/p.nix:1: tests/kept/top.nix",
             "tests/p.nix:5: tests/kept/after.nix",
             "tests/w.nix:4: tests/kept/string.nix",
             "tests/q.py:1: tests/kept/before.nix",
-            "tests/u.py:1: tests/kept/u.nix"
+            "tests/q.py:3: tests/kept/code.nix",
+            "tests/u.py:1: tests/kept/u.nix",
+            "tests/u.py:3: tests/kept/beyond.nix",
+            "tests/v.py:1: tests/kept/opens.nix",
+            "tests/v.py:3: tests/kept/later.nix",
+            "tests/y.py:4: tests/kept/after.nix"
         ],
-        "a docstring or block comment the file never closes was read, or it hid what \
-         came before or after it, or a string never closed hid what came before it"
+        "a docstring, a block comment or a string the file never closes, even one opened \
+         where another closes, was read, or it hid what came before or after it"
+    );
+}
+
+#[test]
+fn each_opening_never_closed_is_read_past_in_turn() {
+    let files = [
+        file(
+            "tests/t.py",
+            "# Naming tests/kept/t.nix.\n\
+             x = '''never\n\
+             # tests/kept/first.py, past it\n\
+             y = \"\"\"never\n\
+             # tests/kept/second.py, past that\n",
+        ),
+        file(
+            "tests/t.sh",
+            "# Naming tests/kept/t.nix.\n\
+             cat <<A\n\
+             # tests/kept/first.sh, past it\n\
+             echo \"never\n\
+             # tests/kept/second.sh, past that\n",
+        ),
+        file("tests/kept/x.nix", "{ }\n"),
+    ];
+    assert_eq!(
+        stale(&paths(&files), &files),
+        [
+            "tests/t.py:1: tests/kept/t.nix",
+            "tests/t.py:3: tests/kept/first.py",
+            "tests/t.py:5: tests/kept/second.py",
+            "tests/t.sh:1: tests/kept/t.nix",
+            "tests/t.sh:3: tests/kept/first.sh",
+            "tests/t.sh:5: tests/kept/second.sh"
+        ],
+        "an opening never closed, found only once the one before it was read past, hid \
+         what came after it"
     );
 }
 
