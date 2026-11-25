@@ -154,8 +154,9 @@
       );
 
   # With no keeper named, code-health is handed no owner for what its own
-  # reader couldn't read, so it gives those files to whom it would give
-  # any measure's, which hour.rs's tests show.
+  # reader couldn't read, so it gives those files to the repository's
+  # owner, which hour.rs's tests show. The repository's owner must still
+  # be handed, or the check would pass on a command handed nothing.
   code-health-names-no-keeper-unless-told =
     let
       home = account (bareNixos [
@@ -174,10 +175,17 @@
       started = pkgs.lib.concatStringsSep " " (
         pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
       );
+      handed = pair: pkgs.lib.hasInfix (pkgs.lib.escapeShellArgs pair) started;
     in
     holds "code-health-names-no-keeper-unless-told"
-      "code-health is handed an owner for unread files with no keeper named."
-      (!pkgs.lib.hasInfix "unread-comments" started);
+      "code-health is handed an owner for unread files with no keeper, or none for the repository."
+      (
+        handed [
+          "--owner"
+          "some=someone"
+        ]
+        && !pkgs.lib.hasInfix "unread-comments" started
+      );
 
   # clippy finds nothing in code-health, its tests included.
   code-health-passes-clippy = passesClippy "code-health-passes-clippy" (
