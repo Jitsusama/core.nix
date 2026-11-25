@@ -8219,7 +8219,8 @@ Scope {
     // sources still to answer and when they were asked; or null.
     property var answersAwaited: null
     // A key listed past its wait: what was typed, the sources that hadn't
-    // answered, and when they were asked, so each says how late it came.
+    // answered, and when they were asked, so each says how late it came;
+    // let go when the launcher closes, since then nobody waits on them.
     property var answersLate: null
     // Kept to the clock, since QML's Timer steps with the frames and ended
     // this hold a median 47 ms in (key-times/walltimer.h).
@@ -8235,8 +8236,10 @@ Scope {
             // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
             waited.firedAt = KeyTimes.now();
-            root.answersLate = { text: waited.text, sources: waited.sources,
-                began: waited.began };
+            // A wait ended after its closing marks nothing late (onOpenChanged).
+            if (root.open)
+                root.answersLate = { text: waited.text, sources: waited.sources,
+                    began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
             const places = waited.sources.map(one => one.settings?.name ?? "");
             console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
@@ -11105,9 +11108,14 @@ Scope {
         // takes forever to load).
         let lapped = KeyTimes.now();
         const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
-        // A link's hold on the first keys lasts only the opening it made.
-        if (!open)
+        // A link's hold on the first keys lasts only the opening it made,
+        // and a key listed without answers is late only while its
+        // opening waits on them: kept, the next unheld answer, maybe hours
+        // on, would say it came that late (answersLate).
+        if (!open) {
             prompt.unlinked();
+            answersLate = null;
+        }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;
