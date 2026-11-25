@@ -357,7 +357,10 @@ fn a_stop_the_phrase_finds_is_judged_while_the_tags_second_page_goes_unanswered(
         },
     );
     let stopped = came.journal.find("<5>a stop, in shadow: ");
-    let waits = |rounds: u32| came.journal.find(&format!("{rounds} of 10 rounds in a row"));
+    let waits = |rounds: u32| {
+        came.journal
+            .find(&format!("{rounds} of 10 rounds in a row"))
+    };
     assert!(
         waits(1).is_some() && stopped > waits(1) && stopped < waits(2),
         "a stop the phrase's search finds is judged while the tag's search waits on its \

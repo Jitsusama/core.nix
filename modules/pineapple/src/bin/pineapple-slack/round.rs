@@ -91,7 +91,8 @@ pub(super) fn round(
         _ => None,
     };
     if let Some((query, read)) = alone {
-        judge_each(ears, reader, account, state, &joel, judged, read.iter().chain(&partly));
+        let heard = read.iter().chain(&partly);
+        judge_each(ears, reader, account, state, &joel, judged, heard);
         judged.reached(query, read.last());
         if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
             eprintln!("<3>couldn't keep how far it has read: {error}");

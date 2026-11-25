@@ -479,7 +479,8 @@ impl Through {
         let Unread { agreed, unagreed } = self.unread.remove(query).unwrap_or_default();
         let mut agreed: Vec<Message> = found.iter().cloned().chain(agreed).collect();
         agreed.sort_by_key(|message| slack::micros(&message.ts));
-        self.unread.insert(query.to_owned(), Unread { agreed, unagreed });
+        self.unread
+            .insert(query.to_owned(), Unread { agreed, unagreed });
         true
     }
 }
