@@ -4492,7 +4492,8 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
     are let go, the foot saying what it takes, and a choice reaches its inbox as Joel's answer
     to the want he was shown, then reads answered.
     """
-    since = datetime.now(UTC).isoformat()
+    # As the agents daemon writes a time (clock.rs's text_of), so the want it names is known.
+    since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
     ask = {"question": "Which way?", "choices": choices, "allowOther": False}
     wants = {"kind": "question", "since": since, "said": "Which way?", "ask": ask}
@@ -4528,6 +4529,15 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         )
         assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
         shell.launcher_until(lambda shown: shown["typed"] == "")
+        # Let go, they don't come back when the Talk opens again, as words kept would.
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "CHOOSE")
+        assert did["done"], did
+        shell.launcher_until(
+            lambda shown: shown["asking"] and first(shown).get("line") == "Choosing Quest asks you"
+        )
+        time.sleep(1)
+        assert shell.showing()["typed"] == "", "words that answered nothing came back"
         shell.send_chars("right")
         shell.launcher_until(lambda shown: shown["typed"] == "right")
         shell.send_key("ret")
@@ -4537,7 +4547,7 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
             time.sleep(0.1)
         said = json.loads(told[0].read_text())
         assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
-        assert str(said["want"]).startswith("question@"), said
+        assert said["want"] == f"question@{since}", said
         # The Talk says the choice his words picked, by its label, so he sees which it took.
         shell.launcher_until(
             lambda shown: any(

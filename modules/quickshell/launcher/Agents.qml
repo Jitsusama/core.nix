@@ -193,12 +193,14 @@ Provider {
     function topTalk(key, one, row) {
         if (one.key !== "verb:agent:talk" || !one.ask)
             return null;
-        if (provider.isVoid(one.ask.address))
-            return provider.lineOpened(one.key);
         // One asking Joel something he can answer here gets the tree's own Talk, which shows
         // what it asks and answers it, as its inbox goes unread until its ask ends.
         const asking = provider.sessionAt(one.ask.address);
-        if (asking && provider.answerable(asking))
+        const act = TalkAnswers.topTalkAct(provider.isVoid(one.ask.address),
+            !!asking && provider.answerable(asking));
+        if (act === "line")
+            return provider.lineOpened(one.key);
+        if (act === "answer")
             return provider.sessionAct(asking, "talk");
         const talk = provider.talking(one.ask.address, row.name ?? "");
         return thing({
@@ -1232,10 +1234,15 @@ Provider {
         const want = TalkAnswers.shownWant(now, answers);
         // Words given back for an ask it no longer asks go, as the refusal may have come before
         // the want that replaced it; later, since this runs as the Talk draws.
-        const stale = TalkAnswers.stale(answeredTo[to], answers?.want ?? "");
+        const standsFor = answers?.want ?? "";
+        const stale = TalkAnswers.stale(answeredTo[to], standsFor);
         if (stale.length > 0)
-            Qt.callLater(() => launcher?.drafts?.settle({ [to]: stale
-                .map(words => ({ words, stage: "answered" })) }));
+            Qt.callLater(() => {
+                launcher?.drafts?.settle({ [to]: stale
+                    .map(typed => ({ words: typed, stage: "answered" })) });
+                answeredTo = Object.assign({}, answeredTo,
+                    { [to]: TalkAnswers.letGo(answeredTo[to], standsFor) });
+            });
         return (asked === null ? [] : [asked]).concat(TalkAnswers
             .standing(answeredTo[to] ?? [], want, Date.now())
             .map(one => TalkAnswers.shown(one, working, words, dayOf)));
@@ -1263,24 +1270,18 @@ Provider {
         }
         // A second Return to an ask he answered goes nowhere, as it takes his first, so the
         // foot says so rather than showing it sent.
-        if (TalkAnswers.answeredAlready(answeredTo[to], answers.want)) {
+        if (TalkAnswers.answeredAlready(answeredTo[to], answers.want, Date.now())) {
             told = TalkAnswers.filled(said.answeredAlready ?? "", { name: session.title });
             launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
             launcher?.walkRefused?.(told);
             return;
         }
-        const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
-        const keep = changed => {
-            answeredTo = Object.assign({}, answeredTo,
-                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
-        };
-        keep(one);
         told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
             { name: session.title });
         const fields = Object.assign({ want: answers.want }, answer.value !== undefined
             ? { value: answer.value } : { other: answer.other });
-        answerWant(session.address, fields, (put, why, unheard) => {
-            keep(TalkAnswers.put(one, put, why, unheard));
+        const chose = { label: answer.label, typed: text, answers };
+        answerKept(session.address, fields, chose, (put, why, unheard) => {
             // His words stay only for the ask they were meant for: once it asks something else,
             // given back they'd answer the new ask with words for the old one, so they show
             // only as not delivered, and the foot says why.
@@ -2741,9 +2742,10 @@ Provider {
     function answerWant(address, fields, then) {
         // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
         // (Sprouting.fromJoel): a walk from outside is refused and told so.
-        if (!Sprouting.fromJoel(launcher)) {
-            const why = TalkAnswers.filled(Words.of("verb:agent:talk").said?.answerWalked ?? "",
-                { name: sessionAt(address)?.title ?? String(address) });
+        const why = TalkAnswers.walkRefused(Sprouting.fromJoel(launcher),
+            Words.of("verb:agent:talk").said?.answerWalked ?? "",
+            sessionAt(address)?.title ?? String(address));
+        if (why !== null) {
             launcher?.walkRefused?.(why);
             then(false, why, false);
             return;
@@ -2758,7 +2760,26 @@ Provider {
         // daemon wasn't there to send to is not delivered.
         const sent = rowsKind.wire !== null;
         rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
-            String(reply?.error?.message ?? ""), sent && reply === null));
+            String(reply?.error?.message ?? ""), TalkAnswers.unheard(sent, reply)));
+    }
+
+    // Joel's answer to what the session at `address` asks (`chose.answers`, asked's), shown as
+    // `chose.label` and typed as `chose.typed`, sent with `fields` (answerWant's) and kept
+    // among its answers (answeredTo) until the node says of it, whichever row gave it, For
+    // You's choices too, so its Talk shows it and a second Return there knows it went.
+    // `then(put, why, unheard)` hears the node, after it's kept.
+    function answerKept(address, fields, chose, then) {
+        const to = String(address).toUpperCase();
+        const one = TalkAnswers.said(chose.label, Date.now(), chose.answers.want, chose.typed);
+        const keep = changed => {
+            answeredTo = Object.assign({}, answeredTo,
+                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
+        };
+        keep(one);
+        answerWant(address, fields, (put, why, unheard) => {
+            keep(TalkAnswers.put(one, put, why, unheard));
+            then(put, why, unheard);
+        });
     }
 
     property string fedBack: ""

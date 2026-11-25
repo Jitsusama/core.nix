@@ -13,6 +13,10 @@
 // opened later doesn't lead with an answer long done; and how many are kept for a session.
 const SHOWN_AFTER_MS = 900000;
 const KEPT = 3;
+// How long an answer may stand sent before a second Return is let go again: the agents
+// daemon gives the node 5 seconds (acts.rs's PATIENCE), so one still sent after this never
+// heard back, and shouldn't hold every later answer.
+const SENT_STANDS_MS = 30000;
 
 // What a session asks that Joel's words to it answer: its want's answers as the agents
 // daemon serves them (modules/agents/src/wants.rs), while it runs `asking` him. Null for a
@@ -108,10 +112,12 @@ function question(now, name, words, dayOf) {
 
 // An answer said in this shell to the want `want`: his words, when, and how it stands:
 // "sent" until the node says whether it put it in the session's inbox, then "answered", or
-// "failed" with why, or "unheard" where nothing said whether it went.
-function said(text, at, want) {
-    return { at: new Date(at).toISOString(), want: String(want ?? ""),
-        words: String(text ?? "").trim(), stage: "sent", why: "" };
+// "failed" with why, or "unheard" where nothing said whether it went. `typed`, what he typed
+// where it differs from the words shown (a choice's label), is what his field keeps.
+function said(text, at, want, typed) {
+    const words = String(text ?? "").trim();
+    return { at: new Date(at).toISOString(), want: String(want ?? ""), words,
+        typed: typed === undefined ? words : String(typed).trim(), stage: "sent", why: "" };
 }
 
 // A session's answers, newest first, once `one` is said or has moved on: in its place where
@@ -178,9 +184,12 @@ function onReturn(answers, fromJoel) {
 // Return isn't shown as going: the session takes the first answer to an ask, and one after it
 // finds the ask gone (the harness's answerSteered). One not delivered, or not known to be,
 // leaves it his to answer again.
-function answeredAlready(list, want) {
+// One sent SENT_STANDS_MS before `nowMs` and never heard of since is let be.
+function answeredAlready(list, want, nowMs) {
+    const standsSent = one => one.stage === "sent"
+        && !(nowMs - Date.parse(one.at) >= SENT_STANDS_MS);
     return (list ?? []).some(one => one.want === String(want ?? "")
-        && (one.stage === "sent" || one.stage === "answered"));
+        && (standsSent(one) || one.stage === "answered"));
 }
 
 // Whether his words to `answers` stay to be given back once the node has said of them: only
@@ -192,18 +201,52 @@ function keepsWords(went, now, answers) {
 
 // The words of a session's answers (`list`) kept to be given back that no longer answer what
 // it asks, `want` as standing takes it: those not delivered, or not known to be, to another
-// want. A refusal can come before the want that replaced its ask, so they're let go once
-// that want is drawn, or given back they'd answer it.
+// want, and not let go already (letGo's). A refusal can come before the want that replaced
+// its ask, so they're let go once that want is drawn, or given back they'd answer it. Each
+// is the words he typed, as his field keeps them.
 function stale(list, want) {
-    return (list ?? []).filter(one => (one.stage === "failed" || one.stage === "unheard")
-        && one.want !== want).map(one => one.words);
+    const isStale = one => (one.stage === "failed" || one.stage === "unheard")
+        && one.want !== want && one.letGo !== true;
+    return (list ?? []).filter(isStale).map(one => String(one.typed ?? one.words));
+}
+
+// A session's answers (`list`) once stale's are let go, each marked so, so a later draw
+// settles none of them again and a later talk in the same words is kept.
+function letGo(list, want) {
+    const isStale = one => (one.stage === "failed" || one.stage === "unheard")
+        && one.want !== want;
+    return (list ?? []).map(one => (isStale(one) ? Object.assign({}, one, { letGo: true }) : one));
+}
+
+// Whether the agents daemon's `reply` to an answer sent (`sent`, a wire there to send it on)
+// says nothing of whether it went: none at all, the daemon gone while asked, or the node sent
+// it but never answered (acts.rs's "unheard"), so it may have gone and isn't said not to.
+function unheard(sent, reply) {
+    return sent === true && (reply === null || reply === undefined
+        || reply?.error?.code === "unheard");
+}
+
+// Why an answer from a walk (`fromJoel` false, Sprouting.js's) is refused, `template` filled
+// with the session's `name`, since an answer goes as his; null from his own Return.
+function walkRefused(fromJoel, template, name) {
+    return fromJoel === true ? null : filled(template, { name });
+}
+
+// What Talk to It on a top row does: "line" on the void, whose Talk opens the talk line;
+// "answer" on one asking him what he can answer here (`answerable`), whose tree's Talk shows
+// it and answers it; else "talk", words to its inbox.
+function topTalkAct(isVoid, answerable) {
+    if (isVoid === true) {
+        return "line";
+    }
+    return answerable === true ? "answer" : "talk";
 }
 
 // What the node's put made of the answer `one`: answered where it went, failed with `why`
-// where it didn't, and unheard where nothing came back to say (`unheard`), the agents daemon
-// gone while it was asked, so it may have gone or not.
-function put(one, went, why, unheard) {
-    if (!went && unheard === true) {
+// where it didn't, and unheard where nothing came back to say (`unsaid`, unheard's), so it
+// may have gone or not.
+function put(one, went, why, unsaid) {
+    if (!went && unsaid === true) {
         return Object.assign({}, one, { stage: "unheard", why: "" });
     }
     return Object.assign({}, one, went ? { stage: "answered", why: "" }
