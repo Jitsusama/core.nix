@@ -24,9 +24,11 @@ guard=600
 TIMEFORMAT='%U %S %R'
 used=$(mktemp)
 # A case run under its limit, the processor's signal ending it past it.
+# It isn't exec'd, since bash's `time` says nothing of a subshell that
+# execs.
 run() {
   ulimit -t "$limit"
-  exec timeout "$guard" "$qml" "$1"
+  timeout "$guard" "$qml" "$1"
 }
 cases=(*.qml)
 if [ "${#cases[@]}" = 0 ]; then
@@ -35,11 +37,13 @@ if [ "${#cases[@]}" = 0 ]; then
 fi
 failed=()
 for case in "${cases[@]}"; do
-  # The case's own output goes to the log, and only the timing to `used`.
-  { time (run "$case") 2>&3; } 3>&2 2>"$used"
+  # The case's own output goes to the log, and only the timing to `used`,
+  # since `time` on a subshell writes to the subshell's stderr as it stands
+  # outside the case's own redirection.
+  { time (run "$case" 2>&3); } 3>&2 2>"$used"
   code=$?
-  read -r user system clock <"$used"
-  own=$(awk -v user="$user" -v system="$system" 'BEGIN { printf "%.0f", user + system }')
+  read -r user kernel clock <"$used"
+  own=$(awk -v user="$user" -v kernel="$kernel" 'BEGIN { printf "%.0f", user + kernel }')
   if [ "$code" != 0 ]; then
     case $code in
       124) said="$case ran past the clock's $guard s, waiting on something" ;;
