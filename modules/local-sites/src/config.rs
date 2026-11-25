@@ -33,6 +33,19 @@ pub struct Config {
     pub mounts: BTreeMap<String, PathBuf>,
     /// The daemons a page may read, by the name in `/feed/<name>`.
     pub feeds: BTreeMap<String, Feed>,
+    /// Where an answer Joel presses on a page of the sites' own is checked
+    /// and sent (answer.rs); none where no page answers.
+    pub answers: Option<Answering>,
+}
+
+/// The daemons an answer goes through, each socket absolute or under the
+/// user's runtime folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answering {
+    /// The looks' daemon, asked for a look as it stands.
+    pub looks: PathBuf,
+    /// The node, which carries a steer to the session it names.
+    pub node: PathBuf,
 }
 
 /// One daemon a page may read, and how much of it.
@@ -111,6 +124,10 @@ impl Config {
             })
             .transpose()?
             .unwrap_or_default();
+        let answers = match said.get("answers") {
+            None | Some(Value::Null) => None,
+            Some(answers) => Some(answering(answers, runtime)?),
+        };
         Ok(Self {
             listen,
             names,
@@ -118,6 +135,7 @@ impl Config {
             home,
             mounts,
             feeds,
+            answers,
         })
     }
 }
@@ -156,6 +174,22 @@ fn feed_of(name: &str, said: &Value, runtime: Option<&Path>) -> Result<Feed, Str
         })
         .collect::<Result<_, String>>()?;
     Ok(Feed { socket, kinds })
+}
+
+fn answering(said: &Value, runtime: Option<&Path>) -> Result<Answering, String> {
+    let socket = |name: &str| {
+        let path = said
+            .get(name)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("answers names no {name} socket"))?;
+        under(path, runtime).ok_or_else(|| {
+            format!("answers' {name} socket is under the runtime folder, and none is set")
+        })
+    };
+    Ok(Answering {
+        looks: socket("looks")?,
+        node: socket("node")?,
+    })
 }
 
 /// `path` as it stands where it's absolute, else under `runtime`, or none
@@ -203,6 +237,7 @@ mod tests {
         assert_eq!(config.listen.port(), 8484);
         assert_eq!(config.mounts["kit"], PathBuf::from("/nix/store/kit"));
         assert_eq!(config.home, None, "a home among the documents names none");
+        assert_eq!(config.answers, None, "a server that takes no answers names nothing");
         let node = &config.feeds["node"];
         assert_eq!(
             node.socket,
@@ -241,6 +276,30 @@ mod tests {
             Some(PathBuf::from("/run/user/1000/local-sites/home")),
             "a relative home is under the runtime folder, as a socket is"
         );
+    }
+
+    #[test]
+    fn the_answers_daemons_are_read_under_the_runtime_folder_or_refused() {
+        let answering = WHOLE.replace(
+            r#""mounts""#,
+            r#""answers": {"looks": "daemons/to-do.sock", "node": "/run/node.sock"}, "mounts""#,
+        );
+        let config = Config::from_json(&answering, Some(Path::new("/run/user/1000"))).expect("it reads");
+        assert_eq!(
+            config.answers,
+            Some(Answering {
+                looks: PathBuf::from("/run/user/1000/daemons/to-do.sock"),
+                node: PathBuf::from("/run/node.sock"),
+            })
+        );
+        let why = Config::from_json(&answering, None).expect_err("refused");
+        assert!(why.contains("looks socket is under the runtime folder"), "{why}");
+        let nodeless = WHOLE.replace(
+            r#""mounts""#,
+            r#""answers": {"looks": "/run/to-do.sock"}, "mounts""#,
+        );
+        let why = Config::from_json(&nodeless, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("names no node socket"), "{why}");
     }
 
     #[test]

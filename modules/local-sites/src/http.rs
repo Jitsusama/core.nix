@@ -31,8 +31,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::json;
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
+use crate::answer::{self, Answers, Asked};
 use crate::config::{Config, Feed};
 use crate::door::Door;
 use crate::files::{self, Found};
@@ -78,6 +80,8 @@ pub struct Server {
     pub config: Config,
     pub door: Door,
     pub upstreams: Arc<Upstreams>,
+    /// Where an answer pressed on a page is checked and sent, where any is.
+    pub answers: Option<Answers>,
 }
 
 /// A request's head, as much of it as the server reads.
@@ -97,6 +101,10 @@ struct Head {
     cookies: Option<String>,
     /// Whether the browser asks for a worker's script, as `Service-Worker` says.
     worker: bool,
+    /// Where the browser says the request came from, as `Sec-Fetch-Site` says.
+    fetch_site: Option<String>,
+    /// How long its body is, as `Content-Length` says, where it says.
+    body_length: Option<usize>,
 }
 
 /// Answers one connection.
@@ -160,6 +168,8 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
             "text/plain",
             b"a feed is at /feed/<name>, named in its config\n",
         );
+    } else if head.path.split(['?', '#']).next() == Some("/answer") {
+        press(server, &mut stream, &head);
     } else {
         serve_file(server, &mut stream, &head);
     }
@@ -203,7 +213,7 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head) {
     let path = head.path.split(['?', '#']).next().unwrap_or("/");
     match files::find(&server.config, path) {
         Found::File(file, made) => {
-            let told = told_for(&server.door, head, &file, made);
+            let told = told_for(server, head, &file, made);
             send_file(stream, head, &file, &told);
         }
         Found::Folder(to) => {
@@ -247,7 +257,8 @@ struct Guarded {
 }
 
 /// What `file`, which `made` made, is sent with to `head`.
-fn told_for(door: &Door, head: &Head, file: &Path, made: files::Made) -> Guarded {
+fn told_for(server: &Server, head: &Head, file: &Path, made: files::Made) -> Guarded {
+    let door = &server.door;
     let kind = files::kind_of(file);
     let mut headers = Vec::new();
     let mut whole = false;
@@ -271,9 +282,71 @@ fn told_for(door: &Door, head: &Head, file: &Path, made: files::Made) -> Guarded
                 headers.push(("Set-Cookie", SWEEPING.to_owned()));
                 whole = true;
             }
+            // Only a page of the sites' own is given what its answers carry,
+            // on every answer, kept or whole, so one opened before the server
+            // last started is given this run's.
+            if let Some(answers) = &server.answers
+                && kind.starts_with("text/html")
+            {
+                headers.push(("Set-Cookie", answers.cookie()));
+            }
         }
     }
     Guarded { headers, whole }
+}
+
+/// Carries an answer pressed on a page of the sites' own (answer.rs), and
+/// journals it, carried or refused with the word saying why, and that it
+/// came by the sites.
+fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
+    if head.method != "POST" {
+        return send(stream, 405, "Method Not Allowed", "text/plain", b"an answer is posted\n");
+    }
+    let Some(answers) = &server.answers else {
+        return send(stream, 404, "Not Found", "text/plain", b"this server takes no answers\n");
+    };
+    let Some(length) = head.body_length.filter(|length| *length <= answer::LONGEST) else {
+        return send(
+            stream,
+            413,
+            "Content Too Large",
+            "text/plain",
+            b"an answer is a look and a value\n",
+        );
+    };
+    let mut body = vec![0; length];
+    if stream.read_exact(&mut body).is_err() {
+        return;
+    }
+    let asked = Asked {
+        host: head.host.as_deref().unwrap_or(""),
+        origin: head.origin.as_deref(),
+        fetch_site: head.fetch_site.as_deref(),
+        cookies: head.cookies.as_deref(),
+        body: &body,
+    };
+    let pressed = String::from_utf8_lossy(&body);
+    match answers.carry(&asked) {
+        Ok(told) => {
+            eprintln!("local-sites: carried an answer pressed on the sites: {pressed:?}");
+            send(stream, 200, "OK", "application/json", told.to_string().as_bytes());
+        }
+        Err(refused) => {
+            eprintln!(
+                "local-sites: refused an answer pressed on the sites ({}): {pressed:?}: {}",
+                refused.word, refused.why
+            );
+            let said = json!({"refused": refused.word, "why": refused.why});
+            let reason = match refused.status {
+                400 => "Bad Request",
+                403 => "Forbidden",
+                404 => "Not Found",
+                409 => "Conflict",
+                _ => "Bad Gateway",
+            };
+            send(stream, refused.status, reason, "application/json", said.to_string().as_bytes());
+        }
+    }
 }
 
 /// Whether a file of `kind` is code or type every page may share: the
@@ -407,6 +480,9 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     referer: header("referer").map(str::to_owned),
                     cookies: header("cookie").map(str::to_owned),
                     worker: header("service-worker").is_some(),
+                    fetch_site: header("sec-fetch-site").map(str::to_owned),
+                    body_length: header("content-length")
+                        .and_then(|length| length.trim().parse().ok()),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {

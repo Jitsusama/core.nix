@@ -148,7 +148,7 @@ fn asked(
 
 /// Asks the daemon at `socket` one thing after the hello, and answers what
 /// it said to it.
-fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
+pub fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
     let mut stream = UnixStream::connect(socket)?;
     stream.set_read_timeout(Some(PATIENCE))?;
     let mut ask = asked.clone();
