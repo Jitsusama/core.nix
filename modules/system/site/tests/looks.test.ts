@@ -334,7 +334,7 @@ it("draws a look's why and act under its words, escaped, and no line where it ha
     "the act names its machine, untranslated",
   );
   assert.ok(
-    !drawn.includes("<b>") && !drawn.includes("<i>"),
+    !(drawn.includes("<b>") || drawn.includes("<i>")),
     "no record's markup reaches the page",
   );
   assert.ok(
