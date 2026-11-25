@@ -5331,10 +5331,11 @@
     triggers with no device, bounds each wait on udev to a second or more and to fit three times,
     and every wait together once, within its unit's limit, ends well when udev refuses a replay,
     queues part of a refused add, never settles, hasn't handled the arrival yet, loses the Brio's
-    record or can't be read, naming the restart that looks again, adds the Brio back when its
+    record or can't be read, naming the way out of each, adds the Brio back when its
     unit's timeout ends the run, says a Brio unplugged midway is the seat's once plugged in, skips
     a node unplugged as it's read, says it gave the Brio back only when udev's record of every node
-    shows it tagged for the seat and unmarked, and that the seat has it only when udev recorded
+    shows it tagged for the seat and unmarked and no camera was left unread, and that the seat has
+    it only when udev recorded
     every camera, warning with the way out, named for its nodes, otherwise, waits out adds the boot
     still has queued rather than calling them lost, points at udevadm's own words, which it keeps,
     for an add it refused, and warns nothing, udevadm included, on a machine with no camera, a boot
@@ -6743,9 +6744,10 @@
     kills it leaves its boot said cut short, its last second read kept
   '';
   vm-the-relay-waits-out-a-frameless-camera = ''
-    the shared cameras' relay, read by a client, makes a camera that never frames again after
-    90 s and ends 90 s later, saying so each time, and makes one whose frames stop again after
-    10 s, each time it stops, never ending it
+    the shared cameras' relay, read by a client, plays a camera's pipeline, makes a camera that
+    never frames again 90 s after its client came, by its count and the journal's, and ends 90 s
+    later, saying so each time, and makes one whose frames stop again 10 s after its last frame,
+    each time it stops, never ending it
   '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the

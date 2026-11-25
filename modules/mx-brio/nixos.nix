@@ -162,7 +162,13 @@ in
         "modprobe@v4l2loopback.service"
       ];
       wants = [ "modprobe@v4l2loopback.service" ];
-      environment.GST_PLUGIN_PATH = plugins;
+      environment = {
+        GST_PLUGIN_PATH = plugins;
+        # GStreamer's errors, so an input the relay can't make says why in
+        # its journal rather than leaving a client the placeholder.
+        GST_DEBUG = "1";
+        GST_DEBUG_NO_COLOR = "1";
+      };
       serviceConfig = {
         RuntimeDirectory = "mx-brio";
         # It runs as root to make the loopback camera, as the built-in
