@@ -33,14 +33,16 @@ say() {
 
 # Sets link and address to the first en* link macOS lists for IPv4 and its
 # address, from scutil --nwi, or to nothing when it lists none with one,
-# which waiting says once. When scutil can't say, both are left as they
-# were, so nothing changes: what scutil says then is left out, since it
-# would be said at every read.
+# and read to whether scutil could say. When it can't, both are left as
+# they were, so nothing changes: what scutil says then is left out, since
+# it would be said at every read.
 pick() {
   local line section="" at="" listed
   if ! listed=$(scutil --nwi 2>/dev/null); then
+    read=failed
     return 0
   fi
+  read=listed
   link=""
   address=""
   while IFS= read -r line; do
@@ -75,11 +77,16 @@ trap finish EXIT
 link=""
 address=""
 pick
-waited=""
+# Why it waits, said once each time the reason changes.
+waiting=""
 while [ -z "${link}" ]; do
-  if [ -z "${waited}" ]; then
-    say "no wired or Wi-Fi link has an IPv4 address, so ${name}.local waits for one"
-    waited=yes
+  why="no wired or Wi-Fi link has an IPv4 address, so ${name}.local waits for one"
+  if [ "${read}" = failed ]; then
+    why="scutil couldn't list the links, so ${name}.local waits to read them"
+  fi
+  if [ "${why}" != "${waiting}" ]; then
+    say "${why}"
+    waiting=${why}
   fi
   # Reading again is how a link coming up is seen: macOS tells a script of
   # a change only through a framework a shell can't reach.
@@ -88,7 +95,9 @@ while [ -z "${link}" ]; do
 done
 dns-sd -i "${link}" -P "${name}" _workstation._tcp local 9 "${name}.local" "${address}" >&2 &
 answering=$!
-say "${name}.local answers ${address} on ${link}"
+# Offered, not yet answering: dns-sd's own line says when it's registered,
+# or that another machine holds the name.
+say "${name}.local is offered as ${address} on ${link}"
 while true; do
   # The same: a changed address is seen only by reading it again.
   sleep "${every}"

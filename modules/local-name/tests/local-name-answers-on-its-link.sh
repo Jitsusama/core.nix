@@ -7,9 +7,10 @@
 # or a bridge listed before it and never one from the IPv6 list, on that
 # link alone and as a host of its own; a moved address, another link or
 # none ends it, and its answer, waited for, for launchd to start it again;
-# with no link, or a scutil that fails, it waits and says so once, and a
-# scutil that fails while it answers changes nothing; and an answer that
-# ends by itself ends it, what dns-sd said and the end both in its log.
+# with no link, or a scutil that fails, it waits, saying which once, and a
+# scutil that fails while it answers changes nothing; it says the name is
+# offered, not that it answers, before dns-sd says; and an answer that ends
+# by itself ends it, what dns-sd said and the end both in its log.
 # usage: local-name-answers-on-its-link.sh <answer.sh> <bash>
 set -euo pipefail
 
@@ -42,22 +43,24 @@ cat "$work/nwi.\${read}"
 EOF
 cat > "$work/bin/dns-sd" <<EOF
 #!${bash}
+# A TERM is answered a fifth of a second late, as a real answer withdrawing
+# its record might be, so only a job that waits for its answer sees it gone.
+# Set before it says it answers, so a TERM landing just after is answered
+# late too.
+trap 'kill "\$!" 2> /dev/null; sleep 0.2; exit 0' TERM
 echo "\$*" >> "$work/answers"
 echo "\$\$" > "$work/answering"
 if [ -e "$work/ends" ]; then
-  # Said once the job has said it answers, as a refusal comes only after
+  # Said once the job has said it's offered, as a refusal comes only after
   # the record is probed, polled in tenths of a second for ten at most.
   tries=0
-  while ! grep -q answers "$work/said" 2> /dev/null && [ "\${tries}" -lt 100 ]; do
+  while ! grep -q "is offered" "$work/said" 2> /dev/null && [ "\${tries}" -lt 100 ]; do
     sleep 0.1
     tries=\$((tries + 1))
   done
   echo "07:00:00.000 Got a reply for record its-own-name.local: Name in use, please choose another"
   exit 3
 fi
-# A TERM is answered a fifth of a second late, as a real answer withdrawing
-# its record might be, so only a job that waits for its answer sees it gone.
-trap 'kill "\$!"; sleep 0.2; exit 0' TERM
 sleep infinity &
 wait
 EOF
@@ -139,7 +142,7 @@ fresh
 nwi 1 utun4=100.104.89.255 bridge100=192.168.64.1 en0=192.168.4.49 en1=10.0.0.2
 nwi 3 utun4=100.104.89.255 bridge100=192.168.64.1 en0=192.168.4.50 en1=10.0.0.2
 answers "a moved address"
-holds "a moved address" 0 "its-own-name.local answers 192.168.4.49 on en0
+holds "a moved address" 0 "its-own-name.local is offered as 192.168.4.49 on en0
 its-own-name.local moves from 192.168.4.49 on en0 to 192.168.4.50 on en0" \
   "${on_en0}"
 ended_its_answer "a moved address"
@@ -148,7 +151,7 @@ fresh
 nwi 1 en0=192.168.4.49 en1=10.0.0.2
 nwi 2 utun4=100.104.89.255 en1=10.0.0.2
 answers "another link"
-holds "another link" 0 "its-own-name.local answers 192.168.4.49 on en0
+holds "another link" 0 "its-own-name.local is offered as 192.168.4.49 on en0
 its-own-name.local moves from 192.168.4.49 on en0 to 10.0.0.2 on en1" \
   "${on_en0}"
 ended_its_answer "another link"
@@ -157,7 +160,7 @@ fresh
 nwi 1 en0=192.168.4.49
 nwi 2 utun4=100.104.89.255
 answers "no link left"
-holds "no link left" 0 "its-own-name.local answers 192.168.4.49 on en0
+holds "no link left" 0 "its-own-name.local is offered as 192.168.4.49 on en0
 its-own-name.local moves from 192.168.4.49 on en0 to nothing on no link" \
   "${on_en0}"
 ended_its_answer "no link left"
@@ -169,8 +172,9 @@ nwi 3
 nwi 4 en0=192.168.4.49
 nwi 5 en0=192.168.4.51
 answers "waiting for a link"
-holds "waiting for a link" 0 "no wired or Wi-Fi link has an IPv4 address, so its-own-name.local waits for one
-its-own-name.local answers 192.168.4.49 on en0
+holds "waiting for a link" 0 "scutil couldn't list the links, so its-own-name.local waits to read them
+no wired or Wi-Fi link has an IPv4 address, so its-own-name.local waits for one
+its-own-name.local is offered as 192.168.4.49 on en0
 its-own-name.local moves from 192.168.4.49 on en0 to 192.168.4.51 on en0" \
   "${on_en0}"
 ended_its_answer "waiting for a link"
@@ -180,7 +184,7 @@ nwi 1 en0=192.168.4.49
 echo fails > "$work/nwi.2"
 nwi 3 en0=192.168.4.51
 answers "a read that fails while answering"
-holds "a read that fails while answering" 0 "its-own-name.local answers 192.168.4.49 on en0
+holds "a read that fails while answering" 0 "its-own-name.local is offered as 192.168.4.49 on en0
 its-own-name.local moves from 192.168.4.49 on en0 to 192.168.4.51 on en0" \
   "${on_en0}"
 ended_its_answer "a read that fails while answering"
@@ -189,7 +193,7 @@ fresh
 nwi 1 en0=192.168.4.49
 touch "$work/ends"
 answers "an answer that ends"
-holds "an answer that ends" 1 "its-own-name.local answers 192.168.4.49 on en0
+holds "an answer that ends" 1 "its-own-name.local is offered as 192.168.4.49 on en0
 Got a reply for record its-own-name.local: Name in use, please choose another
 the answer for its-own-name.local on en0 ended (exit 3), so it starts again" \
   "${on_en0}"
