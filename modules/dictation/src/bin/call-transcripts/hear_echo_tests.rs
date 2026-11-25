@@ -136,6 +136,10 @@ fn each_line_of_joels_left_out_whole_as_their_echo_is_told_once_and_without_it()
         ["call-transcripts: a line of Joel's, 2 words at 0:49, left out whole as their echo"],
         "the line left out wasn't told, or was told with the call's words"
     );
+    assert!(
+        joels_written(&writing).is_empty(),
+        "the line told as left out was written, so the journal and the file disagree"
+    );
     hear_take(&mut writing, 60, &[ADA], &[("Right.", 0)]);
     assert!(
         writing.untold_cuts().is_empty(),
