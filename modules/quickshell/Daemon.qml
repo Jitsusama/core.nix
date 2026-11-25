@@ -109,7 +109,7 @@ Scope {
         link.active = false;
         child.active = false;
         if (wire !== null)
-            gone();
+            gone(true);
     }
     // What a watch begun waits on, when it's begun by what Joel pressed:
     // something with `afterFrame(then)`, as the launcher is, which runs
@@ -598,13 +598,16 @@ Scope {
 
     // Gone: said so, and every answer awaited given none. The watch went
     // with the wire, so what's held waits for the next watch's answer.
-    function gone() {
+    // `chosen` where the shell let the connection go itself (connects).
+    function gone(chosen) {
         // Its asks are answered with nothing below; said, since each went
-        // unanswered and the connection's going says nothing of its own.
-        const unanswered = Object.keys(awaited);
-        if (unanswered.length > 0)
-            console.warn(`${heardAs}: the connection went with ${unanswered.length} asks `
-                + `unanswered: ${unanswered.slice(0, 8).join(", ")}`);
+        // unanswered and the connection's going says nothing of its own,
+        // as a warning only where nobody chose it (Hearing.goneSaid).
+        const said = Hearing.goneSaid(heardAs, Object.keys(awaited), chosen === true);
+        if (said !== "" && chosen === true)
+            console.info(said);
+        else if (said !== "")
+            console.warn(said);
         unreadSaid = false;
         wire = null;
         state = "not answering";
