@@ -1256,6 +1256,11 @@ mod tests {
             (forgot - fresh).abs() < 1e-9 && forgot < late,
             "a session forgotten was still counted: {forgot} kept, {fresh} fresh"
         );
+        assert_eq!(
+            kept.hours.whole(),
+            1,
+            "the kept picture read every hour again"
+        );
     }
 
     fn store(history: &History, line: &serde_json::Value) {

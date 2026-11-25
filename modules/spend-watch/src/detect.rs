@@ -2587,7 +2587,7 @@ mod tests {
 
     // A running daemon reads the hour under way on every pass, and the
     // hours gone only once one of them gains or loses a turn, so what it
-    // has is what a fresh read finds.
+    // has is what a fresh read finds, a write rolled back included.
     #[test]
     fn kept_minutes_are_read_whole_only_when_an_hour_gone_changes() {
         let history = ordinary();
@@ -2616,9 +2616,20 @@ mod tests {
             fresh(NOW + 3.0)
         );
         assert_eq!(kept.whole, 3, "a turn forgotten from an hour gone");
+        history.db.execute_batch("BEGIN").unwrap();
+        turn(&history, "undone", NOW - 5.0 * HOUR, 3.0);
+        kept.read(&history, from, NOW + 4.0).unwrap();
+        history.db.execute_batch("ROLLBACK").unwrap();
+        turn(&history, "redone", NOW - 5.0 * HOUR, 5.0);
+        assert_eq!(
+            kept.read(&history, from, NOW + 5.0).unwrap(),
+            fresh(NOW + 5.0),
+            "a move handed out again after a rollback was missed"
+        );
+        assert_eq!(kept.whole, 5, "a write not committed was kept as read");
         let next = crate::time::hour_start(crate::time::hour_of(NOW) + 1);
         assert_eq!(kept.read(&history, from, next).unwrap(), fresh(next));
-        assert_eq!(kept.whole, 4, "the next hour");
+        assert_eq!(kept.whole, 6, "the next hour");
     }
 
     #[test]

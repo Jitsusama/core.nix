@@ -1771,6 +1771,12 @@ mod tests {
             Some(SCHEMA.to_string()),
             "a history taken back by its schema alone wasn't brought up again"
         );
+        wasted(&history, "d", 12000.0, MOST, None, 0.6);
+        assert_eq!(
+            moves(&history),
+            vec![(3, 1)],
+            "the hours' moves brought up again didn't count a new turn"
+        );
     }
 
     #[test]

@@ -182,7 +182,9 @@ impl Hours {
     /// A move is the highest yet plus one, so a write rolled back hands its
     /// numbers out again. Moves read inside a write not yet committed, as a
     /// failed commit can leave open, are therefore not kept as read: the
-    /// next refresh reads every hour again.
+    /// next refresh reads every hour again, as it does when the last move
+    /// is lower than the one kept, which only a history taken back or
+    /// brought up again under a running daemon can make.
     pub fn refresh(&mut self, db: &Connection, from: i64) -> Result<(), String> {
         let settled = db.is_autocommit();
         let latest: i64 = db
@@ -191,7 +193,7 @@ impl Hours {
             })
             .map_err(fail)?;
         match self.read {
-            Some((first, through)) if first <= from => {
+            Some((first, through)) if first <= from && through <= latest => {
                 let moved: Vec<i64> = {
                     let mut statement = db
                         .prepare("SELECT hour FROM hour_moves WHERE move > ?1 AND hour >= ?2")
@@ -215,6 +217,10 @@ impl Hours {
                 self.names.retain(|name| Rc::strong_count(name) > 1);
             }
             _ => {
+                // Nothing is marked as read until the read has worked, so
+                // one that fails halfway leaves no mark over emptied hours
+                // and the next refresh reads every hour again.
+                self.read = None;
                 self.whole += 1;
                 self.rows = BTreeMap::new();
                 self.names.clear();
@@ -224,6 +230,13 @@ impl Hours {
         }
         self.read = settled.then_some((from, latest));
         Ok(())
+    }
+
+    /// How many times every hour was read whole, for tests that a kept
+    /// picture reads its hours once.
+    #[cfg(test)]
+    pub(crate) fn whole(&self) -> usize {
+        self.whole
     }
 
     /// The rows of the hours from `from` to before `to`, by the hour, in
@@ -1189,7 +1202,8 @@ mod tests {
     // A running daemon's hours are read whole once, then only the hours
     // a turn moved since, and hold what a fresh read finds whether a turn
     // arrives late for an hour gone, an hour loses its last turn, a write
-    // is rolled back, or the first hour kept moves on.
+    // is rolled back, the first hour kept moves on, the moves go back, or a
+    // whole read fails.
     #[test]
     fn kept_hours_are_read_again_only_where_a_turn_moved_them() {
         let history = history();
@@ -1238,6 +1252,10 @@ mod tests {
             !kept.names.contains("s2"),
             "a session forgotten kept its name"
         );
+        assert!(
+            kept.names.contains("s1") && kept.names.contains("anthropic"),
+            "a name still in use was dropped"
+        );
         history.db.execute_batch("BEGIN").unwrap();
         budgeted(&history, "s4", H + 1, "anthropic", None, 16.0);
         kept.refresh(&history.db, H).unwrap();
@@ -1255,6 +1273,26 @@ mod tests {
             kept.whole, 3,
             "an earlier first hour didn't read every hour"
         );
+        history.db.execute_batch("DELETE FROM hour_moves").unwrap();
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(
+            kept.whole, 4,
+            "moves lower than the last kept didn't read every hour"
+        );
+        history
+            .db
+            .execute_batch("ALTER TABLE turn_hours RENAME TO hours_away")
+            .unwrap();
+        assert!(
+            kept.refresh(&history.db, H - 1).is_err(),
+            "a read of hours gone from the history worked"
+        );
+        history
+            .db
+            .execute_batch("ALTER TABLE hours_away RENAME TO turn_hours")
+            .unwrap();
+        kept.refresh(&history.db, H).unwrap();
+        assert_eq!(kept.rows, fresh(H), "a whole read that failed was kept");
     }
 
     fn by_budget(pieces: &[Piece]) -> Vec<(String, f64)> {
