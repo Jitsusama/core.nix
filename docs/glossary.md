@@ -404,7 +404,7 @@ off.
 | colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
 | white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
 | primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
-| brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
+| brightness | how bright a screen is, which follows the room's light, or how bright the desk light shines | | the `backlight` program; Litra's `brightness` |
 | warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
 | night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
@@ -480,7 +480,6 @@ off.
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
 | desk light | the light on the screen, lit while a camera is in use | | Litra |
-| brightness | how bright the desk light shines, apart from a screen's brightness | | Litra's `brightness` |
 | console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | kmscon |
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
