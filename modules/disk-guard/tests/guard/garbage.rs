@@ -147,6 +147,22 @@ fn a_listing_that_fails_says_why() {
     );
     let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
     assert!(failed.contains("cannot connect to the daemon"), "{failed}");
+    // A nix.conf line Nix refuses is quoted whole, and may hold a token, so
+    // it's told by its length alone, the rest of what Nix said kept.
+    script(
+        &dir.path().join("nix-store"),
+        "echo \"error: syntax error in configuration line 'access-tokens github.com=SECRET' \
+         in '/etc/nix/nix.conf'\" >&2; exit 1\n",
+    );
+    let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
+    assert!(
+        !failed.contains("SECRET")
+            && failed.contains(
+                "error: syntax error in configuration line '<31 bytes left out>' in \
+                 '/etc/nix/nix.conf'"
+            ),
+        "a refused nix.conf line was told, or what was around it lost: {failed}"
+    );
     let none = tempfile::tempdir().unwrap();
     assert_eq!(
         list(&fake_nix(none.path(), 0), Path::new(STORE), false).unwrap(),
@@ -169,7 +185,11 @@ fn a_min_free_read_tells_none_of_what_nix_printed() {
         (
             "echo \"error: illegal configuration line 'access-tokens github.com=SECRET'\" >&2\n\
              exit 1\n",
-            "saying 67 bytes",
+            "ended 1, saying 67 bytes",
+        ),
+        (
+            "echo 'access-tokens = github.com=SECRET' >&2\nkill -KILL $$\n",
+            "was ended by a signal, saying 33 bytes",
         ),
     ] {
         let dir = tempfile::tempdir().unwrap();
