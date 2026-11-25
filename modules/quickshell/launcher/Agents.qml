@@ -58,6 +58,7 @@ import "Sprouting.js" as Sprouting
 import "StartsStopped.js" as StartsStopped
 import "TalkAnswers.js" as TalkAnswers
 import "TalkTo.js" as TalkTo
+import "Wheres.js" as Wheres
 import "Wanted.js" as Wanted
 
 Provider {
@@ -1772,8 +1773,9 @@ Provider {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
-            .concat((source("quests")?.folders() ?? []).map(one => newWorkAct("in", one.folder,
-                Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
+            .concat(startWheres().map(one => newWorkAct("in", one.folder,
+                Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name),
+                one.start)));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
             name: Words.name("agents:start-new-work"),
@@ -1790,9 +1792,14 @@ Provider {
         });
     }
 
-    // One of Start New Work's acts: `id` link or in, sprouting in `folder`
-    // where one is given, as `name`.
-    function newWorkAct(id, folder, name) {
+    // One of Start New Work's acts: `id` link or in, at `folder` where one
+    // is given, as `name`, sprouting in `start`, the folder unless said.
+    // Keyed by its folder, never its start, so a list of places landing
+    // while Joel is on a row that changes how it starts (a quest's folder
+    // found to be a zone) leaves him on the same row, not a dimmed one. Its
+    // start is read again at Return, so a field entered before the list
+    // landed starts as the row now says.
+    function newWorkAct(id, folder, name, start) {
         const key = folder === "" ? `verb:agents:start-new-work:${id}`
             : `verb:agents:start-new-work:${id}:${folder}`;
         return thing({
@@ -1806,7 +1813,8 @@ Provider {
             // one carried here (askWhere).
             offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
-            given: said => provider.sprout(key, said, folder)
+            given: said => provider.sprout(key, said, start === undefined ? folder
+                : startWheres().find(one => one.folder === folder)?.start ?? start)
         });
     }
 
@@ -2083,8 +2091,7 @@ Provider {
     // stepped back (Sprouting.stepsBack). Whether it did.
     function askWhere(key) {
         const launcher = provider.launcher ?? null;
-        const folders = (source("quests")?.folders() ?? []).length;
-        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, startWheres().length))
             return false;
         sproutCarried = sproutGiven.words;
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
@@ -2095,6 +2102,42 @@ Provider {
             launcher.enter(startNewWorkMade());
         console.info("launcher: new work wanted a repository; asking where it starts");
         return true;
+    }
+    // Where Start New Work can begin, as the realm's node last listed them
+    // (the agents daemon's places.rs), asked again each time the launcher
+    // opens, so a zone or checkout made since is there by the next, and read
+    // once as each list comes (Wheres.listable). None until it first
+    // answers, which leaves the quests' folders; where it can't, the last
+    // list stays, why journalled once as each new why comes rather than at
+    // every opening (Wheres.heard). One ask is out at a time, so a node
+    // that's stuck isn't asked again at each opening; the daemon answers
+    // every ask, with none when it goes (Daemon.qml's gone). A new list
+    // says the rows changed, so one landing while Joel is inside Start New
+    // Work is drawn there and then, not at the next opening.
+    property var startPlaces: []
+    property string startPlacesUnlisted: ""
+    property bool startPlacesAsking: false
+    function askPlaces() {
+        const daemon = rowsKind ?? null;
+        if (daemon === null || provider.startPlacesAsking)
+            return;
+        provider.startPlacesAsking = true;
+        daemon.ask({ ask: "places" }, answer => {
+            provider.startPlacesAsking = false;
+            const heard = Wheres.heard(provider.startPlacesUnlisted, answer);
+            if (heard.places !== null && Wheres.differs(provider.startPlaces, heard.places)) {
+                provider.startPlaces = heard.places;
+                provider.changed();
+            }
+            provider.startPlacesUnlisted = heard.unlisted;
+            if (heard.journal !== null)
+                console.info(`launcher: no places to start in: ${heard.journal}`);
+        });
+    }
+    // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
+    // node's places, a big repository's zones among them.
+    function startWheres() {
+        return Wheres.wheres(source("quests")?.folders() ?? [], startPlaces);
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -2329,6 +2372,8 @@ Provider {
         function onOpenChanged() {
             provider.wrapAhead();
             provider.wrapForTyping();
+            if (provider.launcher.open)
+                provider.askPlaces();
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";

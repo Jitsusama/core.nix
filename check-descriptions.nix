@@ -4377,6 +4377,12 @@
     mycelium: link offers are read again as one plain line of at most 1000 characters, its session
     kept only where one here has that address, named by its quest, the foot saying a page offered it
   '';
+  start-new-work-finds-places = ''
+    Start New Work lists the open quests' folders, then the places the realm's node names, each
+    folder once and only in plain words, what the node calls a zone started by its name, a quest's
+    folder that is one included, and the rest by their folder, as is a zone two checkouts share;
+    and a place the node says isn't checked out started by name all the same
+  '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
     and Let Them Start asks only on Joel's own Return, never a walk from outside or with no
