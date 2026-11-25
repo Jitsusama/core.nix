@@ -106,8 +106,8 @@ fn a_word_cut_to_the_hang_still_shares_a_first_line_it_fits() {
         ["a bbbb\u{2026}bbbbb"]
     );
     // Beside a two-cell word nine are left, and it's cut to its own
-    // line's ten, which no longer fit the first line, so it goes down
-    // whole, hung, rather than cut to the nine left.
+    // line's ten, which no longer fit the first line, so it goes down,
+    // hung, at those ten, rather than cut again to the nine left.
     assert_eq!(
         hanging("ab bbbbbbbbbbbbbbbbbbbbb", 0, Room::Cells(12)),
         ["ab", "  bbbb\u{2026}bbbbb"]

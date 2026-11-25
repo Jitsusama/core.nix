@@ -714,6 +714,10 @@ mod tests {
                     .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
                 "into {room:?} a control was drawn: {lines:#?}"
             );
+            assert!(
+                room == Room::Unbounded || lines.iter().any(|line| line.starts_with("    ")),
+                "into {room:?} the why didn't hang under its first line: {lines:#?}"
+            );
         }
     }
 
