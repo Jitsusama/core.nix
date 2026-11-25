@@ -687,12 +687,14 @@ fn a_reach_that_gets_through_runs_at_a_worse_band_or_upkeep_skips_nothing_more()
     );
 }
 
+/// An offer's path, for `left_to_judge`, named since a closure can't say the borrow it returns.
+fn path(offer: &PathBuf) -> &Path {
+    offer
+}
+
 #[test]
 fn a_reach_skips_what_was_judged_unless_that_leaves_it_nothing() {
     let offers: Vec<PathBuf> = ["/d/cache", "/d/logs"].map(PathBuf::from).to_vec();
-    fn path(offer: &PathBuf) -> &Path {
-        offer
-    }
     assert_eq!(
         left_to_judge(&offers, Some(&paths(&["/d/cache"])), path),
         vec![PathBuf::from("/d/logs")],
