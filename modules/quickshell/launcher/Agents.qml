@@ -1683,7 +1683,9 @@ Provider {
     // is given, as `name`, sprouting in `start`, the folder unless said.
     // Keyed by its folder, never its start, so a list of places landing
     // while Joel is on a row that changes how it starts (a quest's folder
-    // found to be a zone) leaves him on the same row, not a dimmed one.
+    // found to be a zone) leaves him on the same row, not a dimmed one. Its
+    // start is read again at Return, so a field entered before the list
+    // landed starts as the row now says.
     function newWorkAct(id, folder, name, start) {
         const key = folder === "" ? `verb:agents:start-new-work:${id}`
             : `verb:agents:start-new-work:${id}:${folder}`;
@@ -1698,7 +1700,8 @@ Provider {
             // one carried here (askWhere).
             offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
-            given: said => provider.sprout(key, said, start ?? folder)
+            given: said => provider.sprout(key, said, start === undefined ? folder
+                : startWheres().find(one => one.folder === folder)?.start ?? start)
         });
     }
 
