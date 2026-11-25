@@ -113,7 +113,7 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
         _ => (Vec::new(), false),
     };
     let (would_reach, would_fall_back) = match verdict {
-        Verdict::StopAsked | Verdict::Waved(Waved::Joke | Waved::NoTag) => {
+        Verdict::StopAsked | Verdict::Waved(Waved::Joke | Waved::NoTag | Waved::Unopened) => {
             let would = reach(&judged.targets, &heard.context);
             (would.targets, would.fell_back)
         }
@@ -130,12 +130,16 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
         Verdict::StopAsked | Verdict::Waved(Waved::Joke | Waved::NoTag) => {
             (Tell::Loud, Reply::Nothing)
         }
-        Verdict::Resume | Verdict::Waved(Waved::TalkedAbout) => (Tell::Row, Reply::Nothing),
-        // Joel's account saying the phrase other than as its opening is
-        // most often one of his agents writing about it, so it's only
-        // kept in the log, like a quote.
-        Verdict::Waved(Waved::Quoted | Waved::Bot | Waved::Outsider | Waved::Unopened)
-        | Verdict::Nothing => (Tell::Log, Reply::Nothing),
+        // Joel's account naming the phrase other than as its opening is
+        // most often one of his agents writing about it, so it doesn't
+        // sound; yet it might be his own stop, so it's a row he can
+        // stop from.
+        Verdict::Resume | Verdict::Waved(Waved::TalkedAbout | Waved::Unopened) => {
+            (Tell::Row, Reply::Nothing)
+        }
+        Verdict::Waved(Waved::Quoted | Waved::Bot | Waved::Outsider) | Verdict::Nothing => {
+            (Tell::Log, Reply::Nothing)
+        }
     };
     Decision {
         verdict,
@@ -367,6 +371,35 @@ mod tests {
         assert!(
             stop.would_reach.is_empty(),
             "a stop itself has its reaches, not a would-reach"
+        );
+    }
+
+    #[test]
+    fn joels_account_naming_the_phrase_mid_text_on_a_markdown_host_is_a_row_to_stop_from() {
+        let heard = Heard {
+            platform: Platform::Markdown,
+            author: "jitsusama".to_owned(),
+            by_bot: false,
+            outsider: false,
+            text: "Once it's fixed, pineapple override on #4215".to_owned(),
+            context: Context::of_thread("review https://code.example.com/example/shop/pull/12"),
+        };
+        let joel = Joel {
+            logins: vec!["jitsusama".to_owned()],
+            ..joel()
+        };
+        let decision = decide(&heard, &joel);
+        assert_eq!(
+            decision.verdict,
+            Verdict::Waved(Waved::Unopened),
+            "not opening with the phrase, it's waved off"
+        );
+        assert!(!decision.stops(), "it stops nothing");
+        assert_eq!(decision.tell, Tell::Row, "it's a row, never loud");
+        assert_eq!(decision.reply, Reply::Nothing, "and answered nothing");
+        assert!(
+            !decision.would_reach.is_empty(),
+            "its row's stop reaches what one said there would"
         );
     }
 }

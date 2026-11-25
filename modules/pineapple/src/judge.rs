@@ -137,6 +137,7 @@ pub enum Waved {
     /// post as him, without opening with the phrase: only a saying that
     /// opens with it, after any tags, is his command. An agent's findings
     /// quoting the phrase once stopped everything (WCJQSG, 25 November).
+    /// It's shown to him to stop from, in case it was his.
     Unopened,
 }
 
@@ -195,8 +196,12 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     let phrase_anywhere = has_run(&anywhere, &OVERRIDE) || has_run(&anywhere, &RESUME);
     // Joel's account on a markdown host is his agents' too, so there his
     // own saying counts only when it opens with the phrase.
-    let unopened =
-        |run: &[&str]| by_joel && saying.platform == Platform::Markdown && !opens_with(&own, run);
+    let unopened = |run: &[&str]| {
+        by_joel && saying.platform == Platform::Markdown && !opens_with(saying.text, run)
+    };
+    // One of his that opens with a resume is weighed as one, whatever
+    // override it names after.
+    let resumes_first = unopened(&OVERRIDE) && !unopened(&RESUME);
 
     if saying.by_bot {
         let verdict = if phrase_anywhere {
@@ -206,7 +211,7 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
         };
         return found(verdict, Vec::new());
     }
-    if let Some(at) = find_run(&words, &OVERRIDE) {
+    if let Some(at) = find_run(&words, &OVERRIDE).filter(|_| !resumes_first) {
         let verdict = if unopened(&OVERRIDE) {
             Verdict::Waved(Waved::Unopened)
         } else if talked_about(&words, at) {
@@ -243,16 +248,29 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     found(Verdict::Nothing, Vec::new())
 }
 
-/// Whether `own` words open with the run `run`, after any tags that lead
-/// them, as "@jitsusama pineapple override" and "pineapple override" do.
-fn opens_with(own: &str, run: &[&str]) -> bool {
-    let mut rest = own.trim_start();
+/// Whether `text` opens with the run `run` as Joel types it: its first
+/// letters the run's, after any tags that lead it, as "@jitsusama
+/// pineapple override" and "@jitsusama, pineapple override" do. Anything
+/// before them, a quote, a heading, bold or a quotation mark, is someone
+/// writing about the phrase rather than saying it.
+fn opens_with(text: &str, run: &[&str]) -> bool {
+    let mut rest = text.trim_start();
     while let Some(tag) = rest.strip_prefix('@') {
-        let end = tag.find(char::is_whitespace).unwrap_or(tag.len());
-        rest = tag[end..].trim_start();
+        let end = tag
+            .find(|letter: char| !(letter.is_alphanumeric() || "-_.@".contains(letter)))
+            .unwrap_or(tag.len());
+        rest = tag[end..].trim_start_matches(|letter: char| {
+            letter.is_whitespace() || letter == ',' || letter == ':'
+        });
     }
+    let Some(first) = run.first() else {
+        return false;
+    };
+    let starts = rest
+        .get(..first.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(first));
     let opening = tokens(rest);
-    opening.len() >= run.len() && opening.iter().zip(run).all(|(word, want)| word == want)
+    starts && opening.len() >= run.len() && opening.iter().zip(run).all(|(word, want)| word == want)
 }
 
 /// Whether the phrase at `at` is being talked about rather than said, as

@@ -462,6 +462,48 @@
       "verdict": "stop"
     },
     {
+      "name": "Joel's account opening a heading with the phrase",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "## pineapple override\n\nWhy the reader heard it twice.",
+      "verdict": "waved:unopened"
+    },
+    {
+      "name": "Joel's account opening with the phrase in single quotes",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "'pineapple override' could start a stop-and-alert loop.",
+      "verdict": "waved:unopened"
+    },
+    {
+      "name": "Joel's account opening with a quote, then the phrase",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "> the reader's log\n\npineapple override is what it heard here.",
+      "verdict": "waved:unopened"
+    },
+    {
+      "name": "Joel's account mid-text after a cue, unopened before talked about",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "To stop them, type pineapple override",
+      "verdict": "waved:unopened"
+    },
+    {
+      "name": "Joel opens with his tag and a comma, no space",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "@jitsusama,pineapple override",
+      "verdict": "stop"
+    },
+    {
+      "name": "Joel opens with a resume and names the override after",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "pineapple resume, since that pineapple override was only a test",
+      "verdict": "resume"
+    },
+    {
       "name": "Joel mid-sentence on Slack, where no agent writes as him",
       "platform": "slack",
       "author": "U0JOEL0001",
