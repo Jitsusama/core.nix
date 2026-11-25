@@ -10483,8 +10483,10 @@ Scope {
                 // line whole, and where its last line's box may end.
                 drawnFacts: drawerCard.facts.map(fact => fact.heading ?? fact.label ?? ""),
                 // Each fact's value as it's drawn, null while it's asked, in
-                // drawnFacts' order: facts above is what was given, and the
-                // card drops a fact that repeats its title.
+                // drawnFacts' order: facts above is what was given, by label,
+                // and parts from it where the card drops a fact that repeats
+                // its title (DrawerValue.factsShown) and where a fact's
+                // heading names it in place of its label.
                 values: drawerCard.facts.map(fact => fact.value ?? null),
                 // Each fact's figure drawn beside its value, by its shape,
                 // "" for none or one given way.
