@@ -1261,6 +1261,14 @@ Provider {
             launcher?.walkRefused?.(told);
             return;
         }
+        // A second Return to an ask he answered goes nowhere, as it takes his first, so the
+        // foot says so rather than showing it sent.
+        if (TalkAnswers.answeredAlready(answeredTo[to], answers.want)) {
+            told = TalkAnswers.filled(said.answeredAlready ?? "", { name: session.title });
+            launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            launcher?.walkRefused?.(told);
+            return;
+        }
         const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
         const keep = changed => {
             answeredTo = Object.assign({}, answeredTo,
