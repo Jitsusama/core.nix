@@ -16,6 +16,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 from desktop_session import PICTURE_COLOURS, SIGNING, STARTING, retry
 
 if TYPE_CHECKING:
@@ -26,13 +27,14 @@ LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 # The file that makes the lock's next password check stall (tests/desktop/desktop.nix).
 STALLS = "/run/lock-stalls/once"
 # Well past the 40 tries a new shell once asked polkit for its agent in before giving up:
-# 250 ms apart, each after polkit's answer, so 10 s idle and more on a loaded host.
+# 250 ms apart, each after polkit's answer, so 10 s idle and more on a loaded host, where it's
+# stretched as every wait is (vm_helpers.pace).
 HELD_ASKED = timedelta(seconds=20)
 # How long a first ask after polkit restarts is given to come up before it's read as refused
 # (polkit_asked_again).
 AGENT_BACK = timedelta(seconds=10)
-# Where an ask's systemctl leaves how it ended, so a refused ask is told from a slow one: the
-# account's own runtime folder, where nothing else writes.
+# Where an ask's systemctl leaves its exit status and what it said, so a refused ask is told
+# from a slow or timed-out one: the account's own runtime folder, where nothing else writes.
 ASK_ENDED = "/run/user/1000/polkit-ask-ended"
 
 
@@ -271,12 +273,14 @@ def test_polkits_prompt_comes_up_after_polkit_restarts(desktop: Desktop) -> None
 
     The shell registers its agent with polkit as it starts, and a switch can restart polkit
     under it without restarting the shell. polkit's agent library then registers the agent
-    again by itself, so this guards that library, not the held shell's tries. On 23 Nov polkit
-    had restarted three times under one shell before its prompts stopped coming up.
+    again by itself, so this guards that library, not the held shell's tries: a polkit or
+    quickshell that stopped registering again would fail it. It doesn't replay 23 Nov, when
+    polkit had restarted three times under one shell before its prompts stopped coming up,
+    since that shell held the agent and drew nothing, a fault still unexplained.
     """
     for _ in range(3):
         polkit_restarted(desktop)
-    polkit_asked_again(desktop)
+    polkit_asked_again(desktop, again=True)
 
 
 def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop) -> None:
@@ -302,7 +306,7 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
             desktop.in_session(f"{said} 'Held until released'"), timeout=STARTING
         )
         # Past the tries a held shell once asked for the agent in, the old launcher still open.
-        machine.sleep(duration=HELD_ASKED)
+        machine.sleep(duration=HELD_ASKED * vm_helpers.pace(vm_helpers.busyness()))
         # Two shells run now, so the old one's launcher is closed by its own process.
         desktop.as_account(f"qs ipc --pid {old} call launcher toggle")
         # Handed over, the unit's main process is the new shell, never none (0).
@@ -318,7 +322,8 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
         if not took:
             print(desktop.diagnosis("systemctl --user status quickshell"))
             shell_started_again(desktop)
-    polkit_asked_again(desktop)
+    # The new shell has said it holds the agent, so a refused ask here is the fault itself.
+    polkit_asked_again(desktop, again=False)
 
 
 def polkit_restarted(desktop: Desktop) -> None:
@@ -333,30 +338,41 @@ def polkit_restarted(desktop: Desktop) -> None:
     machine.wait_until_succeeds("busctl --system status org.freedesktop.PolicyKit1 > /dev/null")
 
 
-def polkit_asked_again(desktop: Desktop) -> None:
-    """Asks polkit to start a system service, and answers its prompt, which must come up."""
+def polkit_asked_again(desktop: Desktop, *, again: bool) -> None:
+    """Asks polkit to start a system service, and answers its prompt, which must come up.
+
+    With again, an ask refused before polkit's library registered the agent is asked once more.
+    """
     machine = desktop.machine
     asked = "polkit asked by systemctl start polkit-allowed.service"
     # The service only ever makes the file, so one left by an earlier ask would pass this.
     machine.succeed(f"rm -f /run/polkit-allowed {ASK_ENDED}")
     ask = (
         "niri msg action spawn -- sh -c"
-        f" 'systemctl start polkit-allowed.service; echo $? > {ASK_ENDED}'"
+        ' \'said="$(systemctl start polkit-allowed.service 2>&1)";'
+        f' echo "$? $said" > {ASK_ENDED}\''
     )
     answered = False
     try:
         with desktop.told("keys polkit"), desktop.told("drawn polkit"):
             try:
-                with desktop.told(asked, timeout=AGENT_BACK):
+                with desktop.told(asked, timeout=AGENT_BACK if again else timedelta(seconds=30)):
                     desktop.as_account(ask)
             except AssertionError:
+                if not again:
+                    raise
                 # polkit's agent library registers the shell's agent again once polkit is back,
                 # and polkit says nothing of it at its default log level, so there's nothing to
                 # wait on. An ask just before finds no agent and is refused at once, so only an
                 # ask that ended refused is asked once more, and that one's prompt must come up.
-                # One still waiting, or one an agent took and drew nothing for, fails here.
-                refused = f"test -s {ASK_ENDED} && ! grep -qx 0 {ASK_ENDED}"
+                # One still waiting, one an agent took and drew nothing for, and one systemctl
+                # gave up on as timed out fail here, saying how the ask ended.
+                refused = (
+                    f"test -s {ASK_ENDED} && ! grep -q '^0 ' {ASK_ENDED}"
+                    f" && ! grep -qi 'timed out' {ASK_ENDED}"
+                )
                 if machine.execute(refused)[0] != 0:
+                    print(f"the first ask ended: {machine.execute(f'cat {ASK_ENDED}')[1]!r}")
                     raise
                 machine.succeed(f"rm -f {ASK_ENDED}")
                 with desktop.told(asked):
