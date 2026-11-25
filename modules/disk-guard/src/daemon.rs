@@ -512,10 +512,9 @@ pub struct Guard {
     /// Whether what hears the opens still does: its thread ends on an
     /// error reading them, after which nothing is heard.
     listening: Arc<AtomicBool>,
-    /// Nix's own `min-free`, and when it was read.
-    min_free: Option<(f64, Option<u64>)>,
-    /// How many reads of `min-free` in a row have failed.
-    min_free_failures: u32,
+    /// Nix's own `min-free`, when it was read, and how many reads of it in
+    /// a row have failed since.
+    min_free: Option<(f64, Option<u64>, u32)>,
     /// The account's home, which sentences write as `~`, for a guard run
     /// in one; the system's guard has none.
     home: Option<PathBuf>,
@@ -922,7 +921,6 @@ impl Guard {
             marked_at: None,
             listening: Arc::new(AtomicBool::new(false)),
             min_free: None,
-            min_free_failures: 0,
             home,
             freeze: None,
             disks: None,
@@ -2343,23 +2341,24 @@ impl Guard {
     fn read_min_free(&mut self, now: f64) {
         if self
             .min_free
-            .is_some_and(|(at, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
+            .is_some_and(|(at, _, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
         {
             return;
         }
+        let (kept, failures) = self
+            .min_free
+            .map_or((None, 0), |(_, kept, failures)| (kept, failures));
         self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
-            Ok(read) => {
-                self.min_free_failures = 0;
-                (now, Some(read))
-            }
+            Ok(read) => (now, Some(read), 0),
             Err(why) => {
-                if self.min_free_failures == 0 {
+                if failures == 0 {
                     eprintln!("disk-guard: reading Nix's min-free: {why}; keeping the last read");
                 }
-                self.min_free_failures = self.min_free_failures.saturating_add(1);
+                let failures = failures.saturating_add(1);
                 (
-                    now - MIN_FREE_EVERY + min_free_again(self.min_free_failures),
-                    self.min_free.and_then(|(_, kept)| kept),
+                    now - MIN_FREE_EVERY + min_free_again(failures),
+                    kept,
+                    failures,
                 )
             }
         });
@@ -2376,7 +2375,8 @@ impl Guard {
     /// Nix's own `min-free`, under which Nix soon collects by itself. A
     /// `min-free` of nothing is Nix never collecting by itself.
     fn near_min_free(&self) -> bool {
-        let Some((_, Some(min_free))) = self.min_free.filter(|&(_, min)| min > Some(0)) else {
+        let Some((_, Some(min_free), _)) = self.min_free.filter(|&(_, min, _)| min > Some(0))
+        else {
             return false;
         };
         crate::sys::space(&self.config.nix.store)
