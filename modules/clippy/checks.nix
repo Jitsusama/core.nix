@@ -30,7 +30,7 @@ onLinux {
         "${both}/${baseNameOf program}";
       programs = [
         (withTests ../creative-pebble-x-plus/lights.rs)
-        ../desk-facts/facts.rs
+        "${import ../desk-facts/source.nix { inherit lib; }}/facts.rs"
         ../disk-loss-panic/disk-loss-panic.rs
         ../ergodox/ergodox-watch.rs
         ../linux-id/pinentry.rs
