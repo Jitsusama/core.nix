@@ -495,7 +495,12 @@ def folder(path: str) -> str:
 
 
 def build(
-    sources: Path, root: Path, theme: Path, declared: Path | None = None, *, into: Path | None = None
+    sources: Path,
+    root: Path,
+    theme: Path,
+    declared: Path | None = None,
+    *,
+    into: Path | None = None,
 ) -> str:
     """Build the home from its sources, root's sites.json, the theme and declared rows.
 
