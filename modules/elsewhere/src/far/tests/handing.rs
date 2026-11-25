@@ -407,11 +407,16 @@ fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it(
 #[test]
 fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
     // A job that moves the copies' folder aside and puts at its name a
-    // link to a folder holding a copy and a run's file at its own number,
-    // then ends, or is stopped, or leaves a link the far line can't clear.
-    let swapping = "s=$(cd ../.. && pwd)/.s && mv \"$s\" \"$HOME/aside\" &&
-         mkdir -p \"$HOME/decoy/1\" && : > \"$HOME/decoy/1/kept\" && : > \"$HOME/decoy/1.run\" &&
-         ln -s \"$HOME/decoy\" \"$s\"";
+    // link to a folder holding a copy at its own number, with its run's
+    // file and the lists and archive beside it, then ends, or is stopped,
+    // or leaves a link the far line can't clear.
+    let decoy = ["1", "1.back", "1.back.lost", "1.names", "1.run", "1.tar"];
+    let swapping = format!(
+        "s=$(cd ../.. && pwd)/.s && mv \"$s\" \"$HOME/aside\" &&
+         mkdir -p \"$HOME/decoy/1\" && : > \"$HOME/decoy/1/kept\" && cd \"$HOME/decoy\" &&
+         touch {} && ln -s \"$HOME/decoy\" \"$s\"",
+        decoy[1..].join(" ")
+    );
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
     let cases: [(&str, &[(&str, &str)]); 3] = [
         ("ended", &[]),
@@ -427,12 +432,20 @@ fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
         let job = format!("{swapping}{stop}");
         let (code, err, home) =
             far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, programs);
-        let decoy = home.join("decoy");
+        assert!(
+            (how == "stopped")
+                == std::fs::read_to_string(home.join("signal")).is_ok_and(|signal| signal == "15"),
+            "the far line {how} was stopped, or wasn't ({code:?}): {err}"
+        );
+        // Exactly as the job left it, nothing taken and nothing written.
         assert!(
             home.join("aside").exists()
-                && decoy.join("1").join("kept").exists()
-                && decoy.join("1.run").exists(),
-            "a far line {how} cleared through the link at its copies' folder ({code:?}): {err}"
+                && home.join("decoy/1/kept").exists()
+                && left_in(&home.join("decoy")) == decoy
+                && left_in(&home.join("decoy/1")) == ["kept"],
+            "a far line {how} cleared or wrote through the link at its copies' folder \
+             ({code:?}): {:?} {err}",
+            left_in(&home.join("decoy"))
         );
         let linked = std::fs::symlink_metadata(work(&home)).is_ok_and(|at| at.is_symlink());
         let stays = !programs.is_empty();

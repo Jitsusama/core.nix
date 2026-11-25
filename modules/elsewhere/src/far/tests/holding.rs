@@ -1,9 +1,11 @@
 //! The far line holding the job's tree while it takes the archives: a
-//! link at the tree or above it, anything but a folder of its own there,
-//! and a tree gone, each judged before an archive is taken, a link put
-//! there later redirecting none, one that can't be cleared keeping the
-//! tree as the refusal clears the copy, and one a killed run left above
-//! it going before anything is read.
+//! link at the tree or anything but a folder of its own there, a link put
+//! above it while the line waited, and a tree gone, each judged before an
+//! archive is taken, a link put there later redirecting none, one that
+//! can't be cleared keeping the tree as the line clears the copy, one a
+//! killed run left above it going before anything is read, and links at
+//! the copies' folder or the copy, put while it's made, leaving it
+//! untaken.
 
 use super::crossing::refusing;
 use super::handing::pinning;
@@ -12,14 +14,28 @@ use super::{Left, far_line, handover, kind, work};
 use crate::far::{HANDOVER, TREE};
 
 #[test]
-fn a_link_put_at_the_job_s_tree_or_above_it_is_refused_before_an_archive_is_taken_through_it() {
+fn a_link_put_at_the_job_s_tree_or_above_it_is_answered_before_an_archive_is_taken_through_it() {
     // A mkdir that, making the copy's folder once the archive has
     // arrived, moves the job's tree, or its handover folder above it,
     // aside and puts a link to it at its name, so a rename through the
-    // link would take the archive from wherever it points.
-    for (moved, taken, at_link) in [
-        ("${at%/*}", "0.tar", Some(TREE)),
-        ("${at%/*/*}", "tree/0.tar", None),
+    // link would take the archive from wherever it points. At the tree
+    // it's the job's doing; above it, put since the wait cleared any
+    // there, it's this machine's.
+    for (moved, taken, at_link, code_said, said) in [
+        (
+            "${at%/*}",
+            "0.tar",
+            Some(TREE),
+            77,
+            "tree in its handover is reached through a link",
+        ),
+        (
+            "${at%/*/*}",
+            "tree/0.tar",
+            None,
+            75,
+            "a link was put above the job's tree while it waited",
+        ),
     ] {
         let swapping = format!(
             r#"case " $* " in *"/.s/1 "*)
@@ -37,8 +53,8 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
             "the stand-in never put a link at {moved} ({code:?}): {err}"
         );
         assert!(
-            code == Some(77) && err.contains("tree in its handover is reached through a link"),
-            "a link at {moved} wasn't refused ({code:?}): {err}"
+            code == Some(code_said) && err.contains(said),
+            "a link at {moved} didn't end {code_said}, saying {said:?} ({code:?}): {err}"
         );
         assert!(
             home.join("aside").join(taken).exists()
@@ -83,8 +99,12 @@ PATH=${{PATH#*:}} exec uname "$@""#
         let list = format!("{}\t0.tar\nend\n", archive.len());
         let (code, err, home) = reading(&list, &[("0.tar", &archive)], &programs);
         let linked = handover(&home).parent().map(std::fs::symlink_metadata);
+        // Ended by the wait's own check, never by the copy step's.
         assert!(
-            home.join("swapped").exists() && code == Some(75) && err.contains(said),
+            home.join("swapped").exists()
+                && code == Some(75)
+                && err.contains(said)
+                && !err.contains("so its tree stays"),
             "a link left above the handover wasn't answered untaken, saying {said:?} \
              ({code:?}): {err}"
         );
@@ -103,8 +123,8 @@ PATH=${{PATH#*:}} exec uname "$@""#
 #[test]
 fn a_link_at_the_job_s_handover_that_can_t_be_cleared_keeps_its_tree_but_not_its_copy() {
     // As above, the handover folder moved aside with a link at its name,
-    // but one the far line isn't allowed to clear: the refusal says the
-    // tree stays and clears the copy alone.
+    // but one the far line isn't allowed to clear: it ends untaken,
+    // saying the tree stays, and clears the copy alone.
     let swapping = format!(
         r#"case " $* " in *"/.s/1 "*)
   PATH=${{PATH#*:}} at='{FIRST}'
@@ -122,8 +142,11 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
         &[("mkdir", &swapping), (rm, &pinned)],
     );
     assert!(
-        home.join("swapped").exists() && code == Some(77) && err.contains("so its tree stays"),
-        "a link at the handover it can't clear wasn't refused, saying the tree stays \
+        home.join("swapped").exists()
+            && code == Some(75)
+            && err.contains("put above the job's tree")
+            && err.contains("so its tree stays"),
+        "a link at the handover it can't clear wasn't left untaken, saying the tree stays \
          ({code:?}): {err}"
     );
     assert!(
@@ -267,4 +290,92 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
         "a tree gone wasn't left for another try ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_untaken() {
+    // Another job of the quest moving the copies' folder aside, with a
+    // link to it at its name, as the archive's names are read, where the
+    // far line may clear the link and where it may not; or moving the copy
+    // aside, with a link at its name, once tar unpacked into it, or once
+    // the copy was checked, before the job's cd. Each is this machine's to
+    // answer, nothing is cleared through the link, and the job never runs.
+    let folder = r#"mv "$s" "$HOME/aside" && ln -s "$HOME/aside" "$s""#;
+    let copy = r#"mv "$s/1" "$HOME/moved" && ln -s "$HOME/moved" "$s/1""#;
+    let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
+    let cases = [
+        (
+            "tar",
+            "*\" -tf \"*",
+            false,
+            folder,
+            ["aside/1.run", "aside/1.tar"],
+            false,
+        ),
+        (
+            "tar",
+            "*\" -tf \"*",
+            false,
+            folder,
+            ["aside/1.run", "aside/1.tar"],
+            true,
+        ),
+        (
+            "tar",
+            "*\" -xf \"*",
+            true,
+            copy,
+            ["moved/a", "moved/a"],
+            false,
+        ),
+        (
+            "find",
+            "*\" -links \"*",
+            true,
+            copy,
+            ["moved/a", "moved/a"],
+            false,
+        ),
+    ];
+    for (step, when, after, swap, kept, stays) in cases {
+        let swapping = format!(
+            r#"PATH=${{PATH#*:}} at='{FIRST}' s="$HOME/${{at%/{HANDOVER}/*}}/.s"
+swap() {{ [ -e "$HOME/swapped" ] || {{ {swap} && : > "$HOME/swapped"; }}; }}
+case " $* " in {when}) [ -n "{after}" ] || swap ;; esac
+{step} "$@"; r=$?
+case " $* " in {when}) [ -z "{after}" ] || swap ;; esac
+exit $r"#,
+            after = if after { "yes" } else { "" },
+        );
+        let mut programs = vec![(step, swapping.as_str())];
+        if stays {
+            programs.push((rm, pinned.as_str()));
+        }
+        let archive = archive_of("a", "inside");
+        let list = format!("{}\t0.tar\nend\n", archive.len());
+        let (code, err, home) = far_line(
+            Left::Listed(&list),
+            &[("0.tar", &archive)],
+            "touch ../ran",
+            &kind(""),
+            None,
+            &programs,
+        );
+        let case = format!("{step} {when} {}", if stays { "pinned" } else { "" });
+        assert!(
+            home.join("swapped").exists()
+                && code == Some(75)
+                && err.contains("so its copy stays") == stays,
+            "a link put at {case} didn't leave the job untaken ({code:?}): {err}"
+        );
+        assert!(
+            kept.iter().all(|kept| home.join(kept).exists())
+                && ["aside/ran", "ran"]
+                    .iter()
+                    .all(|ran| !home.join(ran).exists())
+                && !work(&home).join("ran").exists(),
+            "with a link put at {case}, the job ran or what lay past the link was cleared: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

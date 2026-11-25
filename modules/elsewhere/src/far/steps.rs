@@ -64,8 +64,9 @@ pub(super) const A_PASS_SPENDS_AT_MOST: u64 = 10;
 /// `unlinked` come before it. A link at the job's handover or above it,
 /// as a run killed with no stop leaves for the quest's next job, goes
 /// first, so nothing is read through it and that job isn't refused for
-/// it; one that can't be cleared ends the line untaken, as this
-/// machine's to answer.
+/// it, and is said, since what crossed through it is then out of reach
+/// and the wait may run out for it; one that can't be cleared ends the
+/// line untaken, as this machine's to answer.
 pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
     // No more than a share carries, which keeps the far sum in range.
     let bytes = bytes.min(MOST_BYTES);
@@ -147,7 +148,8 @@ pub(super) fn stopping() -> String {
 unlinked() {{
   [ -L "${{job%/*/*/*}}" ] || chmod u+rwx "${{job%/*/*/*}}" 2>/dev/null
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
-    [ ! -L "$at" ] || rm -f "$at" 2>/dev/null
+    [ ! -L "$at" ] || {{ rm -f "$at" 2>/dev/null
+      [ -L "$at" ] || printf "elsewhere: a link at the job's handover was cleared\n" >&2; }}
     [ ! -L "$at" ] || return 1
     [ ! -d "$at" ] || chmod u+rwx "$at" 2>/dev/null
   done
@@ -156,7 +158,7 @@ unlinked() {{
 stopped() {{
   trap '' HUP INT PIPE TERM
   cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
-    {{ [ -z "$mine" ] || {{ copies &&
+    {{ [ -z "$mine" ] || {{ {{ copies || stays; }} &&
       cleared "$work.names" "$work.tar" "$work.back" "$work.back".* "$work" &&
         rm -f "$work{RUN}"
     }}; }}
@@ -239,8 +241,9 @@ pub(super) const RUN: &str = ".run";
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
-/// taken, and `copies`, true once no link stands at the copies' folder.
-/// It comes first, before any step that clears, so each finds both
+/// taken, `copies`, true once no link stands at the copies' folder, and
+/// `stays`, saying where one can't be cleared that the copy stays. It
+/// comes first, before any step that clears, so each finds all three
 /// whichever runs first. `cleared` opens what its walk meets only below
 /// each path, and a link met there as itself alone; a folder above a path
 /// is passed through as `rm` passes it.
@@ -257,11 +260,20 @@ cleared() {
 # there cleared first: a job of the quest may put one there while this
 # line runs, and the copy, what lies beside it and its run's file are
 # each written, unpacked or cleared by name through that folder. Each
-# step doing so asks first, which narrows a link put there after to that
-# step's own instant rather than closing it.
+# step that begins doing so asks first, and the unpacking and the lists
+# brought back ask again past their long parts, which narrows a link put
+# there after to the span of a step rather than closing it. Only a link
+# is caught: a folder put in its place is taken as the copies' own,
+# which gains a job of the quest nothing it couldn't write itself.
 copies() {
   [ ! -L "${work%/*}" ] || rm -f "${work%/*}" 2>/dev/null
   [ ! -L "${work%/*}" ]
+}
+# Says the copy stays, as a link at the copies' folder couldn't be
+# cleared, and fails, so what would clear it is passed over.
+stays() {
+  printf "elsewhere: a link at its copies' folder couldn't be cleared, so its copy stays\n" >&2
+  return 1
 }"#;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
@@ -278,13 +290,15 @@ copies() {
 /// Archives are taken from the job's tree held as the pass's working
 /// folder, once that folder is the very one the quest's scratch holds
 /// at the tree's name, since through a link put at the tree or above it
-/// a rename would take a file from wherever the link points: a tree
-/// reached so, or anything but a folder of its own at its name, is the
-/// job's fault, and one gone is this machine's, as a rename failing was,
+/// a rename would take a file from wherever the link points: a link at
+/// the tree's name, or anything but a folder of its own there, is the
+/// job's fault, and a link above it, put there since the wait cleared
+/// them, or a tree gone, is this machine's, as a rename failing was,
 /// each said. Held so, a link put there later redirects no rename's
 /// source, which is by its name in that folder; where a rename puts it,
 /// beside the copy, is through the copies' folder, which `copies` makes
-/// sure is no link at the instant before. Each archive
+/// sure is no link just before, though a folder put in its place is
+/// taken as its own. Each archive
 /// is taken from the handover by renaming it to the copy's own `.tar`,
 /// once, so the archive checked is the very one unpacked:
 /// a share writes a file by renaming a new one over its name, which
@@ -323,7 +337,13 @@ copies() {
 /// is, as the run's file is.
 pub(super) fn copying() -> String {
     format!(
-        r#"copied() {{
+        r#"# True once the copy is a folder of its own at its name, no link
+# standing at it or at the copies' folder, as `copies` says: a job of
+# the quest may put one at either, which tar's -C and the job's cd follow.
+placed() {{
+  copies && [ -d "$work" ] && [ ! -L "$work" ]
+}}
+copied() {{
   left=$(cat "$job/{LEFT}") || return 2
   # Each pass runs in a subshell of its own, so it ends by exit, and its
   # answer is the pipe's.
@@ -348,7 +368,8 @@ pub(super) fn copying() -> String {
     # put at the tree or above it, then or later, redirects where a
     # rename takes from. Where it puts the archive, beside the copy, goes
     # through the copies' folder, which is checked for a link before
-    # each rename and each unpacking, narrowing one to that instant.
+    # each rename and on each side of each unpacking, the copy too, as
+    # `copies` says, narrowing one to that span.
     [ -n "$held" ] || {{
       # The copy lies in the same scratch, so it is a whole path too.
       case $job in /*) ;; *) {{
@@ -359,16 +380,20 @@ pub(super) fn copying() -> String {
       [ ! -L "$job/{TREE}" ] && cd -P "$job/{TREE}" 2>/dev/null &&
         [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
         # Judged once the tree couldn't be held, so one taken away
-        # meanwhile is gone too. A link at the tree, even one pointing
-        # nowhere, or at a folder above it that `unlinked` walks, is the
+        # meanwhile is gone too. A link at a folder above the tree that
+        # `unlinked` walks was put there since the wait cleared them, by
+        # anything but this job, which hasn't run, so it is this
+        # machine's. A link at the tree, even one pointing nowhere, is the
         # job's doing, as a file or a folder closed to this account at the
         # tree is. Above the tree, one pointing nowhere, a file or a closed
         # folder fails the list's read before this, as this machine's.
-        for at in "$job/{TREE}" "$job" "${{job%/*}}" "${{job%/*/*}}"; do
-          [ ! -L "$at" ] || at=
-          [ -n "$at" ] || break
+        for at in "$job" "${{job%/*}}" "${{job%/*/*}}"; do
+          [ ! -L "$at" ] || {{
+            printf "elsewhere: a link was put above the job's tree while it waited\n" >&2
+            exit 2
+          }}
         done
-        [ -z "$at" ] || [ -e "$job/{TREE}" ] || {{
+        [ -L "$job/{TREE}" ] || [ -e "$job/{TREE}" ] || {{
           printf "elsewhere: the job's tree is gone from its handover\n" >&2
           exit 2
         }}
@@ -403,9 +428,9 @@ pub(super) fn copying() -> String {
           exit 1 ;;
       esac
     done < "$work.names"
-    copies || exit 2
+    placed || exit 2
     tar -xf "$work.tar" -C "$work"; unpacked=$?
-    rm -f "$work.tar" || exit 2
+    placed && rm -f "$work.tar" || exit 2
     find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || exit 2
     [ "$unpacked" -eq 0 ] || exit 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
@@ -447,8 +472,8 @@ if unlinked; then
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
-  cd "$HOME" && copies && cleared "$work.names" "$work.tar" "$work.back" "$work.back".* "$work" &&
-    rm -f "$work{RUN}"
+  cd "$HOME" && {{ copies || stays; }} &&
+    cleared "$work.names" "$work.tar" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
   ! unlinked || {{
     cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
     (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}") ||
@@ -495,12 +520,14 @@ pub(super) fn bringing(kind: &Kind) -> String {
         // list gets no end. `true` rather than `:` for the same reason.
         // What can't be cleared, as a folder the job made at a list's
         // name, is left for the list's own write to fail on, so each path
-        // is lost as when nowhere is left to list them.
+        // is lost as when nowhere is left to list them. Its lists lie
+        // beside the copy, so they are begun only once no link stands at
+        // the copies' folder, where one does each path being lost, and
+        // sorted only once none stands after the finds, where one does
+        // the list being cut.
         r#"names="$work.back" wrote=0 beside=
 (
 rm -f "$job/{BROUGHT}" 2>/dev/null
-# Its lists lie beside the copy, so only once no link stands at the
-# copies' folder; where one does, each path is lost.
 copies && beside=1 && rm -f "$names" "$names".* 2>/dev/null
 set -C
 lose() {{
@@ -521,6 +548,7 @@ for path in {paths}; do
 done
 # A file two of the paths hold crosses once, and counts once. One that
 # can't be sorted loses every path, each named once.
+copies || exit 1
 LC_ALL=C sort -u "$names" > "$names.in" ||
   {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
     exit 1; }}
@@ -599,7 +627,7 @@ pub(super) fn freed() -> String {
     printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
   fi
   if ! copies; then
-    printf "elsewhere: a link at its copies' folder couldn't be cleared, so its copy stays\n" >&2
+    stays
     [ -z "$handed" ] || cleared "$job/{TREE}"
   elif [ -n "$handed" ]; then cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
   else cleared "$work" && rm -f "$work{RUN}"; fi
