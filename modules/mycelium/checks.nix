@@ -1812,8 +1812,8 @@ in
               # Each body line a doc line, the one field attribute serde
               # may carry, or a field of one line.
               field = builtins.match "    ([a-z_][a-z0-9_]*): (.*),";
-              defaulted = "    #[serde(default)]";
-              plain = line: lib.hasPrefix "    ///" line || line == defaulted || field line != null;
+              attribute = "    #[serde(default)]";
+              plain = line: lib.hasPrefix "    ///" line || line == attribute || field line != null;
               fail = why: { failed = "struct ${struct} ${why}"; };
             in
             if from == null || to == null then
@@ -1840,7 +1840,7 @@ in
                       matched = field line;
                       over = lib.filter (above: !lib.hasPrefix "    ///" above) (lib.take at body);
                     in
-                    lib.optional (matched != null && over != [ ] && lib.last over == defaulted) (lib.head matched)
+                    lib.optional (matched != null && over != [ ] && lib.last over == attribute) (lib.head matched)
                   ) body
                 );
                 read = lib.listToAttrs (
@@ -2327,13 +2327,13 @@ in
               };
             };
           };
-          # A model priced at nothing, refused as the machine builds, since
-          # it would spend past any daily cap.
-          free = lending // {
+          # A model with a price of nothing, refused as the machine builds,
+          # since it would spend past any daily cap: each price alike.
+          freeOf = price: {
             budgets = lending.budgets // {
               models = lending.budgets.models // {
                 prices.a-model = lending.budgets.models.prices.a-model // {
-                  output = 0;
+                  ${price} = 0;
                 };
               };
             };
@@ -2387,6 +2387,16 @@ in
         && warnsOf unpriced "${budgetWarned},"
         && warnsOf alsoModels "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
         && !warnsOf forgeOnly vmWarned
+        && !warnsOf forgeOnly "jitsusama.mycelium.lend.budgets.forge"
+        # Each lend warned of still meets every assertion, so its machine
+        # builds and lends what it can.
+        && lib.all (lend: evaluates (linux (both // { inherit lend; }))) [
+          uncapped
+          unwatched
+          unpriced
+          alsoModels
+          forgeOnly
+        ]
         &&
           lendWarned lending == [
             (
@@ -2396,7 +2406,12 @@ in
           ]
         && lendWarned priced == [ ]
         && writes cacheUnpriced cacheUnpriced
-        && typeRefuses free
+        && lib.all (price: typeRefuses (lending // freeOf price)) [
+          "input"
+          "output"
+          "cache_write"
+          "cache_read"
+        ]
         && reading (kindScan plainKind) == plainKinds
         && lib.all (refusedFor kindScan) unreadKinds
         # A kind the type takes, beside one it refuses, so the refusal is

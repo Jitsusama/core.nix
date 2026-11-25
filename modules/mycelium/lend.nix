@@ -98,7 +98,8 @@ lib.types.submodule {
                 by these prices, such as a server tool's use or a longer-lived
                 cache write, isn't counted here. The cap is each machine's,
                 not the prefix's: the budget's spend_watch allowance is what
-                holds them all.
+                holds them all, once spend-watch's feeds say what was spent,
+                which may be some minutes after it was.
               '';
             };
           };
