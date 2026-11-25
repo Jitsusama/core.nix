@@ -3,6 +3,7 @@
 {
   exampleLaptop,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -83,6 +84,45 @@ onLinux {
         && !(service ? MemoryMax)
         && (service.TimeoutStartSec or null) == "30min"
       );
+  # The hour asks nix-store for the closure of the build each service's unit
+  # names, so its PATH holds the account's Nix: without it every service
+  # would read as one cadence can't judge, and every merge reaching one
+  # would wait.
+  cadence-hour-finds-nix-store =
+    let
+      user = exampleLaptop.config.home-manager.users.joel;
+      nix = if user.nix.package != null then user.nix.package else pkgs.nix;
+      # The path alone, since a check's condition may not name a derivation.
+      bin = builtins.unsafeDiscardStringContext "${pkgs.lib.getBin nix}/bin";
+      environment = user.systemd.user.services.cadence-hour.Service.Environment or [ ];
+    in
+    holds "cadence-hour-finds-nix-store"
+      "cadence-hour's PATH holds no Nix, so it can't list the closure of the build any service's unit names, and every service reads as unread."
+      (
+        pkgs.lib.any (
+          entry:
+          pkgs.lib.hasPrefix "PATH=" entry
+          && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
+        ) environment
+      );
+  # A switch leaves each of cadence's runs be, the tick, day, review and
+  # hour and any added, since waiting on its start would outlast
+  # home-manager's patience under load and send the whole switch back;
+  # each timer starts the new unit next. With no switch to end one, each
+  # has a timeout to end a hang.
+  cadence-outlasts-a-switch =
+    let
+      services = exampleLaptop.config.home-manager.users.joel.systemd.user.services;
+      runs = lib.filterAttrs (
+        name: service:
+        (name == "cadence" || lib.hasPrefix "cadence-" name) && (service.Service.Type or null) == "oneshot"
+      ) services;
+      kept =
+        service: (service.Unit.X-SwitchMethod or null) == "keep-old" && service.Service ? TimeoutStartSec;
+    in
+    holds "cadence-outlasts-a-switch"
+      "A switch restarts one of cadence's runs and waits on it, or one has no timeout to end a hang, or fewer than its four runs were found."
+      (builtins.length (builtins.attrNames runs) >= 4 && builtins.all kept (builtins.attrValues runs));
   # cadence's budget measures match spend-watch's findings by keys copied
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or

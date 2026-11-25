@@ -4,8 +4,8 @@
 
 use super::crossing::refusing;
 use super::{Left, far_line, far_run, handover, kind, said, scratch, work};
-use crate::far::{BACK, Heard, LEFT, TREE, archive, relay};
-use std::path::Path;
+use crate::far::{BACK, END, Heard, LEFT, TREE, archive, relay};
+use std::path::{Path, PathBuf};
 
 #[test]
 fn the_far_line_unpacks_every_name_as_it_is_and_puts_nothing_outside() {
@@ -200,17 +200,248 @@ fn an_archive_that_isn_t_plain_ustar_is_refused_before_it_is_read() {
         bytes[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
         let text = String::from_utf8(bytes).unwrap();
         let list = format!("{}\t0.tar\nend\n", text.len());
-        let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
+        let (code, err, home) = reading(&list, &[("0.tar", &text)], &[]);
+        refused_as_not_plain(
+            code,
+            &err,
+            &home,
+            "0.tar",
+            &format!("the magic {magic:?}"),
+            0,
+        );
+    }
+    // A byte short of a whole header, its magic ustar's, which tar
+    // can't list, and so the job's fault, not this machine's.
+    let short = String::from_utf8(archive.stdout[..511].to_vec()).unwrap();
+    let list = format!("{}\t0.tar\nend\n", short.len());
+    let (code, err, home) = reading(&list, &[("0.tar", &short)], &[]);
+    refused_as_not_plain(code, &err, &home, "0.tar", "511 bytes", 0);
+    // One archive listed twice, which no near side writes.
+    let plain = String::from_utf8(archive.stdout.clone()).unwrap();
+    let list = format!("{0}\t0.tar\n{0}\t0.tar\nend\n", plain.len());
+    let (code, err, home) = reading(&list, &[("0.tar", &plain)], &[]);
+    assert!(
+        code == Some(77) && err.contains("names 0.tar twice"),
+        "an archive listed twice wasn't refused ({code:?}): {err}"
+    );
+    assert!(
+        !home.join("read").exists() && !work(&home).join("ran").exists(),
+        "an archive listed twice was read, or its job ran"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+    // A plain archive, then one with GNU's magic, so each is checked,
+    // not the first alone.
+    let mut gnu = archive.stdout.clone();
+    gnu[257..265].copy_from_slice(b"ustar  \0");
+    let gnu = String::from_utf8(gnu).unwrap();
+    let list = format!("{}\t0.tar\n{}\t1.tar\nend\n", plain.len(), gnu.len());
+    let files = [("0.tar", plain.as_str()), ("1.tar", gnu.as_str())];
+    // The first archive listed and unpacked, and the second never read.
+    let (code, err, home) = reading(&list, &files, &[]);
+    refused_as_not_plain(code, &err, &home, "1.tar", "a second archive", 2);
+}
+
+/// Runs the far line over `files` as `list` lists them, its job touching
+/// `ran` beside its copy, with `programs` and a tar that writes down each
+/// time it is run in the home's `read`, ahead on its path.
+fn reading(
+    list: &str,
+    files: &[(&str, &str)],
+    programs: &[(&str, &str)],
+) -> (Option<i32>, String, PathBuf) {
+    let tar = "printf '%s\\n' \"$*\" >> \"$HOME/read\"\nPATH=${PATH#*:} exec tar \"$@\"";
+    let programs: Vec<_> = programs.iter().copied().chain([("tar", tar)]).collect();
+    far_line(
+        Left::Listed(list),
+        files,
+        "touch ../ran",
+        &kind(""),
+        None,
+        &programs,
+    )
+}
+
+/// Asserts a far run in `home` ended `code` refusing `part` as an archive
+/// that isn't plain, `what` it was, said so in `err`, its tar having been
+/// run `reads` times, and left no job run and nothing of its own behind.
+fn refused_as_not_plain(
+    code: Option<i32>,
+    err: &str,
+    home: &Path,
+    part: &str,
+    what: &str,
+    reads: usize,
+) {
+    assert!(
+        code == Some(77) && err.contains(&format!("{part} isn't a plain one")),
+        "an archive of {what} wasn't refused ({code:?}): {err}"
+    );
+    let read = std::fs::read_to_string(home.join("read")).unwrap_or_default();
+    assert_eq!(
+        read.lines().count(),
+        reads,
+        "tar read an archive of {what} that was refused: {read}"
+    );
+    assert!(
+        !work(home).join("ran").exists()
+            && !work(home).join("1").exists()
+            && !work(home).join("1.tar").exists()
+            && !work(home).join("1.names").exists()
+            && !handover(home).join(TREE).exists(),
+        "a job ran over an archive of {what}, or its copy, archive or names were left"
+    );
+    let _ = std::fs::remove_dir_all(home);
+}
+
+/// An archive the near side writes of one file, `name` holding `text`.
+fn archive_of(name: &str, text: &str) -> String {
+    let made = scratch(&format!("archive-of-{name}"));
+    std::fs::write(made.join(name), text).unwrap();
+    archive::write(&made, [name], &made, 1 << 20, u64::MAX).unwrap();
+    let archive = std::fs::read_to_string(made.join("0.tar")).unwrap();
+    let _ = std::fs::remove_dir_all(&made);
+    archive
+}
+
+/// Where the job's first archive lies in a far run's home, as its shell
+/// names it from `$HOME`.
+const FIRST: &str = ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/\
+                     handover/elsewhere/1/tree/0.tar";
+
+#[test]
+fn an_archive_s_name_holding_a_link_a_folder_or_more_is_refused_before_it_is_read() {
+    // What no share writes, a link to a plain copy of the archive and a
+    // folder holding it, and one past the size its list gives, as a share
+    // writing it again would leave.
+    for (what, swap) in [
+        ("a link", r#"ln -s "$HOME/plain.tar" "$HOME/$at""#),
+        (
+            "a folder",
+            r#"mkdir "$HOME/$at" && cp "$HOME/plain.tar" "$HOME/$at/""#,
+        ),
+        (
+            "twice its size",
+            r#"cat "$HOME/plain.tar" "$HOME/plain.tar" > "$HOME/$at""#,
+        ),
+    ] {
+        // A mkdir that, making the copy's folder once the archive has
+        // arrived, puts that at the archive's name.
+        let swapping = format!(
+            r#"case " $* " in *"/.s/1 "*)
+  PATH=${{PATH#*:}} at='{FIRST}'
+  cp "$HOME/$at" "$HOME/plain.tar" && rm -f "$HOME/$at" && {swap} &&
+    : > "$HOME/swapped" ;;
+esac
+PATH=${{PATH#*:}} exec mkdir "$@""#
+        );
+        let archive = archive_of("a", "inside");
+        let list = format!("{}\t0.tar\nend\n", archive.len());
+        let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[("mkdir", &swapping)]);
         assert!(
-            code == Some(77) && err.contains("0.tar isn't a plain one"),
-            "an archive with the magic {magic:?} wasn't refused ({code:?}): {err}"
+            home.join("swapped").exists(),
+            "the stand-in never put {what} at the archive's name ({code:?}): {err}"
+        );
+        refused_as_not_plain(code, &err, &home, "0.tar", what, 0);
+    }
+}
+
+#[test]
+fn a_size_rewritten_into_the_list_after_it_arrived_is_read_as_digits_never_run() {
+    // A cat that, as the copy reads the list, first gives its archive a
+    // size that, read as arithmetic, runs a command or marks it plain.
+    for size in [r#"a[$(touch "$HOME/ran-it")]"#, "plain=1"] {
+        let rewriting = format!(
+            r#"case $1 in */{LEFT})
+  [ -e "$HOME/rewrote" ] || {{
+    printf '%s\t0.tar\n{END}\n' '{size}' > "$1" && : > "$HOME/rewrote"; }} ;;
+esac
+PATH=${{PATH#*:}} exec cat "$@""#
+        );
+        let archive = archive_of("a", "inside");
+        let list = format!("{}\t0.tar\n{END}\n", archive.len());
+        let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[("cat", &rewriting)]);
+        assert!(
+            home.join("rewrote").exists(),
+            "the stand-in never rewrote the list for {size} ({code:?}): {err}"
         );
         assert!(
-            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
-            "a job ran over an archive that isn't plain, or its copy was left"
+            code == Some(77) && err.contains("gives 0.tar a size that isn't a number"),
+            "a size of {size} wasn't refused ({code:?}): {err}"
+        );
+        assert!(
+            !home.join("ran-it").exists()
+                && !home.join("read").exists()
+                && !work(&home).join("ran").exists(),
+            "a size of {size} ran, or its archive was read, or its job ran"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_folder_where_the_archive_is_taken_to_is_cleared_first() {
+    // A mkdir that, making the copy's folder, makes a folder holding a
+    // file where the archive is taken to, as no run of ours leaves, so a
+    // rename that didn't clear it first would take the archive into it.
+    let planting = r#"case " $* " in *"/.s/1 "*)
+  for last; do :; done
+  PATH=${PATH#*:} mkdir -p "$last.tar" && : > "$last.tar/x" && : > "$HOME/planted" ;;
+esac
+PATH=${PATH#*:} exec mkdir "$@""#;
+    let archive = archive_of("a", "inside");
+    let list = format!("{}\t0.tar\nend\n", archive.len());
+    let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[("mkdir", planting)]);
+    assert!(
+        home.join("planted").exists(),
+        "the stand-in never made a folder where the archive is taken ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0) && work(&home).join("ran").exists(),
+        "a folder where the archive is taken kept the job from running ({code:?}): {err}"
+    );
+    assert!(
+        !work(&home).join("1.tar").exists(),
+        "the taken archive's name was left after the copy"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn an_archive_put_at_its_name_once_it_is_taken_is_never_read() {
+    let made = scratch("swapped");
+    std::fs::write(made.join("a"), "2").unwrap();
+    archive::write(&made, ["a"], &made, 1 << 20, u64::MAX).unwrap();
+    // A tar that, listing an archive, first puts another at the first's
+    // name in the handover, as a share writes one, by a new file renamed
+    // over it, so an unpacking that read the name again would unpack it.
+    let swapping = format!(
+        r#"case " $* " in *" -tf "*)
+  cp '{}' "$HOME/{FIRST}.new" && mv -f "$HOME/{FIRST}.new" "$HOME/{FIRST}" &&
+    : > "$HOME/swapped" ;;
+esac
+PATH=${{PATH#*:}} exec tar "$@""#,
+        made.join("0.tar").display()
+    );
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "1")],
+        "cat a > ../ran",
+        &kind(""),
+        None,
+        &[("tar", &swapping)],
+    );
+    assert!(
+        home.join("swapped").exists(),
+        "the stand-in never put the second archive in place ({code:?}): {err}"
+    );
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    assert_eq!(
+        std::fs::read_to_string(work(&home).join("ran")).unwrap(),
+        "1",
+        "the archive put at the name after the check was the one unpacked"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::remove_dir_all(&made);
 }
 
 #[test]
@@ -318,7 +549,8 @@ fn an_archive_naming_a_member_outside_its_tree_is_refused_before_it_s_unpacked()
         !work(&home).join("out").exists()
             && !work(&home).join("ran").exists()
             && !work(&home).join("1").exists()
-            && !work(&home).join("1.names").exists(),
+            && !work(&home).join("1.names").exists()
+            && !work(&home).join("1.tar").exists(),
         "an archive climbing out wrote outside its copy, a job ran, or its copy was left"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -417,11 +649,12 @@ fn the_archives_unpacked_are_the_very_ones_their_list_named_when_checked() {
         texts.push(String::from_utf8(std::fs::read(into.join("0.tar")).unwrap()).unwrap());
     }
     let _ = std::fs::remove_dir_all(&made);
+    // Its first listing, the first archive's, rewrites the list.
     let (tar, rewriting) = refusing(
         "tar",
-        "*\" -tf \"*/0.tar\" \"*",
+        "*\" -tf \"*",
         &format!(
-            "[ -e \"$HOME/rewrote\" ] || {{ left=\"${{2%/*/*}}/{LEFT}\" && \
+            "[ -e \"$HOME/rewrote\" ] || {{ at='{FIRST}' && left=\"$HOME/${{at%/*/*}}/{LEFT}\" && \
              first=$(head -n 1 \"$left\") && \
              printf '%s\\n9\\t5.tar\\nend\\n' \"$first\" > \"$left\" && \
              : > \"$HOME/rewrote\"; }}"

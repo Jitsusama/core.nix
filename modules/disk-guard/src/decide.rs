@@ -7,6 +7,41 @@ use crate::clock::Awake;
 use crate::moments::{Power, Pressure};
 use crate::units::float;
 
+/// What a filesystem's trend says comes next, in seconds: it's full, or it
+/// reaches the floor Nix keeps, never both.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Ahead {
+    pub full_in: Option<f64>,
+    pub floor_in: Option<f64>,
+}
+
+/// How far under Nix's floor free space may dip while Nix collects: Nix
+/// starts collecting only once free space is under its floor and frees as
+/// it goes, so a dip that shallow is neither the disk filling nor at its
+/// floor, and telling when it fills there would warn every time Nix
+/// collects. It's at most this, and at most half the floor, since a floor
+/// of 10 GiB, as NixOS's, would otherwise leave nothing under it that is
+/// told when it fills.
+pub const COLLECTING_UNDER: u64 = 10 << 30;
+
+/// How far under `floor` free space may dip while Nix collects: the
+/// smaller of `COLLECTING_UNDER` and half the floor.
+pub fn collecting_under(floor: u64) -> u64 {
+    COLLECTING_UNDER.min(floor / 2)
+}
+
+/// What one filesystem's trend says comes next, as its status carries it:
+/// when it's full, and Nix's floor with when it reaches it, the floor only
+/// on the filesystem Nix's store is on.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Forecast {
+    /// When it's full, in wall seconds.
+    pub full_at: Option<f64>,
+    pub nix_floor: Option<u64>,
+    /// When it reaches `nix_floor`, in wall seconds.
+    pub floor_at: Option<f64>,
+}
+
 /// How a filesystem's free space is being used up, in bytes a second:
 /// averaged over about two minutes, so one burst doesn't set it but a
 /// pass can answer a band before it arrives; and over about two hours, the
@@ -98,6 +133,60 @@ impl Fill {
         match self.trend() {
             Some(trend) if trend > 0.0 => Some(float(free - below) / trend),
             _ => None,
+        }
+    }
+
+    /// When the disk is full, or when it reaches `floor`, the free space
+    /// Nix keeps by collecting its own garbage as it builds, at the trend.
+    /// Above the floor only when it reaches it is told, since Nix collects
+    /// there before the disk fills; within `collecting_under` it neither,
+    /// since Nix is collecting; further under, Nix's collections haven't
+    /// kept up, so when it's full is told.
+    pub fn ahead(&self, free: u64, floor: Option<u64>) -> Ahead {
+        match floor {
+            Some(floor) if free > floor => Ahead {
+                full_in: None,
+                floor_in: self.steady_until(free, floor),
+            },
+            Some(floor) if free >= floor - collecting_under(floor) => Ahead::default(),
+            _ => Ahead {
+                full_in: self.steady_until(free, 0),
+                floor_in: None,
+            },
+        }
+    }
+
+    /// Seconds until free space reaches a band starting at `start`, at the
+    /// trend, or none where Nix's `floor` keeps it from getting there: a
+    /// band starting under the floor, while free space is above where Nix
+    /// collects, would otherwise be told as coming when Nix stops the
+    /// disk at its floor first.
+    pub fn band_in(&self, free: u64, start: u64, floor: Option<u64>) -> Option<f64> {
+        match floor {
+            Some(floor) if start < floor && free >= floor - collecting_under(floor) => None,
+            _ => self.steady_until(free, start),
+        }
+    }
+
+    /// What comes next for a filesystem on `device` with `free` bytes
+    /// free, at `now`: Nix's floor counts only on the filesystem Nix's
+    /// store is on, `nix_floor`'s device, so a separate home or build disk
+    /// is still told when it's full.
+    pub fn forecast(
+        &self,
+        free: u64,
+        device: u64,
+        nix_floor: Option<(u64, u64)>,
+        now: f64,
+    ) -> Forecast {
+        let floor = nix_floor
+            .filter(|&(on, _)| on == device)
+            .map(|(_, floor)| floor);
+        let ahead = self.ahead(free, floor);
+        Forecast {
+            full_at: ahead.full_in.map(|seconds| now + seconds),
+            nix_floor: floor,
+            floor_at: ahead.floor_in.map(|seconds| now + seconds),
         }
     }
 

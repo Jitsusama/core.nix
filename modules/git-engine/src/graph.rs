@@ -122,7 +122,9 @@ impl Graph {
 
     fn position(&self, oid: &Oid) -> io::Result<Option<u32>> {
         for (layer, start) in self.layers.iter().zip(&self.starts) {
-            if let Some(at) = crate::odb::search(&layer.file, layer.fanout, layer.names, 20, oid)? {
+            if let Some(at) =
+                crate::pack_index::search(&layer.file, layer.fanout, layer.names, 20, oid)?
+            {
                 return Ok(Some(start + at));
             }
         }

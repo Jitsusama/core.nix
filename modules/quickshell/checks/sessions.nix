@@ -80,7 +80,7 @@ in
     pkgs.runCommandLocal "the-sessions-kitty-is-asked-only-its-own-way" { } ''
       ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
         ${../tests/opens-in-sessions-doors.sh} ${pkgs.bash}/bin/sh ${linked} \
-        ${lib.getExe pkgs.python3}
+        ${lib.getExe pkgs.python3} ${../Sessions.qml}
       touch $out
     '';
 
@@ -144,6 +144,8 @@ in
         // isn't answering, as Niri.qml says it; a case sets it.
         property bool standIn: false
         property var current: null
+        // The window Joel is in, none, which a press's goingTo keeps.
+        property var focused: null
         // Workspace 5, where a sleeper's window was, and 8, named for the
         // orchestrator of a session elsewhere, Joel on another.
         property var workspaces: ({
@@ -199,7 +201,8 @@ in
       cp ${away} Away.qml
       cp ${notices} Notices.qml
       export XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons
+      mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium $XDG_RUNTIME_DIR/daemons \
+        $XDG_RUNTIME_DIR/pi-sessions
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

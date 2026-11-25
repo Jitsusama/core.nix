@@ -366,8 +366,15 @@ let
   # Only the Default profile's caches move; a profile added later keeps its
   # own on the disk, as all of them were before. The caches are Chrome's
   # own size, tens of megabytes, against the runtime folder's gigabytes.
+  #
+  # With usage reports off, Chrome deletes BrowserMetrics about two minutes
+  # into each session, the link with it, and a folder on the disk takes its
+  # place, which the next start maps its histograms from; a restart leaves
+  # no gap between Chrome quitting and starting for the move. So that one,
+  # marked +, moves even while Chrome runs, once nothing of Chrome's maps
+  # or holds open a file in it, as is so once Chrome has deleted its own.
   mappedFolders = [
-    "BrowserMetrics"
+    "+BrowserMetrics"
     "Default/GPUCache"
     "Default/DawnWebGPUCache"
     "Default/DawnGraphiteCache"

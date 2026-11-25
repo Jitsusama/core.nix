@@ -100,9 +100,14 @@ impl Listing {
 
     /// When it ended and how long it took, in wall seconds, if it says, so
     /// a guard started since rests after it as the one that listed would
-    /// have.
+    /// have. Its length counts at most what a listing may run, as the
+    /// guard that heard it counts it now: one saved before that could hold
+    /// the hours of a pass it was heard after, and rest the next a day.
     pub fn ended(&self) -> Option<(f64, f64)> {
-        self.took.map(|took| (self.listed_at + took, took))
+        self.took.map(|took| {
+            let took = took.clamp(0.0, LIST_TIMEOUT.as_secs_f64());
+            (self.listed_at + took, took)
+        })
     }
 }
 

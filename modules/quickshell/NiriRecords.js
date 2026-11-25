@@ -105,7 +105,9 @@ function workspaceOf(record) {
 // stream to agree: pi-spawned or pi-session, bare or with a number, or a
 // hosted conversation's viewer, pi-hosted with its session's id of letters,
 // digits and dashes (Sessions.qml's viewerOf). A bare pi-hosted is a program
-// of its own.
+// of its own. Wider than the ids Sessions.qml's viewerNamed opens viewers
+// for, which never begin with a dash, as the daemon's is: it only says
+// which windows are kitty's, and one such window is kitty's all the same.
 const NUMBERED_SESSION = /^pi-(?:spawned|session)(?:\.[0-9]+)?$/;
 const HOSTED_VIEWER = /^pi-hosted\.[A-Za-z0-9-]+$/;
 function isSessionApp(app) {

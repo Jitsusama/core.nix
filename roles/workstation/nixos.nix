@@ -32,6 +32,7 @@
     nixosModules.mycelium
     nixosModules.nix-daemon
     nixosModules.perf
+    nixosModules.pi
     nixosModules.podman
     nixosModules.switch-system
     nixosModules.tpm

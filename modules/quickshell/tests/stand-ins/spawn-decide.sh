@@ -21,6 +21,9 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+# Each hosted start says it's opening first, as the real one does, so the
+# shell waits on its answer however long it takes rather than racing
+# decidesWithin into a window of its own.
 if [ -n "$start" ]; then
 	quest=${QUEST_WORKFLOW_AUTOLOAD_ID:-}
 	echo "started $quest in $PWD orchestrate=$orchestrate" >>"$DECIDED"
@@ -31,28 +34,34 @@ if [ -n "$start" ]; then
 		;;
 	QEST-DOTTED)
 		# An id no viewer's app id could carry.
+		echo "opening harbour-attended"
 		echo "hosted harbour-attended s.dotted"
 		;;
 	QEST-BADHOST)
 		# A host's name mycelium couldn't be given.
+		echo "opening harbour:attended"
 		echo "hosted harbour:attended s-badhost"
 		;;
 	QEST-DASHID)
 		# An id beginning with a dash, which mycelium's --session could
 		# take for a flag.
+		echo "opening harbour-attended"
 		echo "hosted harbour-attended -s-x"
 		;;
 	QEST-DASHHOST)
 		# A host beginning with a dash, which mycelium could take for a flag.
+		echo "opening -harbour"
 		echo "hosted -harbour s-y"
 		;;
 	QEST-LATE | QEST-LATER)
 		# Two starts the host answers with one session, whose viewer niri
 		# is slow to list.
+		echo "opening harbour-attended"
 		echo "hosted harbour-attended s-late"
 		;;
 	QEST-AGAIN)
 		# QEST-HOSTED's session, started again once its viewer is listed.
+		echo "opening harbour-attended"
 		echo "hosted harbour-attended s-begun"
 		;;
 	QEST-AWAY)

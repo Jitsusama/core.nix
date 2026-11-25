@@ -2,7 +2,7 @@
 //! judged-<site>.json beside the Slack reader's: from when, and the keys
 //! of what it judged, so a restart neither judges anything twice nor
 //! misses what was said while it was down; and when it last read the
-//! site whole, which `pineapple-github` says (src/bin/pineapple-github.rs).
+//! site whole, which `pineapple-github` says (src/bin/pineapple-github/).
 
 use std::path::Path;
 

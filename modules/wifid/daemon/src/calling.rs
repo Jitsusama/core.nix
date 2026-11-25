@@ -91,7 +91,10 @@ impl Peer {
 impl fmt::Display for Peer {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         match (self.pid, &self.unit) {
-            (Some(pid), Some(unit)) => write!(out, "pid {pid} ({unit})"),
+            // A process names its own cgroup under its user's manager, so
+            // the unit is escaped: a control byte in it would have
+            // journalctl show the whole line as a blob.
+            (Some(pid), Some(unit)) => write!(out, "pid {pid} ({})", unit.escape_debug()),
             (Some(pid), None) => write!(out, "pid {pid}"),
             (None, _) => write!(out, "a process the kernel didn't name"),
         }
@@ -187,6 +190,15 @@ mod tests {
             unit: Some("wifid-calls.service".into()),
         };
         assert_eq!(named.to_string(), "pid 42 (wifid-calls.service)");
+        let escaping = Peer {
+            pid: Some(42),
+            unit: Some("\u{1b}[2Jx.service".into()),
+        };
+        assert_eq!(
+            escaping.to_string(),
+            "pid 42 (\\u{1b}[2Jx.service)",
+            "a unit's control byte reached the journal raw"
+        );
         assert_eq!(
             Peer::default().to_string(),
             "a process the kernel didn't name"

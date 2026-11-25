@@ -134,6 +134,12 @@ ShellRoot {
                 opening();
             else if (stage === "walked")
                 walked();
+            else if (stage === "unlisting")
+                unlisting();
+            else if (stage === "unlisted")
+                unlisted();
+            else if (stage === "relisted")
+                relisted();
             else if (stage === "joel")
                 joel();
             else if (stage === "waiting")
@@ -254,6 +260,47 @@ ShellRoot {
             !Niri.acts.some(act => act.MoveWindowToWorkspace || act.MoveColumnToIndex
                 || act.FocusWindow || act.FocusWorkspace || act.FocusMonitor
                 || act.FocusColumnLast), JSON.stringify(Niri.acts));
+        // Its viewer the windows daemon's index still names, which niri no
+        // longer lists, as in a gap of the daemon's, is no viewer open
+        // (listedNow), so a walk asked again, once this one is done, opens
+        // it rather than taking it as open.
+        stage = "unlisting";
+    }
+
+    function unlisting() {
+        if (Sessions.reopening !== null)
+            return;
+        const listing = Object.assign({}, Niri.windows);
+        delete listing["50"];
+        Niri.windows = listing;
+        Niri.revision += 1;
+        stage = "unlisted";
+        Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-viewed": keptOn(2) }), "");
+    }
+
+    // Its viewer asked for, the walk waits for its window; taken as open,
+    // it ends with none asked. The walk begins only once the screens are
+    // looked at, which niri answers late (lookAtScreens), so it's waited
+    // on while they're asked of too.
+    function unlisted() {
+        if (viewerSpawns("s-viewed").length < 2
+            && (Sessions.reopening !== null || Sessions.screensWaiting.length > 0))
+            return;
+        Expect.expect("a viewer niri no longer lists, the index still naming it, opens again",
+            viewerSpawns("s-viewed").length === 2, Niri.spawns.join("\n"));
+        // It comes back as niri lists it, so it's coming no more.
+        const window = { id: 50, pid: 500, workspace_id: 41, session: true,
+            opened: "pi-hosted.s-viewed", layout: { pos_in_scrolling_layout: [1, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "50": window });
+        Niri.revision += 1;
+        Niri.windowOpenedOrChanged(window);
+        stage = "relisted";
+    }
+
+    function relisted() {
+        if (Sessions.reopening !== null)
+            return;
         // Joel goes to the empty workspace, and another host serves one,
         // told with a new digest, since the launcher is shut.
         joelOn(42);
@@ -356,9 +403,18 @@ ShellRoot {
         if (!find("STALE") || !Sessions.parkedAs("NAPPED"))
             return;
         stage = "asked";
+        // NAPLED's workspace, with a window of its own, is there to be
+        // sent to, so a walk that sent a sleeper it leads there, or named
+        // one for it, is caught. The walk only steers a sleeper, so this
+        // guards a change rather than pinning what decides where it wakes.
+        Niri.workspaces = Object.assign({}, Niri.workspaces, { "46": { id: 46, idx: 1,
+            name: "NAPLED", output: "eDP-1", is_focused: false, active_window_id: 86 } });
+        Niri.windows = Object.assign({}, Niri.windows, { "86": { id: 86, pid: 860,
+            workspace_id: 46, opened: "foot", layout: { pos_in_scrolling_layout: [1, 1] } } });
+        Niri.revision += 1;
         Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", way: "boot" },
             { id: "s-stale", cwd: "/tmp", way: "boot" },
-            { id: "s-napped", cwd: "/tmp", way: "boot" },
+            { id: "s-napped", cwd: "/tmp", way: "boot", orchestratedBy: "NAPLED" },
             { id: "s-carried", cwd: "/tmp", way: "carried" },
             { id: "s-drifted", cwd: "/tmp", way: "boot" }, waitingEntry("s-floated")],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
@@ -415,6 +471,21 @@ ShellRoot {
         Expect.expect("its place kept for its window as it wakes", place?.slept === true
             && place?.asleep === true && typeof place?.workspace === "number",
             JSON.stringify(Sessions.keptPlaces));
+        // Led by an orchestrator, its place is kept off its orchestrator's
+        // workspace, and the walk names none for it, as Reopen Them All
+        // puts back the rest of what it kept. It never wakes in this walk,
+        // so where its viewer opens is the sleepers' cases' to say.
+        Expect.expect("one led keeps no place on its orchestrator's workspace, naming none",
+            !Niri.acts.some(act => act.SetWorkspaceName?.name === "NAPLED")
+            && place?.workspace !== 46 && Niri.workspaces[place?.workspace]?.name !== "NAPLED",
+            `${JSON.stringify(place)} ${JSON.stringify(Niri.acts)}`);
+        const unled = Object.assign({}, Niri.workspaces);
+        delete unled["46"];
+        Niri.workspaces = unled;
+        const unfooted = Object.assign({}, Niri.windows);
+        delete unfooted["86"];
+        Niri.windows = unfooted;
+        Niri.revision += 1;
         // Kept nowhere as the boot ended, it had no window, so it comes back
         // held without one, and the walk goes on without waiting for one.
         // Its folder and its carry-on go as the shell's own `$1` and `$0`,
@@ -860,10 +931,42 @@ ShellRoot {
             workspace_id: 44, opened: "pi-hosted.s-lead",
             layout: { pos_in_scrolling_layout: [1, 1] } } });
         Niri.revision += 1;
+        refusedUnnamed();
         stage = "naming";
         Watch.tell(root.watch, { changed: [
             Object.assign(hosted("s-kelp", "KELPER"), { told: "0000000000000011" }),
             Object.assign(hosted("s-reef", "REEFER"), { told: "0000000000000012" })] });
+    }
+
+    // A row's Reopen refused, or held back as its viewer comes, is said
+    // before any place is worked out (reopenWaiting), so none names a
+    // workspace for its orchestrator for a window that isn't asked for:
+    // one led by NOBODY, whose workspace no one has, would name the quiet
+    // one niri keeps last, were its place worked out.
+    function refusedUnnamed() {
+        const before = Niri.acts.length;
+        const quiet = Sessions.quietSpace();
+        const goingTo = Sessions.goingTo;
+        root.unhostedSaid = [];
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { "pi-hosted.s-coming": Date.now() });
+        for (const lost of [waitingEntry("s.unnamed"),
+            Object.assign(waitingEntry("s-wordless"), { view: undefined }),
+            waitingEntry("s-coming")])
+            Sessions.reopen(Object.assign(lost, { orchestratedBy: "NOBODY" }), root.never);
+        const acted = Niri.acts.slice(before);
+        Expect.expect("a row's Reopen refused or held back names no workspace, nor opens one",
+            quiet !== null && !acted.some(act => act.SetWorkspaceName || act.OpenNextWindowOn),
+            `${JSON.stringify(quiet)} ${JSON.stringify(acted)}`);
+        Expect.expect("and each is said, by why: no app id, no words, its viewer coming",
+            JSON.stringify(root.unhostedSaid) === JSON.stringify(["s.unnamed unnamed",
+                "s-wordless hostless", "s-coming opening"]), JSON.stringify(root.unhostedSaid));
+        // What the held-back one left is put back, so no later stage takes
+        // a viewer as coming, nor a window as Go To's.
+        const attaching = Object.assign({}, Sessions.attaching);
+        delete attaching["pi-hosted.s-coming"];
+        Sessions.attaching = attaching;
+        Sessions.goingTo = goingTo;
     }
 
     // One kept on a workspace named for its orchestrator goes back to the
@@ -994,6 +1097,14 @@ ShellRoot {
     }
     // Each steer the node was asked.
     property var steers: []
+    // Each press Sessions said it couldn't answer, as who and why, in order.
+    property var unhostedSaid: []
+    Connections {
+        target: Sessions
+        function onUnhosted(session, why) {
+            root.unhostedSaid = root.unhostedSaid.concat([`${session.address} ${why}`]);
+        }
+    }
 
     // Every step waits on niri's stand-in, the node or a timer of Sessions'
     // own, so each is looked at often rather than heard.

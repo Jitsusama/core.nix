@@ -2674,10 +2674,15 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
     assert drawer["nerd"] == ["Code Points"], f"its code points went unnamed: {drawer}"
     # Unicode's first emoji, the grinning face, has keywords, so a drawer without them, or
     # with other words beside their name, lost them between the served row and the made
-    # drawer. Its title is held first, so a list that leads with another fails as itself.
+    # drawer. Its title is held first, so a list that leads with another fails as itself. The
+    # words are read beside the drawn facts' names, the list they come from, since the drawn
+    # card drops a fact that repeats its title; and a value still being asked is said as such.
     assert title == "Grinning face", f"Unicode's first emoji isn't the grinning face: {drawer}"
     assert drawer["facts"] == ["Keywords"], f"its keywords went unnamed or missing: {drawer}"
-    assert "grin" in str(drawer["values"][0] or "").split(", "), f"its keywords were lost: {drawer}"
+    assert drawer["drawnFacts"] == ["Keywords"], f"its drawer didn't draw its keywords: {drawer}"
+    keywords = drawer["values"][0]
+    assert keywords is not None, f"its keywords were still being asked: {drawer}"
+    assert "grin" in str(keywords).split(", "), f"its keywords were lost: {drawer}"
     since = shell.mark()
     shell.send_chars("j")
     shell.launcher_until(functools.partial(drawer_moved, title))
@@ -2689,16 +2694,16 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
 
 
 def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
-    """Super+E lists Unicode's groups, and the clipboard's history finds what's typed there.
+    """Super+E lists Unicode's groups, and makes a row only for an emoji a step shows.
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
-    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows, a
-    group's row moved over makes none of its emoji, and closing lets go of those a step into a
-    group made, which were otherwise held for the shell's life. The tally counts every row since
-    the shell started, and a case before this one in its part steps into a group, so each
-    count here is from this case's start; the start itself is judged by having made fewer than
-    Emoji holds, which a step into one group never reaches.
+    finds what's typed now (clipboard/src/search.rs, the whole-word case below), so the start
+    makes only its groups' rows, a group's row moved over makes none of its emoji, and closing
+    lets go of those a step into a group made, which were otherwise held for the shell's life.
+    The tally counts every row since the shell started, and a case before this one in its part
+    steps into a group, so each count here is from this case's start; the start itself is
+    judged by having made fewer than Emoji holds, which a step into one group never reaches.
     """
     launcher_on_niri.warmed(shell)
     before = shell.rows_made("emoji")
@@ -2739,9 +2744,27 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     again = shell.rows_made("emoji") - before - stepped
     assert again > 0, "closing kept every emoji the first step made, so the second made none"
     shell.close_launcher()
+
+
+def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
+    """A word typed into Super+E is found by the clipboard's history, its emoji first.
+
+    Each letter asks the history again (launcher/Emoji.qml's search), so the rows a word's first
+    letter found must give way to the word's own. It stands apart from the rows case above so
+    a quarantine of it excuses only this search, not the bounds on what Emoji makes.
+    """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
-    shell.type_in("tada", selecting="Party popper")
+    # Its groups listed, Emoji has heard from the history, so a case run alone types into a
+    # search that can ask it, as one run after the rows case does.
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
+    # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
+    try:
+        shell.type_in("tada", selecting="Party popper")
+    except AssertionError as failed:
+        said = f"{failed}; Emoji's search: {shell.searching('emoji')}"
+        raise AssertionError(said) from failed
     shell.close_launcher()
 
 
@@ -2765,8 +2788,16 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
     shell.launcher_until(lambda shown: shown["count"] > 0)
     shell.normal()
-    shell.launcher_until(lambda shown: shown["found"] != "")
-    said = shell.showing()["found"]
+    # The head judged is the one the wait passed on, as a later showing() could come after the
+    # answer was let go and say nothing.
+    heads: list[str] = []
+
+    def says_found(shown: Json) -> bool:
+        heads.append(cast("str", shown["found"]))
+        return heads[-1] != ""
+
+    shell.launcher_until(says_found)
+    said = heads[-1]
     shell.close_launcher()
     counted = FOUND_OF.fullmatch(said)
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"

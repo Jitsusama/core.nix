@@ -468,6 +468,15 @@ impl Connection {
             // asks on.
             "act" if said["act"] == "calling" => Some(self.calling(&id, line, &said)),
             "act" => {
+                // Who asks is said with what, as a call is, so an act from
+                // elsewhere can be told from the launcher's: from 19:00 on
+                // 23 Nov 2026 eight roams a minute apart moved the card, on
+                // connections that asked for no rows, and nothing said who.
+                // The unit is the last part of the asker's cgroup, which a
+                // process of the same user may name itself, so it's a hint.
+                // The pid is the kernel's word for who connected, as the
+                // connection was taken, not for who holds it since.
+                println!("<6>{} asks {}", self.peer, acts::wanted(&said));
                 let asks = self.face.asks.clone();
                 let words = self.made_in.as_ref().and_then(|made_in| {
                     self.face

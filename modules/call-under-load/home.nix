@@ -22,8 +22,15 @@ in
 {
   home.packages = [ package ];
 
+  # A switch leaves a run under way be, and the next hour's starts the new
+  # build: restarting it mid-call made the switch wait on a run of up to
+  # ten minutes, and on 24 November one that began at :35 failed switch
+  # 1186 when it timed out. The camera check is left be for the same reason.
   systemd.user.services.call-under-load = {
-    Unit.Description = "Measures Joel's calls and apps under load";
+    Unit = {
+      Description = "Measures Joel's calls and apps under load";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
       Type = "oneshot";
       ExecStart = "${lib.getExe package} run";
@@ -65,14 +72,19 @@ in
     Install.WantedBy = [ "default.target" ];
   };
 
-  # The camera before each of Joel's meetings: three to six minutes out, with
-  # no call on, a loopback is read for five frames, none kept, and any other
+  # The camera before each of Joel's meetings: 18 to 22 minutes out, with
+  # no call on and no meeting on or a quarter hour off, so he never sees
+  # his camera in use as he sets up, a loopback is read for five frames,
+  # none kept, and any other
   # camera only asked, so Meet always gets it; a camera giving no picture is
   # told to him then rather than seen by those he meets. The built-in's
   # first frame can take 40 s under memory pressure, so the read is given
   # two minutes.
   systemd.user.services.call-under-load-camera = {
-    Unit.Description = "Checks Joel's camera gives a picture before each meeting";
+    Unit = {
+      Description = "Checks Joel's camera gives a picture before each meeting";
+      X-SwitchMethod = "keep-old";
+    };
     Service = {
       Type = "oneshot";
       ExecStart = lib.escapeShellArgs (

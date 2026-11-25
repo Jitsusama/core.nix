@@ -283,6 +283,51 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     );
 }
 
+/// A config whose disk is filling, or nearly full where `nearly_full` is
+/// `100%`, and which heeds the writers' hold `mark`.
+fn held_by(home: &Home, mark: &Path, nearly_full: &str) -> Config {
+    Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user", "status_file": true,
+             "bands": {{ "filling": "100%", "nearly_full": "{nearly_full}",
+                        "critically_full": "0%", "target": "100%" }},
+             "writer_holds": ["{1}"],
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{ "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }} }} }}"#,
+        home.root.display(),
+        mark.display()
+    ))
+    .unwrap()
+}
+
+#[test]
+fn a_writers_hold_stops_a_pass_until_the_disk_is_nearly_full() {
+    // A cell holding heavy disk writers, as while Joel is on a call, leaves
+    // a mark; only its presence counts, never what it says.
+    let home = Home::new();
+    let mark = home.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "a call is on").unwrap();
+    let cold = home.cold_scratch("run-1");
+    let mut guard = home.guard(held_by(&home, &mark, "0%"));
+    guard.step(&tick_at(0.0), &CALM).unwrap();
+    assert!(
+        cold.exists(),
+        "a filling disk passed under the writers' hold"
+    );
+    fs::remove_file(&mark).unwrap();
+    guard.step(&tick_at(60.0), &CALM).unwrap();
+    assert!(!cold.exists(), "no pass came once the writers' hold ended");
+
+    fs::write(&mark, "").unwrap();
+    let cold = home.cold_scratch("run-2");
+    let mut nearly_full = home.guard(held_by(&home, &mark, "100%"));
+    nearly_full.step(&tick_at(0.0), &CALM).unwrap();
+    assert!(
+        !cold.exists(),
+        "a nearly full disk waited on the writers' hold"
+    );
+}
+
 #[test]
 fn a_directory_is_begun_in_the_journal_before_it_is_moved() {
     let home = Home::new();
@@ -1046,6 +1091,49 @@ fn a_pass_is_told_at_work_while_it_runs_and_not_after() {
     );
 }
 
+#[test]
+fn a_status_the_disk_cant_hold_stops_no_pass() {
+    // A disk too full for the status file is the one most in need of its
+    // pass; telling it at work is only a courtesy.
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let ran = home.root.join("ran");
+    let mut config = home.config("100%", "100%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!("echo once >> {}", ran.display()),
+            ],
+            path: home.root.clone(),
+            every: None,
+            from: Some(Band::Filling),
+            watch: Vec::new(),
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let mut guard = home.guard(config);
+    // A folder holding a file, which no rename can put the status over.
+    let status = home.root.join("status.json");
+    let _ = fs::remove_file(&status);
+    fs::create_dir_all(status.join("held")).unwrap();
+    // The step's last write fails as well, once its pass is done.
+    let stepped = guard.step(&tick_at(3600.0), &CALM);
+    assert!(stepped.is_err(), "the status was written into a folder");
+    let runs = fs::read_to_string(&ran).unwrap_or_default().lines().count();
+    assert_eq!(runs, 1, "an unwritable status stopped the pass");
+    // A clear Joel asked for, standing as the disk filled, writes the
+    // status before it clears, and stops neither the clear nor the step.
+    let scratch = home.cold_scratch("build");
+    disk_guard::clears::ask(&home.root.join("state"), scratch.parent().unwrap(), 3600.0).unwrap();
+    let stepped = guard.step(&tick_at(7200.0), &CALM);
+    assert!(stepped.is_err(), "the status was written into a folder");
+    assert!(!scratch.exists(), "an unwritable status stopped the clear");
+}
+
 /// A restarted guard's first measure of home takes minutes, in which its
 /// status named no holders: on 13 November a switch left the user guard's
 /// list empty while the system guard's came back. It says what the ledger
@@ -1109,6 +1197,8 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         forecast,
         fill_per_hour: Some(fill),
         full_at: Some(now + full_in),
+        nix_floor: None,
+        floor_at: None,
         says: says.to_string(),
         exhausted: false,
     };
@@ -1147,6 +1237,22 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
         now,
     );
     assert!(news(&written, &told, now), "what's said is news");
+    // Nix's store's disk above Nix's floor counts to the floor instead.
+    let floored = |floor_in: f64| FilesystemStatus {
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(now + floor_in),
+        ..disk(Some(507_791.0), 205_352_626.0, 0.0, said)
+    };
+    let written = status(floored(9_000_000.0), now - 5.0);
+    assert!(
+        !news(&written, &status(floored(9_000_817.0), now), now),
+        "half a percent nearer the floor is no news"
+    );
+    assert!(
+        news(&written, &status(floored(7_000_000.0), now), now),
+        "the floor a fifth sooner is news"
+    );
 }
 
 /// A disk's counts move at every step and are said at each beat, so they
@@ -1337,6 +1443,8 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         forecast: Some(60.0),
         fill_per_hour: Some(36_000.0),
         full_at: Some(1960.0),
+        nix_floor: None,
+        floor_at: None,
         says: String::new(),
         exhausted: false,
     };
@@ -1404,6 +1512,8 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
         forecast: Some(60.0),
         fill_per_hour: Some(36_000.0),
         full_at: Some(1960.0),
+        nix_floor: None,
+        floor_at: None,
         says: String::new(),
         exhausted: false,
     };
@@ -1421,6 +1531,173 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
         !status.says.contains("fills in"),
         "said no fill once its moment passed: {}",
         status.says
+    );
+}
+
+/// Above the free space Nix keeps, Nix collects before the disk fills, so
+/// a fresh measure says when it reaches that floor; one at or under it
+/// has reached it, and when it's full wasn't worked out.
+#[test]
+fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    let bands = Bands {
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let space = |free| Space {
+        total: 1000,
+        free,
+        btrfs: None,
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast: None,
+        fill_per_hour: Some(36_000.0),
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    status.measured(&space(490), &bands, 1900.0, None);
+    assert_eq!(
+        status.says,
+        "The disk has 490 B free. At this rate it reaches the 100 B Nix keeps free in 1 m, \
+         where Nix collects its own garbage as it builds.",
+        "above the floor, when it reaches it"
+    );
+    status.measured(&space(300), &bands, 1900.0, None);
+    status.measured(&space(100), &bands, 1900.0, None);
+    assert!(
+        !status.says.contains("At this rate"),
+        "at the floor, neither it nor when it fills: {}",
+        status.says
+    );
+    // Worked out under the floor, it said when it fills, and a pass that
+    // lifts it back above has Nix collecting, so it fills at no time told.
+    status.floor_at = None;
+    status.full_at = Some(1960.0);
+    status.measured(&space(90), &bands, 1900.0, None);
+    assert!(
+        status.says.contains("At this rate it fills in 1 m."),
+        "under the floor, when it fills: {}",
+        status.says
+    );
+    status.measured(&space(200), &bands, 1900.0, None);
+    assert!(
+        !status.says.contains("At this rate"),
+        "back above the floor, not when it fills: {}",
+        status.says
+    );
+}
+
+/// The heartbeat's fresh measures write the machine's sentence from the
+/// room each filesystem tells, so it says what the filesystem's own does,
+/// on either side of Nix's floor and across it.
+#[test]
+fn a_fresh_measures_machine_sentence_says_what_its_own_does() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    use disk_guard::words::machine;
+    let bands = Bands {
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let space = |free| Space {
+        total: 1000,
+        free,
+        btrfs: None,
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast: None,
+        fill_per_hour: Some(36_000.0),
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    let at_rate = |said: &str| said.split("At this rate").nth(1).map(str::to_owned);
+    let agrees = |status: &FilesystemStatus, why: &str| {
+        let said = machine(&[status.told(1900.0)], None);
+        assert_eq!(
+            at_rate(&said),
+            at_rate(&status.says),
+            "{why}: the machine said {said:?} where the disk said {:?}",
+            status.says
+        );
+    };
+    status.measured(&space(490), &bands, 1900.0, None);
+    agrees(&status, "above the floor");
+    status.measured(&space(100), &bands, 1900.0, None);
+    agrees(&status, "at the floor");
+    status.floor_at = None;
+    status.full_at = Some(1960.0);
+    status.measured(&space(90), &bands, 1900.0, None);
+    agrees(&status, "under the floor");
+    status.measured(&space(200), &bands, 1900.0, None);
+    agrees(&status, "back above the floor");
+}
+
+/// A status counts to Nix's floor while above it with a time to reach
+/// it, in its own sentence and the machine's, and to full at or under it.
+#[test]
+fn a_status_tells_the_time_to_nixs_floor_and_otherwise_to_full() {
+    use disk_guard::daemon::FilesystemStatus;
+    use disk_guard::words::{filesystem, machine};
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast: None,
+        fill_per_hour: Some(36_000.0),
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    let floor = "it reaches the 100 B Nix keeps free in 1 m";
+    let said = filesystem(&status.told(1900.0), None);
+    assert!(said.contains(floor), "its own sentence: {said}");
+    let said = machine(&[status.told(1900.0)], None);
+    assert!(said.contains(floor), "the machine's sentence: {said}");
+    status.free = 90;
+    status.floor_at = None;
+    status.full_at = Some(1960.0);
+    let said = filesystem(&status.told(1900.0), None);
+    assert!(
+        said.contains("At this rate it fills in 1 m."),
+        "under the floor, when it fills: {said}"
+    );
+    // Above the floor Nix collects before the disk fills, so a time to
+    // full alone is told as no time at all.
+    status.free = 500;
+    let said = filesystem(&status.told(1900.0), None);
+    assert!(
+        !said.contains("At this rate"),
+        "above the floor, not when it fills: {said}"
     );
 }
 

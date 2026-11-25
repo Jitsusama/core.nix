@@ -107,14 +107,15 @@ Nothing on it acts on the network.
   machine only brightens the talk it touches.
 - **Live networks lead.** A network none of whose cells is at work has
   its hub, cord and ground drawn in the lighter ink.
-- **A dashed magenta ring is a question waiting.** A cell asked a
-  question three minutes or more ago, and has said nothing on the mesh
-  since, is ringed and named; the ring widens with each question and
+- **A dashed magenta ring is an answer owed.** A cell another cell asked
+  a question three minutes or more ago, and has said nothing on the mesh
+  since, is ringed and named as owing an answer, since the question is
+  the cell's to answer and never one waiting on Joel; the ring widens with each question and
   with the age of the first, full at half an hour. Its network is
   ringed round its whole ground, so where the talk is held up reads from
   the whole map. The node keeps no link from an answer to its question,
-  so any word since counts as one. The panel lists them under Questions
-  Waiting, oldest first, with who asked.
+  so any word since counts as one. The panel lists them under Answers
+  Owed, oldest first, with who asked.
 - **Small networks fold.** A network whose cells would be drawn under
   5 px across, or past 400 cells one that sits off the map, draws as its
   ground and hub alone, its ground a shade fuller; its cells unfold as
@@ -142,7 +143,7 @@ Nothing on it acts on the network.
   for it, so opening it never moves the map; on a narrow screen it
   covers the map instead. It holds what is open, or Now: first every
   cell that needs him, those asking something before those stuck, and
-  the questions waiting and holds standing that hold the flow; then how
+  the answers owed and holds standing that hold the flow; then how
   the whole network stands, what it spent today, how to read the map
   and the network as a tree. Full stop, or the last control over the
   map, opens Now. A cell's drawer can go to it, raising its window or

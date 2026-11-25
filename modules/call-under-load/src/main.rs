@@ -200,6 +200,13 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     let Some(meeting) = camera::due(&calendar, now, &starts) else {
         return Ok(());
     };
+    if let Some(other) = camera::near(&calendar, now) {
+        return said(format!(
+            "the camera isn't read: a read now could still run during {} or its quarter hour \
+             before, and a meeting this crowds out may go unchecked",
+            other.title
+        ));
+    }
     // Asked up to three times, since one slow answer under the heaviest
     // load would leave the minute unchecked.
     let mut asked = gate::a_call();
@@ -218,7 +225,8 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
     let (node, read, gave) = match camera::which(Path::new("/"), device) {
         Some(node) => {
             let read = camera::loopback(Path::new("/"), &node);
-            let gave = camera::gives(&node, read);
+            let by = camera::read_by(&calendar, now);
+            let gave = camera::gives(&node, read, by);
             (node, read, gave)
         }
         None => match device {
@@ -243,7 +251,8 @@ fn camera_check(context: &Context, device: Option<&str>) -> Result<(), Failure> 
         }
         camera::Outcome::Late(fault) => (
             format!(
-                "{}: {fault}, though the meeting had begun, so untold",
+                "{}: {fault}, untold, since too little time was left before the meeting \
+                 and the fault may be a suspend's or a stall's",
                 node.display()
             ),
             Ok(()),

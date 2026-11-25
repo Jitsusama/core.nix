@@ -107,6 +107,11 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
             r" the kernel holding (\d+ MB|an unknown amount) of the shell lent",
             said,
         )
+        closings = said.count("launcher: collected after closing in ")
+        assert len(lendings) == closings, (
+            f"{closings - len(lendings)} of {closings} closings didn't say what they lent"
+            f" as this check reads it:\n{shell.tail()}"
+        )
         lent = [int(each) for each, _ in lendings]
         held = [int(each.split()[0]) if each[0].isdigit() else -1 for _, each in lendings]
         assert any(lent), f"no closing lent its heap's free pages back: {lent}\n{shell.tail()}"

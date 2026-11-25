@@ -632,7 +632,7 @@ impl Reclaimer for Reclaim<'_> {
         let Some(path) = self.worse_elsewhere() else {
             return false;
         };
-        eprintln!(
+        say!(
             "disk-guard: {} grew short of room, so this pass gives way to it",
             path.display()
         );

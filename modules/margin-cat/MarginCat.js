@@ -388,19 +388,26 @@ function strokes(was, at, rested) {
     return rested >= SETTLED && (was === null || was.x !== at.x || was.y !== at.y);
 }
 
-// What niri's answer for frame `frame`, whose sync began at `synchronizing` (undefined when
-// nothing was kept of it), says of a rest the cat asked for as it sat at `satAt`, once
-// `satFrom` frames had begun, both on the monotonic clock. "begins" for one synced after it
-// sat, which holds its cells where it sits. "asks" for one begun after its ask but synced
-// before it sat, which spent the ask on a frame that missed it. "waits" for one begun before
-// it sat, a walk's frame still on its way, whose answer asking again for would draw a frame
-// of its own. A frame nothing was kept of, as one niri never had a surface for, begins it
-// rather than asking for frame after frame.
-function restFrom(frame, synchronizing, satFrom, satAt) {
-    if (frame <= satFrom) {
-        return "waits";
+// What niri's answer for frame `frame` says of a rest the cat asked for as it sat at `satAt`, on
+// the monotonic clock, once `satFrom` frames had begun, from `times`, what
+// FramePresentation.timesOf kept of that frame. "begins" for one synced after it sat, which holds
+// its cells where it sits. "asks" for one that took the ask but synced before it sat, which spent
+// the ask on a frame that missed it. "waits" for any other synced before it sat, a walk's frame
+// still on its way, whose answer asking again for would draw a frame of its own. Only the frame
+// can say it took the ask: the render thread counts a frame begun before it takes the ask, so
+// frame `satFrom` may have taken it. One begun before that took any ask before the cat counted,
+// and so before it asked, so it waits: one nothing was kept of, its times overwritten by 16
+// newer, and one that took an earlier sitting's ask, as the cat stopped and sat again before
+// niri answered for it. From frame `satFrom` on, one nothing was kept of, as one niri never had
+// a surface for, begins it rather than asking for frame after frame.
+function restFrom(frame, times, satFrom, satAt) {
+    if (times.synchronizing === undefined) {
+        return frame < satFrom ? "waits" : "begins";
     }
-    return synchronizing === undefined || synchronizing >= satAt ? "begins" : "asks";
+    if (times.synchronizing >= satAt) {
+        return "begins";
+    }
+    return times.asked && frame >= satFrom ? "asks" : "waits";
 }
 
 // Which way a cat `size` across leans into a pointer `across` it: -1 to its left, 1 to its right.
