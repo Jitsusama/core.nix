@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
-use crate::record::{Deeper, Health, Part, Thing};
+use crate::record::{Deeper, Health, Look, Part, Thing};
 use crate::words::grouped;
 
 /// A gigabyte, as a disk's free room is said.
@@ -78,6 +78,11 @@ pub fn backup(read: io::Result<String>, now: i64) -> Option<Backup> {
 /// them in would spread one machine's trouble to all. The first two would
 /// also latch, as each machine's word fed the other's.
 const ITS_OWN: [&str; 1] = ["code"];
+/// Why a look a machine's own health makes matters: this machine judges
+/// none of that part itself, so it says only whose judgement it is and
+/// where that machine says why.
+const OWN_MATTERS: &str =
+    "Its own system check judged so, and that machine's system page says why.";
 
 /// The machines of the realm, from `mycelium machines`, each with its
 /// sessions from `mycelium health` where that was read, and its ties to
@@ -100,9 +105,9 @@ pub fn machines(
     // its file is this machine's own and was read without the node.
     let unknown = |why: &str| {
         let mut part = unread("machines", why, deeper.clone());
-        if let Some((_, said, side)) = backup.and_then(backup_said) {
+        if let Some((_, said, look)) = backup.and_then(backup_said) {
             part.says = format!("{}; this machine {said}", part.says);
-            part.side.push(side);
+            part.side.push(look.side);
         }
         part
     };
@@ -180,13 +185,13 @@ fn name_of(said: &Value) -> &str {
 }
 
 /// What a machine's line says, in the order it's found, and what in it is
-/// worth a look: how bad, with the words for a row's side, which names no
-/// machine and so drops the verb ("filling disk" for "has a filling
-/// disk").
+/// worth a look: how bad, as the line says it, and the look itself, whose
+/// words for a row's side name no machine and so drop the verb ("filling
+/// disk" for "has a filling disk").
 #[derive(Default)]
 struct Said {
     line: Vec<String>,
-    looks: Vec<(Health, String, String)>,
+    looks: Vec<(Health, String, Look)>,
 }
 
 impl Said {
@@ -195,17 +200,62 @@ impl Said {
         self.line.push(words);
     }
 
-    /// Something worth a look, as the line says it and as a side does.
-    fn look(&mut self, health: Health, said: String, side: String) {
+    /// Something worth a look, as the line says it and as a side does,
+    /// with why it matters, which no look is made without.
+    fn look(&mut self, health: Health, said: String, side: String, matters: &str) {
         self.line.push(said.clone());
-        self.looks.push((health, said, side));
+        let matters = matters.to_owned();
+        self.looks.push((health, said, Look { side, matters }));
     }
 }
 
-/// One machine: whether a link reaches it, what it's short of, its disk,
-/// its battery, what its own health says of its own parts and its
-/// sessions, each said only when it's worth saying, with the words of
-/// what is worth a look in it.
+/// One machine: what its node says of it, then its sessions, each said
+/// only when it's worth saying, with the words of what is worth a look in
+/// it, its worst first.
+fn machine(
+    said: &Value,
+    sessions: Option<&Value>,
+    own: Option<&Value>,
+    backup: Option<Backup>,
+) -> (Thing, Vec<String>) {
+    let Said {
+        mut line,
+        mut looks,
+    } = looked(said, own, backup);
+    let health = looks
+        .iter()
+        .map(|(health, ..)| *health)
+        .max()
+        .unwrap_or(Health::Good);
+    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
+    // The side says the worst first; a sort that keeps ties in place keeps
+    // the rest in the order they were found.
+    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
+    let looks: Vec<Look> = looks.into_iter().map(|(.., look)| look).collect();
+    let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
+    if line.is_empty() {
+        line.push("is ready".to_owned());
+    }
+    if let Some(sessions) = sessions {
+        line.push(format!("runs {}", sessions_said(sessions)));
+    }
+    let thing = Thing {
+        kind: "machine",
+        name: name_of(said).to_owned(),
+        health,
+        says: line.join(", "),
+        side,
+        looks,
+        address: None,
+        ties: Value::Null,
+    };
+    (thing, named)
+}
+
+/// What a machine's node says of it, in the order its line says it:
+/// whether a link reaches it, what it's short of, its disk, its battery,
+/// its firmware, what its own health says of its own parts and its quest
+/// backup, each a look with why it matters where it is worth one.
 ///
 /// Being short of room is said but never worth a look: agents' builds
 /// hold the processor nearly all day, which isn't Joel's to act on, and
@@ -215,18 +265,14 @@ impl Said {
 /// regenerates by itself, so only one it couldn't keep from nearly full
 /// is the reader's to act on. Two machines each with hundreds of
 /// gigabytes free were once headlined both worth a look for it.
-fn machine(
-    said: &Value,
-    sessions: Option<&Value>,
-    own: Option<&Value>,
-    backup: Option<Backup>,
-) -> (Thing, Vec<String>) {
+fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
     let mut words = Said::default();
     if said.get("state").and_then(Value::as_str) == Some("unreachable") {
         words.look(
             Health::Bad,
             "is out of reach".to_owned(),
             "out of reach".to_owned(),
+            "What runs there can't be read or steered from here until a link reaches it again.",
         );
     }
     let over: Vec<&str> = said
@@ -255,7 +301,13 @@ fn machine(
         Some("filling") => words.say(format!("has a {}", disk("filling"))),
         Some("nearly-full" | "critically-full") => {
             let side = disk("nearly full");
-            words.look(Health::Bad, format!("has a {side}"), side);
+            words.look(
+                Health::Bad,
+                format!("has a {side}"),
+                side,
+                "Builds and sessions there fail once it fills, and the disk guard couldn't free \
+                 enough of it by itself.",
+            );
         }
         _ => {}
     }
@@ -265,7 +317,12 @@ fn machine(
         && charge <= LOW_CHARGE
     {
         let side = format!("on battery at {charge}%");
-        words.look(Health::Watch, format!("is {side}"), side);
+        words.look(
+            Health::Watch,
+            format!("is {side}"),
+            side,
+            "It stops when its battery runs out, and what runs there stops with it.",
+        );
     }
     // An error the firmware kept before the boot, as an abrupt reset leaves, is
     // said for a day after it (power.rs), so the morning after one in the
@@ -277,7 +334,13 @@ fn machine(
         // The time is the boot's: the record says nothing of when the
         // error was.
         let side = format!("booted {} after a firmware error", ago_said(ago));
-        words.look(Health::Watch, side.clone(), side);
+        words.look(
+            Health::Watch,
+            side.clone(),
+            side,
+            "Its firmware kept an error from before it booted, as an abrupt reset leaves, so \
+             what ran there may have ended without warning.",
+        );
     }
     for part in ITS_OWN {
         match own.and_then(|own| own.pointer(&format!("/parts/{part}"))?.as_str()) {
@@ -285,11 +348,13 @@ fn machine(
                 Health::Watch,
                 format!("says its {part} wants a look"),
                 format!("{part} wants a look"),
+                OWN_MATTERS,
             ),
             Some("bad") => words.look(
                 Health::Bad,
                 format!("says its {part} is failing"),
                 format!("{part} failing"),
+                OWN_MATTERS,
             ),
             _ => {}
         }
@@ -297,36 +362,7 @@ fn machine(
     if let Some(backup) = backup {
         backup_looks(&mut words, backup);
     }
-    let Said {
-        mut line,
-        mut looks,
-    } = words;
-    let health = looks
-        .iter()
-        .map(|(health, ..)| *health)
-        .max()
-        .unwrap_or(Health::Good);
-    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
-    // The side says the worst first; a sort that keeps ties in place keeps
-    // the rest in the order they were found.
-    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
-    let side = side_of(looks.into_iter().map(|(.., side)| side).collect());
-    if line.is_empty() {
-        line.push("is ready".to_owned());
-    }
-    if let Some(sessions) = sessions {
-        line.push(format!("runs {}", sessions_said(sessions)));
-    }
-    let thing = Thing {
-        kind: "machine",
-        name: name_of(said).to_owned(),
-        health,
-        says: line.join(", "),
-        side,
-        address: None,
-        ties: Value::Null,
-    };
-    (thing, named)
+    words
 }
 
 /// How long ago, in whole hours, and under the first hour as one span.
@@ -344,21 +380,26 @@ fn ago_said(seconds: u64) -> String {
 /// hours, so its words change once an hour rather than each minute, and
 /// every watcher isn't sent them anew.
 fn backup_looks(words: &mut Said, backup: Backup) {
-    if let Some((health, said, side)) = backup_said(backup) {
-        words.look(health, said, side);
+    if let Some((health, said, Look { side, matters })) = backup_said(backup) {
+        words.look(health, said, side, &matters);
     }
 }
 
-/// A quest backup's look, its line and its side, when it wants one. A late
-/// one fails only past the whole hours that were worth a look, so the
-/// same words never say both.
-fn backup_said(backup: Backup) -> Option<(Health, String, String)> {
+/// A quest backup's look, its line and the look with its why, when it
+/// wants one. A late one fails only past the whole hours that were worth
+/// a look, so the same words never say both.
+fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
     let age = match backup {
         Backup::Unread(why) => {
             return Some((
                 Health::Watch,
                 format!("can't tell when its quests last backed up ({why})"),
-                "quest backup's time unknown".to_owned(),
+                Look {
+                    side: "quest backup's time unknown".to_owned(),
+                    matters: "Quests changed since its last backup would be lost with this \
+                              machine's disk, and when that was can't be told."
+                        .to_owned(),
+                },
             ));
         }
         Backup::Landed(age) => age,
@@ -372,7 +413,10 @@ fn backup_said(backup: Backup) -> Option<(Health, String, String)> {
     Some((
         health,
         format!("hasn't backed up its quests in {hours} h{BACKUP_HINT}"),
-        format!("no quest backup in {hours} h"),
+        Look {
+            side: format!("no quest backup in {hours} h"),
+            matters: "Quests changed since then would be lost with this machine's disk.".to_owned(),
+        },
     ))
 }
 
@@ -696,6 +740,50 @@ mod tests {
             part.things[0].side,
             ["code failing", "on battery at 12%"],
             "the bad before the worth a look"
+        );
+        let looks: Vec<&str> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| look.side.as_str())
+            .collect();
+        assert_eq!(looks, part.things[0].side, "its looks in the side's order");
+        assert_eq!(
+            part.things[0].looks[1].matters,
+            "It stops when its battery runs out, and what runs there stops with it.",
+            "each look says why it matters"
+        );
+    }
+
+    #[test]
+    fn every_look_says_why_it_matters_and_the_side_cuts_them_where_looks_keep_all() {
+        let mut studio = laptop(&[], "nearly-full");
+        studio["name"] = json!("studio");
+        studio["state"] = json!("unreachable");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["firmware"] = json!({"error_before_boot": 600});
+        studio["health"] = json!({"parts": {"code": "watch"}});
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy"), studio])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        let studio = &part.things[0];
+        assert_eq!(studio.looks.len(), 5, "{:?}", studio.looks);
+        assert_eq!(
+            studio.side.last().map(String::as_str),
+            Some("and 3 more worth a look"),
+            "the command's side is cut to a few"
+        );
+        for look in &studio.looks {
+            assert!(
+                look.matters.ends_with('.') && look.matters.len() > look.side.len(),
+                "{look:?} says why it matters in a sentence of its own"
+            );
+        }
+        assert_eq!(
+            studio.looks[0].side, "out of reach",
+            "the side word the page folds by"
         );
     }
 

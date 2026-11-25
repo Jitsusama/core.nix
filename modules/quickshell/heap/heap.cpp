@@ -39,6 +39,14 @@
 // and not yet taken still counts as resident, to mincore and to the
 // shell's weight, so lent() says what the kernel holds lent.
 //
+// What's held is said resident too, since once free pages are lent what's
+// held no longer says what the shell pays for: a page the kernel took
+// stays held, and stops being counted free, so a shell 1.4 hours on held
+// 252 MB with 65 live and 85 in free pages, and the other 102 could be
+// either taken pages, which cost nothing, or the free slots of pages
+// still holding an item, which do (2026-11-25). mincore says which of
+// every chunk's pages and every large item's are in memory.
+//
 // Room is left because Qt starts a collection whenever its free lists miss
 // while what's held is over twice what the last full sweep left in use, and
 // after the closing's collection it always is: three times, in Joel's shell
@@ -213,6 +221,29 @@ std::size_t freePages(const QV4::BlockAllocator &allocator) {
     return bytes;
 }
 
+// The resident bytes in `length` bytes from `start`, as mincore says, or
+// none when it can't say.
+std::size_t residentAt(void *start, std::size_t length) {
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    std::vector<unsigned char> resident((length + page - 1) / page);
+    if (resident.empty() || mincore(start, length, resident.data()) != 0)
+        return 0;
+    const auto pages = std::count_if(resident.begin(), resident.end(),
+                                     [](unsigned char each) { return (each & 1) != 0; });
+    return page * static_cast<std::size_t>(pages);
+}
+
+// The resident bytes in every chunk and large item the heap holds.
+std::size_t residentHeld(const QV4::MemoryManager &manager) {
+    std::size_t bytes = 0;
+    for (const QV4::BlockAllocator *allocator : {&manager.blockAllocator, &manager.icAllocator})
+        for (QV4::Chunk *chunk : allocator->chunks)
+            bytes += residentAt(chunk, QV4::Chunk::ChunkSize);
+    for (const auto &huge : manager.hugeItemAllocator.chunks)
+        bytes += residentAt(huge.chunk, huge.size);
+    return bytes;
+}
+
 // Gives an allocator's free pages back to the kernel with `advice`, and
 // says how many of their bytes were resident: MADV_DONTNEED lets them go
 // now, as the shell's Qt gives back a chunk it decommits, and MADV_FREE
@@ -264,6 +295,7 @@ QVariantMap Heap::weigh() const {
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
+        {QStringLiteral("resident"), megabytes(residentHeld(*manager))},
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},

@@ -3,6 +3,7 @@
 [
   "shell.qml"
   "KeyNames.js"
+  "KeyActs.js"
   "QueryKeys.js"
   "CommandLine.qml"
   "Editing.js"

@@ -541,6 +541,21 @@ fn an_odd_tv_beside_one_answering_leaves_the_source_answering() {
 }
 
 #[test]
+fn a_tv_is_on_now_only_where_its_own_answer_says_on() {
+    let standby = answer().replace("\"PowerState\": \"on\"", "\"PowerState\": \"standby\"");
+    let soundbar = answer().replace(A_TV, "Samsung Soundbar");
+    assert!(on_now(&answer()), "a TV saying on isn't on");
+    for (said, why) in [
+        (standby.as_str(), "in standby"),
+        (soundbar.as_str(), "a soundbar saying on"),
+        ("{}", "saying nothing"),
+        ("not json", "not JSON"),
+    ] {
+        assert!(!on_now(said), "a TV {why} is on");
+    }
+}
+
+#[test]
 fn a_home_with_no_samsung_asks_nothing_and_says_no_source() {
     let mut lg = listing();
     lg["make"] = json!("LG");

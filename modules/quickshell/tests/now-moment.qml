@@ -957,7 +957,8 @@ ShellRoot {
     // reader gone quiet while watched has its reading let go; a refusal
     // said while watched isn't the timer's to clear; a wall clock stepped
     // back lets a reading go at once; and unwatched, a reading is kept only
-    // for what's left of its time. Each is read first, so a reading never
+    // for what's left of its time, and watched again it still goes in time
+    // while the reader says nothing. Each is read first, so a reading never
     // there can't pass for one let go. No socket is made,
     // so the sandbox's want of a reader can't answer in its place: it's
     // unwatched first, past the second a failed socket waits to try again,
@@ -1037,13 +1038,41 @@ ShellRoot {
             Timekeeping.watching = 0;
             keptStage.step = 2;
             keptStage.at = Date.now();
-        } else {
+        } else if (keptStage.step === 2) {
             if (Timekeeping.reading !== null && since < 1500)
                 return;
             if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
                 Timekeeping.reading === null, read)))
                 return;
+            // Stepped out fresh, then back once the wall clock says 1.8 s of
+            // a 2 s minute has gone, as after a suspend the step out's timer
+            // slept through, with no answer after: a reader that takes the
+            // connection and says nothing, which only the timer the step
+            // back sets lets go. It goes in what's left, well before the
+            // step out's timer or a fresh minute from the step back would.
+            Timekeeping.keptFor = 2000;
+            Timekeeping.watching = 1;
+            answerTime();
+            Timekeeping.watching = 0;
+            Timekeeping.heardAt = Date.now() - 1800;
+            Timekeeping.watching = 1;
+            if (!tried(() => expect("watched again within its time, it's still read",
+                Timekeeping.reading !== null, "null")))
+                return;
+            keptStage.step = 3;
+            keptStage.at = Date.now();
+        } else {
+            if (Timekeeping.lettingGo() && since < 3000)
+                return;
+            if (!tried(() => expect("watched again, a reader quiet since has its reading let go",
+                Timekeeping.reading === null, read)))
+                return;
+            if (!tried(() => expect(
+                "and it goes in what's left by the wall clock, not a minute from either step",
+                since < 1000, `${since} ms`)))
+                return;
             waiting = "";
+            Timekeeping.watching = 0;
             Timekeeping.keptFor = 60000;
             Timekeeping.trying = true;
             answerLapses();
