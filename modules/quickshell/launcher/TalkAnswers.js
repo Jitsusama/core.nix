@@ -233,18 +233,19 @@ function walkRefused(fromJoel, template, name) {
     return fromJoel === true ? null : filled(template, { name });
 }
 
-// Why an answer to `want` from any row goes nowhere, in `said`'s words (verb:agent:talk's), or
-// null where it goes: a walk from outside (`fromJoel` not true) is refused, as an answer goes
-// as Joel's, and one to an ask he answered already (`list`, the session's answers) goes
+// Why an answer to `answer.want` from any row goes nowhere, in `refusals`' words
+// (verb:agent:talk's said) filled with the session's `name`, or null where it goes: a walk
+// from outside (`fromJoel` not true) is refused, as an answer goes as Joel's, and one to an
+// ask he answered already (`answer.list`, the session's answers, at `answer.nowMs`) goes
 // nowhere, as the session takes only his first. Asked before his answer is kept, so neither
 // shows in its Talk as his.
-function answerRefused(fromJoel, list, want, nowMs, said, name) {
-    const walked = walkRefused(fromJoel, said?.answerWalked ?? "", name);
+function answerRefused(fromJoel, answer, refusals, name) {
+    const walked = walkRefused(fromJoel, refusals?.answerWalked ?? "", name);
     if (walked !== null) {
         return walked;
     }
-    return answeredAlready(list, want, nowMs) ? filled(said?.answeredAlready ?? "", { name })
-        : null;
+    return answeredAlready(answer?.list, answer?.want, answer?.nowMs)
+        ? filled(refusals?.answeredAlready ?? "", { name }) : null;
 }
 
 // What Talk to It on a top row does: "line" on the void, whose Talk opens the talk line;

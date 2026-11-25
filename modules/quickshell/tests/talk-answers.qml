@@ -294,18 +294,21 @@ QtObject {
             const refusals = { answerWalked: "{name} is answered only by you",
                 answeredAlready: "you answered {name} already" };
             const sentNow = [Answers.said("Yes", new Date(1000).toISOString(), "q@1")];
+            const firstTo = { list: [], want: "q@1", nowMs: 2000 };
+            const againTo = { list: sentNow, want: "q@1", nowMs: 2000 };
             Expect.same("his first answer to an ask goes",
-                Answers.answerRefused(true, [], "q@1", 2000, refusals, "Skiff"), null);
+                Answers.answerRefused(true, firstTo, refusals, "Skiff"), null);
             Expect.same("a walk's is refused before anything else",
-                Answers.answerRefused(false, sentNow, "q@1", 2000, refusals, "Skiff"),
+                Answers.answerRefused(false, againTo, refusals, "Skiff"),
                 "Skiff is answered only by you");
             Expect.same("a second to an ask he answered goes nowhere, For You's choices too",
-                Answers.answerRefused(true, sentNow, "q@1", 2000, refusals, "Skiff"),
+                Answers.answerRefused(true, againTo, refusals, "Skiff"),
                 "you answered Skiff already");
             Expect.same("one to a newer ask goes",
-                Answers.answerRefused(true, sentNow, "q@2", 2000, refusals, "Skiff"), null);
+                Answers.answerRefused(true, { list: sentNow, want: "q@2", nowMs: 2000 },
+                    refusals, "Skiff"), null);
             Expect.same("one with no words for why still refuses",
-                Answers.answerRefused(false, [], "q@1", 2000, {}, "Skiff"), "");
+                Answers.answerRefused(false, firstTo, {}, "Skiff"), "");
             Expect.same("his own Return's answer goes",
                 Answers.walkRefused(true, "{name} is answered only by you", "Skiff"), null);
             Expect.same("a walk's is refused, saying why",
