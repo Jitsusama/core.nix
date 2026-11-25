@@ -47,6 +47,7 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
@@ -132,9 +133,15 @@ fn parse_ppid(line: &str) -> Option<u32> {
         .ok()
 }
 
-/// The client a daemon worker serves, from its command line: Nix writes
-/// the client's pid over the worker's `--daemon`, padding it with NULs.
-fn client_of(cmdline: &[u8]) -> Option<u32> {
+/// The client a daemon worker serves, from its command line and the user
+/// `owner` it runs as: Nix writes the client's pid over the worker's
+/// `--daemon`, padding it with NULs. A worker runs as root and a build's
+/// processes never do, so a build naming itself nix-daemon with another
+/// client's pid isn't taken for a worker, nor given that client's weight.
+fn client_of(cmdline: &[u8], owner: u32) -> Option<u32> {
+    if owner != 0 {
+        return None;
+    }
     let mut args = cmdline.split(|byte| *byte == 0);
     let program = args.next()?;
     if !program
@@ -177,9 +184,11 @@ fn client_of_build(build: &Path) -> Option<u32> {
     let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
     let mut pid: u32 = procs.lines().next()?.parse().ok()?;
     for _ in 0..WORKER_DEPTH {
+        // A process's folder is owned by the user it runs as.
+        let owner = fs::metadata(format!("/proc/{pid}")).ok()?.uid();
         if let Some(client) = fs::read(format!("/proc/{pid}/cmdline"))
             .ok()
-            .and_then(|cmdline| client_of(&cmdline))
+            .and_then(|cmdline| client_of(&cmdline, owner))
         {
             return Some(client);
         }

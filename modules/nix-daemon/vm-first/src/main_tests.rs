@@ -183,16 +183,22 @@ fn a_vms_build_is_weighed_for_cpu_and_disk() {
 fn a_daemon_worker_names_its_client() {
     // Nix writes the client's pid over "--daemon", padding with NULs.
     assert_eq!(
-        client_of(b"nix-daemon\x00307605\x00\x00\x00"),
+        client_of(b"nix-daemon\x00307605\x00\x00\x00", 0),
         Some(307_605)
     );
     assert_eq!(
-        client_of(b"/nix/store/x-nix/bin/nix-daemon\x0042\x00"),
+        client_of(b"/nix/store/x-nix/bin/nix-daemon\x0042\x00", 0),
         Some(42)
     );
-    assert_eq!(client_of(b"nix-daemon\x00--daemon\x00"), None);
-    assert_eq!(client_of(b"bash\x00123\x00"), None);
-    assert_eq!(client_of(b""), None);
+    assert_eq!(client_of(b"nix-daemon\x00--daemon\x00", 0), None);
+    assert_eq!(client_of(b"bash\x00123\x00", 0), None);
+    assert_eq!(client_of(b"", 0), None);
+    // A build's process, run as a build user, naming itself a worker.
+    assert_eq!(
+        client_of(b"nix-daemon\x00307605\x00", 30_001),
+        None,
+        "a build's own process was taken for a daemon worker"
+    );
 }
 
 #[test]

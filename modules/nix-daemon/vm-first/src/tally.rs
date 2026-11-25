@@ -138,17 +138,20 @@ const COMMAND_LENGTH: usize = 120;
 
 /// A client's command as a person would type it, from its command line:
 /// the program by its name alone, and cut short past `COMMAND_LENGTH`.
+/// Any client may write its command line, so a control character is said
+/// escaped, as `\n`, and no newline in one starts a journal line of its
+/// own.
 fn command_of(cmdline: &[u8]) -> String {
     let mut args = cmdline
         .split(|&byte| byte == 0)
         .filter(|arg| !arg.is_empty())
-        .map(String::from_utf8_lossy);
+        .map(said_safely);
     let Some(program) = args.next() else {
         return String::new();
     };
     let name = program.rsplit('/').next().unwrap_or(&program).to_string();
     let said = std::iter::once(name)
-        .chain(args.map(std::borrow::Cow::into_owned))
+        .chain(args)
         .collect::<Vec<_>>()
         .join(" ");
     if said.chars().count() <= COMMAND_LENGTH {
@@ -157,6 +160,19 @@ fn command_of(cmdline: &[u8]) -> String {
     let mut cut: String = said.chars().take(COMMAND_LENGTH - 3).collect();
     cut.push_str("...");
     cut
+}
+
+/// One argument as text, each control character in it escaped.
+fn said_safely(arg: &[u8]) -> String {
+    let mut said = String::new();
+    for c in String::from_utf8_lossy(arg).chars() {
+        if c.is_control() {
+            said.extend(c.escape_default());
+        } else {
+            said.push(c);
+        }
+    }
+    said
 }
 
 /// The line vm-first says when a build has gone.
