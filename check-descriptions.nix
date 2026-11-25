@@ -4644,8 +4644,9 @@
   the-sessions-kitty-says-its-pid = ''
     the kitty every session's window is drawn by writes its pid beside its socket, which names
     none, failing its start where it can't, so the shell can find a session's window among those
-    that kitty draws, and then tells the shell it started, by the name the shell answers, so a
-    viewer kept for a kitty come back is asked of it
+    that kitty draws, and then tells the shell it started, by the name its sessions handler
+    answers, within 5 s and only journalled where it can't, so a viewer kept for a kitty come back
+    is asked of it without a shell not yet up stopping the kitty
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
