@@ -303,9 +303,10 @@ fn first_process(build: &Path) -> Option<u32> {
 /// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
 /// would, from the file system's root down and never back up it, without
 /// which every client would be taken for out of its build's cgroup. The
-/// root itself is refused: taken for the daemon's, it would have the
-/// machine's own controllers handed on through it, and the processes
-/// sitting in it, none of them a build's, sorted as builds left behind.
+/// root itself is refused, as the machine's and never a daemon's: taken
+/// for one, its own `cgroup.subtree_control` would be written should a
+/// daemon sit in a `nix-daemon` under it, as systemd never puts one, and
+/// the kernel's threads in it would be looked over as builds left behind.
 fn under_cgroup_root(cgroup: &Path) -> bool {
     cgroup.starts_with(CGROUP_ROOT)
         && cgroup != Path::new(CGROUP_ROOT)
