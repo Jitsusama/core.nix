@@ -1752,7 +1752,7 @@ in
           # Deserialize with nothing but deny_unknown_fields over it, and no
           # field says more than default. So the scan reads every attribute
           # and doc line above the struct, back to a blank line or the end
-          # of another item, and throws on any other line there or in the
+          # of another item, and fails on any other line there or in the
           # body, on anything but that end past the blank lines, and on a
           # struct no longer found, rather than passing what it didn't read.
           # Past any blank lines over an item's attributes stands the end of
@@ -1922,6 +1922,23 @@ in
               lines = changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ];
               why = overStruct;
             }
+            # Each line over these the scan tells, so only the missing
+            # derive, or the count of deny_unknown_fields, refuses it.
+            {
+              lines = changedVm 1 [ ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 2 [ ];
+              why = overStruct;
+            }
+            {
+              lines = changedVm 2 [
+                denying
+                denying
+              ];
+              why = overStruct;
+            }
             {
               lines = changedVm 2 [ "#[serde(deny_unknown_fields, rename_all = \"kebab-case\")]" ];
               why = overStruct;
@@ -2011,7 +2028,7 @@ in
           # derives Deserialize with nothing but one lowercase rename over
           # it, and its body holds only plain variants. So, as the struct
           # scan does, it reads every attribute and doc line above the enum,
-          # back to a blank line or another item's end, and throws on any
+          # back to a blank line or another item's end, and fails on any
           # other line there or in the body, rather than passing what it
           # didn't read.
           kindScan =
@@ -2349,7 +2366,7 @@ in
   # none authorizes nothing of mycelium's.
   mycelium-lets-a-link-key-only-link =
     holds "mycelium-lets-a-link-key-only-link"
-      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, or a machine naming none authorizes a key."
+      "A link key a machine names isn't pinned to `mycelium ssh` as the realm and machine it names, on NixOS or nix-darwin, can't have a terminal for an attach, a machine naming none authorizes a key, or a machine's name opening with a hyphen is taken."
       (
         let
           key = "ecdsa-sha2-nistp256 AAAAone";
@@ -2371,10 +2388,33 @@ in
             builtins.length given == 1
             && lib.hasPrefix ''restrict,pty,command="/nix/store/'' (lib.head given)
             && lib.hasSuffix ''/bin/mycelium --realm personal ssh --from one" ${key}'' (lib.head given);
+          # Whether the name's own assertion refuses a machine so named, read
+          # by its message so another assertion failing can't stand in. Only
+          # a failed one's message is read, since some are made only then.
+          misnamed =
+            machine:
+            lib.any
+              (
+                check:
+                !check.assertion
+                && lib.hasPrefix "Each realm and machine in jitsusama.mycelium.linkedFrom" check.message
+              )
+              (bareNixos [
+                self.nixosModules.workstation
+                {
+                  jitsusama.mycelium = {
+                    account = "someone";
+                    linkedFrom.personal.${machine} = key;
+                  };
+                }
+              ]).config.assertions;
         in
         pinnedOn bareNixos self.nixosModules.workstation
         && pinnedOn bareDarwin self.darwinModules.workstation
         && keys bareNixos self.nixosModules.workstation { } == [ ]
+        # A name opening with a hyphen would reach mycelium as a flag.
+        && misnamed "-h"
+        && !misnamed "one"
       );
 
   # The words a link key is pinned to, read from the line a machine's system
@@ -2430,14 +2470,18 @@ in
       case $ended in
         1) ;;
         0) echo "mycelium took a login on its link key's words"; cat said told; exit 1 ;;
-        124) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
+        # timeout ends 124 on its TERM, and 137 once it kills a run that
+        # ignored that.
+        124 | 137) echo "mycelium hung on a login on its link key's words"; cat told; exit 1 ;;
         *) echo "mycelium ended $ended on a login on its link key's words"; cat told; exit 1 ;;
       esac
       # Each refusal is a JSON object of its own line, read by its fields,
-      # so neither its layout nor another field's text decides.
+      # so neither its layout nor another field's text decides. mycelium
+      # writes `asked` on every refusal, null where no command was asked.
+      # jq's own words on a file it can't read stay in the log.
       kept=state/mycelium/refused-keys.jsonl
-      ${lib.getExe pkgs.jq} -e 'select(.from == "one" and .asked == null)' "$kept" \
-        > /dev/null 2>&1 || {
+      ${lib.getExe pkgs.jq} -e 'select(.from == "one" and has("asked") and .asked == null)' \
+        "$kept" > /dev/null || {
         echo "mycelium didn't take its link key's words:" ${lib.escapeShellArgs words}
         cat told
         exit 1
