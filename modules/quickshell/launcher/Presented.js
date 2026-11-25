@@ -267,6 +267,11 @@ const keysOwn = ["place:", "category:", "collection:"];
 // How many letters of such a key are said with reports off, since its kind alone vouches for
 // it, and a daemon's row may be keyed so as well.
 const ownLength = 64;
+// What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
+// or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
+// there, which no id holds, so such a key is said by its kind alone. A one-word name has an
+// id's shape, so a daemon's row keyed so is still said to 64 letters.
+const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters: what keyShown
 // says of a key whose later parts may be someone's words.
@@ -317,20 +322,25 @@ function kindsLed(parts, kinds) {
 
 // A row's key as a line in the journal may say it: whole where `whole`, as while reports are on;
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
-// since most keys carry what someone else wrote. The launcher's own ids are whole;
-// `window:<app>:<title>` is `window:<app>`, and the launcher's own `program:<desktop entry's id>`
-// whole, so each program's drawer is timed apart (RTOIMQ, 2026-11-24), each only where its id is
-// shaped as an app's and else by its kind. A `verb:` key goes to its kind and its act where that's
-// one of actWords: `verb:agent:close` whole, `verb:notice:offer:<sender's id>` as
-// `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
-// isn't a kind's word nothing at all. A number is read as text.
+// since most keys carry what someone else wrote, a network's name or a window's title. The
+// launcher's own ids are whole, and an own kind's key holding more than an id is said by that
+// kind alone. `window:<app>:<title>` is `window:<app>`, and the launcher's own
+// `program:<desktop entry's id>` whole, so each program's drawer is timed apart (RTOIMQ,
+// 2026-11-24), each only where its id is shaped as an app's and else by its kind. A `verb:` key,
+// its daemon's own words, goes to its kind, and its act where that's one of actWords:
+// `verb:agent:close` whole, `verb:disk:nvme0:/home` as `verb:disk`,
+// `verb:notice:offer:<sender's id>` as `verb:notice:offer`. A new kind says nothing more until
+// it's named here, and a first part that isn't a kind's word, as a name with a colon in it,
+// nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole) {
         return text;
     }
-    if (keysOwn.some(own => text.startsWith(own))) {
-        return [...text].slice(0, ownLength).join("");
+    const own = keysOwn.find(kind => text.startsWith(kind));
+    if (own !== undefined) {
+        return ownId.test(text.slice(own.length)) ? [...text].slice(0, ownLength).join("")
+            : own.slice(0, -1);
     }
     const record = text.startsWith("row:");
     const parts = (record ? text.slice(4) : text).split(":");
@@ -478,8 +488,8 @@ function whenceShown(address, whole) {
 
 // The rows a walk from outside or a terminal took, by their names where `whole`, and otherwise
 // each by its kind as rowShown says it, since a source named them, escaped as actShown's are,
-// since a key of the launcher's own kinds, as `place:`, is said to its 64th letter, and a
-// daemon's row may be keyed so too: the escape stops its line breaks, never its letters.
+// though a key said whole is an id's letters alone (keyShown), so the escape is only a
+// fail-safe there.
 function pathShown(rows, whole) {
     return whole ? quoted(rows.map(row => row.name).join(" \u203a "))
         : quoted(rows.map(row => rowShown(row, false)).join(" \u203a ")).slice(1, -1);
