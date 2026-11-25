@@ -159,13 +159,23 @@ fn aged(at: SystemTime, now: SystemTime) -> bool {
     at.checked_add(QUIET).is_some_and(|then| then <= now)
 }
 
+/// What tells a log from another written under its name since: its inode.
+/// Not its device too, as a file's identity usually takes, since btrfs gives
+/// each subvolume a device number as it mounts, and the number moves from
+/// boot to boot. A kept history held eleven of them on 25 November, and
+/// each boot took every log for a new one, forgot it and read it again
+/// from its start: 29 GB in the walk a start makes before its first pass.
+fn identity(metadata: &std::fs::Metadata) -> String {
+    metadata.ino().to_string()
+}
+
 /// Whether a log is quiet and read to its end, its copies known, so a
 /// pass would read nothing more of it.
 fn read_through(history: &History, log: &Path, now: SystemTime) -> bool {
     let Ok(metadata) = std::fs::metadata(log) else {
         return false;
     };
-    let identity = format!("{}:{}", metadata.dev(), metadata.ino());
+    let identity = identity(&metadata);
     quiet(log, now)
         && history
             .file(&log.to_string_lossy(), &identity)
@@ -612,7 +622,7 @@ fn scan_slice(
     let Ok(metadata) = std::fs::metadata(path) else {
         return Ok(Pass::default());
     };
-    let identity = format!("{}:{}", metadata.dev(), metadata.ino());
+    let identity = identity(&metadata);
     let name = path.to_string_lossy().into_owned();
     let (mut offset, mut carry) = if let Some((offset, carry)) = history.file(&name, &identity) {
         (offset, serde_json::from_str(&carry).unwrap_or_default())
@@ -779,6 +789,35 @@ mod tests {
 
     // A log written anew keeps no budget it couldn't draw on from before,
     // and reading it again doesn't write one twice.
+    // A boot gives a btrfs subvolume another device number, so a log kept
+    // under the number it had is the same log, read on from where it was.
+    #[test]
+    fn a_log_kept_under_another_boot_s_device_is_read_on_from_where_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("project")).unwrap();
+        let path = dir.path().join("project/2026_s1.jsonl");
+        std::fs::write(&path, format!("{HEADER}\n{TURN}\n")).unwrap();
+        let history = History::memory();
+        scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        let inode = std::fs::metadata(&path).unwrap().ino();
+        history
+            .db
+            .execute("UPDATE files SET identity = ?1", [format!("38:{inode}")])
+            .unwrap();
+        let later = turn_at(2);
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        writeln!(file, "{later}").unwrap();
+        let read = scan(&history, &own(dir.path()), Reading::default()).unwrap();
+        assert_eq!(
+            (read.bytes, turns(&history)),
+            (u64::try_from(later.len() + 1).unwrap(), 2),
+            "a log kept under another boot's device number was read again from its start"
+        );
+    }
+
     #[test]
     fn a_replaced_log_tells_its_unresolved_budgets_once() {
         let dir = tempfile::tempdir().unwrap();

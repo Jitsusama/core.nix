@@ -584,9 +584,13 @@ impl History {
     /// Where reading a log stopped, and what it carried, if it's the same
     /// file as before: a log replaced under the same name starts over.
     pub fn file(&self, path: &str, identity: &str) -> Option<(u64, String)> {
+        // A row kept before 25 November says `device:inode`; only its inode
+        // is held against the log's, so a history that moved to the inode
+        // alone reads none of its logs again for it.
         self.db
             .query_row(
-                "SELECT offset, carry FROM files WHERE path = ?1 AND identity = ?2",
+                "SELECT offset, carry FROM files
+                 WHERE path = ?1 AND substr(identity, instr(identity, ':') + 1) = ?2",
                 params![path, identity],
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
             )
