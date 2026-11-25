@@ -108,6 +108,26 @@ const PAUSE: Duration = if cfg!(test) {
 /// train's merges.
 const MERGE_TRIES: usize = 5;
 
+/// How many more times GitHub is asked whether a merge it last answered
+/// with a server error landed, the pauses between summing to five
+/// minutes. A server error says nothing of the merge, which GitHub may
+/// finish after it: at 11:15 on 25 November it answered each of the
+/// train's merges of #6398 with an HTTP 502, the train turned #6398 away
+/// after half a minute, and GitHub read it merged at 11:19, so the 17
+/// riders left aboard ran their checks again.
+const SETTLE_ASKS: usize = 20;
+
+/// How long the train waits between those asks; none in tests.
+const SETTLE_PAUSE: Duration = if cfg!(test) {
+    Duration::ZERO
+} else {
+    Duration::from_secs(15)
+};
+
+/// What GitHub's answer says when its server failed, rather than
+/// refusing the merge.
+const SERVER_ERRORS: [&str; 4] = ["Server Error", "HTTP 502", "HTTP 503", "HTTP 504"];
+
 /// How a merge GitHub was asked for went.
 enum Merge {
     /// It merged as this commit.
@@ -131,7 +151,7 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
         };
         match merged(hub, merging.number) {
             Ok(Some(made)) => return Merge::Made(made),
-            Ok(None) if tried == MERGE_TRIES => return Merge::Refused(why),
+            Ok(None) if tried == MERGE_TRIES => return settled(hub, merging.number, why),
             Ok(None) => {}
             Err(error) => {
                 return Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"));
@@ -141,6 +161,27 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
         pause *= 2;
     }
     Merge::Refused("it was never asked".to_owned())
+}
+
+/// How a merge GitHub last answered for `why` went: refused at once when
+/// GitHub refused it, and otherwise, when its server failed, made once
+/// GitHub reads pull request `number` merged, or refused when it still
+/// reads it unmerged after `SETTLE_ASKS` asks.
+fn settled(hub: &dyn Hub, number: u64, why: String) -> Merge {
+    if !SERVER_ERRORS.iter().any(|error| why.contains(error)) {
+        return Merge::Refused(why);
+    }
+    for _ in 0..SETTLE_ASKS {
+        std::thread::sleep(SETTLE_PAUSE);
+        match merged(hub, number) {
+            Ok(Some(made)) => return Merge::Made(made),
+            Ok(None) => {}
+            Err(error) => {
+                return Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"));
+            }
+        }
+    }
+    Merge::Refused(why)
 }
 
 /// Whether GitHub reads pull request `number` merged, asked three times

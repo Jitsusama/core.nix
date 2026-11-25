@@ -27,6 +27,12 @@ struct Fake {
     /// The pull request GitHub merges, answering with an error, and then
     /// can't be asked about.
     cant_say: Option<u64>,
+    /// A pull request whose every merge GitHub answers with a server
+    /// error, and which it reads unmerged this many times more before it
+    /// finishes the merge after all.
+    merges_late: Cell<Option<(u64, u32)>>,
+    /// The merge GitHub finishes late, once it was asked for.
+    late: RefCell<Option<Merging>>,
     /// The pull request before whose merge another change lands on main.
     moved_before: Option<u64>,
     /// The pull request after whose merge another change lands on main.
@@ -50,6 +56,8 @@ impl Fake {
             refuses_for: Cell::new(None),
             merges_then_errs: None,
             cant_say: None,
+            merges_late: Cell::new(None),
+            late: RefCell::default(),
             moved_before: None,
             moved_after: None,
             revert_fails: None,
@@ -97,6 +105,31 @@ impl Fake {
         .ok()?;
         (!found.is_empty()).then_some(found)
     }
+
+    /// Merge `merging` on origin's main as GitHub does, answering its
+    /// merge.
+    fn merge_in(&self, merging: &Merging) -> Result<String, String> {
+        self.on_main()?;
+        git_in(
+            &self.clone,
+            &[
+                "merge",
+                "--quiet",
+                "--no-ff",
+                "-m",
+                &merging.subject,
+                "-m",
+                &merging.title,
+                // GitHub's merge is a commit of its own, not the
+                // candidate's, though its tree is the same.
+                "-m",
+                "Merged by GitHub",
+                &merging.head,
+            ],
+        )?;
+        self.push()?;
+        git_in(&self.clone, &["rev-parse", "HEAD"])
+    }
 }
 
 impl Hub for Fake {
@@ -117,29 +150,17 @@ impl Hub for Fake {
             self.refuses_for.set(Some((refused, left - 1)));
             return Err("Pull Request is not mergeable".to_owned());
         }
+        if let Some((late, _)) = self.merges_late.get()
+            && late == number
+        {
+            let mut asked_late = self.late.borrow_mut();
+            asked_late.get_or_insert_with(|| merging.clone());
+            return Err("gh api: gh: Server Error (HTTP 502)".to_owned());
+        }
         if self.moved_before == Some(number) {
             self.elsewhere()?;
         }
-        self.on_main()?;
-        git_in(
-            &self.clone,
-            &[
-                "merge",
-                "--quiet",
-                "--no-ff",
-                "-m",
-                &merging.subject,
-                "-m",
-                &merging.title,
-                // GitHub's merge is a commit of its own, not the
-                // candidate's, though its tree is the same.
-                "-m",
-                "Merged by GitHub",
-                &merging.head,
-            ],
-        )?;
-        self.push()?;
-        let made = git_in(&self.clone, &["rev-parse", "HEAD"])?;
+        let made = self.merge_in(merging)?;
         if self.moved_after == Some(number) {
             self.elsewhere()?;
         }
@@ -152,6 +173,17 @@ impl Hub for Fake {
     fn merged(&self, number: u64) -> Result<Option<String>, String> {
         if self.cant_say == Some(number) {
             return Err("gh api: HTTP 502: Bad Gateway".to_owned());
+        }
+        if let Some((late, left)) = self.merges_late.get()
+            && late == number
+        {
+            if left > 0 {
+                self.merges_late.set(Some((late, left - 1)));
+                return Ok(None);
+            }
+            if let Some(merging) = self.late.borrow_mut().take() {
+                return self.merge_in(&merging).map(Some);
+            }
         }
         Ok(self.merge_of(number))
     }
@@ -671,6 +703,45 @@ fn a_merge_github_cant_say_it_made_keeps_every_merge_and_says_so() {
         landed.asked,
         ["merge 1", "merge 2"],
         "the train reverted under a merge that may stand, leaving a tree nobody wrote"
+    );
+}
+
+#[test]
+fn a_merge_github_finishes_after_its_server_errors_counts_as_made() {
+    // Read unmerged three times past the asks a merge gets, as GitHub
+    // read #6398 merged minutes after the train turned it away.
+    let landed = landed_by("github-late", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, 8))),
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "a merge GitHub finished after answering with server errors didn't land"
+    );
+    assert_eq!(
+        landed.asked,
+        [vec!["merge 1"], vec!["merge 2"; MERGE_TRIES]].concat(),
+        "the train asked again for a merge GitHub was still finishing"
+    );
+}
+
+#[test]
+fn a_merge_github_never_finishes_after_its_server_errors_is_refused() {
+    let landed = landed_by("github-never", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, u32::MAX))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { kept, refused, why, .. }
+                if *kept == [landed.one.clone()]
+                    && *refused == landed.two
+                    && why.contains("HTTP 502")
+        ),
+        "a merge GitHub never made after its server errors didn't leave the train: {:?}",
+        landed.landing
     );
 }
 
