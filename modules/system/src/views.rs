@@ -283,6 +283,7 @@ mod tests {
                         health: Health::Watch,
                         says: "is short of memory, runs 3 cells busy".to_owned(),
                         side: Vec::new(),
+                        looks: Vec::new(),
                         address: Some("mycelium/#machine=laptop".to_owned()),
                         ties: ties(),
                     }],

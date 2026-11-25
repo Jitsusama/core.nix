@@ -33,6 +33,7 @@ import "Measures.js" as Measures
 import "MarkSize.js" as MarkSize
 import "Editing.js" as Editing
 import "KeyNames.js" as KeyNames
+import "KeyActs.js" as KeyActs
 import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
@@ -644,6 +645,11 @@ Item {
     // which changes nothing a source holds, so the launcher never takes a
     // source changing beside it for the key's doing.
     property bool keyMoved: false
+    // Whether the last of them acted (KeyActs.acts), said before it's
+    // counted, so the launcher times a change beside it from it only
+    // where it did something: a letter typed, a count begun or a caret
+    // moved on the find doesn't.
+    property bool keyActed: false
 
     // A key reaching a modal line, before it does anything, so what the
     // line acts on can be brought up to now first, as a launcher drawing
@@ -659,19 +665,28 @@ Item {
             awaitsRegister = false;
             return false;
         }
-        if (awaitsRegister && event.text !== "") {
+        if (registersLetter(event)) {
             awaitsRegister = false;
             event.accepted = true;
             if (!event.isAutoRepeat)
                 prompt.registered(event.text);
             return true;
         }
-        if (key === "Ctrl+r" && !event.isAutoRepeat) {
+        if (opensRegister(event, key)) {
             awaitsRegister = true;
             event.accepted = true;
             return true;
         }
         return false;
+    }
+
+    // The register's letter after Ctrl+R, and Ctrl+R itself, which
+    // registerKey takes where the line takes registers.
+    function registersLetter(event: KeyEvent): bool {
+        return awaitsRegister && event.text !== "";
+    }
+    function opensRegister(event: KeyEvent, key: string): bool {
+        return key === "Ctrl+r" && !event.isAutoRepeat;
     }
 
     function modalKey(event: KeyEvent) {
@@ -680,6 +695,23 @@ Item {
         keyMoved = false;
         keyAlone = KeyNames.alone(event.key, Qt);
         keyTaken = key;
+        // What the key does is read before it's counted, so whether it
+        // acted is said with the count; reading changes nothing, and each
+        // step below reads it as it stands here.
+        const after = visualOperated;
+        const read = QueryKeys.read(standing, key, mode, editsWords);
+        const operated = Operators.takenWith(after, key, Date.now(), wait);
+        keyActed = KeyActs.acts(read, {
+            alone: keyAlone,
+            registering: registers && mode === "insert"
+                && (registersLetter(event) || opensRegister(event, key)),
+            answering: confirming,
+            operated,
+            commands: QueryKeys.opensCommands(key, mode, input.text),
+            drawerHere,
+            mode,
+            text: input.text
+        });
         // A press is a key taken as it comes; a repeat only once it's
         // known to do something (QueryKeys.heldDoes, below).
         if (!event.isAutoRepeat)
@@ -696,10 +728,9 @@ Item {
         }
         // The operator pressed again just after visual's is taken with it;
         // a key with no name, as Shift alone, lets nothing go.
-        const after = visualOperated;
         if (key !== "")
             visualOperated = null;
-        if (Operators.takenWith(after, key, Date.now(), wait)) {
+        if (operated) {
             event.accepted = true;
             return;
         }
@@ -713,7 +744,6 @@ Item {
             prompt.commanded("");
             return;
         }
-        const read = QueryKeys.read(standing, key, mode, editsWords);
         keyMoved = QueryKeys.repeats(read.act);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a

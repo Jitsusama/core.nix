@@ -2,8 +2,9 @@
 
 How a machine treats its disks and memory as they fill or fail, on machines
 booted in QEMU: cargo's filesystem of its own, the disk guard clearing room,
-a panic once the disk is gone, oomd ending what filled swap, and coming
-back from hibernation. Each test's opening comment says what it fills,
+a panic once the disk is gone, oomd ending what filled swap, coming back
+from hibernation, and an account's busiest folders moved into subvolumes
+of their own. Each test's opening comment says what it fills,
 takes away or stands in for.
 
 | File                                 | Holds                                                          |
@@ -15,3 +16,4 @@ takes away or stands in for.
 | `full-swap-grow.py`                  | that test's program, taking memory as a repack's grows         |
 | `hibernate.nix`, `-vm-test.py`       | a machine laid out as the laptops are, hibernating and back    |
 | `hibernate-entry.nix`, `-vm-test.py` | an image read back through the boot entry its start came from  |
+| `subvolumes.nix`, `-vm-test.py`      | an account's folders moved into subvolumes, failing open       |

@@ -696,6 +696,7 @@ import ./ask-checks.nix args
   # the Wi-Fi drawn as words, one going with its link, a machine mycelium
   # runs on following the node and linked to its place on the map, broken
   # while net is away and live once it's back, stale once the server goes,
+  # every device within a phone's width as each floor stacks there,
   # within its budget, the web-design skill's page checks passing at two
   # widths in both looks, and nothing logged. Both feeds are the ones
   # home.nix declares for a machine in a realm, so the server under test

@@ -439,7 +439,15 @@ or launchd, and [`home.nix`][2] the account's.
   are the trend over about two hours, told once it's watched ten minutes
   and while the disk is filling now too, since builds writing and freeing
   gigabytes every few minutes swing the two-minute rate passes plan by
-  either way by tens of gigabytes an hour. A disk whose last pass, in its
+  either way by tens of gigabytes an hour. The disk Nix's store is on
+  also carries `nix_floor`, the `min-free` Nix keeps there by collecting
+  its own garbage, read from `nix config show` hourly, and `floor_at`,
+  when it reaches that floor. While it's above the floor its sentence
+  tells `floor_at` rather than when it fills, since Nix collects before
+  it does. `Fill::ahead` in `src/decide.rs` works both moments out, and
+  `band_in` leaves out a band that starts under the floor. A beat drops
+  either moment once it has passed, a restarted guard's first beats on
+  the status the last one left included. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. A pass is
   `passing` from its start, the survey before it included, with its

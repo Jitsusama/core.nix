@@ -10,8 +10,7 @@
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
 # A machine SSH can't reach, such as one a provider lent, is dialled through
-# that provider's program instead, as `PROGRAM:PLACE`, the program by its
-# store path:
+# that provider's program instead, as `PROGRAM:PLACE`, the program by its store path:
 #
 #   jitsusama.mycelium.vias = [ "${cistern-link}/bin/cistern-link:sandbox-1" ];
 #
@@ -420,7 +419,10 @@ let
   ];
 in
 {
-  imports = [ ../signing/home.nix ];
+  imports = [
+    ../signing/home.nix
+    ./state-subvolume.nix
+  ];
 
   options.jitsusama.mycelium = {
     realm = lib.mkOption {

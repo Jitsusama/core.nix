@@ -190,8 +190,19 @@ const GARBAGE: &str = "garbage";
 /// How often Nix's own `min-free` is read again, since a person changes
 /// their `nix.conf` seldom and asking costs a process.
 const MIN_FREE_EVERY: f64 = 3600.0;
-/// How soon a `min-free` that couldn't be read is asked again.
+/// How soon a `min-free` that couldn't be read is asked again, the first
+/// time, and every time while no read has answered; each failure after
+/// doubles it, up to `MIN_FREE_EVERY`, while a floor read before is kept.
 const MIN_FREE_AGAIN: f64 = 300.0;
+
+/// How soon `min-free` is asked again after `failures` reads in a row
+/// failed: five minutes, then ten, twenty and forty, then hourly. Each
+/// read can hold the guard's step for its 30 s timeout, so a Nix that
+/// stays slow is asked less and less rather than every five minutes.
+fn min_free_again(failures: u32) -> f64 {
+    let doublings = failures.saturating_sub(1).min(4);
+    (MIN_FREE_AGAIN * f64::from(1_u32 << doublings)).min(MIN_FREE_EVERY)
+}
 /// What linking the store's identical files is journaled and run as.
 const DEDUPE: &str = "dedupe";
 /// How long after a failed run linking the store's files the next waits.
@@ -502,8 +513,9 @@ pub struct Guard {
     /// Whether what hears the opens still does: its thread ends on an
     /// error reading them, after which nothing is heard.
     listening: Arc<AtomicBool>,
-    /// Nix's own `min-free`, and when it was read.
-    min_free: Option<(f64, Option<u64>)>,
+    /// Nix's own `min-free`, when it was read, and how many reads of it in
+    /// a row have failed since.
+    min_free: Option<(f64, Option<u64>, u32)>,
     /// The account's home, which sentences write as `~`, for a guard run
     /// in one; the system's guard has none.
     home: Option<PathBuf>,
@@ -705,6 +717,11 @@ impl FilesystemStatus {
         // "full in 0 s" by every reader of the status, the bar's included.
         if self.full_at.is_some_and(|at| at <= now) {
             self.full_at = None;
+        }
+        // So does a time to Nix's floor, which the broker passes on as a
+        // moment still to come.
+        if self.floor_at.is_some_and(|at| at <= now) {
+            self.floor_at = None;
         }
         self.says = crate::words::filesystem(&self.told(now), home);
     }
@@ -2316,22 +2333,52 @@ impl Guard {
     }
 
     /// Reads Nix's own `min-free` once an hour. A read that fails keeps
-    /// the last one that didn't and is asked again in five minutes, since
-    /// the floor decides what a person is told: one slow `nix config show`
-    /// on a loaded Mac would otherwise tell its disk fills for an hour.
+    /// the last one that didn't and is asked again sooner, since the
+    /// floor decides what a person is told: one slow `nix config show` on
+    /// a loaded Mac would otherwise tell its disk fills for an hour. With
+    /// a floor kept it backs off from five minutes on (`min_free_again`);
+    /// with none, as after a switch restarts the guard under load, it's
+    /// asked every five minutes until one answers. A run of failures is
+    /// logged where it starts and where it ends, so the journal says
+    /// whether the guard tells from an old floor, or none.
     fn read_min_free(&mut self, now: f64) {
         if self
             .min_free
-            .is_some_and(|(at, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
+            .is_some_and(|(at, _, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
         {
             return;
         }
+        let (kept, failures) = self
+            .min_free
+            .map_or((None, 0), |(_, kept, failures)| (kept, failures));
         self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
-            Some(read) => (now, Some(read)),
-            None => (
-                now - MIN_FREE_EVERY + MIN_FREE_AGAIN,
-                self.min_free.and_then(|(_, kept)| kept),
-            ),
+            Ok(read) => {
+                if failures > 0 {
+                    say!("disk-guard: read Nix's min-free again after {failures} failed");
+                }
+                (now, Some(read), 0)
+            }
+            Err(why) => {
+                if failures == 0 {
+                    match kept {
+                        Some(floor) => say!(
+                            "disk-guard: reading Nix's min-free: {why}; keeping the last read, \
+                             {floor} bytes"
+                        ),
+                        None => say!(
+                            "disk-guard: reading Nix's min-free: {why}; telling without Nix's \
+                             floor until it answers"
+                        ),
+                    }
+                }
+                let failures = failures.saturating_add(1);
+                let again = if kept.is_some() {
+                    min_free_again(failures)
+                } else {
+                    MIN_FREE_AGAIN
+                };
+                (now - MIN_FREE_EVERY + again, kept, failures)
+            }
         });
     }
 
@@ -2346,7 +2393,8 @@ impl Guard {
     /// Nix's own `min-free`, under which Nix soon collects by itself. A
     /// `min-free` of nothing is Nix never collecting by itself.
     fn near_min_free(&self) -> bool {
-        let Some((_, Some(min_free))) = self.min_free.filter(|&(_, min)| min > Some(0)) else {
+        let Some((_, Some(min_free), _)) = self.min_free.filter(|&(_, min, _)| min > Some(0))
+        else {
             return false;
         };
         crate::sys::space(&self.config.nix.store)
@@ -3653,6 +3701,21 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
             // A guard only starting has no pass at work, whatever the one
             // before was doing as it left.
             left.remove("passing");
+            // Nor is a moment the last guard told still to come once it
+            // has passed, which the broker would pass on as if it were.
+            if let Some(serde_json::Value::Array(filesystems)) = left.get_mut("filesystems") {
+                for filesystem in filesystems
+                    .iter_mut()
+                    .filter_map(serde_json::Value::as_object_mut)
+                {
+                    for moment in ["full_at", "floor_at"] {
+                        let at = filesystem.get(moment).and_then(serde_json::Value::as_f64);
+                        if at.is_some_and(|at| at <= now) {
+                            filesystem.insert(moment.to_owned(), serde_json::Value::Null);
+                        }
+                    }
+                }
+            }
             state::save(path, &left)
         }
         _ => Ok(()),
@@ -3923,7 +3986,17 @@ impl Reclaimer for Pretending {
 // so this test doesn't cover it.
 #[cfg(test)]
 mod tests {
-    use super::{Band, Decision, Goal, Why, aim};
+    use super::{Band, Decision, Goal, Why, aim, min_free_again};
+
+    #[test]
+    fn a_failing_min_free_read_waits_twice_as_long_each_time_up_to_an_hour() {
+        let waits: Vec<f64> = (1..=7).map(min_free_again).collect();
+        assert_eq!(
+            waits,
+            [300.0, 600.0, 1200.0, 2400.0, 3600.0, 3600.0, 3600.0],
+            "failures in a row waited other than 5, 10, 20 and 40 minutes, then hourly"
+        );
+    }
 
     #[test]
     fn each_decision_aims_its_pass_with_its_why_and_the_survey_it_was_given() {

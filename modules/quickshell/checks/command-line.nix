@@ -99,7 +99,8 @@
   # the launcher asks once, answered by Return as an armed row is; and
   # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's
   # search matches; and launcher/Headings.js to how the rows' moves count past a
-  # list's headings, and to which lists rest on a whole row.
+  # list's headings, and to which lists rest on a whole row; and KeyActs.js to
+  # which keys act, the rest leaving the launcher's clock at the key before.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -116,6 +117,7 @@
         "DrawerRun.js"
         "DrawerValue.js"
         "Editing.js"
+        "KeyActs.js"
         "KeyNames.js"
         "ListedKeys.js"
         "ModeMarks.js"

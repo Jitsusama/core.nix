@@ -362,8 +362,11 @@ fn report_command(context: &Context, config: &Config, rest: &[&str]) -> Result<(
 }
 
 /// How old the daemon's last word on the budgets may be and still be how
-/// they stand: past its idle wait between passes, by a minute.
-const WRITTEN_LASTS: f64 = 360.0;
+/// they stand, while the daemon is still there: as long as it goes on
+/// beating without a pass that worked. The word is stamped as a pass
+/// starts, so it ages by two passes and the wait between, which a trust of
+/// the idle wait alone ran past.
+pub(crate) const WRITTEN_LASTS: f64 = crate::daemon::FAILING.as_secs_f64();
 
 /// The budgets as the daemon's last pass wrote them, while that's recent
 /// enough to be how they stand. Every pi session asks for them, all at once
@@ -374,7 +377,10 @@ fn written_budgets(config: &Config, now: f64) -> Option<Value> {
     let written: Value = serde_json::from_str(&text).ok()?;
     let at = crate::time::parse(written.get("at")?.as_str()?)?;
     let current = written.get("v")?.as_u64()? == u64::from(crate::standing::VERSION);
-    (current && (0.0..=WRITTEN_LASTS).contains(&(now - at))).then_some(written)
+    // A daemon that stopped leaves its file behind, so the word is taken
+    // only while one still listens, which a stopped one's socket refuses.
+    let listening = std::os::unix::net::UnixStream::connect(config.socket()).is_ok();
+    (current && listening && (0.0..=WRITTEN_LASTS).contains(&(now - at))).then_some(written)
 }
 
 /// `budgets`: how each budget stands, as JSON for the harness, or a line
