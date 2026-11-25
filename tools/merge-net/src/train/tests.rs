@@ -204,6 +204,37 @@ fn a_gate_is_read_by_what_its_last_run_said() {
     fs::remove_dir_all(&root).unwrap();
 }
 
+// The verdict is read from the log as the stamps leave it, so a stamped
+// red, or a set-aside replay, still reads as it did unstamped.
+#[test]
+fn a_stamped_gate_is_read_as_an_unstamped_one_was() {
+    let root = root("stamped-words");
+    fs::create_dir_all(&root).unwrap();
+    let log = root.join("candidate.log");
+    let said = |script: &str| {
+        let mut command = Command::new("sh");
+        command.args(["-c", script]);
+        let status = stamped::run(command, &log).expect("the gate should run");
+        gated(status.code(), &words_of(&log))
+    };
+    let failed = "echo \"error: Cannot build '/nix/store/x-a-check.drv'.\" >&2; \
+                  echo '       Reason: builder failed with exit code 1.' >&2";
+    assert_eq!(
+        said(&format!("{failed}; exit 75")),
+        Gated::Red,
+        "a stamped failed check beside an untaken part read as untaken"
+    );
+    assert_eq!(
+        said(&format!(
+            "{failed}; echo 'nix-offload: 1234567 over main failed, so the change runs again \
+             on its own base' >&2; echo 'nix-offload: no builder took it' >&2; exit 75"
+        )),
+        Gated::Unsent,
+        "a stamped replay nix-offload set aside made an untaken run read as red"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn riders_are_read_back_in_the_order_they_boarded() {
     let root = root("order");

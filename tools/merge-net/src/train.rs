@@ -70,6 +70,7 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
+mod stamped;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
@@ -736,22 +737,27 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
     }
 }
 
-/// Run the gate in `checkout`, its words going to `log`: how it ended.
+/// Run the gate in `checkout`, its words going to `log`, each line stamped
+/// with its time into the gate: how it ended. A gate whose log lost words
+/// is red, as one whose own writes failed on a full disk was before the
+/// stamps, and the train's log says why, since its riders' reason can't.
 fn gate(checkout: &Path, log: &Path) -> Gated {
-    let Ok(words) = fs::File::create(log) else {
-        return Gated::Red;
-    };
-    let Ok(errors) = words.try_clone() else {
-        return Gated::Red;
-    };
-    let ran = Command::new("nix-offload")
+    let mut command = Command::new("nix-offload");
+    command
         .args(["there", "--lent-only", "--changed"])
         .current_dir(checkout)
-        .env_remove("SSH_AUTH_SOCK")
-        .stdout(words)
-        .stderr(errors)
-        .status();
-    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
+        .env_remove("SSH_AUTH_SOCK");
+    match stamped::run(command, log) {
+        Ok(status) => gated(status.code(), &words_of(log)),
+        Err(error) => {
+            println!(
+                "merge-net: the gate logging to {} couldn't start, log or be heard whole, so \
+                 it's red, whatever its riders are told: {error}",
+                log.display()
+            );
+            Gated::Red
+        }
+    }
 }
 
 /// `owner/name` of the repository at `url`.
