@@ -250,7 +250,8 @@ let
   # in one line alone, answering the name as a host of its own (-P), so no
   # service names the Mac's own host, on one link (-i). dns-sd -R, or any
   # service without a host of its own, would bring the Mac's records back on
-  # every interface. Its lines are read with its comments left out.
+  # every interface. Its reports go to the log, since dns-sd says a name in
+  # use on its stdout. Its lines are read with its comments left out.
   keepAdvertises = advertisingIn ./keep.sh;
   answerAdvertises = lib.remove "dns-sd" (advertisingIn ./answer.sh);
   answerRunsDnsSd = lib.filter (line: lib.hasInfix "dns-sd" (lib.toLower line)) (
@@ -260,7 +261,7 @@ let
   );
   answersAsItsOwnHost =
     answerRunsDnsSd == [
-      ''dns-sd -i "''${link}" -P "''${name}" _workstation._tcp local 9 "''${name}.local" "''${address}" >/dev/null &''
+      ''dns-sd -i "''${link}" -P "''${name}" _workstation._tcp local 9 "''${name}.local" "''${address}" >&2 &''
     ];
   namesOr = words: if words == [ ] then "none of them" else lib.concatStringsSep ", " words;
   filesOr = files: if files == [ ] then "nothing" else lib.concatStringsSep ", " files;
