@@ -35,9 +35,9 @@ const PATIENCE: Duration = Duration::from_secs(50);
 /// How long the node may take to start work for elsewhere: it answers
 /// once the session has started, and a start that needs a machine made
 /// waits on the provider's make, then up to five minutes for the new
-/// machine to link (mycelium's LINKED_WITHIN). No make has been timed
+/// machine to link (mycelium's `LINKED_WITHIN`). No make has been timed
 /// yet, so it's eight minutes, as mycelium's owner set it.
-pub const PATIENCE_ELSEWHERE: Duration = Duration::from_secs(8 * 60);
+pub const PATIENCE_ELSEWHERE: Duration = Duration::from_mins(8);
 
 /// What work may need of where it starts, as the node's sprout takes it:
 /// the cloud alone, a machine that costs money, linked with room or made
@@ -75,7 +75,8 @@ pub fn request_of(said: &Value) -> Result<Value, String> {
     }
     let elsewhere = on.is_some() || !needs.is_empty();
     if let Some(folder) = named(said, "folder")? {
-        if !folder.starts_with('/') && !(elsewhere && plain(folder)) {
+        let placed = folder.starts_with('/') || (elsewhere && plain(folder));
+        if !placed {
             return Err(if elsewhere {
                 "that place isn't a whole path or a place's name"
             } else {
