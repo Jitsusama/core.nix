@@ -518,7 +518,7 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
                 "data-key", key
             )
             quiet_node.tell("murmur", changed=[{"key": key, "settled": "cleared by noon"}])
-            roosts = "Two murmured, every one come to roost."
+            roosts = "Two murmured, all come to roost."
             the_page_counts(page, roosts, "the settling went unheard")
             expect(title, "the air filter outlived the air").to_have_text("The murmurs")
             expect(options, "the settled murmurs hid").to_have_count(2)

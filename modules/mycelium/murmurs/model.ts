@@ -131,7 +131,9 @@ function headline(murmurs: readonly Murmur[]): Headline {
   }
   const lead = `${counted(said)} murmured,`;
   if (open === 0) {
-    return { lead, turn: "every one come to roost.", said, open };
+    // "all", as "all still in the air." says, since "every one" took a phone's headline a line
+    // past every other count and the words the page opens with.
+    return { lead, turn: "all come to roost.", said, open };
   }
   if (open === said) {
     return { lead, turn: "all still in the air.", said, open };

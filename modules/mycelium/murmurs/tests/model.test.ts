@@ -131,7 +131,7 @@ it("the headline turns when none or all have settled, and when nothing was said"
   const settledAll = murmursOf(holding([murmur("KESTRL", 100, { settled: "Done." })])).murmurs;
   const openAll = murmursOf(holding([murmur("KESTRL", 100), murmur("OSPREY", 50)])).murmurs;
   const says = (one: ReturnType<typeof headline>): string => `${one.lead} ${one.turn}`;
-  assert.equal(says(headline(settledAll)), "One murmured, every one come to roost.", "all settled");
+  assert.equal(says(headline(settledAll)), "One murmured, all come to roost.", "all settled");
   assert.equal(says(headline(openAll)), "Two murmured, all still in the air.", "none settled");
   assert.equal(says(headline([])), "Nothing murmured yet.", "nothing said");
 });
