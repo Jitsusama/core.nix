@@ -524,9 +524,10 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     yet? ... focusing to a window off the left or right edge". niri lays a workspace's columns
     out on one strip and scrolls it, so through the rest it stands on the window it sat on
     wherever the scroll has it, never left in the air where that window was or put down on
-    another it never walked to, and once the keys rest it walks the strip to the column they
-    went to, a step at a time and never nowhere. How it rides is MarginCatFalls.js's, held in
-    Qt's engine; here, only that niri's scroll reaches it.
+    another it never walked to, and once the keys rest it comes back in at that edge and walks
+    to the column they went to, a step at a time and never nowhere. How it's carried and comes
+    in is MarginCat.js's and MarginCatStacked.js's, held in Qt's engine
+    (margin-cat-one-screen.qml); here, only that niri's scroll reaches it.
     """
     first = three_columns(shell, "a walk off the edge")
     windows = {window["title"]: window for window in shell.windows()}
@@ -542,19 +543,25 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     gone = laid_out(shell, third)
     left, top = gone["tile_pos_in_workspace_view"]
     width = gone["tile_size"][0]
-    said, _ = shell.said_since(since)
-    sat = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
-    assert sat, "the cat said nothing as niri scrolled"
-    last = sat[-1]
-    assert last is not None, f"the cat went from the screen as niri scrolled: {said[-3:]}"
-    assert not last.get("walk"), f"the cat set off before niri's scroll was still: {last}"
-    middle = last["x"] + last["size"] / 2
-    stands = last["y"] + last["size"] + last["air"]
-    beyond = left >= across and middle >= across
-    assert beyond or (left <= middle <= left + width and abs(stands - top) < FLUSH), (
-        f"niri scrolled its window to {left}, {top}, {width} wide, on a screen {across} wide,"
-        f" and left the cat at {last['x']}, {last['y']}"
-    )
+
+    def carried(report: str) -> bool:
+        at = placed(report)
+        if at is None or at.get("walk"):
+            return False
+        middle = at["x"] + at["size"] / 2
+        stands = at["y"] + at["size"] + at["air"]
+        beyond = left >= across and middle >= across
+        return beyond or (left <= middle <= left + width and abs(stands - top) < FLUSH)
+
+    try:
+        shell.reported(SITS, carried, since, timedelta(seconds=RESTS))
+    except AssertionError:
+        said, _ = shell.said_since(since)
+        sat = [report for report in said if report.startswith(SITS)]
+        pytest.fail(
+            f"niri scrolled its window to {left}, {top}, {width} wide, on a screen {across}"
+            f" wide, and the cat never stood with it before the keys rested: {sat[-2:]}"
+        )
     sits_over(shell, first, since)
     said, _ = shell.said_since(since)
     reports = [report[len(SITS) :] for report in said if report.startswith(SITS)]

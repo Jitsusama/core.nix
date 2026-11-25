@@ -408,12 +408,58 @@ PanelWindow {
             if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
                 || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
                 walkFrom(true, saw);
-        } else if (going !== null || !resting.running || wanted !== waitingOn) {
-            // Its wander forgotten a moment later, outside this
-            // change of `there`, which forgetting it changes again.
-            Qt.callLater(endStroll);
-            waitingOn = wanted;
-            resting.restart();
+        } else {
+            if (going === null)
+                carried(saw);
+            if (going !== null || !resting.running || wanted !== waitingOn) {
+                // Its wander forgotten a moment later, outside this
+                // change of `there`, which forgetting it changes again.
+                Qt.callLater(endStroll);
+                waitingOn = wanted;
+                resting.restart();
+            }
+        }
+    }
+
+    // While it waits for the keys to rest on another column, it stays on
+    // the window it sat on wherever niri moves it, as niri scrolls the
+    // strip to a column off the screen's edge, never left on the air where
+    // that window was or on one it never walked to (Joel, 2026-11-14
+    // 17:24: "focusing to a window off the left or right edge"). Its place
+    // is where niri says the window will come to rest, off the screen too,
+    // and it's drawn on niri's spring from where it was (lag), so it goes
+    // with the window as niri draws it. Once the keys rest, it comes back
+    // in at that edge (MarginCatStacked.js's walk).
+    function carried(saw: var): void {
+        const by = MarginCat.carries(saw, tilesOf(space?.id), sat);
+        if (by === null || place === null)
+            return;
+        const spring = Object.assign({}, Theme.motion.spring,
+            { slowdown: Theme.motion.slowdown });
+        carry = {
+            from: { x: lag.x - by.x, y: lag.y - by.y },
+            // As late as it hears of niri's slide, it's that far in.
+            at: Date.now() - MarginCat.behind(frameMs, "slide"),
+            ends: MarginCat.slides(spring),
+            spring
+        };
+        lag = MarginCat.lags(carry.from, Date.now() - carry.at, spring);
+        place = { x: place.x + by.x, y: place.y + by.y };
+    }
+    // The scroll carrying it, while niri's spring runs, and how far from
+    // its place that has it drawn now.
+    property var carry: null
+    property var lag: ({ x: 0, y: 0 })
+    FrameAnimation {
+        running: window.carry !== null
+        onTriggered: {
+            const t = Date.now() - window.carry.at;
+            if (t >= window.carry.ends) {
+                window.carry = null;
+                window.lag = { x: 0, y: 0 };
+            } else {
+                window.lag = MarginCat.lags(window.carry.from, t, window.carry.spring);
+            }
         }
     }
 
@@ -478,7 +524,7 @@ PanelWindow {
         // pace; from a stride held on the spot, once it's seen.
         const setOff = Paths.setOffFrom(stepped);
         const from = { x: place.x, y: place.y };
-        const plan = Paths.walk(from, { x: to.x, y: to.y }, Object.assign({
+        const plan = Stacked.walk(from, { x: to.x, y: to.y }, Object.assign({
             cell,
             ratio,
             wide: size,
@@ -533,6 +579,10 @@ PanelWindow {
             steps = 0;
         }
         byHand = false;
+        // Set off before a scroll's spring settled, it walks from its
+        // place, a few pixels on from where that had it drawn.
+        carry = null;
+        lag = { x: 0, y: 0 };
         going = plan;
         if (fresh)
             begunAt = window.FramePresentation.framesBegun;
@@ -1459,14 +1509,15 @@ PanelWindow {
 
         // On the screen's own pixels, so every cell's edge is sharp,
         // a hop's height too.
-        x: window.place ? Math.round(window.place.x * window.ratio) / window.ratio : 0
+        x: window.place ? Math.round((window.place.x + window.lag.x) * window.ratio)
+            / window.ratio : 0
         // Held inside the margin, but on a move down, carried up off it
         // and climbing back.
         y: !window.place ? 0
             : window.moving !== null
             ? Math.round(window.place.y * window.ratio) / window.ratio
-            : Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
-                * window.ratio) / window.ratio)
+            : Math.max(0, Math.round(Math.min(window.place.y + window.lag.y,
+                window.height - window.size) * window.ratio) / window.ratio)
         width: window.size
         height: window.size
 
