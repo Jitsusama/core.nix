@@ -36,7 +36,8 @@
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
 // said. A going says the asks it left unanswered, apart where the shell
-// let the connection go itself. A client
+// let the connection go itself, which a client let go with an ask in
+// flight says as let go, read from the log. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -86,6 +87,18 @@ ShellRoot {
         kind: "person"
         watching: ({ listed: true })
     }
+
+    // Let go by the shell with an ask in flight, as OnSelection lets its
+    // connection go once nothing needs it, through a link of its own to the
+    // people daemon's socket, so its going is said under its own name
+    // (checks/shell.nix reads the log for it).
+    Daemon {
+        id: lettingGo
+
+        socket: `${root.runtime}/daemons/letting-go.sock`
+        kind: "person"
+    }
+    property bool letGo: false
 
     // Letting what it held go while the daemon isn't answering.
     Daemon {
@@ -722,6 +735,21 @@ ShellRoot {
                 if (!watchesCounted.running)
                     watchesCounted.running = true;
                 return root.watches === 0;
+            }
+        },
+        {
+            // The loaders' bindings follow connects, so its socket may go
+            // and say so before onConnectsChanged runs: a going read from
+            // who called it was said as one gone wrong (#6513's F1).
+            what: "a connection the shell lets go with an ask in flight is said let go",
+            holds: () => {
+                if (!root.letGo && lettingGo.wire !== null) {
+                    lettingGo.get([root.ada], 5000, () => {});
+                    lettingGo.connects = false;
+                    root.letGo = true;
+                }
+                return root.letGo && lettingGo.wire === null
+                    && Object.keys(lettingGo.awaited).length === 0;
             }
         },
         {
