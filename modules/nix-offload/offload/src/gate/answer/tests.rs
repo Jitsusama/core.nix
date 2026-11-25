@@ -212,6 +212,155 @@ fn a_link_in_its_own_state_is_refused_and_what_it_names_untouched() {
     );
 }
 
+/// The result `gate` holds, as words.
+fn result_of(gate: &GateFolder) -> String {
+    String::from_utf8(gate.read(RESULT, 1 << 20).expect("a result is left")).expect("words")
+}
+
+/// The journal's last line, or none where no journal was kept.
+fn last_journalled(places: &Places) -> Option<serde_json::Value> {
+    let journal = fs::read_to_string(places.state.join(JOURNAL)).ok()?;
+    Some(serde_json::from_str(journal.lines().last()?).expect("a line of json"))
+}
+
+/// A forge whose state's work folder is a link, so the state isn't
+/// trusted: the gate of its head, refused for it, and the refusal.
+fn untrusted_refusal() -> (Forge, String, GateFolder, (u8, String)) {
+    let forge = Forge::new();
+    let head = committed(&forge.tree(), "three");
+    let gate = forge.gate(&head, &forge.bundle("origin/main..HEAD"));
+    let state = forge.places().state;
+    fs::create_dir_all(&state).expect("the state folder");
+    std::os::unix::fs::symlink(forge.root.path(), state.join("work")).expect("a link");
+    let refusal = forge
+        .gated(&gate, &head)
+        .expect_err("work as a link should be refused");
+    assert_eq!(refusal.0, UNTRUSTED, "{}", refusal.1);
+    assert!(
+        refusal.1.contains(&*state.to_string_lossy()),
+        "the refusal itself names the folder: {}",
+        refusal.1
+    );
+    (forge, head, gate, refusal)
+}
+
+#[test]
+fn a_refusal_keeps_its_words_in_the_journal_and_tells_the_asker_only_its_kind() {
+    let (forge, head, gate, (_, why)) = untrusted_refusal();
+    let places = forge.places();
+    fs::remove_file(places.state.join("work")).expect("the link goes");
+    let found = left(
+        &places,
+        &gate,
+        (QUEST, &head),
+        None,
+        Err((REFUSED, why.clone())),
+    );
+    let result = result_of(&gate);
+    assert_eq!(found.said, refusal_said(REFUSED, true));
+    assert!(
+        found.said.contains(&format!("{GATES}/{JOURNAL}")) && !found.said.contains(&why),
+        "the words name where the journal really is, and not the refusal: {}",
+        found.said
+    );
+    assert!(
+        result.contains(&found.said) && !result.contains(&*places.state.to_string_lossy()),
+        "the asker is sent to the journal in fixed words, with no path of this machine's: {result}"
+    );
+    let line = last_journalled(&places).expect("a journal is kept");
+    assert_eq!(line["why"].as_str(), Some(why.as_str()));
+    assert_eq!(line["said"].as_str(), Some(found.said.as_str()));
+}
+
+#[test]
+fn a_refusal_with_no_state_to_trust_keeps_no_journal_and_says_so() {
+    let (forge, head, gate, refusal) = untrusted_refusal();
+    let places = forge.places();
+    let found = left(&places, &gate, (QUEST, &head), None, Err(refusal));
+    let result = result_of(&gate);
+    assert_eq!(found.exit, UNTRUSTED);
+    assert_eq!(found.said, refusal_said(UNTRUSTED, false));
+    assert!(
+        result.contains(&found.said) && !result.contains(&*places.state.to_string_lossy()),
+        "the asker is told no journal line was kept, with no path of this machine's: {result}"
+    );
+    assert!(
+        last_journalled(&places).is_none(),
+        "no journal is kept in a state not trusted"
+    );
+}
+
+#[test]
+fn a_refusal_whose_journal_line_cant_be_written_says_nothing_kept_says_why() {
+    let (forge, head, gate, (_, why)) = untrusted_refusal();
+    let places = forge.places();
+    fs::remove_file(places.state.join("work")).expect("the link goes");
+    // A folder where the journal goes, so its line can't be added.
+    fs::create_dir(places.state.join(JOURNAL)).expect("a folder in the journal's way");
+    let found = left(
+        &places,
+        &gate,
+        (QUEST, &head),
+        None,
+        Err((REFUSED, why.clone())),
+    );
+    assert_eq!(found.said, refusal_said(REFUSED, false));
+    let result = result_of(&gate);
+    assert!(
+        found.said.contains("nothing kept says why") && !found.said.contains("journal of gates"),
+        "the words send the asker to no journal that holds nothing: {}",
+        found.said
+    );
+    assert!(
+        result.contains(&found.said) && !result.contains(&why),
+        "the result says the detail is lost, and never carries it: {result}"
+    );
+    assert!(
+        last_journalled(&places).is_none(),
+        "no line reached the journal in its way"
+    );
+}
+
+#[test]
+fn a_refused_gate_carries_back_no_earlier_runs_log_and_one_that_ran_does() {
+    let (forge, head, gate, (_, why)) = untrusted_refusal();
+    let places = forge.places();
+    fs::remove_file(places.state.join("work")).expect("the link goes");
+    fs::create_dir_all(places.work(&head)).expect("an earlier run's folder");
+    fs::write(places.work(&head).join(LOG), "an earlier run").expect("its log");
+    left(&places, &gate, (QUEST, &head), None, Err((REFUSED, why)));
+    assert!(!gate.holds(LOG), "a refusal ran nothing, so carries no log");
+    let ran = left(&places, &gate, (QUEST, &head), None, Ok(0));
+    assert_eq!(ran.said, said_of(0));
+    assert!(
+        result_of(&gate).contains(&said_of(0)),
+        "the result it leaves says it passed"
+    );
+    assert!(
+        gate.holds(LOG),
+        "a gate that ran carries its run's log back"
+    );
+}
+
+#[test]
+fn each_kind_of_refusal_says_words_of_its_own_wherever_its_detail_went() {
+    for journalled in [true, false] {
+        let kinds =
+            [REFUSED, NOT_NOW, UNREACHED, UNTRUSTED].map(|exit| refusal_said(exit, journalled));
+        assert!(
+            kinds
+                .iter()
+                .enumerate()
+                .all(|(at, said)| !kinds[..at].contains(said)),
+            "{kinds:?}"
+        );
+        // Each kind's words name what it is, so two swapped would fail.
+        for (said, word) in kinds.iter().zip(["refused", "ask again", "reach", "trust"]) {
+            assert!(said.contains(word), "{said} names {word}");
+        }
+    }
+}
+
 #[test]
 fn a_bundle_of_another_commit_is_refused() {
     let forge = Forge::new();
