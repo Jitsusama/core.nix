@@ -851,6 +851,10 @@
     code-health finds a machine's own programs first on its PATH, such as a git that reads a
     repository stock git refuses, with core's git and coreutils after them
   '';
+  code-health-names-no-keeper-unless-told = ''
+    code-health is handed no owner for the files its own reader couldn't read until a machine names
+    who keeps it
+  '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests
   '';

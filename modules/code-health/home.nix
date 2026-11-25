@@ -13,7 +13,8 @@
 # owner a repository's `targets`, `owner` and `owners` give it, and the
 # figure the hour before, with the first files counted, those of a file
 # holding more than the day before's counts by file first, and each of
-# those files' entries by the owner `folders` gives its folder;
+# those files' entries by the owner `folders` gives its folder, but for
+# the files code-health couldn't read, which go to the measure's owner;
 # `cadence hour` reads it at ten past. A read takes about half a minute,
 # so hourly costs little. It runs before `cadence day`, which holds each
 # figure against the days before it, so a repository getting messier is
@@ -115,7 +116,7 @@ in
             example = {
               "modules/net" = "someone";
             };
-            description = "Who owns what the hour names in a folder, by its path from the repository's top, the deepest first, ahead of the measure's owner.";
+            description = "Who owns what the hour names in a folder, by its path from the repository's top, the deepest first, ahead of the measure's owner; never the files code-health couldn't read.";
           };
         };
       }
