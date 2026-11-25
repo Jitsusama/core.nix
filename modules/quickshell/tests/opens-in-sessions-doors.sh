@@ -9,14 +9,19 @@
 # words on its command line, since the script reads /proc, which no
 # stand-in can be. What the script
 # tells the shell is held to what Sessions.qml's handler takes, so the two
-# can't drift apart while both stand-ins pass.
-# usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3> <Sessions.qml>
+# can't drift apart while both stand-ins pass, and the words it reads as
+# kitten's wait running out are held to the packaged kitty's.
+# usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3> <Sessions.qml> <kitty>
 set -euo pipefail
 
 sh=$1
 script=$2
 python=$3
 sessions=$4
+kitty=$5
+# kitten's words for its wait for an async command's answer running out
+# (its tools/cmd/at/main.go), which a launch is (kitty/rc/launch.py).
+timed_out="Timed out waiting for a response from kitty"
 real_sleep=$(type -P sleep)
 work=$(mktemp -d)
 stand_ins=$work/bin
@@ -30,8 +35,9 @@ failed=0
 # read once it has failed.
 # A kitty's launch says too whether what it opens would inherit the
 # script's first start, which it never should. While kitten-times-out is
-# there, kitten says its wait for the kitty's answer ran out, in the words
-# its at/main.go gives an async command's, after a wait.
+# there, kitten says its wait for the kitty's answer ran out, in its own
+# words, after a wait; while kitten-warns is there, it warns and opens the
+# window; and a launch it turns down says so in words of its own.
 for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" \
     > "$stand_ins/$program"
@@ -42,12 +48,16 @@ for program in kitten systemd-run qs; do
   fi
   if [ "$program" = kitten ]; then
     printf '[ ! -f "%s/kitten-times-out" ] || { echo . >> "%s/waits"; %s; exit 1; }\n' \
-      "$work" "$work" 'echo "Timed out waiting for a response from kitty" >&2' \
+      "$work" "$work" "echo '$timed_out' >&2" >> "$stand_ins/$program"
+    printf '[ ! -f "%s/kitten-warns" ] || echo "kitten: a warning" >&2\n' "$work" \
       >> "$stand_ins/$program"
   fi
   printf '[ ! -f "%s/%s-fails" ] && exit\n' "$work" "$program" >> "$stand_ins/$program"
   if [ "$program" != qs ]; then
     printf 'echo . >> "%s/waits"\n' "$work" >> "$stand_ins/$program"
+  fi
+  if [ "$program" = kitten ]; then
+    echo 'echo "kitten: the launch was turned down" >&2' >> "$stand_ins/$program"
   fi
   echo "exit 1" >> "$stand_ins/$program"
 done
@@ -60,29 +70,51 @@ printf '#!%s\necho "systemd-cat $*" >> "%s/asked"\necho . >> "%s/waits"\n' \
   "$BASH" "$work" "$work" > "$stand_ins/systemd-cat"
 printf '[ ! -f "%s/systemd-cat-fails" ] || exit 1\nshift\nexec "$@" 2>> "%s/said"\n' \
   "$work" "$work" >> "$stand_ins/systemd-cat"
-# The shell's own clock, only when asked in ms, as the shell's handler
-# takes it: asked any other way, it answers what it was asked, which no
-# case wants. Its clock moves 200 ms with each wait, the script's or a
-# launch's, so
-# the time the shell is told is 1700000000000 only if the script read it
-# as it started, never as it gave up, which would clear a press made
-# meanwhile.
+# The shell's own clock, in ms as the shell's handler takes it, or in
+# whole seconds: asked any other way, it answers what it was asked, which
+# no case wants. Its clock moves 200 ms with each wait, the script's or a
+# launch's, so the time the shell is told is 1700000000000 only if the
+# script read it as it started, never as it gave up, which would clear a
+# press made meanwhile. While clock-back is there, every read after the
+# first is an hour earlier, as a time sync stepping the clock back.
 cat > "$stand_ins/date" << EOF
 #!$BASH
-if [ "\$*" != +%s%3N ]; then
-  echo "date \$*"
-else
-  echo \$((1700000000000 + \$(wc -l < "$work/waits") * 200))
+now=\$((1700000000000 + \$(wc -l < "$work/waits") * 200))
+if [ -f "$work/clock-back" ] && [ -f "$work/clock-read" ]; then
+  now=\$((now - 3600000))
 fi
+touch "$work/clock-read"
+case \$* in
+  +%s%3N) echo "\$now" ;;
+  +%s) echo \$((now / 1000)) ;;
+  *) echo "date \$*" ;;
+esac
 EOF
 # The unit's main process, as main-pid names it, taking a second to answer
-# while systemctl-slow is there, as under a cold boot's load.
+# while systemctl-slow is there, as under a cold boot's load, and half a
+# minute while systemctl-hangs is there, as a stalled user manager.
 cat > "$stand_ins/systemctl" << EOF
 #!$BASH
 if [ -f "$work/systemctl-slow" ]; then
   printf '.\n.\n.\n.\n.\n' >> "$work/waits"
 fi
+if [ -f "$work/systemctl-hangs" ]; then
+  for _ in \$(seq 150); do echo . >> "$work/waits"; done
+fi
 cat "$work/main-pid"
+EOF
+# coreutils' timeout, running what it was given, but ending a hung
+# systemctl at its limit, as the real one does, so a case's clock moves by
+# the limit and not by the hang.
+cat > "$stand_ins/timeout" << EOF
+#!$BASH
+limit=\$1
+shift
+if [ "\$1" = systemctl ] && [ -f "$work/systemctl-hangs" ]; then
+  for _ in \$(seq \$((limit * 5))); do echo . >> "$work/waits"; done
+  exit 124
+fi
+exec "\$@"
 EOF
 # Each wait counted, and the socket made at the wait came-at names.
 cat > "$stand_ins/sleep" << EOF
@@ -98,7 +130,8 @@ old=""
 trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 
 fresh() {
-  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails
+  rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails "$work"/kitten-* \
+    "$work"/systemctl-* "$work"/clock-* "$work/pwned"
   : > "$work/asked"
   : > "$work/inherited"
   : > "$work/said"
@@ -137,7 +170,8 @@ waited() {
 }
 
 # How long a case's script took by the clock, at most what it wanted, in
-# waits of 200 ms.
+# waits of 200 ms: a bound, where the count of looks it fits isn't the
+# case's point.
 waited_at_most() {
   local what=$1 most=$2 got
   got=$(wc -l < "$work/waits")
@@ -214,18 +248,56 @@ if [ "$status" -ne 1 ]; then
 fi
 expect "with neither, no kitty is asked, and the shell is told none took it" \
   "qs ipc call sessions untaken pi-hosted.s-11 1700000000000" asked
-waited "it gave up once its clock said 20 s had passed" 100
+waited "it stopped looking once its clock said 17.8 s had passed" 89
 expect "the journal says why" "sessions: no sessions kitty to open pi-hosted.s-11 in" said
-# Each look at the unit taking a second, as under a cold boot's load, it
-# still gives up by 20 s of its clock, not after a hundred looks: at most
-# 20 s, then one look and wait past it, and the last look.
-: > "$work/waits"
-: > "$work/asked"
-touch "$work/systemctl-slow"
-opens pi-hosted.s-15 pi
-waited_at_most "under a slow systemctl, it gives up by its clock" 111
-expect "under a slow systemctl, the shell is told when it started" \
-  "qs ipc call sessions untaken pi-hosted.s-15 1700000000000" asked
+kill "$old"
+old=""
+
+# However long each look at the unit takes, a second under a cold boot's
+# load or a hang its timeout ends, or with the clock stepped back, it gives
+# up within 20 s of its start, its last look included, so the shell's
+# answerPatience holds; and tells the shell when it started.
+for slow in systemctl-slow systemctl-hangs clock-back; do
+  fresh
+  "$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
+  old=$!
+  echo "$old" > "$work/main-pid"
+  touch "$work/$slow"
+  opens pi-hosted.s-15 pi
+  if [ "$status" -ne 1 ]; then
+    echo "FAIL with $slow, it ended $status, not 1"
+    failed=1
+  fi
+  if [ "$slow" = clock-back ]; then
+    # Its clock no help, a hundred looks of 0.2 s bound it.
+    waited_at_most "with $slow, it gives up after a hundred looks" 100
+  else
+    waited_at_most "with $slow, it gives up within 20 s of its clock" 100
+  fi
+  expect "with $slow, the shell is told when it started" \
+    "qs ipc call sessions untaken pi-hosted.s-15 1700000000000" asked
+  expect "with $slow, the journal says why" \
+    "sessions: no sessions kitty to open pi-hosted.s-15 in" said
+  kill "$old"
+  old=""
+done
+
+fresh
+"$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
+old=$!
+echo "$old" > "$work/main-pid"
+# A start it inherits that isn't a time, from whatever set its
+# environment, is never evaluated, and the shell is told the script's own
+# start, in whole seconds.
+export OPENS_IN_SESSIONS_ASKED="x[\$(touch $work/pwned)]"
+opens pi-hosted.s-17 pi
+unset OPENS_IN_SESSIONS_ASKED
+if [ -e "$work/pwned" ]; then
+  echo "FAIL an inherited start ran as code"
+  failed=1
+fi
+expect "an inherited start that isn't a time gives way to its own" \
+  "qs ipc call sessions untaken pi-hosted.s-17 1700000000000" asked
 kill "$old"
 old=""
 
@@ -244,8 +316,10 @@ expect "a kitty that opens nothing is asked once, and the shell is told none too
   "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-12 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-12 pi
 qs ipc call sessions untaken pi-hosted.s-12 1700000000000" asked
-expect "the journal says it opened nothing, and that the shell didn't hear" \
-  "sessions: the sessions kitty opened no pi-hosted.s-12
+expect "the journal says it opened nothing, in kitten's words and its own, and that the shell \
+didn't hear" \
+  "kitten: the launch was turned down
+sessions: the sessions kitty opened no pi-hosted.s-12
 sessions: the shell didn't hear that no kitty took pi-hosted.s-12" said
 
 fresh
@@ -255,13 +329,43 @@ fresh
 # kitten's own words; the shell's ask is over all the same.
 touch "$work/kitten-times-out"
 opens pi-hosted.s-16 pi
+if [ "$status" -ne 1 ]; then
+  echo "FAIL with a kitty that doesn't answer, it ended $status, not 1"
+  failed=1
+fi
 expect "a kitty that doesn't answer is asked once, and the shell is told" \
   "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-16 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-16 pi
 qs ipc call sessions untaken pi-hosted.s-16 1700000000000" asked
 expect "the journal says it didn't answer, in kitten's words and its own" \
-  "Timed out waiting for a response from kitty
+  "$timed_out
 sessions: the sessions kitty didn't answer for pi-hosted.s-16 in a minute" said
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+# What kitten says of a launch that opened its window reaches the journal
+# too, and the shell is told nothing.
+touch "$work/kitten-warns"
+opens pi-hosted.s-18 pi
+if [ "$status" -ne 0 ]; then
+  echo "FAIL with a kitty that warns and opens it, it ended $status, not 0"
+  failed=1
+fi
+expect "a kitty that warns and opens it is asked once, and the shell told nothing" \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
+--os-window-class pi-hosted.s-18 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-18 pi" asked
+expect "the journal hears kitten's warning" "kitten: a warning" said
+
+# The packaged kitty says its wait running out in the words the script
+# looks for, so a kitty that rewords them fails here, not in the journal.
+if ! grep -r -a -q -F "$timed_out" "$kitty/bin"; then
+  echo "FAIL the packaged kitten never says: $timed_out"
+  failed=1
+fi
+if ! grep -q -F "$timed_out" "$script"; then
+  echo "FAIL the script doesn't look for: $timed_out"
+  failed=1
+fi
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
@@ -278,7 +382,8 @@ kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-windo
 --os-window-class pi-hosted.s-13 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-13 pi
 qs ipc call sessions untaken pi-hosted.s-13 1700000000000" asked
 expect "the journal hears it opened nothing" \
-  "sessions: the sessions kitty opened no pi-hosted.s-13" said
+  "kitten: the launch was turned down
+sessions: the sessions kitty opened no pi-hosted.s-13" said
 expect "nothing it launches inherits its first start" "" inherited
 
 fresh
@@ -311,7 +416,11 @@ for handler in re.finditer(r"\bIpcHandler\s*\{", source):
     taken = re.search(r"function untaken\((\w+): string, (\w+): string\)[^{]*\{", block)
     if re.search(r'^\s*target:\s*"sessions"\s*$', block, re.M) and taken:
         named, asked = taken.groups()
-        body = block[taken.end():block.find("}", taken.end())]
+        depth, end = 1, taken.end()
+        while depth and end < len(block):
+            depth += {"{": 1, "}": -1}.get(block[end], 0)
+            end += 1
+        body = re.sub(r"//[^\n]*", "", block[taken.end():end])
         passed = rf"\broot\.untaken\(\s*{named}\s*,\s*{asked}\s*\)"
         sys.exit(0 if re.search(passed, body) else 1)
 sys.exit(1)
