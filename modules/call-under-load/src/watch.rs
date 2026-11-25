@@ -68,17 +68,20 @@ pub struct Seat {
 /// and the thread that hands its packets to the network, which the 08:35
 /// test call of 23 Nov found waiting in its renderer. Tuple's, which runs
 /// WebRTC's own queues rather than Chromium's: its video and audio
-/// encoders' queues, which lag-watch saw in Joel's Tuple call at 10:00 on
-/// 24 Nov, when the watch, knowing only Chromium's names, read nothing of
-/// Tuple's and took it for a clean 0. Every thread of a capture process
+/// encoders' queues, which lag-watch named as the call's worst-waiting
+/// threads 21 times in Joel's Tuple call from 10:00 on 24 Nov, when the
+/// watch, knowing only Chromium's names, judged none of them; and WebRTC's
+/// pacer, which hands Tuple's packets to the network as `WebRTC_W_and_N`
+/// does Chromium's. Every thread of a capture process
 /// but its watchdog counts too, since it makes the frames the encoder
 /// takes.
-const SENDING: [&str; 5] = [
+const SENDING: [&str; 6] = [
     "CodecWorker",
     "WebRTC_W_and_N",
     "VideoCaptureThr",
     "VideoEncoderQue",
     "AudioEncoderQue",
+    "TaskQueuePacedS",
 ];
 
 /// Only letters, digits and `_.-`, at most 32, from text another process
@@ -761,6 +764,10 @@ mod tests {
         assert!(
             sending("main", "AudioEncoderQue"),
             "Tuple's audio encoder sends"
+        );
+        assert!(
+            sending("main", "TaskQueuePacedS"),
+            "Tuple's pacer, which hands its packets to the network, sends"
         );
         for receiving in ["IncomingVideoSt", "VideoDecoderQue"] {
             assert!(
