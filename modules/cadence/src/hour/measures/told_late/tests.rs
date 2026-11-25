@@ -35,6 +35,20 @@ fn ask_moved_to(
     ask
 }
 
+/// Joel's ask `words` by `owner`, given each of its `dates`, as when it
+/// was due and when that was given, oldest first, and due at the last.
+fn ask_chain(words: &str, owner: &str, dates: &[(i64, i64)]) -> Value {
+    let promised: Vec<Value> = dates
+        .iter()
+        .map(|&(due, given)| json!({"expected": at(due), "given": at(given)}))
+        .collect();
+    let due = dates.last().map_or(NOW, |&(due, _)| due);
+    json!({
+        "at": at(NOW - DAY), "words": words, "owner": owner, "expected": at(due),
+        "promised": promised,
+    })
+}
+
 /// Joel's ask `words`, due at `due` and never moved.
 fn ask_due(words: &str, due: i64) -> Value {
     json!({
@@ -274,18 +288,72 @@ fn a_landing_or_met_after_the_move_leaves_it_late() {
 #[test]
 fn the_earliest_late_move_owns_it_and_leads_the_lines() {
     let text = list(&[
-        ask_moved("later", "B", (NOW - 200, NOW - 500), &json!({})),
-        ask_moved("earlier", "A", (NOW - 1000, NOW - 1360), &json!({})),
+        ask_moved("a later", "B", (NOW - 200, NOW - 500), &json!({})),
+        ask_moved("b earlier", "A", (NOW - 1000, NOW - 1360), &json!({})),
     ]);
     let m = told_late(&text, NOW, Tracking::His);
     assert_eq!(m.owner, "A", "the earliest move's owner owns the measure");
     assert_eq!(
         m.behind,
         [
-            "earlier, moved 6 min before its date · A",
-            "later, moved 5 min before its date · B",
+            "b earlier, moved 6 min before its date · A",
+            "a later, moved 5 min before its date · B",
         ],
         "the lines aren't in the order the moves were made"
+    );
+}
+
+#[test]
+fn each_late_move_of_an_ask_moved_again_and_again_counts_on_its_own() {
+    let both = ask_chain(
+        "both late",
+        "A",
+        &[
+            (NOW - 2000, NOW - 2 * DAY),
+            (NOW - 1000, NOW - 2300),
+            (NOW + 3600, NOW - 1400),
+        ],
+    );
+    let second = ask_chain(
+        "second late",
+        "B",
+        &[
+            (NOW - 5000, NOW - 2 * DAY),
+            (NOW - 1000, NOW - 6000),
+            (NOW + 3600, NOW - 1300),
+        ],
+    );
+    let m = told_late(&list(&[both, second]), NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        [
+            "both late, moved 5 min before its date · A",
+            "both late, moved 6 min before its date · A",
+            "second late, moved 5 min before its date · B",
+        ],
+        "a move after the first of an ask's was lost, or one in good time counted"
+    );
+}
+
+/// A move is judged by the date it moved to, not by where the ask ended,
+/// so a later move bringing the date forward past where it began leaves
+/// the late one counted.
+#[test]
+fn a_late_move_counts_by_the_date_it_gave_however_the_ask_moved_after() {
+    let chain = ask_chain(
+        "forward after",
+        "A",
+        &[
+            (NOW - 1000, NOW - 2 * DAY),
+            (NOW + 3600, NOW - 1300),
+            (NOW - 1200, NOW - 600),
+        ],
+    );
+    let m = told_late(&list(&[chain]), NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        ["forward after, moved 5 min before its date · A"],
+        "a late move was judged by the ask's last date, not the one it gave"
     );
 }
 
