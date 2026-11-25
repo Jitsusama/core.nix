@@ -38,9 +38,7 @@ fn a_multi_pack_index_refused_leaves_each_pack_found_through_its_own_index() {
         "a multi-pack-index past its end was used"
     );
     assert_eq!(
-        store
-            .locate(&Oid(names[0]), &mut None)
-            .expect("the pack's own index reads"),
+        store.locate(&Oid(names[0]), &mut None),
         Some((0, offsets(&names)[0])),
         "the pack's own index wasn't read in the refused index's place"
     );
@@ -66,9 +64,7 @@ fn objects_over(midx: Vec<u8>, packs: Vec<(&str, Vec<u8>)>) -> PathBuf {
 /// Where `oid` lies in `store`, and what it kept as refused.
 fn located(store: &Store, oid: [u8; 20]) -> (Option<(usize, u64)>, Option<String>) {
     let mut refused = None;
-    let found = store
-        .locate(&Oid(oid), &mut refused)
-        .expect("the packs not covered read");
+    let found = store.locate(&Oid(oid), &mut refused);
     (found, refused.map(|error| error.to_string()))
 }
 
@@ -89,14 +85,22 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
         (Some((0, offsets(&names)[0])), None),
         "a sound entry wasn't read from the multi-pack-index"
     );
+    assert_eq!(
+        located(&store, [0x02; 20]),
+        (None, None),
+        "a name the multi-pack-index lacks was found or refused"
+    );
     assert!(
         store.covered.get().is_none(),
-        "a sound entry opened the covered packs' own indexes"
+        "a sound entry, or a name it lacks, opened the covered packs' own indexes"
     );
     assert_eq!(
         located(&store, names[last]),
-        (Some((0, offsets(&names)[last])), None),
-        "a large offset past its chunk wasn't read from the pack's own index"
+        (
+            Some((0, offsets(&names)[last])),
+            Some("multi-pack-index large offset past its chunk".into())
+        ),
+        "a large offset past its chunk wasn't read from the pack's own index, its refusal kept"
     );
     // With the pack's own index not holding it either, the refusal is
     // kept for the caller rather than passing for a missing object.
@@ -109,8 +113,8 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
         ),
         "a broken entry no index answers wasn't kept as refused"
     );
-    // A covered index that won't read is kept as refused, and the
-    // covered pack after it still read.
+    // A covered index that won't read is passed over, the covered pack
+    // after it still read, and the multi-pack-index's own error kept.
     let both = midx(&["pack-a.idx", "pack-b.idx"], 2, None);
     let two = moved(both.clone(), 4, both.len() as u64 - 28);
     let mut broken = version_2(&names);
@@ -122,28 +126,67 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
         Some((1, offsets(&names)[last])),
         "a covered index that won't read hid the one after it"
     );
-    assert!(
-        refused.is_some(),
-        "a covered index that won't read was passed over unkept"
+    assert_eq!(
+        refused.as_deref(),
+        Some("multi-pack-index large offset past its chunk"),
+        "the multi-pack-index's own error wasn't the one kept"
     );
     // Its names alternate between two packs, but it counts one, so
     // every other name is said to lie in a pack it doesn't name: read
-    // from the packs' own indexes, and passed over, not refused, where
-    // they lack it, as the other packs may hold it.
+    // from the packs' own indexes, and kept as refused where they lack
+    // it, for the caller to let stand only should no other place hold it.
     let past = midx(&["pack-a.idx", "pack-b.idx"], 1, None);
     let objects = objects_over(past.clone(), vec![("pack-a", version_2(&names))]);
     let store = Store::open(&objects);
     assert_eq!(store.midx_packs, 1, "the index's count wasn't kept");
     assert_eq!(
         located(&store, names[1]),
-        (Some((0, offsets(&names)[1])), None),
+        (
+            Some((0, offsets(&names)[1])),
+            Some("multi-pack-index names a pack past those it covers".into())
+        ),
         "a name in a pack past the index's count wasn't read from its packs' indexes"
     );
     let lacking = objects_over(past, vec![("pack-a", version_2(&names[..1]))]);
     assert_eq!(
         located(&Store::open(&lacking), names[1]),
-        (None, None),
-        "a pack past the index's count was refused rather than passed over"
+        (
+            None,
+            Some("multi-pack-index names a pack past those it covers".into())
+        ),
+        "a pack past the index's count left no refusal where nothing held the name"
+    );
+}
+
+#[test]
+fn a_pack_index_that_wont_read_is_kept_as_refused_and_the_packs_after_it_read() {
+    use crate::pack_index::tests::{offsets, sorted, unique, version_2};
+    let names = sorted();
+    let objects = unique("objects");
+    let pack = objects.join("pack");
+    std::fs::create_dir_all(&pack).expect("the temp folder takes a folder");
+    // Its fan-out says it holds every name, but its names stop short.
+    let mut broken = version_2(&names);
+    broken.truncate(8 + 1024);
+    for (name, bytes) in [
+        ("pack-a.idx", broken),
+        ("pack-a.pack", b"PACK".to_vec()),
+        ("pack-b.idx", version_2(&names)),
+        ("pack-b.pack", b"PACK".to_vec()),
+    ] {
+        std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
+    }
+    let (found, refused) = located(&Store::open(&objects), names[0]);
+    std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+    // Packs are read in name order, so pack-a's index is read first.
+    assert_eq!(
+        found,
+        Some((1, offsets(&names)[0])),
+        "a pack index that won't read hid the pack after it"
+    );
+    assert!(
+        refused.is_some(),
+        "a pack index that won't read was passed over unkept"
     );
 }
 

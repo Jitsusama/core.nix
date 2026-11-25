@@ -168,61 +168,34 @@ impl Store {
     /// Where `oid` lies in this store's packs. An entry the
     /// multi-pack-index refuses, or one naming a pack past those it covers,
     /// can't say where the object is, so its packs' own indexes are read
-    /// instead. What they or it refuse is kept in `refused` rather than
-    /// returned, for the caller to let stand only once no other store, nor
-    /// the loose objects, holds the object: a broken entry neither hides an
-    /// object nor passes for a missing one.
-    fn locate(
-        &self,
-        oid: &Oid,
-        refused: &mut Option<io::Error>,
-    ) -> io::Result<Option<(usize, u64)>> {
+    /// instead. What any index refuses is kept in `refused` rather than
+    /// returned, the first kept standing, for the caller to let stand only
+    /// once no other store, nor the loose objects, holds the object: a
+    /// broken entry neither hides an object nor passes for a missing one.
+    fn locate(&self, oid: &Oid, refused: &mut Option<io::Error>) -> Option<(usize, u64)> {
         if let Some(midx) = &self.midx {
-            match midx.locate(oid) {
-                Ok(Some((pack, offset))) if pack < self.midx_packs => {
-                    return Ok(Some((pack, offset)));
-                }
-                Ok(None) => {}
-                // A pack past its count is passed over, as the other
-                // packs may hold the object, rather than refused.
+            let found = match midx.locate(oid) {
+                Ok(Some((pack, offset))) if pack < self.midx_packs => Some((pack, offset)),
+                Ok(None) => None,
+                // The entry names a pack it doesn't cover, so the packs it
+                // does are read; should none hold the object, that stands.
                 Ok(Some(_)) => {
-                    if let Some(found) = self.in_covered(oid, refused) {
-                        return Ok(Some(found));
-                    }
+                    refused.get_or_insert_with(|| {
+                        invalid("multi-pack-index names a pack past those it covers")
+                    });
+                    self.in_covered(oid)
                 }
                 Err(error) => {
-                    if let Some(found) = self.in_covered(oid, refused) {
-                        return Ok(Some(found));
-                    }
                     refused.get_or_insert(error);
+                    self.in_covered(oid)
                 }
+            };
+            if found.is_some() {
+                return found;
             }
         }
         for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
-            if let Some(index) = &pack.index
-                && let Some(offset) = index.offset(oid)?
-            {
-                return Ok(Some((at, offset)));
-            }
-        }
-        Ok(None)
-    }
-
-    /// Where `oid` lies by the own indexes of the packs the
-    /// multi-pack-index covers. A pack whose index won't open is passed
-    /// over, and one that won't read is kept in `refused`, so neither hides
-    /// the packs after it.
-    fn in_covered(&self, oid: &Oid, refused: &mut Option<io::Error>) -> Option<(usize, u64)> {
-        let indexes = self.covered.get_or_init(|| {
-            let pack_dir = self.dir.join("pack");
-            self.midx
-                .iter()
-                .flat_map(|midx| &midx.packs)
-                .map(|name| Index::open(&pack_dir.join(name)).ok())
-                .collect()
-        });
-        for (at, index) in indexes.iter().enumerate() {
-            match index.as_ref().map(|index| index.offset(oid)) {
+            match pack.index.as_ref().map(|index| index.offset(oid)) {
                 Some(Ok(Some(offset))) => return Some((at, offset)),
                 Some(Err(error)) => {
                     refused.get_or_insert(error);
@@ -231,6 +204,28 @@ impl Store {
             }
         }
         None
+    }
+
+    /// Where `oid` lies by the own indexes of the packs the
+    /// multi-pack-index covers, read only once it can't answer and has
+    /// left its own refusal standing. That refusal is what's said should
+    /// none hold the object, so one that won't open or read is passed over
+    /// rather than hiding the packs after it. A pack keeps its place
+    /// whether or not its index opens, since the multi-pack-index numbers
+    /// them.
+    fn in_covered(&self, oid: &Oid) -> Option<(usize, u64)> {
+        let indexes = self.covered.get_or_init(|| {
+            let pack_dir = self.dir.join("pack");
+            self.midx
+                .iter()
+                .flat_map(|midx| &midx.packs)
+                .map(|name| Index::open(&pack_dir.join(name)).ok())
+                .collect()
+        });
+        indexes.iter().enumerate().find_map(|(at, index)| {
+            let offset = index.as_ref()?.offset(oid).ok()??;
+            Some((at, offset))
+        })
     }
 
     fn loose(&self, oid: &Oid) -> io::Result<Option<Object>> {
@@ -441,7 +436,7 @@ impl Odb {
         // the object may lie has been read.
         let mut refused = None;
         for store in 0..self.stores.len() {
-            if let Some((pack, offset)) = self.stores[store].locate(oid, &mut refused)? {
+            if let Some((pack, offset)) = self.stores[store].locate(oid, &mut refused) {
                 let (kind, data) = self.unpack(store, pack, offset, 0)?;
                 return Ok(Some(Object { kind, data }));
             }
