@@ -262,24 +262,25 @@ cleared() {
 /// plain file of at least one header and of the size its list gives, or
 /// whose first header's magic isn't ustar's, byte for byte, is refused
 /// before tar reads it, as a compressed one is: tar unpacks those too,
-/// to far more than a share carries. A size is read as digits, never as
-/// arithmetic, which would run what a list rewritten after its arrival
-/// put there. That catches an archive no near
-/// side of ours wrote, not one built to pass: a compressed archive can
-/// carry those bytes where a header's magic sits and still unpack. Such
-/// a near side gains nothing by it, since the job it sends runs here
-/// anyway. Each pass runs in a subshell of its own, so its `exit` ends
-/// the pass alone even in a shell that runs a pipe's last part itself.
+/// to far more than a share carries. The magic catches an archive no
+/// near side of ours wrote, not one built to pass: a compressed archive
+/// can carry those bytes where a header's magic sits and still unpack.
+/// Such a near side gains nothing by it, since the job it sends runs
+/// here anyway. A size is read as digits, never as arithmetic, which
+/// would run what a list rewritten after its arrival put there. Each
+/// pass runs in a subshell of its own, so its `exit` ends the pass alone
+/// even in a shell that runs a pipe's last part itself.
 /// The near side writes only files and folders, each named within the
 /// tree, so an archive naming a member from the root or through `..`
 /// came from no near side of ours and is refused before it's unpacked.
 /// So is a tree holding anything else, a link of either kind, a pipe, a
 /// socket or a device, checked as each archive is unpacked, before the
 /// next, so no archive writes through what one before it made, and none
-/// takes away what one before it made before it's seen. Past that, the fence around the far line writes
-/// only the quest's scratch. A file under two names is found as one that
-/// isn't a folder yet has more than one link, not by its type, so this
-/// find reads apart from the bring-back step's. Each folder is made the
+/// takes away what one before it made before it's seen. Past that, the
+/// fence around the far line writes only the quest's scratch. A file
+/// under two names is found as one that isn't a folder yet has more
+/// than one link, not by its type, so this find reads apart from the
+/// bring-back step's. Each folder is made the
 /// far line's own to read, write and enter as it is unpacked, an
 /// unpacking that failed partway included, since an archive's folder
 /// modes are kept and one closed to its owner would leave its contents
