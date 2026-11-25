@@ -108,15 +108,22 @@ acts=false
 opens=false
 mindepth=0
 maxdepth=''
-# A depth as macOS's find reads it, by atoi (c_mXXdepth in its
-# function.c): past blanks and a +, its leading digits, or 0 with none, so
-# ` 2`, `+2` and `2x` are each 2, as find takes them, not left unread.
+# A depth as macOS's find reads it (find_parsenum in its function.c): one
+# leading + dropped, then strtoq's blanks, sign and digits, so `+2`, ` 2`
+# and `+ +2` are each 2, and ` -2` is -2, rather than left unread. One find
+# refuses, with no digits or something after them, opens nothing, so the 0
+# or the digits it's read as here don't matter. Eighteen digits are past
+# any folder's depth, and stay within bash's numbers.
 depth_of() {
-  local word=$1 digits
+  local word=${1#+} sign='' digits
   word=${word#"${word%%[![:space:]]*}"}
-  word=${word#+}
+  case ${word} in
+    [-+]*) sign=${word:0:1} && word=${word:1} ;;
+    *) ;;
+  esac
   digits=${word%%[!0-9]*}
-  depth=$((10#${digits:-0}))
+  digits=${digits:0:18}
+  depth=$((${sign}10#${digits:-0}))
 }
 for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}

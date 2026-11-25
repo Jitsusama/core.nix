@@ -249,7 +249,7 @@ named "${home}"
 # A depth is read as macOS's find reads it, the last given, a + or blanks
 # before its digits as well, which GNU's find refuses, so what this one
 # says is left out of what's read.
-for given in '+3' ' 3' '3x'; do
+for given in '+3' ' 3' '+ +3'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
   if ! grep -qxF "${note}" "${said}"; then
     echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
