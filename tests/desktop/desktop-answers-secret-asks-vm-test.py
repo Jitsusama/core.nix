@@ -27,6 +27,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
+import vm_helpers
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -55,6 +56,8 @@ EMPTIED = "{}"
 # Past the key language's wait (300 ms) and the daemon's least time a line is shown (500 ms), so
 # a second Return is neither taken for the first doubled nor refused as unread.
 PAST_THE_READING = 1.0
+# How long the daemon may take to write an ask's answer on a quiet host, paced as every wait is.
+ANSWER_WRITTEN = dt.timedelta(seconds=30)
 
 
 @pytest.fixture
@@ -127,20 +130,20 @@ def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, 
     """Give an ask's answer, once the daemon has written it.
 
     Given the mark from before the yes, one never written says what the shell said of that
-    yes after it, since a yes refused as unread and a slow daemon both leave no answer.
+    yes after it, since a yes refused as unread and a slow daemon both leave no answer. The
+    wait is paced as every other is, since these runs failed on it under a loaded builder.
     """
     path = f"{ASKS}/{ask}.answer.json"
+    allowed = ANSWER_WRITTEN * vm_helpers.pace(vm_helpers.busyness())
     try:
-        desktop.machine.wait_until_succeeds(
-            desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
-        )
+        desktop.machine.wait_until_succeeds(desktop.in_session(f"test -e {path}"), timeout=allowed)
     except Exception as unanswered:
         if since is None:
             raise
+        # Its showings hold the ask's row too, so only the shell's words of it are kept.
         journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
-        _, said = desktop.machine.execute(
-            desktop.in_session(f"{journal} | grep -a -F {shlex.quote(f'ask:{ask}')}")
-        )
+        words = f"grep -a -F {shlex.quote(f'ask:{ask}')} | grep -a -v -F 'report[showing '"
+        said = desktop.diagnosis(f"{journal} | {words}")
         never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
         raise AssertionError(never) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
@@ -239,9 +242,10 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # The release below proves the j was read as a move, since one not read leaves the line
     # untimed and the yes refused. The first Return waits for the j to be taken: read with it
     # in one turn, the j's move is unknown, and the line's time starts again (Shown.js's
-    # keyed). That is likely what failed two of the net's last 36 runs, j and Return 10 ms
-    # apart, read from the code, since those runs kept no shell journal. Asks reads the j a
-    # turn after the launcher counts it (Qt.callLater), long before a Return sent after.
+    # keyed). That is likely what failed the net's runs that timed out here, j and Return 10 ms
+    # apart, read from the code, since those runs kept no shell journal; answered() names what
+    # the shell said should it fail again. Asks reads the j a turn after the launcher counts it
+    # (Qt.callLater), long before a Return sent after.
     taken = desktop.showing()["keysTaken"]
     desktop.machine.send_chars("j")
     desktop.launcher_until(lambda shown: shown["keysTaken"] > taken)
