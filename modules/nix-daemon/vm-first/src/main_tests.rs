@@ -446,11 +446,11 @@ fn finds_every_process_under_a_build_its_containers_too() {
 #[test]
 fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
-    // Each folder is listed in the reverse of its names' order, so a walk
-    // that didn't sort them would take `m` before `c` and `d`, and the last
-    // sibling before `w0`, on every file system; the program lists them as
-    // its file system does. Emptied, `c` holds its process a cgroup further
-    // down.
+    // Each folder is listed in its names' order with the first moved to the
+    // end, so a walk that didn't sort them would take `d` before `c`, and
+    // one that reversed them `m` before `d`, on every file system; the
+    // program lists them as its file system does. Emptied, `c` holds its
+    // process a cgroup further down.
     let (m, c, deep, d) = (
         root.join("m"),
         root.join("c"),
@@ -468,28 +468,31 @@ fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     procs(&deep, "50\n");
     procs(&d, "35\n");
     procs(&m, "40\n");
-    let reversed = |cgroup: &Path| {
+    let rotated = |cgroup: &Path| {
         let mut under = cgroups_in(cgroup);
-        under.sort_unstable_by(|one, other| other.cmp(one));
+        under.sort_unstable();
+        if !under.is_empty() {
+            under.rotate_left(1);
+        }
         under
     };
     let own = first_process(&root);
     procs(&root, "");
-    let sorted = first_process_listed(&root, reversed);
+    let sorted = first_process_listed(&root, rotated);
     procs(&c, "");
-    let nearest = first_process_listed(&root, reversed);
+    let nearest = first_process_listed(&root, rotated);
     procs(&d, "");
-    let next = first_process_listed(&root, reversed);
+    let next = first_process_listed(&root, rotated);
     procs(&m, "");
-    let deeper = first_process_listed(&root, reversed);
+    let deeper = first_process_listed(&root, rotated);
     procs(&deep, "");
-    let none = first_process_listed(&root, reversed);
+    let none = first_process_listed(&root, rotated);
     for sibling in 0..4 {
         let cgroup = root.join(format!("w{sibling}"));
         fs::create_dir(&cgroup).expect("the temp folder takes a folder");
         procs(&cgroup, &format!("{}\n", 100 + sibling));
     }
-    let widest = first_process_listed(&root, reversed);
+    let widest = first_process_listed(&root, rotated);
     let listed = first_process(&root);
     fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(

@@ -214,7 +214,7 @@ fn a_build_gone_before_a_look_says_so_and_one_that_wrote_nothing_says_nothing() 
 }
 
 #[test]
-fn a_build_whose_processes_moved_into_a_cgroup_under_it_is_seen_till_it_goes() {
+fn a_build_whose_processes_moved_into_a_cgroup_under_it_stays_seen_once_they_go() {
     let build = std::env::temp_dir().join(format!("vm-first-moved-{}", std::process::id()));
     let payload = build.join("payload");
     fs::create_dir_all(&payload).expect("the temp folder takes a folder");
