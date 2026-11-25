@@ -32,10 +32,11 @@
 //! issue that changed (one the search finds, only when it says it has
 //! changed since it was read), one more for each repository where
 //! something on one is to be judged, and a page more for each hundred of
-//! a long list. What his limit refuses is read again next round, what was
-//! read before it judged meanwhile, so nothing it couldn't read is
-//! skipped, but for a search of what's older than one GitHub cut short
-//! (src/bin/pineapple-github/own.rs).
+//! a long list. What his limit refuses, or a thread that fails, is owed
+//! and read again next round, what was read judged meanwhile, so nothing
+//! it couldn't read is skipped, but for a search of what's older than one
+//! GitHub cut short (src/bin/pineapple-github/own.rs) and one owed for
+//! hours (src/bin/pineapple-github/owed.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -69,6 +70,7 @@ use terminal_kit::{Exit, Failure, Format, Help, flags};
 use ureq::Agent;
 
 mod judging;
+mod owed;
 mod own;
 
 use judging::judge;
@@ -123,11 +125,6 @@ const SITE: &str = "github";
 
 /// How many judged keys are kept: far more than a few rounds find.
 const KEPT: usize = 1000;
-
-/// How many pull requests and issues a round may fail to read before it
-/// stops reading them: one that keeps failing holds back none after it,
-/// and a spent limit costs only a few refused asks.
-const FAILS: usize = 3;
 
 /// Milliseconds in a second.
 const MILLIS: u64 = 1000;
@@ -382,6 +379,7 @@ fn run(how: &Run) -> Result<(), Failure> {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
         own: None,
+        owed: Vec::new(),
     });
     let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
     let agent: Agent = Agent::config_builder()
@@ -426,9 +424,13 @@ enum Unread {
     /// What was asked for is gone, or not Joel's to read: the round goes
     /// on without it.
     Gone(String),
-    /// The site couldn't be asked now, its rate limit included: the round
-    /// is tried again whole.
+    /// The site couldn't be asked now: what the round wanted is asked
+    /// again, a round that couldn't ask what changed whole, a pull request
+    /// or issue the next round.
     Failed(String),
+    /// Joel's rate limit is spent, so the round asks nothing more, and
+    /// owes what it hasn't read.
+    Limited(String),
 }
 
 /// GitHub, or a site speaking its API, asked as Joel.
@@ -509,7 +511,7 @@ impl GitHub<'_> {
         let why = || format!("{name} answered {status} for {path}: {message}");
         match status {
             200 => Ok((said, next)),
-            _ if limited => Err(Unread::Failed(format!("{}, its rate limit", why()))),
+            _ if limited => Err(Unread::Limited(format!("{}, its rate limit", why()))),
             403 | 404 | 410 => Err(Unread::Gone(why())),
             _ => Err(Unread::Failed(why())),
         }
@@ -529,7 +531,7 @@ fn who(github: &GitHub<'_>, how: &Run) -> Option<String> {
             }
             login
         }
-        Err(Unread::Gone(why) | Unread::Failed(why)) => {
+        Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
             eprintln!("<4>couldn't ask {} who Joel is: {why}", github.name);
             None
         }
@@ -579,11 +581,10 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 }
 
 /// One round: what changed since the last, judged oldest first, and how
-/// far it has read moved on only once every pull request and issue it
-/// named was read; Joel's own search only once its first search answered.
-/// One that couldn't read them all, reading past up to [`FAILS`] it
-/// couldn't, judges what it did, and knows what of the search's it read,
-/// so a flood past his limit is read a part each round.
+/// far it has read moved on, Joel's own search only once its first search
+/// answered. What it couldn't read is owed, read after the rest each
+/// round from where it was to be; at a spent limit it reads no more, and
+/// owes what's left.
 fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own: &mut Searched) {
     let began = seconds();
     let Some(login) = who(github, how) else {
@@ -598,7 +599,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     let since = github::stamp(from);
     let notified = match changed(github, how, &since) {
         Ok(threads) => threads,
-        Err(Unread::Gone(why) | Unread::Failed(why)) => {
+        Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
             eprintln!("<4>couldn't ask {} what changed: {why}", github.name);
             return;
         }
@@ -613,15 +614,12 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {
         threads.push((thread.clone(), reach, own.read_from()));
     }
-    let searched = threads.len();
     for thread in notified {
         if !threads.iter().any(|(listed, _, _)| *listed == thread) {
             threads.push((thread, from, from));
         }
     }
-    // What others said to him is read before what his own search found,
-    // so a flood the search finds can't hold it back.
-    threads.rotate_left(searched);
+    owed::list(&mut threads, &judged.owed);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
         slack_ids: Vec::new(),
@@ -635,8 +633,8 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
-    let (mut done, mut failed) = (Vec::new(), 0);
-    for (thread, from, read_from) in &threads {
+    let mut unread = Vec::new();
+    for (place, (thread, from, read_from)) in threads.iter().enumerate() {
         // What this round judges, which alone is worth asking about a repository.
         let keeps = |said: &Said| {
             said.at >= *from
@@ -646,24 +644,24 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         let since = github::stamp(*read_from);
         match said_on(github, thread, &since, (open, &login), &keeps, &mut learned) {
             Ok(found) => {
+                // One owed is judged from further back, so what it judges
+                // now isn't told of as too old.
                 if mine {
-                    for (said, _, _, _) in &found {
+                    for (said, _, _, _) in found.iter().filter(|(said, _, _, _)| !keeps(said)) {
                         own.too_old(said, &joel, &judged.keys);
                     }
                 }
                 heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said)));
-                done.push(thread.key());
             }
-            Err(Unread::Gone(why)) => {
-                eprintln!("<4>{} can't be read: {why}", thread.key());
-                done.push(thread.key());
-            }
+            Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
                 eprintln!("<4>couldn't read {}: {why}", thread.key());
-                failed += 1;
-                if failed == FAILS {
-                    break;
-                }
+                unread.push(place);
+            }
+            Err(Unread::Limited(why)) => {
+                eprintln!("<4>couldn't read {}: {why}", thread.key());
+                unread.extend(place..threads.len());
+                break;
             }
         }
     }
@@ -673,14 +671,11 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         judge(state, &joel, &said, place, how.shadow);
         judged.keys.push(said.key);
     }
-    if failed == 0 {
-        judged.since = began;
-        if let Some(hits) = hits {
-            own.moved_on(began, hits);
-        }
-    } else {
-        own.read_part(github, hits.as_ref(), &done, threads.len());
+    judged.since = began;
+    if let Some(hits) = hits {
+        own.moved_on(began, hits);
     }
+    judged.owed = owed::kept(github.name, &threads, &unread, &judged.owed, began);
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
     // would search from its first start.

@@ -543,7 +543,7 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
 }
 
 #[test]
-fn github_a_cut_search_in_a_round_that_cant_read_a_thread_names_nothing_left_out() {
+fn github_a_cut_search_in_a_round_that_cant_read_a_thread_moves_on_owing_it() {
     let (origin, asked) = answering_whole(cut_twice_unread);
     let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
@@ -556,15 +556,21 @@ fn github_a_cut_search_in_a_round_that_cant_read_a_thread_names_nothing_left_out
     reading.wait().expect("the reader is gone");
 
     let searched = searches(&asked);
-    assert_eq!(
-        searched_from(&searched[2]),
-        Some(stamp(last - 3600)),
-        "a round that couldn't read a thread holds, so searches it all again: {searched:?}"
+    let next = next_reach(&searched);
+    assert_ne!(
+        next,
+        stamp(last - 3600),
+        "a round that couldn't read a thread moves on, owing it: {searched:?}"
     );
+    assert!(read(&asked, 13) >= 2, "the thread it owes is read again");
+    let oldest = stamp(CUT_UNREAD.load(Ordering::SeqCst) - 500);
     let said = journal(&home);
     assert!(
-        !said.contains("found 5 but gave 2"),
-        "nothing is named as left out, which the next round searches again: {said}"
+        said.contains(&format!("found 5 but gave 2, back to {oldest},"))
+            && said.contains(&format!(
+                "searched again only from {next}, where the next round"
+            )),
+        "what the cut left out is named, from where the next round reaches: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

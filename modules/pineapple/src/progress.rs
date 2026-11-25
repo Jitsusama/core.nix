@@ -3,8 +3,10 @@
 //! of what it judged, so a restart neither judges anything twice nor
 //! misses what was said while it was down; how far back Joel's own words
 //! were searched, so a restart neither judges past where a first start
-//! chose not to nor forgets a search held back; and when it last read the
-//! site whole, which `pineapple-github` says (src/bin/pineapple-github/).
+//! chose not to nor forgets a search held back; what it owes, the pull
+//! requests and issues a round couldn't read, so a restart reads them too;
+//! and when it last read the site whole, owing nothing, which
+//! `pineapple-github` says (src/bin/pineapple-github/).
 //! A search held back by days of failing is let go by taking `own` out of
 //! the file with its reader stopped, as a running one writes it back each
 //! round; that lets go of a first start's floor too.
@@ -12,6 +14,8 @@
 use std::path::Path;
 
 use serde_json::{Value, json};
+
+use crate::github::Thread;
 
 /// How far it has read: from `since`, in seconds, the keys of what it
 /// judged, newest last, and how far Joel's own words were searched.
@@ -24,6 +28,23 @@ pub struct Judged {
     /// How far Joel's own words were searched; none where nothing kept
     /// says, as before a reader searched for them.
     pub own: Option<Own>,
+    /// What a round couldn't read, so the next reads it again.
+    pub owed: Vec<Owed>,
+}
+
+/// A pull request or issue a round couldn't read, read again each round
+/// from where it was to be until it is: what's judged on it from `from`,
+/// in seconds since the epoch, read from `read_from`, owed since `at`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Owed {
+    /// What's owed.
+    pub thread: Thread,
+    /// From when what's said there is judged.
+    pub from: u64,
+    /// From when it's read, before `from` where a late stop is told of.
+    pub read_from: u64,
+    /// When a round first couldn't read it.
+    pub at: u64,
 }
 
 /// How far a search for Joel's own words reached, in seconds since the
@@ -65,7 +86,31 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
             floor: own.get("floor")?.as_u64()?,
         })
     });
-    Some(Judged { since, keys, own })
+    let owed = kept
+        .get("owed")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|owed| {
+            Some(Owed {
+                thread: Thread {
+                    site: site.to_owned(),
+                    repo: owed.get("repo")?.as_str()?.to_owned(),
+                    number: owed.get("number")?.as_u64()?,
+                    pull: owed.get("pull")?.as_bool()?,
+                },
+                from: owed.get("from")?.as_u64()?,
+                read_from: owed.get("read_from")?.as_u64()?,
+                at: owed.get("at")?.as_u64()?,
+            })
+        })
+        .collect();
+    Some(Judged {
+        since,
+        keys,
+        own,
+        owed,
+    })
 }
 
 /// Each site kept in `state`, by name, and when it was last read whole, in
@@ -90,11 +135,35 @@ pub fn sites(state: &Path) -> Vec<(String, u64)> {
 
 /// Keeps how far a site has been read, and that it was read whole at
 /// `read_at`, in milliseconds, through a file renamed into place, so a
-/// reader stopped mid-write leaves the last whole one.
+/// reader stopped mid-write leaves the last whole one. While it owes
+/// anything, when it was last read whole stays as it was, so a pull
+/// request it can't read shows as the site not read whole since.
 pub fn write(state: &Path, site: &str, judged: &Judged, read_at: u64) {
-    let mut kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": read_at });
+    let mut kept = json!({ "since": judged.since, "keys": judged.keys });
+    let whole = if judged.owed.is_empty() {
+        Some(read_at)
+    } else {
+        let text = std::fs::read_to_string(state.join(file(site))).ok();
+        let before = text.and_then(|text| serde_json::from_str::<Value>(&text).ok());
+        before.and_then(|before| before.get("read_at")?.as_u64())
+    };
+    if let Some(whole) = whole {
+        kept["read_at"] = json!(whole);
+    }
     if let Some(Own { from, floor }) = judged.own {
         kept["own"] = json!({ "from": from, "floor": floor });
+    }
+    if !judged.owed.is_empty() {
+        let owed: Vec<Value> = judged
+            .owed
+            .iter()
+            .map(|owed| {
+                json!({ "repo": owed.thread.repo, "number": owed.thread.number,
+                    "pull": owed.thread.pull, "from": owed.from,
+                    "read_from": owed.read_from, "at": owed.at })
+            })
+            .collect();
+        kept["owed"] = Value::Array(owed);
     }
     let path = state.join(file(site));
     let written = path.with_extension("new");
@@ -128,6 +197,7 @@ mod tests {
             since: 1_700_000_000,
             keys: Vec::new(),
             own: None,
+            owed: Vec::new(),
         };
         write(&state, "github", &judged, 2_000);
         write(&state, "code", &judged, 1_000);
@@ -157,6 +227,7 @@ mod tests {
             since: 1_700_000_000,
             keys: vec!["code:example/shop#12:comment:1".to_owned()],
             own: None,
+            owed: Vec::new(),
         };
         write(&state, "code", &judged, 1_700_000_000_000);
         assert_eq!(read(&state, "code"), Some(judged), "what was kept");
@@ -168,12 +239,43 @@ mod tests {
                 from: 1_699_999_000,
                 floor: 1_699_998_000,
             }),
+            owed: Vec::new(),
         };
         write(&state, "github", &searched, 1_700_000_000_000);
         assert_eq!(
             read(&state, "github"),
             Some(searched),
             "how far Joel's own words were searched is kept with it"
+        );
+        let owing = Judged {
+            since: 1_700_000_100,
+            keys: Vec::new(),
+            own: None,
+            owed: vec![Owed {
+                thread: Thread {
+                    site: "github".to_owned(),
+                    repo: "example/shop".to_owned(),
+                    number: 14,
+                    pull: true,
+                },
+                from: 1_699_999_940,
+                read_from: 1_699_996_340,
+                at: 1_700_000_000,
+            }],
+        };
+        write(&state, "github", &owing, 1_700_000_100_000);
+        assert_eq!(
+            read(&state, "github"),
+            Some(owing),
+            "what it owes is kept with it"
+        );
+        assert_eq!(
+            sites(&state),
+            vec![
+                ("code".to_owned(), 1_700_000_000_000),
+                ("github".to_owned(), 1_700_000_000_000)
+            ],
+            "while it owes anything, it was last read whole when it last owed nothing"
         );
         std::fs::remove_dir_all(&state).expect("the case's state goes");
     }

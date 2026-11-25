@@ -328,8 +328,8 @@ pub fn add_page(list: &mut Value, page: Value) {
 /// again, or in its message that it is a rate limit (or, as GitHub once
 /// worded one, abuse detection), since a secondary limit may come with
 /// neither header. Joel's limit is shared with gh and
-/// every agent signed in as him, so it runs out, and a round it stops has
-/// to be tried again whole.
+/// every agent signed in as him, so it runs out, and what a round it stops
+/// hasn't read has to be read again.
 #[must_use]
 pub fn rate_limited(
     status: u16,

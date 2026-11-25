@@ -135,7 +135,9 @@ impl Searched {
                 Ok(answer) => answer,
                 // Its reach stays put, so the journal says how far back
                 // it has fallen.
-                Err(Unread::Gone(why) | Unread::Failed(why)) if before.is_none() => {
+                Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why))
+                    if before.is_none() =>
+                {
                     eprintln!(
                         "<4>couldn't search {} for what Joel said, so it's searched from {reach} \
                          again next round: {why}",
@@ -147,7 +149,7 @@ impl Searched {
                 // A later one failing leaves what's older unread, as one
                 // cut short would, rather than hold every round back on a
                 // wide search that may keep failing.
-                Err(Unread::Gone(why) | Unread::Failed(why)) => {
+                Err(Unread::Gone(why) | Unread::Failed(why) | Unread::Limited(why)) => {
                     found.left.push(format!(
                         "<4>couldn't search {} for what Joel said changed {changed} ({why}), so \
                          threads the search before left out are",
@@ -198,35 +200,11 @@ impl Searched {
         found
     }
 
-    /// Says in the journal that a round could read only `done` of the
-    /// `named` pull requests and issues it named, and knows as read what
-    /// of those the search `found`, so the next reads only the rest of a
-    /// flood, and what of it changes since. How far it read stays put, so
-    /// the rest is read again, and nothing is judged twice, its keys kept.
-    pub(super) fn read_part(
-        &mut self,
-        github: &GitHub<'_>,
-        found: Option<&Found>,
-        done: &[String],
-        named: usize,
-    ) {
-        eprintln!(
-            "<4>{} read {} of the {named} it named, so the rest is read again next round",
-            github.name,
-            done.len()
-        );
-        for key in done {
-            if let Some(at) = found.and_then(|found| found.seen.get(key)) {
-                self.read.insert(key.clone(), at.clone());
-            }
-        }
-    }
-
     /// Moves on to a round begun at `began` once what it `found` was
-    /// answered, knowing what that read as read, and says in the journal
-    /// what its searches left out, from where the next round reaches. Only
-    /// here, as a round that couldn't read a thread holds, so searches
-    /// it all again; said before, the journal would name a later time.
+    /// answered, knowing what that read as read, what the round couldn't
+    /// read owed (owed.rs), and says in the journal what its searches left
+    /// out, from where the next round reaches, which only moving on
+    /// settles.
     pub(super) fn moved_on(&mut self, began: u64, found: Found) {
         if found.answered {
             self.from = began;
