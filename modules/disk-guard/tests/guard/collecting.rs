@@ -1136,6 +1136,13 @@ fn a_failed_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs(
     fs::remove_file(store.root.join("listing-slow")).unwrap();
     step_later(&mut guard, 3.0 * 3600.0, &CALM);
     fs::remove_file(store.root.join("listing-broken")).unwrap();
+    step_later(&mut guard, 3.0 * 3600.0 + 9.0 * 1800.0 - 60.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "a failed listing rested less than nine times the longest a listing runs: {:?}",
+        store.log()
+    );
     listed_later(
         &store,
         &mut guard,
@@ -1146,6 +1153,33 @@ fn a_failed_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs(
         lists(&store),
         2,
         "a failed listing rested past nine times the longest a listing runs: {:?}",
+        store.log()
+    );
+}
+
+#[test]
+fn a_kept_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs() {
+    // A kept listing seemed as long as the pass it was heard after, so a
+    // filling store's next one waited nine times three hours, a restart
+    // keeping the rest, while the store filled on the old one's batches.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 3.0 * 3600.0, &CALM);
+    listed_later(
+        &store,
+        &mut guard,
+        3.0 * 3600.0 + 9.0 * 1800.0 + 60.0,
+        &CALM,
+    );
+    assert_eq!(
+        lists(&store),
+        2,
+        "a kept listing rested past nine times the longest a listing runs: {:?}",
         store.log()
     );
 }

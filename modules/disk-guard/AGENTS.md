@@ -327,11 +327,11 @@ or launchd, and [`home.nix`][2] the account's.
   large store takes a core for minutes. A listing that expired generations
   or found its batches stale brings another, though on a healthy disk not
   until the last has rested nine times its own length, a rest a restart
-  keeps, so listing takes at most a tenth of its time. A listing that
-  failed rests the same however full the store, since it freed nothing,
-  and Nix's locked one held the lock all along. Its length counts at most
-  the half hour a listing may run, since it is heard only at the step
-  after it ends, and a pass between may have taken hours. A failed
+  keeps, so listing takes at most a tenth of its time. Its length counts
+  at most the half hour a listing may run, since it is heard only at the
+  step after it ends, and a pass between may have taken hours. A listing
+  that failed rests the same however full the store, since it freed
+  nothing, and Nix's locked one held the lock all along. A failed
   listing is saved nowhere, so a restart forgets its rest. It lists without
   Nix's garbage collector lock, which every other collection waits on,
   Nix's own near `min-free` included, and which a laptop's listing held

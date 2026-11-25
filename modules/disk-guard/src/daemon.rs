@@ -333,6 +333,12 @@ pub struct Places {
     pub running: Vec<PathBuf>,
 }
 
+/// What `path` holds, or a fresh one when it can't be read, since what it
+/// remembers is only ever a head start.
+fn loaded<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
+    state::load(path).ok().flatten().unwrap_or_default()
+}
+
 /// How `config`'s finished sources ask whether a checkout is done, leaving
 /// out any whose remote isn't a pattern.
 fn predicates(config: &Config) -> Vec<Predicate> {
@@ -827,13 +833,10 @@ impl Guard {
             .and_then(|bytes| serde_json::from_slice(&bytes).ok());
         // What can't be read starts afresh: an unwatched deps dates nothing.
         let answers_path = state.join("finished.json");
-        let mut answers: Answers = state::load(&answers_path)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
+        let mut answers: Answers = loaded(&answers_path);
         answers.forget_gone();
         let uses_path = state.join("uses.json");
-        let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
+        let mut uses: Uses = loaded(&uses_path);
         uses.forget_gone();
         let home = matches!(config.scope, crate::config::Scope::User)
             .then(|| std::env::var_os("HOME").map(PathBuf::from))
@@ -1367,7 +1370,7 @@ impl Guard {
         self.mark(tick);
         self.read_min_free(tick.wall);
         self.heartbeat();
-        self.heard_garbage(tick.wall)?;
+        self.heard_garbage(tick.wall);
         self.watch_owners(tick);
         // An overloaded machine spares nothing for routine work; a disk past
         // healthy is still answered, since its bands don't ask for a spare
@@ -1638,7 +1641,7 @@ impl Guard {
                 why: Why::Producers,
                 surveyed: Some(surveyed),
             };
-            self.pass_on(tick, device, &here, aim, thresholds, &mut scan)?;
+            self.pass_on(tick, device, &here, aim, thresholds, &mut scan);
         }
         Ok(true)
     }
@@ -1671,7 +1674,7 @@ impl Guard {
                 why: Why::Clear,
                 surveyed: Some(surveyed),
             };
-            self.pass_on(tick, device, &here, aim, thresholds, scan)?;
+            self.pass_on(tick, device, &here, aim, thresholds, scan);
         }
         Ok(())
     }
@@ -1712,7 +1715,7 @@ impl Guard {
         // Neither takes a process to judge, so the scan is never read.
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
-        self.pass_on(
+        Ok(self.pass_on(
             tick,
             device,
             &here,
@@ -1724,40 +1727,34 @@ impl Guard {
             },
             thresholds,
             &mut scan,
-        )
-        .map_err(|error| error.to_string())
+        ))
     }
 
     /// Takes a listing of Nix's garbage that has finished, keeping it for
     /// the next guard, and makes upkeep due when routine would take some.
-    fn heard_garbage(&mut self, now: f64) -> io::Result<()> {
+    fn heard_garbage(&mut self, now: f64) {
         let Some((begun, out)) = &self.listing_out else {
-            return Ok(());
+            return;
         };
         let heard = match out.try_recv() {
-            Err(TryRecvError::Empty) => return Ok(()),
+            Err(TryRecvError::Empty) => return,
             Ok(heard) => heard,
             Err(TryRecvError::Disconnected) => Err("the listing stopped".to_owned()),
         };
         let begun = *begun;
         self.listing_out = None;
         // Heard only at the step after it ended, a listing seems to take as
-        // long as any pass between; one that failed rests by no more than a
-        // listing runs, or a quick failure heard after a three-hour pass
-        // would rest a nearly full store's listing for a day.
-        let took = (now - begun).max(0.0);
-        let rests_for = if heard.is_err() {
-            took.min(garbage::LIST_TIMEOUT.as_secs_f64())
-        } else {
-            took
-        };
-        self.listing_ended = Some((now, rests_for));
+        // long as any pass between, so it counts no longer than a listing
+        // runs: a quick one heard after a three-hour pass would rest a
+        // filling store's next listing for a day, through restarts too.
+        let took = (now - begun).clamp(0.0, garbage::LIST_TIMEOUT.as_secs_f64());
+        self.listing_ended = Some((now, took));
         self.listing_failed = heard.is_err();
         match heard {
             Ok(dead) => {
                 let listing = Listing {
                     listed_at: begun,
-                    took: Some((now - begun).max(0.0)),
+                    took: Some(took),
                     dead,
                 };
                 // Kept for this run though the disk can't hold it: thrown
@@ -1776,7 +1773,6 @@ impl Guard {
             // pressure; until then the listing before stands.
             Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
         }
-        Ok(())
     }
 
     /// Notes what holds the store, and whether anything let go of it since
@@ -2572,7 +2568,7 @@ impl Guard {
                 Vec::new()
             };
             let aimed = aim(decision, surveyed);
-            let end = self.pass_on(tick, device, &here, aimed, thresholds, &mut scan)?;
+            let end = self.pass_on(tick, device, &here, aimed, thresholds, &mut scan);
             if decision == Decision::Collect {
                 self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
             }
@@ -2903,13 +2899,13 @@ impl Guard {
         }: Aim,
         thresholds: Thresholds,
         scan: &mut Scan,
-    ) -> io::Result<End> {
+    ) -> End {
         let Some((path, spaced)) = self.watched.get(&device).map(|watched| {
             let forecast = matches!(why, Why::Reach).then_some(band);
             let spaced = crate::band::spaces_deletes(watched.band, forecast);
             (watched.path.clone(), spaced)
         }) else {
-            return Ok(End::Exhausted);
+            return End::Exhausted;
         };
         // Told before it starts, since each beat as it works writes the
         // status again as it was, and a pass can judge for hours.
@@ -3005,7 +3001,7 @@ impl Guard {
         // refused, as a full disk's journal does: the pass has done its
         // work, so they cost it neither its record nor the rest of the step.
         self.journal_replaced(here, &report, tick.wall);
-        Ok(report.end)
+        report.end
     }
 
     /// Journals how many replaced builds a pass took from each target among
