@@ -10,7 +10,7 @@
 //! beside the copy, not in the handover, since the handover crosses home.
 
 use super::{
-    BACK, BROUGHT, CROSSES_AT, CROSSES_WITHIN, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES,
+    BACK, BROUGHT, CROSSES_AT, CROSSES_WITHIN, CUT, END, HANDOVER, LARGEST_FILE, LEFT, MOST_BYTES,
     MOST_FILES, TREE, UNTAKEN, quoted,
 };
 use crate::settings::Kind;
@@ -252,9 +252,13 @@ cleared() {
 /// be made. A job with no file that travels sends none, and its tree is
 /// made empty.
 ///
-/// An archive is taken only while the job's tree is a folder of its own,
-/// since through a link put at its name the rename would take a file
-/// from wherever it points; such a tree is the job's fault. Each archive
+/// Archives are taken from the job's tree held as the pass's working
+/// folder, once that folder is the very one the quest's scratch holds
+/// at the tree's name, since through a link put at the tree or above it
+/// a rename would take a file from wherever the link points: a tree
+/// reached so is the job's fault, and one gone is this machine's, as a
+/// rename failing was. Held so, a link put there later redirects no
+/// rename, which is by its name in that folder. Each archive
 /// is taken from the handover by renaming it to the copy's own `.tar`,
 /// once, so the archive checked is the very one unpacked:
 /// a share writes a file by renaming a new one over its name, which
@@ -311,16 +315,24 @@ pub(super) fn copying() -> String {
     esac
     seen="$seen $part"
   done) || return
-  printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
+  printf '%s\n' "$left" | (held=; while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
-    # Taken only from the job's own folder, never through a link put at
-    # its name, which would take a file from wherever it points.
-    [ -d "$job/{TREE}" ] && [ ! -L "$job/{TREE}" ] || {{
-      printf "elsewhere: the job's tree in its handover isn't a folder of its own\n" >&2
-      exit 1
+    # Taken from the tree held as the pass's working folder, once it is
+    # the very folder the quest's scratch holds at its name, so no link
+    # put at the tree or above it, then or later, redirects a rename.
+    [ -n "$held" ] || {{
+      # The copy lies in the same scratch, so it is a whole path too.
+      case $job in /*) ;; *) exit 2 ;; esac
+      top=$(cd -P "${{job%/*/*/*}}" && pwd -P) || exit 2
+      cd -P "$job/{TREE}" 2>/dev/null || exit 2
+      [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
+        printf "elsewhere: the job's tree in its handover is reached through a link\n" >&2
+        exit 1
+      }}
+      held=1
     }}
     # Taken once, so what a share puts at its name after is never read.
-    cleared "$work.tar" && mv -f "$job/{TREE}/$part" "$work.tar" || exit 2
+    cleared "$work.tar" && mv -f "./$part" "$work.tar" || exit 2
     # A plain file of the size the list gives, holding a whole header,
     # with ustar's magic in it, "ustar" and a NUL, then its version,
     # "00". One that can't be read is this machine's fault.
@@ -522,7 +534,11 @@ fi
 
 /// Frees the job's copy, with what it made, and the tree it was made
 /// from, once nothing is brought back out of them, and then its run's
-/// file, once they went.
+/// file, once they went. The tree goes only once no link stands at the
+/// job's handover or above it, as `unlinked` makes sure.
 fn freed() -> String {
-    format!("cd \"$HOME\" && cleared \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
+    format!(
+        "cd \"$HOME\" && {{ ! unlinked || cleared \"$job/{TREE}\"; }} && cleared \"$work\" &&\n  \
+         rm -f \"$work{RUN}\"\n"
+    )
 }

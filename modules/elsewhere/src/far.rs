@@ -327,9 +327,12 @@ if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   cleared "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 # What was taken as an archive may be a folder the job named as one.
 [ -z "$mine" ] || {{ rm -f "$work.names"; cleared "$work.tar"; }}
+# The tree goes only once no link stands at the job's handover or above
+# it, so nothing past one is cleared.
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
-    cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+    cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}"; }} && cleared "$work" &&
+      rm -f "$work{RUN}"
   }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
@@ -337,7 +340,8 @@ if [ "$why" -ne 0 ]; then
 fi
 cd {folder} || {{
   printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+  cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}"; }} && cleared "$work" &&
+    rm -f "$work{RUN}"
   say {refused}
   exit {REFUSES}
 }}
