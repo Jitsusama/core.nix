@@ -175,11 +175,17 @@
       started = pkgs.lib.concatStringsSep " " (
         pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
       );
-      handed = word: pkgs.lib.hasInfix word started;
+      handed = pair: pkgs.lib.hasInfix (pkgs.lib.escapeShellArgs pair) started;
     in
     holds "code-health-names-no-keeper-unless-told"
       "code-health is handed an owner for unread files with no keeper, or none for the repository."
-      (handed "--owner 'some=someone'" && !handed "unread-comments");
+      (
+        handed [
+          "--owner"
+          "some=someone"
+        ]
+        && !pkgs.lib.hasInfix "unread-comments" started
+      );
 
   # clippy finds nothing in code-health, its tests included.
   code-health-passes-clippy = passesClippy "code-health-passes-clippy" (

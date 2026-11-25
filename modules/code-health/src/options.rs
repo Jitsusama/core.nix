@@ -282,6 +282,8 @@ mod tests {
             "--repo core=/src/core --target core=96",
             "--repo core=/src/core --target core/long-files=many",
             "--repo core=/src/core --owner other=someone",
+            // As home.nix would hand a measure renamed on code-health's side.
+            "--repo core=/src/core --owner core/unread-comment=someone",
         ] {
             assert!(parse(&said(given)).is_err(), "{given} was taken");
         }

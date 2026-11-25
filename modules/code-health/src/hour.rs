@@ -612,8 +612,8 @@ mod tests {
         // home.nix hands the keeper as `<repo>/unread-comments=<keeper>`,
         // which code-health-reads-hourly-against-targets shows; renamed
         // here alone, the flag would name a measure code-health no longer
-        // has, and every hourly read on a machine naming a keeper would be
-        // refused.
+        // has, and every hourly read on a machine naming a keeper, or a
+        // repository naming that measure's owner, would be refused.
         assert_eq!(
             UNREAD_COMMENTS, "unread-comments",
             "unread files are counted under another name than home.nix routes to the keeper"
