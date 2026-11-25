@@ -1,8 +1,9 @@
 //! The reader over a gateway, live, in the live reader's place: a stop it
 //! hears stands in the live reader's folder, where the agents' guard reads;
 //! Joel's phone is told once, through the gateway's one tool that sends to
-//! him alone; no reply is said and Slack's own API is never asked; and a
-//! search it reads on past is said in a row beside his row in For You.
+//! him alone, and once more with the words left at the link if it refuses
+//! them; no reply is said and Slack's own API is never asked; and a search
+//! it reads on past is said in a row beside his row in For You.
 
 use std::path::Path;
 use std::sync::atomic::AtomicUsize;
@@ -117,6 +118,58 @@ fn a_reader_over_a_gateway_live_stops_agents_and_tells_joel_alone() {
     assert!(
         decisions_in(&home.join(OWN)).is_empty(),
         "nothing is written in the shadow's own folder"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+/// What the to-self tool sends to Joel's phone when the words it was
+/// given are refused.
+const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
+
+#[test]
+fn an_alert_the_gateway_refuses_goes_again_with_its_words_left_at_the_link() {
+    let (origin, _) = stand_in();
+    let (url, called) = serving(|tool, asked, now| {
+        let message = asked["message"].as_str().unwrap_or_default();
+        if tool == "slack_send_message_to_self" && !message.contains(WORDS_NOT_TAKEN) {
+            format!("{}the message holds what can't be sent", super::FAILS)
+        } else {
+            said(tool, now)
+        }
+    });
+    let home = home();
+    an_alert_waits(&home);
+    let mut reader = live(&home, &origin, &url);
+    let phoned = home.join("state/pineapple/phoned.jsonl");
+    let began = Instant::now();
+    while !phoned.exists() {
+        assert!(
+            began.elapsed() < PATIENCE,
+            "Joel's phone was never told: {}",
+            journal(&home)
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    let sent: Vec<String> = called
+        .lock()
+        .expect("what was called")
+        .iter()
+        .filter(|(tool, _)| tool == "slack_send_message_to_self")
+        .filter_map(|(_, asked)| asked["message"].as_str().map(str::to_owned))
+        .collect();
+    assert!(
+        sent.len() == 2
+            && sent[0].contains("Said: \"pineapple override\"")
+            && sent[1].contains(&format!("Said: \"{WORDS_NOT_TAKEN}\""))
+            && sent[1].ends_with("Where: https://example.slack.com/archives/C1/p1"),
+        "refused with the words, it goes once more with them left at the link: {sent:?}"
+    );
+    let told = std::fs::read_to_string(&phoned).expect("what Joel's phone was told");
+    assert!(
+        told.lines().count() == 1 && told.contains("\"sent\":true"),
+        "and it's kept as told: {told}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
