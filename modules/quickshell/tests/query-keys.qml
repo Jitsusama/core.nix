@@ -1644,6 +1644,21 @@ QtObject {
             Value.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
         holds("any other value is measured whole", Value.besideText({ value: 42,
             valueItems: kinds, between: " " }, 60, width), "42");
+        // The facts a drawer draws: a fact only saying its title again goes,
+        // as a server's name would right under it (VKCF3Z, 2026-11-03).
+        const given = [{ label: "Name", value: "kitty" }, null,
+            { label: "Kind", value: "Terminal" }, { label: "Port", value: 8080 }];
+        const shownLabels = (facts, title) =>
+            Value.factsShown(facts, title).map(fact => fact.label);
+        holds("a drawer draws every fact given, less none, in order",
+            shownLabels(given, "Ghostty"), ["Name", "Kind", "Port"]);
+        holds("less one whose value is its title", shownLabels(given, "kitty"),
+            ["Kind", "Port"]);
+        holds("a figure is compared as its text", shownLabels(given, "8080"),
+            ["Name", "Kind"]);
+        holds("a title only part of a value keeps it", shownLabels(given, "Term"),
+            ["Name", "Kind", "Port"]);
+        holds("and no facts given draws none", shownLabels(undefined, "kitty"), []);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };
