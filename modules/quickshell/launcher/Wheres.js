@@ -50,16 +50,12 @@ function listable(places) {
         && one.folder.startsWith("/") && plain(one.name));
 }
 
-// What the agents daemon's `answer` to the places ask numbered `asked`
-// changes, the last asked being `latest` and why the last went unlisted
-// `unlisted` (Agents.qml's askPlaces): null for an answer to an earlier
-// ask, come after a later one's; else `{ places, unlisted, journal }`,
-// `places` the new list or null to keep the last, and `journal` why to
-// journal, said once as each new why comes, or null.
-function heard(latest, asked, unlisted, answer) {
-    if (asked !== latest) {
-        return null;
-    }
+// What the agents daemon's `answer` to the places ask changes, why the
+// last went unlisted being `unlisted` (Agents.qml's askPlaces, which has
+// one ask out at a time): `{ places, unlisted, journal }`, `places` the
+// new list or null to keep the last, and `journal` why to journal, said
+// once as each new why comes, or null.
+function heard(unlisted, answer) {
     if (Array.isArray(answer?.places)) {
         return { places: listable(answer.places), unlisted: "", journal: null };
     }
@@ -88,8 +84,8 @@ function checkoutOf(checkouts, folder) {
     return found;
 }
 
-// The rows' places, `{ folder, name, start }`, each start once (a row's
-// act is keyed by it, Agents.qml's newWorkAct), so each folder once, and a
+// The rows' places, `{ folder, name, start }`, each start once, and so
+// each folder once (a row's act is keyed by it, Agents.qml's newWorkAct), a
 // quest's first: each of the `quests`' folders ({ folder, name }), then
 // each of the node's `places`, as listable() left them ({ folder, name,
 // kind, out }), none read again here. `start` is what a Sprout names as

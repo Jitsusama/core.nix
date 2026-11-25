@@ -40,6 +40,15 @@ QtObject {
         Expect.same("a quest's folder that is a zone is started by the zone's name",
             Wheres.wheres([{ folder: unchecked.folder, name: "~/big/reef" }], [unchecked]),
             [{ folder: unchecked.folder, name: "~/big/reef", start: "//system/reef" }]);
+        // Its act is keyed by its folder (Agents.qml's newWorkAct), so Joel stays on it
+        // when a list landing changes how it starts.
+        Expect.same("each row's folder is its own, however the places say to start",
+            [[], [unchecked], [unchecked, Object.assign({}, unchecked, { name: "//system/lake" })],
+                [pond, Object.assign({}, pond, { folder: "/home/j/big2/src/areas/system/pond" })]]
+                .map(places => Wheres.wheres(quests.concat([{ folder: unchecked.folder,
+                    name: "~/big/reef" }]), places).map(one => one.folder))
+                .map(folders => folders.length === new Set(folders).size
+                    && folders.includes(unchecked.folder)), [true, true, true, true]);
         Expect.same("what the node calls it decides, not how its name opens",
             Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
                 Object.assign({}, harness, { kind: "zone" })])
@@ -107,21 +116,19 @@ QtObject {
 
         // What each answer to the places ask changes, as Agents.qml's askPlaces keeps it.
         const listing = { places: [harness] };
-        Expect.same("an answer to an earlier ask, come after a later one's, is passed over",
-            Wheres.heard(2, 1, "", listing), null);
         Expect.same("a list is listed and clears why the last went unlisted",
-            Wheres.heard(2, 2, "no home", listing),
+            Wheres.heard("no home", listing),
             { places: [harness], unlisted: "", journal: null });
         Expect.same("a new why keeps the last list and is journalled",
-            Wheres.heard(1, 1, "", { error: { code: "unlisted", message: "no home" } }),
+            Wheres.heard("", { error: { code: "unlisted", message: "no home" } }),
             { places: null, unlisted: "no home", journal: "no home" });
         Expect.same("the same why again isn't journalled again",
-            Wheres.heard(1, 1, "no home", { error: { message: "no home" } }).journal, null);
+            Wheres.heard("no home", { error: { message: "no home" } }).journal, null);
         Expect.same("a refusal giving no why still journals one",
-            Wheres.heard(1, 1, "", { error: { message: "" } }).journal,
+            Wheres.heard("", { error: { message: "" } }).journal,
             "the agents daemon gave no reason");
         Expect.same("no answer at all keeps the last list, and says the daemon isn't answering",
-            Wheres.heard(1, 1, "", null),
+            Wheres.heard("", null),
             { places: null, unlisted: "the agents daemon isn't answering",
                 journal: "the agents daemon isn't answering" });
         Expect.same("a list the same as the last changes nothing drawn",

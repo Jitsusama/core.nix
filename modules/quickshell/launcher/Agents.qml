@@ -1660,8 +1660,9 @@ Provider {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
-            .concat(startWheres().map(one => newWorkAct("in", one.start,
-                Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name))));
+            .concat(startWheres().map(one => newWorkAct("in", one.folder,
+                Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name),
+                one.start)));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
             name: Words.name("agents:start-new-work"),
@@ -1678,9 +1679,12 @@ Provider {
         });
     }
 
-    // One of Start New Work's acts: `id` link or in, sprouting in `folder`
-    // where one is given, as `name`.
-    function newWorkAct(id, folder, name) {
+    // One of Start New Work's acts: `id` link or in, at `folder` where one
+    // is given, as `name`, sprouting in `start`, the folder unless said.
+    // Keyed by its folder, never its start, so a list of places landing
+    // while Joel is on a row that changes how it starts (a quest's folder
+    // found to be a zone) leaves him on the same row, not a dimmed one.
+    function newWorkAct(id, folder, name, start) {
         const key = folder === "" ? `verb:agents:start-new-work:${id}`
             : `verb:agents:start-new-work:${id}:${folder}`;
         return thing({
@@ -1694,7 +1698,7 @@ Provider {
             // one carried here (askWhere).
             offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
-            given: said => provider.sprout(key, said, folder)
+            given: said => provider.sprout(key, said, start ?? folder)
         });
     }
 
@@ -1989,28 +1993,22 @@ Provider {
     // once as each list comes (Wheres.listable). None until it first
     // answers, which leaves the quests' folders; where it can't, the last
     // list stays, why journalled once as each new why comes rather than at
-    // every opening. An answer to an earlier ask, come after a later one's,
-    // is passed over (Wheres.heard). One ask is out at a time, so a node
+    // every opening (Wheres.heard). One ask is out at a time, so a node
     // that's stuck isn't asked again at each opening; the daemon answers
     // every ask, with none when it goes (Daemon.qml's gone). A new list
     // says the rows changed, so one landing while Joel is inside Start New
     // Work is drawn there and then, not at the next opening.
     property var startPlaces: []
     property string startPlacesUnlisted: ""
-    property int startPlacesAsked: 0
     property bool startPlacesAsking: false
     function askPlaces() {
         const daemon = rowsKind ?? null;
         if (daemon === null || provider.startPlacesAsking)
             return;
-        const asked = ++provider.startPlacesAsked;
         provider.startPlacesAsking = true;
         daemon.ask({ ask: "places" }, answer => {
             provider.startPlacesAsking = false;
-            const heard = Wheres.heard(provider.startPlacesAsked, asked,
-                provider.startPlacesUnlisted, answer);
-            if (heard === null)
-                return;
+            const heard = Wheres.heard(provider.startPlacesUnlisted, answer);
             if (heard.places !== null && Wheres.differs(provider.startPlaces, heard.places)) {
                 provider.startPlaces = heard.places;
                 provider.changed();
