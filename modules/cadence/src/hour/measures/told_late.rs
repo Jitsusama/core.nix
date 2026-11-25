@@ -27,24 +27,28 @@ type Late = (i64, String, String);
 /// was `given`, from the ask's `promised`, to a later date, since one given
 /// again or brought forward keeps nobody waiting longer. A date its ask
 /// landed by, or its owner said was `met`, before the move needs none, so
-/// it isn't counted; nor is any date of an ask [`parked`] on a ruling,
-/// which owes none while it stands, or of one put down. Each ask is read
-/// from its latest line, which carries every date it was given, so a
-/// move is counted once however often the ask is written again.
+/// it isn't counted; nor is a move given while its ask was [`parked`] on a
+/// ruling, which owes none while it stands, or put down. An ask parked or
+/// put down after its move was told late keeps the move, since the word
+/// came too late all the same. Each ask's dates are read from its latest
+/// line, which carries every date it was given, so a move is counted
+/// once however often the ask is written again.
 #[must_use]
 pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
-    let mut latest: BTreeMap<[String; 2], (usize, Value)> = BTreeMap::new();
+    let mut written: BTreeMap<[String; 2], (usize, Vec<Value>)> = BTreeMap::new();
     for (order, ask) in lines(text).enumerate() {
         let asked = [ask["at"].to_string(), ask["words"].to_string()];
-        let first = latest.get(&asked).map_or(order, |(first, _)| *first);
-        latest.insert(asked, (first, ask));
+        written
+            .entry(asked)
+            .or_insert_with(|| (order, Vec::new()))
+            .1
+            .push(ask);
     }
-    let mut asks: Vec<(usize, Value)> = latest.into_values().collect();
+    let mut asks: Vec<(usize, Vec<Value>)> = written.into_values().collect();
     asks.sort_by_key(|(order, _)| *order);
     let mut late: Vec<Late> = asks
         .iter()
-        .filter(|(_, ask)| tracking::of(ask) == Some(which) && parked::ruling(ask).is_none())
-        .flat_map(|(_, ask)| moved_late(ask, now))
+        .flat_map(|(_, versions)| moved_late(versions, now, which))
         .collect();
     late.sort_by_key(|(when, _, _)| *when);
     Measure {
@@ -58,9 +62,12 @@ pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     }
 }
 
-/// Each move of `ask`'s dates told late by `now`, as [`told_late`] reads
-/// them.
-fn moved_late(ask: &Value, now: i64) -> Vec<Late> {
+/// Each move of an ask's dates told late by `now`, as [`told_late`] reads
+/// them, from `versions`, every line the ask was written in, oldest first.
+fn moved_late(versions: &[Value], now: i64, which: Tracking) -> Vec<Late> {
+    let Some(ask) = versions.last() else {
+        return Vec::new();
+    };
     let words = short(ask["words"].as_str().unwrap_or_default());
     let owner = first_owner(ask["owner"].as_str().unwrap_or_default());
     let landed = seconds(&ask["landed"]);
@@ -72,12 +79,32 @@ fn moved_late(ask: &Value, now: i64) -> Vec<Late> {
                 || promise.met.is_some_and(|met| met <= moved);
             let near = (promise.expected - LEFT..promise.expected).contains(&moved);
             let told = moved <= now && moved > now - DAY && near && due_after > promise.expected;
-            (told && !kept).then(|| {
+            let owed = owed_at(versions, moved, which);
+            (told && !kept && owed).then(|| {
                 let left = moved_left(promise.expected - moved);
                 (moved, format!("{words}, {left} · {owner}"), owner.clone())
             })
         })
         .collect()
+}
+
+/// Whether the ask of `versions` owed a word when its date was moved at
+/// `moved`: of the kind `which`, neither parked nor put down, on the first
+/// line that gave the date after the move, or on the latest when none
+/// says when it was given.
+fn owed_at(versions: &[Value], moved: i64, which: Tracking) -> bool {
+    let gave = |line: &&Value| {
+        line["promised"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|promise| seconds(&promise["given"]) == Some(moved))
+    };
+    versions
+        .iter()
+        .find(gave)
+        .or(versions.last())
+        .is_some_and(|line| tracking::of(line) == Some(which) && parked::ruling(line).is_none())
 }
 
 /// How a move `left` seconds before its date reads on the card.

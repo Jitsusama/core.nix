@@ -221,6 +221,33 @@ fn a_parked_or_put_down_ask_or_one_kept_before_its_move_owes_no_word() {
     );
 }
 
+/// Parking or putting an ask down after its late move doesn't undo the
+/// move, as landing after it doesn't: the word still came too late.
+#[test]
+fn an_ask_parked_or_put_down_after_its_late_move_keeps_it() {
+    let moved = (NOW - 1000, NOW - 1360);
+    let text = list(&[
+        ask_moved("parked after", "A", moved, &json!({})),
+        ask_moved("parked after", "A", moved, &json!({"parked": "b95ea57b"})),
+        ask_moved("put down after", "B", moved, &json!({})),
+        ask_moved(
+            "put down after",
+            "B",
+            moved,
+            &json!({"closed": "put down", "landed": null}),
+        ),
+    ]);
+    let m = told_late(&text, NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        [
+            "parked after, moved 6 min before its date · A",
+            "put down after, moved 6 min before its date · B",
+        ],
+        "a move told late was wiped by what came after it"
+    );
+}
+
 /// Landing or meeting a date after its late move doesn't undo the move.
 #[test]
 fn a_landing_or_met_after_the_move_leaves_it_late() {
