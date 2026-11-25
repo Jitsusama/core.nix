@@ -14,8 +14,8 @@ A shell started held also asks polkit to take its agent again once it's
 released, then every 250 ms for 10 s, since the session's agent stays
 the old shell's until that one ends, just before the release, and polkit
 refuses a second. So however long a handover waits, as on the launcher
-being open, the new shell holds the agent after it. Started without
-QS_HELD, a shell is as it was.
+being open, up to the reload's own timeout, the new shell holds the
+agent after it. Started without QS_HELD, a shell is as it was.
 
 ---
 diff -ru a/src/core/reload.cpp c/src/core/reload.cpp
@@ -221,7 +221,7 @@ diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
  #include "gobjectref.hpp"
  #include "listener.hpp"
  #include "qml.hpp"
-@@ -99,8 +102,38 @@
+@@ -99,8 +102,36 @@
  }
  
  void PolkitAgentImpl::registerComplete(bool success) {
@@ -232,8 +232,6 @@ diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
 +		// Said once a held shell takes the agent over, so a handover's journal shows it did.
 +		if (this->registerTries > 0)
 +			qInfo() << "took polkit's agent after" << this->registerTries << "refusals";
-+		// Counted afresh, so a later polkit restart gets its own tries.
-+		this->registerTries = 0;
 +		return;
 +	}
 +

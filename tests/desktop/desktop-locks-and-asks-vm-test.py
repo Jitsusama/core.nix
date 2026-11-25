@@ -25,11 +25,15 @@ if TYPE_CHECKING:
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 # The file that makes the lock's next password check stall (tests/desktop/desktop.nix).
 STALLS = "/run/lock-stalls/once"
-# A little past the 10 s a new shell once asked polkit for its agent in before giving up.
-HELD_ASKED = timedelta(seconds=12)
-# How long a first ask after polkit restarts is given before it's taken as refused for want
-# of an agent and asked again (polkit_asked_again).
+# Well past the 40 tries a new shell once asked polkit for its agent in before giving up:
+# 250 ms apart, each after polkit's answer, so 10 s idle and more on a loaded host.
+HELD_ASKED = timedelta(seconds=20)
+# How long a first ask after polkit restarts is given to come up before it's read as refused
+# (polkit_asked_again).
 AGENT_BACK = timedelta(seconds=10)
+# Where an ask's systemctl leaves how it ended, so a refused ask is told from a slow one: the
+# account's own runtime folder, where nothing else writes.
+ASK_ENDED = "/run/user/1000/polkit-ask-ended"
 
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
@@ -266,7 +270,8 @@ def test_polkits_prompt_comes_up_after_polkit_restarts(desktop: Desktop) -> None
     """Polkit's prompt still comes up after polkit's service restarts beneath the shell.
 
     The shell registers its agent with polkit as it starts, and a switch can restart polkit
-    under it without restarting the shell, which then has to register again. On 23 Nov polkit
+    under it without restarting the shell. polkit's agent library then registers the agent
+    again by itself, so this guards that library, not the held shell's tries. On 23 Nov polkit
     had restarted three times under one shell before its prompts stopped coming up.
     """
     for _ in range(3):
@@ -291,19 +296,28 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
     journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
     desktop.as_account("systemctl --user --no-block reload quickshell")
     said = f"{journal} | grep -qF"
-    machine.wait_until_succeeds(
-        desktop.in_session(f"{said} 'Held until released'"), timeout=STARTING
-    )
-    # Past the 10 s a held shell once asked for the agent in, the old launcher still open.
-    machine.sleep(duration=HELD_ASKED)
-    # Two shells run now, so the old one's launcher is closed by its own process.
-    desktop.as_account(f"qs ipc --pid {old} call launcher toggle")
-    # Handed over, the unit's main process is the new shell, never none (0).
-    handed = f'pid="$({main})"; test "$pid" != {old} && test "$pid" != 0'
-    machine.wait_until_succeeds(desktop.in_session(handed), timeout=STARTING)
-    machine.wait_until_succeeds(
-        desktop.in_session(f'{said} "took polkit\'s agent after"'), timeout=STARTING
-    )
+    took = False
+    try:
+        machine.wait_until_succeeds(
+            desktop.in_session(f"{said} 'Held until released'"), timeout=STARTING
+        )
+        # Past the tries a held shell once asked for the agent in, the old launcher still open.
+        machine.sleep(duration=HELD_ASKED)
+        # Two shells run now, so the old one's launcher is closed by its own process.
+        desktop.as_account(f"qs ipc --pid {old} call launcher toggle")
+        # Handed over, the unit's main process is the new shell, never none (0).
+        handed = f'pid="$({main})"; test "$pid" != {old} && test "$pid" != 0'
+        machine.wait_until_succeeds(desktop.in_session(handed), timeout=STARTING)
+        machine.wait_until_succeeds(
+            desktop.in_session(f'{said} "took polkit\'s agent after"'), timeout=STARTING
+        )
+        took = True
+    finally:
+        # Two shells, or a new one holding no agent, would fail the tests after for this one's
+        # reason, so the shell starts again and they run as they would alone.
+        if not took:
+            print(desktop.diagnosis("systemctl --user status quickshell"))
+            shell_started_again(desktop)
     polkit_asked_again(desktop)
 
 
@@ -324,8 +338,11 @@ def polkit_asked_again(desktop: Desktop) -> None:
     machine = desktop.machine
     asked = "polkit asked by systemctl start polkit-allowed.service"
     # The service only ever makes the file, so one left by an earlier ask would pass this.
-    machine.succeed("rm -f /run/polkit-allowed")
-    ask = "niri msg action spawn -- systemctl start polkit-allowed.service"
+    machine.succeed(f"rm -f /run/polkit-allowed {ASK_ENDED}")
+    ask = (
+        "niri msg action spawn -- sh -c"
+        f" 'systemctl start polkit-allowed.service; echo $? > {ASK_ENDED}'"
+    )
     answered = False
     try:
         with desktop.told("keys polkit"), desktop.told("drawn polkit"):
@@ -335,8 +352,13 @@ def polkit_asked_again(desktop: Desktop) -> None:
             except AssertionError:
                 # polkit's agent library registers the shell's agent again once polkit is back,
                 # and polkit says nothing of it at its default log level, so there's nothing to
-                # wait on. An ask just before finds no agent and is refused at once, so it's
-                # asked once more, and that one's prompt must come up.
+                # wait on. An ask just before finds no agent and is refused at once, so only an
+                # ask that ended refused is asked once more, and that one's prompt must come up.
+                # One still waiting, or one an agent took and drew nothing for, fails here.
+                refused = f"test -s {ASK_ENDED} && ! grep -qx 0 {ASK_ENDED}"
+                if machine.execute(refused)[0] != 0:
+                    raise
+                machine.succeed(f"rm -f {ASK_ENDED}")
                 with desktop.told(asked):
                     desktop.as_account(ask)
         machine.send_chars(f"{desktop.values['secret']}\n")
@@ -350,10 +372,15 @@ def polkit_asked_again(desktop: Desktop) -> None:
         if not answered:
             print(desktop.diagnosis("niri msg layers"))
             print(machine.execute("journalctl -b -u polkit.service -n 20 -o cat")[1])
-            desktop.as_account("systemctl --user restart quickshell")
-            machine.wait_until_succeeds(
-                desktop.in_session("qs ipc show | grep -q askpass"), timeout=STARTING
-            )
+            shell_started_again(desktop)
+
+
+def shell_started_again(desktop: Desktop) -> None:
+    """Start the shell again, and wait for it to serve the askpass the tests after ask."""
+    desktop.as_account("systemctl --user restart quickshell")
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session("qs ipc show | grep -q askpass"), timeout=STARTING
+    )
 
 
 def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:
