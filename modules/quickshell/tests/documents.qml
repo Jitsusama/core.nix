@@ -468,10 +468,13 @@ ShellRoot {
             Expect.expect("and isn't asked again by a refresh",
                 borrower.typedIn(move, "thu 3") === null && link.asked === typedGreeted,
                 link.asked - typedGreeted);
+            // Its key as long ago as a daemon's restart, so asking again anew would be seen.
+            borrower.typedAt = 1;
             hello();
             Expect.expect("but once the daemon says hello",
                 link.asked === typedGreeted + 1 && borrower.typedAsking === `${move}\nthu 3`,
                 typedState());
+            Expect.expect("still timed from its key", borrower.typedAt === 1, borrower.typedAt);
             const typedAgainAsk = `find-${link.asked}`;
             link.awaited[typedAgainAsk](Object.assign(answer("thu 3"), { id: typedAgainAsk }));
             Expect.expect("its answer taken, what's typed is the daemon's rows",
@@ -499,20 +502,24 @@ ShellRoot {
             Expect.expect("while typed again, it's asked again once more",
                 link.asked === typedRetyped + 1 && borrower.typedAsking === `${move}\nthu 4`,
                 typedState());
+            // Each let go before the hello, so each rule is seen to do it, and the hello then
+            // asks nothing.
             const typedUnasked = (what, set) => {
                 link.wire = null;
                 set();
+                const kept = borrower.typedLost;
                 link.wire = { write: line => {}, flush: () => {} };
                 const before = link.asked;
                 hello();
-                Expect.expect(what, link.asked === before && borrower.typedLost === null,
-                    typedState());
+                Expect.expect(what, kept === null && link.asked === before, typedState());
             };
             typedUnasked("one typed over since isn't asked again", () => {
                 borrower.typedIn(move, "fri");
-                borrower.typedAsking = `${move}\nfri 2`;
+                link.wire = { write: line => {}, flush: () => {} };
                 borrower.typedIn(move, "fri 2");
             });
+            Expect.expect("and what's typed over it is still asked",
+                borrower.typedAsking === `${move}\nfri 2`, typedState());
             typedUnasked("one whose search ended isn't asked again", () => {
                 borrower.typedIn(move, "sat");
                 borrower.ended();
@@ -522,6 +529,18 @@ ShellRoot {
                 borrower.drawn = false;
             });
             typedUnasked("nor one lost while they're undrawn", () => borrower.typedIn(move, "mon"));
+            // The search and what's typed inside a row, both lost, are both asked at the hello.
+            borrower.drawn = true;
+            borrower.ended();
+            link.wire = null;
+            borrower.search("tue");
+            borrower.typedIn(move, "wed");
+            link.wire = { write: line => {}, flush: () => {} };
+            const bothLost = link.asked;
+            hello();
+            Expect.expect("the search and what's typed in a row, both lost, are both asked again",
+                link.asked === bothLost + 2 && borrower.asking === "tue"
+                    && borrower.typedAsking === `${move}\nwed`, typedState());
             borrower.ended();
             borrower.drawn = false;
             link.wire = null;

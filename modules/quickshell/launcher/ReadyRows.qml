@@ -672,8 +672,10 @@ Scope {
     // What was typed inside a row when the daemon couldn't answer, as `{ within, words }`,
     // asked again once it says hello, as the search is (`lost`), or null: its words are
     // never asked again by a refresh, so the place said it can't answer till the next key.
-    // Kept only while the rows are drawn and those words are what's typed. Lost again once
-    // asked again (`typedReasked`), it's left for the next key, as the search is.
+    // Kept while the rows are drawn, till other words are typed inside a row or the search
+    // ends; stepped out of its row, it's still asked again, so a step back in finds the
+    // daemon's rows. Lost again once asked again (`typedReasked`), it's left for the next
+    // key, as the search is.
     property var typedLost: null
     property string typedReasked: ""
 
@@ -688,6 +690,7 @@ Scope {
         if (typedAsking !== asked && !(typing.within === within && typing.words === words)) {
             if (!link)
                 return null;
+            typedAt = Date.now();
             typedAsk(within, words);
         }
         if (typing.within !== within)
@@ -698,17 +701,17 @@ Scope {
 
     function typedAsk(within, words) {
         typedAsking = `${within}\n${words}`;
-        typedAt = Date.now();
         link.find({ ask: "search", place: ready.place, words: words, within: within },
             answer => ready.typedAnswered(within, words, answer));
     }
 
-    // What was typed inside a row as the daemon went, asked once more as it comes back, if
-    // it's still what's typed.
+    // What was typed inside a row as the daemon went, asked once more as it comes back. It's
+    // still timed from its key (`typedAt`), so its answer says how long after the key it
+    // came, and Emoji keeps its rows in place, as for a search asked again.
     function typedReask() {
         const was = typedLost;
         typedLost = null;
-        if (!link || typing.within !== was.within || typing.words !== was.words)
+        if (!link)
             return;
         typedReasked = `${was.within}\n${was.words}`;
         typedAsk(was.within, was.words);

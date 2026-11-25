@@ -263,8 +263,8 @@
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
     google daemon tells a row, then hold every document once it opens, made once in the daemon's
     order, and keep them, making none, once it's shut again; and a search, or what's typed inside
-    a row, lost as the daemon goes while drawn is asked again once it says hello, lost again left
-    for the next key
+    a row, lost as the daemon goes while drawn is asked again once it says hello, still timed from
+    its key, lost again left for the next key
   '';
   a-sign-in-notice-is-taken-back-even-late = ''
     a network wanting a sign-in is told of once, its notice staying while it wants one and taken
