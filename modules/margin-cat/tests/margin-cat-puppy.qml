@@ -131,10 +131,26 @@ QtObject {
         }
         expect("no drawing shows for less than two frames at 60 Hz",
             Math.min(...runs.slice(1, -1)) >= 33, true);
-        const moved = both.filter((frame, t) => t > 0 && frame.puppy.x !== all[t - 1].x);
+        // At every pace from an amble to a hurry, a stride rounded up from
+        // what its pace covers in STRIDE_SECONDS lasts at least as long.
+        const brief = [];
+        for (let cells = 1; cells <= 2000; cells += 1) {
+            const one = Puppy.trot(cells);
+            const pace = cells / (one.ms / 1000);
+            if ((one.stride / pace) * 1000 < 1000 / 30)
+                brief.push(cells);
+        }
+        expect("at any pace, a drawing lasts two frames at 60 Hz", brief.slice(0, 3), []);
+        const moved = both.map((frame, t) => Object.assign({ t }, frame))
+            .filter(frame => frame.t > 0 && frame.puppy.x !== all[frame.t - 1].x);
+        // Its last cell in, onto `near`, is drawn on the first frame of the
+        // notice, and none after it.
+        const noticed = played.beats.find(beat => beat.name === "notices");
         expect("and moves only while it trots in and off",
-            Array.from(new Set(moved.map(frame => frame.cat.beat))).sort(),
-            ["notices", "waits", "watches"]);
+            [Array.from(new Set(moved.map(frame => frame.cat.beat))).sort(),
+                moved.filter(frame => frame.cat.beat === "notices"
+                    && frame.t > Math.ceil(noticed.begins)).length],
+            [["notices", "waits", "watches"], 0]);
     }
 
     // Each pose it takes is one of the theme's drawings, which the screen
@@ -144,9 +160,10 @@ QtObject {
         posed.delete(undefined);
         expect("every pose it takes is drawn",
             Array.from(posed).filter(pose => (Drawings.poses[pose] ?? []).length === 0), []);
-        const looks = { pose: "puppyBowing", facing: 1 };
-        expect("and turned the way it faces",
-            MarginCat.yarnDrawn(MarginCat.yarnLooks(looks), Drawings.poses),
-            MarginCat.turned(Drawings.poses.puppyBowing, 1));
+        const going = frames(Puppy.visit(sat())).map(frame => frame.puppy)
+            .find(puppy => puppy?.facing === 1 && puppy.pose === "puppyWalkingA");
+        expect("and turned the way it faces, off as it trots back",
+            MarginCat.yarnDrawn(MarginCat.yarnLooks(going), Drawings.poses),
+            MarginCat.turned(Drawings.poses.puppyWalkingA, 1));
     }
 }

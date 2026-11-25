@@ -473,3 +473,37 @@ def test_away_a_puppy_visits_and_the_cat_hops_where_it_sits(shell: Shell) -> Non
     assert len(aloft) > 1, f"its hop was in the air for {len(aloft)} frames: {frames}"
     assert not any(at["walk"]["yarn"] for at in frames), f"a visit brought yarn: {frames}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+
+
+def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
+    """The puppy visits only while he's away, so a key mid-visit ends it and the cat sits.
+
+    A visit lasts up to about 25 s, and played on it would have the cat hopping as he types and
+    asking niri for every tile (#6573's council, 2026-11-25).
+    """
+    sat, seat = sitting_over(shell, "a column a visit is cut short over")
+    ask(shell, "puppy")
+    shell.send_key("F24")
+    since = shell.mark()
+
+    def visiting(said: str) -> bool:
+        return (playing(placed(said)) or {}).get("play") == "puppy"
+
+    shell.reported(SITS, visiting, since, STROLLS)
+    since = shell.mark()
+    keyed = time.monotonic()
+    shell.send_key("F24")
+    shell.reported(SITS, lambda said: not visiting(said), since)
+    ended = time.monotonic() - keyed
+    assert ended <= BACK, f"a key took {ended:.2f} s to end the visit"
+    shell.reported(
+        SITS,
+        lambda said: (
+            (at := placed(said)) is not None
+            and not walking(at)
+            and at.get("window") == sat["id"]
+            and abs(at["x"] - seat["x"]) <= 1
+        ),
+        since,
+        HOME,
+    )

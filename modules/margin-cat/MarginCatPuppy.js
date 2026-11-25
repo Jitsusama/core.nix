@@ -31,11 +31,13 @@ const STANDS = "puppyWalkingB";
 // Its trot over `cells` of the cat's: at the pace the cat walks a way that
 // long (MarginCat.js), so a short way is an amble and a long one never
 // past a hurry, in `ms`; and its `stride`, the cells each drawing covers,
-// two to three as the cat's are, so its paws are always seen moving.
+// two to three as the cat's are, so its paws are always seen moving: the
+// cells its pace covers in STRIDE_SECONDS, rounded up as the cat's walk
+// rounds them (MarginCatWays.js), so no drawing shows for less.
 function trot(cells) {
     const pace = Math.min(Math.max(cells / (MarginCat.CRUISES / MarginCat.MS), MarginCat.AMBLES),
         MarginCat.HURRIES);
-    const stride = Math.min(Math.max(Math.round(pace * MarginCat.STRIDE_SECONDS),
+    const stride = Math.min(Math.max(Math.ceil(pace * MarginCat.STRIDE_SECONDS - 1e-6),
         MarginCat.SHORTEST_STRIDE), MarginCat.LONGEST_STRIDE);
     return { ms: (cells / pace) * MarginCat.MS, stride };
 }

@@ -943,6 +943,11 @@ PanelWindow {
     function stroll(to: string): void {
         if (to === "") {
             handsBack = false;
+            // The puppy's visit is his being away, so a key ends it: the
+            // puppy fades where it is and the cat sits from where it's got
+            // to, never playing on while he types and wanting every tile.
+            if (going?.kind === "puppy")
+                walkFrom(true, null);
             if (strolled !== null) {
                 roams = true;
                 strolled = null;
