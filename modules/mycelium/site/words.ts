@@ -383,3 +383,36 @@ export const SHARED_WORD: Readonly<Record<string, string>> = {
   repository: "repository",
   group: "group",
 };
+
+/** A network as its name is told: its key, its name and what it carries. */
+export interface Named {
+  readonly key: string;
+  readonly name: string;
+  readonly carries: string;
+}
+
+/**
+ * Each network's name, told apart from the others': networks whose titles
+ * share their name, as several slices of one project do, are named with
+ * what each carries too, so no two read alike on the map, in the tree or in
+ * Now; whole titles that repeat are told apart by their ids, the part of
+ * the key after its kind.
+ */
+export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
+  const names = new Map(networks.map((n) => [n.key, n.name]));
+  const tell = (more: (n: Named) => string): void => {
+    const seen = new Map<string, number>();
+    for (const name of names.values()) {
+      seen.set(name, (seen.get(name) ?? 0) + 1);
+    }
+    for (const n of networks) {
+      const name = names.get(n.key) ?? n.name;
+      if ((seen.get(name) ?? 0) > 1) {
+        names.set(n.key, `${name}${more(n)}`);
+      }
+    }
+  };
+  tell((n) => (n.carries && n.carries !== n.name ? `: ${n.carries}` : ""));
+  tell((n) => ` (${n.key.slice(n.key.indexOf(".") + 1).toUpperCase()})`);
+  return names;
+};

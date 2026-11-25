@@ -96,6 +96,7 @@ import {
   spends,
   spentOf,
   cellsOn as machineCells,
+  toldApart,
   waitingWords,
 } from "./words.js";
 import { agoWords as agoWordsAt, atWords as atWordsAt, clock } from "./when.js";
@@ -498,6 +499,9 @@ import {
         cells: [],
       });
     }
+    // No two networks read alike (words.ts).
+    const told = toldApart([...hubs.values()]);
+    for (const h of hubs.values()) h.name = told.get(h.key) ?? h.name;
     for (const h of hubs.values()) if (h.within) hubs.get(h.within)?.children.push(h);
     const depth = (h) => (h.within ? 1 + depth(hubs.get(h.within)) : 0);
     // A cell moving between machines can arrive from both for a while,
@@ -2232,10 +2236,11 @@ import {
   new ResizeObserver(() => {
     mapSize = null;
   }).observe(svg);
-  // Wide enough, the drawer lies over the map's right side, so the map
-  // keeps that side as a gutter: nothing is centred or fitted under it,
-  // and opening the drawer moves nothing. Narrower, the drawer covers
-  // the whole map and there is no gutter.
+  // Wide enough, the drawer lies over the map's right side, so while it's
+  // open the map keeps that side as a gutter: nothing is centred or fitted
+  // under it. Shut, the map takes the whole width, since a gutter kept
+  // for a drawer nobody opened left a laptop's right half empty.
+  // Narrower, the drawer covers the whole map and there is no gutter.
   const wide = matchMedia("(min-width: 60rem) and (min-height: 34rem)");
   wide.addEventListener("change", () => {
     mapSize = null;
@@ -2245,7 +2250,7 @@ import {
       const b = svg.getBoundingClientRect();
       mapSize = [b.width, b.height];
       // offsetWidth, since the drawer's slide is a transform.
-      gutter = wide.matches ? treeBox.offsetWidth : 0;
+      gutter = wide.matches && treeBox.classList.contains("open") ? treeBox.offsetWidth : 0;
     }
     return mapSize;
   };
@@ -2329,6 +2334,16 @@ import {
   const footRoom = () => {
     const room = Math.max(0, seen()[1] - 2 * (FIT_PAD + 44));
     return Math.min(room / 2, Math.max(0, shownBuilders().length - 1) * FOOT_MARK);
+  };
+  // Opens or shuts the drawer as what's chosen and Now ask, and says
+  // whether it changed: the room the map's views are made for changes
+  // with it, so the map's size is measured again.
+  const makeRoom = () => {
+    const open = !!chosen || nowOpen;
+    if (treeBox.classList.contains("open") === open) return false;
+    treeBox.classList.toggle("open", open);
+    mapSize = null;
+    return true;
   };
   const fit = (animate = true) => {
     auto = true;
@@ -2900,6 +2915,9 @@ import {
   const apply = (animate) => {
     const c = cellFor(standFor(fromHash()));
     chosen = knows(c) ? c : null;
+    // The drawer takes its room before the view is moved, so what's chosen
+    // is centred clear of it.
+    makeRoom();
     if (chosen?.kind === "machine" || chosen?.kind === "builder") machinesShown = true;
     const key = keyOf(chosen);
     if (key) {
@@ -3905,7 +3923,8 @@ import {
   const nowControl = document.getElementById("now-control");
   const drawer = () => {
     const open = !!chosen || nowOpen;
-    treeBox.classList.toggle("open", open);
+    // A view following the whole map fits it again, clear of the drawer.
+    if (makeRoom() && auto) fit();
     nowControl.setAttribute("aria-expanded", String(!chosen && nowOpen));
     // Focus never stays in a drawer going out of reach: it goes to the map,
     // on the mark the keys were on.
@@ -5074,19 +5093,14 @@ import {
     view.focus();
   });
   const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
+  // A keycap in the key line does what its key does under a pointer, as
+  // the Network's does. It isn't a control of its own: one showing only
+  // "/" and named "Find a cell" is named apart from what shows, a voice
+  // can't say a bare mark, and the keys are a press away for anyone who
+  // reaches it by keyboard, with New Work and Now in the map's controls.
   for (const kbd of document.querySelectorAll(".head .keys kbd")) {
     const act = taps[kbd.textContent];
-    if (!act) continue;
-    kbd.setAttribute("role", "button");
-    kbd.tabIndex = 0;
-    kbd.setAttribute("aria-label", { "/": "Find a cell", s: "Start new work", ".": "Now", "?": "Keys" }[kbd.textContent]);
-    kbd.addEventListener("click", act);
-    kbd.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        act();
-      }
-    });
+    if (act) kbd.addEventListener("click", act);
   }
 
   const store = {
