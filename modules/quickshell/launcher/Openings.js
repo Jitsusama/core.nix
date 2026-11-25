@@ -17,11 +17,27 @@ function filled(said, word, fills) {
     return String(said?.[word] ?? "").replace(FILLED, (_, name) => String(fills[name] ?? ""));
 }
 
+// `pressed` (by each act's key, the last time it was pressed or given
+// fresh words) with act `key` stamped at `now`.
+function pressedAt(pressed, key, now) {
+    return Object.assign({}, pressed, { [key]: now });
+}
+
 // Whether a start answered at `since` may still say over its act `key`:
 // not once that act was pressed again, or given fresh words, since then
-// (`pressed`, by each act's key, the last time either was).
+// (`pressed`, as pressedAt keeps it).
 function saysOnAct(pressed, key, since) {
     return (pressed[key] ?? 0) <= since;
+}
+
+// The openings still `waiting` (Sprouting.settled's), each of the `late`
+// ones carrying as `told` the words `texts` said of it, in late's order, so
+// an opening takes back from the foot only what was said of itself.
+function toldOf(waiting, late, texts) {
+    return waiting.map(one => {
+        const at = late.findIndex(was => was.held === one.held && was.machine === one.machine);
+        return at < 0 ? one : Object.assign({}, one, { told: texts[at] });
+    });
 }
 
 // What the foot told (`footed`, Agents.qml's sproutFooted, `{ told, ... }`)

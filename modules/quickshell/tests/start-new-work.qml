@@ -415,10 +415,27 @@ QtObject {
         Expect.same("an act never pressed says", Openings.saysOnAct({}, "a", 200), true);
         Expect.same("an act pressed since, or given fresh words, doesn't",
             Openings.saysOnAct({ a: 300 }, "a", 200), false);
-        const tells = { told: ["late on k", "lost on m", "late on k"], keys: 3, at: 9 };
+        Expect.same("an act pressed as it was answered still says",
+            Openings.saysOnAct({ a: 200 }, "a", 200), true);
+        Expect.same("a press stamps only its own act, at its time",
+            Openings.pressedAt({ a: 100, b: 5 }, "a", 300), { a: 300, b: 5 });
+        Expect.same("a later press of its act stops a start saying over it",
+            Openings.saysOnAct(Openings.pressedAt({}, "a", 300), "a", 200), false);
+        const waitingNow = [{ held: "h1", machine: "k" }, { held: "h2", machine: "k" },
+            { held: "h1", machine: "m" }];
+        Expect.same("each late opening carries what was said of it, and no other",
+            Openings.toldOf(waitingNow, [{ held: "h2", machine: "k" },
+                { held: "h1", machine: "m" }], ["late h2", "late h1 on m"]),
+            [{ held: "h1", machine: "k" }, { held: "h2", machine: "k", told: "late h2" },
+                { held: "h1", machine: "m", told: "late h1 on m" }]);
+        const tells = { told: ["late on k", "lost on m", "late on k"], keys: 3, at: 9,
+            shown: [["n", "late on k"]] };
+        const trimmed = Openings.footedWithout(tells, "late on k");
         Expect.same("an opening takes back only its own tell, once",
-            Openings.footedWithout(tells, "late on k"),
-            { told: ["lost on m", "late on k"], keys: 3, at: 9 });
+            [trimmed.told, trimmed.keys, trimmed.at],
+            [["lost on m", "late on k"], 3, 9]);
+        Expect.same("what's left keeps the foot it was shown in, which shut clears by",
+            trimmed.shown === tells.shown, true);
         Expect.same("a tell it never had leaves the foot as it was",
             Openings.footedWithout(tells, "up on q"), tells);
         Expect.same("none is left once its own was the only tell",

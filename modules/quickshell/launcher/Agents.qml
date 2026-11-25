@@ -1828,7 +1828,7 @@ Provider {
         // Fresh words, so how the last start ended is no longer theirs to show,
         // unless one is still starting.
         if (sprouting !== act.key) {
-            sproutPressed = Object.assign({}, sproutPressed, { [act.key]: Date.now() });
+            sproutPressed = Openings.pressedAt(sproutPressed, act.key, Date.now());
             sproutSays(act.key, "");
         }
         return {
@@ -1854,7 +1854,7 @@ Provider {
         sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
     }
     function sprout(key, said, folder) {
-        sproutPressed = Object.assign({}, sproutPressed, { [key]: Date.now() });
+        sproutPressed = Openings.pressedAt(sproutPressed, key, Date.now());
         const words = Words.of("agents:start-new-work").said ?? {};
         // Asked from outside, or with no launcher to say whose Return it
         // was, it starts nothing (Sprouting.fromJoel).
@@ -2149,8 +2149,9 @@ Provider {
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
-    // since, letters, late }`, `letters` the launcher's lettersAt at the
-    // answer and `late` true once it's said to be still coming up:
+    // since, letters, late, told }`, `letters` the launcher's lettersAt at
+    // the answer, `late` true once it's said to be still coming up and
+    // `told` the words that said it (Openings.toldOf):
     // Joel asked for each, so each opens for him, on the workspace a session
     // goes to and focused (Sessions.goTo), rather than in no window (Joel,
     // 18 November: "start new work does not seem to work from the
@@ -2175,13 +2176,13 @@ Provider {
             openingPatience);
         if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
-        openings = stood.waiting;
+        const late = stood.late.map(one => said(one, "unopened"));
+        openings = Openings.toldOf(stood.waiting, stood.late, late);
         stood.late.forEach(one => Report.say(
             `new work held ${one.held} on ${one.machine} is still coming up`));
         stood.gone.forEach(one => Report.say(
             `new work held ${one.held} on ${one.machine} wasn't up in time`));
-        const told = stood.late.map(one => said(one, "unopened"))
-            .concat(stood.gone.map(one => said(one, "lost")));
+        const told = late.concat(stood.gone.map(one => said(one, "lost")));
         stood.up.forEach(one => {
             const text = openOne(one);
             if (text !== "")
@@ -2214,11 +2215,19 @@ Provider {
             return said(one, one.late === true ? "upLater" : "up");
         }
         said(one, "opening");
-        // Its window answers the foot's "still coming up" of it, so shutting
-        // the launcher for it notices only what the foot told of others
-        // (sproutShut).
-        sproutFooted = Openings.footedWithout(sproutFooted,
-            Openings.filled(sproutWords(), "unopened", { machine: one.machine }));
+        // Its window answers the foot's "still coming up" of it, if it was
+        // said late (Openings.toldOf), so shutting the launcher for it
+        // notices only what the foot told of others (sproutShut). Where that
+        // leaves nothing, sproutShut has no foot to clear, so it's cleared here.
+        const footed = sproutFooted;
+        sproutFooted = typeof one.told === "string"
+            ? Openings.footedWithout(footed, one.told) : footed;
+        if (footed !== null && sproutFooted === null) {
+            if (launcher.toldOnOpen === footed.shown)
+                launcher.toldOnOpen = [];
+            if (launcher.saying === footed.shown)
+                launcher.say([]);
+        }
         launcher.open = false;
         Sessions.goTo(one.session);
         Report.say(`opening new work's session ${one.session.address}`);
