@@ -353,13 +353,16 @@ mod tests {
             "pineapple override on this one",
             "its lines are joined into one"
         );
-        let long = format!("pineapple override {}", "\u{e9}t\u{e9} ".repeat(500));
-        let shown = gist(&long);
-        assert!(
-            shown.starts_with("pineapple override \u{e9}t\u{e9} ")
-                && shown.ends_with(" ...")
-                && shown.chars().count() <= 284,
-            "a long one is cut on a letter's edge, saying it was: {shown}"
+        // Its 280th byte falls inside a letter, so a cut by bytes fails.
+        assert_eq!(
+            gist(&format!("x{}", "\u{e9}".repeat(500))),
+            format!("x{} ...", "\u{e9}".repeat(279)),
+            "a long one is cut after 280 letters, on a letter's edge, saying it was"
+        );
+        assert_eq!(
+            gist(&format!("{} {}", "a".repeat(279), "b".repeat(9))),
+            format!("{} ...", "a".repeat(279)),
+            "a cut just after a space leaves no space before its mark"
         );
         assert_eq!(
             gist(&"x".repeat(280)),
@@ -445,6 +448,32 @@ mod tests {
         assert_eq!(row["acts"][1]["costly"], false, "a widen acts at once");
         assert_eq!(row["parked"], 2, "two sessions parked, each once");
         assert_eq!(row["shadow"], false, "a live stop is served");
+    }
+
+    #[test]
+    fn a_long_saying_is_its_gist_in_a_stops_row_and_an_alerts() {
+        let said = format!("pineapple override\n{}", "and more ".repeat(50));
+        let mut stop = standing("slack:C1:1.0", &["pr:example/shop#12"], false);
+        stop.record["words"] = json!(said);
+        let mut joke = line("slack:C1:2.0", "slack:C2:0.5", "waved:joke", 20);
+        joke["text"] = json!(said);
+        let kept = Kept {
+            stops: vec![stop],
+            decisions: vec![joke],
+            ..Kept::default()
+        };
+        let rows = rows(&kept, 30, &words());
+        let shown: Vec<&Value> = rows.iter().map(|row| &row["words"]).collect();
+        let cut = json!(gist(&said));
+        assert!(
+            cut.as_str().is_some_and(|cut| cut.ends_with(" ...")),
+            "the saying is long enough to be cut"
+        );
+        assert_eq!(
+            shown,
+            [&cut, &cut],
+            "the stop's row and the alert's each show its gist, not the whole"
+        );
     }
 
     #[test]
