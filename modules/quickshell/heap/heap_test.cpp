@@ -77,6 +77,7 @@ struct Weight {
     double live;
     double held;
     double free;
+    double resident;
 };
 
 Weight weighed(QJSEngine &engine, const Heap &heap) {
@@ -84,7 +85,8 @@ Weight weighed(QJSEngine &engine, const Heap &heap) {
     const QVariantMap said = heap.weigh();
     return {said.value(QStringLiteral("live")).toDouble(),
             said.value(QStringLiteral("held")).toDouble(),
-            said.value(QStringLiteral("free")).toDouble()};
+            said.value(QStringLiteral("free")).toDouble(),
+            said.value(QStringLiteral("resident")).toDouble()};
 }
 
 // How much room a heap is left, in megabytes, well beyond what's made in it.
@@ -458,7 +460,9 @@ ReadBack readBack(QJSEngine &engine, const QJSValue &few) {
 }
 
 // Whether giving a thinned heap's free pages back takes them, says so, and
-// leaves what's kept, and what's made after, as it was made.
+// leaves what's kept, and what's made after, as it was made; and whether
+// what's held is counted resident before it and not after, so a count that
+// ignored which pages are in memory fails.
 bool givesBack() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -469,14 +473,17 @@ bool givesBack() {
     const ReadBack read = readBack(engine, few);
     const bool taken = after.free < GIVEN_LEFT_MB;
     const bool said = given > thinned.free / 2 && given <= thinned.free + GIVEN_LEFT_MB;
-    if (!taken || !said || !read.asMade())
+    const bool resident = thinned.resident >= thinned.free &&
+                          thinned.resident - after.resident > given / 2;
+    if (!taken || !said || !resident || !read.asMade())
         std::fprintf(stderr,
                      "FAIL giving %.1f MB of free pages back takes them and leaves what's "
-                     "kept: said %.1f MB, %.1f MB free after; the few summed %.0f of %.0f, "
-                     "and what was made after %.0f of %.0f\n",
-                     thinned.free, given, after.free, read.kept, read.keptMade, read.after,
-                     read.afterMade);
-    return taken && said && read.asMade();
+                     "kept: said %.1f MB, %.1f MB free after, %.1f then %.1f MB of %.1f held "
+                     "resident; the few summed %.0f of %.0f, and what was made after %.0f of "
+                     "%.0f\n",
+                     thinned.free, given, after.free, thinned.resident, after.resident,
+                     thinned.held, read.kept, read.keptMade, read.after, read.afterMade);
+    return taken && said && resident && read.asMade();
 }
 
 // Has the kernel take, now, what a heap's chunks hold lent, as it would
@@ -525,6 +532,8 @@ struct Lending {
     double lentAfter = 0;
     double freeLent = 0;
     double freeTaken = 0;
+    double residentLent = 0;
+    double residentTaken = 0;
     double marked = -1;
     bool took = false;
     bool counted = false;
@@ -557,7 +566,9 @@ Lending lentOnce() {
     lending.lent = heap.lendBack();
     const double markedAfter = pagesMarkedLent();
     lending.lentAfter = heap.lent();
-    lending.freeLent = heap.weigh().value(QStringLiteral("free")).toDouble();
+    const QVariantMap lent = heap.weigh();
+    lending.freeLent = lent.value(QStringLiteral("free")).toDouble();
+    lending.residentLent = lent.value(QStringLiteral("resident")).toDouble();
     const double takenAfter = lentPagesTaken();
     lending.counted = takenBefore >= 0 && takenAfter >= 0;
     lending.calm = !lending.counted || takenAfter == takenBefore;
@@ -565,7 +576,9 @@ Lending lentOnce() {
         lending.marked = (markedAfter - markedBefore) * static_cast<double>(sysconf(_SC_PAGESIZE)) /
                          (1024.0 * 1024.0);
     lending.took = takenAsUnderPressure(engine);
-    lending.freeTaken = heap.weigh().value(QStringLiteral("free")).toDouble();
+    const QVariantMap taken = heap.weigh();
+    lending.freeTaken = taken.value(QStringLiteral("free")).toDouble();
+    lending.residentTaken = taken.value(QStringLiteral("resident")).toDouble();
     lending.read = readBack(engine, few);
     return lending;
 }
@@ -591,6 +604,11 @@ bool lendsBack() {
     const bool held = !lending.calm || (lending.lentBefore >= 0 &&
                                         lending.lentAfter - lending.lentBefore > lending.free / 2);
     const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
+    // What's held counted resident falls by what the kernel took, so a count
+    // that ignored which pages are in memory fails; a take the kernel made
+    // early has already lowered it, so only a calm lending is judged.
+    const bool fell =
+        !lending.calm || lending.residentLent - lending.residentTaken > lending.lent / 2;
     const bool marked = lending.marked < 0 || lending.marked > lending.free / 2;
     const bool taken = lending.took && lending.freeTaken < GIVEN_LEFT_MB;
     const ReadBack &read = lending.read;
@@ -616,18 +634,19 @@ bool lendsBack() {
                      first.lent, first.free, first.freeTaken,
                      first.took ? "taken" : "the kernel refused", first.read.kept,
                      first.read.keptMade, first.read.after, first.read.afterMade);
-    if (!said || !held || !kept || !marked || !taken || !read.asMade())
+    if (!said || !held || !kept || !fell || !marked || !taken || !read.asMade())
         std::fprintf(stderr,
                      "FAIL lending %.1f MB of free pages back says so, keeps them resident "
                      "until the kernel takes them, and leaves what's kept: said %.1f MB; the "
                      "kernel held %.1f, then %.1f MB lent, and marked %.1f MB; %.1f MB free once "
-                     "lent, and %.1f once taken (%s); the few summed %.0f of %.0f, and what was "
-                     "made after %.0f of %.0f\n",
+                     "lent, and %.1f once taken (%s); %.1f MB held resident once lent, and "
+                     "%.1f once taken; the few summed %.0f of %.0f, and what was made after "
+                     "%.0f of %.0f\n",
                      lending.free, lending.lent, lending.lentBefore, lending.lentAfter,
                      lending.marked, lending.freeLent, lending.freeTaken,
-                     lending.took ? "taken" : "the kernel refused", read.kept, read.keptMade,
-                     read.after, read.afterMade);
-    return firstAsLent && said && held && kept && marked && taken && read.asMade();
+                     lending.took ? "taken" : "the kernel refused", lending.residentLent,
+                     lending.residentTaken, read.kept, read.keptMade, read.after, read.afterMade);
+    return firstAsLent && said && held && kept && fell && marked && taken && read.asMade();
 }
 
 // How many runs too small for what's made after are freed, each a store

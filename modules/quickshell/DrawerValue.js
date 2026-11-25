@@ -1,8 +1,8 @@
 // How a drawer's fact lays its value on lines: items as many to a line as
 // fit, an identifier broken at its own marks, a list giving way to a tail,
-// and a lead's one line giving way after what it keeps, read apart from the
-// drawing (Drawer.qml) so tests/query-keys.qml can hold it in Qt's own
-// engine.
+// and a lead's one line giving way after what it keeps, and which facts are
+// drawn at all, read apart from the drawing (Drawer.qml) so
+// tests/query-keys.qml can hold it in Qt's own engine.
 .pragma library
 .import "Identifier.js" as Identifier
 .import "Reading.js" as Reading
@@ -262,6 +262,14 @@ function leadLine(kept, gives, wide, width) {
         }
     }
     return [held];
+}
+
+// The facts a drawer draws of those given: each one there, less any whose
+// value only says the `title` again, as a server's name would right under
+// it (VKCF3Z, 2026-11-03). A value is compared as text, so a figure given
+// as a number still matches a title of the same figures.
+function factsShown(facts, title) {
+    return (facts ?? []).filter(fact => fact && String(fact.value ?? "") !== title);
 }
 
 // What of a fact's value stands beside its name, measured to choose

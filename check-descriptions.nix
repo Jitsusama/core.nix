@@ -729,6 +729,15 @@
     size kept right after stepping down from it; each patch line is there once, a second ask
     or a second place keeping the size fails, and upstream's lines gone say the allocator moved
   '';
+  camera-guard-keeps-agents-off-the-camera = ''
+    camera-guard keeps agents off the camera from a quarter hour before each of Joel's meetings
+    until it ends, reading a meeting as call-under-load does, keeps the meetings it last read
+    through a calendar that can't be read and across restarts, guards a slice made again at its
+    next look, says each change once, and its program refuses a camera's node and no other
+  '';
+  camera-guard-passes-clippy = ''
+    clippy finds nothing in camera-guard or its tests
+  '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the
     builds' own filesystem, the disk guard collects there two levels down, and the machine
@@ -1213,11 +1222,13 @@
   '';
   elsewhere-reads-what-a-machine-declares = ''
     the machines and kinds of job a machine repository declares reach elsewhere's settings in the
-    words it reads, an account declaring none has it on its path and sends nothing, and a scratch
-    that isn't one hidden folder's name fails the build
+    words it reads, an account declaring none has it on its path and sends nothing, the ledgers it
+    reads are where mycelium keeps the realm's, a realm apart in a folder of its name, and a
+    scratch that isn't one hidden folder's name fails the build
   '';
   elsewhere-goes-where-mycelium-places-it = ''
-    elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, and when
+    elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, preferring
+    each machine it may send to that already holds some of the job's quest, and when
     mycelium places it on a machine it may send to, sends only its tracked files, never a hidden
     file, key or excluded path, those under a folder a share keeps home included, through the
     quest's handover and runs it by mycelium run, never ssh or rsync, started in the quest's
@@ -2314,8 +2325,8 @@
     them, both those a fallen connection broke off and those the origin did, counts on each
     connection the requests pi gave up on and no answer read whole or broken off, tells one a
     fallen connection lost from a reset, the origin hearing a lost one once, says an origin out of
-    reach as a 502 or a 504 without queueing, doesn't ask for a connection that won't open on every
-    request, forgets a failure once the origin is back, sends pi direct with a 421 when it can't
+    reach as a 502 or a 504 without queueing, says an origin whose name can't be looked up as
+    that, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a 421 when it can't
     trust the origin, answers beside an answer longer than its idle time, leaves once idle even
     while refusing other hosts, held open by a kept connection or knocked on as it goes, finishes
     each answer it streams when stopped, sending what comes meanwhile direct with the 421 of one
@@ -2712,7 +2723,12 @@
     in headless Chromium: every device drawn in its tree and on its map, a name with markup in it
     drawn as words, one going with its link, a machine mycelium runs on saying its cells as the
     node moves and linked to its place on the mycelium map, broken while net is away and live with
-    its devices read again once it's back, stale once the server goes and keeping what it drew, a
+    its devices read again once it's back, stale once the server goes and keeping what it drew,
+    every device and wire on its map within a phone's width with nothing to scroll sideways and
+    each zoom button 44 px inside its set, a bigger house with two switches, a third eero and a
+    full floor drawn the same way at a phone's width and a laptop's, the map drawn across on a
+    desk, stacked once the window narrows to a phone's and across again once it widens back,
+    stacked in a window whose room falls short of across only once its floors' names count, a
     first visit within its budget and a second answered unchanged, the web-design skill's page
     checks passing at a phone's width and a desk's in both looks, and nothing logged but what a
     test causes
@@ -5653,7 +5669,8 @@
     action and copy, the ask once before what costs a lot and can't be put back, the rest done
     at once, and yG or dG over 400 rows
     within half a key's 4 ms, u and Ctrl+R taking back and doing again as many changes as counted,
-    and a page's search by smartcase
+    a page's search by smartcase, and which keys act: a letter, a caret move, an edit, a count or
+    a sequence begun on the line acting on nothing, Backspace leaving an empty find acting
   '';
   the-queue-is-heard-from-the-node = ''
     the machine queue is the harness's file as the node's record holds it, none of a version it
@@ -6417,7 +6434,8 @@
   '';
   vm-desktop-captures = ''
     the desktop takes a screen, a window, a region, a recording and the camera's pictures and
-    videos by the keys, and says how long a recording has run
+    videos by the keys, and says how long a recording has run; and near a meeting no agent's
+    slice may open the camera while Joel's programs in app.slice still do
   '';
   vm-desktop-keeps-copies = ''
     the desktop keeps what's copied, text and pictures, past the programs that copied it, Super+V
@@ -6750,6 +6768,14 @@
     a machine started through systemd-boot from an entry whose initrd isn't its default's, as
     between a switch and its reboot, hibernates and comes back from its image through that same
     entry, the one-shot entry hibernate-unlock set for it gone after
+  '';
+  vm-hot-folders-get-subvolumes-of-their-own = ''
+    on a machine whose /home is Btrfs, each of an account's folders named by its modules is
+    moved by a unit of its own as the account's manager starts, before the units that write in
+    it: a free one becomes a subvolume's root with its files, hard links and links, the folder as
+    it was kept beside it; one a process of the account's holds open stays and says so; a missing
+    one passes; one that can't be copied is left whole with no half copy, its unit failing and
+    its writer starting all the same; and a second run leaves a subvolume as it is
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under

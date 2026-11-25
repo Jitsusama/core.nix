@@ -200,11 +200,13 @@ def test_a_script_handing_its_tests_to_pytest_is_known_by_its_call(tool: Tool) -
 
 
 def test_words_pick_the_tests_whose_names_hold_them(tool: Tool) -> None:
-    chosen = tool.selecting(["terminal", "a refused  confirmation"])
-    assert shlex.split(chosen) == ["-k", "terminal or a_refused_confirmation"]
+    chosen = tool.selecting(["terminal", "a refused  confirmation", "left-hand"])
+    assert shlex.split(chosen) == ["-k", "terminal or a_refused_confirmation or left-hand"]
 
 
-@pytest.mark.parametrize("word", ["a'b", "(x)", "not", "OR", "   ", "a or b; rm"])
+@pytest.mark.parametrize(
+    "word", ["a'b", "(x)", "not", "OR", "   ", "a or b; rm", "-x", "--keep-machine-state", " -I"]
+)
 def test_a_word_pytest_would_read_as_more_than_a_name_is_refused(tool: Tool, word: str) -> None:
     with pytest.raises(ValueError, match="can't be matched against a test's name"):
         tool.selecting([word])
@@ -332,6 +334,18 @@ def test_a_word_pytest_cant_take_is_refused_before_anything_is_built_elsewhere(
 
     assert tool.main(["--there", "vm-desktop-x", "and"]) == tool.USAGE
     assert stand_in.asked() is None, "a word pytest can't take was sent to be built"
+
+
+@pytest.mark.parametrize("word", ["-x", "--keep-machine-state", "-I"])
+def test_a_word_read_as_an_option_is_refused_before_anything_is_built_elsewhere(
+    tool: Tool, stand_in: StandIn, capsys: pytest.CaptureFixture[str], word: str
+) -> None:
+    # The build hands the words on to run-subtests, which would read one
+    # starting with a dash as an option: a run, or a listing, not asked for.
+    assert tool.main(["--there", "vm-desktop-x", "--", word]) == tool.USAGE
+
+    assert stand_in.asked() is None, f"{word!r} was sent to be built"
+    assert "can't be matched against a test's name" in capsys.readouterr().err
 
 
 def test_there_has_the_subtests_built_elsewhere_and_runs_nothing_here(

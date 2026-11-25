@@ -200,6 +200,7 @@ fn alerted(verdict: &str) -> Option<(&'static str, &'static str)> {
         "stop-asked" => Some(("asked", "asked")),
         "waved:joke" => Some(("joke", "joke")),
         "waved:no-tag" => Some(("no-tag", "noTag")),
+        "waved:unopened" => Some(("unopened", "unopened")),
         "resume-asked" => Some(("resume", "resumeAsked")),
         _ => None,
     }
@@ -219,7 +220,10 @@ fn alert_rows(kept: &Kept, now: u64, words: &Words) -> Vec<Value> {
             continue;
         };
         let heard_at = line["heard_at"].as_u64().unwrap_or(0);
-        if line["by_joel"] == true || heard_at.saturating_add(OFFERED_FOR) < now {
+        // Only his own account's words that didn't open with the phrase
+        // are shown to him, since they may have been his stop.
+        let his = line["by_joel"] == true && what != "unopened";
+        if his || heard_at.saturating_add(OFFERED_FOR) < now {
             continue;
         }
         let thread = match text(line, "thread") {
@@ -260,7 +264,7 @@ fn alert_row(key: &str, latest: &Value, count: usize, words: &Words) -> Value {
     let title = sentence(&words.fill(
         word,
         &[
-            ("who", &who(false, words)),
+            ("who", &who(latest["by_joel"] == true, words)),
             ("reach", &said_reaches(&reaches, words)),
         ],
     ));
@@ -335,6 +339,7 @@ mod tests {
             ("asked", "{who} asked for a stop"),
             ("joke", "{who} joked, on {reach}"),
             ("noTag", "{who} didn't tag you"),
+            ("unopened", "{who} named the safe word mid-text, on {reach}"),
             ("resumeAsked", "{who} asked to resume {reach}"),
             ("reach:everything", "everything"),
             ("reach:pr", "pull request {repo}#{number}"),
@@ -469,6 +474,27 @@ mod tests {
             rows(&kept, 1_000 + OFFERED_FOR + 1, &words()).is_empty(),
             "not past a week"
         );
+    }
+
+    #[test]
+    fn joels_own_words_not_opening_with_the_phrase_offer_a_stop() {
+        let mut his = line("g", "github:example/shop#12", "waved:unopened", 5);
+        his["by_joel"] = json!(true);
+        let kept = Kept {
+            decisions: vec![his],
+            ..Kept::default()
+        };
+        let rows = rows(&kept, 10, &words());
+        assert_eq!(
+            rows.len(),
+            1,
+            "shown to him, though his own account said it"
+        );
+        assert_eq!(
+            rows[0]["title"], "You named the safe word mid-text, on pull request example/shop#12",
+            "said as his, with what a stop would reach"
+        );
+        assert_eq!(verbs(&rows[0]), ["stop", "dismiss"], "stop and dismiss");
     }
 
     #[test]

@@ -1073,6 +1073,7 @@ mod tests {
             health: Health::Good,
             says: String::new(),
             side: Vec::new(),
+            looks: Vec::new(),
             address: Some("stale/".to_owned()),
             ties: serde_json::Value::Null,
         };

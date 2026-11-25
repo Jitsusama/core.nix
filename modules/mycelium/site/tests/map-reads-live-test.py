@@ -76,8 +76,9 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# under the 677 KB allowed; new work's line and its hidden controls draw about
-# 20 elements of the 611. One file more and two of the kilobytes are the kit's
+# 677.4 KB once a network's label keeps what tells it apart, under the 678 KB
+# allowed then; new work's line and its hidden controls draw about 20
+# elements of the 611. One file more and two of the kilobytes are the kit's
 # head.css, the head every live page shares, less the map's own head rules;
 # the head and its link are seven elements more in the markup than the map's
 # header was, and the budget rose by three, the rest within its room. One
@@ -85,7 +86,7 @@ CELLS = 8
 # itself, which the sites' policy now runs only from a file. One file, three
 # kilobytes and four elements are the asks beside the drawer: the watch for
 # a waiting look, and the part it fills, whose rows load only once one waits.
-BUDGET = Budget(files=36, kilobytes=682, elements=627)
+BUDGET = Budget(files=36, kilobytes=683, elements=627)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -2027,6 +2028,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
+    # Opening the drawer fits the whole map clear of it, a glide that places the names as it
+    # goes, so the case marks them only once the view stands still.
+    settled(page, "the map never stood still once Now opened")
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
