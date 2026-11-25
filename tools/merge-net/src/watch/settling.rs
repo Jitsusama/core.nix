@@ -798,14 +798,18 @@ mod tests {
             let mut seen = Vec::new();
             for _ in 0..10 {
                 std::thread::sleep(Duration::from_millis(50));
-                seen.extend(std::fs::read_to_string(format!("/proc/self/task/{own}/wchan")).ok());
+                seen.extend(
+                    std::fs::read_to_string(format!("/proc/self/task/{own}/syscall"))
+                        .ok()
+                        .map(|syscall| crate::stall::wait_in(&syscall)),
+                );
             }
             after();
             running.join().unwrap();
             seen
         }
-        // The kernel's own words for a lock vary, so a thread blocked on
-        // one shows what they are here.
+        // A thread blocked on a lock shows the guard reads it as one on
+        // the kernel the test runs on.
         let lock = std::sync::Arc::new(Mutex::new(()));
         let held = lock.lock().unwrap();
         let waiting = std::sync::Arc::clone(&lock);
