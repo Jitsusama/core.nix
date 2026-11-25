@@ -309,6 +309,92 @@ fn only_holds_sent_since_the_boot_are_read() {
     fs::remove_dir_all(&folder).unwrap();
 }
 
+/// Sets when `folder` last changed to an hour ago, as a folder no message
+/// has reached for a while is.
+fn settle(folder: &Path) {
+    let an_hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    fs::File::open(folder)
+        .and_then(|folder| folder.set_modified(an_hour_ago))
+        .unwrap();
+}
+
+// On 25 November every worker's ask parsed the whole folder afresh, and
+// the net grew past 2 GB. A folder of a hundred thousand messages is
+// parsed once, a quiet one costs no read at all, and a message arriving
+// later is the only one parsed.
+#[test]
+fn a_folder_of_a_hundred_thousand_messages_is_parsed_once() {
+    let folder = std::env::temp_dir().join(format!("merge-net-many-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&folder);
+    fs::create_dir_all(folder.join("2026-11-24")).unwrap();
+    let many: u64 = 100_000;
+    for at in 1..many {
+        let day = if at < many / 2 { "2026-11-24/" } else { "" };
+        let said = json!({ "id": format!("{at}-B"), "from": "B", "to": ["@C"],
+            "intent": "fyi", "text": "a word between two sessions, of no hold" });
+        fs::write(
+            folder.join(format!("{day}{at}-B-1-aa.json")),
+            said.to_string(),
+        )
+        .unwrap();
+    }
+    fs::write(
+        folder.join(format!("{many}-A-1-aa.json")),
+        hold("h", "A", "#machine").to_string(),
+    )
+    .unwrap();
+    settle(&folder.join("2026-11-24"));
+    settle(&folder);
+    assert_eq!(
+        standing(&folder, 0).map(|held| held.why),
+        Some("h".to_owned()),
+        "the hold among a hundred thousand messages wasn't found"
+    );
+    assert_eq!(
+        costs(&folder),
+        (1, 100_000),
+        "the first ask didn't parse each file once"
+    );
+    for _ in 0..1000 {
+        assert_eq!(
+            standing(&folder, 0).map(|held| held.why),
+            Some("h".to_owned()),
+            "a quiet folder's hold was lost"
+        );
+    }
+    assert_eq!(
+        costs(&folder),
+        (1, 100_000),
+        "a quiet folder was read again"
+    );
+    {
+        let kept = KEPT.lock().unwrap_or_else(PoisonError::into_inner);
+        let files = &kept.as_ref().unwrap()[&folder].files;
+        assert_eq!(
+            files.values().flatten().count(),
+            1,
+            "words of no hold were kept in memory"
+        );
+    }
+    let ended = json!({ "id": "e", "from": "A", "re": "h", "intent": "fyi" });
+    fs::write(
+        folder.join(format!("{}-A-1-bb.json", many + 1)),
+        ended.to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        standing(&folder, 0),
+        None,
+        "the answer arriving later didn't end the hold"
+    );
+    assert_eq!(
+        costs(&folder).1,
+        100_001,
+        "more than the new message was parsed"
+    );
+    fs::remove_dir_all(&folder).unwrap();
+}
+
 #[test]
 fn an_answer_filed_in_a_day_folder_still_ends_its_hold() {
     let folder = std::env::temp_dir().join(format!("merge-net-days-{}", std::process::id()));
