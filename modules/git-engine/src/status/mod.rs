@@ -13,7 +13,7 @@ use crate::index::{CacheTree, Entry, Index};
 use crate::odb::{Kind, Odb, TreeEntry, tree_entries};
 use crate::pattern::{Pattern, parse_file};
 use crate::stamp::Stamp;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -23,6 +23,7 @@ mod convert;
 mod untracked;
 
 use convert::{Conversion, conversion_of, same_contents};
+pub use convert::{Crlf, Driver, autocrlf, filter_drivers};
 pub use untracked::untracked;
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
@@ -100,10 +101,14 @@ fn bump(count: &mut usize, limit: Option<usize>) {
 
 /// The settings that change how a file in the worktree becomes a blob.
 pub struct Settings {
-    pub autocrlf: Option<String>,
+    /// What core.autocrlf makes of the line endings of a file no attribute
+    /// speaks for: Auto where it is true or input, else Binary.
+    pub autocrlf: Crlf,
     pub filemode: bool,
     pub trust_ctime: bool,
     pub show_untracked: bool,
+    /// The filter drivers that do anything on the way in, by name.
+    pub filters: BTreeMap<String, Driver>,
 }
 
 /// Files read once and kept until their stamp moves: ignore and attributes
@@ -154,7 +159,13 @@ fn identity(entry: &Entry) -> Identity {
     (entry.oid, entry.mode, entry.extended, entry.stat.clone())
 }
 
-type Basis = (Option<String>, bool, bool, Option<Stamp>, Option<Stamp>);
+type Basis = (
+    Crlf,
+    bool,
+    bool,
+    BTreeMap<String, Driver>,
+    [Option<Stamp>; 3],
+);
 
 /// What a folder holds: each entry by its path in the worktree, with whether
 /// it's a folder, and whether there's an ignore file or a repository of its
@@ -284,6 +295,8 @@ pub struct Paths<'a> {
     /// Where `info/exclude` and `info/attributes` are: the shared git folder.
     pub common: &'a Path,
     pub excludes_file: Option<PathBuf>,
+    /// git's system-wide attributes, read before every other file.
+    pub system_attributes: Option<PathBuf>,
     pub attributes_file: Option<PathBuf>,
     /// Whether a file system monitor watches the worktree.
     pub monitored: bool,
@@ -602,11 +615,15 @@ pub fn unstaged(
         // A change to how files become blobs changes every verdict without
         // touching a file the monitor would name.
         let basis = (
-            settings.autocrlf.clone(),
+            settings.autocrlf,
             settings.filemode,
             settings.trust_ctime,
-            Stamp::of(&paths.common.join("info/attributes")),
-            paths.attributes_file.as_deref().and_then(Stamp::of),
+            settings.filters.clone(),
+            [
+                Stamp::of(&paths.common.join("info/attributes")),
+                paths.attributes_file.as_deref().and_then(Stamp::of),
+                paths.system_attributes.as_deref().and_then(Stamp::of),
+            ],
         );
         if cache.basis.as_ref() != Some(&basis) || paths.changed.is_some_and(|c| c.attributes) {
             cache.verdicts.clear();

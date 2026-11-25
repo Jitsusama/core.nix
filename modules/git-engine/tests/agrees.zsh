@@ -12,9 +12,15 @@ setopt err_return no_unset pipe_fail extended_glob
 
 local plugin=$1 gitstatusd=$2 engine=$3 work=$4
 typeset -g GITSTATUS_AUTO_INSTALL=0
-export GIT_CONFIG_NOSYSTEM=1 GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=a@b \
+# git's system config is the script's own, empty but where a case writes to
+# it, so the machine's is never read; the daemons start knowing it. git has
+# no such way to move the system attributes, so none are read.
+export GIT_CONFIG_SYSTEM=$work/system-config GIT_ATTR_NOSYSTEM=1 \
+  GIT_AUTHOR_NAME=a GIT_AUTHOR_EMAIL=a@b \
   GIT_COMMITTER_NAME=a GIT_COMMITTER_EMAIL=a@b HOME=$work/home XDG_CACHE_HOME=$work/cache
-mkdir -p $HOME
+unset GIT_CONFIG_NOSYSTEM
+mkdir -p $HOME $work
+: > $GIT_CONFIG_SYSTEM
 git config --global init.defaultBranch main
 git config --global advice.detachedHead false
 git config --global protocol.file.allow always
@@ -154,6 +160,15 @@ for r in $(fresh moved) $(fresh moved-watched); do
   printf 'y\r\n' > $r/lines; git -C $r add lines 2> /dev/null
   git -C $r commit -qm lines
   touch -d 2020-01-01 $r/lines
+done
+
+# Files under a filter git has no command for, and in UTF-8 by their
+# attributes, whose stat moved: git hashes both as they are.
+for r in $(fresh converted) $(fresh converted-watched); do
+  print 'a filter=nothing\nb working-tree-encoding=UTF-8' > $r/.gitattributes
+  print one > $r/a; print two > $r/b
+  git -C $r add -A; git -C $r commit -qm converted
+  touch -d 2020-01-01 $r/a $r/b
 done
 
 r=$(fresh unborn)
@@ -444,6 +459,27 @@ for r in $work/moved $work/moved-watched; do
   like_git "${r:t}: the moved file read as text by its attributes" $r
   rm $r/.gitattributes
   like_git "${r:t}: the moved file without its attributes" $r
+  print 'lines eol=foo' > $r/.gitattributes
+  like_git "${r:t}: the moved file with an eol git doesn't know" $r
+  rm $r/.gitattributes
+  [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
+done
+
+# Then a clean command for the filter, which git runs and which changes
+# the file: watched, nothing on disk moves, so only the setting can.
+for r in $work/converted $work/converted-watched; do
+  [[ $r == *-watched ]] && watch $r
+  like_git "${r:t}: a filter with no command and an encoding of UTF-8" $r
+  git -C $r config filter.nothing.smudge cat
+  like_git "${r:t}: a filter that only smudges" $r
+  git -C $r config filter.nothing.clean 'tr o O'
+  like_git "${r:t}: a filter git runs" $r
+  git -C $r config --unset filter.nothing.clean
+  like_git "${r:t}: a filter that smudges again" $r
+  # Only the system file changes, so its change alone must be seen.
+  git config --system filter.nothing.clean 'tr o O'
+  like_git "${r:t}: a filter git runs by the system config" $r
+  : > $GIT_CONFIG_SYSTEM
   [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
 done
 
