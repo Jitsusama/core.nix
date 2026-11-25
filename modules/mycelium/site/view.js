@@ -96,6 +96,7 @@ import {
   spends,
   spentOf,
   cellsOn as machineCells,
+  labelsApart,
   toldApart,
   waitingWords,
 } from "./words.js";
@@ -499,9 +500,15 @@ import {
         cells: [],
       });
     }
-    // No two networks read alike (words.ts).
-    const told = toldApart([...hubs.values()]);
-    for (const h of hubs.values()) h.name = told.get(h.key) ?? h.name;
+    // No two networks read alike (words.ts), nor on the map, where a name
+    // is clipped and what told it apart could be cut off.
+    const named = [...hubs.values()].map(({ key, name, carries }) => ({ key, name, carries }));
+    const told = toldApart(named);
+    const labels = labelsApart(named, told, clipped, NAME_ROOM);
+    for (const h of hubs.values()) {
+      h.label = labels.get(h.key) ?? clipped(h.name);
+      h.name = told.get(h.key) ?? h.name;
+    }
     for (const h of hubs.values()) if (h.within) hubs.get(h.within)?.children.push(h);
     const depth = (h) => (h.within ? 1 + depth(hubs.get(h.within)) : 0);
     // A cell moving between machines can arrive from both for a while,
@@ -1500,7 +1507,7 @@ import {
       const n = countsOf(h.cells);
       const sub = [plural(h.cells.length, kindWord(h.cells)), ...["asks", "stuck"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
       const busy = [n.asks, n.stuck, n.moving, h.cells.length];
-      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
+      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(h.label, 22), sub, far: near && !near.hubs.has(h.key) });
     }
     // A knot is named by what its cells share, or by its quest's title.
     for (const n of m.shared) {
@@ -3918,7 +3925,7 @@ import {
   });
 
   // The drawer is open while something is chosen, or while Now is asked
-  // for; otherwise the map's gutter is empty and quiet.
+  // for; otherwise the map has the whole width.
   let nowOpen = false;
   const nowControl = document.getElementById("now-control");
   const drawer = () => {
@@ -3931,14 +3938,16 @@ import {
     if (!open && treeBox.contains(document.activeElement)) view.focus({ preventScroll: true });
   };
   // Now opens over whatever is chosen, letting it go, and keeps the mark
-  // the keys are on clear of the drawer.
+  // the keys are on clear of the drawer. A view following the whole map
+  // has it fitted clear already, and moving it to the mark then would stop
+  // that fit's glide part way and leave the view no longer following.
   const openNow = () => {
     nowOpen = true;
     if (chosen) {
       history.replaceState(null, "", location.pathname);
       apply(false);
     } else drawer();
-    if (pointed) keepInView(pointed);
+    if (pointed && !auto) keepInView(pointed);
     where.textContent = "Now is open in the drawer.";
   };
   const closeNow = () => {
