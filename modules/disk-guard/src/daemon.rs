@@ -77,6 +77,14 @@ struct Rest {
     /// twice in a row, so a daemon whose word keeps failing costs a survey
     /// a rest, not one a step.
     unvouched: bool,
+    /// Whether the pass ended with nothing left it may clear, the system
+    /// daemon having answered, so a second such pass in a row on a filling
+    /// disk empties it.
+    exhausted: bool,
+    /// Whether a second pass in a row found nothing left to clear on a
+    /// filling disk, so the disk rests the hour and the status says it has
+    /// cleared all it may, whatever passes run on other disks meanwhile.
+    emptied: bool,
 }
 
 /// How long a filesystem rests after a pass that fell short, at first and
@@ -85,6 +93,14 @@ struct Rest {
 /// the band, the sooner it looks again, since what's in use there may
 /// stop being so any moment and the disk can't wait long.
 const FIRST_REST: f64 = 60.0;
+/// How long a filling disk rests once a second pass in a row finds
+/// nothing more it may clear there. Each pass reads the metadata of
+/// everything it judges, and on 25 November one 17 minutes after a pass
+/// that freed 0 B read 15 GB of it in 24 minutes. The first such pass
+/// rests only a minute, since one that expired generations or a build that
+/// ended leaves garbage only the next can take. A filling disk has a tenth
+/// of its room or more, and a worse band ends the rest at once.
+const EMPTY_REST: f64 = 3600.0;
 fn longest_rest(band: Band) -> f64 {
     match band {
         Band::CriticallyFull => 60.0,
@@ -684,6 +700,16 @@ pub struct FilesystemStatus {
     /// Whether the last pass here, in this band or a worse one, found
     /// nothing more it may clear.
     pub exhausted: bool,
+    /// Whether a writers' hold keeps passes off this disk, as it does
+    /// above nearly full, so it isn't told as clearing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub waiting: bool,
+    /// Whether a writers' hold stands over this disk with no clear Joel
+    /// asked for at work on it, from which each measure works out
+    /// `waiting` again, since a heartbeat's measure can move the band
+    /// either way.
+    #[serde(skip)]
+    pub held: bool,
 }
 
 impl FilesystemStatus {
@@ -708,6 +734,7 @@ impl FilesystemStatus {
         if band > self.band {
             self.exhausted = false;
         }
+        self.waiting = held_off(self.held, band);
         self.band = band;
         self.free = space.free;
         self.total = space.total;
@@ -753,6 +780,7 @@ impl FilesystemStatus {
             full_in: next,
             nix_floor: self.nix_floor.filter(|_| to_floor),
             cleared_all: self.exhausted,
+            waiting: self.waiting,
         }
     }
 }
@@ -1441,7 +1469,7 @@ impl Guard {
             // turn; the system's own upkeep goes on.
             let driven =
                 matches!(decision, Decision::Reach(_)) && spoken_for(self.hearing.as_ref(), device);
-            let waits = writers_held && watched.band < Band::NearlyFull;
+            let waits = held_off(writers_held, watched.band);
             if decision != Decision::Rest && !resting && !driven && !waits {
                 due.push((device, decision, thresholds));
             }
@@ -1732,7 +1760,7 @@ impl Guard {
         // Answered as the deletes' rest is, so the user daemon's pass waits
         // with the store's garbage rather than counting a failure and taking
         // dearer files.
-        if self.writers_held && band < Band::NearlyFull {
+        if held_off(self.writers_held, band) {
             return Ok(End::Waiting);
         }
         let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
@@ -1961,7 +1989,9 @@ impl Guard {
         let Some(watched) = self.watched.get(&device) else {
             return;
         };
-        if watched.band < Band::NearlyFull && (self.deletes_resting(now) || self.writers_held) {
+        if (watched.band < Band::NearlyFull && self.deletes_resting(now))
+            || held_off(self.writers_held, watched.band)
+        {
             // Looked at again once the rest is over.
             self.collect = true;
             return;
@@ -2067,7 +2097,7 @@ impl Guard {
             .get(&device)
             .map_or(Band::Healthy, |watched| watched.band);
         let pressed = band > Band::Healthy;
-        if overloaded && !pressed || self.writers_held && band < Band::NearlyFull {
+        if overloaded && !pressed || held_off(self.writers_held, band) {
             return;
         }
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
@@ -2664,21 +2694,46 @@ impl Guard {
                 continue;
             };
             let unheard = scan.went_unheard();
+            // From when the pass ended, on the step's clock: one ran 24
+            // minutes on 25 November, and a rest counted from its start was
+            // over before it ended.
+            let ended = tick.monotonic + self.stepped.elapsed().as_secs_f64();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
                 // A pass that gave way to a disk shorter of room, to a
                 // stop or to its own length fell short of nothing; its disk
                 // is due again.
                 let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
+                // One that couldn't ask the system daemon found nothing
+                // left only for want of its word, which comes back in a
+                // minute or two.
+                let exhausted = matches!(end, End::Exhausted) && !unheard;
+                // Filling only: a healthy disk's rest goes at its next
+                // measure, so an hour promised there would never hold. In
+                // a row only when its rest ended within the longest rest
+                // before this pass: one after hours of holding off judges
+                // what those hours built.
+                let emptied = exhausted
+                    && watched.rest.is_some_and(|rest| {
+                        rest.exhausted && tick.monotonic - rest.until <= longest_rest(band)
+                    })
+                    && band <= Band::Filling
+                    && watched.band == Band::Filling;
                 watched.rest = fell_short.then(|| {
-                    let seconds = watched.rest.map_or(FIRST_REST, |rest| {
-                        (rest.seconds * 2.0).min(longest_rest(band))
-                    });
+                    let seconds = if emptied {
+                        EMPTY_REST
+                    } else {
+                        watched.rest.map_or(FIRST_REST, |rest| {
+                            (rest.seconds * 2.0).min(longest_rest(band))
+                        })
+                    };
                     Rest {
-                        until: tick.monotonic + seconds,
+                        until: ended + seconds,
                         seconds,
                         band,
                         unvouched,
+                        exhausted,
+                        emptied,
                     }
                 });
             }
@@ -3266,6 +3321,15 @@ impl Guard {
         Ok((surveyed, previews))
     }
 
+    /// Whether no pass is at work on the disk at `path` now. Under a
+    /// writers' hold the only one that can be on a filling disk is a
+    /// clear Joel asked for, or one begun nearly full.
+    fn unpassed(&self, path: &Path) -> bool {
+        self.passing
+            .as_ref()
+            .is_none_or(|passing| passing.path != path)
+    }
+
     pub fn status(&self, now: f64) -> Status {
         let bands = &self.config.bands;
         let home = self.home.as_deref();
@@ -3306,15 +3370,19 @@ impl Guard {
                     says: String::new(),
                     exhausted: self.last.as_ref().is_some_and(|last| {
                         last.path == watched.path
-                            && self
-                                .passing
-                                .as_ref()
-                                .is_none_or(|passing| passing.path != watched.path)
+                            && self.unpassed(&watched.path)
                             && last.end == "exhausted"
                             && watched.band != Band::Healthy
                             && last.band >= watched.band
-                    }),
+                    }) || (watched.band == Band::Filling
+                        && self.unpassed(&watched.path)
+                        && watched.rest.is_some_and(|rest| rest.emptied)),
+                    // A clear Joel asked for runs under a hold, and is
+                    // told as the clear it is.
+                    held: self.writers_held && self.unpassed(&watched.path),
+                    waiting: false,
                 };
+                status.waiting = held_off(status.held, status.band);
                 status.says = crate::words::filesystem(&status.told(now), home);
                 Some(status)
             })
@@ -3900,6 +3968,14 @@ fn replaced_taken(here: &[Offer], actions: &[(PathBuf, Outcome)]) -> BTreeMap<Pa
         }
     }
     taken
+}
+
+/// Whether a writers' hold, when `held`, keeps passes off a disk in
+/// `band`: every band short of nearly full waits for the hold to end.
+/// Passes and the status both ask this, so what the status says is what
+/// the passes do.
+pub(crate) fn held_off(held: bool, band: Band) -> bool {
+    held && band < Band::NearlyFull
 }
 
 /// Whether a delete failed for garbage that came alive since the listing.
