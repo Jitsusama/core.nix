@@ -101,8 +101,7 @@ lib.types.submodule {
                 cache write, isn't counted here. The cap is each machine's,
                 not the prefix's: the budget's spend_watch allowance is what
                 holds them all, once spend-watch's feeds say what was spent,
-                which is as late as the slowest of them, up to two days for
-                a warehouse's bill. A request whose most cost is above the
+                which is as late as the slowest of them to settle. A request whose most cost is above the
                 cap is refused however little was spent that day.
               '';
             };
@@ -224,12 +223,14 @@ lib.types.submodule {
             spend_watch = lib.mkOption {
               type = lib.types.nullOr (lib.types.strMatching "[A-Za-z0-9_.-]+");
               default = null;
-              example = "proxy";
+              example = "default";
               description = ''
                 The budget in spend-watch whose money a models budget's
-                requests spend. Each is refused while spend-watch is silent of
-                it, or says it is past an allowance; and every one is refused
-                where this is null.
+                requests spend: one this account's spend-watch declares, or
+                `default` where it declares none. Each is refused while
+                spend-watch is silent of it, has only seen it spent, or says
+                it is past an allowance; and every one is refused where this
+                is null.
               '';
             };
           };

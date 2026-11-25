@@ -36,6 +36,9 @@ let
       named = budget.spend_watch;
     in
     watched != null && named != null && !lib.elem named watched;
+  # A budget naming one where this account runs no spend-watch, whose word
+  # the lender then never finds, so it's silent of every budget.
+  unrunFor = budget: watched == null && budget.spend_watch != null;
   lendsModels = vm: lib.any (budget: models ? ${budget}) ([ vm.budget ] ++ vm.also);
   missing =
     budget:
@@ -52,6 +55,10 @@ in
       name: budget:
       "jitsusama.mycelium.lend.budgets.${name} names ${budget.spend_watch} in spend_watch, which this account's spend-watch doesn't declare, so mycelium refuses every model lent through it."
     ) (lib.filterAttrs (_: unknownTo) models)
+    ++ lib.mapAttrsToList (
+      name: budget:
+      "jitsusama.mycelium.lend.budgets.${name} names ${budget.spend_watch} in spend_watch, but this account runs no spend-watch, so mycelium refuses every model lent through it."
+    ) (lib.filterAttrs (_: unrunFor) models)
     ++ map (
       vm:
       "jitsusama.mycelium.lend.vms' ${vm.prefix} names no usd_a_day, so mycelium lends its machines no model."

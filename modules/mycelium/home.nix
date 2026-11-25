@@ -533,7 +533,8 @@ in
             auth_header = "authorization";
             key = [ "''${models-key}/bin/models-key" ];
             prices.a-model = { input = 3; output = 15; most_output = 64000; };
-            spend_watch = "models";
+            # The one budget spend-watch answers for where it declares none.
+            spend_watch = "default";
           };
         }
       '';

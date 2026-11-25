@@ -2600,16 +2600,18 @@
     no model is written without them (its budget's prices among the fields the scan reads as
     defaulted, a scan shown to read as defaulted only a field whose own line above, past its doc
     lines, is the attribute) and is warned of rather than refused, naming which it lacks; so is a
-    models budget naming no spend-watch budget, one the account's spend-watch doesn't declare or
-    pricing none, and a machine lending models only beside a forge, each still taken by the
+    models budget naming no spend-watch budget, one the account's spend-watch doesn't declare
+    (`default` where it declares one of its own) or one where the account runs no spend-watch,
+    or pricing none, and a machine lending models only beside a forge, each still taken by the
     option's type and every assertion, as the locked lender's source refuses a model's request
     where its machine caps no spend, its budget names no spend-watch budget or its model has no
     price, and asks spend-watch of the one it names; a lend whose every models budget is priced
-    and watched and whose machines are capped is warned of by neither warning, nor is a machine
-    lending only a forge or its forge budget; a price leaving its cache's prices unset is written
-    without them, and a model with any of its four prices at nothing is refused by the option's
-    type; a budget with no key is written with none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
-    refused by a message naming it and its node given none, plain prefixes and dotted paths and
+    and watched, by `default` or by a budget the account's spend-watch declares, and whose
+    machines are capped is warned of by none of these warnings, nor is a machine lending only a
+    forge or its forge budget; a price leaving its cache's prices unset is written without them,
+    and a model with any of its four prices at nothing is refused by the option's type; a budget
+    with no key is written with none, a further realm's node and a machine lending nothing are
+    given no lend, a Mac's lend is refused by a message naming it and its node given none, plain prefixes and dotted paths and
     key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that
     is empty, starts another, either way round, or is named twice, a key that is empty or whose
     program is outside the store, climbs out of it with .. or is named as text no package keeps
