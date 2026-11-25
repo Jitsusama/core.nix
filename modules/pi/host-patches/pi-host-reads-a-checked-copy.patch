@@ -1,0 +1,314 @@
+A host reads a project's own .pi from a folder it names.
+
+pi reads a trusted project's settings, extensions, packages, system
+prompt and MCP servers from the project's .pi, which any session working
+there can write. A host checks that code against what the person allowed
+before each load, but pi then reads it again from the .pi, so code a
+session writes between the check and the load runs unchecked. Settings
+made from files now take the folder to read in the .pi's place, and a
+host can name another before a reload: the package manager, the resource
+loader and the MCP extension read the project from it, and an
+extension's context says which folder it is. The host names a copy of
+the .pi it checked, in a folder no session can write. With no folder
+named, everything reads the project's .pi as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/agent-session.ts
++++ b/packages/coding-agent/src/core/agent-session.ts
+@@ -3669,6 +3669,7 @@ export class AgentSession {
+ 				getScopedModels: () => this._scopedModels,
+ 				isIdle: () => this.isIdle,
+ 				isProjectTrusted: () => this.settingsManager.isProjectTrusted(),
++				getProjectConfigDir: () => this.settingsManager.getProjectConfigDir(),
+ 				getSignal: () => this.agent.signal,
+ 				abort: () => {
+ 					if (this._extensionAbortHandler) {
+--- a/packages/coding-agent/src/core/extensions/runner.ts
++++ b/packages/coding-agent/src/core/extensions/runner.ts
+@@ -378,6 +378,7 @@ export class ExtensionRunner {
+ 	private getScopedModels: () => readonly ScopedModel[] = () => [];
+ 	private isIdleFn: () => boolean = () => true;
+ 	private isProjectTrustedFn: () => boolean = () => true;
++	private getProjectConfigDirFn: () => string | undefined = () => undefined;
+ 	private getSignalFn: () => AbortSignal | undefined = () => undefined;
+ 	private waitForIdleFn: () => Promise<void> = async () => {};
+ 	private abortFn: () => void = () => {};
+@@ -452,6 +453,7 @@ export class ExtensionRunner {
+ 		this.getScopedModels = contextActions.getScopedModels;
+ 		this.isIdleFn = contextActions.isIdle;
+ 		this.isProjectTrustedFn = contextActions.isProjectTrusted;
++		this.getProjectConfigDirFn = contextActions.getProjectConfigDir ?? (() => undefined);
+ 		this.getSignalFn = contextActions.getSignal;
+ 		this.abortFn = contextActions.abort;
+ 		this.hasPendingMessagesFn = contextActions.hasPendingMessages;
+@@ -941,6 +943,10 @@ export class ExtensionRunner {
+ 				runner.assertActive();
+ 				return runner.isProjectTrustedFn();
+ 			},
++			getProjectConfigDir: () => {
++				runner.assertActive();
++				return runner.getProjectConfigDirFn();
++			},
+ 			get signal() {
+ 				runner.assertActive();
+ 				return runner.getSignalFn();
+--- a/packages/coding-agent/src/core/extensions/types.ts
++++ b/packages/coding-agent/src/core/extensions/types.ts
+@@ -369,6 +369,8 @@ export interface ExtensionContext {
+ 	isIdle(): boolean;
+ 	/** Whether project-local trust is active for this context. */
+ 	isProjectTrusted(): boolean;
++	/** pi-host: where the project's own settings and resources are read, when not the folder's own .pi. */
++	getProjectConfigDir?(): string | undefined;
+ 	/** The current abort signal, or undefined when the agent is not streaming. */
+ 	signal: AbortSignal | undefined;
+ 	/** Abort the current agent operation */
+@@ -2273,6 +2275,8 @@ export interface ExtensionContextActions {
+ 	getScopedModels: () => readonly ScopedModel[];
+ 	isIdle: () => boolean;
+ 	isProjectTrusted: () => boolean;
++	/** pi-host: where the project's own settings and resources are read; none means the folder's own .pi. */
++	getProjectConfigDir?: () => string | undefined;
+ 	getSignal: () => AbortSignal | undefined;
+ 	abort: () => void;
+ 	hasPendingMessages: () => boolean;
+--- a/packages/coding-agent/src/core/package-manager.ts
++++ b/packages/coding-agent/src/core/package-manager.ts
+@@ -899,6 +899,11 @@ export class DefaultPackageManager implements PackageManager {
+ 		this.progressCallback = callback;
+ 	}
+ 
++	/** pi-host: the project's .pi, or the folder its settings say to read in its place. */
++	private projectConfigDir(): string {
++		return this.settingsManager.getProjectConfigDir() ?? join(this.cwd, CONFIG_DIR_NAME);
++	}
++
+ 	addSourceToSettings(source: string, options?: { local?: boolean }): boolean {
+ 		const scope: SourceScope = options?.local ? "project" : "user";
+ 		const currentSettings =
+@@ -1006,7 +1011,7 @@ export class DefaultPackageManager implements PackageManager {
+ 		const installFailures = await this.resolvePackageSources(packageSources, accumulator, onMissing);
+ 
+ 		const globalBaseDir = this.agentDir;
+-		const projectBaseDir = join(this.cwd, CONFIG_DIR_NAME);
++		const projectBaseDir = this.projectConfigDir();
+ 
+ 		for (const resourceType of RESOURCE_TYPES) {
+ 			const target = this.getTargetMap(accumulator, resourceType);
+@@ -2288,7 +2293,7 @@ export class DefaultPackageManager implements PackageManager {
+ 		}
+ 		if (scope === "project") {
+ 			this.assertProjectTrustedForScope(scope);
+-			return join(this.cwd, CONFIG_DIR_NAME, "npm");
++			return join(this.projectConfigDir(), "npm");
+ 		}
+ 		return join(this.agentDir, "npm");
+ 	}
+@@ -2329,7 +2334,7 @@ export class DefaultPackageManager implements PackageManager {
+ 		}
+ 		if (scope === "project") {
+ 			this.assertProjectTrustedForScope(scope);
+-			return join(this.cwd, CONFIG_DIR_NAME, "npm", "node_modules", source.name);
++			return join(this.projectConfigDir(), "npm", "node_modules", source.name);
+ 		}
+ 		return join(this.agentDir, "npm", "node_modules", source.name);
+ 	}
+@@ -2369,7 +2374,7 @@ export class DefaultPackageManager implements PackageManager {
+ 		}
+ 		if (scope === "project") {
+ 			this.assertProjectTrustedForScope(scope);
+-			return join(this.cwd, CONFIG_DIR_NAME, "git");
++			return join(this.projectConfigDir(), "git");
+ 		}
+ 		return join(this.agentDir, "git");
+ 	}
+@@ -2395,7 +2400,7 @@ export class DefaultPackageManager implements PackageManager {
+ 	private getBaseDirForScope(scope: SourceScope): string {
+ 		if (scope === "project") {
+ 			this.assertProjectTrustedForScope(scope);
+-			return join(this.cwd, CONFIG_DIR_NAME);
++			return this.projectConfigDir();
+ 		}
+ 		if (scope === "user") {
+ 			return this.agentDir;
+--- a/packages/coding-agent/src/core/resource-loader.ts
++++ b/packages/coding-agent/src/core/resource-loader.ts
+@@ -530,6 +530,11 @@ export class DefaultResourceLoader implements ResourceLoader {
+ 		}
+ 	}
+ 
++	/** pi-host: the project's .pi, or the folder its settings say to read in its place. */
++	private projectConfigDir(): string {
++		return this.settingsManager.getProjectConfigDir() ?? join(this.cwd, CONFIG_DIR_NAME);
++	}
++
+ 	async loadProjectTrustExtensions(): Promise<LoadExtensionsResult> {
+ 		// Force untrusted project settings for the bootstrap pass. This keeps project-local
+ 		// extensions/packages out while still loading user/global and temporary CLI extensions.
+@@ -1026,10 +1031,10 @@ export class DefaultResourceLoader implements ResourceLoader {
+ 			join(this.agentDir, "extensions"),
+ 		];
+ 		const projectRoots = [
+-			join(this.cwd, CONFIG_DIR_NAME, "skills"),
+-			join(this.cwd, CONFIG_DIR_NAME, "prompts"),
+-			join(this.cwd, CONFIG_DIR_NAME, "themes"),
+-			join(this.cwd, CONFIG_DIR_NAME, "extensions"),
++			join(this.projectConfigDir(), "skills"),
++			join(this.projectConfigDir(), "prompts"),
++			join(this.projectConfigDir(), "themes"),
++			join(this.projectConfigDir(), "extensions"),
+ 		];
+ 
+ 		for (const root of agentRoots) {
+@@ -1083,7 +1088,7 @@ export class DefaultResourceLoader implements ResourceLoader {
+ 		const themes: Theme[] = [];
+ 		const diagnostics: ResourceDiagnostic[] = [];
+ 		if (includeDefaults) {
+-			const defaultDirs = [join(this.agentDir, "themes"), join(this.cwd, CONFIG_DIR_NAME, "themes")];
++			const defaultDirs = [join(this.agentDir, "themes"), join(this.projectConfigDir(), "themes")];
+ 
+ 			for (const dir of defaultDirs) {
+ 				this.loadThemesFromDir(dir, themes, diagnostics, colorMode);
+@@ -1243,7 +1248,7 @@ export class DefaultResourceLoader implements ResourceLoader {
+ 	}
+ 
+ 	private discoverSystemPromptFile(): string | undefined {
+-		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "SYSTEM.md");
++		const projectPath = join(this.projectConfigDir(), "SYSTEM.md");
+ 		if (this.settingsManager.isProjectTrusted() && existsSync(projectPath)) {
+ 			return projectPath;
+ 		}
+@@ -1257,7 +1262,7 @@ export class DefaultResourceLoader implements ResourceLoader {
+ 	}
+ 
+ 	private discoverAppendSystemPromptFile(): string | undefined {
+-		const projectPath = join(this.cwd, CONFIG_DIR_NAME, "APPEND_SYSTEM.md");
++		const projectPath = join(this.projectConfigDir(), "APPEND_SYSTEM.md");
+ 		if (this.settingsManager.isProjectTrusted() && existsSync(projectPath)) {
+ 			return projectPath;
+ 		}
+--- a/packages/coding-agent/src/core/settings-manager.ts
++++ b/packages/coding-agent/src/core/settings-manager.ts
+@@ -161,6 +161,11 @@ export type SettingsScope = "global" | "project";
+ 
+ export interface SettingsManagerCreateOptions {
+ 	projectTrusted?: boolean;
++	/**
++	 * pi-host: where the project's settings and resources are read, in place of
++	 * the folder's own .pi, such as a copy no session can write.
++	 */
++	projectConfigDir?: string;
+ }
+ 
+ export interface SettingsStorage {
+@@ -187,11 +192,16 @@ export class FileSettingsStorage implements SettingsStorage {
+ 	private globalSettingsPath: string;
+ 	private projectSettingsPath: string;
+ 
+-	constructor(cwd: string, agentDir: string) {
++	constructor(cwd: string, agentDir: string, projectConfigDir?: string) {
+ 		const resolvedCwd = resolvePath(cwd);
+ 		const resolvedAgentDir = resolvePath(agentDir);
+ 		this.globalSettingsPath = join(resolvedAgentDir, "settings.json");
+-		this.projectSettingsPath = join(resolvedCwd, CONFIG_DIR_NAME, "settings.json");
++		this.projectSettingsPath = join(projectConfigDir ?? join(resolvedCwd, CONFIG_DIR_NAME), "settings.json");
++	}
++
++	/** pi-host: read and write the project's settings in `dir` from now on. */
++	setProjectConfigDir(dir: string): void {
++		this.projectSettingsPath = join(dir, "settings.json");
+ 	}
+ 
+ 	private acquireLockSyncWithRetry(path: string): () => void {
+@@ -284,6 +294,7 @@ export class SettingsManager {
+ 	private writeQueue: Promise<void> = Promise.resolve();
+ 	private errors: SettingsError[];
+ 	private settingsPaths: SettingsPaths;
++	private projectConfigDir: string | undefined;
+ 
+ 	private constructor(
+ 		storage: SettingsStorage,
+@@ -314,11 +325,14 @@ export class SettingsManager {
+ 	): SettingsManager {
+ 		const resolvedCwd = resolvePath(cwd);
+ 		const resolvedAgentDir = resolvePath(agentDir);
+-		const storage = new FileSettingsStorage(resolvedCwd, resolvedAgentDir);
+-		return SettingsManager.fromStorageWithPaths(storage, options, {
++		const projectConfigDir = options.projectConfigDir ?? join(resolvedCwd, CONFIG_DIR_NAME);
++		const storage = new FileSettingsStorage(resolvedCwd, resolvedAgentDir, projectConfigDir);
++		const manager = SettingsManager.fromStorageWithPaths(storage, options, {
+ 			global: join(resolvedAgentDir, "settings.json"),
+-			project: join(resolvedCwd, CONFIG_DIR_NAME, "settings.json"),
++			project: join(projectConfigDir, "settings.json"),
+ 		});
++		manager.projectConfigDir = projectConfigDir;
++		return manager;
+ 	}
+ 
+ 	/** Create a SettingsManager from an arbitrary storage backend */
+@@ -472,6 +486,25 @@ export class SettingsManager {
+ 		return this.projectTrusted;
+ 	}
+ 
++	/**
++	 * pi-host: where the project's settings and resources are read, or
++	 * undefined for a manager not made from files, whose readers fall back to
++	 * the folder's own .pi.
++	 */
++	getProjectConfigDir(): string | undefined {
++		return this.projectConfigDir;
++	}
++
++	/**
++	 * pi-host: read the project's settings and resources from `dir` from the
++	 * next reload on, as a host does from a copy it checked.
++	 */
++	setProjectConfigDir(dir: string): void {
++		this.projectConfigDir = dir;
++		this.settingsPaths = { ...this.settingsPaths, project: join(dir, "settings.json") };
++		if (this.storage instanceof FileSettingsStorage) this.storage.setProjectConfigDir(dir);
++	}
++
+ 	setProjectTrusted(trusted: boolean): void {
+ 		if (this.projectTrusted === trusted) {
+ 			return;
+--- a/packages/coding-agent/src/extensions/mcp/config.ts
++++ b/packages/coding-agent/src/extensions/mcp/config.ts
+@@ -134,10 +134,17 @@ function readConfigFile(path: string, scope: "global" | "project", state: McpCon
+  * Load global and (when trusted) project MCP configuration. Disabled servers are included with
+  * `enabled: false`, so they can be enabled again.
+  */
+-export function loadMcpConfig(options: { agentDir: string; cwd: string; projectTrusted: boolean }): LoadedMcpConfig {
++export function loadMcpConfig(options: {
++	agentDir: string;
++	cwd: string;
++	projectTrusted: boolean;
++	/** pi-host: where the project's mcp.json is read, in place of the folder's own .pi. */
++	projectConfigDir?: string;
++}): LoadedMcpConfig {
+ 	const state: McpConfigState = { servers: new Map(), errors: [] };
+ 	readConfigFile(join(options.agentDir, "mcp.json"), "global", state);
+-	const projectConfig = options.projectTrusted ? join(options.cwd, CONFIG_DIR_NAME, "mcp.json") : undefined;
++	const projectConfig = options.projectTrusted ? join(options.projectConfigDir ?? join(options.cwd, CONFIG_DIR_NAME), "mcp.json")
++		: undefined;
+ 	if (projectConfig) readConfigFile(projectConfig, "project", state);
+ 	return {
+ 		servers: [...state.servers.values()],
+--- a/packages/coding-agent/src/extensions/mcp/index.ts
++++ b/packages/coding-agent/src/extensions/mcp/index.ts
+@@ -1342,7 +1342,12 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
+ }
+ 
+ function defaultLoadConfig(ctx: ExtensionContext): LoadedMcpConfig {
+-	return loadMcpConfig({ agentDir: getAgentDir(), cwd: ctx.cwd, projectTrusted: ctx.isProjectTrusted() });
++	return loadMcpConfig({
++		agentDir: getAgentDir(),
++		cwd: ctx.cwd,
++		projectTrusted: ctx.isProjectTrusted(),
++		projectConfigDir: ctx.getProjectConfigDir?.(),
++	});
+ }
+ 
+ export default createMcpExtension();
