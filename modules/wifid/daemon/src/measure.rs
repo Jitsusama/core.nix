@@ -57,8 +57,10 @@ use crate::state::{Joined, State};
 pub const SPAN: Duration = Duration::from_secs(120);
 
 /// How far back the minute a trial is judged by reaches: a minute, less
-/// half a second, so the echo on the second it began is left to the
-/// minute before rather than read in both.
+/// half a second, so a minute read on time shares no echo with the one
+/// before. A minute's tick waits behind a measure, up to about 2 s where
+/// echoes go unanswered, so one echo of a minute's sixty may be read in
+/// both, or in neither, which can tip only a minute already at the bar.
 const MINUTE: Duration = Duration::from_millis(59_500);
 
 /// What the gateway said to one echo.
@@ -223,8 +225,8 @@ impl Measures {
     }
 
     /// The access point's figures over the minute up to now alone, each
-    /// the worse class's, as a trial is judged early by minutes that share
-    /// no echo.
+    /// the worse class's, as a trial is judged early by single minutes
+    /// rather than spans of two.
     pub fn minute_of(&self, point: &str, now: Instant) -> Option<Measured> {
         self.figures(point, now, true, MINUTE)
     }
