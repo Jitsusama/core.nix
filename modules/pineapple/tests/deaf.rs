@@ -3,6 +3,7 @@
 
 use std::ffi::OsStr;
 use std::path::Path;
+use std::slice;
 
 use pineapple::deaf::{
     Change, Deaf, Deafness, MEET, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
@@ -691,18 +692,30 @@ fn kept_after(
 fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
     let earlier = tag(30 * MINUTE, 20 * MINUTE);
-    let met = kept_after("edge", &[earlier.clone()], tag(10 * MINUTE, 5 * MINUTE));
+    let met = kept_after(
+        "edge",
+        slice::from_ref(&earlier),
+        tag(10 * MINUTE, 5 * MINUTE),
+    );
     assert!(
         met.len() == 1 && met[0]["whole"] == false,
         "exactly ten minutes apart they meet, as parts: {met:?}"
     );
-    let apart = kept_after("past", &[earlier.clone()], tag(10 * MINUTE - 1, 5 * MINUTE));
+    let apart = kept_after(
+        "past",
+        slice::from_ref(&earlier),
+        tag(10 * MINUTE - 1, 5 * MINUTE),
+    );
     assert_eq!(
         apart.len(),
         2,
         "a millisecond farther they don't: {apart:?}"
     );
-    let touching = kept_after("touch", &[earlier.clone()], tag(20 * MINUTE, 10 * MINUTE));
+    let touching = kept_after(
+        "touch",
+        slice::from_ref(&earlier),
+        tag(20 * MINUTE, 10 * MINUTE),
+    );
     assert!(
         touching.len() == 1 && touching[0]["whole"] == true,
         "one beginning where the other ends is said whole: {touching:?}"
@@ -718,13 +731,13 @@ fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
     let days = 3 * 24 * 60 * MINUTE;
     let dated = tag(days + 10 * MINUTE, days);
     let unknown = missed(Search::Tag, None, Some(AT - MINUTE), AT);
-    let both = kept_after("unknown", &[dated.clone()], unknown.clone());
+    let both = kept_after("unknown", slice::from_ref(&dated), unknown.clone());
     assert_eq!(
         both.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
         [dated["id"].clone(), unknown["id"].clone()],
         "one whose start can't be told takes in no dated row"
     );
-    let again = kept_after("unknown-again", &[unknown.clone()], unknown.clone());
+    let again = kept_after("unknown-again", slice::from_ref(&unknown), unknown.clone());
     assert_eq!(again.len(), 1, "though it's the same row written again");
     let after = kept_after(
         "after-unknown",
