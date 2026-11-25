@@ -30,6 +30,33 @@ fn a_process_is_read_through_its_open_folder_until_it_is_gone() {
     );
 }
 
+// Only Linux has a /proc to read.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_process_named_is_opened_only_if_it_started_before_its_namer() {
+    let own = Proc::open(std::process::id()).expect("this process's folder wouldn't open");
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("sleep wouldn't start");
+    let younger = Proc::open_older(child.id(), &own).is_some();
+    let parent = Proc::open_older(std::os::unix::process::parent_id(), &own).is_some();
+    child.kill().expect("the child wouldn't stop");
+    child.wait().expect("the child wasn't reaped");
+    assert_eq!(
+        (younger, parent),
+        (false, true),
+        "a process started after the one naming it was opened, or its parent wasn't"
+    );
+}
+
+#[test]
+fn reads_when_a_process_started_past_a_name_with_spaces() {
+    let stat = "4242 (a b) c) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2";
+    assert_eq!(parse_started(stat), Some(98765));
+    assert_eq!(parse_started("4242 (cc1) S 1"), None);
+}
+
 fn words(line: &str) -> Vec<String> {
     line.split_whitespace().map(String::from).collect()
 }

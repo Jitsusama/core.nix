@@ -75,6 +75,42 @@ fn names_a_client_by_its_command() {
         "nix build x\\nA build for \\`y\\`\\u{1b}[2J a\\\\nb",
         "a control character, a backtick or a backslash in a client's command wasn't escaped"
     );
+    assert_eq!(
+        command_of("a\u{2028}b\u{202e}c\u{2067}d\u{200f}e".as_bytes()),
+        "a\\u{2028}b\\u{202e}c\\u{2067}d\\u{200f}e",
+        "a line separator or a mark turning text round wasn't escaped"
+    );
+}
+
+#[test]
+fn a_long_command_is_cut_between_escapes() {
+    // "nix build " and 106 x's are 116 characters, and the newline's escape
+    // would end past the 117 a cut command keeps.
+    let long = [
+        b"nix\x00build\x00".as_slice(),
+        &[b'x'; 106],
+        b"\n",
+        &[b'y'; 40],
+    ]
+    .concat();
+    assert_eq!(
+        command_of(&long),
+        format!("nix build {}...", "x".repeat(106)),
+        "a long command was cut inside an escape"
+    );
+}
+
+#[test]
+fn the_asker_is_said_from_its_clients_command_and_cgroup() {
+    let said = asker(
+        b"nix\x00build\x00",
+        b"0::/jobs.slice/jobs-work.slice/jobs-work-q\\\xffb.slice/x.scope\n",
+    );
+    assert_eq!(
+        (said.command, said.quest),
+        ("nix build".to_owned(), Some("q\\\\\u{fffd}b".to_owned())),
+        "the quest wasn't said safely, or a cgroup not UTF-8 lost it"
+    );
 }
 
 #[test]
@@ -217,10 +253,24 @@ fn counts_what_a_build_left_to_write() {
 }
 
 #[test]
-fn names_the_quest_of_its_slice() {
+fn names_the_quest_of_its_slice_in_a_tier_or_none() {
+    let work = "0::/user.slice/jobs.slice/jobs-work.slice";
+    let said = |slices: &str| quest_said(&format!("{work}{slices}/work-7-8.scope\n"));
     assert_eq!(
-        quest_of("/user.slice/jobs.slice/jobs-work.slice/jobs-work-qestabc.slice"),
-        Some("qestabc")
+        [
+            said("/jobs-work-qestabc.slice"),
+            said("/jobs-work-first.slice/jobs-work-first-qestabc.slice"),
+            said("/jobs-work-unranked.slice/jobs-work-unranked-qestabc.slice"),
+            said("/jobs-work-unranked.slice"),
+            said(""),
+        ],
+        [
+            Some("qestabc".to_owned()),
+            Some("qestabc".to_owned()),
+            Some("qestabc".to_owned()),
+            None,
+            None
+        ],
+        "a quest in its tier was said as its tier, or work for none given a quest"
     );
-    assert_eq!(quest_of("/user.slice/jobs.slice/jobs-work.slice"), None);
 }

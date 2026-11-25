@@ -58,7 +58,7 @@ use terminal_kit::{Context, Exit, Failure, Help};
 
 mod tally;
 
-use tally::{Tally, tally};
+use tally::{Tally, said_safely, tally};
 
 const SCHED_OTHER: i32 = 0;
 const PRIO_PROCESS: i32 = 0;
@@ -134,6 +134,17 @@ fn parse_ppid(line: &str) -> Option<u32> {
         .ok()
 }
 
+/// When a process started, in clock ticks since boot, from its
+/// `/proc/<pid>/stat`.
+fn parse_started(line: &str) -> Option<u64> {
+    let close = line.rfind(')')?;
+    line[close + 1..]
+        .split_whitespace()
+        .nth(22 - 3)?
+        .parse()
+        .ok()
+}
+
 /// The client a daemon worker serves, from its command line and the user
 /// `owner` it runs as: Nix writes the client's pid over the worker's
 /// `--daemon`, padding it with NULs. A worker runs as root and a build's
@@ -156,7 +167,10 @@ fn client_of(cmdline: &[u8], owner: u32) -> Option<u32> {
 }
 
 /// The quest's slice a process's cgroup sits in, as a path under the
-/// cgroup file system, from its `/proc/<pid>/cgroup`.
+/// cgroup file system, from its `/proc/<pid>/cgroup`. Given tiers, it's
+/// the quest's tier's slice, whose weight ranks it among every quest's
+/// work, where its own ranks it only among its tier's; a build is weighed
+/// among them all.
 fn quest_slice(cgroup: &str) -> Option<&str> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
     let mut end = 0;
@@ -203,23 +217,43 @@ impl Proc {
     fn read(&self, name: &str) -> Option<Vec<u8>> {
         fs::read(format!("/proc/self/fd/{}/{name}", self.0.as_raw_fd())).ok()
     }
+
+    fn started(&self) -> Option<u64> {
+        parse_started(&String::from_utf8(self.read("stat")?).ok()?)
+    }
+
+    /// The process `pid` names, should it have started no later than
+    /// `named_by`, which named it as its parent or its client: by then the
+    /// pid could be a process made since, which starts later, as only a
+    /// pid used again in the same clock tick could not.
+    fn open_older(pid: u32, named_by: &Proc) -> Option<Proc> {
+        let opened = Proc::open(pid)?;
+        (opened.started()? <= named_by.started()?).then_some(opened)
+    }
 }
 
 /// The client that asked for a build, found through the daemon's worker
 /// its processes descend from. The client is opened by the pid the worker
 /// names, which is all a worker says of it.
+///
+/// A process's owner is read before its command line: Linux's
+/// `pid_getattr` says root owns the folder of a process that has gone, so
+/// read after, a build that wrote a worker's command line and ended would
+/// pass for one, but read before, the command line of a process gone by
+/// then won't read.
 fn client_of_build(build: &Path) -> Option<Proc> {
     let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
     let mut process = Proc::open(procs.lines().next()?.parse().ok()?)?;
     for _ in 0..WORKER_DEPTH {
+        let owner = process.owner()?;
         if let Some(client) = process
             .read("cmdline")
-            .and_then(|cmdline| client_of(&cmdline, process.owner()?))
+            .and_then(|cmdline| client_of(&cmdline, owner))
         {
-            return Proc::open(client);
+            return Proc::open_older(client, &process);
         }
         let stat = String::from_utf8(process.read("stat")?).ok()?;
-        process = Proc::open(parse_ppid(&stat)?)?;
+        process = Proc::open_older(parse_ppid(&stat)?, &process)?;
     }
     None
 }
@@ -571,7 +605,7 @@ fn bring_process_ahead(pid: &str, comm: &str, settings: &Settings, warned: &mut 
     if moved > 0 {
         eprintln!(
             "Brought {} ({pid}) ahead of the builds: {moved} threads to nice {}.",
-            comm.trim_end(),
+            said_safely(comm.trim_end().as_bytes()),
             settings.nice
         );
     }
