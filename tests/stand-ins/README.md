@@ -15,6 +15,7 @@ it answers and how a test drives it.
 | `pi-stand-in.nix`, `.sh`     | pi, as the shell opens it, for the VM tests                    |
 | `spotify-recent-stand-in.sh` | spotify-recent, for Spotify's own check and the desktop        |
 | `stand-in-notices.py`        | whatever shows notices, on the session bus                     |
+| `tuple-stand-in.sh`          | Tuple's command, as tuple-call runs it, holding camera answers |
 | `warp-cli-stand-in.sh`       | warp-cli, for a check of the shell's and the desktop           |
 | `stand-in-backlight/`        | a laptop's panel and keyboard lights, as a kernel module       |
 | `stand-in-lid/`              | a laptop's lid switch, as a kernel module                      |

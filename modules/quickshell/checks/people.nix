@@ -209,34 +209,17 @@
           function act(request) { }
         }
       '';
-      # Tuple's stream says each line of the runtime folder's stream as
-      # it's written; `new` opens a room, and every other command is kept.
-      # Each camera command is refused, as Tuple refuses one, from the
-      # second time it's asked on, which the list of asks says without a
-      # race, its reason holding what markup reads; from the third, it's
-      # refused only once the test writes go-<command>-<time asked>, so the
-      # test changes the call while Tuple has yet to answer. Kept in Nix
-      # because it's a stand-in of a few lines that names tail and grep by
-      # their store paths, so it runs on those whatever PATH tuple-call
-      # gives it.
-      tuple = pkgs.writeShellScript "tuple" ''
-        if [ "$3 $4" = "state follow" ]; then
-          exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
-        fi
-        echo "$*" >> "$XDG_RUNTIME_DIR/asked"
-        if [ "$*" = new ]; then echo "Joining https://tuple.app/c/opened"; fi
-        case "$*" in
-          "webcam stop" | "webcam start")
-            n=$(${pkgs.gnugrep}/bin/grep -cx "$*" "$XDG_RUNTIME_DIR/asked")
-            if [ "$n" -gt 1 ]; then
-              # Looks for the test's go about as often as a frame is drawn.
-              until [ "$n" -lt 3 ] || [ -e "$XDG_RUNTIME_DIR/go-$2-$n" ]; do sleep 0.05; done
-              echo "no webcam to $2 <&>" >&2
-              exit 1
-            fi
-            ;;
-        esac
-      '';
+      # Tuple, as tuple-call runs it (tests/stand-ins/tuple-stand-in.sh
+      # says what it answers), on coreutils and grep whatever PATH
+      # tuple-call gives it.
+      tuple = pkgs.writeShellApplication {
+        name = "tuple";
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.gnugrep
+        ];
+        text = builtins.readFile ../../../tests/stand-ins/tuple-stand-in.sh;
+      };
       # Tuple's state as its stream opens: someone signed in, one contact,
       # and Joel's own rooms, the newest of which is his. Tuple names a
       # line's type first, which is all tuple-call reads of a line it
@@ -304,7 +287,7 @@
       # Tuple's daemon answers before tuple-call first looks, which would
       # otherwise look again only five seconds on.
       timeout 10 sh -c 'until [ -S "$0" ]; do sleep 0.05; done' $XDG_RUNTIME_DIR/tuple-0
-      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple-call.sock ${tuple} &
+      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple-call.sock ${lib.getExe tuple} &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

@@ -367,8 +367,23 @@ ShellRoot {
             root.pickingAcrossTheEnd);
     }
 
-    // A picker Tuple refuses only once the call is over, so it's no news.
+    // A picker asked again while Tuple has yet to answer the last is
+    // answered at once as unanswered, and told as a passing notice that
+    // Tuple hasn't said it opened, since it may have.
     function pickingAcrossTheEnd() {
+        root.camera()?.run();
+        root.step("told the picker hasn't been said open",
+            () => root.noticesSaying("hasn't said its camera picker opened") === 1,
+            root.pickedAgain);
+    }
+
+    // The third picker, which Tuple refuses only once the call is over, so
+    // it's no news.
+    function pickedAgain() {
+        const told = root.noticeSaying("hasn't said its camera picker opened");
+        expect("told it hasn't answered the last, not kept, offering nothing",
+            told.includes("answered the last time it was asked") && told.includes("--transient")
+            && !told.includes("--action"), told);
         Tuple.mute(true);
         root.step("asked to mute", () => /^call mute$/m.test(root.asked), root.muting);
     }
@@ -445,7 +460,7 @@ ShellRoot {
             && root.noticesSaying("may still be in the call") === 2, root.told);
         expect("a picker refused once the call was over told nothing",
             root.timesAsked("webcam start") === 3
-            && root.noticesSaying("picker") === 1, root.told);
+            && root.noticesSaying("picker") === 2, root.told);
         Qt.exit(0);
     }
 
