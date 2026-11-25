@@ -1797,9 +1797,9 @@
   jobs-sorter-knows-pi-units-by-their-names = ''
     each pi host's unit and each conversation's that host.nix renders for a realm, on a machine
     with the sorter, is named exactly as the sorter joins it: the name it is told to find that
-    kind by, then the realm and kind, and a conversation's slot after an @; and each conversation
-    puts its socket in the folder the sorter reads its slots from, so a failure names which of
-    these it met
+    kind by, then the realm and kind, and a conversation's slot after an @; each runs in a slice
+    the sorter looks in, each conversation puts its socket in the folder the sorter reads its
+    slots from, and no other unit there starts as they do, so a failure names which of these it met
   '';
   jobs-sorter-passes-clippy = ''
     clippy finds nothing in the jobs sorter or its tests
