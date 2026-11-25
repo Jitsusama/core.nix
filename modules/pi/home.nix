@@ -7,7 +7,7 @@
 # keys come from keys.nix, written where pi reads them and into the key map.
 # Its status line tells a folder and git as the prompt does, by the prompt's
 # root markers, its git-engine and the theme's marks. pi-claude runs it on
-# Joel's own Claude plan (claude.nix), and pi-ask answers the launcher's Ask
+# Joel's own Claude plan (claude/), and pi-ask answers the launcher's Ask
 # row on the plan a machine names in jitsusama.pi.ask (ask.nix). A personal
 # machine sets jitsusama.pi.plan to "claude", and then plain pi is on that
 # plan, with no pi-claude beside it: Joel wants one pi that just works.
@@ -146,7 +146,7 @@ let
   '';
 
   # On the Claude plan, the machine's own Claude Code login is the plan's.
-  piClaude = import ./claude.nix {
+  piClaude = import ./claude {
     inherit pkgs claude homeRealm;
     inherit (config.jitsusama.pi.claude) model realm;
     ownLogin = onClaude;
@@ -420,7 +420,7 @@ in
     # extensions pi finds by itself, so the package list pi keeps is left
     # alone, and Sonnet is where it starts, a plan's limits being small.
     home.file.".pi/agent/extensions/claude-code" = lib.mkIf onClaude {
-      source = "${import ./claude-provider.nix { inherit pkgs; }}/src";
+      source = "${import ./claude/provider.nix { inherit pkgs; }}/src";
     };
     home.sessionVariables = lib.mkMerge [
       (lib.mkIf onClaude { PI_CLAUDE_CODE_COMMAND = lib.getExe claude; })

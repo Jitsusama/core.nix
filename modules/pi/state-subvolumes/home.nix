@@ -8,18 +8,19 @@
 # (btrfs_read_lock_root_node) or an inode's lock, behind every other writer
 # there (modules/subvolumes/home.nix says what that lock cost). In a
 # subvolume of its own, each folder's root is locked only by pi's own
-# writes; how much of a start that saves is measured only after a login.
+# writes; how much of a start that saves is measured only after a boot.
 #
 # Four folders, not the whole state: its worktrees, some 1,700 of them,
-# couldn't be copied within any wait a login could give, so they stay in
+# couldn't be copied within any wait a start could give, so they stay in
 # the home's tree. These four are what the start and turn paths read: the
 # mesh's presence and messages, the quests' records, the run ledgers'
 # SQLite files, and the work tool's records of the trees it cut.
 #
-# Every pi writes in them, and pi always runs, so a folder moves only at a
-# login, before the account's pi hosts and the node start; a pi started
-# by hand before the move keeps a file open there, and the folder stays
-# until the next login that finds nothing holding it.
+# Every pi writes in them, and pi always runs, so a folder moves only as
+# the account's manager starts, which a lingering account's does at boot
+# alone, before its pi hosts and the node start; a pi started by hand
+# before the move keeps a file open there, and the folder stays until the
+# next start that finds nothing holding it.
 {
   config,
   lib,
