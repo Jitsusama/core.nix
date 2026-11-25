@@ -148,7 +148,11 @@ fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
         return told(Some(first));
     }
     let mut ask = Command::new(&settings.mycelium);
-    ask.args(room::asking(&kind.needs, kind.lasts.as_deref()));
+    ask.args(room::asking(
+        &kind.needs,
+        &holding(settings),
+        kind.lasts.as_deref(),
+    ));
     if let Some(realm) = &settings.realm {
         ask.args(["--realm", realm]);
     }
@@ -163,6 +167,22 @@ fn place(settings: &Settings, kind: &Kind, stay: bool, send: bool) -> Place {
             why: Why::NotHeard(problem),
         },
     }
+}
+
+/// The machines it may send to that already hold some of this session's
+/// quest, as mycelium's ledger of it says: none with no quest, or where no
+/// ledger is read.
+fn holding(settings: &Settings) -> Vec<String> {
+    let quest = std::env::var("PI_QUEST")
+        .ok()
+        .filter(|quest| far::plain_quest(quest));
+    let (Some(quest), Some(ledgers)) = (quest, &settings.ledgers) else {
+        return Vec::new();
+    };
+    fs::read_to_string(ledgers.join(format!("{quest}.json"))).map_or_else(
+        |_| Vec::new(),
+        |text| room::holders(&text, &settings.machines),
+    )
 }
 
 /// Why a job goes where it goes, in words.
