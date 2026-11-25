@@ -2777,11 +2777,7 @@ Singleton {
         pressedFor = Object.assign({}, pressedFor, { [named]: said ?? null });
         listedAtAsk = Object.assign({}, listedAtAsk,
             { [named]: listedAs(named).map(window => String(window.id)) });
-        if (named in refusedAsks) {
-            const refused = Object.assign({}, refusedAsks);
-            delete refused[named];
-            refusedAsks = refused;
-        }
+        forgetRefusal(named);
         root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
         return true;
     }
@@ -2810,11 +2806,7 @@ Singleton {
     // A viewer no longer asked for, come or given up on, and what its
     // press and any refused window said of it.
     function forgetAsk(named) {
-        if (named in refusedAsks) {
-            const refused = Object.assign({}, refusedAsks);
-            delete refused[named];
-            refusedAsks = refused;
-        }
+        forgetRefusal(named);
         if (named in pressedFor) {
             const pressed = Object.assign({}, pressedFor);
             delete pressed[named];
@@ -2859,21 +2851,55 @@ Singleton {
     // refused (heardWindow), by its app id, to that window's niri id, so
     // Go To asks for it no more while that window stays.
     property var refusedAsks: ({})
+    // When each ask refusedAsks holds was made, in ms, so the script's
+    // give-up of that ask still reaches it (refusedUntaken).
+    property var refusedAt: ({})
+    function forgetRefusal(named) {
+        if (!(named in refusedAsks) && !(named in refusedAt))
+            return;
+        const refused = Object.assign({}, refusedAsks);
+        delete refused[named];
+        refusedAsks = refused;
+        const at = Object.assign({}, refusedAt);
+        delete at[named];
+        refusedAt = at;
+    }
+    // The ask whose window came refused, given up on by the script as no
+    // kitty took it: that window was another program's, not its own drawn
+    // by a pid read wrong, which the script would have opened, so the
+    // refusal goes and a press asks afresh, opening its own beside it (Go
+    // To says unowned), rather than none while it stays. A kitty that only
+    // didn't answer in time may yet draw its own, which is taken as come.
+    function refusedUntaken(named, asked) {
+        if (!(named in refusedAsks) || !(refusedAt[named] <= asked))
+            return;
+        console.info(`sessions: no sessions kitty took ${named}, so window `
+            + `${refusedAsks[named]}, come refused, was another program's, and a press asks `
+            + "afresh");
+        forgetAsk(named);
+    }
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
     // so the next press asks for it again rather than saying it's opening
     // for as long as viewPatience, while nothing comes. Only an ask made
     // no later than the script started (`asked`, its ms) is the one it
     // gave up on: a press since, whose window may yet come, stays coming,
-    // so the next press opens no second viewer beside it.
+    // so the next press opens no second viewer beside it. One whose window
+    // came refused, no longer opening, has its refusal ended so
+    // (refusedUntaken).
     // Any program of Joel's can call it, so only a viewer's app id and a
     // time in ms are taken, which stops a malformed ask, not one meant: the
     // time only orders the script's own give-ups against newer presses,
     // and any program of his could start a viewer itself anyway.
     // The press that asked, which saw no window, is told "untaken".
     function untaken(named, asked) {
-        if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked))
-            || attaching[named] === undefined || attaching[named] > Number(asked))
+        if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked)))
+            return;
+        if (attaching[named] === undefined) {
+            refusedUntaken(named, Number(asked));
+            return;
+        }
+        if (attaching[named] > Number(asked))
             return;
         const said = pressedFor[named] ?? null;
         forgetAsk(named);
@@ -3115,6 +3141,7 @@ Singleton {
         // ask while it's listed.
         if (own) {
             refusedAsks = Object.assign({}, refusedAsks, { [named]: id });
+            refusedAt = Object.assign({}, refusedAt, { [named]: attaching[named] });
             const still = Object.assign({}, attaching);
             delete still[named];
             attaching = still;
