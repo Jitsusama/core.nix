@@ -385,7 +385,7 @@ impl Mesh {
             }
             let message = read_json::<Message>(&path)
                 .ok_or_else(|| format!("the message {short} cited can't be read"))?;
-            let sent = (message.id == stem && message.from == *named).then(|| Sent {
+            let sent = (message.id == stem && message.from == *named).then_some(Sent {
                 from: message.from,
                 text: message.text,
             });
