@@ -32,6 +32,9 @@ const AWAY_LISTED = 3;
 
 /** The item a side ends with when it had more than it lists, as the daemon says it. */
 const MORE = /^and \d+ more worth a look$/u;
+// The note a part carries when read from its owner's last answer, as
+// modules/system/src/kept.rs words it.
+const KEPT = /^as read at /u;
 
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {
@@ -197,10 +200,10 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
 }
 
 /**
- * Another part's looks: each of its side's, or why it couldn't be read. A
- * good part has none: its side is empty but for the note it carries when it
- * was read from its owner's last answer, which no more wants a look than
- * the machines' does, and which its own section across the machines says.
+ * Another part's looks: each of its side's, or why it couldn't be read. The
+ * note a part carries when it was read from its owner's last answer is
+ * none, at any health: it no more wants a look than the machines' does, and
+ * its own section across the machines says it. A good part has no other.
  */
 function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
@@ -209,7 +212,8 @@ function partLooks(part: Part): readonly Look[] {
   if (part.health === "good") {
     return [];
   }
-  return keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
+  const own = part.side.filter((words) => !KEPT.test(words));
+  return keyed(own).map(({ words, key }) => lookOf(part, part.health, words, key));
 }
 
 /**

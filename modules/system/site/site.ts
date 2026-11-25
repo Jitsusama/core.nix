@@ -375,20 +375,23 @@ function nextLook(): void {
   if (cursor.next(looks)) {
     return;
   }
-  const answer = looks.querySelector(".clear") === null ? NOT_KNOWN : NOTHING;
   // What the note said stays after it, as which record couldn't be read.
-  note.textContent = [answer, noteSaid ?? ""].filter((line) => line !== "").join(" ");
+  answer(looks.querySelector(".clear") === null ? NOT_KNOWN : NOTHING);
+}
+
+/**
+ * Says `words` in the note with what it already stood for after them, as a
+ * kept answer, so an answer never hides how the page was read.
+ */
+function answer(words: string): void {
+  note.textContent = [words, noteSaid ?? ""].filter((line) => line !== "").join(" ");
 }
 
 /** Copies `command`, and says whether it could. */
 function copy(command: string): void {
   navigator.clipboard.writeText(command).then(
-    () => {
-      note.textContent = `Copied ${command}.`;
-    },
-    (error: unknown) => {
-      note.textContent = `Couldn't copy (${String(error)}); the command is ${command}.`;
-    },
+    () => answer(`Copied ${command}.`),
+    (error: unknown) => answer(`Couldn't copy (${String(error)}); the command is ${command}.`),
   );
 }
 
@@ -399,13 +402,12 @@ function copy(command: string): void {
 function copyHere(): void {
   const section = document.activeElement?.closest<HTMLElement>("[data-part]");
   if (section === null || section === undefined) {
-    note.textContent =
-      "Nothing to copy here: y copies a command of the machine or part the cursor is on.";
+    answer("Nothing to copy here: y copies a command of the machine or part the cursor is on.");
     return;
   }
   const command = section.querySelector<HTMLButtonElement>("button.copy")?.dataset["command"];
   if (command === undefined) {
-    note.textContent = "Nothing to copy here: this one has no command.";
+    answer("Nothing to copy here: this one has no command.");
     return;
   }
   copy(command);

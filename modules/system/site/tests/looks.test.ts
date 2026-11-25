@@ -121,13 +121,24 @@ it("lists no kept answer, and says the machines' where the page says how it was 
     [["watch", "m0", "Code wants a look"]],
     "how many more the part counts is left to the machines' own looks",
   );
+  assert.equal(
+    kept(machinesOf(many, [counted[0] ?? "", note, counted[1] ?? ""])),
+    said,
+    "the note leaves out how many more, which the daemon counts after it",
+  );
   const coming: Part = { ...machinesOf([], ["wren out of reach"]), named: ["wren"], untold: 1 };
   assert.deepEqual(listed(coming), [], "a machine named before its record waits for it");
+  assert.equal(kept(coming), "", "nor is a machine named before its record a note");
   const net = "as read at 11:56; just now net --json gave no answer in 20 s";
   assert.deepEqual(
     listed(machinesOf([], []), part("network", "good", [net])),
     [],
     "a good part read from a kept answer lists nothing, its own section saying so",
+  );
+  assert.deepEqual(
+    listed(machinesOf([], []), part("network", "watch", ["the hall point is weak", net])),
+    [["watch", "Network", "The hall point is weak"]],
+    "a part read from a kept answer lists its looks, never its note",
   );
   assert.deepEqual(
     listed(machinesOf([], [note], "good"), part("network", "bad", ["down"])),
