@@ -22,8 +22,11 @@ const typing = ["caretLeft", "caretRight", "caretStart", "caretEnd", "deleteBack
 // with no drawer out (`drawerHere`), nor an edit or a caret move on the
 // line, but for Backspace on an empty find, which leaves it for normal.
 // Every other act acts, moves through the rows too, which the prompt says
-// apart (its keyMoved). Tab into a row with no parts errs the other way,
-// read as acting though it opens nothing.
+// apart (its keyMoved). A key meaning nothing that the selected row takes
+// as its own act, and Escape at rest backing out of a list or an ask, act
+// after all: the launcher times those itself (Launcher.qml's keyActs).
+// Tab into a row with no parts errs the other way, read as acting though
+// it opens nothing.
 function acts(read, line) {
     if (line.alone || line.registering) {
         return false;

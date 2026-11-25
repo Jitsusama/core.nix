@@ -3484,6 +3484,7 @@ Scope {
             .find(one => one.actKey === key);
         if (act === undefined)
             return false;
+        keyActs();
         run(act, false);
         return true;
     }
@@ -5998,26 +5999,34 @@ Scope {
         // while Joel types are.
         function onKeysTakenChanged() {
             root.guessed = Held.passedOver(root.guessed, prompt.keyAlone);
-            if (!prompt.keyActed)
-                return;
-            const heard = KeyTimes.now();
-            root.keyHeardAt = heard;
-            root.keyHeardName = prompt.keyTaken;
-            root.keyCollectedAt = Heap.collected();
-            root.keyHeardKeys = prompt.keysTaken;
-            root.keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
-                prompt.keyMoved);
-            // Its work is done once its handler has returned.
-            Qt.callLater(() => {
-                if (root.keyHeardAt === heard)
-                    root.keyDoneAt = KeyTimes.now();
-            });
+            if (prompt.keyActed)
+                root.keyActs();
         }
 
         function onKeyMovedChanged() {
             root.keyHeardMoved = Held.movedSaid(root.keyHeardMoved, root.keyHeardKeys,
                 prompt.keysTaken, prompt.keyMoved);
         }
+    }
+
+    // Times the clock from the key the prompt took last. The prompt calls a
+    // key acting by what it read; one it gave over as meaning nothing, or
+    // as Escape at rest, acts after all where the launcher does something
+    // with it (doKeyed, the prompt's onRested), which times it before it
+    // does, so the rows that act changes count as Joel's.
+    function keyActs() {
+        const heard = KeyTimes.now();
+        keyHeardAt = heard;
+        keyHeardName = prompt.keyTaken;
+        keyCollectedAt = Heap.collected();
+        keyHeardKeys = prompt.keysTaken;
+        keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
+            prompt.keyMoved);
+        // Its work is done once its handler has returned.
+        Qt.callLater(() => {
+            if (root.keyHeardAt === heard)
+                root.keyDoneAt = KeyTimes.now();
+        });
     }
 
     // The acts whose refresh has run, begun at `begun`, to be timed by the
@@ -14378,10 +14387,13 @@ Scope {
                         // asked for, as it leaves what's begun, and closes
                         // nothing (Joel, 2026-11-05: "fuck escape quitting").
                         onRested: {
-                            if (root.listing)
+                            if (root.listing) {
+                                root.keyActs();
                                 root.listing = false;
-                            else if (root.asking)
+                            } else if (root.asking) {
+                                root.keyActs();
                                 root.back();
+                            }
                         }
                         // A held arrow's drawer comes as it's let go.
                         onLetGo: root.drawerLetGo()
