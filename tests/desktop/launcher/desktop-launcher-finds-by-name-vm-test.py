@@ -1858,7 +1858,7 @@ def each_read_cold(desktop: Desktop) -> None:
     assert cameras["Built-In Camera"].get("drawer"), cameras
     keyboards = rows("keyboard", "keyboards")
     assert keyboards["The Laptop's Keyboard"].get("drawer"), keyboards
-    screens = rows("desktop", "screens")
+    screens = rows("machine", "screens")
     lit = screens["Smithay Winit"].get("drawer") or {}
     assert "Brightness" in {fact.get("label") for fact in lit.get("facts", [])}, lit
 
