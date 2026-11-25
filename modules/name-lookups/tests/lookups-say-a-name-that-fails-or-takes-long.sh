@@ -48,6 +48,7 @@ case "\$(cat "${work}/answers/\$5" 2>/dev/null)" in
   killed) kill -KILL "\$\$" ;;
   ignores)
     trap '' TERM
+    # Past timeout's time and its -k, so only -k's KILL ends it.
     exec sleep 60
     ;;
   stopped)
@@ -78,6 +79,7 @@ case "\$(cat "${work}/answers/\${server}-\$6" 2>/dev/null)" in
     ;;
   ignores)
     trap '' TERM
+    # Past timeout's time and its -k, so only -k's KILL ends it.
     exec sleep 60
     ;;
   ends)
