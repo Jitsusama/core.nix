@@ -883,10 +883,13 @@ Floating {
             // next line of another paragraph begins past the break, which
             // getText gives as Qt's selection does: a \n in a plain text,
             // a paragraph or line separator in a styled one.
+            // One that ends its paragraph or its text keeps the spaces it
+            // ends with, which the wash takes in (DrawerLines.trailing).
             const raw = words.getText(from, next);
             const length = raw.replace(/\s+$/, "").length;
-            pieces.push({ text, words, from, y, length,
-                on: at + 1 < words.lineCount ? Lines.runsOn(raw, length, text.spaced) : null,
+            const on = at + 1 < words.lineCount ? Lines.runsOn(raw, length, text.spaced) : null;
+            pieces.push({ text, words, from, y, length, on,
+                trailing: on === null ? Lines.trailing(raw, length) : "",
                 x: place.x, top: place.y, height: box.height,
                 base: place.y + words.baselineOffset, caps: words.caps });
         }

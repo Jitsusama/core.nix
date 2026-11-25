@@ -28,9 +28,13 @@ function runsOn(raw, kept, spaced) {
 }
 
 // What a line that ends its paragraph or its text holds past its `kept`
-// letters, before its break.
+// letters, before its break: the spaces it ends with, which no letter the
+// cursor stands on holds but the wash takes in, reading the reader's
+// whole text, so a search reads them too (DrawerPage.textsOf).
 function trailing(raw, kept) {
-    return "";
+    const rest = raw.slice(kept);
+    const broken = rest.search(PARAGRAPH_BREAK);
+    return broken < 0 ? rest : rest.slice(0, broken);
 }
 
 // Pieces as lines, top to bottom, those sharing a baseline one line, each
