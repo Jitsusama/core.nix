@@ -79,8 +79,10 @@ REFUSALS = (NOT_A_VM_TEST, NOT_HANDED_TO_PYTEST)
 
 # What nix-offload says of subtests that passed at the commit already, naming
 # the folder it kept them in (its main.rs, Kept::unpassed), which it copies
-# nothing from when it's the folder asked for.
+# nothing from when it's the folder asked for. It opens a line of its own, so
+# a build's log, whose lines open with the build's name, can't say it.
 SERVED = re.compile(
+    r"nix-offload: these subtests passed at \S+ already, so they "
     r"aren't run again; their pictures are copied from (?P<kept>.+), and "
     r"`(?P<forget>nix-offload passed forget \S+)` has them run again"
 )
@@ -384,6 +386,9 @@ def there(options: Options) -> tuple[int, frozenset[str]] | None:
     # but not beside a pass copied from elsewhere, whose list comes with it.
     # Ctrl-C puts it back too, though beside such a copy if nix-offload had
     # begun one; a signal that ends Python unhandled, as SIGTERM does, loses it.
+    # A pass kept in this very folder is shown with the list the folder holds
+    # now, which a later listing into it, of another check or commit, may have
+    # replaced: nix-offload keeps no mark of whose list it is.
     listed = out / "subtests"
     before = listed.read_text() if listed.exists() else None
     command = ["nix-offload", "there", "-L", "--out", str(out), "--apply", apply]
@@ -463,7 +468,7 @@ def offloaded(command: list[str]) -> Offloaded:
         for line in running.stderr or ():
             sys.stderr.write(line)
             refused = refused or any(refusal in line for refusal in REFUSALS)
-            served = SERVED.search(line) or served
+            served = SERVED.match(line) or served
             said.append(line)
     return Offloaded(running.returncode, refused, served, failed_tests(said))
 

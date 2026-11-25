@@ -355,7 +355,7 @@ def test_a_listing_served_from_the_folder_it_was_kept_in_keeps_its_names(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # nix-offload copies nothing when the pass it kept is in the folder
-    # asked for, so the list there is that pass's own.
+    # asked for, so the list there is taken as that pass's own.
     out = stand_in.folder / "out"
     out.mkdir()
     (out / "subtests").write_text("test_kept\n")
@@ -404,6 +404,25 @@ def test_a_listing_served_from_a_kept_folder_that_lost_its_names_says_how_to_lis
         f"vm-desktop-x's listing was served from a pass kept in {out}, which holds no names; "
         "`nix-offload passed forget 0123456789abcdef` has it listed again"
     ) in said, said
+
+
+def test_a_build_logs_word_of_a_kept_pass_is_never_taken_for_nix_offloads(
+    tool: Tool,
+    stand_in: StandIn,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A line of the build's log opens with the build's name, so it can't
+    # serve the folder's old list as a kept pass's.
+    out = stand_in.folder / "out"
+    out.mkdir()
+    (out / "subtests").write_text("test_stale\n")
+    monkeypatch.setenv("STAND_IN_NO_PICTURES", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_SAYS", f"vm-test-run-vm-desktop-x> {served(out)}")
+
+    assert tool.main(["--there", "--out", str(out), "vm-desktop-x"]) == 1
+
+    assert "test_stale" not in capsys.readouterr().out, "a build's log served the old list"
 
 
 def test_a_listing_served_from_another_folder_never_takes_the_old_list_for_its_own(
@@ -877,6 +896,23 @@ def test_inside_a_build_the_check_and_words_past_a_double_dash_are_read(
     ran = stand_in.ran()
     assert ran is not None, "the driver given never ran"
     assert ran["pytest"] == "-k launcher", f"the build picked {ran['pytest']!r}"
+
+
+def test_inside_a_build_a_check_past_a_double_dash_with_no_words_is_listed(
+    tool: Tool, stand_in: StandIn, tmp_path: Path
+) -> None:
+    # A listing asked elsewhere reaches the build as the check alone past `--`.
+    stand_in.script.write_text(PYTEST_SCRIPT)
+    out = tmp_path / "out"
+    driven = ["--driver", str(stand_in.driver), "--out", str(out)]
+
+    assert tool.main([*driven, "--", "vm-desktop-x"]) == 0
+
+    ran = stand_in.ran()
+    assert ran is not None, "the driver given never ran"
+    assert ran["pytest"] == "--collect-only --quiet", f"a listing ran {ran['pytest']!r}"
+    listed = (out / "subtests").read_text()
+    assert listed == "test_terminal\ntest_refused[the password]\n", f"the build kept {listed!r}"
 
 
 def test_inside_a_build_a_listing_naming_none_fails_and_keeps_none(
