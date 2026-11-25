@@ -7,7 +7,7 @@ use std::fs;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-use crate::{QUEST_SLICE, client_of_build};
+use crate::{QUEST_SLICE, client_from, first_process};
 
 /// The tier the work of quests no tier names goes in, and of work for no
 /// quest, which sits in its slice directly, as jobs-sorter's tiers.rs
@@ -285,14 +285,10 @@ fn asker(cmdline: &[u8], cgroup: &[u8]) -> Asker {
     }
 }
 
-/// Whether a build's cgroup holds a process to follow to its client.
-fn has_a_process(build: &Path) -> bool {
-    fs::read_to_string(build.join("cgroup.procs")).is_ok_and(|procs| !procs.trim().is_empty())
-}
-
-/// Who asked for a build, while its client is still there to ask.
-fn asker_of(build: &Path) -> Option<Asker> {
-    let client = client_of_build(build)?;
+/// Who asked for a build, while its client is still there to ask, found
+/// from `first`, the build's first process.
+fn asker_of(first: u32, build: &Path) -> Option<Asker> {
+    let client = client_from(first, build)?;
     Some(asker(&client.read("cmdline")?, &client.read("cgroup")?))
 }
 
@@ -315,9 +311,13 @@ pub fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
         let known = tallies
             .entry(build.clone())
             .or_insert_with(|| Tally::new(cgroup));
+        // A build holds a process wherever its client is found through
+        // one, so one found under its cgroup counts, and the build's
+        // cgroups are walked once for both.
         if known.asked.is_none() {
-            known.seen |= has_a_process(build);
-            known.asked = asker_of(build);
+            let first = first_process(build);
+            known.seen |= first.is_some();
+            known.asked = first.and_then(|first| asker_of(first, build));
         }
         known.count(
             fs::read_to_string(build.join("io.stat"))

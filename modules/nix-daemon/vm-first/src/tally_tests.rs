@@ -214,6 +214,25 @@ fn a_build_gone_before_a_look_says_so_and_one_that_wrote_nothing_says_nothing() 
 }
 
 #[test]
+fn a_build_whose_processes_moved_into_a_cgroup_under_it_is_seen() {
+    let build = std::env::temp_dir().join(format!("vm-first-moved-{}", std::process::id()));
+    let payload = build.join("payload");
+    fs::create_dir_all(&payload).expect("the temp folder takes a folder");
+    fs::write(build.join("cgroup.procs"), "").expect("the temp folder takes a file");
+    // A pid past any Linux gives, so no client is found through it.
+    fs::write(payload.join("cgroup.procs"), "4194305\n").expect("the temp folder takes a file");
+    let mut tallies = HashMap::new();
+    tally(&mut tallies, std::slice::from_ref(&build));
+    let seen = tallies.get(&build).map(|tally| tally.seen);
+    fs::remove_dir_all(&build).expect("the temp folder gives its folder back");
+    assert_eq!(
+        seen,
+        Some(true),
+        "a build whose processes moved under it wasn't seen to hold one"
+    );
+}
+
+#[test]
 fn a_build_is_known_by_its_cgroup_made_again_and_forgotten_once_gone() {
     let build = std::env::temp_dir().join(format!("vm-first-tally-{}", std::process::id()));
     let before = build.with_extension("before");

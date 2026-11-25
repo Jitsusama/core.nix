@@ -43,7 +43,7 @@
 //! `vm-first --help` says its flags; it takes the command kit's shape
 //! (docs/commands.md), and what it does goes to its journal on stderr.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
 use std::os::fd::AsRawFd;
@@ -240,18 +240,23 @@ impl Proc {
 /// The client that asked for a build, found through the daemon's worker
 /// its processes descend from. The client is opened by the pid the worker
 /// names, which is all a worker says of it.
+fn client_of_build(build: &Path) -> Option<Proc> {
+    client_from(first_process(build)?, build)
+}
+
+/// The client that asked for a build, found from `first`, the build's
+/// first process, for a caller that has already looked for it.
+///
+/// The walk starts at `first`, opened only while its cgroup is still the
+/// build's or one under it, since by then its pid could be another's.
 ///
 /// A process's owner is read before its command line: Linux's
 /// `pid_getattr` says root owns the folder of a process that has gone, so
 /// read after, a build that wrote a worker's command line and ended would
 /// pass for one, but read before, the command line of a process gone by
 /// then won't read.
-///
-/// The walk starts at the build's first process, opened only while its
-/// cgroup is still the build's or one under it, since by then its pid
-/// could be another's.
-fn client_of_build(build: &Path) -> Option<Proc> {
-    let mut process = Proc::open(first_process(build)?)?;
+fn client_from(first: u32, build: &Path) -> Option<Proc> {
+    let mut process = Proc::open(first)?;
     if !in_cgroup(&process.text("cgroup")?, build) {
         return None;
     }
@@ -270,18 +275,39 @@ fn client_of_build(build: &Path) -> Option<Proc> {
     None
 }
 
-/// The first process a build's cgroup lists, else the first a cgroup under
-/// it lists, so a build that moves every process into a cgroup of its own
-/// is still weighed by its quest.
+/// The first process a build's cgroup lists, else the first the cgroups
+/// under it list, the nearest first, so a build that moves every process
+/// into a cgroup of its own is still weighed by its quest. The walk ends
+/// at the first process found, since it's taken for each build twice a
+/// second.
 fn first_process(build: &Path) -> Option<u32> {
-    pids_under(build).first()?.parse().ok()
+    let mut cgroups = VecDeque::from([build.to_path_buf()]);
+    while let Some(cgroup) = cgroups.pop_front() {
+        let procs = fs::read_to_string(cgroup.join("cgroup.procs")).unwrap_or_default();
+        if let Some(pid) = procs.lines().find_map(|pid| pid.trim().parse().ok()) {
+            return Some(pid);
+        }
+        let mut under: Vec<PathBuf> = fs::read_dir(&cgroup)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+            .map(|entry| entry.path())
+            .collect();
+        under.sort();
+        cgroups.extend(under);
+    }
+    None
 }
 
 /// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
 /// would, from the file system's root down and never back up it, without
-/// which every client would be taken for out of its build's cgroup.
+/// which every client would be taken for out of its build's cgroup. The
+/// root itself is refused: taken for the daemon's, every cgroup under it,
+/// the machine's own slices among them, would be taken for a build.
 fn under_cgroup_root(cgroup: &Path) -> bool {
     cgroup.starts_with(CGROUP_ROOT)
+        && cgroup != Path::new(CGROUP_ROOT)
         && !cgroup
             .components()
             .any(|part| part == std::path::Component::ParentDir)
