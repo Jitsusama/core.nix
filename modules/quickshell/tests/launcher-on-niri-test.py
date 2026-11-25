@@ -2689,16 +2689,16 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
 
 
 def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
-    """Super+E lists Unicode's groups, and the clipboard's history finds what's typed there.
+    """Super+E lists Unicode's groups, and makes a row only for an emoji a step shows.
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
-    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows, a
-    group's row moved over makes none of its emoji, and closing lets go of those a step into a
-    group made, which were otherwise held for the shell's life. The tally counts every row since
-    the shell started, and a case before this one in its part steps into a group, so each
-    count here is from this case's start; the start itself is judged by having made fewer than
-    Emoji holds, which a step into one group never reaches.
+    finds what's typed now (clipboard/src/search.rs, the whole-word case below), so the start
+    makes only its groups' rows, a group's row moved over makes none of its emoji, and closing
+    lets go of those a step into a group made, which were otherwise held for the shell's life.
+    The tally counts every row since the shell started, and a case before this one in its part
+    steps into a group, so each count here is from this case's start; the start itself is
+    judged by having made fewer than Emoji holds, which a step into one group never reaches.
     """
     launcher_on_niri.warmed(shell)
     before = shell.rows_made("emoji")
@@ -2750,6 +2750,9 @@ def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
     """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
+    # Its groups listed, Emoji has heard from the history, so a case run alone types into a
+    # search that can ask it, as one run after the rows case does.
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
     # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
     # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
     try:
