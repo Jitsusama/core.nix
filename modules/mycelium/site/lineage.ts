@@ -35,9 +35,9 @@ const collate = new Intl.Collator("en-CA").compare;
  * Whether `copy` of a cell stands over `had`, the copy held so far, when
  * two machines list one cell while it moves between them: only a copy
  * started strictly later does, a start not said as words reading as none,
- * so of two started alike the copy told first stands. The map draws the
- * copy that stands and says who started it from the same one, so both
- * ask this.
+ * so of two started alike the copy told first stands. Only oneCopyEach
+ * asks it, so that nothing else can choose a copy by a rule of its own;
+ * it is exported so its test can pin the tie and the start not as words.
  */
 function isLaterCopy(copy: Fields, had: Fields): boolean {
   return (text(copy, "since") ?? "") > (text(had, "since") ?? "");
