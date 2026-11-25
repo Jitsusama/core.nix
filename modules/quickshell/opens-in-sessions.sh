@@ -14,8 +14,11 @@
 # A kitty started before its unit listened has no socket until the next
 # login, so until then it's reached the old way, but only while it is the
 # unit's own main process, which nothing else can be. A kitty its unit is
-# starting again, 5 s after it ended, is waited on for up to 20 s, so a
-# window asked of it meanwhile opens once it's back rather than never;
+# starting again, 5 s after it ended, is waited on until 20 s past this
+# start, by the clock rather than by counting looks, since each look asks
+# systemd and can be slow under a cold boot's load, and the shell's
+# answerPatience counts on that bound. So a window asked of it meanwhile
+# opens once it's back rather than never;
 # with neither by then, a kitty that turns the launch down or can't be
 # reached, or an old kitty that opens nothing, the journal says why, and
 # the shell is told, so it stops counting a viewer (pi-hosted) as coming
@@ -27,6 +30,9 @@
 # launch's is a day (kitty's launch --response-timeout, which its Go
 # kitten takes as the wait for any command's answer, in tools/cmd/at's
 # template.go), and the shell asks again after half a minute anyway.
+# That minute running out is said as the kitty not answering, never as
+# taking no window, since the window may yet come (kitten says so in
+# words its at/main.go gives an async command's, such as a launch).
 #
 # niri gives what it starts no output (its utils/spawning.rs sets stdin,
 # stdout and stderr to null), so a run given none runs again once with
@@ -61,18 +67,25 @@ old() {
     tr "\0" " " < "/proc/$pid/cmdline" | grep -q -- "--instance-group pi-sessions"
 }
 
-tries=100
 until [ -S "$sock" ] || old; do
-  tries=$((tries - 1))
-  [ "$tries" -gt 0 ] || break
+  now=$(date +%s%3N)
+  [ "$now" -lt $((asked + 20000)) ] || break
   sleep 0.2
 done
 
 if [ -S "$sock" ]; then
-  kitten @ --to "unix:$sock" launch --response-timeout 60 --type=os-window \
+  # kitten's words are kept to tell its wait running out from a launch
+  # turned down, and still reach the journal.
+  said=$(kitten @ --to "unix:$sock" launch --response-timeout 60 --type=os-window \
     --os-window-class "$class" --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@" \
-    > /dev/null && exit 0
-  echo "sessions: the sessions kitty opened no $class" >&2
+    2>&1 > /dev/null) && exit 0
+  [ -z "$said" ] || echo "$said" >&2
+  case $said in
+    *"Timed out waiting for a response from kitty"*)
+      echo "sessions: the sessions kitty didn't answer for $class in a minute" >&2
+      ;;
+    *) echo "sessions: the sessions kitty opened no $class" >&2 ;;
+  esac
 elif old; then
   systemd-run --user --scope --collect --quiet --slice=agents.slice -- \
     env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \
