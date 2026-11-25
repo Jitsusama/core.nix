@@ -94,7 +94,8 @@ def home(tmp_path: Path) -> Iterator[str]:
         (documents / "heron" / "index.html").write_text(DOCUMENT)
         sources = Path(os.environ["HOME_SOURCES"])
         theme = Path(os.environ["WEB_KIT"]) / "theme.css"
-        built = [sys.executable, sources / "home.py", f"--into={own}", sources, documents, theme]
+        paths = [sources / "home.py", f"--into={own}", sources, documents, theme]
+        built = [sys.executable, *map(str, paths)]
         subprocess.run(built, check=True)
         yield address
 

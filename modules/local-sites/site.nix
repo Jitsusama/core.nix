@@ -25,7 +25,10 @@ let
   keptComments = ./kept-comments.sh;
 
   # The kit, typechecked and tested, as the browser's modules and the
-  # switch's styles, without their comments as a site's are.
+  # switch's styles, without their comments as a site's are. Kept in Nix
+  # because each line runs a tool Nix gives it on the kit's own files, and
+  # what writes a sheet or script bare is a script of its own
+  # (bare-sheet.sh, kept-comments.sh).
   kit = pkgs.runCommandLocal "local-sites-kit" { } ''
     cp -r ${./kit} kit
     chmod -R u+w kit

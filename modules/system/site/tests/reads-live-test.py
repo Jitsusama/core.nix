@@ -40,8 +40,9 @@ COUNTED = "Two machines, both worth a look."
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down. One file
 # and one element are the kit's head, which every live page shares: head.css, and the quiet
-# row that holds its keys.
-BUDGET = Budget(files=26, kilobytes=450, elements=401)
+# row that holds its keys. One file more is the kit's early.js, the script the page once
+# wrote into itself, which the sites' policy now runs only from a file.
+BUDGET = Budget(files=27, kilobytes=450, elements=401)
 
 
 @pytest.fixture

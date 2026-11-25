@@ -180,6 +180,7 @@ the kept look and `class="js"` before the first paint are the kit's
 `early.js`, loaded first:
 
 ```html
+<!-- biome-ignore lint/performance/noSyncScripts: it runs before the first paint, setting the kept look and room, so nothing flashes or shifts. -->
 <script src="../local-sites/kit/early.js"></script>
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
