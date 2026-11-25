@@ -6,7 +6,7 @@
 // this machine's cells are known that way. From that, which network grows
 // out of which, as a hypha branches from another.
 
-import { type Held, object, type Record, text } from "../../local-sites/kit/records.ts";
+import { type Fields, type Held, object, text } from "../../local-sites/kit/records.ts";
 
 /** A cell and the cell that started it, each by its address. */
 interface Started {
@@ -32,6 +32,18 @@ interface Grown {
 const collate = new Intl.Collator("en-CA").compare;
 
 /**
+ * Whether `copy` of a cell stands over `had`, the copy held so far, when
+ * two machines list one cell while it moves between them: only a copy
+ * started strictly later does, a start not said as words reading as none,
+ * so of two started alike the copy told first stands. The map draws the
+ * copy that stands and says who started it from the same one, so both
+ * ask this.
+ */
+function isLaterCopy(copy: Fields, had: Fields): boolean {
+  return (text(copy, "since") ?? "") > (text(had, "since") ?? "");
+}
+
+/**
  * Who started each cell: its own record's word first, which reaches every
  * machine, then its forage's for a cell whose record says nothing, as an
  * older node's does. The two never disagree on a node that says both,
@@ -39,9 +51,11 @@ const collate = new Intl.Collator("en-CA").compare;
  * record's out where nothing names a starter, so the forage only fills in
  * for a node too old to say it on the record. A cell said to have started
  * itself names nobody, and a node that says neither reads as one where
- * nobody started anybody, which grows no branch either way.
+ * nobody started anybody, which grows no branch either way. `cells` are
+ * the records the map draws as cells, so a record it never draws can't
+ * name the starter of one it does.
  */
-function startedOf(cells: Held, forages: Held | undefined): Started[] {
+function startedOf(cells: readonly Fields[], forages: Held | undefined): Started[] {
   const by = new Map<string, string>();
   const say = (cell: string | undefined, starter: string | undefined): void => {
     if (cell && starter && starter !== cell && !by.has(cell)) {
@@ -49,13 +63,13 @@ function startedOf(cells: Held, forages: Held | undefined): Started[] {
     }
   };
   // A cell moving between machines can be listed by both for a while, the
-  // one it left still saying what it last knew. The map draws the copy
-  // started most recently, so its starter is that copy's.
-  const latest = new Map<string, Record>();
-  for (const record of cells.all()) {
+  // one it left still saying what it last knew, so its starter is the
+  // copy's the map draws.
+  const latest = new Map<string, Fields>();
+  for (const record of cells) {
     const name = text(record, "name");
     const had = name ? latest.get(name) : undefined;
-    if (name && (!had || (text(record, "since") ?? "") > (text(had, "since") ?? ""))) {
+    if (name && (!had || isLaterCopy(record, had))) {
       latest.set(name, record);
     }
   }
@@ -149,4 +163,4 @@ function grownOf(
 }
 
 export type { Grown, Network, Started };
-export { foragedOf, grownOf, startedOf };
+export { foragedOf, grownOf, isLaterCopy, startedOf };

@@ -2406,7 +2406,7 @@
     not served, what a receptor fed a cell, kept for ten minutes and up to a minute ahead, the
     map drawing again when the first balance or feeding ends, who started each cell from its
     own record on any machine, else its forage, none where neither says and none for a cell
-    started by itself or by nobody,
+    started by itself or by nobody, from the copy the map draws of a cell two machines list,
     a network the node sets within none growing out of the one whose cells started more of its
     cells than any other, a tie going by name, where the node sets a network standing, no start
     from inside it counting, of two that started each other's cells the stronger the trunk and

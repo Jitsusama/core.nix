@@ -71,7 +71,7 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf } from "./lineage.js";
+import { grownOf, isLaterCopy } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
@@ -502,14 +502,14 @@ import {
     const depth = (h) => (h.within ? 1 + depth(hubs.get(h.within)) : 0);
     // A cell moving between machines can arrive from both for a while,
     // the one it left still listing it. It is one cell under one address,
-    // so the page keeps the copy started most recently, with the groups
-    // either copy names.
+    // so the page keeps the copy started most recently, by the rule the
+    // starters are read by too, with the groups either copy names.
     const once = new Map();
     for (const c of now.cells) {
       const had = once.get(c.name);
       if (!had) once.set(c.name, c);
       else {
-        const [keep, other] = (c.since || "") > (had.since || "") ? [c, had] : [had, c];
+        const [keep, other] = isLaterCopy(c, had) ? [c, had] : [had, c];
         once.set(c.name, { ...keep, networks: [...new Set([...keep.networks, ...other.networks])] });
       }
     }

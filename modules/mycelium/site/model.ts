@@ -478,7 +478,7 @@ function nowOf(heard: Heard, at: number): Now {
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
-    started: startedOf(heard.cell, heard.forage),
+    started: startedOf(heard.cell.all().filter(drawn), heard.forage),
     foraged: foragedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.
