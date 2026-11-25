@@ -19,10 +19,14 @@ rec {
   # The harness's host program, in the version pi-packages calls current, in
   # the account `home`. node follows the link as it loads it, so a running
   # host keeps the version it started with through an update, and the next
-  # start takes the new one.
+  # start takes the new one. It is the .mjs rather than pi-host.ts, which it
+  # runs: node strips a TypeScript entry of its types before any of its code
+  # runs, so only a JavaScript one can start the harness's stripped-source
+  # cache first, which spares node 22 loading its stripper as the host and
+  # each conversation's own process start (lib/internal/stripped-source.mjs).
   entry =
     home:
-    "${home.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-host.ts";
+    "${home.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-host.mjs";
 
   # What would run code as the host as its node starts, so a host's start
   # clears each and a realm giving one is refused: NODE_OPTIONS, whose

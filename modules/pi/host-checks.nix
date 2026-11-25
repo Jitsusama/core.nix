@@ -327,7 +327,7 @@ in
           last = lib.findFirst (lib.hasPrefix "  /nix/store/") "" (lib.splitString "\n" start);
           program = lib.head (lib.splitString " " (lib.removePrefix "  " last));
         in
-        lib.hasSuffix "/scripts/pi-host.ts ${kind}" last
+        lib.hasSuffix "/scripts/pi-host.mjs ${kind}" last
         && !lib.hasInfix "--heap-growing-percent" start
         # Each kind writes its own log, and its own record of starts.
         && lib.hasInfix "/Users/someone/Library/Logs/pi-host-one-${kind}.log" start
@@ -615,8 +615,8 @@ in
         && lib.hasInfix " '--max-old-space-size=8192' /" (first unit.Service.ExecStart)
         # No async context frame flag unless its realm asks.
         && !(lib.hasInfix "async-context-frame" (first unit.Service.ExecStart))
-        && lib.hasSuffix "/scripts/pi-host.ts ${kind}" (first unit.Service.ExecStart)
-        && lib.hasSuffix "/scripts/pi-host.ts" (first unit.Unit.ConditionPathExists)
+        && lib.hasSuffix "/scripts/pi-host.mjs ${kind}" (first unit.Service.ExecStart)
+        && lib.hasSuffix "/scripts/pi-host.mjs" (first unit.Unit.ConditionPathExists)
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
         && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment

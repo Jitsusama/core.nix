@@ -191,7 +191,7 @@ in
         && lib.hasPrefix "${node} --disable-sigusr1 --experimental-async-context-frame " execStart
         && !(lib.hasInfix "--inspect" (lib.replaceStrings [ "_" ] [ "-" ] execStart))
         && lib.hasInfix " '--max-old-space-size=3072' /" execStart
-        && lib.hasSuffix "/scripts/pi-host.ts --child" execStart
+        && lib.hasSuffix "/scripts/pi-host.mjs --child" execStart
         &&
           lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ])) == lib.sort lib.lessThan (
             [

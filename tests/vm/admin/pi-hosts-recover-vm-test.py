@@ -38,7 +38,7 @@ STARTS = f"{FOLDER}/background.starts"
 # The host program the unit's condition looks for, which the harness's install puts there.
 ENTRY = (
     "/home/alice/.local/share/pi-packages/github.com/Jitsusama/agentic-harness.pi"
-    "/current/scripts/pi-host.ts"
+    "/current/scripts/pi-host.mjs"
 )
 # How many starts the unit is given in ten minutes before it's left down.
 START_LIMIT = 3
