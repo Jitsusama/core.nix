@@ -176,6 +176,15 @@ function onReturn(answers, fromJoel) {
     return fromJoel === true ? { act: "answer", answers } : { act: "refused" };
 }
 
+// Whether a session's answers (`list`) hold one of his to `want` sent or answered, so a second
+// Return isn't shown as going: the session takes the first answer to an ask, and one after it
+// finds the ask gone (the harness's answerSteered). One not delivered, or not known to be,
+// leaves it his to answer again.
+function answeredAlready(list, want) {
+    return (list ?? []).some(one => one.want === String(want ?? "")
+        && (one.stage === "sent" || one.stage === "answered"));
+}
+
 // Whether his words to `answers` stay to be given back once the node has said of them: only
 // where they didn't go (`went`) and the session still asks what they answer (`now`, asked's),
 // so given back they never answer a newer ask.

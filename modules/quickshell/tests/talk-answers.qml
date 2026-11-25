@@ -237,6 +237,18 @@ QtObject {
             Expect.same("as does a walk to one asking nothing",
                 Answers.onReturn(undefined, false), { act: "talk" });
 
+            // Whether he answered an ask already (Agents.qml's answerIn).
+            Expect.same("an ask with his answer sent is answered",
+                Answers.answeredAlready([three[0], one], answers.want), true);
+            Expect.same("as is one with it put in the session's inbox",
+                Answers.answeredAlready([put], answers.want), true);
+            Expect.same("one with his answer not delivered is his to answer again",
+                Answers.answeredAlready([refused, unheard], answers.want), false);
+            Expect.same("as is one whose only answers are to another ask",
+                Answers.answeredAlready(three, answers.want), false);
+            Expect.same("and one he never answered",
+                Answers.answeredAlready(undefined, answers.want), false);
+
             // Whether his words stay to be given back (Agents.qml's answerIn).
             Expect.same("words refused under the same ask stay",
                 Answers.keepsWords(false, first, first), true);

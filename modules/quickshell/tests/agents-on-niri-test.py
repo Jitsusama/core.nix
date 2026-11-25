@@ -4545,6 +4545,15 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
                 for one in cast("list[Json]", shown["talks"] or [])
             )
         )
+        # It takes his first answer, so a second Return while it still asks goes nowhere.
+        shell.launcher_until(lambda shown: shown["typed"] == "")
+        shell.send_chars("left")
+        shell.launcher_until(lambda shown: shown["typed"] == "left")
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
+        )
+        assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
     finally:
         (PRESENCE / "choose.json").unlink(missing_ok=True)
         for one in set(inbox.glob("*.json")) - steered:
