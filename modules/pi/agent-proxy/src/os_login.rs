@@ -192,6 +192,10 @@ mod tests {
             format!("compute.12a {KEY}"),
             format!("@revoked compute.1 {KEY}"),
             format!("# compute.1 {KEY}"),
+            // A comment whose first field would split into an instance's
+            // name, which only the guard on a marker's start refuses.
+            format!("#x,compute.1 {KEY}"),
+            format!("@x,compute.1 {KEY}"),
             format!("|1|abc=|def= {KEY}"),
             "compute.1 ssh-ed25519".to_owned(),
             String::new(),

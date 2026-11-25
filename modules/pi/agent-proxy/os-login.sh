@@ -12,18 +12,22 @@
 # It registers only the key the proxy beside the file lists under its
 # own OS Login comment, asked of the proxy's own socket, and only while
 # the file names that key; what it hands gcloud is the proxy's line,
-# copied to a file of its own, so neither a previous proxy's key left in
+# copied to a file of its own beside the key, so neither a previous proxy's key left in
 # the file nor another key the proxy holds, such as the builders', is ever
 # registered, and the proxy writing its next key mid-run changes nothing
 # sent. A removal takes out only a key whose file carries the proxy's
 # comment. These keep out a mistake, not an attacker: the folder is the
 # person's alone, bound read-only inside the agent fence, so whatever can
 # write it already runs as the person, with their gcloud login itself.
+# The copy is never made in the temporary folder, which a fenced command
+# can write, and so could swap a key of its own in before gcloud reads it.
 #
 # It runs the gcloud on the user manager's PATH, the one the person's
-# login was made with. A machine with no gcloud, or a gcloud with no
-# login, registers nothing, and warns so in the journal, naming what
-# would; neither fails the unit, as neither passes by trying again.
+# login was made with. The fence binds ~/.local/bin, the Nix profile
+# and ~/.config read-only, and the rest of that PATH is root's, so no
+# fenced command can put a gcloud of its own ahead of the person's. A
+# machine with no gcloud, or a gcloud with no login, registers nothing,
+# and warns so in the journal, naming what would; neither fails the unit, as neither passes by trying again.
 # A failed call does, and the unit tries again shortly.
 #
 # Its help takes the shape every command of ours does (docs/commands.md),
@@ -112,13 +116,14 @@ fi
 # key, while the file still holds the previous proxy's, and the path's
 # event for the new key then joins this run rather than starting
 # another; so a register waits a few seconds for the proxy to hold the
-# key in the file. A proxy it still couldn't ask fails the unit, which
-# tries again shortly, rather than wait out the quarter hour as if the
-# proxy held no key.
+# key in the file, past the one ask that might take all of its own wait
+# against an agent behind it. A proxy it still couldn't ask fails the
+# unit, which tries again shortly, rather than wait out the quarter hour
+# as if the proxy held no key.
 if [[ $mode == register ]]; then
   own=
   why=1
-  end=$((SECONDS + 5))
+  end=$((SECONDS + 5 + asking))
   while ((SECONDS < end)); do
     why=1
     if [[ -s $key ]]; then
@@ -137,23 +142,26 @@ if [[ $mode == register ]]; then
     echo "pi-agent-proxy-os-login: the proxy holds no key at $key, so it does nothing"
     exit 0
   fi
-  # gcloud and ssh-keygen read the proxy's line from a file only this
-  # run writes, so the key's file changing after the check changes
-  # nothing that's registered.
-  sent=$(mktemp)
-  trap 'rm -f "$sent"' EXIT
-  echo "$own $comment" >"$sent"
+  line="$own $comment"
 elif [[ ! -s $key ]]; then
   echo "pi-agent-proxy-os-login: no key at $key, so it does nothing"
   exit 0
 else
-  read -r _ _ rest <"$key" || rest=
+  read -r kind blob rest <"$key" || rest=
   if [[ $rest != "$comment"* ]]; then
     echo "pi-agent-proxy-os-login: the key at $key isn't the proxy's, so it does nothing"
     exit 0
   fi
-  sent=$key
+  # The line a register sent, under the bare comment, not the file's.
+  line="$kind $blob $comment"
 fi
+# gcloud and ssh-keygen read the line from a file only this run writes,
+# in the key's folder, which the fence binds read-only, so neither the
+# key's file changing after the check nor a fenced command changes what's
+# sent.
+sent=$(mktemp -p "${key%/*}" .os-login-sent.XXXXXXXXXX)
+trap 'rm -f "$sent"' EXIT
+echo "$line" >"$sent"
 # A gcloud that can't say fails as one with no login would: either way
 # there's nothing to register with.
 login=$(timeout "$bound" gcloud config get-value account --quiet 2>/dev/null) || login=

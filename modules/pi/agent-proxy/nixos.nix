@@ -15,9 +15,10 @@
 # doesn't hold. A host named compute. otherwise gains only the offer: the
 # proxy signs with the key for nothing but an instance gcloud knows.
 #
-# A login gcloud makes to an instance's address rather than through IAP
-# names the address, so it isn't offered there; agents reach instances
-# through IAP. The block ends with `Host *`, so whatever another module
+# This decides only what gcloud's own ssh offers, which names its key
+# alone. Any ssh asking the proxy is offered every key it lists, so a
+# login to a known instance by its address, past IAP, is signed too: the
+# only gate is the instance's host key in gcloud's file. The block ends with `Host *`, so whatever another module
 # adds after it applies to every host, as it would have without it.
 {
   programs.ssh.extraConfig = ''

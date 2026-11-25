@@ -4844,16 +4844,17 @@
   '';
   pi-agent-proxy-reaches-os-login-machines = ''
     where pi's SSH agent proxy runs, by default, it makes a key for the OS Login hosts gcloud
-    knows, started with the session, never in a core dump or swap; the account's gcloud registers
-    each key it writes, once the proxy lists it, for twelve hours, and again as the desktop
-    starts, renews it each quarter hour by the wall clock, every call bounded and a removal's
-    tighter, tries a failed registration, or a proxy it couldn't ask, again from half a minute
-    on in growing steps, never giving up, and removes it as the proxy stops, keeping the file;
-    only while the proxy runs is it registered or renewed, from the one line the proxy lists
-    under its OS Login comment, copied aside, never a key in the file the proxy doesn't hold or
-    holds for another use, even beside its own, and only a key whose file is the proxy's is
+    knows, started with the session, never in a core dump or swap short of a hibernation image;
+    the account's gcloud registers each key it writes, once the proxy lists it, for twelve hours,
+    and again as the desktop starts, renews it each quarter hour by the wall clock, every call
+    bounded and a removal's tighter, tries a failed registration, or a proxy it couldn't ask or
+    that never answers, again from half a minute on in growing steps, never giving up, and
+    removes it as the proxy stops, keeping the file; only while the proxy runs is it registered
+    or renewed, from the one line the proxy lists under its OS Login comment, copied beside the
+    key and never into the temporary folder, a removal sending the same line, never a key in the
+    file the proxy doesn't hold or holds for another use, even beside its own, and only a key whose file is the proxy's is
     removed; no gcloud, no gcloud login or a gcloud that can't say is warned of and passed over;
-    the machine's ssh offers it to compute.* hosts alone; and with no known-hosts file named,
+    the machine's ssh names it for compute.* hosts; and with no known-hosts file named,
     there's no such key
   '';
   pi-agent-proxy-signs-only-logins = ''

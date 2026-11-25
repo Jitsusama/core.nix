@@ -83,11 +83,14 @@ in
         `%h` for the home folder, whose `compute.<id>` hosts an agent's
         `gcloud compute ssh` may log in to as the person through OS Login.
         The proxy makes a key for them as it starts, written to no file
-        and kept out of swap, and the account's gcloud puts it in the
+        and kept out of swap, short of a hibernation image, and the account's gcloud puts it in the
         person's login profile for twelve hours at a time, renewed while
         the proxy runs and taken out as it stops (agent-proxy/src/os_login.rs).
         So agents reach, as the person, every instance the file names,
-        which their fence keeps read-only. Null for no such key, where the
+        which their fence keeps read-only, by IAP or by its address; where
+        gcloud-broker gives a fenced agent's gcloud a service account, a
+        login naming the person's own user still goes past that account's
+        one project. Null for no such key, where the
         person's own key serves agents too.
       '';
     };

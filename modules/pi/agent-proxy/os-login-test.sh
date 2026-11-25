@@ -8,8 +8,10 @@
 # over with a word; a key the proxy comes to hold within its wait is
 # registered, another key it holds never is but leaves the proxy's own
 # registered beside it, what gcloud reads is the proxy's own line and
-# never the file's, a proxy that can't be asked fails to be tried again,
-# and a key that isn't the proxy's is never removed.
+# never the file's, copied beside the key and never into the temporary
+# folder, a removal sends the line a register did, a proxy that can't be
+# asked or never answers fails to be tried again, and a key that isn't
+# the proxy's is never removed.
 #
 #   os-login-test.sh PATH-TO-pi-agent-proxy-os-login
 
@@ -27,7 +29,9 @@ cat >"$work/bin/gcloud" <<EOF
 #!$BASH
 echo "\$*" >>"$work/asked"
 for arg; do
-  [[ \$arg != --key-file=* ]] || cat "\${arg#--key-file=}" >>"$work/sent"
+  [[ \$arg == --key-file=* ]] || continue
+  cat "\${arg#--key-file=}" >>"$work/sent"
+  echo "\${arg#--key-file=}" >>"$work/copies"
 done
 mapfile -d '' parent </proc/\$PPID/cmdline
 echo "\${parent[0]##*/} \${parent[*]:1}" >>"$work/started-by"
@@ -45,7 +49,7 @@ chmod +x "$work/bin/gcloud"
 # it holds the keys the test gives it, as the proxy holds the one it made.
 ssh-agent -D -a "$work/agent.sock" >/dev/null 2>&1 &
 agent=$!
-trap 'kill "$agent"' EXIT
+trap 'kill -CONT "$agent"; kill "$agent"' EXIT
 until [[ -S $work/agent.sock ]]; do
   kill -0 "$agent" || exit 1
   sleep 0.1
@@ -80,8 +84,11 @@ for tool in ssh-keygen ssh-add timeout sleep cp cat mktemp rm; do
   found=$(command -v "$tool")
   ln -s "$found" "$work/tools/$tool"
 done
+# The temporary folder a fenced command could write, which no copy may
+# be made in.
+mkdir "$work/shared"
 run() {
-  PATH=$work/bin:$work/tools "$register" "$@" >"$work/said" 2>&1
+  TMPDIR=$work/shared PATH=$work/bin:$work/tools "$register" "$@" >"$work/said" 2>&1
 }
 # A call asked of gcloud, as a pattern, since a register hands it a file
 # of its own.
@@ -94,6 +101,8 @@ grep -q "registered for 12 hours" "$work/said" || fail "didn't say it registered
 asked "add --key-file=[^ ]+ --ttl=12h" || fail "didn't add a new key for twelve hours"
 grep -qxF "ssh-ed25519 $blob pi-agent-proxy OS Login" "$work/sent" ||
   fail "didn't hand gcloud the proxy's own line"
+grep -qvE "^$work/\.os-login-sent\.[^/]+$" "$work/copies" &&
+  fail "copied the proxy's line outside the key's folder"
 
 touch "$work/there"
 : >"$work/asked"
@@ -111,8 +120,11 @@ grep -q "lapses within 12 hours" "$work/said" || fail "didn't say a removal fail
 rm "$work/failing"
 
 : >"$work/asked"
+: >"$work/sent"
 run remove "$key" || fail "failed removing a key"
-asked "remove --key-file=$key" || fail "didn't remove the key"
+asked "remove --key-file=[^ ]+" || fail "didn't remove the key"
+[[ $(<"$work/sent") == "ssh-ed25519 $blob pi-agent-proxy OS Login" ]] ||
+  fail "sent a removal a line other than the one a register sends"
 [[ -e $key ]] || fail "took the key's file, an event the path unit would read as a new key"
 
 status=0
@@ -143,6 +155,26 @@ holding=$!
 run register "$key" || fail "failed with a key the proxy came to hold"
 wait "$holding"
 asked "update --key-file=[^ ]+ --ttl=12h" || fail "didn't wait for the proxy to hold its key"
+
+# A previous proxy's key answered after an agent behind held the ask
+# up past the first few seconds, as a proxy restarting may, still leaves
+# time to ask again once the proxy holds the new one.
+hold_none
+hold "$work/other"
+kill -STOP "$agent"
+: >"$work/asked"
+(
+  sleep 6
+  kill -CONT "$agent"
+  # The ask held up is answered first, as the agent takes them in turn.
+  hold_none
+  hold "$work/key"
+) &
+holding=$!
+run register "$key" || fail "failed with a slow answer naming the previous key"
+wait "$holding"
+asked "update --key-file=[^ ]+ --ttl=12h" ||
+  fail "gave up on the key once one slow answer named the previous one"
 
 # Another key the proxy holds, the builders' among them, is never
 # registered, even with a file naming it beside the proxy's socket.
@@ -182,6 +214,15 @@ run register "$work/unasked/key.pub" && fail "passed with a proxy it couldn't as
 grep -q "^<3>.*couldn't be asked" "$work/said" || fail "didn't say the proxy couldn't be asked"
 grep -q "ssh-keys" "$work/asked" && fail "asked gcloud with a proxy it couldn't ask"
 
+# Nor does one that takes every ask but never answers, as a proxy
+# waiting on a stalled agent behind it might, pass as holding no key.
+kill -STOP "$agent"
+: >"$work/asked"
+run register "$key" && fail "passed with a proxy that never answered"
+kill -CONT "$agent"
+grep -q "^<3>.*couldn't be asked" "$work/said" || fail "didn't say a silent proxy couldn't be asked"
+grep -q "ssh-keys" "$work/asked" && fail "asked gcloud with a proxy that never answered"
+
 # A removal never takes out a key whose file isn't the proxy's, such as
 # the person's own.
 : >"$work/asked"
@@ -217,5 +258,9 @@ grep -q "^timeout 7 gcloud compute os-login ssh-keys \(add\|update\) " "$work/st
 rm "$work/bin/gcloud"
 run register "$key" || fail "failed with no gcloud"
 grep -q "^<4>.*no gcloud" "$work/said" || fail "didn't warn there's no gcloud"
+
+left=$(ls -A "$work/shared")
+[[ -z $left ]] || fail "made a file in the temporary folder"
+compgen -G "$work/.os-login-sent.*" >/dev/null && fail "left a copy of the line behind"
 
 exit "$fails"

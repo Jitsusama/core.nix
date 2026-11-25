@@ -128,7 +128,7 @@
       offStart = lib.head (lib.toList off.systemd.user.services.pi-agent-proxy.Service.ExecStart);
       wired =
         holds "pi-agent-proxy-reaches-os-login-machines-wired"
-          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written and as the desktop starts, renewed each quarter hour by the wall clock within a bound, retried on failure in growing steps without ever giving up, or removed as it stops, its renewal is ordered after the proxy, which makes a cycle at login, is registered or renewed while the proxy isn't running, may dump or swap its memory, or the machine's ssh doesn't offer it to compute.* hosts alone."
+          "pi's SSH agent proxy makes no OS Login key from gcloud's known hosts by default, or one with them null, isn't started with the session, its key isn't registered when written and as the desktop starts, renewed each quarter hour by the wall clock within a bound, retried on failure in growing steps without ever giving up, or removed as it stops, its renewal is ordered after the proxy, which makes a cycle at login, is registered or renewed while the proxy isn't running, may dump or swap its memory, or the machine's ssh config doesn't name it for compute.* hosts alone."
           (
             lib.hasInfix "--os-login %t/pi-agent --os-login-hosts %h/.ssh/google_compute_known_hosts" start
             && lib.toList proxy.Install.WantedBy == [ "default.target" ]
