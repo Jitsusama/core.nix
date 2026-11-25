@@ -86,7 +86,7 @@ KEYS = {
 
 
 def cut(said: str) -> str:
-    """A report as a failed wait names it, saying how much was cut off its end, if any."""
+    """Give a report as a failed wait names it, saying how much was cut off its end, if any."""
     if len(said) <= LATEST_LONGEST:
         return said
     return f"{said[:LATEST_LONGEST]}... ({len(said) - LATEST_LONGEST} characters more)"
