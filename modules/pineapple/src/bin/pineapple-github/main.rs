@@ -598,7 +598,7 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     // read from an hour before what it reaches, so his stop from then is
     // told of. Each thread is judged from one time and read from another.
     let mine = how.authored_by.is_none();
-    let hits = mine.then(|| own.search(github, &how.site, &login));
+    let hits = mine.then(|| own.search(github, &how.site, &login, began));
     let reach = own.reach();
     let mut threads: Vec<(Thread, u64, u64)> = Vec::new();
     for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {

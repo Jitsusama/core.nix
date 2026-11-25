@@ -112,9 +112,12 @@ impl Searched {
     /// word and changed since they were last read, as a search finds
     /// them. One that fails doesn't cost what notified him: it's searched
     /// from as far back next round. One GitHub cuts short is followed by
-    /// one of what changed before the oldest it gave, up to [`SEARCHES`].
-    pub(super) fn search(&self, github: &GitHub<'_>, site: &str, login: &str) -> Found {
+    /// one of what changed before the oldest it gave, up to [`SEARCHES`];
+    /// what they leave out, the journal says, is searched again only from
+    /// where a round that `began` then moves on to reaches.
+    pub(super) fn search(&self, github: &GitHub<'_>, site: &str, login: &str, began: u64) -> Found {
         let reach = github::stamp(self.reach());
+        let next = github::stamp(began.saturating_sub(OWN_LAG).max(self.floor));
         let mut found = Found {
             threads: Vec::new(),
             seen: HashMap::new(),
@@ -147,8 +150,8 @@ impl Searched {
                 Err(Unread::Gone(why) | Unread::Failed(why)) => {
                     eprintln!(
                         "<4>couldn't search {} for what Joel said changed {changed}, so threads \
-                         the search before left out are searched again only from where the next \
-                         round reaches: {why}",
+                         the search before left out are searched again only from {next}, where \
+                         the next round reaches: {why}",
                         github.name
                     );
                     return found;
@@ -170,19 +173,29 @@ impl Searched {
             if u64::try_from(gave).is_ok_and(|gave| gave >= all) {
                 return found;
             }
-            match oldest {
-                Some(oldest) if searching < SEARCHES => before = Some(oldest),
-                oldest => {
-                    let oldest = oldest.unwrap_or_else(|| reach.clone());
-                    eprintln!(
-                        "<4>{}'s search for what Joel said found {all} but gave {gave}, back to \
-                         {oldest}, so threads it left out, changed from {reach} to then, are \
-                         searched again only from where the next round reaches",
-                        github.name
-                    );
-                    return found;
-                }
+            // A later search giving nothing it can read left out all it
+            // searched, up to when the one before was cut short.
+            let Some(oldest) = oldest.or_else(|| before.clone()) else {
+                // The first can't say how far it got, so it holds, as
+                // one that fails does, rather than skip all it found.
+                eprintln!(
+                    "<4>{}'s search for what Joel said found {all} but gave {gave}, none it \
+                     could read, so it's searched from {reach} again next round",
+                    github.name
+                );
+                found.answered = false;
+                return found;
+            };
+            if searching == SEARCHES {
+                eprintln!(
+                    "<4>{}'s search for what Joel said found {all} but gave {gave}, back to \
+                     {oldest}, so threads it left out, changed from {reach} to then, are \
+                     searched again only from {next}, where the next round reaches",
+                    github.name
+                );
+                return found;
             }
+            before = Some(oldest);
         }
         found
     }

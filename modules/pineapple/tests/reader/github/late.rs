@@ -5,7 +5,9 @@
 //! start judged and to how far back a failed search held it, which a site
 //! read by what Joel opened never searches, so keeps nothing of; a search
 //! cut short is followed by one of what changed before the oldest it
-//! gave, and moves on, saying what it left unread when that's cut too.
+//! gave, and moves on, saying what it left unread when that's cut too,
+//! and from when it's searched again, unless the first gives none it can
+//! read, which holds.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -31,6 +33,16 @@ const QUOTED: &str = "github:example/shop#12:comment:6";
 /// however far back it's asked from, as GitHub gives a review.
 const LONG_AGO: &str = "github:example/shop#12:comment:7";
 
+/// From when a search of what changed since a time searches, as `line`
+/// asks it of the stand-in.
+fn searched_from(line: &str) -> Option<String> {
+    // ISO stamps of one form sort as the times they name.
+    line.split("updated%3A%3E%3D")
+        .nth(1)
+        .and_then(|rest| rest.split(['&', ' ']).next())
+        .map(|from| from.replace("%3A", ":"))
+}
+
 /// Where only Joel spoke, on example/shop#12, `ago` seconds back: no
 /// notification, and a search finding it, or where GitHub indexed it
 /// `late`, only when asked from at or before then, as its search does.
@@ -39,13 +51,7 @@ fn only_joel_spoke_ago(line: &str, now: u64, ago: u64, late: bool) -> Value {
         return json!([]);
     }
     if line.contains(" /search/issues?") {
-        // ISO stamps of one form sort as the times they name.
-        let from = line
-            .split("updated%3A%3E%3D")
-            .nth(1)
-            .and_then(|rest| rest.split(['&', ' ']).next())
-            .map(|from| from.replace("%3A", ":"));
-        if !late || from.is_some_and(|from| from <= stamp(now - ago)) {
+        if !late || searched_from(line).is_some_and(|from| from <= stamp(now - ago)) {
             return json!({"items": [{"number": 12, "pull_request": {},
                 "repository_url": "https://api.example.com/repos/example/shop"}]});
         }
@@ -358,6 +364,24 @@ fn cut_then_failing(line: &str, now: u64) -> Value {
     searched_short(line, now, &CUT_FAILING, None)
 }
 
+/// A search cut short that gives no thread it can read.
+fn cut_unreadable(line: &str, now: u64) -> Value {
+    if line.contains(" /search/issues?") {
+        return json!({"total_count": 3, "items": []});
+    }
+    if line.contains(" /notifications?") {
+        return json!([]);
+    }
+    answer_with(line, now, &[])
+}
+
+/// Where the round after the one that searched `searched` reaches, as its
+/// first search names it, which the journal says what's left out is
+/// searched again from.
+fn next_reach(searched: &[String]) -> String {
+    searched_from(&searched[2]).expect("the next round searches from a time")
+}
+
 /// How many times the comments of example/shop#`number` were asked for.
 fn read(asked: &Mutex<Vec<String>>, number: u64) -> usize {
     let comments = format!(" /repos/example/shop/issues/{number}/comments?");
@@ -402,7 +426,7 @@ fn github_a_search_cut_short_reads_what_changed_before_its_oldest_and_moves_on()
     );
     let said = journal(&home);
     assert!(
-        !said.contains("searched again only from where the next round reaches"),
+        !said.contains(", where the next round reaches"),
         "a search of what's older that's whole leaves nothing unread: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
@@ -424,15 +448,16 @@ fn github_a_search_cut_short_twice_says_what_it_left_unread_and_moves_on() {
     let reach = stamp(last - 3600);
     let oldest = stamp(CUT_TWICE.load(Ordering::SeqCst) - 500);
     let said = journal(&home);
+    let searched = searches(&asked);
+    let next = next_reach(&searched);
     let left = format!(
         "found 5 but gave 2, back to {oldest}, so threads it left out, changed from {reach} \
-         to then, are searched again only from where the next round reaches"
+         to then, are searched again only from {next}, where the next round reaches"
     );
     assert!(
         said.contains(&left),
-        "the journal names what's left unread: {said}"
+        "the journal names what's left unread, and from when the next round searches: {said}"
     );
-    let searched = searches(&asked);
     assert!(
         searched[2].contains("updated%3A%3E%3D")
             && !searched[2].contains(&reach.replace(':', "%3A")),
@@ -463,15 +488,16 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
     let reach = stamp(last - 3600);
     let oldest = stamp(CUT_FAILING.load(Ordering::SeqCst) - 100);
     let said = journal(&home);
+    let searched = searches(&asked);
+    let next = next_reach(&searched);
     let failed = format!(
         "for what Joel said changed {reach}..{oldest}, so threads the search before left out \
-         are searched again only from where the next round reaches"
+         are searched again only from {next}, where the next round reaches"
     );
     assert!(
         said.contains(&failed),
-        "the journal names the search that failed: {said}"
+        "the journal names the search that failed, and from when the next searches: {said}"
     );
-    let searched = searches(&asked);
     assert!(
         searched[2].contains("updated%3A%3E%3D")
             && !searched[2].contains(&reach.replace(':', "%3A")),
@@ -483,6 +509,35 @@ fn github_a_search_of_whats_older_that_fails_says_so_and_moves_on() {
         (1, 1),
         "what the first search gave is read: {said}"
     );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_search_cut_short_giving_none_it_can_read_holds_its_reach() {
+    let (origin, asked) = answering(cut_unreadable);
+    let (home, last) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    let began = Instant::now();
+    while searches(&asked).len() < 2 {
+        assert!(began.elapsed() < PATIENCE, "it never searched twice");
+        thread::sleep(Duration::from_millis(50));
+    }
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let reach = stamp(last - 3600);
+    let searched = searches(&asked);
+    assert_eq!(
+        searched_from(&searched[1]),
+        Some(reach.clone()),
+        "a search that can't say how far it got holds, rather than skip all it found: \
+         {searched:?}"
+    );
+    let said = journal(&home);
+    let held = format!(
+        "found 3 but gave 0, none it could read, so it's searched from {reach} again next round"
+    );
+    assert!(said.contains(&held), "the journal says so: {said}");
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
