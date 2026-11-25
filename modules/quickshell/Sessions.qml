@@ -1613,7 +1613,8 @@ Singleton {
         const inUse = Niri.workspace()?.output ?? null;
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
-        const places = Places.placed(placeable, root.screensThere(), inUse,
+        const connectedNow = root.screensThere();
+        const places = Places.placed(placeable, connectedNow, inUse,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Its windows go back by the screen in use as its own sessions are
         // placed, and to the twin connectors they're given, not as a
@@ -1621,7 +1622,8 @@ Singleton {
         // took where the sessions' say nothing.
         if (puttingBack !== null && walk && !("inUse" in puttingBack)) {
             puttingBack.inUse = inUse;
-            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given);
+            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given,
+                connectedNow);
         }
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
