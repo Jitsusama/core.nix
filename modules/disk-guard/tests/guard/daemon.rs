@@ -1532,6 +1532,20 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
         "said no fill once its moment passed: {}",
         status.says
     );
+    // A time to Nix's floor goes the same way, since the broker passes it
+    // on as a moment still to come.
+    status.nix_floor = Some(100);
+    status.floor_at = Some(1960.0);
+    status.measured(&space, &bands, 1960.0, None);
+    assert_eq!(
+        status.floor_at, None,
+        "a disk above Nix's floor at its forecast's moment hasn't reached it"
+    );
+    assert!(
+        !status.says.contains("At this rate"),
+        "said no time to the floor once its moment passed: {}",
+        status.says
+    );
 }
 
 /// Above the free space Nix keeps, Nix collects before the disk fills, so

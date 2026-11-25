@@ -190,8 +190,18 @@ const GARBAGE: &str = "garbage";
 /// How often Nix's own `min-free` is read again, since a person changes
 /// their `nix.conf` seldom and asking costs a process.
 const MIN_FREE_EVERY: f64 = 3600.0;
-/// How soon a `min-free` that couldn't be read is asked again.
+/// How soon a `min-free` that couldn't be read is asked again, the first
+/// time; each failure after doubles it, up to `MIN_FREE_EVERY`.
 const MIN_FREE_AGAIN: f64 = 300.0;
+
+/// How soon `min-free` is asked again after `failures` reads in a row
+/// failed: five minutes, then ten, twenty and forty, then hourly. Each
+/// read can hold the guard's step for its 30 s timeout, so a Nix that
+/// stays slow is asked less and less rather than every five minutes.
+fn min_free_again(failures: u32) -> f64 {
+    let doublings = failures.saturating_sub(1).min(4);
+    (MIN_FREE_AGAIN * f64::from(1_u32 << doublings)).min(MIN_FREE_EVERY)
+}
 /// What linking the store's identical files is journaled and run as.
 const DEDUPE: &str = "dedupe";
 /// How long after a failed run linking the store's files the next waits.
@@ -504,6 +514,8 @@ pub struct Guard {
     listening: Arc<AtomicBool>,
     /// Nix's own `min-free`, and when it was read.
     min_free: Option<(f64, Option<u64>)>,
+    /// How many reads of `min-free` in a row have failed.
+    min_free_failures: u32,
     /// The account's home, which sentences write as `~`, for a guard run
     /// in one; the system's guard has none.
     home: Option<PathBuf>,
@@ -706,6 +718,11 @@ impl FilesystemStatus {
         if self.full_at.is_some_and(|at| at <= now) {
             self.full_at = None;
         }
+        // So does a time to Nix's floor, which the broker passes on as a
+        // moment still to come.
+        if self.floor_at.is_some_and(|at| at <= now) {
+            self.floor_at = None;
+        }
         self.says = crate::words::filesystem(&self.told(now), home);
     }
 
@@ -905,6 +922,7 @@ impl Guard {
             marked_at: None,
             listening: Arc::new(AtomicBool::new(false)),
             min_free: None,
+            min_free_failures: 0,
             home,
             freeze: None,
             disks: None,
@@ -2316,9 +2334,12 @@ impl Guard {
     }
 
     /// Reads Nix's own `min-free` once an hour. A read that fails keeps
-    /// the last one that didn't and is asked again in five minutes, since
-    /// the floor decides what a person is told: one slow `nix config show`
-    /// on a loaded Mac would otherwise tell its disk fills for an hour.
+    /// the last one that didn't and is asked again sooner, from five
+    /// minutes on (`min_free_again`), since the floor decides what a
+    /// person is told: one slow `nix config show` on a loaded Mac would
+    /// otherwise tell its disk fills for an hour. The first failure of a
+    /// run of them is logged, so a guard telling from an old floor says
+    /// why.
     fn read_min_free(&mut self, now: f64) {
         if self
             .min_free
@@ -2327,11 +2348,20 @@ impl Guard {
             return;
         }
         self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
-            Some(read) => (now, Some(read)),
-            None => (
-                now - MIN_FREE_EVERY + MIN_FREE_AGAIN,
-                self.min_free.and_then(|(_, kept)| kept),
-            ),
+            Ok(read) => {
+                self.min_free_failures = 0;
+                (now, Some(read))
+            }
+            Err(why) => {
+                if self.min_free_failures == 0 {
+                    eprintln!("disk-guard: reading Nix's min-free: {why}; keeping the last read");
+                }
+                self.min_free_failures = self.min_free_failures.saturating_add(1);
+                (
+                    now - MIN_FREE_EVERY + min_free_again(self.min_free_failures),
+                    self.min_free.and_then(|(_, kept)| kept),
+                )
+            }
         });
     }
 

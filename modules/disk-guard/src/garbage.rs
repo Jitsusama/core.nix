@@ -176,17 +176,17 @@ pub const NEAR_MIN_FREE_EVERY: Duration = Duration::from_mins(5);
 
 /// The `min-free` Nix is set to on this machine, in bytes: what a
 /// person's own `nix.conf` says, which the guard reads rather than
-/// repeats. None where Nix can't say, which leaves the guard to its bands.
-pub fn min_free(nix: &Path) -> Option<u64> {
+/// repeats. Why not where Nix can't say, which leaves the guard to its
+/// bands.
+pub fn min_free(nix: &Path) -> Result<u64, String> {
     let argv: Vec<&OsStr> = std::iter::once(nix.as_os_str())
         .chain(NIX_COMMAND.iter().map(OsStr::new))
         .chain(["config", "show", "min-free"].map(OsStr::new))
         .collect();
-    ran(&argv, Duration::from_secs(30), true)
-        .ok()?
-        .trim()
+    let said = ran(&argv, Duration::from_secs(30), true)?;
+    said.trim()
         .parse()
-        .ok()
+        .map_err(|error| format!("nix config show min-free said {:?}: {error}", said.trim()))
 }
 
 /// What the `nix` command needs to be told before any of the commands the
