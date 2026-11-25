@@ -55,7 +55,7 @@ BUDGET = Budget(files=20, kilobytes=423, elements=147)
 AGES = (40 * 60, 25 * 60, 10 * 60)
 # The newest murmur still in the air, which the lede quotes. Nearly every murmur a cell says
 # runs past the 140 characters the lede quotes before it trims, as this one does, so the lede
-# this draws is the one a first visit usually ends on.
+# this draws runs past the four lines its box holds on a phone, as a real one's does.
 NEWEST = (
     "Gulls are back on the breakwater, a week before the almanac said they would be, and "
     "they're nesting low on the seaward side where the spring tides reach the rocks."
