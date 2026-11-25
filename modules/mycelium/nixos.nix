@@ -12,11 +12,28 @@
 { config, lib, ... }:
 let
   cfg = config.jitsusama.mycelium;
+  # The accounts whose node is told to bind a socket in /run/mycelium, which
+  # the folder is made for only where it names the node's account.
+  apart = lib.attrNames (
+    lib.filterAttrs (_: user: (user.jitsusama.mycelium.agentsUid or null) != null) (
+      config.home-manager.users or { }
+    )
+  );
 in
 {
   imports = [ (import ./system.nix { inherit mycelium; }) ];
 
-  config = lib.mkIf (cfg.account != null) {
-    systemd.tmpfiles.rules = [ "d /run/mycelium 0755 ${cfg.account} root -" ];
-  };
+  config = lib.mkMerge [
+    (lib.mkIf (cfg.account != null) {
+      systemd.tmpfiles.rules = [ "d /run/mycelium 0755 ${cfg.account} root -" ];
+    })
+    {
+      # Without the folder the node refuses to start, so a machine that
+      # would build that node is refused here instead.
+      assertions = map (name: {
+        assertion = cfg.account == name;
+        message = "${name} sets jitsusama.mycelium.agentsUid, whose socket goes in /run/mycelium, which this system makes only for jitsusama.mycelium.account; set it to \"${name}\".";
+      }) apart;
+    }
+  ];
 }
