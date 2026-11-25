@@ -3344,7 +3344,7 @@
     holds, so the next boot can offer them back, in background.slice with the store's node, skipped
     where the harness isn't installed, and never on a Mac
   '';
-  pi-state-moves-before-its-hosts = ''
+  pi-state-moves-before-any-pi-starts = ''
     the harness's state that every pi reads as it starts, the mesh's folders, the quests' records,
     the run ledgers and the work tool's records of its trees, is each given a subvolume of its own
     as the account's manager starts, before every pi host of every realm and the node, and with no

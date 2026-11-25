@@ -16,7 +16,7 @@
   # The folders every pi reads as it starts move before any pi host and
   # the node start, whichever realms an account names, and its worktrees
   # don't move at all; an account naming no host still moves them.
-  pi-state-moves-before-its-hosts =
+  pi-state-moves-before-any-pi-starts =
     let
       pi = "${pkgs.emptyDirectory}/pi";
       node = "${pkgs.emptyDirectory}/node";
@@ -60,7 +60,7 @@
         && lib.elem "default.target" (lib.toList (unit.Install.WantedBy or [ ]));
       names = home: lib.attrNames home.systemd.user.services;
     in
-    holds "pi-state-moves-before-its-hosts"
+    holds "pi-state-moves-before-any-pi-starts"
       (
         "pi's start-up state doesn't move into subvolumes of its own before the pi hosts "
         + "and the node, or its worktrees move too."
