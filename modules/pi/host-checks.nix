@@ -346,21 +346,34 @@ in
       # The one refusal naming a realm, or none.
       prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
       refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
-      # Whether a realm's refusal names just these variables, as written,
-      # and speaks of one as it and of several as each; then names each of
-      # loadsCode again where it says how they load code, and where a
+      # Whether a realm's refusal names just these variables, each once in
+      # whatever order host.nix lists them, as "A", "A and B" or "A, B and
+      # C", and speaks of one as it and of several as each; then names each
+      # of loadsCode again where it says how they load code, and where a
       # command gets one instead. How each loads code is the message's to
       # word, so only its names are pinned.
       names =
-        realm: named:
+        realm: given:
         let
           refused = refusalOf realm;
-          one = !(lib.hasInfix " and " named);
-          head = "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make";
-          explained = lib.removePrefix head refused;
+          one = lib.length given == 1;
+          clears = ", which a pi host's unit clears: ${if one then "it" else "each"} could make";
+          parts = lib.splitString clears (lib.removePrefix (prefixOf realm) refused);
+          named = lib.head parts;
+          said = lib.splitString ", " (lib.replaceStrings [ " and " ] [ ", " ] named);
+          # The names said, laid out again as a list of them is written.
+          written =
+            if lib.length said < 2 then
+              lib.concatStrings said
+            else
+              "${lib.concatStringsSep ", " (lib.init said)} and ${lib.last said}";
+          explained = lib.concatStringsSep clears (lib.tail parts);
         in
         refused != null
-        && lib.hasPrefix head refused
+        && lib.hasPrefix (prefixOf realm) refused
+        && lib.length parts > 1
+        && named == written
+        && lib.sort lib.lessThan said == lib.sort lib.lessThan given
         && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
         && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
         && lib.hasSuffix " a command that needs one sets it itself." refused;
@@ -369,9 +382,16 @@ in
       "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, and say that a command needing one sets it itself."
       (
         refusalOf "plain" == null
-        && lib.all (name: names (realmOf name) name) loadsCode
-        && names "both" "LD_PRELOAD and OPENSSL_CONF"
-        && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"
+        && lib.all (name: names (realmOf name) [ name ]) loadsCode
+        && names "both" [
+          "LD_PRELOAD"
+          "OPENSSL_CONF"
+        ]
+        && names "three" [
+          "OPENSSL_MODULES"
+          "NODE_PATH"
+          "LD_AUDIT"
+        ]
       );
 
   # A Mac's hosts are launchd daemons run as its primary account, not agents,
