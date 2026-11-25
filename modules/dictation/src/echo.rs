@@ -158,6 +158,39 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
     echoes
 }
 
+/// PROBE, never merged: for each of Joel's `mine`, why it isn't taken for
+/// one of `theirs`' echo, or `None` where it is.
+pub fn kept_why(mine: &[Word], theirs: &[Word]) -> Vec<Option<&'static str>> {
+    let echoes = echoes_of(mine, theirs);
+    mine.iter()
+        .zip(echoes)
+        .map(|(word, echo)| {
+            if echo.is_some() {
+                return None;
+            }
+            let spelling = spelled(&word.text);
+            let alike = |said: &&Word| !spelling.is_empty() && spelled(&said.text) == spelling;
+            let near = |said: &&Word| {
+                said.at <= word.at + LEAD && word.at <= said.at + LAG
+            };
+            let within = |said: &&Word| {
+                said.at <= word.at + 2 * RATE && word.at <= said.at + 2 * RATE
+            };
+            Some(if theirs.iter().filter(alike).filter(near).any(|said| may_echo(word, said)) {
+                "lone"
+            } else if theirs.iter().filter(alike).any(|said| near(&said)) {
+                "louder"
+            } else if theirs.iter().filter(alike).any(|said| within(&said)) {
+                "timing"
+            } else if theirs.iter().any(|said| within(&said)) {
+                "unspelled"
+            } else {
+                "alone"
+            })
+        })
+        .collect()
+}
+
 /// Some of Joel's words cut from a line of his as the others' echo: the
 /// line's index, when the first was heard, how long after its word of
 /// theirs, in samples, and what they say.

@@ -137,6 +137,59 @@ pub fn hear_side(
 }
 
 /// Joel's lines of `lines` that are written, by when each starts.
+/// PROBE, never merged: why each of Joel's words written down is kept
+/// rather than taken for an echo, counted apart for those said while only
+/// the far end speaks, which are most likely echo, and the rest.
+fn probe(
+    name: &str,
+    mine: &str,
+    reference: &[Said],
+    lines: &[Line],
+    cut: &[Line],
+    word_times: &HashMap<usize, Vec<Word>>,
+) {
+    let mut theirs: Vec<Word> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.side == Side::Theirs)
+        .filter_map(|(index, _)| word_times.get(&index))
+        .flatten()
+        .cloned()
+        .collect();
+    theirs.sort_by_key(|word| word.at);
+    let speaks = |side: Side, at: f64| {
+        reference.iter().any(|line| {
+            whose(line, mine) == side && line.start - AROUND <= at && at <= line.end + AROUND
+        })
+    };
+    let mut stray: HashMap<&str, usize> = HashMap::new();
+    let mut own: HashMap<&str, usize> = HashMap::new();
+    for (index, line) in cut.iter().enumerate() {
+        if line.side != Side::Mine || line.text.is_empty() || echo::echoes(line, cut) {
+            continue;
+        }
+        let Some(heard) = word_times.get(&index) else {
+            continue;
+        };
+        for (word, why) in heard.iter().zip(echo::kept_why(heard, &theirs)) {
+            let Some(why) = why else { continue };
+            #[expect(clippy::cast_precision_loss, reason = "a probe")]
+            let at = word.at as f64 / RATE as f64;
+            let tally = if !speaks(Side::Mine, at) && speaks(Side::Theirs, at) {
+                &mut stray
+            } else {
+                &mut own
+            };
+            *tally.entry(why).or_default() += 1;
+        }
+    }
+    for (kind, tally) in [("while only they speak", &stray), ("the rest", &own)] {
+        let mut counts: Vec<_> = tally.iter().collect();
+        counts.sort();
+        println!("PROBE {name} Joel's words kept {kind}: {counts:?}");
+    }
+}
+
 fn joels(lines: &[Line]) -> Vec<&Line> {
     let mut own: Vec<&Line> = lines
         .iter()
@@ -238,6 +291,7 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             taken.text
         );
     }
+    probe(name, mine, reference, &lines, &cut, &word_times);
     let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
     for side in [Side::Mine, Side::Theirs] {
         let heard: Vec<String> = written
