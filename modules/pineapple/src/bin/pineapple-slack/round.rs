@@ -47,8 +47,9 @@ pub(super) struct Reader {
 /// second ask agreed with in full, any other only for a stop, which may
 /// come from anyone, never for a resume a writer could type. One search
 /// unasked leaves the round counted neither way, though the other's
-/// messages are judged. Either way the next round asks both again, with
-/// no rest a poster could stretch.
+/// messages are judged, unless the other's answer can't be read, which
+/// is said as that search deaf. Either way the next round asks both
+/// again, with no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -103,6 +104,16 @@ pub(super) fn round(
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
         (Ok(phrase), Err(tagged)) if tagged == unread => (phrase, Vec::new(), Some(Search::Tag)),
         (Err(phrase), Ok(tagged)) if phrase == unread => (Vec::new(), tagged, Some(Search::Phrase)),
+        // One unasked, as one waiting on a later page is for rounds on
+        // end, mustn't hold back Joel's row on the other, which can't be
+        // read; it's counted as heard for that row, having read nothing
+        // new of it.
+        (Err(phrase), Err(Round::Unasked)) if phrase == unread => {
+            (Vec::new(), Vec::new(), Some(Search::Phrase))
+        }
+        (Err(Round::Unasked), Err(tagged)) if tagged == unread => {
+            (Vec::new(), Vec::new(), Some(Search::Tag))
+        }
         (phrase, tagged) => {
             let failed = [phrase.err(), tagged.err()];
             // What was judged of an answer it couldn't read is kept, and
@@ -114,8 +125,8 @@ pub(super) fn round(
                 }
             }
             // A refusal is said first, then a sign-in none could give.
-            // One search unasked, its network blinking, says nothing new
-            // of the other, so only both unread are told as both.
+            // Both unasked, or one beside the other's refused sign-in,
+            // say nothing new, so only both unread are told as both.
             return [
                 Round::Deaf(Deafness::Refused),
                 Round::Deaf(Deafness::NoSignIn),

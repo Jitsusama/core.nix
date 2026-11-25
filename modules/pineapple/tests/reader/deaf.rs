@@ -1,7 +1,8 @@
 //! pineapple-slack telling Joel in For You when it can't hear Slack: a
 //! sign-in Slack refuses, or none to read, writes the row, hearing Slack
 //! again takes it away, a row that couldn't be written is written once it
-//! can be, and a Slack that can't be reached writes none.
+//! can be, and a Slack that can't be reached writes none, though what the
+//! search it did answer found is judged.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,7 +13,10 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use super::keyring::reading_with_keyring;
-use super::{Answered, PATIENCE, answer, answering_whole, home, journal, reader, reading};
+use super::{
+    Answered, PATIENCE, answer, answering_whole, decisions, home, journal, marked, reader, reading,
+    until_decided,
+};
 
 /// Where For You reads what the safe word waits on Joel for.
 fn waiting(home: &Path) -> PathBuf {
@@ -283,6 +287,51 @@ fn a_row_that_couldnt_be_written_is_told_once_it_can_be() {
     assert!(
         told && says(&row, "Slack refused the safe word's sign-in"),
         "and made again once it can, rather than counted as told: {row}"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_stop_the_phrase_finds_is_judged_while_slack_rate_limits_the_tag_search() {
+    let (origin, _) = answering_whole(|line, now| {
+        if line.contains("search.messages") && !line.contains("query=pineapple") {
+            Answered::ok(json!({"ok": false, "error": "ratelimited"}))
+        } else {
+            Answered::ok(answer(line, now))
+        }
+    });
+    let home = home();
+    let mut reader = reader(&home, &origin);
+    until_decided(&home, 1);
+    // What it judged is kept once the round ends.
+    let kept = || -> Value {
+        std::fs::read_to_string(home.join("state/pineapple/judged.json"))
+            .ok()
+            .and_then(|kept| serde_json::from_str(&kept).ok())
+            .unwrap_or_default()
+    };
+    let began = Instant::now();
+    while !kept()["newest"]["pineapple"].is_string() && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+
+    assert!(
+        decisions(&home)
+            .iter()
+            .any(|said| said["verdict"] == "stop"),
+        "the phrase's stop is judged though the tag's search isn't answered: {}",
+        journal(&home)
+    );
+    let kept = kept();
+    assert!(
+        kept["newest"]["pineapple"].is_string() && marked(&home, "judged.json").is_none(),
+        "the phrase's search has read as far as it judged, and Slack isn't read whole: {kept}"
+    );
+    assert!(
+        !waiting(&home).exists(),
+        "a rate limit is nothing Joel can mend"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

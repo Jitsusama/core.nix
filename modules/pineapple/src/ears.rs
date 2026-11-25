@@ -35,11 +35,15 @@ const CUTS: usize = 4;
 /// gap: five of twenty is a hundred messages since.
 const PAGES: usize = 5;
 
-/// How many rounds in a row a search's later page may go unanswered, each
-/// counted neither way, before it's a gap: ten at the reader's 30 seconds
-/// is five minutes. A stop that page hides is unheard either way, so only
-/// Joel's warning waits, while a gateway shedding a burst of pages has
-/// the time to answer them again.
+/// The round in a row whose unanswered later page makes a search's gap,
+/// the nine before it each counted neither way: at the reader's 30
+/// seconds about five minutes when the page fails at once, and twice that
+/// when each times out, so it's counted in rounds. What that page showed
+/// before it failed is still judged for a stop, and only Joel's warning
+/// waits, while a gateway shedding a burst of pages has the time to
+/// answer them again. A round whose first page goes unanswered neither
+/// counts nor ends the row; one that reads back to the last read, or on
+/// past the gap, does.
 const UNANSWERED: u32 = 10;
 
 /// Why a search's pages don't reach back to the last read.
@@ -152,9 +156,9 @@ impl Ears for Api<'_> {
 /// between the two goes unread, up to [`PAGES`] pages. Short of it, or
 /// with a page that can't be read, it's deaf until Joel's row says that
 /// search can't be read and a row of its own names what it leaves unread,
-/// and is then read on past it. A page that goes unanswered counts
-/// neither way until it has [`UNANSWERED`] rounds in a row, and then is
-/// one such gap. What an answer it can't read, or whose page went
+/// and is then read on past it. A later page that goes unanswered counts
+/// neither way, until the [`UNANSWERED`]th round in a row makes it one
+/// such gap. What an answer it can't read, or whose page went
 /// unanswered, gave is kept for the round ([`Unread`]), so a stop in it
 /// isn't lost while the search is deaf or waits.
 pub struct Through {
@@ -309,7 +313,16 @@ impl Through {
             };
             cuts.push(given.to_string());
             asked = given;
-            answer = self.newest(query, asked, before)?;
+            // What it gave before an ask went unanswered is kept for its
+            // stops, as an answer that can't be read is.
+            answer = match self.newest(query, asked, before) {
+                Ok(answer) => answer,
+                Err(round) => {
+                    gave.sort_by_key(|message| slack::micros(&message.ts));
+                    self.unagreed(query, gave);
+                    return Err(round);
+                }
+            };
             for message in gateway::given(&answer) {
                 if !gave.contains(&message) {
                     gave.push(message);
@@ -335,7 +348,13 @@ impl Through {
             }
         };
         if let Some(fewer) = found.len().checked_sub(1).filter(|fewer| *fewer > 0) {
-            let again = self.newest(query, fewer, before)?;
+            let again = match self.newest(query, fewer, before) {
+                Ok(again) => again,
+                Err(round) => {
+                    self.unagreed(query, found);
+                    return Err(round);
+                }
+            };
             let why = match gateway::found(&again) {
                 Err(why) => Some(format!("then asked for one fewer, {why}")),
                 Ok(again) if again[..] != found[1..] => Some(format!(
@@ -456,13 +475,20 @@ impl Through {
     /// Whether a search for `query` whose later page went unanswered, as
     /// `short` says, waits for it: counted neither way, with what its
     /// pages gave, `found`, kept for the round to judge, so a stop on its
-    /// first page is heard every round. Once [`UNANSWERED`] rounds in a
-    /// row it's a gap, why it's short in `short`.
+    /// first page is heard every round. On the [`UNANSWERED`]th round in
+    /// a row, or with the search in a gap already, it's a gap, why it's
+    /// short in `short`; a round whose pages answer ends the row.
     fn waits(&mut self, query: &str, found: &[Message], short: &mut Option<Short>) -> bool {
         let Some(Short::Unanswered(why)) = short.as_ref() else {
             self.unanswered.remove(query);
             return false;
         };
+        // A gap, told or yet to be, is no blink: it stays one until it's
+        // read on, so Joel's row isn't held back.
+        if self.gaps.contains_key(query) {
+            *short = Some(Short::Gap(why.clone()));
+            return false;
+        }
         let rounds = self.unanswered.entry(query.to_owned()).or_default();
         *rounds = rounds.saturating_add(1);
         let rounds = *rounds;
@@ -482,6 +508,15 @@ impl Through {
         self.unread
             .insert(query.to_owned(), Unread { agreed, unagreed });
         true
+    }
+
+    /// That the search for `query` read back to the last read, or on past
+    /// its gap: its gap, whether Joel's row told of it, and its row of
+    /// unanswered rounds all end.
+    fn caught_up(&mut self, query: &str) {
+        self.gaps.remove(query);
+        self.told.remove(query);
+        self.unanswered.remove(query);
     }
 }
 
@@ -537,7 +572,7 @@ impl Ears for Through {
         if self.waits(query, &found, &mut short) {
             return Err(Round::Unasked);
         }
-        if let Some(Short::Gap(short) | Short::Unanswered(short)) = short {
+        if let Some(Short::Gap(short)) = short {
             let oldest = found.first().map(|message| message.ts.clone());
             let unheard = format!(
                 "back to {:?}, it leaves unread what was said from a minute before {back_to} to \
@@ -593,8 +628,7 @@ impl Ears for Through {
                  the newest {asked}, back to the last read, at {back_to}"
             );
         }
-        self.gaps.remove(query);
-        self.told.remove(query);
+        self.caught_up(query);
         Ok(found)
     }
 
@@ -620,4 +654,45 @@ fn inner(said: &str, key: &str) -> String {
         .ok()
         .and_then(|value| value.get(key).and_then(Value::as_str).map(str::to_owned))
         .unwrap_or_else(|| said.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+
+    use super::{Gateway, Short, Skipped, Through, UNANSWERED};
+
+    /// Ears through a gateway nothing asks.
+    fn through() -> Through {
+        let gateway = Gateway::new("http://127.0.0.1:9", OsStr::new("true"));
+        Through::new(gateway, Box::new(|_: &str, _: Skipped| true))
+    }
+
+    /// Whether `through` waits on a round its search's later page goes
+    /// unanswered.
+    fn waits(through: &mut Through) -> bool {
+        let mut short = Some(Short::Unanswered(
+            "its page before 1 goes unanswered".into(),
+        ));
+        through.waits("tag", &[], &mut short)
+    }
+
+    #[test]
+    fn a_page_that_answers_or_a_gap_read_on_starts_the_row_again() {
+        let mut through = through();
+        for _ in 2..UNANSWERED {
+            assert!(waits(&mut through), "eight rounds in a row wait");
+        }
+        assert!(!through.waits("tag", &[], &mut None), "its pages answer");
+        assert!(
+            (1..UNANSWERED).all(|_| waits(&mut through)),
+            "once its pages answer, nine rounds in a row wait again"
+        );
+        assert!(!waits(&mut through), "the tenth in a row is a gap");
+        through.caught_up("tag");
+        assert!(
+            waits(&mut through),
+            "read on past the gap, the next page unanswered waits again"
+        );
+    }
 }
