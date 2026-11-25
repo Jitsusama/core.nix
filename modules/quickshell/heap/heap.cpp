@@ -333,8 +333,12 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
+        // A chunk the kernel won't say the pages of has none free, so free is
+        // unknown whenever resident is, rather than nothing.
         {QStringLiteral("free"),
-         megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},
+         resident ? megabytes(freePages(manager->blockAllocator) +
+                              freePages(manager->icAllocator))
+                  : -1.0},
     };
 }
 

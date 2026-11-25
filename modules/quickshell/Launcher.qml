@@ -12706,7 +12706,7 @@ Scope {
         const resident = weight.resident < 0 ? "an unknown amount"
             : `${Math.round(weight.resident)} MB`;
         const outside = Math.round(weight.outside);
-        const free = Math.round(weight.free);
+        const free = weight.free < 0 ? "an unknown amount" : `${Math.round(weight.free)} MB`;
         const chunks = Math.round(weight.chunks);
         const reachedChunks = Math.round(reached.chunks);
         const chunksAt = Math.round(reached.collectsAt);
@@ -12714,7 +12714,7 @@ Scope {
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
-            + ` held, ${resident} of it resident, ${free} MB of it in free pages,`
+            + ` held, ${resident} of it resident, ${free} of it in free pages,`
             + ` ${outside} MB outside, chunks`
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
