@@ -358,6 +358,11 @@ function opened(act, commandOf, words) {
     return { run: null, why: (words.missing ?? "").replace("{program}", act.program ?? "") };
 }
 
+// The key a served row is made with: its thing, else its key.
+function keyMade(row, key) {
+    return row.thing ?? key;
+}
+
 // Whether an ask shuts the launcher as it's asked, as a paste does, so the
 // keys go back to the window under it before the daemon presses any.
 function closes(act) {
