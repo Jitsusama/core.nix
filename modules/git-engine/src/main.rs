@@ -154,8 +154,8 @@ impl Engine {
                 eprintln!("git-engine: can't answer for {}: {error}", key.display());
                 // Whatever went wrong may have been read part-way; start
                 // this repository afresh next time, all but its objects,
-                // whose store keeps only what it read whole and the marks
-                // on copies whose own bytes won't read.
+                // whose store keeps only what it read whole and its marks,
+                // each passing as `Lasts` says.
                 if let Some(repo) = self.repos.remove(&key) {
                     self.kept.insert(key, repo.into_odb());
                 }
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_whose_object_wouldnt_read_is_peeled_again_by_the_next_answer() {
+    fn a_tag_whose_object_wouldnt_read_settles_till_its_object_is_written() {
         let dir = repository("unpeeled");
         let (commit, tag) = ([9; 20], [10; 20]);
         std::fs::write(
@@ -586,9 +586,10 @@ mod tests {
             format!("{}\n", hash::Oid(tag).hex()),
         )
         .unwrap();
-        // The annotated tag's object, loose and first not zlib at all, then
-        // rewritten whole, which moves none of the stamps the tags are
-        // kept on.
+        // The annotated tag's object, loose and first not zlib at all; then
+        // rewritten in place, which moves no stamp, so the tags settled on
+        // the first answer aren't read again; then written as git writes
+        // one, renamed into its folder, which moves the folder's stamp.
         let hex = hash::Oid(tag).hex();
         let loose = dir.join(".git/objects").join(&hex[..2]);
         std::fs::create_dir_all(&loose).unwrap();
@@ -610,15 +611,16 @@ mod tests {
             object.as_bytes(),
         ]
         .concat();
-        std::fs::write(
-            loose.join(&hex[2..]),
-            miniz_oxide::deflate::compress_to_vec_zlib(&raw, 1),
-        )
-        .unwrap();
+        let zlib = miniz_oxide::deflate::compress_to_vec_zlib(&raw, 1);
+        std::fs::write(loose.join(&hex[2..]), &zlib).unwrap();
+        let settled = tag_said();
+        std::fs::write(loose.join("written"), &zlib).unwrap();
+        std::fs::rename(loose.join("written"), loose.join(&hex[2..])).unwrap();
         assert_eq!(
-            (unread, tag_said()),
-            (Some(String::new()), Some("v1".into())),
-            "a tag whose object wouldn't read was named, or stayed unpeeled once it read"
+            (unread, settled, tag_said()),
+            (Some(String::new()), Some(String::new()), Some("v1".into())),
+            "a tag whose object wouldn't read was named, was read again with nothing \
+             moved, or stayed unpeeled once its object was written"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

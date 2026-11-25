@@ -273,18 +273,20 @@ impl Store {
 
 #[cfg(test)]
 thread_local! {
-    /// How many bytes this thread's objects and deltas may grow to before
-    /// more is refused, as an allocator out of memory would refuse it,
-    /// which the tests set since nothing here asks for more than they can
-    /// give.
+    /// How many bytes this thread's objects and deltas may hold at once,
+    /// what a growth held and what it grows to both, as an allocator moving
+    /// it would hold them, before more is refused, as an allocator out of
+    /// memory would refuse it, which the tests set since nothing here asks
+    /// for more than they can give.
     static STARVED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
-/// The memory an object or delta was refused: what was growing, and the
-/// bytes it would have held, which a mark it leaves waits for.
+/// The memory an object or delta was refused: what was growing, the bytes
+/// it held and those it would have held, which a mark it leaves waits for.
 #[derive(Debug)]
 struct Starved {
     what: &'static str,
+    held: usize,
     total: usize,
 }
 
@@ -300,15 +302,26 @@ impl std::error::Error for Starved {}
 /// and the bytes it would then hold should the memory not be there.
 fn reserve(out: &mut Vec<u8>, more: usize, what: &'static str) -> io::Result<()> {
     let total = out.len().saturating_add(more);
-    let refused = || io::Error::new(io::ErrorKind::OutOfMemory, Starved { what, total });
+    let held = out.capacity();
+    let refused = || io::Error::new(io::ErrorKind::OutOfMemory, Starved { what, held, total });
     #[cfg(test)]
-    if STARVED
-        .with(std::cell::Cell::get)
-        .is_some_and(|cap| total > cap)
+    if total > held
+        && STARVED
+            .with(std::cell::Cell::get)
+            .is_some_and(|cap| held.saturating_add(total) > cap)
     {
         return Err(refused());
     }
     out.try_reserve_exact(more).map_err(|_| refused())
+}
+
+/// Whether what holds `held` bytes could grow to `total` now: the climb a
+/// copy was refused, asked again as it was refused, since growing what's
+/// held can be refused where as much from nothing is given. Nothing is
+/// written, so nothing is touched but what the allocator lends.
+fn room_for(held: usize, total: usize) -> bool {
+    let mut probe = Vec::new();
+    reserve(&mut probe, held, "room").is_ok() && reserve(&mut probe, total, "room").is_ok()
 }
 
 /// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
@@ -373,6 +386,31 @@ fn grow_toward(out: &mut Vec<u8>, size: usize) -> io::Result<()> {
     Ok(())
 }
 
+/// The size a delta says its base holds, or None where it can't be read,
+/// which is the delta's own fault.
+pub fn delta_base_size(delta: &[u8]) -> Option<usize> {
+    delta_size(delta, &mut 0).ok()
+}
+
+/// The size in `delta` at `at`, read past, refused once it would run past
+/// a word.
+fn delta_size(delta: &[u8], at: &mut usize) -> io::Result<usize> {
+    let mut value = 0usize;
+    let mut shift = 0;
+    loop {
+        let byte = *delta.get(*at).ok_or_else(|| invalid("delta size"))?;
+        if shift > usize::BITS - 7 {
+            return Err(invalid("delta size"));
+        }
+        *at += 1;
+        value |= usize::from(byte & 0x7f) << shift;
+        shift += 7;
+        if byte & 0x80 == 0 {
+            return Ok(value);
+        }
+    }
+}
+
 /// Applies a delta to its base.
 ///
 /// Its sizes are refused once they'd run past a word, and a command
@@ -381,24 +419,8 @@ fn grow_toward(out: &mut Vec<u8>, size: usize) -> io::Result<()> {
 /// than the size it says, and the bytes its commands give.
 pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     let mut at = 0;
-    let mut size = || -> io::Result<usize> {
-        let mut value = 0usize;
-        let mut shift = 0;
-        loop {
-            let byte = *delta.get(at).ok_or_else(|| invalid("delta size"))?;
-            if shift > usize::BITS - 7 {
-                return Err(invalid("delta size"));
-            }
-            at += 1;
-            value |= usize::from(byte & 0x7f) << shift;
-            shift += 7;
-            if byte & 0x80 == 0 {
-                return Ok(value);
-            }
-        }
-    };
-    let base_size = size()?;
-    let out_size = size()?;
+    let base_size = delta_size(delta, &mut at)?;
+    let out_size = delta_size(delta, &mut at)?;
     if base_size != base.len() {
         return Err(invalid("delta's base size"));
     }
@@ -500,11 +522,12 @@ enum Lasts {
     /// corrupt or its deltas running past their sizes, through a
     /// repository started afresh after an error too, which keeps its store.
     WhileThePacksHold,
-    /// Until this many bytes can be had, the memory the copy was refused.
-    /// Climbing back to a refusal costs what the climb cost the first
-    /// time, as much as a stream will inflate, so a copy that inflates
-    /// toward all the memory there is costs that once, not every answer.
-    UntilThereIsRoom(usize),
+    /// Until what held `held` bytes can grow to `total`, the memory the copy
+    /// was refused. Climbing back to a refusal costs what the climb cost
+    /// the first time, as much as a stream will inflate, so a copy that
+    /// inflates toward all the memory there is costs that once, not every
+    /// answer.
+    UntilThereIsRoom { held: usize, total: usize },
     /// That answer alone: an I/O error, or a fault that may be a base's
     /// found by name, which the next answer may find written or rewritten.
     ThisAnswer,
@@ -518,7 +541,10 @@ impl Mark {
             .get_ref()
             .and_then(|cause| cause.downcast_ref::<Starved>());
         let lasts = if let Some(starved) = starved {
-            Lasts::UntilThereIsRoom(starved.total)
+            Lasts::UntilThereIsRoom {
+                held: starved.held,
+                total: starved.total,
+            }
         } else if own && error.kind() == io::ErrorKind::InvalidData {
             Lasts::WhileThePacksHold
         } else {
@@ -615,9 +641,23 @@ impl Odb {
     pub fn forget_passing_marks(&mut self) {
         self.bad.retain(|_, mark| match mark.lasts {
             Lasts::WhileThePacksHold => true,
-            Lasts::UntilThereIsRoom(total) => reserve(&mut Vec::new(), total, "room").is_err(),
+            Lasts::UntilThereIsRoom { held, total } => !room_for(held, total),
             Lasts::ThisAnswer => false,
         });
+    }
+
+    /// The stamps that move once `oid` may read otherwise: the packs every
+    /// store watches, and the folder each store's loose copy of it would
+    /// lie in, which git renames a new object into.
+    pub fn stamps_of(&self, oid: &Oid) -> Stamps {
+        let hex = oid.hex();
+        let mut stamps = self.stamps.clone();
+        for store in &self.stores {
+            let folder = store.dir.join(&hex[..2]);
+            let stamp = Stamp::of(&folder);
+            stamps.push((folder, stamp));
+        }
+        stamps
     }
 
     /// The object, or None when no store here has it (a partial clone's
@@ -682,97 +722,10 @@ impl Odb {
     }
 }
 
-/// A tree's entries, in its own order.
-pub struct TreeEntry<'a> {
-    pub mode: u32,
-    pub name: &'a [u8],
-    pub oid: Oid,
-}
-
-pub fn tree_entries(data: &[u8]) -> io::Result<Vec<TreeEntry<'_>>> {
-    let mut out = Vec::new();
-    let mut at = 0;
-    while at < data.len() {
-        let space = data[at..]
-            .iter()
-            .position(|&b| b == b' ')
-            .ok_or_else(|| invalid("tree entry"))?;
-        let mode = std::str::from_utf8(&data[at..at + space])
-            .ok()
-            .and_then(|m| u32::from_str_radix(m, 8).ok())
-            .ok_or_else(|| invalid("tree mode"))?;
-        at += space + 1;
-        let nul = data[at..]
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| invalid("tree name"))?;
-        let name = &data[at..at + nul];
-        at += nul + 1;
-        let oid = Oid::from_slice(data.get(at..at + 20).ok_or_else(|| invalid("tree oid"))?)
-            .ok_or_else(|| invalid("tree oid"))?;
-        at += 20;
-        out.push(TreeEntry { mode, name, oid });
-    }
-    Ok(out)
-}
-
-/// What the engine reads from a commit.
-pub struct Commit {
-    pub tree: Oid,
-    pub parents: Vec<Oid>,
-    pub time: i64,
-    pub encoding: String,
-    pub summary: String,
-}
-
-pub fn parse_commit(data: &[u8]) -> io::Result<Commit> {
-    let mut tree = None;
-    let mut parents = Vec::new();
-    let mut time = 0;
-    let mut encoding = String::new();
-    let mut lines = data.split(|&b| b == b'\n');
-    let mut at = 0;
-    for line in lines.by_ref() {
-        at += line.len() + 1;
-        if line.is_empty() {
-            break;
-        }
-        if let Some(hex) = line.strip_prefix(b"tree ") {
-            tree = Oid::from_hex(hex);
-        } else if let Some(hex) = line.strip_prefix(b"parent ") {
-            parents.push(Oid::from_hex(hex).ok_or_else(|| invalid("commit parent"))?);
-        } else if let Some(who) = line.strip_prefix(b"committer ") {
-            // "Name <mail> 1700000000 +0000"
-            let close = who.iter().rposition(|&b| b == b'>').unwrap_or(0);
-            time = std::str::from_utf8(&who[close + 1..])
-                .ok()
-                .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|t| t.parse().ok())
-                .unwrap_or(0);
-        } else if let Some(name) = line.strip_prefix(b"encoding ") {
-            encoding = String::from_utf8_lossy(name).into_owned();
-        }
-    }
-    let message = data.get(at.min(data.len())..).unwrap_or_default();
-    // libgit2's summary: the first paragraph, its lines joined by spaces.
-    let text = String::from_utf8_lossy(message);
-    let summary = text
-        .lines()
-        .map(str::trim)
-        .skip_while(|line| line.is_empty())
-        .take_while(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    Ok(Commit {
-        tree: tree.ok_or_else(|| invalid("commit without a tree"))?,
-        parents,
-        time,
-        encoding,
-        summary,
-    })
-}
-
 mod chain;
+mod parse;
+
+pub use parse::{TreeEntry, parse_commit, tree_entries};
 
 #[cfg(test)]
 #[path = "odb_tests.rs"]

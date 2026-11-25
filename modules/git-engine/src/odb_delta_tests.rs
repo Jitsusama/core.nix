@@ -413,12 +413,14 @@ fn a_copy_marked_for_a_missing_base_stays_marked_until_its_answer_ends() {
 
 #[test]
 fn a_copy_stays_marked_while_the_packs_hold_only_for_its_own_bytes() {
-    let names = names(6);
+    let names = names(7);
     // The blob "a"; a delta placing it, saying its base is of two bytes;
     // the same delta naming it instead, found elsewhere; a delta naming it
-    // whose data won't inflate; a sound delta naming it; and a delta
-    // placing that one, saying its base is of three bytes, which is its
-    // own fault, being a hop past the base found by name.
+    // whose data won't inflate; a sound delta naming it; a delta placing
+    // that one, saying its base is of three bytes, which is its own fault,
+    // being a hop past the base found by name; and a delta naming it, of
+    // the one byte it holds, copying past that byte, its own fault over
+    // any base of the size it says.
     let mut entries = Entries::new();
     entries.push(blob(b"a"));
     entries.place_over(0, &appending(2, b'b'));
@@ -429,6 +431,7 @@ fn a_copy_stays_marked_while_the_packs_hold_only_for_its_own_bytes() {
     entries.push(broken);
     entries.push(named(names[0], &appending(1, b'd')));
     entries.place_over(4, &appending(3, b'e'));
+    entries.push(named(names[0], &[1, 1, 0x91, 5, 1]));
     let at: Vec<u64> = entries.starts.iter().map(|start| 12 + start).collect();
     let folders = packed(&names, &[entries.entries]);
     let mut odb = Odb::open(&folders.0[0]);
@@ -454,16 +457,19 @@ fn a_copy_stays_marked_while_the_packs_hold_only_for_its_own_bytes() {
                 (at[2], Lasts::ThisAnswer),
                 (at[3], Lasts::WhileThePacksHold),
                 (at[5], Lasts::WhileThePacksHold),
+                (at[6], Lasts::WhileThePacksHold),
             ],
             vec![
                 (at[1], Lasts::WhileThePacksHold),
                 (at[3], Lasts::WhileThePacksHold),
                 (at[5], Lasts::WhileThePacksHold),
+                (at[6], Lasts::WhileThePacksHold),
             ],
         ),
         "a delta's own corrupt bytes weren't marked while the packs hold, one applied \
-         over a base found by name was, for what may be the base's fault, or one a hop \
-         past that base was taken for the base's fault"
+         over a base found by name of another size than it says was, for what may be \
+         the base's fault, or one a hop past that base, or over a base of its size, was \
+         taken for the base's fault"
     );
 }
 

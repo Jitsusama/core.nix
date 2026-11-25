@@ -490,9 +490,18 @@ impl Repo {
             for _ in 0..8 {
                 let object = match self.odb.read(&oid) {
                     Ok(Some(object)) => object,
-                    Ok(None) => break,
-                    Err(_) => {
+                    // Refused memory, its copies are marked until there's
+                    // room, so asking again each answer costs their marks'
+                    // lookup, not an inflate, and peels it once there is.
+                    Err(error) if error.kind() == io::ErrorKind::OutOfMemory => {
                         whole = false;
+                        break;
+                    }
+                    // Missing, or not read, it stays unpeeled until a store
+                    // it could come from moves, rather than read again on
+                    // every answer.
+                    Ok(None) | Err(_) => {
+                        stamps.extend(self.odb.stamps_of(&oid));
                         break;
                     }
                 };

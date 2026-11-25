@@ -5,7 +5,9 @@
 //! into, each base took more than 2 KiB of stack, so a chain a pack may
 //! hold overflowed the 8 MiB a process's first thread has.
 
-use super::{CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, apply_delta, inflate_at, invalid};
+use super::{
+    CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, apply_delta, delta_base_size, inflate_at, invalid,
+};
 use crate::hash::Oid;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -118,10 +120,10 @@ impl Odb {
     /// its failure twice an answer. A copy refused memory is marked too,
     /// since only a stream truly inflating that far is refused it, and
     /// unpacking it on every find would cost the same each time. How long
-    /// a mark lasts is `Lasts`'s to say. A copy whose chain comes round to an object already being found, or runs past
-    /// `CHAIN_LIMIT`, may be sound under another copy of a base on the
-    /// way, so it's only passed over, for this find alone, and the next
-    /// copy read; a base spent with a copy passed over passes over the
+    /// a mark lasts is `Lasts`'s to say. A copy whose chain comes round to
+    /// an object already being found, or runs past `CHAIN_LIMIT`, may be
+    /// sound under another copy of a base on the way, so it's only passed
+    /// over, for this find alone, and the next copy read; a base spent with a copy passed over passes over the
     /// copy that named it in turn. Each copy is passed over at most once a
     /// find, so a find ends after reading each copy at most once, and a
     /// base spent ends each copy naming it after as it ended the first, so
@@ -329,8 +331,10 @@ impl Odb {
     /// nearest it up, each inflated as it's applied and each result below
     /// the object asked for kept as a base for the reads to come; or what
     /// refused it, and whether that's the copy's own fault. Applied over a
-    /// base found by `name` elsewhere, the first delta may fail for the
-    /// base's fault, which a loose base no stamp watches can mend.
+    /// base found by `name` elsewhere, the first delta fails for the base's
+    /// fault only where the base isn't the size the delta says, which a
+    /// loose base no stamp watches can mend; anything else it refuses, a
+    /// delta's own bytes refuse over any base of that size.
     fn apply(
         &mut self,
         search: &mut Search,
@@ -343,8 +347,10 @@ impl Odb {
             let (store, pack, _) = hop.place;
             let delta = inflate_at(&self.stores[store].packs[pack].data, hop.data, hop.size)
                 .map_err(|error| (error, true))?;
+            let base_blamed =
+                over_named && delta_base_size(&delta).is_some_and(|size| size != object.data.len());
             object.data =
-                apply_delta(&object.data, &delta).map_err(|error| (error, !over_named))?;
+                apply_delta(&object.data, &delta).map_err(|error| (error, !base_blamed))?;
             over_named = false;
             if search.depth() > 0 {
                 self.keep_base(hop.place, &object);
