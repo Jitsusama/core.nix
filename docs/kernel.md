@@ -114,14 +114,21 @@ The camera fix is for a built-in camera that took 40 seconds to open
 while memory was fragmented. Its capture buffers come from videobuf2's
 scattered allocator, which fills each buffer from the largest blocks it
 can get. For every piece it started again from the largest block size
-that fit and stepped down one size at a time. Every size that failed
-paid for compaction and reclaim first. So with no large blocks free, each
+that fit and stepped down one size at a time. Every size from 4 MiB down
+to 64 KiB that failed paid for compaction and reclaim first; larger ones
+fail at once, since the allocator keeps no block that large, and smaller
+ones were retried until they came. So with no large blocks free, each
 piece paid for every size again: on 23 November, under a load of 99, four
-16.9 MB buffers took 40 seconds in one call, nearly all of it compacting.
-The buffer needn't be contiguous, so the patch never asks again for a size
-that has failed, and asks for any block larger than a page without
-retrying, as the IOMMU's own allocator does. A buffer still gets single
-pages when nothing larger is free. Neither 7.3.4 nor mainline changes it.
+16.9 MB buffers took 40 seconds in one call. Of 15 seconds sampled, 12
+were system time, with compaction in the stacks. The buffer needn't be
+contiguous, so the patch never asks again for a size that has failed,
+starts no larger than the allocator's largest block, and asks for any
+block larger than a page without retrying, as the IOMMU's own allocator
+does: such a block still pays one round of reclaim and compaction, but
+no more. A buffer still gets single pages when
+nothing larger is free. The XPS 14's checks read the patched source for
+those three lines, since no test can fragment memory on cue to run them.
+Neither 7.3.4 nor mainline changes it.
 
 The hibernation fix is for a hibernated machine that showed nothing while it
 read its image back. The kernel freezes every process before it reads the

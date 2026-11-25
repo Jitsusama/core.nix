@@ -707,6 +707,12 @@
     them counted once each, a mistyped flag refused while --verbose isn't, and under --json no
     caution is said in words
   '';
+  camera-buffers-never-ask-twice-for-big-pages = ''
+    the XPS 14's patched videobuf2 scattered allocator never asks again for a block size that
+    failed, and asks for blocks above a page without retrying, keeping full effort for single
+    pages, read in the allocator's order: the failed size kept right after stepping down from
+    it, outside the loop over pieces, and each piece's size held to it before it's asked for
+  '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the
     builds' own filesystem, the disk guard collects there two levels down, and the machine
