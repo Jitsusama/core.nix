@@ -281,6 +281,9 @@ run "other host's"
 metrics_kept "with Chrome running on another host, whose processes can't be seen"
 caches_untouched "with Chrome running on another host"
 said "Chrome on elsewhere.example holds the profile" "with Chrome running on another host"
+# BrowserMetrics' own reason, which the caches' line doesn't share.
+said "holds the profile, whose processes can't be seen from here," \
+  "with Chrome running on another host, for its histograms"
 
 # A Chrome quitting, which has dropped its lock but still maps a file in
 # the profile, is waited for.
@@ -413,7 +416,12 @@ chmod +x "$work/holding/chrome"
 "$work/holding/chrome" "$profile/BrowserMetrics/index" &
 chrome=$!
 named "$chrome"
+started=$SECONDS
 until [ -e "/proc/$chrome/fd/3" ]; do
+  if ! kill -0 "$chrome" 2>/dev/null || [ $((SECONDS - started)) -gt 60 ]; then
+    echo "the stand-in Chrome never held its histograms' index open"
+    exit 1
+  fi
   # It opens the file a moment after it takes Chrome's name.
   sleep 0.1
 done
@@ -425,7 +433,8 @@ said "process $chrome, holds $profile/BrowserMetrics/index open" \
   "with a Chrome holding a file in it open"
 
 # A Chrome mapping a file in a folder whose name only begins with
-# BrowserMetrics doesn't keep BrowserMetrics on the disk.
+# BrowserMetrics doesn't keep BrowserMetrics on the disk: it holds the
+# whole-path match against one that takes a prefix for the folder.
 fill
 mkdir -p "$profile/BrowserMetrics-spare"
 cp "$BASH" "$profile/BrowserMetrics-spare/chrome"

@@ -257,6 +257,16 @@ while :; do
         using=$(open_in "$whole")
         [ -n "$using" ] || rm -rf -- "$left"
       done
+      # Another host's Chrome that took the profile during those looks maps
+      # what's on the disk where this can't see, so its lock is read again.
+      lock=$(holder)
+      case $lock in
+      "Chrome on "*)
+        echo "$lock took the profile as this ran, so $folder stays on the disk"
+        continue
+        ;;
+      *) ;;
+      esac
     else
       # The profile is asked about once a pass, and a held one keeps every
       # cache where it is while the marked folders after them still move.
