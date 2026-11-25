@@ -2739,6 +2739,15 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     again = shell.rows_made("emoji") - before - stepped
     assert again > 0, "closing kept every emoji the first step made, so the second made none"
     shell.close_launcher()
+
+
+def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
+    """A word typed into Super+E is found by the clipboard's history, its emoji first.
+
+    Each letter asks the history again (launcher/Emoji.qml's search), so the rows a word's first
+    letter found must give way to the word's own. It stands apart from the rows case above so
+    a quarantine of it excuses only this search, not the bounds on what Emoji makes.
+    """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
