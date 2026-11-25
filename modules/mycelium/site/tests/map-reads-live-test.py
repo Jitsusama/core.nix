@@ -1962,7 +1962,7 @@ WATCH_LONG = """() => {
 }"""
 # When the frame after the answer was painted, then the longest task from the key to then, once
 # the observer has had a task's turn to deliver what it saw.
-PAINTED = """async () => {
+KEY_PAINTED = """async () => {
   await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
   const painted = performance.now();
   await new Promise((done) => setTimeout(done, 100));
@@ -1987,7 +1987,7 @@ def answered_in(page: Page, keys: str, check: Callable[[], None]) -> dict[str, f
     for key in keys.split():
         page.keyboard.press(key)
     check()
-    answered: dict[str, float] = page.evaluate(PAINTED)
+    answered: dict[str, float] = page.evaluate(KEY_PAINTED)
     return {said: round(value) for said, value in answered.items()}
 
 
