@@ -585,9 +585,10 @@ fn named(path: &Path) -> bool {
 }
 
 /// The `offers` a reach skipping `skipped` is given, each found at `path`:
-/// all of them when skipping would leave none, since a reach given nothing
-/// would call the disk exhausted, and tell Joel to delete by hand, over
-/// offers it was never shown.
+/// all of them when skipping would leave no file, since a reach given only
+/// what is named (garbage batches and commands, never skipped) would call
+/// the disk exhausted, and tell Joel to delete by hand, over files it was
+/// never shown.
 pub fn left_to_judge<T: Clone>(
     offers: &[T],
     skipped: Option<&BTreeSet<PathBuf>>,
@@ -601,23 +602,29 @@ pub fn left_to_judge<T: Clone>(
         .filter(|offer| !skipped.contains(path(offer)))
         .cloned()
         .collect();
-    if left.is_empty() {
+    if left.iter().all(|offer| named(path(offer))) {
         offers.to_vec()
     } else {
         left
     }
 }
 
-/// Whether a reach skipping `skipped` had judged every one of `offers`,
-/// each found at `path`, so `left_to_judge` gives it all of them. It then
-/// starts afresh: kept, the skip set would cover the same offers again,
-/// and every reach after would judge the same two hours.
+/// Whether a reach skipping `skipped` had judged every file among
+/// `offers`, each found at `path`, so `left_to_judge` gives it all of
+/// them. It then starts afresh: kept, the skip set would cover the same
+/// files again, and every reach after would judge the same two hours.
+/// What is named is never skipped, so it counts for neither.
 pub fn judged_all<T>(
     offers: &[T],
     skipped: Option<&BTreeSet<PathBuf>>,
     path: impl Fn(&T) -> &Path,
 ) -> bool {
     skipped.is_some_and(|skipped| {
-        !offers.is_empty() && offers.iter().all(|offer| skipped.contains(path(offer)))
+        let files: Vec<&Path> = offers
+            .iter()
+            .map(&path)
+            .filter(|found| !named(found))
+            .collect();
+        !files.is_empty() && files.iter().all(|found| skipped.contains(*found))
     })
 }
