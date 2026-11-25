@@ -212,12 +212,18 @@ or launchd, and [`home.nix`][2] the account's.
   long as what it was handed. Upkeep ends `unfinished` after 20 minutes,
   and a pass reaching for room in a band no worse than filling after two
   hours, the rest due at the next step, which surveys again and doesn't
-  rest. The next reach on that disk in such a band is offered nothing
-  the cut one judged, so each takes up where the last stopped, through
-  one that waits, stalls or is stopped too. A reach that gets through
-  its offers starts afresh, as does a reach at a worse band, which sees
-  every offer and so never calls the disk exhausted over offers it
-  wasn't shown, and a disk due for anything else. One cut short teaches nothing of how
+  rest. The next reach on that disk in such a band is offered none of
+  the files a cut one judged, so none judges the same two hours again;
+  what reaches that waited, stalled or were stopped judged is offered
+  again, and so is every command and garbage batch, whose names come
+  back each round for other work. Garbage collected in between skips
+  nothing. A reach that gets through its offers starts afresh, as does
+  a reach at a worse band, which sees every offer and so never calls
+  the disk exhausted over offers it wasn't shown, a reach that would
+  be offered nothing, upkeep, and a disk measured healthy and not
+  reaching on a forecast. What was
+  judged lives only in memory, so a guard started again judges
+  everything. One cut short teaches nothing of how
   long a pass takes, and its notice says it ran as long as a pass may.
   On 12 November a laptop's upkeep held a day and a half of
   entries, and on 23 November an account's reach judged 88,000 offers for
@@ -321,7 +327,12 @@ or launchd, and [`home.nix`][2] the account's.
   large store takes a core for minutes. A listing that expired generations
   or found its batches stale brings another, though on a healthy disk not
   until the last has rested nine times its own length, a rest a restart
-  keeps, so listing takes at most a tenth of its time. It lists without
+  keeps, so listing takes at most a tenth of its time. Its length counts
+  at most the half hour a listing may run, since it is heard only at the
+  step after it ends, and a pass between may have taken hours. A listing
+  that failed rests the same however full the store, since it freed
+  nothing, and Nix's locked one held the lock all along. A failed
+  listing is saved nowhere, so a restart forgets its rest. It lists without
   Nix's garbage collector lock, which every other collection waits on,
   Nix's own near `min-free` included, and which a laptop's listing held
   24 minutes on 24 November: the store's entries are read first, then
@@ -330,7 +341,10 @@ or launchd, and [`home.nix`][2] the account's.
   kept path's deriver and its closure while `keep-derivations` is on, as
   Nix keeps them. A path added between the two readings is rooted by
   then or not listed, and deleting takes the lock and refuses one that
-  came alive. With `keep-outputs` on, or where Nix can't say, it asks
+  came alive. A reading naming no root in the store fails the listing,
+  since all of it would read dead, and a question about paths asks only
+  of those still valid, since a collection may delete one meanwhile.
+  With `keep-outputs` on, or where Nix can't say, it says so and asks
   Nix's own `--print-dead`, under the lock, with no experimental
   features, since content-addressed derivations made Nix parse and hash
   every derivation it met, five times the CPU; one that only a

@@ -2,10 +2,13 @@
 //! and where it ends. What a finished pass says is in `pass_lines`.
 
 use disk_guard::band::{Band, Space, Thresholds};
-use disk_guard::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
+use disk_guard::decide::Decision;
+use disk_guard::pass::{
+    Disk, End, Goal, Learned, Outcome, Reclaimer, judged_all, left_to_judge, pass, skipped_after,
+};
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::units::float;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -617,6 +620,120 @@ fn a_nearly_full_disk_s_pass_goes_on_past_two_hours() {
     );
     assert_eq!(run.end, End::Exhausted, "took {}", run.taken.len());
     assert_eq!(run.taken.len(), 2000, "every offer judged");
+}
+
+fn paths(names: &[&str]) -> BTreeSet<PathBuf> {
+    names.iter().map(PathBuf::from).collect()
+}
+
+const FILLING: Decision = Decision::Reach(Band::Filling);
+
+#[test]
+fn a_cut_reach_keeps_the_files_it_tried_and_never_a_named_offer() {
+    // The oldest garbage batch is named garbage-0 every round, whatever
+    // paths it holds, so keeping its name would skip garbage nobody judged.
+    let tried = paths(&["/d/cache", "/nix/store#garbage-0", "/d#podman-prune"]);
+    let first = skipped_after(None, FILLING, &End::Unfinished, &tried);
+    assert_eq!(first, Some(paths(&["/d/cache"])), "only the file is kept");
+    let second = skipped_after(first, FILLING, &End::Unfinished, &paths(&["/d/logs"]));
+    assert_eq!(
+        second,
+        Some(paths(&["/d/cache", "/d/logs"])),
+        "a second cut adds to the first"
+    );
+}
+
+#[test]
+fn a_reach_that_waits_stalls_or_stops_and_a_collection_keep_what_was_skipped() {
+    let skipped = Some(paths(&["/d/cache"]));
+    let tried = paths(&["/d/logs"]);
+    for end in [End::Waiting, End::Stalled, End::Stopped] {
+        assert_eq!(
+            skipped_after(skipped.clone(), FILLING, &end, &tried),
+            skipped,
+            "a filling reach ending {end:?} keeps it as it was"
+        );
+    }
+    // Nix's garbage is collected in a reach's rest, which the spell
+    // outlasts.
+    assert_eq!(
+        skipped_after(skipped.clone(), Decision::Collect, &End::Reached, &tried),
+        skipped,
+        "a collection keeps it"
+    );
+}
+
+#[test]
+fn a_reach_that_gets_through_runs_at_a_worse_band_or_upkeep_skips_nothing_more() {
+    let skipped = Some(paths(&["/d/cache"]));
+    let tried = paths(&["/d/logs"]);
+    for end in [End::Reached, End::Exhausted, End::Failed("no".into())] {
+        assert_eq!(
+            skipped_after(skipped.clone(), FILLING, &end, &tried),
+            None,
+            "a filling reach ending {end:?} lets it go"
+        );
+    }
+    let nearly = Decision::Reach(Band::NearlyFull);
+    assert_eq!(
+        skipped_after(skipped.clone(), nearly, &End::Unfinished, &tried),
+        None,
+        "no length cuts a nearly full reach, so it keeps nothing"
+    );
+    assert_eq!(
+        skipped_after(skipped, Decision::Upkeep, &End::Unfinished, &tried),
+        None,
+        "upkeep comes only to a healthy disk, past the spell"
+    );
+}
+
+/// An offer's path, for `left_to_judge`, named since a closure can't say the borrow it returns.
+fn path(offer: &PathBuf) -> &Path {
+    offer
+}
+
+#[test]
+fn a_reach_skips_what_was_judged_unless_that_leaves_it_nothing() {
+    let offers: Vec<PathBuf> = ["/d/cache", "/d/logs"].map(PathBuf::from).to_vec();
+    assert_eq!(
+        left_to_judge(&offers, Some(&paths(&["/d/cache"])), path),
+        vec![PathBuf::from("/d/logs")],
+        "what was judged is skipped"
+    );
+    assert_eq!(
+        left_to_judge(&offers, Some(&paths(&["/d/cache", "/d/logs"])), path),
+        offers,
+        "given nothing, the reach would call the disk exhausted over offers it never saw"
+    );
+    assert_eq!(
+        left_to_judge(&offers, None, path),
+        offers,
+        "nothing skipped"
+    );
+}
+
+#[test]
+fn a_reach_that_had_judged_everything_starts_afresh() {
+    // Kept, its skip set would cover the same offers next time, and every
+    // reach after would judge the same two hours.
+    let offers: Vec<PathBuf> = ["/d/cache", "/d/logs"].map(PathBuf::from).to_vec();
+    assert!(
+        judged_all(
+            &offers,
+            Some(&paths(&["/d/cache", "/d/logs", "/d/gone"])),
+            path
+        ),
+        "every offer was judged"
+    );
+    assert!(
+        !judged_all(&offers, Some(&paths(&["/d/cache"])), path),
+        "one is left to judge"
+    );
+    assert!(!judged_all(&offers, None, path), "nothing was skipped");
+    assert!(
+        !judged_all(&[], Some(&paths(&["/d/cache"])), path),
+        "a reach offered nothing has nothing to start afresh on"
+    );
 }
 
 #[test]

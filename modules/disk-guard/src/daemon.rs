@@ -252,9 +252,9 @@ const DELETE_REST: f64 = 4.0;
 /// nearly full: on 8 November one at 75% listed back to back, five to six
 /// minutes of a core each with the machine's processors 45 to 55% stalled,
 /// and each pass found nothing more to clear. Nearly full and past, none.
-/// A listing that failed rests the same before it's tried again: on 9
-/// November one failing on Nix's own temporary paths, five minutes of a
-/// core each time, was tried again six times in two hours.
+/// A listing that failed rests the same before it's tried again, nearly
+/// full too: on 9 November one failing on Nix's own temporary paths, five
+/// minutes of a core each time, was tried again six times in two hours.
 const LISTING_REST: f64 = 9.0;
 
 /// The longest a filling store's listing that's due waits for the machine
@@ -333,6 +333,12 @@ pub struct Places {
     pub running: Vec<PathBuf>,
 }
 
+/// What `path` holds, or a fresh one when it can't be read, since what it
+/// remembers is only ever a head start.
+fn loaded<T: serde::de::DeserializeOwned + Default>(path: &Path) -> T {
+    state::load(path).ok().flatten().unwrap_or_default()
+}
+
 /// How `config`'s finished sources ask whether a checkout is done, leaving
 /// out any whose remote isn't a pattern.
 fn predicates(config: &Config) -> Vec<Predicate> {
@@ -400,6 +406,9 @@ pub struct Guard {
     listing_out: Option<(f64, Listening)>,
     /// When the last listing ended, and how long it took.
     listing_ended: Option<(f64, f64)>,
+    /// Whether the last listing failed, which rests however full the store:
+    /// it freed nothing, and the locked one held Nix's lock all along.
+    listing_failed: bool,
     /// Since when a listing that's due has waited for the machine to have
     /// room.
     room_awaited: Option<f64>,
@@ -824,13 +833,10 @@ impl Guard {
             .and_then(|bytes| serde_json::from_slice(&bytes).ok());
         // What can't be read starts afresh: an unwatched deps dates nothing.
         let answers_path = state.join("finished.json");
-        let mut answers: Answers = state::load(&answers_path)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
+        let mut answers: Answers = loaded(&answers_path);
         answers.forget_gone();
         let uses_path = state.join("uses.json");
-        let mut uses: Uses = state::load(&uses_path).ok().flatten().unwrap_or_default();
+        let mut uses: Uses = loaded(&uses_path);
         uses.forget_gone();
         let home = matches!(config.scope, crate::config::Scope::User)
             .then(|| std::env::var_os("HOME").map(PathBuf::from))
@@ -860,6 +866,7 @@ impl Guard {
             stepped: Instant::now(),
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
+            listing_failed: false,
             room_awaited: None,
             reached_short: BTreeMap::new(),
             listing,
@@ -1363,7 +1370,7 @@ impl Guard {
         self.mark(tick);
         self.read_min_free(tick.wall);
         self.heartbeat();
-        self.heard_garbage(tick.wall)?;
+        self.heard_garbage(tick.wall);
         self.watch_owners(tick);
         // An overloaded machine spares nothing for routine work; a disk past
         // healthy is still answered, since its bands don't ask for a spare
@@ -1395,6 +1402,12 @@ impl Guard {
                 now: tick.wall,
                 spare: spare_moment,
             });
+            // The spell a cut reach belonged to is over, and what it judged
+            // kept may be free to clear when the disk fills again; not while
+            // a healthy disk still reaches, as it does when forecast to fill.
+            if watched.band == Band::Healthy && !matches!(decision, Decision::Reach(_)) {
+                self.reached_short.remove(&device);
+            }
             let resting = watched.rest.is_some_and(|rest| {
                 tick.monotonic < rest.until
                     && !(rest.unvouched && heard)
@@ -1431,8 +1444,12 @@ impl Guard {
         let produced = self.produce(tick)?;
         let passed = asked || produced || !due.is_empty();
         if passed {
-            // So a pass's heartbeat starts from what the disks are now.
-            self.write_status(tick.wall)?;
+            // So a pass's heartbeat starts from what the disks are now. A
+            // disk too full to hold the status is the one the pass is for,
+            // so a status unwritten stops nothing but the telling.
+            if let Err(error) = self.write_status(tick.wall) {
+                eprintln!("disk-guard: writing the status before a pass: {error}");
+            }
             self.passes(tick, &due)?;
         }
         let frozen = self.memory.frozen.len();
@@ -1560,7 +1577,11 @@ impl Guard {
         if asks.is_empty() {
             return Ok(false);
         }
-        self.write_status(tick.wall)?;
+        // Joel asks most as the disk fills, when the status may not fit:
+        // the clear goes on, and so does every pass after it.
+        if let Err(error) = self.write_status(tick.wall) {
+            eprintln!("disk-guard: writing the status before a clear: {error}");
+        }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
         let (mut scan, offers, surveyed) = self.offers(tick, Some(&scoped))?;
@@ -1597,7 +1618,10 @@ impl Guard {
         let mut producers = self.config.clone();
         let names = std::mem::take(&mut self.produced);
         producers.sources.retain(|name, _| names.contains(name));
-        self.write_status(tick.wall)?;
+        // Its news is already taken, so a failed write would lose it.
+        if let Err(error) = self.write_status(tick.wall) {
+            eprintln!("disk-guard: writing the status before a producer: {error}");
+        }
         let (mut scan, offers, surveyed) = self.offers(tick, Some(&producers))?;
         let devices: BTreeSet<u64> = offers.iter().map(|offer| offer.device).collect();
         for device in devices {
@@ -1617,7 +1641,7 @@ impl Guard {
                 why: Why::Producers,
                 surveyed: Some(surveyed),
             };
-            self.pass_on(tick, device, &here, aim, thresholds, &mut scan)?;
+            self.pass_on(tick, device, &here, aim, thresholds, &mut scan);
         }
         Ok(true)
     }
@@ -1650,7 +1674,7 @@ impl Guard {
                 why: Why::Clear,
                 surveyed: Some(surveyed),
             };
-            self.pass_on(tick, device, &here, aim, thresholds, scan)?;
+            self.pass_on(tick, device, &here, aim, thresholds, scan);
         }
         Ok(())
     }
@@ -1691,7 +1715,7 @@ impl Guard {
         // Neither takes a process to judge, so the scan is never read.
         let me = std::process::id();
         let mut scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
-        self.pass_on(
+        Ok(self.pass_on(
             tick,
             device,
             &here,
@@ -1703,32 +1727,41 @@ impl Guard {
             },
             thresholds,
             &mut scan,
-        )
-        .map_err(|error| error.to_string())
+        ))
     }
 
     /// Takes a listing of Nix's garbage that has finished, keeping it for
     /// the next guard, and makes upkeep due when routine would take some.
-    fn heard_garbage(&mut self, now: f64) -> io::Result<()> {
+    fn heard_garbage(&mut self, now: f64) {
         let Some((begun, out)) = &self.listing_out else {
-            return Ok(());
+            return;
         };
         let heard = match out.try_recv() {
-            Err(TryRecvError::Empty) => return Ok(()),
+            Err(TryRecvError::Empty) => return,
             Ok(heard) => heard,
             Err(TryRecvError::Disconnected) => Err("the listing stopped".to_owned()),
         };
         let begun = *begun;
         self.listing_out = None;
-        self.listing_ended = Some((now, (now - begun).max(0.0)));
+        // Heard only at the step after it ended, a listing seems to take as
+        // long as any pass between, so it counts no longer than a listing
+        // runs: a quick one heard after a three-hour pass would rest a
+        // filling store's next listing for a day, through restarts too.
+        let took = (now - begun).clamp(0.0, garbage::LIST_TIMEOUT.as_secs_f64());
+        self.listing_ended = Some((now, took));
+        self.listing_failed = heard.is_err();
         match heard {
             Ok(dead) => {
                 let listing = Listing {
                     listed_at: begun,
-                    took: Some((now - begun).max(0.0)),
+                    took: Some(took),
                     dead,
                 };
-                state::save(&self.listing_path, &listing)?;
+                // Kept for this run though the disk can't hold it: thrown
+                // away, it would be listed again five minutes on.
+                if let Err(error) = state::save(&self.listing_path, &listing) {
+                    eprintln!("disk-guard: saving the listing of Nix's garbage: {error}");
+                }
                 self.collect = true;
                 self.stale_listing = false;
                 if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
@@ -1740,7 +1773,6 @@ impl Guard {
             // pressure; until then the listing before stands.
             Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
         }
-        Ok(())
     }
 
     /// Notes what holds the store, and whether anything let go of it since
@@ -1990,7 +2022,10 @@ impl Guard {
             LISTING_RETRY
         };
         let since = age(self.listing_begun);
-        let rested = band >= Band::NearlyFull
+        // A listing that failed rests at any band: on 24 November a nearly
+        // full laptop's ran past its half hour three times running, each
+        // holding Nix's lock for all of it while every build waited.
+        let rested = band >= Band::NearlyFull && !self.listing_failed
             || self
                 .listing_ended
                 .is_none_or(|(ended, took)| now - ended >= LISTING_REST * took);
@@ -2457,29 +2492,16 @@ impl Guard {
             && crate::survey::gone(&offer.candidate, &self.tried)
     }
 
-    /// Surveys once and runs each filesystem's pass over what lies on it.
-    /// Keeps what a reach on `device` judged, by how it `end`ed, for the
-    /// next to skip. A reach its length cut short takes up from where it
-    /// stopped, as does one that waited, stalled or was stopped before
-    /// getting through; one that got through what it was offered, or ran
-    /// at a band no length cuts, starts afresh, and a disk due for anything
-    /// but a reach is past the spell a cut reach belonged to.
+    /// Keeps what the next reach on `device` skips, by how the pass for
+    /// `decision` there `end`ed, as `pass::skipped_after` says.
     fn note_reached_short(&mut self, device: u64, decision: Decision, end: &End) {
-        let cuttable = matches!(decision, Decision::Reach(band) if band <= Band::Filling);
-        match end {
-            End::Unfinished if cuttable => {
-                self.reached_short
-                    .entry(device)
-                    .or_default()
-                    .extend(self.tried.iter().cloned());
-            }
-            End::Waiting | End::Stalled | End::Stopped if cuttable => {}
-            _ => {
-                self.reached_short.remove(&device);
-            }
+        let skipped = self.reached_short.remove(&device);
+        if let Some(skipped) = crate::pass::skipped_after(skipped, decision, end, &self.tried) {
+            self.reached_short.insert(device, skipped);
         }
     }
 
+    /// Surveys once and runs each filesystem's pass over what lies on it.
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
@@ -2498,7 +2520,7 @@ impl Guard {
                 (decision != Decision::Collect).then(|| (watched.path.clone(), aim(decision, None)))
             });
             if let Some((path, aimed)) = first {
-                self.tell_passing(tick, &path, aimed.band, aimed.why)?;
+                self.tell_passing(tick, &path, aimed.band, aimed.why);
             }
             let (scan, offers, seconds) = self
                 .offers(tick, None)
@@ -2533,16 +2555,20 @@ impl Guard {
                     offer.device == device || reaching && self.backs(device, offer.device)
                 })
                 .filter(|offer| !self.taken(offer))
-                .filter(|offer| judged.is_none_or(|judged| !judged.contains(&offer.candidate.path)))
                 .cloned()
                 .collect();
+            let afresh = crate::pass::judged_all(&here, judged, |offer| &offer.candidate.path);
+            let here = crate::pass::left_to_judge(&here, judged, |offer| &offer.candidate.path);
+            if afresh {
+                self.reached_short.remove(&device);
+            }
             let offered = if decision == Decision::Collect {
                 self.collect_offers(tick.wall)
             } else {
                 Vec::new()
             };
             let aimed = aim(decision, surveyed);
-            let end = self.pass_on(tick, device, &here, aimed, thresholds, &mut scan)?;
+            let end = self.pass_on(tick, device, &here, aimed, thresholds, &mut scan);
             if decision == Decision::Collect {
                 self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
             }
@@ -2831,8 +2857,10 @@ impl Guard {
 
     /// Tells the status a pass is at work on `path` for `why` in `band`,
     /// from when the first of its steps began, its survey or its judging,
-    /// and writes it, telling none if the write fails.
-    fn tell_passing(&mut self, tick: &Tick, path: &Path, band: Band, why: Why) -> io::Result<()> {
+    /// and writes it, telling none if the write fails. The pass goes on
+    /// whatever the write did: a disk too full for the status file is the
+    /// one most in need of its pass, and saying so is only a courtesy.
+    fn tell_passing(&mut self, tick: &Tick, path: &Path, band: Band, why: Why) {
         let since = self
             .passing
             .as_ref()
@@ -2844,8 +2872,10 @@ impl Guard {
             band,
             why: why.word().to_owned(),
         });
-        self.write_status(tick.wall)
-            .inspect_err(|_| self.end_passing())
+        if let Err(error) = self.write_status(tick.wall) {
+            eprintln!("disk-guard: telling the pass at work: {error}");
+            self.end_passing();
+        }
     }
 
     /// Says no pass is at work, in the status the beats write as well, so
@@ -2869,17 +2899,17 @@ impl Guard {
         }: Aim,
         thresholds: Thresholds,
         scan: &mut Scan,
-    ) -> io::Result<End> {
+    ) -> End {
         let Some((path, spaced)) = self.watched.get(&device).map(|watched| {
             let forecast = matches!(why, Why::Reach).then_some(band);
             let spaced = crate::band::spaces_deletes(watched.band, forecast);
             (watched.path.clone(), spaced)
         }) else {
-            return Ok(End::Exhausted);
+            return End::Exhausted;
         };
         // Told before it starts, since each beat as it works writes the
         // status again as it was, and a pass can judge for hours.
-        self.tell_passing(tick, &path, band, why)?;
+        self.tell_passing(tick, &path, band, why);
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
         let started = Instant::now();
         let since = self.stepped;
@@ -2934,7 +2964,10 @@ impl Guard {
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
         let failing = say_pass(&report, scan, seconds, &crate::clock::stamp(tick.wall));
-        self.journal.write(&Line::Pass {
+        // A journal on a full disk is told of and the step goes on, as each
+        // action's line already does, so the other disks still get their
+        // passes and this one's rest is still noted.
+        let line = Line::Pass {
             at: tick.wall,
             band: report.band,
             end: end.clone(),
@@ -2944,7 +2977,10 @@ impl Guard {
             offered: here.len(),
             judged: report.actions.len(),
             surveyed,
-        })?;
+        };
+        if let Err(error) = self.journal.write(&line) {
+            eprintln!("disk-guard: journalling a pass: {error}");
+        }
         let last = LastPass {
             at: tick.wall,
             path,
@@ -2965,7 +3001,7 @@ impl Guard {
         // refused, as a full disk's journal does: the pass has done its
         // work, so they cost it neither its record nor the rest of the step.
         self.journal_replaced(here, &report, tick.wall);
-        Ok(report.end)
+        report.end
     }
 
     /// Journals how many replaced builds a pass took from each target among

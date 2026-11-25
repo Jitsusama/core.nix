@@ -1046,6 +1046,49 @@ fn a_pass_is_told_at_work_while_it_runs_and_not_after() {
     );
 }
 
+#[test]
+fn a_status_the_disk_cant_hold_stops_no_pass() {
+    // A disk too full for the status file is the one most in need of its
+    // pass; telling it at work is only a courtesy.
+    use disk_guard::config::Source;
+    use disk_guard::units::Span;
+    let home = Home::new();
+    let ran = home.root.join("ran");
+    let mut config = home.config("100%", "100%");
+    config.sources.insert(
+        "gc".to_owned(),
+        Source::Producer {
+            command: vec![
+                "/bin/sh".to_owned(),
+                "-c".to_owned(),
+                format!("echo once >> {}", ran.display()),
+            ],
+            path: home.root.clone(),
+            every: None,
+            from: Some(Band::Filling),
+            watch: Vec::new(),
+            timeout: Span(std::time::Duration::from_secs(10)),
+        },
+    );
+    let mut guard = home.guard(config);
+    // A folder holding a file, which no rename can put the status over.
+    let status = home.root.join("status.json");
+    let _ = fs::remove_file(&status);
+    fs::create_dir_all(status.join("held")).unwrap();
+    // The step's last write fails as well, once its pass is done.
+    let stepped = guard.step(&tick_at(3600.0), &CALM);
+    assert!(stepped.is_err(), "the status was written into a folder");
+    let runs = fs::read_to_string(&ran).unwrap_or_default().lines().count();
+    assert_eq!(runs, 1, "an unwritable status stopped the pass");
+    // A clear Joel asked for, standing as the disk filled, writes the
+    // status before it clears, and stops neither the clear nor the step.
+    let scratch = home.cold_scratch("build");
+    disk_guard::clears::ask(&home.root.join("state"), scratch.parent().unwrap(), 3600.0).unwrap();
+    let stepped = guard.step(&tick_at(7200.0), &CALM);
+    assert!(stepped.is_err(), "the status was written into a folder");
+    assert!(!scratch.exists(), "an unwritable status stopped the clear");
+}
+
 /// A restarted guard's first measure of home takes minutes, in which its
 /// status named no holders: on 13 November a switch left the user guard's
 /// list empty while the system guard's came back. It says what the ledger

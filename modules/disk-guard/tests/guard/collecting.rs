@@ -1096,6 +1096,136 @@ fn a_listing_that_failed_slowly_rests_before_it_is_tried_again() {
 }
 
 #[test]
+fn a_listing_that_failed_slowly_rests_however_full_the_store() {
+    // On 24 November a nearly full laptop's listing ran past its half hour
+    // three times running, from 16:46 to 18:16, each holding Nix's lock for
+    // all of it and freeing almost nothing, while every build waited.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-broken"), "").unwrap();
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 300.0, &CALM);
+    fs::remove_file(store.root.join("listing-broken")).unwrap();
+    step_later(&mut guard, 300.0 + 6.0 * 60.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "a nearly full store's failed listing was tried again before it rested: {:?}",
+        store.log()
+    );
+    listed_later(&store, &mut guard, 300.0 + 9.0 * 300.0 + 60.0, &CALM);
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+}
+
+#[test]
+fn a_failed_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs() {
+    // A listing is heard at the step after it ends, so a three-hour pass in
+    // between made a quick failure seem three hours long, resting a nearly
+    // full store's listing for a day.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listing-broken"), "").unwrap();
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 3.0 * 3600.0, &CALM);
+    fs::remove_file(store.root.join("listing-broken")).unwrap();
+    step_later(&mut guard, 3.0 * 3600.0 + 9.0 * 1800.0 - 60.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "a failed listing rested less than nine times the longest a listing runs: {:?}",
+        store.log()
+    );
+    listed_later(
+        &store,
+        &mut guard,
+        3.0 * 3600.0 + 9.0 * 1800.0 + 60.0,
+        &CALM,
+    );
+    assert_eq!(
+        lists(&store),
+        2,
+        "a failed listing rested past nine times the longest a listing runs: {:?}",
+        store.log()
+    );
+}
+
+#[test]
+fn a_kept_listing_heard_after_a_long_pass_rests_no_longer_than_a_listing_runs() {
+    // A kept listing seemed as long as the pass it was heard after, so a
+    // filling store's next one waited nine times three hours, a restart
+    // keeping the rest, while the store filled on the old one's batches.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "0%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 3.0 * 3600.0, &CALM);
+    listed_later(
+        &store,
+        &mut guard,
+        3.0 * 3600.0 + 9.0 * 1800.0 + 60.0,
+        &CALM,
+    );
+    assert_eq!(
+        lists(&store),
+        2,
+        "a kept listing rested past nine times the longest a listing runs: {:?}",
+        store.log()
+    );
+}
+
+#[test]
+fn a_listing_the_disk_cant_save_is_kept_all_the_same() {
+    // Thrown away, it was listed again five minutes on, under Nix's lock
+    // where Nix takes one, on the disk too full to save it again.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "100%"));
+    // A folder holding a file, which no rename can put the listing over.
+    fs::create_dir_all(store.root.join("state/garbage.json/held")).unwrap();
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    step_later(&mut guard, 600.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        1,
+        "a listing that couldn't be saved was listed again: {:?}",
+        store.log()
+    );
+}
+
+#[test]
+fn a_nearly_full_store_s_listing_that_was_kept_is_not_rested() {
+    // Only one that failed rests there: a kept half-hour listing would
+    // otherwise hold the next back four and a half hours, as the store fills.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    fs::write(store.root.join("listing-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("100%", "100%"));
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| lists(store) == 1);
+    fs::remove_file(store.root.join("listing-slow")).unwrap();
+    step_later(&mut guard, 1800.0, &CALM);
+    listed_later(&store, &mut guard, 3600.0 + 60.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        2,
+        "a nearly full store's kept listing was rested: {:?}",
+        store.log()
+    );
+}
+
+#[test]
 fn a_filesystem_a_user_daemon_speaks_for_is_collected_when_it_asks() {
     let store = Store::new();
     let old = store.dead("aaa-old", 10.0 * DAY, 4096);

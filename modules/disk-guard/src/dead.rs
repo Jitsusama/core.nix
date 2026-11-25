@@ -22,6 +22,10 @@ pub fn dead(nix: &Path, store: &Path, idle: bool) -> Result<Vec<String>, String>
         let derivers = !said_off(nix, "keep-derivations", idle);
         unlocked_dead(nix, store, derivers, idle)
     } else {
+        // Said, since builds then wait on the lock for as long as it lists.
+        eprintln!(
+            "disk-guard: listing under Nix's lock, since keep-outputs is on or Nix couldn't say"
+        );
         locked_dead(nix, idle)
     }
 }
@@ -66,6 +70,8 @@ fn locked_dead(nix: &Path, idle: bool) -> Result<Vec<String>, String> {
 /// building each path kept, and its closure in turn, as Nix's collector
 /// keeps them under `keep-derivations`. Reading the entries first means
 /// a path added between the two is either rooted by then or not listed.
+/// A reading that names no root in the store fails the listing, since
+/// every entry would read dead: a running machine always has its own.
 fn unlocked_dead(
     nix: &Path,
     store: &Path,
@@ -91,6 +97,15 @@ fn unlocked_dead(
         .filter_map(|line| line.rsplit_once(" -> "))
         .filter_map(|(_, path)| store_path(store, path))
         .collect();
+    // Only a root among what was read counts: one naming a path already
+    // collected, or one still building, keeps none of it.
+    let rooted = roots.iter().any(|root| entries.binary_search(root).is_ok());
+    if !rooted && !entries.is_empty() {
+        return Err(format!(
+            "nix-store --gc --print-roots named no root in {}, so all of it would read dead",
+            store.display()
+        ));
+    }
     let mut live: HashSet<String> = roots.clone();
     let mut asking: Vec<String> = roots.into_iter().collect();
     asking.sort_unstable();
@@ -101,7 +116,7 @@ fn unlocked_dead(
         let mut fresh: Vec<String> = Vec::new();
         let asking_refs: Vec<&String> = asking.iter().collect();
         for chunk in asking_refs.chunks(CHUNK) {
-            for kept in kept_by(&asked, chunk)? {
+            for kept in asked_of_valid(&asked, &["--query", "--requisites"], chunk)? {
                 if walked.insert(kept.clone()) {
                     fresh.push(kept.clone());
                 }
@@ -117,10 +132,10 @@ fn unlocked_dead(
         for chunk in fresh_refs.chunks(CHUNK) {
             // A path with none recorded is said `unknown-deriver`.
             next.extend(
-                asked(&["--query", "--deriver"], chunk)?
-                    .lines()
+                asked_of_valid(&asked, &["--query", "--deriver"], chunk)?
+                    .iter()
                     .filter(|line| line.starts_with('/') && !walked.contains(*line))
-                    .map(str::to_owned),
+                    .cloned(),
             );
         }
         next.sort_unstable();
@@ -139,26 +154,32 @@ fn unlocked_dead(
 /// A question put to `nix-store`: its words, then the paths it's about.
 type Asked<'a> = dyn Fn(&[&str], &[&String]) -> Result<String, String> + 'a;
 
-/// What the valid roots among `roots` keep, through `asked`. A root not
-/// valid, a path a build or a fetch is making, keeps only itself, and
-/// asking about it would fail the whole question; one deleted between
-/// asking which are valid and what they keep is asked about once more.
-fn kept_by(asked: &Asked, roots: &[&String]) -> Result<Vec<String>, String> {
+/// What `nix-store` answers `question` of the valid paths among `paths`,
+/// through `asked`, a line each. Nix refuses a whole question naming a
+/// path not valid: a root a build or a fetch is still making, which keeps
+/// only itself, or a path a collection deleted since it was found, which
+/// no lock now stops. One gone between asking which are valid and the
+/// question itself is dropped as the question is asked once more.
+fn asked_of_valid(
+    asked: &Asked,
+    question: &[&str],
+    paths: &[&String],
+) -> Result<Vec<String>, String> {
     let mut tried = 0;
     loop {
-        let invalid: HashSet<String> = asked(&["--check-validity", "--print-invalid"], roots)?
+        let invalid: HashSet<String> = asked(&["--check-validity", "--print-invalid"], paths)?
             .lines()
             .map(str::to_owned)
             .collect();
-        let valid: Vec<&String> = roots
+        let valid: Vec<&String> = paths
             .iter()
-            .filter(|root| !invalid.contains(root.as_str()))
+            .filter(|path| !invalid.contains(path.as_str()))
             .copied()
             .collect();
         if valid.is_empty() {
             return Ok(Vec::new());
         }
-        match asked(&["--query", "--requisites"], &valid) {
+        match asked(question, &valid) {
             Ok(kept) => return Ok(kept.lines().map(str::to_owned).collect()),
             Err(_) if tried == 0 => tried += 1,
             Err(why) => return Err(why),
