@@ -100,7 +100,7 @@ def story(said: list[str]) -> str:
     was: dict[str, object] | None = None
     for line in said:
         if line.startswith(PLAYED):
-            told.append(line[:160])
+            told.append(line)
             was = None
         if not line.startswith(SITS):
             continue
@@ -188,6 +188,7 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     only that play's steps (2026-11-15: a hop's beats were read as a pounce's).
     """
     sat, seat = sitting_over(shell, f"a column played beside, {kind}")
+    asking = shell.mark()
     ask(shell, kind)
     shell.send_key("F24")
     since = shell.mark()
@@ -198,7 +199,7 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     try:
         shell.reported(SITS, asked, since, STROLLS)
     except AssertionError as failed:
-        said, _ = shell.said_since(since)
+        said, _ = shell.said_since(asking)
         why = f"{failed}\nwhat the cat did since the ask:\n{story(said)}"
         raise AssertionError(why) from failed
     began = shell.mark()
