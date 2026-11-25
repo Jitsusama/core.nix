@@ -100,5 +100,22 @@ QtObject {
         expect("a scroll under way says when it began, as a resize does, and a tile's move its own",
             [Tiles.animating(scrolling, 7, "ViewMove"), Tiles.animating(growing, 7, "TileMove"),
                 Tiles.animating(growing, 7, "ViewMove")], [30, 90, null]);
+        // niri says a scroll as it begins and never as it ends, so its word
+        // stays on a window as another's layout comes, a float dragged.
+        const word = Tiles.told(scrolling, 7, "ViewMove");
+        const dragged = Object.assign({}, scrolling, { 1: moving(windows[1], null, null) });
+        const again = Object.assign({}, scrolling, { 3: moving(windows[3], "ViewMove", 0) });
+        expect("a scroll's word stays as another window moves, and changes as niri tells again",
+            [word === "", Tiles.told(dragged, 7, "ViewMove") === word,
+                Tiles.told(again, 7, "ViewMove") === word, Tiles.told(windows, 7, "ViewMove")],
+            [false, true, false, ""]);
+        const first = Tiles.hears(null, word, 1000);
+        expect("a word is heard when first told, and kept as it's told again",
+            [first, Tiles.hears(first, word, 1400), Tiles.hears(first, "other", 1400)],
+            [{ word, at: 1000 }, { word, at: 1000 }, { word: "other", at: 1400 }]);
+        expect("a scroll runs for its spring's length after it's heard, and none runs untold",
+            [Tiles.runs(first, 1229, 230), Tiles.runs(first, 1230, 230),
+                Tiles.runs({ word: "", at: 1000 }, 1000, 230), Tiles.runs(null, 1000, 230)],
+            [true, false, false, false]);
     }
 }

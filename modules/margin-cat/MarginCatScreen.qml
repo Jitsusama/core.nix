@@ -396,13 +396,17 @@ PanelWindow {
             under = column;
             if (reshaped)
                 walkFrom(true, saw);
-            else if (carry !== null || scrolled())
+            else if (carry !== null || scrolled()) {
                 // Back on its own column while niri's spring still slides
                 // the strip, or once it has settled with the cat off the
                 // screen, it goes back with its window from where it's
-                // drawn, never at once to where niri will have it.
-                rideTo(there);
-            else
+                // drawn, never at once to where niri will have it. Where
+                // niri sets off no new scroll, as the keys come back to a
+                // column still in view, its ride runs on as its window's
+                // spring does, never set off again from a lag gone by.
+                if (!placedAt(there))
+                    rideTo(there);
+            } else
                 place = there;
         } else if (going !== null && wanted === goingTo) {
             if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
@@ -440,23 +444,37 @@ PanelWindow {
     // says, or, where niri says nothing, from off the screen, where only a
     // scroll leaves it at rest: never a drag, which niri doesn't animate.
     function scrolled(): bool {
-        if (place === null || there === null || (Math.abs(place.x - there.x) < 0.5
-            && Math.abs(place.y - there.y) < 0.5))
+        if (there === null || place === null || placedAt(there))
             return false;
-        return Tiles.animating(Niri.windows, space?.id, "ViewMove") !== null
-            || place.x + size <= 0 || place.x >= modelData.width;
+        return scrolling() || place.x + size <= 0 || place.x >= modelData.width;
     }
+    function placedAt(to: var): bool {
+        return place !== null && Math.abs(place.x - to.x) < 0.5
+            && Math.abs(place.y - to.y) < 0.5;
+    }
+    // Whether niri's scroll of its workspace still runs: told less than
+    // its spring's length ago, since niri never says one ended, so an old
+    // scroll's word, still on its windows, isn't taken for a new one
+    // (MarginCatTiles.js's told). Heard again with each layout niri sends.
+    function scrolling(): bool {
+        const now = Date.now();
+        scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
+            now);
+        return Tiles.runs(scrollHeard, now, slideMs);
+    }
+    property var scrollHeard: null
+    readonly property var spring: Object.assign({}, Theme.motion.spring,
+        { slowdown: Theme.motion.slowdown })
+    readonly property int slideMs: MarginCat.slides(spring)
     // Its place set to `to` as niri's scroll sets off, drawn where it was
     // as niri set it off and closing on `to` on niri's spring
     // (MarginCatStacked.js's rides).
     function rideTo(to: var): void {
-        const spring = Object.assign({}, Theme.motion.spring,
-            { slowdown: Theme.motion.slowdown });
         const now = Date.now();
         // As far into the scroll as niri says, or a guess at how late it
-        // hears of one where niri says nothing.
-        const behind = MarginCat.behindTold(frameMs, "slide",
-            Tiles.animating(Niri.windows, space?.id, "ViewMove"));
+        // hears of one where niri says nothing or tells of one ended.
+        const behind = MarginCat.behindTold(frameMs, "slide", scrolling()
+            ? Tiles.animating(Niri.windows, space?.id, "ViewMove") : null);
         carry = Stacked.rides(carry, place, to, { at: now - behind, spring });
         lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
@@ -486,6 +504,8 @@ PanelWindow {
             if (t >= window.carry.ends || t < 0) {
                 window.carry = null;
                 window.lag = { x: 0, y: 0 };
+                // Its ride done, it says it's drawn at its place.
+                window.say();
             } else {
                 window.lag = MarginCat.lags(window.carry.from, t, window.carry.spring);
             }
@@ -1137,6 +1157,9 @@ PanelWindow {
 
         function onStrollToChanged() {
             window.stroll(window.scene.strollTo);
+        }
+        function onSettledChanged() {
+            window.scrolling();
         }
     }
 
