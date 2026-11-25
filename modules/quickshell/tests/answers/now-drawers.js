@@ -127,12 +127,6 @@ function run(failures) {
         "Quarter: Q4 \u00b7 day 42 of 92"
     ]);
     same("Date's nerdy bits", nerd(date), ["ISO Week Date: 2026-W46-3", "Julian Day: 2461356"]);
-    // No field is said by both Time and Date (Joel: no field shown twice
-    // between them), so Time says no Julian Day.
-    const labels = drawer => drawer.facts.concat(drawer.nerd).map(fact => fact.label);
-    const timeLabels = labels(toronto("kept", "synchronised"));
-    same("no field is both Time's and Date's",
-        labels(date).filter(label => timeLabels.indexOf(label) >= 0), []);
 
     // One day is said as one, in the sentence and the facts alike.
     const last = NowDrawers.date(Object.assign({}, wednesday, { day: 364, seasonLeft: 1 }));

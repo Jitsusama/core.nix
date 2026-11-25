@@ -12,7 +12,7 @@
 //
 // The time here holds the clock and never the date, which is Date's
 // (VKCF3Z's ruling, 2026-10-30): its Zone, a thing saying its offset, its
-// abbreviation, its next change and tzdata's version; then UTC, Unix
+// abbreviation, its next two changes and tzdata's version; then UTC, Unix
 // time, TAI, GPS time and sidereal time, each to the second and counting
 // while it's shown or stepped into, reckoned as Moment.js says. "utc",
 // "epoch", "tai" and the rest of Time's words ask it whole.
@@ -197,8 +197,8 @@ Provider {
             utc: Moment.utcClock(now).slice(0, 5),
             clock: keptAs.clock,
             clockSide: keptAs.side,
-            // Raw, as the nerdy bits are: Time's own rows group the
-            // seconds, and these copy as a program would read them. The
+            // Raw, as the nerdy bits are: each copies as a program would
+            // read it, Unix time ungrouped as Time's own row never is. The
             // Julian Day is Date's, so Time never says it too (Joel: no
             // field shown twice between Time and Date).
             unix: String(Moment.unix(now)),
@@ -211,28 +211,28 @@ Provider {
     }
 
     // The zone the clock keeps, a figure copying its name: its offset and
-    // abbreviation, when it next changes and to what, and which tzdata told
-    // it are facts in its drawer, never a step of copies alone (Joel,
+    // abbreviation, its next two changes and what each turns it to, and
+    // which tzdata told it are facts in its drawer, never a step of copies alone (Joel,
     // 2026-11-11: "if they have nothing under them, we shouldn't open a
     // submenu for them").
     function zoneThing(told, zone, now) {
         const said = told.rows.find(row => row.part === "zone") ?? null;
         const minutes = -new Date(now).getTimezoneOffset();
         const standing = zone ? Zones.standing(zone, Math.floor(now / 1000)) : [minutes, ""];
-        const next = zone ? Zones.nextChange(zone, Math.floor(now / 1000)) : null;
-        // The change after it too, so a zone's whole year shows, as the
-        // design has it (VKCF3Z: "next two changes").
-        const after = next ? Zones.nextChange(zone, next.when / 1000) : null;
+        const { next, after } = zone ? Zones.nextTwo(zone, Math.floor(now / 1000))
+            : { next: null, after: null };
         const abbreviation = /^[A-Za-z]/.test(standing[1]) ? standing[1] : "";
-        const turnsTo = change => [/^[A-Za-z]/.test(change.abbreviation) ? change.abbreviation
-            : "", Zones.offset(change.minutes)].filter(one => one !== "").join(", ");
+        // A zone that changes says what comes after its next change too,
+        // and says so where the years kept end, as Next Change does, rather
+        // than looking like a zone that changes once more and never again.
+        const afterSide = !next ? "" : after ? Moment.dayAndClock(after.when, now)
+            : timeWord("time:zone", "never");
         const parts = [
             { id: "offset", side: Zones.offset(standing[0]), note: "" },
             { id: "abbreviation", side: abbreviation, note: "" },
             { id: "next", side: next ? Moment.dayAndClock(next.when, now)
-                : timeWord("time:zone", "never"), note: next ? turnsTo(next) : "" },
-            { id: "after", side: after ? Moment.dayAndClock(after.when, now) : "",
-                note: after ? turnsTo(after) : "" },
+                : timeWord("time:zone", "never"), note: next ? Zones.turnsTo(next) : "" },
+            { id: "after", side: afterSide, note: after ? Zones.turnsTo(after) : "" },
             { id: "database", side: settings.tzdata ?? "", note: timeWord("time:zone", "iana") }
         ].filter(part => part.side !== "");
         const name = said ? said.text : Zones.offset(standing[0]);
@@ -247,8 +247,8 @@ Provider {
             drawer: () => ({
                 eyebrow: Words.name("time:zone:plate"),
                 title: name,
-                // What the next change turns it to stays beside when it
-                // comes, as its row's note said it; the database's note
+                // What each of the next two changes turns it to stays
+                // beside when it comes, as its row's note said it; the database's note
                 // only says what tzdata is.
                 facts: parts.map(part => ({ label: Words.name(`time:zone:${part.id}`),
                     value: (part.id === "next" || part.id === "after") && part.note !== ""

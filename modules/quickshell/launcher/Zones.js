@@ -63,6 +63,22 @@ function nextChange(zone, seconds) {
         : null;
 }
 
+// A zone's next two changes after a moment, in seconds, each as
+// nextChange gives it, so a zone that changes twice a year shows its whole
+// year (VKCF3Z: "next two changes"). Either is null where the years kept
+// hold no more.
+function nextTwo(zone, seconds) {
+    const next = nextChange(zone, seconds);
+    return { next, after: next ? nextChange(zone, next.when / SECOND) : null };
+}
+
+// What a change turns a zone to: its abbreviation where tzdata names one,
+// then its offset, never an offset written twice.
+function turnsTo(change) {
+    const named = WRITTEN_OFFSET.test(change.abbreviation) ? "" : change.abbreviation;
+    return [named, offset(change.minutes)].filter(one => one !== "").join(", ");
+}
+
 function said(place) {
     return place.trim().toLowerCase().replace(PLACE_GAPS, " ").replace(LEADING_THE, "");
 }

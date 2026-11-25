@@ -650,15 +650,30 @@ ShellRoot {
         expect("the zone's next change is a day and its time, then what it turns to",
             /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}( \u00b7 .+)?$/.test(next?.value),
             JSON.stringify(next));
-        // And the change after it, so a zone that changes twice a year
-        // shows its whole year, after Next Change.
+        // And the change after it, so Toronto's whole year shows: it turns
+        // the zone back to the offset it stands at now, which the next
+        // change doesn't. Zones.js's own cases hold the moments; this one
+        // reads the clock, so it fails once the years zones.nix keeps end
+        // within a year of the day it runs.
         const labels = plate.facts.map(fact => fact.label);
         const after = plate.facts.find(fact => fact.label === Words.name("time:zone:after"));
-        expect("the change after the next follows it, said the same way",
+        const standing = plate.facts.find(fact => fact.label === Words.name("time:zone:offset"));
+        const turnsBack = fact => (fact?.value ?? "").endsWith(`, ${standing?.value}`);
+        expect("the change after the next follows it, turning the zone back",
             labels.indexOf(after?.label) === labels.indexOf(next?.label) + 1
-                && /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}( \u00b7 .+)?$/.test(after?.value)
-                && after?.value !== next?.value,
+                && /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2} \u00b7 .+$/.test(after?.value)
+                && !!standing && turnsBack(after) && !turnsBack(next),
             JSON.stringify(plate.facts));
+        // No field is shown twice between Time and Date (Joel), read from
+        // the drawers the launcher draws.
+        const fields = said => {
+            const drawn = said.drawer();
+            return drawn.facts.concat(drawn.nerd ?? []).map(fact => fact.label);
+        };
+        const timeFields = fields(time);
+        expect("no field is both Time's and Date's",
+            timeFields.length > 0 && !fields(date).some(label => timeFields.includes(label)),
+            `${timeFields.join(", ")} against ${fields(date).join(", ")}`);
         expect("the zone's plate has an eyebrow", (plate.eyebrow ?? "") !== "",
             JSON.stringify(plate));
         const numbers = ["today:unix-day", "today:julian", "today:mjd"].map(id => Words.name(id));

@@ -97,5 +97,39 @@ function run(failures, fromRoot) {
         || change.abbreviation !== "EDT" || change.minutes !== -240) {
         failures.push(`Toronto next changed at ${quoted(change)}`);
     }
-    return asked;
+    return asked + twoChanges(failures, zones);
+}
+
+// A zone's next two changes, at fixed moments so no case depends on the
+// day it runs: one a year ahead, a southern zone's order, a zone with none,
+// and one past whose next change the years kept (zones.nix) hold no more.
+function twoChanges(failures, zones) {
+    const quoted = Common.quoted;
+    const at = Common.at;
+    const iso = change => change ? new Date(change.when).toISOString() : null;
+    const cases = [
+        ["America/Toronto", "2026-11-04T22:00", "2027-03-14T07:00:00.000Z",
+            "2027-11-07T06:00:00.000Z", "EDT, UTC\u22124", "EST, UTC\u22125"],
+        ["Australia/Sydney", "2026-01-15T12:00", "2026-04-04T16:00:00.000Z",
+            "2026-10-03T16:00:00.000Z", "AEST, UTC+10", "AEDT, UTC+11"],
+        ["Asia/Tokyo", "2026-01-15T12:00", null, null, null, null],
+        ["America/Toronto", "2045-04-01T12:00", "2045-11-05T06:00:00.000Z", null,
+            "EST, UTC\u22125", null]
+    ];
+    for (const [id, when, next, after, nextTurns, afterTurns] of cases) {
+        const two = Zones.nextTwo(zones.zones[id], at(when) / 1000);
+        const turns = change => change ? Zones.turnsTo(change) : null;
+        const got = [iso(two.next), iso(two.after), turns(two.next), turns(two.after)];
+        if (JSON.stringify(got) !== JSON.stringify([next, after, nextTurns, afterTurns])) {
+            failures.push(`${id}'s two changes from ${when} were ${quoted(got)}`);
+        }
+    }
+    // A zone tzdata names by offset alone says the offset once.
+    const santiago = Zones.nextChange(zones.zones["America/Santiago"],
+        at("2026-01-15T12:00") / 1000);
+    const said = santiago ? Zones.turnsTo(santiago) : null;
+    if (said !== (santiago ? Zones.offset(santiago.minutes) : "a change")) {
+        failures.push(`Santiago's next change turns it to ${quoted(said)}`);
+    }
+    return cases.length + 1;
 }
