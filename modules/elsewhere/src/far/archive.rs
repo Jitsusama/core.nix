@@ -12,7 +12,7 @@
 //! as many as that takes.
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
@@ -26,6 +26,13 @@ const CLOSE: usize = 2 * BLOCK;
 
 /// What closes an archive, in bytes, as a size is counted.
 pub const CLOSED: u64 = CLOSE as u64;
+
+/// What an open archive gathers before it writes, so a tree of small
+/// files takes a few writes, not several for each.
+const GATHERS: usize = 1 << 16;
+
+/// An archive being written, and the bytes in it so far.
+type Open = (BufWriter<fs::File>, u64);
 
 /// What a file at `path` of `size` bytes takes in an archive, just as
 /// `write` puts it in: a pax header and its record where ustar can't hold
@@ -69,14 +76,18 @@ pub struct Part {
 /// once closed and on the disk, so a share, which carries no hidden file,
 /// never carries one half written. Each file is read once, whole, so it
 /// goes in at the size it was read at even when it changed after it was
-/// gathered. A file whose own entry is past `most` is refused, as no
-/// share carries it, and so is one that would take the archives past
-/// `all` bytes in all, before it is written: a tree that grew after it
-/// was gathered leaves this job's archives no larger than `all` all the
-/// same. A refusal leaves the archives written so far unlisted, and the
-/// one still open under its hidden name, for the caller to clear. Each is
-/// made new, so nothing standing at its name, a link included, is written
-/// through.
+/// gathered, and is written from that one read, never copied again, so
+/// it costs its own size in memory as it goes in. It isn't copied across
+/// a piece at a time instead, since its header, written first, gives its
+/// size: a file rewritten in place as a session works would then end
+/// short of it or run past it, and its job be refused. A file whose own
+/// entry is past `most` is refused, as no share carries it, and so is
+/// one that would take the archives past `all` bytes in all, before it
+/// is written: a tree that grew after it was gathered leaves this job's
+/// archives no larger than `all` all the same. A refusal leaves the
+/// archives written so far unlisted, and the one still open under its
+/// hidden name, for the caller to clear. Each is made new, so nothing
+/// standing at its name, a link included, is written through.
 pub fn write<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
@@ -85,13 +96,12 @@ pub fn write<'a>(
     all: u64,
 ) -> io::Result<Vec<Part>> {
     let mut parts = Vec::new();
-    let mut open: Option<(fs::File, u64)> = None;
+    let mut open: Option<Open> = None;
     let mut done = 0;
     let close = CLOSED;
     for path in paths {
         let (data, meta) = read(root, path, most)?;
-        let entry = entry(path, &data, &meta);
-        let length = entry.len() as u64;
+        let length = taken(path, data.len() as u64);
         if length + close > most {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -115,9 +125,12 @@ pub fn write<'a>(
         }
         let (file, size) = match &mut open {
             Some(open) => open,
-            slot @ None => slot.insert((made_new(&into.join(writing(parts.len())))?, 0)),
+            slot @ None => {
+                let made = made_new(&into.join(writing(parts.len())))?;
+                slot.insert((BufWriter::with_capacity(GATHERS, made), 0))
+            }
         };
-        file.write_all(&entry)?;
+        put(file, path, &data, &meta)?;
         *size += length;
     }
     if open.is_some() {
@@ -202,11 +215,12 @@ fn writing(number: usize) -> String {
 
 /// Closes the archive `open`, numbered `number` in `into`, gives it its
 /// own name once it is on the disk, and answers it.
-fn closed(open: Option<(fs::File, u64)>, into: &Path, number: usize) -> io::Result<Part> {
+fn closed(open: Option<Open>, into: &Path, number: usize) -> io::Result<Part> {
     let Some((mut file, size)) = open else {
         return Err(io::Error::other("no archive was open to close"));
     };
     file.write_all(&[0; CLOSE])?;
+    let file = file.into_inner().map_err(io::IntoInnerError::into_error)?;
     file.sync_all()?;
     fs::rename(into.join(writing(number)), into.join(name(number)))?;
     Ok(Part {
@@ -215,27 +229,35 @@ fn closed(open: Option<(fs::File, u64)>, into: &Path, number: usize) -> io::Resu
     })
 }
 
-/// The file at `path`, holding `data`, as an archive entry: a pax header
-/// first where ustar can't hold its name, then its own header and data.
-fn entry(path: &str, data: &[u8], meta: &fs::Metadata) -> Vec<u8> {
+/// Puts the file at `path`, holding `data`, in the archive `into` as its
+/// entry, of just the bytes `taken` counts: a pax header first where
+/// ustar can't hold its name, then its own header and data.
+fn put(into: &mut impl Write, path: &str, data: &[u8], meta: &fs::Metadata) -> io::Result<()> {
     let mode = meta.permissions().mode() & 0o777;
     let mtime = meta
         .modified()
         .ok()
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
         .map_or(0, |since| since.as_secs());
-    let mut entry = Vec::new();
-    let (prefix, name) = split(path).unwrap_or_else(|| {
+    let (prefix, name) = if let Some(split) = split(path) {
+        split
+    } else {
         let record = record("path", path);
-        entry.extend(header("", "PaxHeader", 0o644, record.len() as u64, 0, b'x'));
-        entry.extend(padded(record.as_bytes()));
+        into.write_all(&header(
+            "",
+            "PaxHeader",
+            0o644,
+            record.len() as u64,
+            0,
+            b'x',
+        ))?;
+        padded(into, record.as_bytes())?;
         // A name the pax header stands in for, kept short for any reader
         // that skips the header.
         ("", truncated(path))
-    });
-    entry.extend(header(prefix, name, mode, data.len() as u64, mtime, b'0'));
-    entry.extend(padded(data));
-    entry
+    };
+    into.write_all(&header(prefix, name, mode, data.len() as u64, mtime, b'0'))?;
+    padded(into, data)
 }
 
 /// `path` split into ustar's prefix and name at a folder, or none where
@@ -300,11 +322,12 @@ fn octal(field: &mut [u8], value: u64) {
     field[width] = 0;
 }
 
-/// `data` padded with zeros to a whole number of blocks.
-fn padded(data: &[u8]) -> Vec<u8> {
-    let mut padded = data.to_vec();
-    padded.resize(data.len().div_ceil(BLOCK) * BLOCK, 0);
-    padded
+/// Writes `data` to `into`, padded with zeros to a whole number of
+/// blocks.
+fn padded(into: &mut impl Write, data: &[u8]) -> io::Result<()> {
+    into.write_all(data)?;
+    let short = data.len().next_multiple_of(BLOCK) - data.len();
+    into.write_all(&[0; BLOCK][..short])
 }
 
 #[cfg(test)]
