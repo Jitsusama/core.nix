@@ -652,9 +652,11 @@ Singleton {
     // (disowned) or is still coming (heldBack); otherwise opened as any
     // viewer is (viewWith), titled for its quest and folder until pi
     // titles it, rather than a bare attach whose window reads "mycelium".
-    // Answers the listed one, if any.
-    function viewStarted(host, id, named, title, folder, said) {
+    // What's said of its viewer is led by the start (started), so the foot
+    // never reads as the start not taking. Answers the listed one, if any.
+    function viewStarted(host, id, named, title, folder, footed) {
         readKittyPid();
+        const said = Object.assign({}, footed, { started: true });
         const listed = listedNamed(named);
         if (listed)
             Niri.act({ FocusWindow: { id: listed.id } });
@@ -2840,11 +2842,12 @@ Singleton {
             .some(window => String(window.id) === refusedAsks[named] && !drawnHere(window));
     }
     // A press of a viewer refusedOwn holds is said "disowned", opening
-    // none, since a press is never met with nothing.
+    // none, since a press is never met with nothing; a start's, as
+    // started first (viewStarted).
     function disowned(named, said) {
         if (!refusedOwn(named))
             return false;
-        unhosted(said, "disowned");
+        unhosted(said, said?.started ? "startedDisowned" : "disowned");
         return true;
     }
     // Each viewer whose window came while it was asked for and was
@@ -2907,7 +2910,7 @@ Singleton {
             + "opening, and a press asks for it afresh"
             + (said !== null ? "; its press is told" : ""));
         if (said !== null)
-            unhosted(said, "untaken");
+            unhosted(said, said.started ? "startedUntaken" : "untaken");
         waitedOnNoMore(named, "no sessions kitty took it");
     }
     // Reopen Them All's walk waits on viewer `named` no more once its
@@ -3155,7 +3158,7 @@ Singleton {
             const pressed = Object.assign({}, pressedFor);
             delete pressed[named];
             pressedFor = pressed;
-            unhosted(said, "disowned");
+            unhosted(said, said.started ? "startedDisowned" : "disowned");
         }
         if (own)
             waitedOnNoMore(named, "its window wasn't the sessions kitty's");
