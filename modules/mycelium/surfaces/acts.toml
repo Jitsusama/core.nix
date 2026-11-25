@@ -150,9 +150,10 @@ name = "sprout"
 says = "start new work from a link or words, in a folder or a World zone"
 through = "mycelium sprout, its folder or a zone by name"
 
-[act.cli.has]
-command = "sprout"
-holds = "or a place by name"
+[act.cli.owed]
+by = "KP0L6A"
+due = "2026-11-25 12:00"
+why = "sprout takes a folder; a zone by name waits on mycelium#425 and its pin"
 
 # mesh_sprout starts new work as a cell of its own, from words or a link.
 [act.session.has]
