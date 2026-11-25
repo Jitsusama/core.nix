@@ -400,7 +400,8 @@ fn a_line_without_the_commits_bytes_is_passed_over() {
 
 // A journal whose every read fails, as a folder's does, ends its lines at
 // once, counts as failed and is said once in net.log, however often it's
-// asked of.
+// asked of; once a read reaches the end of a journal, the same fault
+// coming back is said again.
 #[test]
 fn a_journal_that_cant_be_read_ends_and_is_said() {
     let state = state("unreadable");
@@ -411,10 +412,9 @@ fn a_journal_that_cant_be_read_ends_and_is_said() {
         None,
         "a line came of a journal that can't be read"
     );
-    assert_eq!(
-        lines.next(),
-        None,
-        "a second read came of a journal that ended"
+    assert!(
+        lines.ended(),
+        "a journal whose read failed would be read again on the next call"
     );
     assert!(
         lines.failed(),
@@ -434,6 +434,25 @@ fn a_journal_that_cant_be_read_ends_and_is_said() {
         log.matches("stopped part way").count(),
         1,
         "a fault that lasted wasn't said once in net.log: {log:?}"
+    );
+    fs::remove_dir(state.root.join("results.jsonl")).expect("the folder gone");
+    fs::write(state.root.join("results.jsonl"), "").expect("a journal again");
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![],
+        "runs came of an empty journal"
+    );
+    fs::remove_file(state.root.join("results.jsonl")).expect("the journal gone");
+    fs::create_dir(state.root.join("results.jsonl")).expect("the folder back");
+    assert!(
+        state.lasted().is_empty(),
+        "times came of a journal that can't be read"
+    );
+    let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
+    assert_eq!(
+        log.matches("stopped part way").count(),
+        2,
+        "a fault that came back after a whole read wasn't said again: {log:?}"
     );
 }
 

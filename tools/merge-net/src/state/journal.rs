@@ -61,6 +61,12 @@ impl<F: FnMut(&[u8]) -> bool> Lines<F> {
     pub(super) const fn failed(&self) -> bool {
         self.failed
     }
+
+    /// Whether the lines have ended for good, so a later call reads nothing.
+    #[cfg(test)]
+    pub(super) const fn ended(&self) -> bool {
+        self.reader.is_none()
+    }
 }
 
 impl<F: FnMut(&[u8]) -> bool> Iterator for Lines<F> {
@@ -74,7 +80,12 @@ impl<F: FnMut(&[u8]) -> bool> Iterator for Lines<F> {
         loop {
             self.line.clear();
             match reader.read_until(b'\n', &mut self.line) {
-                Ok(0) => break,
+                Ok(0) => {
+                    // Read to its end, the journal's last fault is over, so
+                    // the same fault coming back later is said again.
+                    forget_fault(&self.root);
+                    break;
+                }
                 Ok(_) if (self.keep)(&self.line) => {
                     return Some(String::from_utf8_lossy(&self.line).into_owned());
                 }
@@ -102,8 +113,17 @@ impl<F: FnMut(&[u8]) -> bool> Iterator for Lines<F> {
 /// this process.
 static LAST_SAID: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
 
+/// Forget the last fault said for `root`'s journal, once a read of it has
+/// reached its end.
+fn forget_fault(root: &Path) {
+    LAST_SAID
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(root);
+}
+
 /// Say `what` in the net.log under `root` unless it was the last fault
-/// said there. A journal that stays unreadable is asked of on every query,
+/// said there, and no read has reached the journal's end since. A journal that stays unreadable is asked of on every query,
 /// and net.log is never trimmed; its time is also the hang guard's sign
 /// that the watch lives, which a line per query would keep fresh for a
 /// watch that's stuck.
