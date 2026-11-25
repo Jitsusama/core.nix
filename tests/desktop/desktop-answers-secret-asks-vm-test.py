@@ -147,12 +147,15 @@ def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, 
         # journal that couldn't be read says how it ended rather than reading as nothing said:
         # diagnosis puts that, or what the read raised, on a line of its own opening "(".
         journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
-        named = f"ask:{ask}"
+        # A yes the shell withholds is said by its act's key, verb:release, not the ask's; only
+        # this test's ask is waiting, so either names it.
+        named = (f"ask:{ask}", "verb:release")
         how_it_ended = ("(un", "(ended with ")
         words = [
             line
             for line in desktop.diagnosis(journal).splitlines()
-            if (named in line and "report[showing " not in line) or line.startswith(how_it_ended)
+            if (any(name in line for name in named) and "report[showing " not in line)
+            or line.startswith(how_it_ended)
         ]
         said = "\n".join(words)
         never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
