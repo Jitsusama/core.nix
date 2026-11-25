@@ -57,10 +57,14 @@ pub const SETTLE: Duration = Duration::from_secs(600);
 pub const TRIAL: Duration = Duration::from_secs(300);
 
 /// How long after a move a minute must be taken to hold none of the card's
-/// first minute on the point: that minute, and a minute's reach past it.
-/// Measured from the move itself, so wherever in the minute the move fell,
-/// none of its first minute is judged.
-const ARRIVED: Duration = Duration::from_secs(120);
+/// first minute on the point: that minute, and a minute's reach past it
+/// (`measure::MINUTE`), less the second a choice can be held back by, so a
+/// move made on the minute is judged at its third minute even when its own
+/// choice ran later than the one two minutes on. Measured from when the move
+/// is asked, so wherever in the minute it fell, at most that second of its
+/// first minute is judged, and the seconds the roam itself takes, which the
+/// chooser doesn't see.
+const ARRIVED: Duration = Duration::from_secs(119);
 
 /// How many minutes past `ARRIVED` a trial is judged early by.
 const JUDGED_MINUTES: usize = 2;
@@ -4202,12 +4206,13 @@ pub(crate) mod tests {
         assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
 
         // Its video echoes held as on 23 Nov 2026, the card moving 15 Mbit/s,
-        // and its choices fall a moment early or late, as the daemon's may.
+        // and its choices fall a moment early or late, as the daemon's may:
+        // the one two minutes on runs 0.6 s early against the move's.
         let held = Measured {
             moving: Some(15),
             ..carried(754, 1.9)
         };
-        let minutes = [59_990, 120_010, 179_990].map(|millis| (millis, held.clone()));
+        let minutes = [59_990, 119_400, 179_990].map(|millis| (millis, held.clone()));
         let choices = by_minutes(&mut chooser, start, HALL, &minutes);
 
         let judged = vec![Choice::Stay, Choice::Stay, Choice::Back(DESK.into())];
@@ -4259,6 +4264,35 @@ pub(crate) mod tests {
         assert_eq!(throughout, judged, "bad throughout, it goes back at 185 s");
         let stays = vec![Choice::Stay; 4];
         assert_eq!(as_it_arrived, stays, "none of its first minute is judged");
+    }
+
+    #[test]
+    fn a_move_just_past_the_minute_is_judged_by_none_of_the_minute_it_arrived_in() {
+        // Moved where a look ended, 5 s after the minute, so the minute to
+        // 115 s still holds the last 5 s of its first minute on the point.
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        // Its video held as it arrived and spilled into the minute to 115 s;
+        // the minute to 175 s is bad on its own, and the next is quick.
+        let held = carried(823, 0.5);
+        let minutes = [
+            (55_000, held.clone()),
+            (115_000, carried(160, 0.5)),
+            (175_000, held),
+            (235_000, carried(30, 0.0)),
+        ];
+        let choices = by_minutes(&mut chooser, start, HALL, &minutes);
+
+        assert_eq!(
+            choices,
+            vec![Choice::Stay; 4],
+            "one bad minute past its arrival is no trial"
+        );
     }
 
     #[test]
