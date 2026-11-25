@@ -56,27 +56,42 @@ function footedWithout(footed, text) {
     return told.length === 0 ? null : Object.assign({}, footed, { told });
 }
 
+// When `one`'s Return was, for what's pressed on its act after it: its
+// `asked`, or for one with none (a start the node kept, heard later) its
+// `since`.
+function askedOf(one) {
+    return one.asked ?? one.since;
+}
+
 // Whether `one`, up, opens and takes the keys: only where Joel `waits` on
-// its act (Sprouting.waitsOn) and nothing has been pressed or offered on
-// that act since its Return (`pressed`, saysOnAct). A link offer moves
-// no key, so it would otherwise leave a late start shutting the launcher
-// on the words just offered.
+// its act (Sprouting.waitsOn) and its act wasn't pressed or given fresh
+// words since its Return (`pressed`, saysOnAct). A link offer comes only
+// with the launcher shut, which spends every opening's keys (shutOn), so
+// this holds against a press waitsOn can't see.
 function takesKeys(waits, pressed, one) {
-    return waits && saysOnAct(pressed, one.key, one.since);
+    return waits && saysOnAct(pressed, one.key, askedOf(one));
 }
 
-// The opening a start `how` on the act `key` waits on, from `given`, what
-// its Return recorded (`at` its stamp, `keys` the launcher's keysTaken):
-// counted from the Return, not the answer, so a key pressed or a link
-// offered while the node was asked counts against it.
-function opening(how, key, given) {
-    return { key, held: how.held, machine: how.machine, since: given.at, keys: given.keys };
+// The opening a start `how` on the act `key` waits on, answered `now`,
+// from `given`, what its Return recorded (`at` its stamp, `keys` and
+// `letters` the launcher's keysTaken and lettersAt): what's pressed or
+// typed counts from the Return, and the minute's patience from `now`, so
+// a slow answer isn't said to be still coming up seconds after it.
+function opening(how, key, given, now) {
+    return { key, held: how.held, machine: how.machine, since: now, asked: given.at,
+        keys: given.keys, letters: given.letters };
 }
 
-// The `openings` once the launcher shuts: none takes the keys after, as
-// a reopening needn't move a key and Joel has left the act's wait.
+// `given` (an opening, or Agents.qml's sproutGiven) once the launcher
+// shuts: it takes the keys no more, as a reopening needn't move a key and
+// Joel has left the act's wait.
+function spent(given) {
+    return Object.assign({}, given, { keys: -1 });
+}
+
+// The `openings` once the launcher shuts, each spent.
 function shutOn(openings) {
-    return openings.map(one => Object.assign({}, one, { keys: -1 }));
+    return openings.map(spent);
 }
 
 // The word said of `one` come up and left for Go To: "upLater", naming

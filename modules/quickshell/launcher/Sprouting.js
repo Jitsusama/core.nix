@@ -302,14 +302,14 @@ function sproutedOf(running, held, machine) {
 }
 
 // Whether Joel still waits on the act `key` in `launcher`: open, on its row
-// or held in its ask, where Return leaves him with the field emptied, and no
-// key taken since the answer, when its `keysTaken` was `keys`: a count only
-// keys move, as an arrow's lettersAt of 0 could match again. Only then may
-// its window take the keys; else what he types could reach an agent's prompt.
-function waitsOn(launcher, key, keys) {
+// or held in its ask, where Return leaves him with the field emptied, with
+// no key taken and no letter given since his Return, when its `keysTaken`
+// was `keys` and its `lettersAt` `letters`: an arrow moves only the keys, a
+// paste only the letters. Else what he types could reach an agent's prompt.
+function waitsOn(launcher, key, keys, letters) {
     const on = row => row?.key === key;
     return launcher?.open === true && launcher.keysTaken === keys &&
-        (on(launcher.asking) || on(launcher.selected));
+        launcher.lettersAt === letters && (on(launcher.asking) || on(launcher.selected));
 }
 
 // How `openings` ({key, held, machine, since, late}) stand at `now`, by

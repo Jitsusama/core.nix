@@ -182,27 +182,32 @@ QtObject {
         // Whether Joel still waits on the act in the launcher, so it may close for its
         // window and take the keys: open, on the act itself or held in its ask, where
         // Return leaves him with the field emptied for another try, and no key taken
-        // since the answer (its keysTaken then), so a new try he's typing keeps its keys.
+        // nor letter given since his Return (its keysTaken and lettersAt then), so a new
+        // try he's typing or pasting keeps its keys.
         const act = "verb:agents:start-new-work:link";
         const at = (open, asking, selected, keysTaken) => ({ open, asking, selected,
             keysTaken, lettersAt: 0 });
         Expect.same("held in the act's ask, it waits",
-            Sprouting.waitsOn(at(true, { key: act }, null, 5), act, 5), true);
+            Sprouting.waitsOn(at(true, { key: act }, null, 5), act, 5, 0), true);
         Expect.same("on the act's row, it waits",
-            Sprouting.waitsOn(at(true, null, { key: act }, 5), act, 5), true);
+            Sprouting.waitsOn(at(true, null, { key: act }, 5), act, 5, 0), true);
         Expect.same("a key taken since, in its ask, it doesn't",
-            Sprouting.waitsOn(at(true, { key: act }, null, 9), act, 5), false);
+            Sprouting.waitsOn(at(true, { key: act }, null, 9), act, 5, 0), false);
         // An arrow sets lettersAt to 0 again, so an answer heard after one, at 0, would
         // wait again at any later arrow; keysTaken only goes up.
         Expect.same("an arrow since, on the act's row, it doesn't",
-            Sprouting.waitsOn(at(true, null, { key: act }, 6), act, 0), false);
+            Sprouting.waitsOn(at(true, null, { key: act }, 6), act, 0, 0), false);
+        // A paste moves no key, only the letters.
+        Expect.same("words pasted since, on the act's row, it doesn't",
+            Sprouting.waitsOn(Object.assign(at(true, null, { key: act }, 5), { lettersAt: 4 }),
+                act, 5, 0), false);
         Expect.same("one with no launcher at its answer never does",
-            Sprouting.waitsOn(at(true, null, { key: act }, 0), act, -1), false);
+            Sprouting.waitsOn(at(true, null, { key: act }, 0), act, -1, 0), false);
         Expect.same("on another row, it doesn't",
-            Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5), false);
+            Sprouting.waitsOn(at(true, null, { key: "other" }, 5), act, 5, 0), false);
         Expect.same("closed, it doesn't",
-            Sprouting.waitsOn(at(false, { key: act }, null, 5), act, 5), false);
-        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act, 5), false);
+            Sprouting.waitsOn(at(false, { key: act }, null, 5), act, 5, 0), false);
+        Expect.same("no launcher, it doesn't", Sprouting.waitsOn(null, act, 5, 0), false);
 
         // How the waiting stand at `now`: each up opens however long it took, as Joel's
         // start at 14:30 on 25 November came up five and a half minutes on; one past the
@@ -439,25 +444,34 @@ QtObject {
             true);
         Expect.same("an act never pressed says", Openings.saysOnAct({}, "a", 200), true);
         {
+            // One the node kept, heard later, has no Return of its own: its since.
             const opening = { key: "a", since: 200 };
             Expect.same("an up start Joel waits on, its act unpressed since, takes the keys",
                 Openings.takesKeys(true, { a: 100 }, opening), true);
-            Expect.same("its act offered fresh words since, it doesn't, though he waits",
+            Expect.same("its act pressed since, it doesn't, though he waits",
                 Openings.takesKeys(true, { a: 300 }, opening), false);
             Expect.same("not waited on, it doesn't", Openings.takesKeys(false, {}, opening),
                 false);
-            // Made from its Return, at 200 with 7 keys taken, though the node answered
-            // later: a key or an offer while it was asked counts against it.
+            // Made from its Return, at 200 with 7 keys taken and 3 letters given,
+            // answered at 55200: what's pressed counts from the Return, the minute's
+            // patience from the answer.
             const made = Openings.opening({ held: "h1", machine: "kestrel" }, "a",
-                { words: "w", letters: 0, keys: 7, at: 200 });
-            Expect.same("an opening counts from its Return", made,
-                { key: "a", held: "h1", machine: "kestrel", since: 200, keys: 7 });
-            Expect.same("an offer while it was asked keeps the launcher open",
+                { words: "w", letters: 3, keys: 7, at: 200 }, 55200);
+            Expect.same("an opening is pressed from its Return and waited from its answer",
+                made, { key: "a", held: "h1", machine: "kestrel", since: 55200, asked: 200,
+                    keys: 7, letters: 3 });
+            Expect.same("its act pressed after its Return, before its answer, it doesn't",
                 Openings.takesKeys(true, { a: 250 }, made), false);
+            Expect.same("a slow answer isn't said to be still coming up seconds after",
+                Sprouting.settled([made], () => null, 65200, { patience: 60000, watch: 900000 })
+                    .late.length, 0);
             Expect.same("once the launcher shut, none takes the keys again",
                 Openings.shutOn([made, { key: "b", keys: 3, late: true }])
-                    .map(one => [one.key, one.keys, one.late === true]),
-                [["a", -1, false], ["b", -1, true]]);
+                    .map(one => [one.key, one.keys, one.late === true, one.asked]),
+                [["a", -1, false, 200], ["b", -1, true, undefined]]);
+            Expect.same("a start still asked as it shut is spent, keeping the rest",
+                Openings.spent({ words: "w", letters: 3, keys: 7, at: 200 }),
+                { words: "w", letters: 3, keys: -1, at: 200 });
         }
         Expect.same("an act pressed since, or given fresh words, doesn't",
             Openings.saysOnAct({ a: 300 }, "a", 200), false);

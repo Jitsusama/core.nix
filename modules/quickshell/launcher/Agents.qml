@@ -1866,18 +1866,20 @@ Provider {
             console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
+        const pressed = Date.now();
+        if (sprouting !== "") {
+            // Unstamped, so the start still asked says on as it comes up,
+            // over the busy words its answer takes the place of.
+            sproutSays(key, words.busy);
+            sproutReaches({ started: false, why: words.busy });
+            return;
+        }
         // A walk's Return, refused above, stamps nothing, so no walk from
         // outside quiets a start still coming up. A link offer, which any
         // program may make while the launcher is free, stamps its own act's
         // row, which it gives fresh words (newWorkFor); the start is still
         // told in the foot or as a notice.
-        const pressed = Date.now();
         sproutPressed = Openings.pressedAt(sproutPressed, key, pressed);
-        if (sprouting !== "") {
-            sproutSays(key, words.busy);
-            sproutReaches({ started: false, why: words.busy });
-            return;
-        }
         const ask = Sprouting.ask(said, folder);
         if (ask === null) {
             const why = Sprouting.refused(said, folder, words);
@@ -2070,7 +2072,7 @@ Provider {
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
-            openings = openings.concat([Openings.opening(how, key, sproutGiven)]);
+            openings = openings.concat([Openings.opening(how, key, sproutGiven, Date.now())]);
             openSprouted();
         }
     }
@@ -2148,7 +2150,7 @@ Provider {
         sproutCarried = "";
         // No opening takes the keys once he's shut it, one still asked included.
         openings = Openings.shutOn(openings);
-        sproutGiven = Object.assign({}, sproutGiven, { keys: -1 });
+        sproutGiven = Openings.spent(sproutGiven);
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
@@ -2157,9 +2159,10 @@ Provider {
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
-    // since, keys, late, told }` (Openings.opening), `since` and `keys` the
-    // time and keysTaken at its Return (keys -1 once the launcher shut, or
-    // with none, so it never takes the keys), `late` true once it's said to
+    // since, asked, keys, letters, late, told }` (Openings.opening), `since`
+    // the time of its answer, `asked`, `keys` and `letters` the time,
+    // keysTaken and lettersAt at its Return (keys -1 once the launcher shut,
+    // or with none, so it never takes the keys), `late` true once it's said to
     // be still coming up and `told` the words that said it (Openings.toldOf):
     // Joel asked for each, so each opens for him, on the workspace a session
     // goes to and focused (Sessions.goTo), rather than in no window (Joel,
@@ -2213,7 +2216,7 @@ Provider {
         const text = Openings.filled(sproutWords(), word, { machine: one.machine,
             title: one.session ? footName(one.session) : "",
             minutes: String(openingPatience.watch / 60000) });
-        if (Openings.saysOnAct(sproutPressed, one.key, one.since))
+        if (Openings.saysOnAct(sproutPressed, one.key, Openings.askedOf(one)))
             sproutSays(one.key, text);
         return text;
     }
@@ -2225,16 +2228,17 @@ Provider {
         // Its window, or its up word, answers the foot's "still coming up"
         // of it, so neither says it beside them nor notices it at the shut.
         takeBack(one);
-        if (!Openings.takesKeys(Sprouting.waitsOn(launcher, one.key, one.keys), sproutPressed,
-            one)) {
-            sproutJournal(`new work held ${one.held} is up${late} as session `
-                + `${one.session.address}; left for Go To`);
+        // Its session's address only with reports on, as main said it.
+        Report.say(`new work held ${one.held} is session ${one.session.address}`);
+        const waits = Sprouting.waitsOn(launcher, one.key, one.keys, one.letters);
+        if (!Openings.takesKeys(waits, sproutPressed, one)) {
+            sproutJournal(`new work held ${one.held} is up${late}; left for Go To`);
             return said(one, Openings.upWord(one));
         }
         said(one, "opening");
         launcher.open = false;
         Sessions.goTo(one.session);
-        sproutJournal(`opening new work held ${one.held}${late} as session ${one.session.address}`);
+        sproutJournal(`opening new work held ${one.held}${late}`);
         return "";
     }
     // Takes back what the foot said of `one` late (Openings.takenBack),
