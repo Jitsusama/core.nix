@@ -724,7 +724,8 @@ Scope {
     // the daemon gone, is asked again once it's back (`typedLost`), while the rows are drawn,
     // and only once (`typedReasked`), which stands till other words are typed: answered, its
     // words are what's typed, never asked again till then. The line timing an answer asked
-    // again says so, as its time from the key holds the daemon's whole restart.
+    // again says so, as its time from the key holds the daemon's whole restart, and one that
+    // didn't come is timed by none, as nothing answered it: its warnings say so.
     function typedAnswered(within, words, answer) {
         const asked = `${within}\n${words}`;
         if (typedAsking !== asked)
@@ -737,9 +738,11 @@ Scope {
         else if (answer === null && drawn)
             console.warn(`launcher: ${place}'s ${typed} went unanswered again once asked `
                 + "again, left for the next key");
-        const saidAgain = again ? ", asked again at its hello" : "";
-        console.info(`launcher: ${place} answered ${typed} `
-            + `${Date.now() - typedAt} ms after its key${saidAgain}`);
+        if (answer !== null) {
+            const saidAgain = again ? ", asked again at its hello" : "";
+            console.info(`launcher: ${place} answered ${typed} `
+                + `${Date.now() - typedAt} ms after its key${saidAgain}`);
+        }
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
             console.warn(`launcher: ${place}'s daemon didn't answer ${typed}: `
