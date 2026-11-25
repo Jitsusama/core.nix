@@ -174,6 +174,11 @@ tidy() {
   new=$(making "$folder")
   beside=$(dirname "$folder")
   name=$(basename "$folder")
+  # A copy a run kept for the writes in it, but couldn't set aside, stays
+  # until Joel has looked; each run until then fails at making its copy.
+  if [ -e "$new.keep" ]; then
+    return 0
+  fi
   # A copy half made is a subvolume's root; anything else there is the
   # folder as it was, left by a run stopped just after its exchange, and is
   # kept as any other.
@@ -191,30 +196,42 @@ tidy() {
   done
 }
 
+# Says which file under `$1` changed since the stamp `$2`, or nothing.
+changed() {
+  find "$1" -newer "$2" -print -quit 2> /dev/null
+}
+
 # Says what of `$1`, a real path, is in use: a file in it changed since
 # the stamp `$2`, a writer named running, or a process holding it.
 in_use() {
   local why
-  why=$(find "$1" -newer "$2" -print -quit 2> /dev/null)
+  why=$(changed "$1" "$2")
   [ -n "$why" ] || why=$(running)
   [ -n "$why" ] || why=$(holding "$1")
   echo "$why"
 }
 
-# Says why the folder `$1` stays where it is, `$2`, and when a process
-# holds it, starts the waiter that moves it once that process quits. A
-# writer named is left to the next start, since the node runs for days.
+# Says why the folder `$1`, at the real path `$3`, stays where it is, `$2`,
+# and when a process holds it, starts the waiter that moves it once that
+# process lets go. The holder is looked for whatever the reason, since a
+# program writes as it opens its folder, and a writer's run may be what
+# was seen first while the program holds it all the same. A writer that
+# holds nothing open is left to the next start: nothing says when it next
+# writes.
 left() {
-  local folder=$1 why=$2
+  local folder=$1 why=$2 real=$3 holder
   case $why in
-  /proc/*)
-    if [ -n "$waiter" ] && systemctl --user restart --no-block -- "$waiter"; then
-      echo "$why, so $folder stays in the home's tree until that quits"
-      return 0
-    fi
-    ;;
-  *) ;;
+  /proc/*) holder=$why ;;
+  *) holder=$(holding "$real") ;;
   esac
+  if [ -n "$holder" ] && [ -n "$waiter" ] &&
+    systemctl --user restart --no-block -- "$waiter"; then
+    case $why in
+    /proc/*) echo "$why, so $folder stays in the home's tree until that quits" ;;
+    *) echo "$why, and $holder, so $folder stays in the home's tree until that quits" ;;
+    esac
+    return 0
+  fi
   echo "$why, so $folder stays in the home's tree until the account's manager next starts"
 }
 
@@ -242,10 +259,15 @@ own() {
   why=$(running)
   [ -n "$why" ] || why=$(holding "$real")
   if [ -n "$why" ]; then
-    left "$folder" "$why"
+    left "$folder" "$why" "$real"
     return 0
   fi
   new=$(making "$real")
+  if [ -e "$new.keep" ]; then
+    echo "✕ a copy with writes in it is kept at $new, so $folder stays as it is" \
+      "until $new.keep is removed" >&2
+    return 1
+  fi
   stamp=$(mktemp) || return 1
   if ! btrfs -q subvolume create "$new" > /dev/null; then
     rm -f -- "$stamp"
@@ -262,7 +284,7 @@ own() {
   why=$(in_use "$real" "$stamp")
   if [ -n "$why" ]; then
     rm -rf -- "$new" "$stamp"
-    left "$folder" "$why, as it was copied"
+    left "$folder" "$why, as it was copied" "$real"
     return 0
   fi
   swapped=$(mktemp) || return 1
@@ -286,18 +308,30 @@ own() {
       return 1
     fi
     # Between the two exchanges the copy had the folder's path, so a
-    # program that wrote in it then wrote what the folder now lacks.
-    late=$(in_use "$new" "$swapped")
+    # program that wrote in it then, or holds it still, wrote what the
+    # folder lacks. A writer named running says nothing of the copy, so
+    # it isn't asked.
+    late=$(changed "$new" "$swapped")
+    [ -n "$late" ] || late=$(holding "$new")
+    rm -f -- "$swapped"
     if [ -n "$late" ]; then
-      rm -f -- "$swapped"
-      aside="$real.split-$(date +%Y%m%d%H%M%S)"
-      mv -T -- "$new" "$aside"
+      # A name of its own, so no earlier split in the same second is in
+      # the way.
+      aside="$real.split-$(date +%Y%m%d%H%M%S)-$$"
+      if ! mv -T -- "$new" "$aside"; then
+        # The next run would take the copy for a half-made one and clear
+        # it, so it's marked to be kept.
+        touch -- "$new.keep"
+        echo "✕ $folder was in use as it moved, so it's back, and what was written" \
+          "in the copy meanwhile ($late) is at $new, kept until $new.keep is removed" >&2
+        return 1
+      fi
       echo "✕ $folder was in use as it moved, so it's back, and what was written" \
-        "in the copy meanwhile is kept at $aside" >&2
+        "in the copy meanwhile ($late) is kept at $aside" >&2
       return 1
     fi
-    rm -rf -- "$new" "$swapped"
-    left "$folder" "$why, as it moved"
+    rm -rf -- "$new"
+    left "$folder" "$why, as it moved" "$real"
     return 0
   fi
   rm -f -- "$swapped"
@@ -311,11 +345,11 @@ own() {
 }
 
 # Waits until nothing holds the folder `$1` and no writer named runs, then
-# starts its move again. Each holder is waited for until it quits, as its
-# folder's move would find it, so Chrome's many processes are waited for
-# one at a time, though they mostly quit together.
+# starts its move again. Each holder is waited for until it quits or lets
+# go, as its folder's move would find it, so Chrome's many processes are
+# waited for one at a time, though they mostly quit together.
 after_quit() {
-  local folder=$1 real inode why pid
+  local folder=$1 real inode why pid last=''
   while :; do
     if [ ! -d "$folder" ] || [ -L "$folder" ]; then
       echo "$folder isn't a folder here, so there's nothing to wait for"
@@ -343,10 +377,17 @@ after_quit() {
     [ -n "$why" ] || break
     pid=${why#/proc/}
     pid=${pid%%/*}
-    echo "$why, so this waits for it to quit"
+    # Said once for each holder, not each minute it's looked at again.
+    if [ "$pid" != "$last" ]; then
+      echo "$why, so this waits for it to quit"
+      last=$pid
+    fi
     # tail looks for the process every two seconds, which is as soon after
-    # a quit as the move needs to start.
-    tail --pid="$pid" -s 2 -f /dev/null
+    # a quit as the move needs to start. A process that only passed
+    # through, as a shell cd'd there or a reader of Chrome's sessions, may
+    # let go and live on, and its number may pass to another, so the
+    # holders are looked at again each minute.
+    timeout 60 tail --pid="$pid" -s 2 -f /dev/null || true
   done
   echo "nothing holds $folder now, so its move starts again"
   systemctl --user restart --no-block -- "$move"

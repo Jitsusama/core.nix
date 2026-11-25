@@ -37,7 +37,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         raced.seconds = 30;
       };
       # Stands in for Joel opening Slack as its folder is copied: the copy
-      # being made starts it, once, and it holds a file in the folder open.
+      # being made starts it, once, and as Slack does it writes in the
+      # folder as it opens, then holds a file there open.
       systemd.user.paths.racer = {
         Path.PathExists = "%h/raced.subvolume-new";
         Install.WantedBy = [ "default.target" ];
@@ -46,6 +47,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         Unit.ConditionPathExists = "!%h/raced-once";
         Service.ExecStart = pkgs.writeShellScript "racer" ''
           touch ~/raced-once
+          echo opened >> ~/raced/f2
           exec 3< ~/raced/f1
           exec ${pkgs.coreutils}/bin/sleep infinity
         '';

@@ -67,9 +67,10 @@ let
             Type = "oneshot";
             RemainAfterExit = true;
             ExecStart = "${move} %h/${folder}";
-            # The copy is bounded, and the rest is a look at /proc and a
-            # rename or two, so this is only a backstop.
-            TimeoutStartSec = settings.seconds + 60;
+            # The copy is bounded. Past it come up to three walks of the
+            # folder and of /proc, seconds each under agents' load, and a
+            # few renames, so this is only a backstop.
+            TimeoutStartSec = settings.seconds + 120;
           };
           Install.WantedBy = [ "default.target" ];
         };
@@ -77,7 +78,8 @@ let
       # Started by the move when a process holds the folder, as Chrome or
       # Slack does at a switch, so the folder moves the first time that
       # program quits rather than at the next boot. It waits on nothing
-      # but that process, and nothing starts it otherwise.
+      # but what holds the folder and the writers named, and nothing starts
+      # it otherwise.
       {
         name = lib.removeSuffix ".service" waiter;
         value = {
