@@ -15,9 +15,11 @@ pub(super) enum Shell {
     /// `"..."`, where a backslash escapes, and `$(`, `${` and a backtick
     /// open code again.
     Double,
-    /// `$(...)`, code, with how many brackets of its own it holds open,
-    /// which close before it does.
-    Command(usize),
+    /// `$(...)`, code.
+    Command,
+    /// A bracket a command substitution's code opens, as `(cd x)`'s does,
+    /// code whose `)` closes it rather than the substitution.
+    Subshell,
     /// A backtick's command, code until the next backtick.
     Backtick,
     /// `${...}`, where quotes open as in code but a `#` is the
@@ -25,10 +27,12 @@ pub(super) enum Shell {
     /// inside double quotes, as `"${x:-it's}"` does, though a POSIX shell
     /// wouldn't.
     Parameter,
-    /// `((...))` or `$((...))`, arithmetic, with how many brackets of its
-    /// own it holds open, where substitutions open but `<<` shifts and `#`
-    /// is a number's base.
-    Arithmetic(usize),
+    /// `((...))` or `$((...))`, arithmetic, where substitutions open but
+    /// `<<` shifts and `#` is a number's base.
+    Arithmetic,
+    /// A bracket arithmetic opens, as `(1 + 2)` does, arithmetic whose `)`
+    /// closes it, so a `))` past it closes the sum no sooner.
+    Grouping,
     /// A `case` in a command substitution, code whose patterns' `)` close
     /// nothing, until its `esac`.
     Case,
@@ -41,15 +45,8 @@ impl Shell {
     pub(super) fn code(within: Option<Shell>) -> bool {
         matches!(
             within,
-            None | Some(Shell::Command(_) | Shell::Backtick | Shell::Case)
+            None | Some(Shell::Command | Shell::Subshell | Shell::Backtick | Shell::Case)
         )
-    }
-
-    /// `within` with this standing innermost in place of what did.
-    fn innermost_in(self, within: &mut [Shell]) {
-        if let Some(last) = within.last_mut() {
-            *last = self;
-        }
     }
 }
 
@@ -125,7 +122,7 @@ pub(super) fn shell_line(
                 // A `#` opens a comment only where a word begins, in code.
                 _ if c == '#' && word_starts && Shell::code(innermost) => break,
                 _ if rest.starts_with("((") && Shell::code(innermost) => {
-                    within.push(Shell::Arithmetic(0));
+                    within.push(Shell::Arithmetic);
                     step = 2;
                 }
                 _ if rest.starts_with("<<") && Shell::code(innermost) => {
@@ -136,7 +133,10 @@ pub(super) fn shell_line(
                     }
                 }
                 _ if command_starts
-                    && matches!(innermost, Some(Shell::Command(_) | Shell::Case))
+                    && matches!(
+                        innermost,
+                        Some(Shell::Command | Shell::Subshell | Shell::Case)
+                    )
                     && whole_word(rest, "case") =>
                 {
                     within.push(Shell::Case);
@@ -145,6 +145,12 @@ pub(super) fn shell_line(
                 _ => {
                     if let Some(opened) = substitution(rest, within) {
                         (step, starts) = opened;
+                    } else if let Some(length) =
+                        leads_a_command(rest).filter(|_| command_starts && Shell::code(innermost))
+                    {
+                        // A command may begin past a reserved word leading
+                        // one, so a `case` past `then` opens a case.
+                        (step, starts) = (length, true);
                     } else {
                         starts = c.is_whitespace() || ";&|()<>".contains(c);
                     }
@@ -165,33 +171,57 @@ pub(super) fn shell_line(
     (heredocs, kept)
 }
 
-/// The bracket `rest` opens with, counted in what stands `innermost`, a
-/// command substitution's own or arithmetic's, pushed onto or popped from
+/// The bracket `rest` opens with in what stands `innermost`, a command
+/// substitution's code or arithmetic, pushed onto or popped from
 /// `within`: how long it is, and whether a word begins past it. None for
-/// any other text. A count changes in place, so what stands innermost is
-/// the same opening, still blamed on the line that opened it.
+/// any other text. Each bracket stands open as an entry of its own, so the
+/// line that opened it is named with the rest should the file never close
+/// it.
 fn bracket(innermost: Option<Shell>, rest: &str, within: &mut Vec<Shell>) -> Option<(usize, bool)> {
-    let (counted, starts) = match innermost? {
-        Shell::Command(0) if rest.starts_with(')') => {
-            within.pop();
+    let (length, starts) = match innermost? {
+        Shell::Command | Shell::Subshell if rest.starts_with('(') && !rest.starts_with("((") => {
+            within.push(Shell::Subshell);
+            return Some((1, true));
+        }
+        // Past a substitution's close the word runs on; past a subshell's,
+        // which is an operator, one begins. A sum's own bracket closes at
+        // its `)`, a `))` past it closing the sum no sooner.
+        Shell::Command | Shell::Grouping if rest.starts_with(')') => (1, false),
+        Shell::Subshell if rest.starts_with(')') => (1, true),
+        Shell::Arithmetic | Shell::Grouping if rest.starts_with('(') => {
+            within.push(Shell::Grouping);
             return Some((1, false));
         }
-        Shell::Command(open) if rest.starts_with(')') => (Shell::Command(open - 1), true),
-        Shell::Command(open) if rest.starts_with('(') && !rest.starts_with("((") => {
-            (Shell::Command(open + 1), true)
-        }
-        Shell::Arithmetic(0) if rest.starts_with("))") => {
-            within.pop();
-            return Some((2, false));
-        }
-        Shell::Arithmetic(open) if rest.starts_with(')') && open > 0 => {
-            (Shell::Arithmetic(open - 1), false)
-        }
-        Shell::Arithmetic(open) if rest.starts_with('(') => (Shell::Arithmetic(open + 1), false),
+        Shell::Arithmetic if rest.starts_with("))") => (2, false),
         _ => return None,
     };
-    counted.innermost_in(within);
-    Some((1, starts))
+    within.pop();
+    Some((length, starts))
+}
+
+/// How long the reserved word `rest` opens with is, where it's one past
+/// which a command may begin: a keyword ending at a blank or an operator,
+/// or `!` or `{` ending at a blank, as bash reads them.
+fn leads_a_command(rest: &str) -> Option<usize> {
+    const KEYWORDS: [&str; 8] = ["if", "then", "else", "elif", "do", "while", "until", "time"];
+    let ends = |past: &str, operator: bool| {
+        past.chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || (operator && ";&|()<>".contains(c)))
+    };
+    KEYWORDS
+        .iter()
+        .find(|word| {
+            rest.strip_prefix(**word)
+                .is_some_and(|past| ends(past, true))
+        })
+        .or_else(|| {
+            ["!", "{"].iter().find(|word| {
+                rest.strip_prefix(**word)
+                    .is_some_and(|past| ends(past, false))
+            })
+        })
+        .map(|word| word.len())
 }
 
 /// Whether `rest` opens with `word` whole, no letter, digit or underscore
@@ -206,10 +236,10 @@ fn whole_word(rest: &str, word: &str) -> bool {
 /// command's start.
 fn substitution(rest: &str, within: &mut Vec<Shell>) -> Option<(usize, bool)> {
     if rest.starts_with("$((") {
-        within.push(Shell::Arithmetic(0));
+        within.push(Shell::Arithmetic);
         Some((3, false))
     } else if rest.starts_with("$(") {
-        within.push(Shell::Command(0));
+        within.push(Shell::Command);
         Some((2, true))
     } else if rest.starts_with("${") {
         within.push(Shell::Parameter);

@@ -123,12 +123,14 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         match read(content, extension, (mark, blocks), &closers, &unopened) {
             Ok(lines) => return lines,
             Err(openers) => {
-                for opener in openers {
-                    assert!(
-                        unopened.insert(opener),
-                        "line {opener} of {} opened something though named",
-                        file.path
-                    );
+                let named = unopened.len();
+                unopened.extend(openers);
+                // Should a reading name only lines named already, the next
+                // would read as it did, so the file is taken for one whose
+                // comments can't be known rather than read forever, or
+                // taking down the measure of every repository.
+                if unopened.len() == named {
+                    return Vec::new();
                 }
             }
         }
@@ -137,9 +139,9 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
 
 /// The comment lines of a file's `content`, read with the comment `mark`
 /// and `blocks`, or the lines that opened a docstring, a block comment, a
-/// heredoc, a string or a shell quote the file never closes. No line in
-/// `unopened` opens one, and `closers` says where what a line opens could
-/// close.
+/// string or a shell quote the file never closes. No line in `unopened`
+/// opens one, and `closers` says where what a line opens could close, so
+/// a heredoc is opened only where it closes.
 fn read<'a>(
     content: &'a str,
     extension: &str,
@@ -155,6 +157,8 @@ fn read<'a>(
     let mut block = false;
     // The words closing the heredocs a line of shell opened, in the order
     // their bodies follow, each with whether `<<-` lets tabs indent it.
+    // Each is kept only where a later line closes it in turn, so none is
+    // open at the file's end.
     let mut heredocs: VecDeque<(String, bool)> = VecDeque::new();
     // What a line of shell left open, innermost last: in a quote, its
     // lines up to the close are a string's, so neither comment nor opening
@@ -171,9 +175,9 @@ fn read<'a>(
     // a backslash carries it on, and whether it opened as a header.
     let mut logical = Logical::default();
     let mut lines = Vec::new();
-    // The line that last opened a docstring, a block comment, a heredoc, a
-    // string or a quote, which is the one still open at the file's end, if
-    // any is.
+    // The line that last opened a docstring, a block comment or a string,
+    // which is the one still open at the file's end, if any is. A shell
+    // quote's are in `opened_at`.
     let mut opener = 0;
     for (number, line) in content.lines().enumerate() {
         let opens_here = !unopened.contains(&number);
@@ -263,11 +267,7 @@ fn read<'a>(
                     let (words, kept) = shell_line(line, &mut quoted, opens_here);
                     opened_at.truncate(kept);
                     opened_at.resize(quoted.len(), number);
-                    let words = closers.closing(words, number);
-                    if !words.is_empty() || quoted.len() > kept {
-                        opener = number;
-                    }
-                    heredocs.extend(words);
+                    heredocs.extend(closers.closing(words, number));
                 }
                 comment.then_some(line)
             }
@@ -284,11 +284,14 @@ fn read<'a>(
     if !quoted.is_empty() {
         // What a quote or a substitution holds is read alike whatever it
         // stands in, so each line holding open what the file never closes
-        // opened it on a misreading, and all are named at once, rather
-        // than the file read again for each.
+        // is taken to have opened it on a misreading, and all are named at
+        // once, rather than the file read again for each. A quote truly
+        // opened around the misreading is named with it, and its lines
+        // read as code: the price of knowing a file of thousands of
+        // openings from one reading rather than thousands.
         opened_at.dedup();
         Err(opened_at)
-    } else if docstring.is_some() || block || !heredocs.is_empty() || string.is_some() {
+    } else if docstring.is_some() || block || string.is_some() {
         Err(vec![opener])
     } else {
         Ok(lines)

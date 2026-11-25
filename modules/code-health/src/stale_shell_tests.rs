@@ -392,6 +392,43 @@ fn sums_cases_and_backticks_close_where_bash_closes_them() {
     );
 }
 
+// A command begins past a reserved word leading one, so each of these
+// opens a case in a substitution in quotes, whose patterns' brackets close
+// nothing, as bash runs them.
+#[test]
+fn a_case_past_a_reserved_word_opens_as_one_at_a_commands_start() {
+    let mut files = Vec::from(["then", "do", "brace"].map(|name| {
+        let (opening, closing) = match name {
+            "then" => ("if true; then", "fi"),
+            "do" => ("for x in y; do", "done"),
+            _ => ("{", "}"),
+        };
+        file(
+            &format!("tests/{name}.sh"),
+            &format!(
+                "x=\"$({opening} case a in\n\
+                 a) echo hi ;;\n\
+                 esac; {closing}\n\
+                 # tests/kept/{name}.sh, in a case past {opening}\n\
+                 )\" <<A\n\
+                 # tests/kept/in-{name}.sh\n\
+                 A\n"
+            ),
+        )
+    }));
+    // A path is stale only in a folder that's there.
+    files.push(file("tests/kept/x.nix", "{ }\n"));
+    assert_eq!(
+        stale(&paths(&files), &files),
+        [
+            "tests/then.sh:4: tests/kept/then.sh",
+            "tests/do.sh:4: tests/kept/do.sh",
+            "tests/brace.sh:4: tests/kept/brace.sh"
+        ],
+        "a case past then, do or a brace was read other than as bash reads it"
+    );
+}
+
 /// What a line of shell, read from outside everything, leaves open.
 fn left_open(line: &str) -> Vec<Shell> {
     let mut within = Vec::new();
@@ -401,23 +438,42 @@ fn left_open(line: &str) -> Vec<Shell> {
 
 #[test]
 fn each_line_leaves_open_what_bash_leaves_open() {
-    use Shell::{Ansi, Arithmetic, Backtick, Case, Command, Double, Parameter, Single};
-    let cases: [(&str, &[Shell]); 19] = [
+    use Shell::{
+        Ansi, Arithmetic, Backtick, Case, Command, Double, Grouping, Parameter, Single, Subshell,
+    };
+    let cases: [(&str, &[Shell]); 33] = [
         ("echo $'it\\'s", &[Ansi]),
-        ("x=\"$(echo \"it's", &[Double, Command(0), Double]),
+        ("x=\"$(echo \"it's", &[Double, Command, Double]),
         ("y=\"${z:-\"it's", &[Double, Parameter, Double]),
         ("w=\"`echo \"it's", &[Double, Backtick, Double]),
         ("echo \"${x:-it's", &[Double, Parameter, Single]),
         ("x=$(( $(echo 1) + 1 ))", &[]),
-        ("x=$(( (1 + 2", &[Arithmetic(1)]),
-        ("(( x <<A", &[Arithmetic(0)]),
+        ("x=$(( (1 + 2", &[Arithmetic, Grouping]),
+        ("x=$(( (1 + (2", &[Arithmetic, Grouping, Grouping]),
+        // A sum's own bracket closes before its `))` can.
+        ("x=$(( (1 + 2)) <<A", &[Arithmetic]),
+        ("(( x <<A", &[Arithmetic]),
         ("echo ${x:-((}", &[]),
-        ("x=$( (echo", &[Command(1)]),
-        ("x=$( (#'", &[Command(1)]),
-        ("x=$( (echo)#'", &[Command(0)]),
-        ("x=$(case a in a)", &[Command(0), Case]),
-        ("x=$(case a in a) ;; esac", &[Command(0)]),
-        ("x=$(case a in a) echo esac)", &[Command(0), Case]),
+        ("x=$( (echo", &[Command, Subshell]),
+        ("x=$( (cd x) )", &[]),
+        ("x=$( (#'", &[Command, Subshell]),
+        ("x=$( (echo)#'", &[Command]),
+        // Past a substitution's close the word runs on, so no comment opens.
+        ("x=$(echo)#'", &[Single]),
+        ("x=$(case a in a)", &[Command, Case]),
+        ("x=$(case a in a) ;; esac", &[Command]),
+        ("x=$(case a in a) echo esac)", &[Command, Case]),
+        ("x=$(case a in (a) case b in b)", &[Command, Case, Case]),
+        // A pattern's opening bracket opens no subshell.
+        ("x=$(case a in (a", &[Command, Case]),
+        ("x=$(if true; then case a in a)", &[Command, Case]),
+        ("x=$(while x; do case a in a)", &[Command, Case]),
+        ("x=$({ case a in a)", &[Command, Case]),
+        ("x=$(! case a in a)", &[Command, Case]),
+        ("x=$( (case a in a)", &[Command, Subshell, Case]),
+        ("x=$(echo then case a in a)", &[]),
+        ("x=$(thence case a in a)", &[]),
+        ("x=$({case a in a)", &[]),
         ("x=$(echo case a in a)", &[]),
         ("x=$(cased a in a)", &[]),
         ("x=`echo # it's`", &[]),
@@ -475,15 +531,15 @@ fn a_line_is_named_for_what_it_leaves_open_not_what_it_closed() {
     );
     assert_eq!(
         named("x=$(\n(echo\n"),
-        Err(vec![0]),
-        "a bracket counted in a substitution was taken for its opening"
+        Err(vec![0, 1]),
+        "a line holding a bracket open in a substitution no line closes wasn't named with it"
     );
 }
 
 // Read again for each line holding one open, these would take seconds.
 #[test]
 fn what_never_closes_is_known_from_one_reading() {
-    for opening in ["x=$(", "x=\"$(", "x=${"] {
+    for opening in ["x=$(", "x=\"$(", "x=${", "(("] {
         let content = format!("{opening}\n").repeat(3000) + "# tests/kept/end.sh\n";
         let closers = Closers::of(&content, true, false);
         let read = |unopened| read(&content, "sh", ("#", false), &closers, unopened);
