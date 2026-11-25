@@ -296,7 +296,7 @@ for shell in "$@"; do
   fi
   expect MYCELIUM_REALM one
   expect PI_HOME_REALM mine
-  expect PROXY_ORIGIN https://proxy.example.com
+  expect PROXY_ORIGIN https://proxy.example.com/a%40b
   expect PI_HOST_STOP_USEC 150000000
   expect PI_CODEMODE_MAX_WORKERS 16
   expect UV_THREADPOOL_SIZE 16
