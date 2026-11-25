@@ -1298,27 +1298,39 @@ QtObject {
         // text's end, its `trailing`, are no letters the cursor stands on,
         // but the wash takes them in, so the search reads them too: one
         // begun in them lands on the line's last letter, the nearest it
-        // stands, and none runs past them into the next paragraph.
+        // stands, and none runs past them into the next paragraph. Both
+        // paragraphs are one text's words, as a fact's value broken in two
+        // is, so only the break stops the search between them; a text of
+        // only spaces, and a wrapped one ending in them, land on the
+        // nearest letter there is.
         const ending = (words, text, trailing) =>
             ({ words, text, length: text.length, on: null, trailing });
-        const [ends, next] = [{}, {}];
+        const [ends, blank, wraps] = [{}, {}, {}];
         const ended = [
             laid(ending(ends, "Ends here", "  ")),
-            laid(ending(next, "next", " "))
+            laid(ending(ends, "next", " ")),
+            laid(ending(blank, "", "   ")),
+            laid(part(wraps, "Wraps", " ")), laid(ending(wraps, "here", "  "))
         ];
         const endedOn = [
-            ["into the spaces before a paragraph's break", "here ", [[0, 5]]],
+            ["into the spaces before a paragraph's break", "here ", [[0, 5], [4, 0]]],
             ["into the spaces at a text's end", "next ", [[1, 0]]],
             ["landing on a line's last letter from the spaces it ends with", "  ",
-                [[0, 8]]],
+                [[0, 8], [2, 0], [4, 3]]],
             ["so a space finds those once a line, beside its own", " ",
-                [[0, 4], [0, 8], [1, 3]]],
+                [[0, 4], [0, 8], [1, 3], [2, 0], [4, 0], [4, 3]]],
             ["never past them", "here   ", []],
-            ["nor from them into the next paragraph", "here  next", []]
+            ["nor from them into the next paragraph", "here  next", []],
+            ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
+            ["across a wrap into the spaces its last line ends with", "s here ", [[3, 4]]]
         ];
         for (const [what, pattern, want] of endedOn)
             holds(`the drawer's search reads ${what}`,
                 Page.matchesIn(ended, pattern).map(match => [match.line, match.letter]), want);
+        // Two spaces a line ends with land on one letter, so the foot
+        // counts them once, as the cursor can stand there only once.
+        holds("the drawer's foot counts a line's trailing matches once",
+            Page.found(ended, " ", 0, 8), { at: 2, of: 6 });
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
