@@ -100,4 +100,6 @@
   "launcher/Lately.js"
   "Drafts.qml"
   "launcher/Drafts.js"
+  # Agents' Talk and Now's For You both say what an agent asks with it.
+  "launcher/TalkAnswers.js"
 ]

@@ -234,11 +234,13 @@ const WHOLE_AT_MOST: usize = 4000;
 /// line (`asked`: paragraphs, list lines and indentation kept), so Talk and
 /// For You show the whole question with its choices (Joel's bar of
 /// 2026-11-24, that any surface he is in answers a question in full); none
-/// where it says no more than its short line, or past `WHOLE_AT_MOST`.
+/// where it says no more than its short line, trimmed, or past
+/// `WHOLE_AT_MOST`.
 fn whole(wants: &Value) -> &str {
+    let said = wants["said"].as_str().unwrap_or("").trim();
     wants["asked"]
         .as_str()
-        .filter(|asked| !asked.trim().is_empty())
+        .filter(|asked| !asked.trim().is_empty() && asked.trim() != said)
         .filter(|asked| asked.chars().count() <= WHOLE_AT_MOST)
         .unwrap_or("")
 }
@@ -574,7 +576,9 @@ mod tests {
 
     /// What a want asks in full is passed on whole, its lines kept, so Talk
     /// and For You say the question as it was put; one longer than the
-    /// harness writes, or blank, is none, and the short line stands.
+    /// harness writes, blank, or no more than the short line is none, and
+    /// the short line stands. The most is counted in characters, so one
+    /// two bytes long fills it exactly.
     #[test]
     fn a_want_says_its_whole_question_lines_kept() {
         let asked = "Which tide do we sail on?\n\n- Low: calmer\n  - at dawn\n- High: faster";
@@ -585,13 +589,24 @@ mod tests {
         let wants = served(&[
             asking("SKIFF", "running", &want(&json!(asked))),
             asking(
+                "MAST",
+                "running",
+                &want(&json!("\u{e9}".repeat(WHOLE_AT_MOST))),
+            ),
+            asking(
                 "BUOY",
                 "running",
-                &want(&json!("x".repeat(WHOLE_AT_MOST + 1))),
+                &want(&json!("\u{e9}".repeat(WHOLE_AT_MOST + 1))),
             ),
             asking("KELP", "running", &want(&json!(" \n "))),
             asking("REEF", "running", &want(&json!(7))),
+            asking(
+                "KEEL",
+                "running",
+                &want(&json!(" Which tide do we sail on?\n")),
+            ),
         ]);
+        let most = "\u{e9}".repeat(WHOLE_AT_MOST);
         let whole: Vec<(&str, &str)> = wants
             .iter()
             .map(|one| {
@@ -603,7 +618,14 @@ mod tests {
             .collect();
         assert_eq!(
             whole,
-            [("SKIFF", asked), ("BUOY", ""), ("KELP", ""), ("REEF", "")],
+            [
+                ("SKIFF", asked),
+                ("MAST", most.as_str()),
+                ("BUOY", ""),
+                ("KELP", ""),
+                ("REEF", ""),
+                ("KEEL", "")
+            ],
             "the whole as written, else none"
         );
         assert_eq!(

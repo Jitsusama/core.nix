@@ -56,7 +56,7 @@ QtObject {
             Expect.same("a whole question is told where its short line is the title",
                 Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
                     said: "", whole: wholly }), true), "S", words, dayOf).answers[0], wholly);
-            Expect.same("its first line's indentation is kept, as For You's drawer says it",
+            Expect.same("its first line's indentation is kept, its blank lines around dropped",
                 Answers.whole({ whole: "\n \n  - low\n- high \n" }), "  - low\n- high");
             Expect.same("no want, no whole", Answers.whole(null), "");
             Expect.same("a blank whole leaves the short line",
