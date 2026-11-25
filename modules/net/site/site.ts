@@ -79,7 +79,11 @@ function sayWhen(): void {
   )[0];
   const problems = [...(network?.unread ?? []), ...heard.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  tell(asof, `${stands === undefined ? "" : said(stands)}${trouble}`, stands?.state ?? "connecting");
+  tell(
+    asof,
+    `${stands === undefined ? "" : said(stands)}${trouble}`,
+    stands?.state ?? "connecting",
+  );
 }
 
 function context(): Context | undefined {
