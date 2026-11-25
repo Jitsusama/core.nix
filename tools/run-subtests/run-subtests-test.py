@@ -865,6 +865,20 @@ def test_inside_a_build_the_driver_given_is_run_and_none_is_built(
     assert ran["unbuffered"] == "1", "the listing's driver held its lines back"
 
 
+def test_inside_a_build_the_check_and_words_past_a_double_dash_are_read(
+    tool: Tool, stand_in: StandIn, tmp_path: Path
+) -> None:
+    # subtests.nix hands the check and its words over past `--`.
+    stand_in.script.write_text(PYTEST_SCRIPT)
+    driven = ["--driver", str(stand_in.driver), "--out", str(tmp_path / "out")]
+
+    assert tool.main([*driven, "--", "vm-desktop-x", "launcher"]) == 0
+
+    ran = stand_in.ran()
+    assert ran is not None, "the driver given never ran"
+    assert ran["pytest"] == "-k launcher", f"the build picked {ran['pytest']!r}"
+
+
 def test_inside_a_build_a_listing_naming_none_fails_and_keeps_none(
     tool: Tool,
     stand_in: StandIn,
