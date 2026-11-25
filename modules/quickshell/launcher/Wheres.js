@@ -145,6 +145,8 @@ function wheres(quests, places) {
 // else `start`, as its act was made, where no row there is listed any more.
 // An act reads it at Return, so a field entered before places landed starts
 // as its row now says (a quest's folder found to be a zone, by its name).
+// The made start can be one the node refuses, as where wheres drops a row
+// for starting as an earlier one does; the refusal then says why.
 function startAt(listed, folder, start) {
     return listed.find(one => one.folder === folder)?.start ?? start;
 }

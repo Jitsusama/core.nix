@@ -51,23 +51,26 @@ QtObject {
                     && folders.includes(unchecked.folder)), [true, true, true, true]);
         // An In row's field entered before the places landed starts at Return as its
         // row now says (Agents.qml's newWorkAct).
-        // Two rows, so the one picked is the one whose folder it is, and a start made
-        // as other than its folder, so falling back to the folder shows.
-        const reefQuest = [{ folder: unchecked.folder, name: "~/big/reef" },
-            { folder: pond.folder, name: "~/big2/pond" }];
+        // Rows picked by their own folder, the one holding the rest listed first so a
+        // match by prefix shows, and made as other than they start, so keeping the
+        // made start or falling back to the folder shows.
+        const system = { folder: "/home/j/big/src/areas/system", name: "~/big/system" };
+        const reefQuest = [system, { folder: unchecked.folder, name: "~/big/reef" },
+            { folder: pond.folder, name: "~/big/pond" }];
         const madeAs = Wheres.wheres(reefQuest, []).find(one => one.folder === unchecked.folder)
             .start;
+        Expect.same("before the places land, a quest's folder starts by its folder", madeAs,
+            unchecked.folder);
         const landed = Wheres.wheres(reefQuest, [unchecked, pond]);
-        Expect.same("the rows start apart once the places land", landed.map(one => one.start)
-            .filter(start => start === "//system/reef").length, 1);
         Expect.same("a field entered before places land starts as its row says after",
             Wheres.startAt(landed, unchecked.folder, madeAs), "//system/reef");
         Expect.same("and the other row as its own says",
-            Wheres.startAt(landed, pond.folder, "made"),
-            landed.find(one => one.folder === pond.folder).start);
+            Wheres.startAt(landed, pond.folder, "made"), "//system/pond");
+        Expect.same("and the folder holding them as its own",
+            Wheres.startAt(landed, system.folder, "made"), system.folder);
         Expect.same("and as made where its folder is no longer listed",
-            Wheres.startAt(landed.filter(one => one.folder !== unchecked.folder),
-                unchecked.folder, "//made/start"), "//made/start");
+            Wheres.startAt(Wheres.wheres([system], [pond]), unchecked.folder, "//made/start"),
+            "//made/start");
         Expect.same("what the node calls it decides, not how its name opens",
             Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
                 Object.assign({}, harness, { kind: "zone" })])
@@ -85,6 +88,13 @@ QtObject {
                 ["~/big/src/areas/system/pond", pond.folder],
                 ["~/big2/src/areas/system/pond", otherPond.folder]
             ]);
+        // A row made to start by a zone's name starts by its folder once a second
+        // checkout of that zone lands, so the node can't pick the other.
+        const madeByName = Wheres.startAt(Wheres.wheres([], [big, pond]), pond.folder, null);
+        Expect.same("one checkout's zone starts by its name", madeByName, "//system/pond");
+        Expect.same("and by its folder at Return once another checkout holds it too",
+            Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), pond.folder,
+                madeByName), pond.folder);
         Expect.same("one no checkout holds is named by its folder",
             Wheres.wheres([], [pond, otherPond]).map(one => one.name),
             [pond.folder, otherPond.folder]);
