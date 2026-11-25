@@ -39,7 +39,7 @@ let
   '';
   # The GitHub reader again for each other site, finding what changed by
   # the pull requests Joel opened in the repositories named, since such a
-  # site has no notifications to read (src/bin/pineapple-github.rs). A site
+  # site has no notifications to read (src/bin/pineapple-github/). A site
   # stays in shadow until a machine says it's live, each once Joel has read
   # two days of its own, as Slack went live after its own.
   siteReader =
@@ -317,7 +317,7 @@ in
         Install.WantedBy = [ "default.target" ];
       };
 
-      # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
+      # The same reader for GitHub (src/bin/pineapple-github/): every minute,
       # the pull requests and issues Joel takes part in that changed, and
       # what was said on them, only asked. Its stops go where the
       # Slack reader's do, so the launcher, the harness and his phone take
