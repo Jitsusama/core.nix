@@ -83,6 +83,10 @@ pub enum Fault {
     /// The relay feeding the loopback started again while it was read, so
     /// what came may be its placeholder rather than the camera.
     Restarted,
+    /// Frames came, but systemd couldn't say, as under the heaviest load,
+    /// whether the relay started again while they did, so they may be its
+    /// placeholder. It says nothing sure of the camera.
+    Unsure,
     /// The machine's camera, or the file naming it, isn't there.
     Missing,
     /// The machine slept or stalled, so the read was cut short or never
@@ -105,9 +109,10 @@ pub enum Outcome {
     Again(Fault),
     /// The read ended inside the quarter hour before the meeting or after
     /// it began, or was cut short by a pause with no minute left to look
-    /// again, which only a suspend or a stall brings about. It's kept as
-    /// checked and only journalled: the fault may be the pause's, and a
-    /// notice now would be late or false.
+    /// again, which only a suspend or a stall brings about, or gave frames
+    /// its relay couldn't be asked about with no minute left. It's kept as
+    /// checked and only journalled: the fault may be the pause's or the
+    /// stall's, and a notice now would be late or false.
     Late(Fault),
 }
 
@@ -124,13 +129,16 @@ pub fn settled(gave: Result<(), Fault>, start: u64, now: u64) -> Outcome {
     match gave {
         Ok(()) => Outcome::Fine,
         Err(fault) if start < now + UNREAD_MS => Outcome::Late(fault),
-        Err(fault @ (Fault::Restarted | Fault::Missing | Fault::Ended(_) | Fault::Paused))
-            if !last_chance(start, now) =>
-        {
-            Outcome::Again(fault)
-        }
-        // A pause says nothing of the camera, so it's never told as dead.
-        Err(Fault::Paused) => Outcome::Late(Fault::Paused),
+        Err(
+            fault @ (Fault::Restarted
+            | Fault::Unsure
+            | Fault::Missing
+            | Fault::Ended(_)
+            | Fault::Paused),
+        ) if !last_chance(start, now) => Outcome::Again(fault),
+        // A pause, or frames a stalled systemd couldn't vouch for, say
+        // nothing of the camera, so neither is ever told as dead.
+        Err(fault @ (Fault::Paused | Fault::Unsure)) => Outcome::Late(fault),
         Err(fault) => Outcome::Tell(fault),
     }
 }
@@ -141,6 +149,9 @@ impl std::fmt::Display for Fault {
             Fault::Silent => f.write_str("nothing came"),
             Fault::Ended(how) => f.write_str(how),
             Fault::Restarted => f.write_str("its relay started again while it was read"),
+            Fault::Unsure => f.write_str(
+                "frames came, but systemd couldn't say whether its relay started again meanwhile",
+            ),
             Fault::Missing => f.write_str("it isn't there"),
             Fault::Paused => f.write_str("the machine slept or stalled, so it wasn't read in time"),
         }
@@ -210,17 +221,20 @@ fn said(program: &str, args: &[String], deadline: Duration) -> Option<String> {
 /// from a relay that started again in between aren't the camera's, and a
 /// camera that couldn't be opened then was only between runs. A run that
 /// couldn't be asked may hide a restart, whose new run's splash would pass
-/// for a picture, so it counts as one: read again while a minute is
-/// spare, and told rather than passed at the last chance.
+/// for a picture, so frames then are unsure: read again while a minute is
+/// spare, and only journalled at the last chance, since systemd stalls
+/// under the load a check runs beside and telling Joel his camera is dead
+/// when it gave frames would be false. A camera that couldn't be opened
+/// while the relay couldn't be asked is said as it is.
 pub fn judged(
     gave: Result<(), Fault>,
     before: Option<&str>,
     after: Option<&str>,
 ) -> Result<(), Fault> {
+    let known = before.is_some() && after.is_some();
     match gave {
-        Ok(()) | Err(Fault::Ended(_)) if before.is_none() || before != after => {
-            Err(Fault::Restarted)
-        }
+        Ok(()) if !known => Err(Fault::Unsure),
+        Ok(()) | Err(Fault::Ended(_)) if known && before != after => Err(Fault::Restarted),
         gave => gave,
     }
 }
@@ -426,6 +440,7 @@ pub fn told(meeting: &Meeting, now: u64, read: bool, fault: &Fault) -> (String, 
         (true, Fault::Silent) => "The camera gave no picture in 2 minutes",
         (true, Fault::Ended(_)) => "The camera couldn't be opened",
         (true, Fault::Restarted) => "The camera gave no picture and had to start again",
+        (true, Fault::Unsure) => "The camera's picture couldn't be told from its placeholder",
         (_, Fault::Missing) => "The camera isn't there",
         (true, Fault::Paused) => "The camera couldn't be read in time",
         (false, _) => "The camera didn't answer",
@@ -941,6 +956,16 @@ mod tests {
             Outcome::Late(Fault::Paused),
             "a read cut short by a pause was told to Joel as a dead camera"
         );
+        assert_eq!(
+            settled(Err(Fault::Unsure), start, early),
+            Outcome::Again(Fault::Unsure),
+            "frames systemd couldn't vouch for weren't read again with minutes left"
+        );
+        assert_eq!(
+            settled(Err(Fault::Unsure), start, last),
+            Outcome::Late(Fault::Unsure),
+            "frames systemd couldn't vouch for were told to Joel as a dead camera"
+        );
         assert!(
             !last_chance(start, early) && last_chance(start, last),
             "a check whose next run had no minute's slack wasn't told now"
@@ -961,18 +986,27 @@ mod tests {
         );
         assert_eq!(
             judged(Ok(()), Some("a"), None),
-            Err(Fault::Restarted),
+            Err(Fault::Unsure),
             "a relay that couldn't be asked after the read was taken as unchanged"
         );
         assert_eq!(
             judged(Ok(()), None, Some("a")),
-            Err(Fault::Restarted),
+            Err(Fault::Unsure),
             "a relay that couldn't be asked before the read was taken as unchanged"
         );
         assert_eq!(
             judged(Ok(()), None, None),
-            Err(Fault::Restarted),
+            Err(Fault::Unsure),
             "a relay that couldn't be asked at all was taken as unchanged"
+        );
+        assert_eq!(
+            judged(
+                Err(Fault::Ended("v4l2-ctl ended 1".into())),
+                Some("a"),
+                None
+            ),
+            Err(Fault::Ended("v4l2-ctl ended 1".into())),
+            "a camera that couldn't be opened was told as a restart nobody saw"
         );
         assert_eq!(
             judged(Ok(()), Some(""), Some("a")),
