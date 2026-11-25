@@ -1,7 +1,9 @@
 // Draws the network as floors: each eero's box with its radios and the
 // devices on it, the switch beside it, and the gateway's floor with the
-// modem and the internet. Everything is a role in the stylesheet, so the
-// drawing follows the look.
+// modem and the internet. Where the room is too narrow for that, as on a
+// phone, each floor's parts stack under its eero instead, so the map is
+// read top to bottom rather than across. Everything is a role in the
+// stylesheet, so the drawing follows the look.
 
 import type { Channel, Device, Link, Network } from "./model.ts";
 import { endAt, type Floor, linkBetween, type Shape } from "./shape.ts";
@@ -26,6 +28,35 @@ const G = {
   /** The narrowest the drawing is, however little it holds. */
   narrowest: 640,
 } as const;
+
+/**
+ * Where the drawing puts its parts: the floors' rule and names, the boxes'
+ * left edge, and whether a floor's switches, devices, modem and internet
+ * sit beside its eero or under it.
+ */
+interface Plan {
+  readonly left: number;
+  readonly box: number;
+  readonly stacked: boolean;
+}
+
+/** Across, on a desk: the floors' names in a column of their own. */
+const ACROSS: Plan = { left: G.left, box: G.box, stacked: false };
+
+/**
+ * Stacked, on a phone: the floors' names over their eeros, which leave room
+ * at their left only for the lanes of the links between them.
+ */
+const STACKED: Plan = { left: 8, box: 40, stacked: true };
+
+/** In a stacked floor: where the eero's box starts under the floor's name, and the gap after it. */
+const STACK = { boxTop: 88, apart: 24, rowsBelow: 40 } as const;
+
+/**
+ * The least room, at zoom 1, that the drawing across takes: an eero's box and
+ * one column of devices beside it. Narrower, it stacks.
+ */
+const ACROSS_LEAST = G.box + G.boxW + G.gap + G.colW;
 
 /** Inside a box: its words' left edge, its lines' baselines, its corners. */
 const BOX = {
@@ -80,6 +111,17 @@ const MODEM = {
   columns: [16, 64, 216, 336],
   room: 32,
 } as const;
+/**
+ * The modem stacked, as wide as a device's row: each sweep on two lines, its
+ * kinds on the first and its power and noise under them, and its foot's two
+ * parts on a line each.
+ */
+const MODEM_STACKED = { wide: 334, tall: 196, first: [16, 64], second: [64, 184] } as const;
+/**
+ * The internet stacked, under the modem: how far below, its line's inset and
+ * where the line stops above its name, and how tall it is.
+ */
+const INTERNET_STACKED = { below: 40, inset: 24, reach: 6, tall: 112 } as const;
 const INTERNET = { ways: 56, mark: 4, markRoom: 14, ago: 100, line: 48, lineY: 22 } as const;
 
 /** Where one device is drawn, and its group. */
@@ -136,13 +178,15 @@ class Pen {
   readonly wires: Wire[] = [];
   /** Now, in seconds since the epoch. */
   readonly now: number;
+  readonly plan: Plan;
 
-  constructor(draw: SVGSVGElement, network: Network, shape: Shape, now: number) {
+  constructor(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawing) {
+    this.plan = how.stacked ? STACKED : ACROSS;
     this.network = network;
     this.shape = shape;
     this.looks = looksOf(network);
     this.draw = draw;
-    this.now = now;
+    this.now = how.now;
     this.links = el("g", { class: "links" }, draw);
     this.items = el("g", { class: "items" }, draw);
   }
@@ -174,7 +218,7 @@ class Pen {
   /** One floor's eero, its radios and its way up; where its box ends. */
   point(point: Device, y: number): number {
     const h = BOX.head + point.radios.length * BOX.pitch + BOX.foot;
-    const x = G.box;
+    const x = this.plan.box;
     const g = this.item(point, { x, y, w: G.boxW, h });
     const facts = [roleWords(point), v4(point)[0]].filter(Boolean).join(" \u00b7 ");
     this.ground(g, { x, y, w: G.boxW, h }, point.model ?? point.name, facts);
@@ -268,9 +312,12 @@ class Pen {
     }
   }
 
-  /** The devices on one floor, in columns; where they end, down and right. */
+  /**
+   * The devices on one floor, in columns, or in one when stacked; where they
+   * end, down and right.
+   */
   deviceRows(devices: readonly Device[], x: number, top: number): { low: number; right: number } {
-    const columns = devices.length > G.perColumn ? 2 : 1;
+    const columns = devices.length > G.perColumn && !this.plan.stacked ? 2 : 1;
     const per = Math.max(1, Math.ceil(devices.length / columns));
     const signals = devices.some(
       (device) =>
@@ -289,42 +336,73 @@ class Pen {
   /** The modem below the gateway's box, and the internet at its left; where it ends. */
   modem(modem: Device, gateway: Device, y: number): number {
     const facts = modem.modem;
-    const { wide: w, tall: h } = MODEM;
-    const g = this.item(modem, { x: G.box, y, w, h });
+    const { stacked, box: x } = this.plan;
+    const w = stacked ? MODEM_STACKED.wide : MODEM.wide;
+    const h = stacked ? MODEM_STACKED.tall : MODEM.tall;
+    const g = this.item(modem, { x, y, w, h });
     const made = modem.vendor && modem.model ? `${modem.vendor} ${modem.model}` : undefined;
     const docsis = facts?.docsis ? `DOCSIS ${facts.docsis}` : undefined;
-    const line = [made, docsis, v4(modem)[0]].filter(Boolean).join(" \u00b7 ");
-    this.ground(g, { x: G.box, y, w, h }, modem.name, line);
+    // Stacked, the box is too narrow for the address beside the rest, which
+    // the panel says.
+    const line = [made, docsis, stacked ? undefined : v4(modem)[0]]
+      .filter(Boolean)
+      .join(" \u00b7 ");
+    this.ground(g, { x, y, w, h }, modem.name, line);
     const sweeps = [sweep(facts?.downstream ?? [], "down"), sweep(facts?.upstream ?? [], "up")];
     sweeps.forEach((columns, i) => {
-      const ry = y + BOX.firstRow + i * BOX.pitch;
-      MODEM.columns.forEach((dx, k) => {
-        text(g, columns[k] ?? "", { x: G.box + dx, y: ry, kind: "n-fact" });
-      });
+      const place = (dxs: readonly number[], from: number, ry: number): void => {
+        dxs.forEach((dx, k) => {
+          text(g, columns[from + k] ?? "", { x: x + dx, y: ry, kind: "n-fact" });
+        });
+      };
+      if (stacked) {
+        const ry = y + BOX.firstRow + i * 2 * BOX.pitch;
+        place(MODEM_STACKED.first, 0, ry);
+        place(MODEM_STACKED.second, MODEM_STACKED.first.length, ry + BOX.pitch);
+      } else {
+        place(MODEM.columns, 0, y + BOX.firstRow + i * BOX.pitch);
+      }
     });
     const lost = (facts?.downstream ?? []).reduce(
       (sum, each) => sum + (each.uncorrectable ?? 0),
       0,
     );
     const uptime = modem.upS ? `up ${lasted(modem.upS)}` : undefined;
-    const foot = [uptime, plural(lost, "uncorrectable codeword")].filter(Boolean).join(" \u00b7 ");
-    text(g, foot, { x: G.box + BOX.pad, y: y + h - BOX.footLine, kind: "n-fact n-small" });
+    const counted = plural(lost, "uncorrectable codeword");
+    const foot = uptime === undefined ? [counted] : [uptime, counted];
+    // Stacked, the two parts are wider together than the box, so each has a line.
+    const lines = stacked ? foot : [foot.join(" \u00b7 ")];
+    lines.forEach((words, i) => {
+      const ry = y + h - BOX.footLine - (lines.length - 1 - i) * BOX.pitch;
+      text(g, words, { x: x + BOX.pad, y: ry, kind: "n-fact n-small" });
+    });
     const cable = linkBetween(this.network, modem.id, gateway.id);
     if (cable !== undefined) {
       this.wires.push({ from: gateway.id, to: modem.id, link: cable, down: true });
     }
-    this.internet(y);
-    return y + h;
+    if (!stacked) {
+      this.internet(y, G.left);
+      return y + h;
+    }
+    const below = y + h + INTERNET_STACKED.below;
+    if (this.network.internet === undefined) {
+      return y + h;
+    }
+    this.internet(below, x);
+    return below + INTERNET_STACKED.tall;
   }
 
-  /** The internet, at the far left of the modem, as eero last measured it. */
-  internet(y: number): void {
+  /**
+   * The internet, as eero last measured it, from `left`: at the far left of
+   * the modem, its line in from the side, or under it, its line up.
+   */
+  internet(y: number, left: number): void {
     const { internet } = this.network;
     if (internet === undefined) {
       return;
     }
     const g = el("g", { class: "internet" }, this.draw);
-    text(g, internet.provider ?? "The internet", { x: G.left, y: y + BOX.title, kind: "n-title" });
+    text(g, internet.provider ?? "The internet", { x: left, y: y + BOX.title, kind: "n-title" });
     const ways: [string, number | undefined][] = [
       ["down", internet.downMbps],
       ["up", internet.upMbps],
@@ -336,27 +414,35 @@ class Pen {
       const ry = y + INTERNET.ways + k * BOX.pitch;
       const look = this.looks.ceiling.has(way);
       if (look) {
-        lookMark(g, G.left + INTERNET.mark, ry);
+        lookMark(g, left + INTERNET.mark, ry);
       }
-      const at = { x: G.left + (look ? INTERNET.markRoom : 0), y: ry };
+      const at = { x: left + (look ? INTERNET.markRoom : 0), y: ry };
       text(g, `${way} ${rate(value)}`, { ...at, kind: look ? "n-fact n-look" : "n-fact" });
     });
     if (internet.measuredAt !== undefined) {
       const when = ago(internet.measuredAt, this.now);
-      text(g, when, { x: G.left, y: y + INTERNET.ago, kind: "n-fact n-small" });
+      text(g, when, { x: left, y: y + INTERNET.ago, kind: "n-fact n-small" });
     }
-    const d = `M${G.box - INTERNET.line} ${y + INTERNET.lineY}H${G.box}`;
+    const { inset, below, reach } = INTERNET_STACKED;
+    const d = this.plan.stacked
+      ? `M${left + inset} ${y - below}V${y + reach}`
+      : `M${this.plan.box - INTERNET.line} ${y + INTERNET.lineY}H${this.plan.box}`;
     el("path", { d, class: "n-link", "data-way": "internet", "data-line": "" }, this.links);
   }
 
   /** One floor in its band from `top`: its name, its boxes and its devices. */
   floor(floor: Floor, top: number): { low: number; right: number } {
     const { point } = floor;
-    const rule = { x1: G.left, x2: 0, y1: top + 0.5, y2: top + 0.5 };
+    const { left, box, stacked } = this.plan;
+    const rule = { x1: left, x2: 0, y1: top + 0.5, y2: top + 0.5 };
     el("line", { ...rule, class: "n-floor", "data-rule": "" }, this.draw);
-    text(this.draw, point.name, { x: G.left, y: top + FLOOR.name, kind: "n-floor-name" });
+    const named = stacked ? box : left;
+    text(this.draw, point.name, { x: named, y: top + FLOOR.name, kind: "n-floor-name" });
     const count = plural(floor.devices.length + floor.switches.length, "device");
-    text(this.draw, count, { x: G.left, y: top + FLOOR.count, kind: "n-fact" });
+    text(this.draw, count, { x: named, y: top + FLOOR.count, kind: "n-fact" });
+    if (stacked) {
+      return this.stackedFloor(floor, top + STACK.boxTop);
+    }
     const boxY = top + G.bandTop;
     let low = this.point(point, boxY);
     let x = G.box + G.boxW + G.gap;
@@ -374,12 +460,48 @@ class Pen {
     }
     return { low, right };
   }
+
+  /**
+   * A floor stacked from `boxY`: its eero, the modem and the internet if it's
+   * the gateway's, so the cable runs straight down with nothing across it,
+   * then its switches and its devices, each under the last.
+   */
+  stackedFloor(floor: Floor, boxY: number): { low: number; right: number } {
+    const { point } = floor;
+    const { box } = this.plan;
+    let low = this.point(point, boxY);
+    let right = box + G.boxW;
+    if (this.shape.modem !== undefined && point.id === this.shape.gateway?.id) {
+      low = this.modem(this.shape.modem, point, low + MODEM.below);
+      right = Math.max(right, box + MODEM_STACKED.wide);
+    }
+    for (const device of floor.switches) {
+      low = this.switchBox(device, box, low + STACK.apart);
+    }
+    if (floor.devices.length > 0) {
+      const rows = this.deviceRows(floor.devices, box + ROW.inset, low + STACK.rowsBelow);
+      low = rows.low;
+      right = Math.max(right, rows.right - G.colW + ROW.wide - ROW.inset);
+    }
+    return { low, right };
+  }
 }
 
-/** Draws `network` into `draw`, laid out as `shape` says, at `now` in seconds. */
-function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, now: number): Drawn {
+/**
+ * How a map is drawn: at `now`, in seconds since the epoch, and stacked, one
+ * floor's parts under each other, or across.
+ */
+interface Drawing {
+  readonly now: number;
+  readonly stacked: boolean;
+}
+
+/** Draws `network` into `draw`, laid out as `shape` says and drawn as `how` says. */
+function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, how: Drawing): Drawn {
   draw.replaceChildren();
-  const pen = new Pen(draw, network, shape, now);
+  const pen = new Pen(draw, network, shape, how);
+  const { plan } = pen;
+  const { stacked } = how;
   const marks = el("g", { class: "marks" }, draw);
   let y = 0;
   let width = 0;
@@ -388,14 +510,14 @@ function drawMap(draw: SVGSVGElement, network: Network, shape: Shape, now: numbe
     width = Math.max(width, right);
     y = low + G.bandEnd;
   }
-  drawWires({ shape, looks: pen.looks, links: pen.links, at: pen.at }, pen.wires, G.box);
-  width = Math.max(width, G.narrowest) + G.left;
+  drawWires({ shape, looks: pen.looks, links: pen.links, at: pen.at }, pen.wires, plan.box);
+  width = (stacked ? width : Math.max(width, G.narrowest)) + plan.left;
   for (const rule of draw.querySelectorAll("[data-rule]")) {
-    rule.setAttribute("x2", String(width - G.left));
+    rule.setAttribute("x2", String(width - plan.left));
   }
   draw.setAttribute("viewBox", `0 0 ${width} ${y}`);
   return { at: pen.at, width, height: y, marks };
 }
 
 export type { Box, Drawn };
-export { drawMap };
+export { ACROSS_LEAST, drawMap };

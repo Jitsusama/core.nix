@@ -10,8 +10,9 @@ Wi-Fi chose drawn as words, drop a device that goes with its link,
 say in a machine's panel what runs there as the node moves and link it to its
 place on the mycelium map, say broken when net stops and live again, its
 devices read again, when it's back, say stale when the server goes and keep
-what it drew, keep to its budget, and pass the web-design skill's page checks
-at a phone's width and a desk's in both looks.
+what it drew, draw every device within a phone's width, keep to its budget,
+and pass the web-design skill's page checks at a phone's width and a desk's in
+both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -185,6 +186,32 @@ def test_a_sites_server_that_goes_is_said_stale(
     network_page.wait_for_timeout(REDRAWN_MS)
     every_device_drawn(network_page)
     says_it_stands(network_page, "stale")
+
+
+# How far right of the map's room each device's box reaches, in pixels, and how far the room
+# scrolls sideways: both nothing once each floor stacks.
+PAST_THE_ROOM = """() => {
+  const view = document.querySelector("#map-view");
+  const room = view.getBoundingClientRect();
+  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")];
+  const reach = Math.max(...boxes.map((box) => box.getBoundingClientRect().right));
+  return { boxes: reach - room.right, scroll: view.scrollWidth - view.clientWidth };
+}"""
+
+
+def test_a_phone_sees_every_device_without_scrolling_sideways(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], "dark")
+    try:
+        says_it_stands(opened.page, "live")
+        every_device_drawn(opened.page)
+        past = opened.page.evaluate(PAST_THE_ROOM)
+        assert past["boxes"] <= 0, f"a device reaches {past['boxes']} px past a phone's map"
+        assert past["scroll"] <= 0, f"a phone's map scrolls {past['scroll']} px sideways"
+    finally:
+        opened.close()
 
 
 def test_the_network_page_keeps_to_its_budget(network_opened: Opened) -> None:

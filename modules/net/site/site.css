@@ -195,7 +195,10 @@ body {
   min-inline-size: 0;
 }
 
+/* Each holds its 44 px on a phone too, where the caption beside them would
+   otherwise squeeze them under a finger's reach. */
 .zoom button {
+  flex: none;
   inline-size: 44px;
   block-size: 44px;
   display: grid;

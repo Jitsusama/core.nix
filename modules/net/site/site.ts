@@ -13,7 +13,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
 import { details } from "./device.ts";
 import { type Child, h } from "./elements.ts";
-import { type Drawn, drawMap } from "./map.ts";
+import { ACROSS_LEAST, type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
 import { type Context, found, overview } from "./panel.ts";
@@ -133,6 +133,13 @@ function fitFirst(at: Network): void {
   }
 }
 
+// Where the room is too narrow for an eero with devices beside it, as on a
+// phone, each floor stacks; turning the phone draws the other way, fitted afresh.
+map.onCrossing(ACROSS_LEAST, () => {
+  fitted = false;
+  drawSoon();
+});
+
 /** The page opens with the map holding the keys, so arrows walk it at once. */
 function landFirst(): void {
   if (linked) {
@@ -153,7 +160,7 @@ function render(): void {
     return;
   }
   shape = study(network);
-  drawn = drawMap(draw, network, shape, now());
+  drawn = drawMap(draw, network, shape, { now: now(), stacked: map.narrowerThan(ACROSS_LEAST) });
   map.shows(drawn);
   fitFirst(network);
   if (opened !== null && !shape.byId.has(opened)) {
@@ -430,16 +437,7 @@ listen({
   answersAt: (target) => !hasOwnKeys(target),
 });
 
-/** What each zoom button does. */
-const ZOOM_BUTTONS: { readonly [asked: string]: () => void } = {
-  in: () => map.step(1),
-  out: () => map.step(-1),
-  fit: () => map.fit(),
-};
-
-for (const button of document.querySelectorAll<HTMLElement>("[data-zoom]")) {
-  button.addEventListener("click", () => ZOOM_BUTTONS[button.dataset["zoom"] ?? "fit"]?.());
-}
+map.heedButtons(document.querySelectorAll<HTMLElement>("[data-zoom]"));
 
 for (const key of document.querySelectorAll<HTMLElement>(".keys kbd[data-key]")) {
   key.addEventListener("click", () => {

@@ -159,6 +159,34 @@ class MapView {
     this.#set(Math.min(1, view.clientWidth / drawn.width, view.clientHeight / drawn.height));
   }
 
+  /** Has each of `buttons` step the zoom in or out, or fit, as its `data-zoom` asks. */
+  heedButtons(buttons: Iterable<HTMLElement>): void {
+    const asks: { readonly [asked: string]: () => void } = {
+      in: () => this.step(1),
+      out: () => this.step(-1),
+      fit: () => this.fit(),
+    };
+    for (const button of buttons) {
+      button.addEventListener("click", () => asks[button.dataset["zoom"] ?? "fit"]?.());
+    }
+  }
+
+  /** Whether the room is narrower, at the smallest zoom, than `least` units of drawing. */
+  narrowerThan(least: number): boolean {
+    return this.#view.clientWidth < least * SMALLEST;
+  }
+
+  /** Calls `crossed` each time the room grows or shrinks across `least`, as `narrowerThan`. */
+  onCrossing(least: number, crossed: () => void): void {
+    let narrow = this.narrowerThan(least);
+    new ResizeObserver(() => {
+      if (this.narrowerThan(least) !== narrow) {
+        narrow = !narrow;
+        crossed();
+      }
+    }).observe(this.#view);
+  }
+
   /** Moves the map by Shift and an arrow's way. */
   nudge(dx: number, dy: number): void {
     this.#view.scrollBy({ left: dx * NUDGE, top: dy * NUDGE });
