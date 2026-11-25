@@ -5,14 +5,17 @@
 //! answered began it, and read back after a restart; a ring and a missed
 //! call are read from the log as it's written, a new log from its start;
 //! each act runs Tuple's command, a camera stopped is off before Tuple's
-//! stream says so, and opening the room keeps its link and makes the call
-//! in it Joel's; and an ask or kind it doesn't know is refused.
+//! stream says so, a stop Tuple is slow to answer is answered as such,
+//! not run again while it runs, and still counts once done, unless the
+//! stream said the camera turned meanwhile, and opening the room keeps its
+//! link and makes the call in it Joel's; and an ask or kind it doesn't
+//! know is refused.
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::time::{Duration, Instant, SystemTime};
 
 use daemon_client::{Client, until};
@@ -23,7 +26,7 @@ use serde_json::{Value, json};
 /// file `ends` appears or the folder goes; any other command is written to `asked`, a line
 /// each, `new` printing the room's link, `call accept` failing as Tuple
 /// does with nothing ringing, and `webcam stop` stalling while the file
-/// `stalls` is there.
+/// `stalls` is there. The daemon's journal is kept in `journal`.
 const TUPLE: &str = r#"
 here=$(dirname "$0")
 if [ "$3 $4" = "state follow" ]; then
@@ -246,7 +249,13 @@ fn spawned(mut command: Command, folder: &std::path::Path) -> Child {
         .env("XDG_RUNTIME_DIR", folder.join("run"))
         .env("XDG_DATA_HOME", folder.join("data"))
         .env("XDG_STATE_HOME", folder.join("state"))
-        .stderr(Stdio::null())
+        .stderr(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(folder.join("journal"))
+                .unwrap(),
+        )
         .spawn()
         .unwrap()
 }
@@ -542,16 +551,85 @@ fn a_camera_stop_tuple_is_slow_to_answer_is_told_and_still_counts() {
         record["camera"] == true
     });
     std::fs::write(running.path("bin/stalls"), "").unwrap();
-    let said = running
-        .client()
-        .ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    let mut asking = running.client();
+    let said = asking.ask(&json!({"id": "off", "ask": "camera", "on": false}));
     assert_eq!(
         said["error"]["code"], "unanswered",
         "a stop Tuple hadn't answered wasn't told so: {said}"
     );
+    let again = asking.ask(&json!({"id": "again", "ask": "camera", "on": false}));
+    assert_eq!(
+        again["error"]["message"], "Tuple hasn't answered the last time it was asked",
+        "a stop asked again while Tuple ran the last wasn't answered at once: {again}"
+    );
     watching.until("a stop Tuple did late didn't count", |record| {
         record["camera"] == false
     });
+    let stops = running.read("bin/asked");
+    assert_eq!(
+        stops.iter().filter(|line| *line == "webcam stop").count(),
+        1,
+        "a stop asked again ran Tuple again: {stops:?}"
+    );
+    until("the late stop wasn't journaled", || {
+        let journal = running.read("journal");
+        journal
+            .iter()
+            .any(|line| line.contains("webcam stop hasn't answered in 5 seconds"))
+            && journal
+                .iter()
+                .any(|line| line.contains("webcam stop answered late"))
+    });
+}
+
+#[test]
+fn a_late_stop_leaves_a_camera_the_stream_said_on_again() {
+    let running = Running::start("turned", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    let filming = CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    );
+    running.streams(&filming);
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    std::fs::write(running.path("bin/stalls"), "").unwrap();
+    let mut asking = running.client();
+    let stopping =
+        std::thread::spawn(move || asking.ask(&json!({"id": "off", "ask": "camera", "on": false})));
+    until("the stop wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "webcam stop")
+    });
+    // Joel stops his camera in Tuple's window and starts it again, as the
+    // notice of a stop unanswered sends him to.
+    running.streams(CALL);
+    watching.until("Joel's camera wasn't said off", |record| {
+        record["camera"] == false
+    });
+    running.streams(&filming);
+    watching.until("Joel's camera wasn't said on again", |record| {
+        record["camera"] == true
+    });
+    let said = stopping.join().unwrap();
+    assert_eq!(said["error"]["code"], "unanswered", "the stop: {said}");
+    // The journal says it only once the late stop was weighed.
+    until("the late stop wasn't journaled", || {
+        running
+            .read("journal")
+            .iter()
+            .any(|line| line.contains("webcam stop answered late"))
+    });
+    let record = running.client().watch();
+    assert_eq!(
+        record["camera"], true,
+        "a late stop marked off a camera turned on again: {record}"
+    );
 }
 
 #[test]

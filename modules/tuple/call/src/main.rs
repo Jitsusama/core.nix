@@ -123,6 +123,36 @@ struct Daemon {
     following: Option<Child>,
     /// Whether the stream followed was cut short to be followed afresh.
     cut: bool,
+    /// Joel's camera as Tuple's stream last said it, apart from the
+    /// record, which a stop marks off ahead of the stream, and how often
+    /// the stream has said it turned.
+    camera_said: bool,
+    camera_turns: u64,
+    /// Tuple's commands for the acts running now, each by its words.
+    acting: Vec<Vec<String>>,
+}
+
+/// How the call stood as an act was asked: whether one was held, which,
+/// by when it connected, and how often the stream had said Joel's camera
+/// turned. An
+/// act done is how Joel stands ahead of the stream only while the call
+/// still stands so, since one done late may otherwise mark off a camera
+/// turned on again by hand, or land on another call.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Turn {
+    calling: bool,
+    since: Option<i64>,
+    camera: u64,
+}
+
+impl Turn {
+    fn of(daemon: &Daemon) -> Turn {
+        Turn {
+            calling: daemon.held.live.is_some(),
+            since: daemon.held.live.as_ref().and_then(|live| live.since),
+            camera: daemon.camera_turns,
+        }
+    }
 }
 
 /// Everything the threads share: the call, woken as it changes, and
@@ -201,6 +231,9 @@ fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
             recent,
             following: None,
             cut: false,
+            camera_said: false,
+            camera_turns: 0,
+            acting: Vec::new(),
         }),
         moved: Condvar::new(),
         serving: OnceLock::new(),
@@ -355,15 +388,17 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
 /// if it does, so a call's journal answers it with no camera opened to
 /// find out. It keeps what the stream last said apart from the record,
 /// which a stop marks off ahead of the stream, so the stream's own off is
-/// journaled too; a call ending says nothing of the camera.
-fn says_camera(said: &mut bool, call: Option<&Live>) {
-    let Some(live) = call else {
-        *said = false;
+/// journaled too, and counts each turn; a call ending says nothing of the
+/// camera, though it counts as one where the camera was on.
+fn says_camera(daemon: &mut Daemon, call: Option<&Live>) {
+    let on = call.is_some_and(|live| live.joel.camera);
+    if on == daemon.camera_said {
         return;
-    };
-    if live.joel.camera != *said {
-        *said = live.joel.camera;
-        let how = if *said { "on" } else { "off" };
+    }
+    daemon.camera_said = on;
+    daemon.camera_turns += 1;
+    if call.is_some() {
+        let how = if on { "on" } else { "off" };
         eprintln!("<6>Tuple says Joel's camera is {how} in the call");
     }
 }
@@ -389,7 +424,6 @@ fn follow(shared: &Shared, tuple: &str) -> String {
     // The first line holds every contact, over two megabytes.
     let mut input = BufReader::with_capacity(1 << 20, stdout);
     let mut line = Vec::new();
-    let mut camera_said = false;
     loop {
         line.clear();
         match input.read_until(b'\n', &mut line) {
@@ -410,7 +444,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 daemon.held.contacts = contacts;
                 daemon.held.personal = room;
                 if let Some(call) = call {
-                    says_camera(&mut camera_said, call.as_ref());
+                    says_camera(&mut daemon, call.as_ref());
                     daemon.held.follow(call, now());
                 }
                 let standing = if signed_in {
@@ -425,7 +459,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
-                says_camera(&mut camera_said, call.as_ref());
+                says_camera(&mut daemon, call.as_ref());
                 daemon.held.follow(call, now());
                 changed(shared, &mut daemon);
             }
@@ -621,9 +655,13 @@ struct Doing {
 }
 
 /// Sets how Joel stands in the call held now, ahead of Tuple's stream,
-/// and says it to those watching.
-fn ahead(shared: &Shared, set: impl FnOnce(&mut Person)) {
+/// and says it to those watching, while the call stands as it did when
+/// the act was asked (`Turn`); otherwise the stream says how he stands.
+fn ahead(shared: &Shared, asked: Turn, set: impl FnOnce(&mut Person)) {
     let mut daemon = lock(shared);
+    if Turn::of(&daemon) != asked {
+        return;
+    }
     if let Some(live) = &mut daemon.held.live {
         set(&mut live.joel);
     }
@@ -640,12 +678,19 @@ fn acts(shared: &Shared, doing: Doing) -> Own {
 
 /// How long an act waits on Tuple's command before answering that it
 /// hasn't answered, so a command that never ends still has its ask told.
-/// Five seconds is far past what Tuple's app takes to answer its command;
-/// the command runs on, and what it does once it ends still counts.
+/// Five seconds is far past what Tuple's app takes to answer one that
+/// waits on nobody; a share waits on Joel picking a screen, so it's
+/// answered once done however long that takes, and opening the room once
+/// `tuple new` prints its link, which it does as it starts. The command
+/// runs on, what it does once it ends still counts, and its answer goes
+/// to the journal.
 const ANSWERS_WITHIN: Duration = Duration::from_secs(5);
 
 /// Does one of the call's acts through Tuple's command, answering once
-/// it's done, or once `ANSWERS_WITHIN` has passed without it.
+/// it's done, or once `ANSWERS_WITHIN` has passed without it. One asked
+/// again while Tuple's command for it still runs is answered at once
+/// rather than run twice, so a Tuple that never answers holds one command
+/// for each act, however often Joel asks.
 fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     let arguments: Vec<&str> = match asked {
         Act::Join { link } if link.is_empty() => return refused("that isn't a call's link"),
@@ -660,25 +705,44 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
         Act::Open => return open(shared, doing),
     };
     let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+    let command = arguments.join(" ");
+    let turn = {
+        let mut daemon = lock(shared);
+        if daemon.acting.contains(&arguments) {
+            eprintln!("<4>tuple {command} was asked again before Tuple answered the last");
+            return unanswered("Tuple hasn't answered the last time it was asked");
+        }
+        daemon.acting.push(arguments.clone());
+        Turn::of(&daemon)
+    };
     let (answer, answered) = mpsc::channel();
     let shared = Arc::clone(shared);
     let tuple = doing.tuple.clone();
-    let asked = asked.clone();
+    let acted = asked.clone();
+    let late = command.clone();
     std::thread::spawn(move || {
-        // Nobody hears it once the ask was answered as unanswered, which
-        // is why a send that fails is let go.
-        let _ = answer.send(run(&shared, &tuple, &arguments, &asked));
+        let said = run(&shared, &tuple, &arguments, &acted, turn);
+        lock(&shared).acting.retain(|one| *one != arguments);
+        // Nobody hears it once the ask was answered as unanswered, so
+        // it's journaled instead, Tuple's reason for a refusal with it.
+        if let Err(unheard) = answer.send(said) {
+            eprintln!("<5>tuple {late} answered late: {}", unheard.0);
+        }
     });
+    if *asked == Act::Share {
+        return answered
+            .recv()
+            .unwrap_or_else(|_| refused("tuple's command went unanswered"));
+    }
     answered.recv_timeout(ANSWERS_WITHIN).unwrap_or_else(|_| {
-        unanswered(&format!(
-            "Tuple hasn't answered in {} seconds",
-            ANSWERS_WITHIN.as_secs()
-        ))
+        let within = ANSWERS_WITHIN.as_secs();
+        eprintln!("<4>tuple {command} hasn't answered in {within} seconds");
+        unanswered(&format!("Tuple hasn't answered in {within} seconds"))
     })
 }
 
 /// Runs Tuple's command for an act, and answers how it ended.
-fn run(shared: &Shared, tuple: &str, arguments: &[String], asked: &Act) -> Value {
+fn run(shared: &Shared, tuple: &str, arguments: &[String], asked: &Act, turn: Turn) -> Value {
     let output = Command::new(tuple)
         .args(arguments)
         .stdin(Stdio::null())
@@ -691,8 +755,8 @@ fn run(shared: &Shared, tuple: &str, arguments: &[String], asked: &Act) -> Value
             // picker again at once; a picker opened shares nothing until
             // he picks, so only the stream says his camera is on.
             match asked {
-                Act::Mute { muted } => ahead(shared, |joel| joel.muted = *muted),
-                Act::Camera { on: false } => ahead(shared, |joel| joel.camera = false),
+                Act::Mute { muted } => ahead(shared, turn, |joel| joel.muted = *muted),
+                Act::Camera { on: false } => ahead(shared, turn, |joel| joel.camera = false),
                 _ => {}
             }
             json!({"done": true})
