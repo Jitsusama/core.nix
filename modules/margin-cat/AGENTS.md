@@ -116,15 +116,16 @@ cuts it.
 
 ### Walk the Strip to a Column Off the Edge
 
-Joel, 2026-11-14 17:24: "i see it jumping across, but don't see difference
-during workspace changes, or focusing to a window off the left or right edge
-yet causing it to walk across."
+Joel, 2026-11-14 17:24: "is the kitty supposed to be climbing down the sides
+of windows yet? ... workspace changes, or focusing to a window off the left or
+right edge"
 
 niri lays a workspace's columns on one strip and scrolls it. While the keys
 rest on the new column it stays on the window it sat on, carried off the
-screen with it on niri's spring if that's where niri scrolls it; then it
-comes back in at that edge head first, as between workspaces, and walks the
-strip to its seat.
+screen with it on niri's spring if that's where niri scrolls it, and back
+with it the same way if the keys come back first; then it comes back in at
+that edge head first, as between workspaces, and walks the strip to its
+seat, leaping the gap at the edge only where its window is all past it.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
@@ -132,6 +133,8 @@ strip to its seat.
 - Held by `margin-cat-one-screen.qml`: "it comes in at the edge on the top there, head first"
 - Held by `margin-cat-one-screen.qml`: "then it leaps the gap at the edge onto the window inside
   it"
+- Held by `margin-cat-one-screen.qml`: "on a window partly on the screen, it walks to its gap, then
+  leaps only the gap"
 - Held by `margin-cat-one-screen.qml`: "then it comes on facing in, never thinking again or going
   back out"
 - Held by `margin-cat-one-screen.qml`: "and walks the tops to its seat"

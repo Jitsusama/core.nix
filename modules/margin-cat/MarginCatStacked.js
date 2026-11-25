@@ -122,9 +122,9 @@ function walkAlong(from, to, at) {
 // the top of the window past the edge, its head over the edge, its paws
 // moving, it peers and looks about (Joel, Sun 15 21:20: "poke its head up
 // and then come in"). Then it comes on facing the way in, leaping the gap
-// between that window and the one inside the edge, if there's one, and
-// walks on from there without thinking again. Partly on the screen, it
-// walks on from where it's drawn.
+// between that window and the one inside the edge, if there's one and
+// that window is all past the edge, and walks on from there without
+// thinking again. Partly on the screen, it walks on from where it's drawn.
 function comesIn(from, at) {
     if (at.across === undefined || Routes.onScreen(from.x, at)) {
         return null;
@@ -147,8 +147,11 @@ function comesIn(from, at) {
         { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
     Ways.holds(way, "peers", PEERS);
     Ways.holds(way, "looks", LOOKS);
-    // The window inside the edge, nearest it, and the gap to it.
-    const inside = past === null ? null : cols.filter(one => side > 0
+    // The window inside the edge, nearest it, and the gap to it, leapt
+    // only where the window it came in on is all past the edge: one partly
+    // on the screen is walked along to its gap, as any walk does.
+    const wholly = past !== null && (side > 0 ? past.left >= at.across : past.right <= 0);
+    const inside = !wholly ? null : cols.filter(one => side > 0
         ? one.right <= past.left : one.left >= past.right)
         .sort((one, other) => (other.right - one.right) * side)[0];
     if (inside && (side > 0 ? past.left - inside.right : inside.left - past.right) > 0) {

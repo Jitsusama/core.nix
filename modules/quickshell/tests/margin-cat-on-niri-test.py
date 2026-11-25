@@ -535,6 +535,7 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
     off = laid_out(shell, first)["tile_pos_in_workspace_view"][0]
     assert off < 0, f"the first column was on the screen, at {off} of {across}: the case's own"
+    sat_at = laid_out(shell, third)["tile_pos_in_workspace_view"][0]
     wake(shell)
     since = shell.mark()
     # By its id, since the cases before leave windows of their own on the strip ahead of it.
@@ -568,6 +569,16 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     reports = [report[len(SITS) :] for report in said if report.startswith(SITS)]
     nowhere = [report for report in reports if placed(report) is None]
     assert not nowhere, f"the cat went from the screen: {nowhere[:2]}"
+    # As niri's scroll sets off, it's drawn short of its new place by what's left of the scroll,
+    # as its window is, never at that place at once or past it.
+    scroll = left - sat_at
+    behind = [
+        (at["x"] - at["drawn"]["x"]) / scroll
+        for at in map(placed, reports)
+        if at is not None and not at.get("walk") and at["drawn"]["x"] != at["x"]
+    ]
+    assert behind, f"niri scrolled its window {scroll} and the cat was never drawn behind it"
+    assert 0 < behind[0] <= 1, f"drawn {behind[0]:.2f} of the scroll behind its place"
     walked = steps(shell, since)
     assert walked, "the cat took no step to the column off the edge"
     jumps = [
