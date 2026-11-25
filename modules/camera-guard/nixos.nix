@@ -7,10 +7,12 @@
 #
 # The slices are the account's agents' places, as ../slices names them:
 # jobs.slice, where pi's tools, its spawned sessions and the units they
-# start with systemd-run run (../slices/systemd-run.sh), and agents.slice,
-# pi's hosts and the sessions' terminals. Joel's own work in jobs.slice's
-# jobs-awaited.slice is refused a camera too, near a meeting, which only a
-# camera read by hand from a terminal would notice.
+# start with systemd-run run (../slices/systemd-run.sh); agents.slice,
+# pi's hosts and the sessions' terminals; and shared.slice, where an
+# agent's push waits its turn (../slices/agents-ask-first.rules names all
+# three). Joel's own work in jobs.slice's jobs-awaited.slice is refused a
+# camera too, near a meeting, which only a camera read by hand from a
+# terminal would notice.
 {
   config,
   lib,
@@ -48,6 +50,7 @@ in
         account
         "jobs.slice"
         "agents.slice"
+        "shared.slice"
       ];
       Restart = "always";
       RestartSec = 5;

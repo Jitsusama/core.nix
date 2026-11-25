@@ -6,7 +6,7 @@
 //! was an agent's read, asked for by another agent. Agents run as Joel's
 //! own account, so no permission tells them from his Meet; only where
 //! systemd runs them does: his programs in app.slice, agents and their
-//! work in jobs.slice and agents.slice. So this runs as root, asks the
+//! work in jobs.slice, agents.slice and shared.slice. So this runs as root, asks the
 //! google daemon for his meetings each minute, and from fifteen minutes
 //! before each until it ends keeps a cgroup device program on the agents'
 //! slices that refuses every video4linux device (src/bpf.rs). app.slice,
@@ -40,7 +40,7 @@ fn help() -> Help {
         "keeps agents off the camera near Joel's meetings",
     )
     .example(
-        "camera-guard joel jobs.slice agents.slice",
+        "camera-guard joel jobs.slice agents.slice shared.slice",
         "as its unit runs it",
     )
     .argument("ACCOUNT", "the account whose meetings and agents it minds")
@@ -79,7 +79,7 @@ fn main() -> ExitCode {
 /// # Errors
 ///
 /// Asked wrongly, 64: no account, no slice, a flag, or a slice that climbs
-/// out of the account's manager.
+/// out of the account's manager, names no slice, or is app.slice.
 fn words(args: &[String]) -> Result<(String, Vec<PathBuf>), Failure> {
     let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("camera-guard --help");
     if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
@@ -98,18 +98,28 @@ fn words(args: &[String]) -> Result<(String, Vec<PathBuf>), Failure> {
     let slices: Vec<PathBuf> = slices.iter().map(PathBuf::from).collect();
     if let Some(out) = slices.iter().find(|slice| !within(slice)) {
         return Err(wrongly(format!(
-            "{} isn't a slice under the account's manager",
+            "{} isn't a slice under the account's manager other than app.slice",
             out.display()
         )));
     }
     Ok((account.clone(), slices))
 }
 
-/// Whether `slice` names a place under the manager, not outside it.
+/// Whether `slice` names a slice under the manager, neither outside it,
+/// the manager itself, which would take in app.slice, nor app.slice, where
+/// Joel's Meet and Tuple run.
 fn within(slice: &Path) -> bool {
-    slice
-        .components()
-        .all(|component| matches!(component, Component::Normal(_)))
+    let mut names = slice.components().map(|component| match component {
+        Component::Normal(name) => name.to_str(),
+        _ => None,
+    });
+    let first = names.next().flatten();
+    first.is_some_and(|name| name != "app.slice")
+        && names.all(|name| name.is_some())
+        && slice
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".slice"))
 }
 
 /// The account's number, from passwd's text.
@@ -201,6 +211,11 @@ mod tests {
             &["joel", "--all"],
             &["joel", "../user-0.slice"],
             &["joel", "/sys/fs/cgroup"],
+            &["joel", ""],
+            &["joel", "."],
+            &["joel", "app.slice"],
+            &["joel", "app.slice/app-meet.slice"],
+            &["joel", "jobs.slice/jobs.service"],
         ] {
             let (exit, error) = started(said);
             assert_eq!(

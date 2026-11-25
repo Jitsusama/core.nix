@@ -117,7 +117,9 @@ pub fn kept(file: &Path) -> Result<Vec<Meeting>, String> {
 }
 
 /// Keeps `meetings` at `file` for the next run, through a file beside it,
-/// so a run stopped while writing leaves the last whole list.
+/// so a run stopped while writing leaves the last whole list, synced before
+/// it's renamed so a power loss can't leave an empty one, which would start
+/// the next run open.
 ///
 /// # Errors
 ///
@@ -126,7 +128,9 @@ pub fn keep(file: &Path, meetings: &[Meeting]) -> Result<(), String> {
     let seen = |error: std::io::Error| format!("{}: {error}", file.display());
     let fresh = file.with_extension("new");
     let text = serde_json::to_vec(meetings).map_err(|error| error.to_string())?;
-    std::fs::write(&fresh, text).map_err(seen)?;
+    let mut written = std::fs::File::create(&fresh).map_err(seen)?;
+    written.write_all(&text).map_err(seen)?;
+    written.sync_all().map_err(seen)?;
     std::fs::rename(&fresh, file).map_err(seen)
 }
 
