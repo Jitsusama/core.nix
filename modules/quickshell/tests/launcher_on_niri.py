@@ -381,14 +381,24 @@ class Shell:
         since: int,
         timeout: timedelta = WAITING,
     ) -> None:
-        """Wait until a report made after the mark starts with the prefix and passes the test."""
+        """Wait until a report made after the mark starts with the prefix and passes the test.
+
+        One that fails names each report the prefix began, as the test turned it down, since
+        the log's tail is often only the showings a case asked for (the train, 25 Nov 03:21).
+        """
         deadline = time.monotonic() + timeout.total_seconds()
+        near: list[str] = []
         while time.monotonic() < deadline:
             reports, since = self.said_since(since)
-            if any(said.startswith(prefix) and test(said[len(prefix) :]) for said in reports):
+            begun = [said[len(prefix) :] for said in reports if said.startswith(prefix)]
+            if any(test(rest) for rest in begun):
                 return
+            near += begun
             time.sleep(POLL)
-        failed = f"the shell never reported {prefix!r} as wanted:\n{self.tail()}"
+        failed = (
+            f"the shell never reported {prefix!r} as wanted; it said {near!r} after it:\n"
+            f"{self.tail()}"
+        )
         raise AssertionError(failed)
 
     @contextlib.contextmanager
