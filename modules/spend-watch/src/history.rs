@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 11;
+pub const SCHEMA: i64 = 12;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -141,6 +141,32 @@ END;
     };
 }
 
+/// Which hours' turns moved last, by a count every turn added or forgotten
+/// raises, so a daemon keeping the hours gone in memory rereads only those
+/// that moved since it read them. Reading every hour of `turn_hours` again
+/// each pass read it back off the disk once the machine had dropped it
+/// from memory, as it did within 30 seconds on 24 November: about 60 MB a
+/// pass, 1.3 to 3.6 MB a second. A move's own count is the most yet plus
+/// one, found through its index, so a turn costs two small writes more.
+macro_rules! moves {
+    () => {
+        "
+CREATE TABLE hour_moves (hour INTEGER PRIMARY KEY, move INTEGER NOT NULL);
+CREATE INDEX hour_moves_move ON hour_moves (move);
+CREATE TRIGGER hour_moves_add AFTER INSERT ON turns BEGIN
+    INSERT INTO hour_moves
+        VALUES (NEW.hour, (SELECT COALESCE(MAX(move), 0) + 1 FROM hour_moves))
+        ON CONFLICT (hour) DO UPDATE SET move = excluded.move;
+END;
+CREATE TRIGGER hour_moves_take AFTER DELETE ON turns BEGIN
+    INSERT INTO hour_moves
+        VALUES (OLD.hour, (SELECT COALESCE(MAX(move), 0) + 1 FROM hour_moves))
+        ON CONFLICT (hour) DO UPDATE SET move = excluded.move;
+END;
+"
+    };
+}
+
 /// Each budget a session asked for and couldn't draw on, and why, from
 /// the harness's budget entries.
 macro_rules! unresolved {
@@ -234,7 +260,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 10] = [
+const UPGRADES: [&str; 11] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -289,6 +315,12 @@ const UPGRADES: [&str; 10] = [
          SUM(cost), SUM(cost_cache_write), SUM(rebuilt_cost), SUM(cache_read),
          SUM(input + cache_read + cache_write) FROM turns
          GROUP BY hour, session, quest, model, kind, cause;"
+    ),
+    // Every hour already summed moved once, which a daemon reading them
+    // for the first time reads whole anyway.
+    concat!(
+        moves!(),
+        "INSERT INTO hour_moves SELECT hour, 1 FROM turn_hours GROUP BY hour;"
     ),
 ];
 
@@ -357,7 +389,8 @@ CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
     crossings!(),
     hours!(),
     once!(),
-    waste_hours!()
+    waste_hours!(),
+    moves!()
 );
 
 pub struct History {
@@ -1153,6 +1186,7 @@ mod tests {
             .replace(SESSIONS_10, "")
             .replace(once!(), "")
             .replace(waste_hours!(), "")
+            .replace(moves!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1314,7 +1348,8 @@ mod tests {
                     .replace(unresolved!(), "")
                     .replace(SESSIONS_10, "")
                     .replace(once!(), "")
-                    .replace(waste_hours!(), ""),
+                    .replace(waste_hours!(), "")
+                    .replace(moves!(), ""),
             )
             .unwrap();
             db.execute_batch(
@@ -1357,7 +1392,8 @@ mod tests {
                 &TABLES
                     .replace(SESSIONS_10, "")
                     .replace(once!(), "")
-                    .replace(waste_hours!(), ""),
+                    .replace(waste_hours!(), "")
+                    .replace(moves!(), ""),
             )
             .unwrap();
             db.execute_batch(
@@ -1547,7 +1583,7 @@ mod tests {
             };
             history
                 .db
-                .execute_batch(&TABLES.replace(waste_hours!(), ""))
+                .execute_batch(&TABLES.replace(waste_hours!(), "").replace(moves!(), ""))
                 .unwrap();
             history
                 .db
@@ -1631,6 +1667,69 @@ mod tests {
             rows(&history),
             4,
             "an hour whose turns were all forgotten was kept"
+        );
+    }
+
+    // The eleventh shape kept no count of which hours moved; the twelfth
+    // counts every hour it holds as moved once, and each turn added or
+    // forgotten after moves its hour past every other.
+    #[test]
+    fn the_eleventh_shape_gains_its_hours_moves() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history
+                .db
+                .execute_batch(&TABLES.replace(moves!(), ""))
+                .unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '11');")
+                .unwrap();
+            wasted(&history, "a", 10.0, MOST, None, 0.1);
+            wasted(&history, "a", 20.0, MOST, None, 0.2);
+            wasted(&history, "b", 4000.0, MOST, None, 0.3);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        let moves = |history: &History| -> Vec<(i64, i64)> {
+            let mut statement = history
+                .db
+                .prepare("SELECT hour, move FROM hour_moves ORDER BY hour")
+                .unwrap();
+            let rows = statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap();
+            rows.map(Result::unwrap).collect()
+        };
+        assert_eq!(
+            moves(&history),
+            vec![(0, 1), (1, 1)],
+            "the step didn't count each hour it holds as moved once"
+        );
+        wasted(&history, "c", 8000.0, MOST, None, 0.4);
+        assert_eq!(
+            moves(&history),
+            vec![(0, 1), (1, 1), (2, 2)],
+            "a turn in a new hour didn't move it past the rest"
+        );
+        wasted(&history, "a", 30.0, MOST, None, 0.5);
+        assert_eq!(
+            moves(&history),
+            vec![(0, 3), (1, 1), (2, 2)],
+            "a turn in an hour gone didn't move it past the rest"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'b'", [])
+            .unwrap();
+        assert_eq!(
+            moves(&history),
+            vec![(0, 3), (1, 4), (2, 2)],
+            "a turn forgotten didn't move its hour"
         );
     }
 

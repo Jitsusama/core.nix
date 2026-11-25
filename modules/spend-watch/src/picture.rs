@@ -177,6 +177,8 @@ pub struct Kept {
     rebuilt: Option<(f64, i64, BTreeMap<&'static str, f64>)>,
     /// The eight weeks of spend by minute a burn is judged on.
     pub minutes: crate::detect::Minutes,
+    /// Every hour's turns, read again only once they move.
+    hours: crate::series::Hours,
 }
 
 #[derive(Debug)]
@@ -264,7 +266,8 @@ impl Picture {
         let first_hour = first_hour(history, now)?;
         let now_hour = crate::time::hour_of(now);
         let budgets = crate::budgets::Budgets::of(config);
-        let inputs = Inputs::read(history, &budgets, first_hour, now_hour + 1)?;
+        kept.hours.refresh(&history.db, first_hour)?;
+        let inputs = Inputs::read_with(history, &budgets, &kept.hours, (first_hour, now_hour + 1))?;
         let (ratios, shifts) = learned(&inputs, &zone);
         let pieces = inputs.pieces(&ratios);
         let listed = inputs.listed_since(now_hour - LISTED_HOURS);

@@ -250,7 +250,11 @@ feed speaks.
   ever sent anywhere else.
 - **Pace.** A pass costs about half a second on four months of heavy use
   (700,000 turns), because the history keeps each hour's turns summed as
-  they're added, and a pass reads those rather than the turns. Finding the
+  they're added, and a pass reads those rather than the turns. The daemon
+  keeps those sums in memory and rereads only the hours `hour_moves` says
+  moved since its last pass. The machine drops them from its cache within
+  30 seconds, so every pass used to read them back off the disk: about 60 MB a pass
+  on 2026-11-24, 1.3 to 3.6 MB a second. Finding the
   logs is the other cost: on 2026-11-22 the reviewers' pattern read 36,295
   folders for 1,283 logs, 42 seconds a walk on a busy disk and about 4 MB
   a second all day, almost all of it councils finished weeks before. So a
