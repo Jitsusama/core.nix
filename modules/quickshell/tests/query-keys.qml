@@ -1929,7 +1929,6 @@ QtObject {
             ["or $", ["$"], "normal", { words: true }],
             ["x deleting a letter of them", ["x"], "normal", { words: true }],
             ["or dw a word", ["d", "w"], "normal", { words: true }],
-            ["or cw", ["c", "w"], "normal", { words: true }],
             ["u undoing an edit of them", ["u"], "normal", { words: true }],
             ["the operator again, swallowed after visual's", ["d"], "normal",
                 { operated: true }],
@@ -1955,6 +1954,10 @@ QtObject {
             ["- going up", ["-"], "normal", {}],
             ["gv taking a selection back", ["g", "v"], "normal", {}],
             ["j on a prompt's words, still the rows'", ["j"], "normal", { words: true }],
+            ["cw on a prompt's words, going into insert as i does", ["c", "w"], "normal",
+                { words: true }],
+            ["d ending the drawer's choice, though it says E21", ["d"], "pageVisual", {}],
+            ["or c ending its choice of lines", ["c"], "pageVisualLine", {}],
             ["gg's second g", ["g", "g"], "normal", {}],
             ["the drawer's key with a drawer out", ["Ctrl+w", "l"], "normal",
                 { drawerHere: true }],
@@ -1965,6 +1968,23 @@ QtObject {
         ];
         for (const [what, keys, mode, line] of acted)
             holds(`${what} acts`, acting(keys, mode, line), true);
+    }
+
+    // Whether gv has something to take back (KeyActs.reselectHere), by
+    // where the keys are, whether the rows hold a selection and the kind
+    // the drawer last chose by.
+    function reselectsHere(holds) {
+        // [what, mode, a selection on the rows, the drawer's last kind, has]
+        const cases = [
+            ["the rows with a selection", "normal", true, "", true],
+            ["the rows with none, whatever the drawer chose", "normal", false, "pageVisual",
+                false],
+            ["the drawer having chosen", "page", false, "pageVisual", true],
+            ["the drawer with nothing chosen, whatever the rows hold", "page", true, "", false]
+        ];
+        for (const [what, mode, rows, chosen, has] of cases)
+            holds(`gv on ${what} has ${has ? "something" : "nothing"} to take back`,
+                KeyActs.reselectHere(mode, rows, chosen), has);
     }
 
     // How tall a drawer's preview stands, on a pitch of 24, two beats of
@@ -3117,6 +3137,7 @@ QtObject {
         drawerValueLines(holds);
         drawerPreviewHeights(holds);
         keysActing(holds);
+        reselectsHere(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
