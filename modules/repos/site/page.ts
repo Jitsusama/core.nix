@@ -243,8 +243,9 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
 }
 
 // The parts whose height the feeds decide, each held at --room-<id> until they draw, as
-// index.html's data-rooms names them for the kit's early.js, which puts them back.
-const ROOMS = ["lede", "grove", "list", "open"] as const;
+// index.html's data-rooms names them for the kit's early.js, which puts them back. The
+// standing line is among them, since it sits above the grove and its trouble may wrap.
+const ROOMS = ["lede", "standing", "grove", "list", "open"] as const;
 type Room = (typeof ROOMS)[number];
 // The longest a part's room is held, so a feed that never answers, or a daemon away, leaves the
 // page fitting what it holds, the trouble said where it's seen, rather than the last visit.

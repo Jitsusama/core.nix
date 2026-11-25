@@ -82,6 +82,12 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* The counted turn keeps the tint it had in the title: the lede is italic
+   already, so the colour is what sets it apart. */
+.page-head .lede em {
+  color: var(--tint-word);
+}
+
 /* The keys act only through the page's script, so a page without one keeps
    the line's room and shows nothing in it. */
 html:not(.js) .page-head .keys {

@@ -78,8 +78,9 @@ CELLS = 8
 # included, a little more with the drawer's acts and its whole question, and
 # under the 677 KB allowed; new work's line and its hidden controls draw about
 # 20 elements of the 611. One file more and two of the kilobytes are the kit's
-# head.css, the head every live page shares, less the map's own head rules,
-# and three elements are the head's own parts the map's header lacked. One
+# head.css, the head every live page shares, less the map's own head rules;
+# the head and its link are seven elements more in the markup than the map's
+# header was, and the budget rose by three, the rest within its room. One
 # file more is the kit's early.js, the script the page once wrote into
 # itself, which the sites' policy now runs only from a file.
 BUDGET = Budget(files=35, kilobytes=679, elements=623)
