@@ -9,8 +9,8 @@
 # and said, judged before it's opened, du not run when none is left, and
 # that a start after it that looks like an option reaches du as a path; that
 # a start that is a link is judged by its folder unless -H follows it; that
-# a link to a file -H follows or a folder that can't be entered is left out
-# and said apart; that a start named - is that folder and CDPATH moves none;
+# a link -H follows that reaches no folder or a folder that can't be entered
+# is left out and said apart; that a start named - is that folder and CDPATH moves none;
 # that only a home's own guarded folders are left out by name; that du's own
 # nonzero end is kept; that -L, alone or among letters, is taken out, given
 # as -H and said unless -H or -P follows it; that the account's home is
@@ -315,6 +315,8 @@ count "${work}" -sh "${home}/src/notes"
 gives "a count of a link to Documents" "" -sh "${home}/src/notes"
 count "${work}" -shH "${home}/src/notes"
 runs_nothing "a count of a link to Documents that -H follows" "${home}/src/notes"
+count "${work}" -sL "${home}/src/notes"
+runs_nothing "a count of a link to Documents that -L follows" "${home}/src/notes"
 count "${work}" -sh "${home}/src/notes/"
 runs_nothing "a count of a link to Documents with a / after it" "${home}/src/notes/"
 : >"${home}/Documents/inside/file"
@@ -325,8 +327,9 @@ rm "${home}/src/notes"
 count "${work}" -sh "${data}${home}/Documents"
 runs_nothing "a count of Documents by the data volume's name" "${data}${home}/Documents"
 
-# A start that can't be judged, a link to a file -H follows or a folder
-# that can't be entered, is left out and said apart. Root enters any
+# A start that can't be judged, a link -H follows that reaches no folder,
+# to a file or to nothing, or a folder that can't be entered, is left out
+# and said apart. Root enters any
 # folder, so the test needs an account that can't.
 mkdir "${home}/src/locked"
 chmod 000 "${home}/src/locked"
@@ -336,14 +339,17 @@ if (cd "${home}/src/locked" 2>/dev/null); then
 fi
 chmod 755 "${home}/src/locked"
 ln -s "${home}/Documents/inside/file" "${home}/src/note"
-unjudged="note: du left out 1 start(s) it couldn't judge, a link to a file -H follows or a"
-unjudged+=" folder it can't enter, uncounted:"
+unjudged="note: du left out 1 start(s) it couldn't judge, a link -H follows that reaches no"
+unjudged+=" folder or a folder it can't enter, uncounted:"
 count "${home}" -sh src/note src
 gives "a count of a link to a file in Documents" "" -sh src/note src
 count "${home}" -shH src/note src
 gives "a count of a link to a file in Documents that -H follows" "${unjudged} src/note" \
   -shH src
-rm "${home}/src/note" "${home}/Documents/inside/file"
+rm "${home}/Documents/inside/file"
+count "${home}" -shH src/note src
+gives "a count of a link to nothing that -H follows" "${unjudged} src/note" -shH src
+rm "${home}/src/note"
 chmod 000 "${home}/src/locked"
 count "${home}" -sh src/locked src
 gives "a count of a folder that can't be entered" "${unjudged} src/locked" -sh src

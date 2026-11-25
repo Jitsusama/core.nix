@@ -24,9 +24,10 @@
 # real path. A guarded folder reached through a link in a start's path is
 # resolved by bash, which looks inside it once; a file is judged by its
 # folder's real path, as is a start that is a link, which macOS's du counts
-# as the link alone unless -H follows it. A link to a file that -H follows,
-# or a folder that can't be entered, can't be judged, so it's left out and
-# said apart.
+# as the link alone unless -H follows it. A link -H follows that reaches no
+# folder, to a file or to nothing, or a folder that can't be entered, can't
+# be judged, since bash alone can't say where such a link leads, so it's
+# left out and said apart.
 # Another du ahead of this one on PATH, as a dev shell's is, isn't reached,
 # and folders outside the home folder, as on /Volumes, aren't guarded.
 # usage: du.sh <du> <ignore file> <data volume> <home> [du's arguments...]
@@ -343,8 +344,8 @@ if [ ${#left[@]} -gt 0 ]; then
 fi
 if [ ${#unjudged[@]} -gt 0 ]; then
   listed "${unjudged[@]}"
-  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a link to a file -H" \
-    "follows or a folder it can't enter, uncounted: ${all}" >&2
+  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a link -H follows" \
+    "that reaches no folder or a folder it can't enter, uncounted: ${all}" >&2
   short=yes
 fi
 if [ ${#kept[@]} -eq 0 ]; then
