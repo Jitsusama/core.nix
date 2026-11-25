@@ -106,14 +106,34 @@ fn in_session(
     let said = |name| fs::read_to_string(folder.join(name)).unwrap_or_default();
     let (out, err) = (said(OUT), said(ERR));
     let _ = fs::remove_dir_all(&folder);
-    let status = ended?;
-    if status == 0 {
-        return Ok(out.trim().to_owned());
+    said_by(ended, what, &out, &err)
+}
+
+/// What a job's end gives back: its output when it ended well, and
+/// otherwise the failure with the last of what the job said. A job that
+/// didn't end is told with what it had said by then too, since its folder
+/// goes with it: on 24 November three that waited an hour each left only
+/// "didn't end", and whether they waited on a prompt or on Nix couldn't be
+/// read afterwards.
+fn said_by(
+    ended: Result<i32, Failure>,
+    what: &str,
+    out: &str,
+    err: &str,
+) -> Result<String, Failure> {
+    let lines = || run::tail(&format!("{out}{err}"));
+    match ended {
+        Ok(0) => Ok(out.trim().to_owned()),
+        Ok(status) => Err(Failure {
+            why: format!("{what} failed (exit status: {status})"),
+            lines: lines(),
+        }),
+        Err(failure) if failure.lines.is_empty() => Err(Failure {
+            lines: lines(),
+            ..failure
+        }),
+        Err(failure) => Err(failure),
     }
-    Err(Failure {
-        why: format!("{what} failed (exit status: {status})"),
-        lines: run::tail(&format!("{out}{err}")),
-    })
 }
 
 /// A new folder only root can reach, in `jobs`, given to the account once
@@ -328,6 +348,39 @@ mod tests {
         assert_eq!(own.parent(), Some(jobs.as_path()));
         let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!((mode(&jobs), mode(&own)), (0o711, 0o700));
+    }
+
+    #[test]
+    fn a_job_that_didnt_end_is_told_with_what_it_had_said() {
+        let waited = Failure::new("fetching the input secrets in the login session didn't end");
+        let told = said_by(Err(waited), "fetching", "", "waiting for the lock\n").unwrap_err();
+        assert_eq!(
+            (told.why.as_str(), told.lines),
+            (
+                "fetching the input secrets in the login session didn't end",
+                vec!["waiting for the lock".to_owned()]
+            )
+        );
+    }
+
+    #[test]
+    fn a_job_that_couldnt_start_keeps_what_launchctl_said() {
+        let refused = Failure {
+            why: "starting a job in the login session failed".to_owned(),
+            lines: vec!["Bootstrap failed: 5".to_owned()],
+        };
+        let told = said_by(Err(refused), "fetching", "", "").unwrap_err();
+        assert_eq!(told.lines, vec!["Bootstrap failed: 5".to_owned()]);
+    }
+
+    #[test]
+    fn a_job_ends_with_its_output_or_its_status_and_what_it_said() {
+        assert_eq!(said_by(Ok(0), "fetching", "out\n", "").unwrap(), "out");
+        let failed = said_by(Ok(3), "fetching", "", "said\n").unwrap_err();
+        assert_eq!(
+            (failed.why.as_str(), failed.lines),
+            ("fetching failed (exit status: 3)", vec!["said".to_owned()])
+        );
     }
 
     #[test]
