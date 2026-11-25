@@ -76,8 +76,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # every page reads. One file, two of the kilobytes and four elements are the kit's head, which
 # every live page shares: head.css less the page's own head rules, and the head itself, its
 # title's emphasis, the eyebrow's mark, the standing line's glyph and the quiet row, less the
-# foot the standing line came from.
-BUDGET = Budget(files=38, kilobytes=538, elements=280)
+# foot the standing line came from. One file more is the kit's early.js, the script the page
+# once wrote into itself, which the sites' policy now runs only from a file.
+BUDGET = Budget(files=39, kilobytes=538, elements=280)
 CELLS_SITE = "cells/"
 
 

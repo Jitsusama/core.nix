@@ -80,10 +80,11 @@ CELLS = 8
 # 20 elements of the 611. One file more and two of the kilobytes are the kit's
 # head.css, the head every live page shares, less the map's own head rules,
 # and three elements are the head's own parts the map's header lacked. One
-# file, three kilobytes and four elements are the asks beside the drawer: the
-# watch for a waiting look, and the part it fills, whose rows load only once
-# one waits.
-BUDGET = Budget(files=35, kilobytes=682, elements=627)
+# file more is the kit's early.js, the script the page once wrote into
+# itself, which the sites' policy now runs only from a file. One file, three
+# kilobytes and four elements are the asks beside the drawer: the watch for
+# a waiting look, and the part it fills, whose rows load only once one waits.
+BUDGET = Budget(files=36, kilobytes=682, elements=627)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1713,7 +1714,7 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         the_map_stands(page, "live")
         the_map_counts(page, COUNTED, "a feeding changed the count")
         page.wait_for_function(
-            "document.getElementById('map-ground').painted().fed === 1", timeout=PACE_MS
+            "() => document.getElementById('map-ground').painted().fed === 1", timeout=PACE_MS
         )
         # Each end's drawer says what was fed, the cell's by whom.
         title = page.locator("#panel-title")
@@ -1737,16 +1738,16 @@ def test_a_receptor_feeding_a_cell_something_is_drawn_between_the_two(
         ending = feeding("TERN03", timedelta(minutes=10) - timedelta(seconds=FED_ENDING_S))
         fed_node.tell("fed", changed=[ending])
         page.wait_for_function(
-            "document.getElementById('map-ground').painted().fed === 2", timeout=FED_DRAWN_MS
+            "() => document.getElementById('map-ground').painted().fed === 2", timeout=FED_DRAWN_MS
         )
         page.wait_for_function(
-            "document.getElementById('map-ground').painted().fed === 1",
+            "() => document.getElementById('map-ground').painted().fed === 1",
             timeout=PACE_MS + FED_ENDING_S * 1000,
         )
         # Once the node stops saying one, its line goes too.
         fed_node.tell("fed", gone=[FED_KEY])
         page.wait_for_function(
-            "document.getElementById('map-ground').painted().fed === 0", timeout=PACE_MS
+            "() => document.getElementById('map-ground').painted().fed === 0", timeout=PACE_MS
         )
     finally:
         opened.close()
@@ -1957,15 +1958,18 @@ LABEL_KEPT = """() => {
 NUDGED = "translate(0.5,0.5)"
 # Whether the name MARK_DRAWN nudged has been placed since: moved off the
 # nudge, or hidden for want of room.
-NUDGE_PLACED = """(() => {
+NUDGE_PLACED = """() => {
   const mark = document.querySelector('.labels g[data-kept]');
   return !!mark && (mark.getAttribute('transform') !== 'translate(0.5,0.5)'
     || mark.hasAttribute('display'));
-})()"""
+}"""
 # What TERN03 was in the reading last drawn, for a wait on the one told.
-TERN_USED = "window.tern?.usage?.context?.used === 12000"
-TERN_MOVING = "window.tern?.standing === 'moving'"
-TERN_GONE = "window.tern === null"
+# Every wait is a function, never a bare expression: Playwright hands a
+# function to the page through the browser's own protocol, but runs an
+# expression through the page's eval, which the sites' policy refuses.
+TERN_USED = "() => window.tern?.usage?.context?.used === 12000"
+TERN_MOVING = "() => window.tern?.standing === 'moving'"
+TERN_GONE = "() => window.tern === null"
 
 
 def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
@@ -2037,7 +2041,7 @@ SAMPLES = {"flight", "birth", "ended"}
 # Two frames on, so whatever a frame would have started has started.
 TWO_FRAMES = """() => new Promise((done) =>
   requestAnimationFrame(() => requestAnimationFrame(done)))"""
-SAMPLES_STILL = f"Object.values(({SAMPLES_PLAYING})()).every((n) => n === 0)"
+SAMPLES_STILL = f"() => Object.values(({SAMPLES_PLAYING})()).every((n) => n === 0)"
 # A toggle with no click, as code opening the legend makes, never his hand.
 REOPENED = """() => {
   const legend = document.querySelector('#panel-body details[data-keep="legend"]');
@@ -2092,7 +2096,8 @@ def scrolled_under(page: Page, kind: str) -> dict[str, int]:
     x, y = page.evaluate(ROW_AT_TOP, kind)
     page.mouse.move(x, y + SCROLLED_PX)
     page.mouse.wheel(0, -SCROLLED_PX)
-    page.wait_for_function(f"({ROW_UNDER})([{x}, {y + SCROLLED_PX}]) === '{kind}'", timeout=PACE_MS)
+    under = f"() => ({ROW_UNDER})([{x}, {y + SCROLLED_PX}]) === '{kind}'"
+    page.wait_for_function(under, timeout=PACE_MS)
     return playing_after_two_frames(page)
 
 
@@ -2276,7 +2281,7 @@ def test_every_cell_is_drawn_until_too_small_to_read(mycelium_opened: Opened) ->
         *_, further = settled(page, "o didn't step further out")
         assert further < k, f"the map stopped stepping out at a cell {k * CELL_R:.2f} px round"
         k = further
-    page.wait_for_function(f"{PAINTED}.folded > 0", timeout=PACE_MS)
+    page.wait_for_function(f"() => {PAINTED}.folded > 0", timeout=PACE_MS)
     assert cells.count() < CELLS, "every cell was drawn too small to read"
 
 
@@ -2345,7 +2350,7 @@ def test_each_kind_of_cell_is_painted_apart(
     mycelium_node.tell("cell", changed=[{"key": f"cell:{FED_RECEPTOR}", "state": "reading"}])
     # Waited on by the quiet dot going, whatever the reading one is drawn as.
     page.wait_for_function(
-        f"!{MARKS.format(SENSOR)}.some((mark) => mark.cls === 'm-sensed')", timeout=PACE_MS
+        f"() => !{MARKS.format(SENSOR)}.some((mark) => mark.cls === 'm-sensed')", timeout=PACE_MS
     )
     reading = marks_of(page, SENSOR)
     assert gold not in paints(reading), (
@@ -2422,7 +2427,7 @@ def test_talk_between_two_networks_is_one_line_until_it_or_a_cell_it_touches_ope
     try:
         page = opened.page
         the_map_stands(page, "live")
-        page.wait_for_function(f"{PAINTED}.said === {len(TALKERS)}", timeout=PACE_MS)
+        page.wait_for_function(f"() => {PAINTED}.said === {len(TALKERS)}", timeout=PACE_MS)
         cells = page.locator("#world circle.cell")
         expect(cells, "the realm's cells folded").to_have_count(CELLS)
         painted = page.evaluate(PAINTED)
@@ -2436,21 +2441,21 @@ def test_talk_between_two_networks_is_one_line_until_it_or_a_cell_it_touches_ope
         # A network open brightens the line it touches, and keeps it one.
         page.evaluate(f"location.hash = '#net={TALKED_WITH}'")
         page.wait_for_function(
-            f"!{PAINTED}.talks.some((t) => t.includes('faint'))", timeout=PACE_MS
+            f"() => !{PAINTED}.talks.some((t) => t.includes('faint'))", timeout=PACE_MS
         )
         drawn = page.evaluate(f"{PAINTED}.talks")
         assert drawn == ["m-talk warm2"], f"a network open drew its talk as {drawn}"
         # The line open spreads into the pairs it stands for, its own lit.
         pair = "encodeURIComponent('c:HERON2|c:TERN03')"
         page.evaluate(f"location.hash = '#talk=' + {pair}")
-        page.wait_for_function(f"{PAINTED}.talk === {len(TALKERS)}", timeout=PACE_MS)
+        page.wait_for_function(f"() => {PAINTED}.talk === {len(TALKERS)}", timeout=PACE_MS)
         drawn = sorted(page.evaluate(f"{PAINTED}.talks"))
         assert drawn == ["m-talk warm1 lit", "m-talk warm2"], f"a talk open drew {drawn}"
         ends = page.evaluate(f"{PAINTED}.talkEnds")
         assert all(end.startswith("c:") for end in ends), f"a talk open drew lines to {ends}"
         page.evaluate(f"location.hash = '#cell={HEARD}'")
         page.wait_for_function(
-            f"{PAINTED}.talks.filter((t) => !t.includes('faint')).length === {len(TALKERS)}",
+            f"() => {PAINTED}.talks.filter((t) => !t.includes('faint')).length === {len(TALKERS)}",
             timeout=PACE_MS,
         )
         found = page.evaluate((HERE / "site-checks.js").read_text())

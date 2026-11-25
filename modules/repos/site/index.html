@@ -13,6 +13,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="@light-ground@">
 <!-- It holds the room its parts took when it was last left at this width, named on <html> as
      page.ts keeps it, until they draw again, so the page doesn't shift as the feeds arrive. -->
+<!-- biome-ignore lint/performance/noSyncScripts: it runs before the first paint, setting the kept look and room, so nothing flashes or shifts. -->
 <script src="../local-sites/kit/early.js"></script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="../local-sites/web/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
