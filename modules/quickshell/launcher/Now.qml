@@ -2218,7 +2218,9 @@ Provider {
         // answers a question in full); "" where it says no more.
         const whole = () => TalkAnswers.whole(provider.source("agents")?.wantOf(address) ?? null);
         // Said answered only once the node has put it in the session's
-        // inbox, since one it couldn't put never reached the session.
+        // inbox, since one it couldn't put never reached the session. It names the want this
+        // row was made from (a changed one makes it anew), so the node refuses it once the
+        // session asks something else (wants.rs's answer_of), as a Talk's answer is.
         const answer = (fields, label) => {
             const agents = provider.source("agents");
             const answered = put => {
@@ -2226,7 +2228,7 @@ Provider {
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
             };
             if (agents)
-                agents.answerWant(address, fields, answered);
+                agents.answerWant(address, Object.assign({ want: answers.want }, fields), answered);
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),

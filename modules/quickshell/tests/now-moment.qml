@@ -2916,17 +2916,21 @@ ShellRoot {
         agents.puts = true;
         inside[0].run();
         const answered = agents.answered[1] ?? {};
-        expect("its Return asks the daemon to answer the session, and once put the foot says so",
+        // Naming the want its row was made from, so the node refuses it once the session asks
+        // something else, as it refuses a Talk's answer (wants.rs's answer_of).
+        expect("its Return asks the daemon to answer the want shown, and once put the foot says so",
             agents.answered.length === 2 && answered.address === "WANTE"
-                && JSON.stringify(answered.fields) === JSON.stringify({ value: "push" })
+                && JSON.stringify(answered.fields) === JSON.stringify({
+                    want: "question@2026-11-12T07:00:00.000Z", value: "push" })
                 && JSON.stringify(theLauncher.said) === JSON.stringify([["answered Yes, push it",
                     ""]]),
             JSON.stringify([agents.answered, theLauncher.said]));
         expect("the shell steers nothing itself", Sessions.steered.length === 0,
             JSON.stringify(Sessions.steered));
         inside[3].given("after lunch");
-        expect("his own words go as words",
-            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
+        expect("his own words go as words, to the want shown",
+            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({
+                want: "question@2026-11-12T07:00:00.000Z", other: "after lunch" }),
             JSON.stringify(agents.answered[2]));
         const named = name => inside.find(one => one.name === name);
         Sessions.wentTo = null;
@@ -2981,7 +2985,8 @@ ShellRoot {
         asked[0]?.run();
         expect("its Yes asks the daemon to answer it",
             agents.answered[3]?.address === "WANTF"
-                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({ value: "yes" }),
+                && JSON.stringify(agents.answered[3]?.fields) === JSON.stringify({
+                    want: "approval@2026-11-12T07:00:00.000Z", value: "yes" }),
             JSON.stringify(agents.answered[3]));
         agents.answered = [];
         agents.wants = {};
