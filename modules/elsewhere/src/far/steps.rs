@@ -60,13 +60,22 @@ pub(super) const A_PASS_SPENDS_AT_MOST: u64 = 10;
 
 /// The far line's wait for the job's archives, `bytes` in all, to cross,
 /// saying `untaken`, already quoted for the shell, and ending untaken if
-/// they stop crossing or cross too slowly; `crossing`'s steps and `say`
-/// come before it.
+/// they stop crossing or cross too slowly; `crossing`'s steps, `say` and
+/// `unlinked` come before it. A link at the job's handover or above it,
+/// as a run killed with no stop leaves for the quest's next job, goes
+/// first, so nothing is read through it and that job isn't refused for
+/// it; one that can't be cleared ends the line untaken, as this
+/// machine's to answer.
 pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
     // No more than a share carries, which keeps the far sum in range.
     let bytes = bytes.min(MOST_BYTES);
     format!(
-        r#"# By the clock, since a pass over a large tree takes long itself: each
+        r#"unlinked || {{
+  printf "elsewhere: a link at the job's handover couldn't be cleared\n" >&2
+  say {untaken}
+  exit {UNTAKEN}
+}}
+# By the clock, since a pass over a large tree takes long itself: each
 # pass spends what the clock moved over it, never less than the second
 # it slept, as when the clock steps back or stands still, nor more than
 # {A_PASS_SPENDS_AT_MOST}s, as when it steps on or the machine slept. The wait

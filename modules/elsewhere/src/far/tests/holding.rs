@@ -1,13 +1,15 @@
 //! The far line holding the job's tree while it takes the archives: a
 //! link at the tree or above it, anything but a folder of its own there,
 //! and a tree gone, each judged before an archive is taken, a link put
-//! there later redirecting none, and one that can't be cleared keeping
-//! the tree as the refusal clears the copy.
+//! there later redirecting none, one that can't be cleared keeping the
+//! tree as the refusal clears the copy, and one a killed run left above
+//! it going before anything is read.
 
+use super::crossing::refusing;
 use super::handing::pinning;
 use super::unpacking::{FIRST, archive_of, reading};
 use super::{Left, far_line, handover, kind, work};
-use crate::far::TREE;
+use crate::far::{HANDOVER, TREE};
 
 #[test]
 fn a_link_put_at_the_job_s_tree_or_above_it_is_refused_before_an_archive_is_taken_through_it() {
@@ -50,6 +52,49 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
         assert!(
             std::fs::symlink_metadata(&link).is_err() && !work(&home).join("1").exists(),
             "the link at {moved} or the copy was left"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_link_a_killed_run_left_above_the_job_s_handover_goes_before_anything_is_read() {
+    // A uname that, as the far line begins, moves the folder each job of
+    // the quest is handed over in aside, with a link to it at its name,
+    // as a run killed with no stop leaves it for the next job: cleared,
+    // or left where it can't be, the job is untaken, never refused.
+    let swapping = format!(
+        r#"[ -e "$HOME/swapped" ] || {{
+  at='{FIRST}' && moved="$HOME/${{at%/*/*/*}}"
+  mv "$moved" "$HOME/aside" && ln -s "$HOME/aside" "$moved" && : > "$HOME/swapped"
+}}
+PATH=${{PATH#*:}} exec uname "$@""#
+    );
+    let (rm, pinned) = refusing("rm", &format!("*\"/{HANDOVER} \"*"), "exit 1");
+    for (stays, said) in [
+        (false, "didn't reach"),
+        (true, "a link at the job's handover couldn't be cleared"),
+    ] {
+        let mut programs = vec![("uname", swapping.as_str())];
+        if stays {
+            programs.push((rm, pinned.as_str()));
+        }
+        let archive = archive_of("a", "inside");
+        let list = format!("{}\t0.tar\nend\n", archive.len());
+        let (code, err, home) = reading(&list, &[("0.tar", &archive)], &programs);
+        let linked = handover(&home).parent().map(std::fs::symlink_metadata);
+        assert!(
+            home.join("swapped").exists() && code == Some(75) && err.contains(said),
+            "a link left above the handover wasn't answered untaken, saying {said:?} \
+             ({code:?}): {err}"
+        );
+        assert!(
+            linked.is_some_and(|at| at.is_ok_and(|at| at.is_symlink()) == stays)
+                && home.join("aside/1").join(TREE).join("0.tar").exists()
+                && !home.join("read").exists()
+                && !work(&home).join("ran").exists(),
+            "the link was {} or something was read through it: {err}",
+            if stays { "cleared" } else { "kept" }
         );
         let _ = std::fs::remove_dir_all(&home);
     }
