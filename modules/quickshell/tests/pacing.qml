@@ -1104,8 +1104,9 @@ QtObject {
         check(failures, "a program's key is said with its desktop entry's id",
             Presented.keyShown("program:org.inkscape.Inkscape", false),
             "program:org.inkscape.Inkscape");
-        check(failures, "as its row says it",
-            Presented.rowShown({ key: "program:kitty", name: "kitty" }, false), "program:kitty");
+        check(failures, "as its row says it, never by the name it shows",
+            Presented.rowShown({ key: "program:google-chrome", name: "Bank statement - Chrome" },
+                false), "program:google-chrome");
         check(failures, "but one whose id isn't shaped as an app's is said as program",
             Presented.keyShown("program:My App_2", false), "program");
         check(failures, "as is one with a part past its id, as a player's under media",
