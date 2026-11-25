@@ -236,6 +236,7 @@
     "launcher/Presented.js"
     "launcher/SessionRow.js"
     "launcher/Showing.js"
+    "launcher/Sprouting.js"
     "launcher/TalkAnswers.js"
     "pieces/Holding.js"
   ];
