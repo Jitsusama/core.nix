@@ -459,13 +459,12 @@ function buildersOf(records: readonly Fields[]): Builder[] {
 function nowOf(heard: Heard, at: number): Now {
   const reading = latestReading(heard.balance, at);
   const shares = sharesOf(reading);
+  // The cells it draws, and so the only ones that may name a starter.
+  const cells = heard.cell.all().filter(drawn);
   const now: Now = {
     at: new Date(at).toISOString(),
     networks: heard.network.all().map((record) => asPrinted(record, "network")),
-    cells: heard.cell
-      .all()
-      .filter(drawn)
-      .map((record) => asPrinted(record, "cell")),
+    cells: cells.map((record) => asPrinted(record, "cell")),
     machines: standsOf(
       heard.machine.all().map((record) => ({
         ...machineOf(record),
@@ -478,7 +477,7 @@ function nowOf(heard: Heard, at: number): Now {
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
-    started: startedOf(heard.cell.all().filter(drawn), heard.forage),
+    started: startedOf(cells, heard.forage),
     foraged: foragedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.

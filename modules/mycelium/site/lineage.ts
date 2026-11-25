@@ -43,6 +43,36 @@ function isLaterCopy(copy: Fields, had: Fields): boolean {
   return (text(copy, "since") ?? "") > (text(had, "since") ?? "");
 }
 
+/** The networks `cell` names, none when it names them as anything but a list. */
+function networksOf(cell: Fields): readonly unknown[] {
+  const networks = cell["networks"];
+  return Array.isArray(networks) ? networks : [];
+}
+
+/**
+ * Each cell of `cells` once, by name, in the order each name was first
+ * told: of two copies, the one that stands by isLaterCopy, naming the
+ * networks either copy names, since it is one cell under one address and
+ * the machine it left may still list groups it heard there. A record with
+ * no name is no cell. The drawing, its reach and its starters all take a
+ * cell's copy from here, so none can say a copy another doesn't.
+ */
+function oneCopyEach<Cell extends Fields>(cells: readonly Cell[]): Cell[] {
+  const once = new Map<string, Cell>();
+  for (const cell of cells) {
+    const name = text(cell, "name");
+    const had = name ? once.get(name) : undefined;
+    if (name && !had) {
+      once.set(name, cell);
+    } else if (name && had) {
+      const [keep, other] = isLaterCopy(cell, had) ? [cell, had] : [had, cell];
+      const networks = [...new Set([...networksOf(keep), ...networksOf(other)])];
+      once.set(name, { ...keep, networks });
+    }
+  }
+  return [...once.values()];
+}
+
 /**
  * Who started each cell: its own record's word first, which reaches every
  * machine, then its forage's for a cell whose record says nothing, as an
@@ -65,16 +95,8 @@ function startedOf(cells: readonly Fields[], forages: Held | undefined): Started
   // A cell moving between machines can be listed by both for a while, the
   // one it left still saying what it last knew, so its starter is the
   // copy's the map draws.
-  const latest = new Map<string, Fields>();
-  for (const record of cells) {
-    const name = text(record, "name");
-    const had = name ? latest.get(name) : undefined;
-    if (name && (!had || isLaterCopy(record, had))) {
-      latest.set(name, record);
-    }
-  }
-  for (const [name, record] of latest) {
-    say(name, text(record, "started_by"));
+  for (const record of oneCopyEach(cells)) {
+    say(text(record, "name"), text(record, "started_by"));
   }
   for (const record of forages?.all() ?? []) {
     say(text(record, "cell"), text(object(record, "lineage") ?? {}, "started_by"));
@@ -163,4 +185,4 @@ function grownOf(
 }
 
 export type { Grown, Network, Started };
-export { foragedOf, grownOf, isLaterCopy, startedOf };
+export { foragedOf, grownOf, isLaterCopy, oneCopyEach, startedOf };

@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { grownOf, isLaterCopy, type Network, type Started } from "../lineage.ts";
+import { grownOf, isLaterCopy, type Network, oneCopyEach, type Started } from "../lineage.ts";
 import { nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-19T01:00:00Z");
@@ -150,6 +150,27 @@ it("a copy stands over another only when started strictly later, a start as no w
   assert.equal(isLaterCopy(early, {}), true);
   assert.equal(isLaterCopy({}, early), false);
   assert.equal(isLaterCopy({ since: 1e15 }, early), false, "a start as a number reads as none");
+});
+
+it("each cell is kept once, as its copy that stands, with the networks either copy names", () => {
+  const stale = { name: "HERON1", machine: "osprey", since: "2026-11-19T00:00:00Z" };
+  const moved = { name: "HERON1", machine: "kestrel", since: "2026-11-19T00:30:00Z" };
+  const alone = { name: "SKIFF1", networks: ["repo.harbour"] };
+  const kept = oneCopyEach([
+    { ...stale, networks: ["orchestration.heron1", "repo.harbour"] },
+    alone,
+    { ...moved, networks: ["orchestration.heron1", "repo.skiff"] },
+    { machine: "kestrel" },
+  ]);
+  assert.deepEqual(kept, [
+    { ...moved, networks: ["orchestration.heron1", "repo.skiff", "repo.harbour"] },
+    alone,
+  ]);
+  const [tied] = oneCopyEach([
+    { ...stale, networks: [] },
+    { ...stale, machine: "kestrel", networks: [] },
+  ]);
+  assert.equal(tied?.machine, "osprey", "of two copies started alike, the first told stands");
 });
 
 it("a record naming itself, a blank or nobody, with no forage served, names nobody", () => {

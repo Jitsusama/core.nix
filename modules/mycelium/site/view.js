@@ -71,7 +71,7 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf, isLaterCopy } from "./lineage.js";
+import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
@@ -502,17 +502,8 @@ import {
     const depth = (h) => (h.within ? 1 + depth(hubs.get(h.within)) : 0);
     // A cell moving between machines can arrive from both for a while,
     // the one it left still listing it. It is one cell under one address,
-    // so the page keeps the copy started most recently, by the rule the
-    // starters are read by too, with the groups either copy names.
-    const once = new Map();
-    for (const c of now.cells) {
-      const had = once.get(c.name);
-      if (!had) once.set(c.name, c);
-      else {
-        const [keep, other] = isLaterCopy(c, had) ? [c, had] : [had, c];
-        once.set(c.name, { ...keep, networks: [...new Set([...keep.networks, ...other.networks])] });
-      }
-    }
+    // so the page keeps one copy, as its starters and reach are read from.
+    const once = oneCopyEach(now.cells);
     // A network sits within another, so a cell on a quest that sits under
     // an orchestration works in that orchestration, even when the node
     // names only the quest: it is alone only in no orchestration at all.
@@ -525,7 +516,7 @@ import {
       }
       return null;
     };
-    const cells = [...once.values()].map((c) => {
+    const cells = once.map((c) => {
       const on = [...new Set(c.networks.map(orchestrationOf).filter(Boolean))];
       const own = on.find((h) => c.quest && c.quest.toLowerCase().endsWith(`-${h.key.split(".").pop()}`));
       const deepest = [...on].sort((a, b) => depth(b) - depth(a))[0];

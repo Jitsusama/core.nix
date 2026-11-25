@@ -108,6 +108,21 @@ it("a cell two machines both list is judged once", () => {
   assert.equal(reach.count, 1);
 });
 
+it("a cell two machines list is judged as the map keeps it, by either copy's networks", () => {
+  // The copy told last is the stale one, and alone it names no orchestration.
+  const moved = {
+    name: "TERN05",
+    type: "session",
+    since: "2026-11-19T00:30:00Z",
+    networks: ["orchestration.kestrl"],
+  };
+  const stale = { ...moved, since: "2026-11-19T00:00:00Z", networks: ["repo.skiff"] };
+  const reach = reachOf(reading([moved, stale]), drew({ TERN05: "#loose.skiff" }));
+  assert.deepEqual(reach.failures, [
+    { cell: "TERN05", orchestration: "kestrl", owner: "KESTRL", why: "alone" },
+  ]);
+});
+
 it("a cell the map holds nowhere is unreachable", () => {
   const now = reading([{ name: "SKIFFS", type: "session", networks: ["orchestration.kestrl"] }]);
   const reach = reachOf(now, drew({}));

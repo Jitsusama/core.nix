@@ -2406,7 +2406,8 @@
     not served, what a receptor fed a cell, kept for ten minutes and up to a minute ahead, the
     map drawing again when the first balance or feeding ends, who started each cell from its
     own record on any machine, else its forage, none where neither says and none for a cell
-    started by itself or by nobody, from the copy the map draws of a cell two machines list,
+    started by itself or by nobody, a cell two machines list kept once as the copy started
+    latest with either copy's networks, its drawing, reach and starter all read from that copy,
     a network the node sets within none growing out of the one whose cells started more of its
     cells than any other, a tie going by name, where the node sets a network standing, no start
     from inside it counting, of two that started each other's cells the stronger the trunk and
@@ -2441,7 +2442,8 @@
     node drops it, a network grown out of another as its branch once a forage says a cell of the
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
     the branch going with the forage, and grown across machines once a cell's own record names
-    its starter on another, going once it stops, the builders standing under the machines in
+    its starter on another, going once it stops, the copy drawn and the branch changing together
+    while two machines list the cell, the builders standing under the machines in
     rounded boxes,
     dashed while taking no builds, their words read unopened, opened by link and let go by m,
     an asking cell's drawer saying its question whole and leading with Go to It, which g follows,

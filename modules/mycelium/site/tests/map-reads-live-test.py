@@ -210,8 +210,10 @@ def twin() -> dict[str, list[dict[str, object]]]:
                 "networks": heard,
             }
         )
-    # Still listed by the machine it left, an hour older.
-    cells.append({**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"})
+    # Still listed by the machine it left, an hour older, under a key of its
+    # own, so the page holds both copies and has to choose.
+    left = {**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"}
+    cells.append({**left, "key": f"{left['key']}@osprey"})
     for n in range(TWIN_RECEPTORS):
         name = f"radio{n}@kestrel"
         cells.append({**copy.deepcopy(receptor), "key": f"cell:{name}", "name": name})
@@ -1797,6 +1799,39 @@ def test_a_cell_whose_own_record_names_its_starter_grows_a_branch_with_no_forage
         page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
         expect(body, "the cell's drawer never said who its record named").to_contain_text(
             f"by {GROWN_BY_TITLE}", timeout=PACE_MS
+        )
+        # While it moves, the machine it left may list it too, under a key of
+        # its own. The map draws the copy started latest and names that copy's
+        # starter, so what it draws and the branch it grows change together.
+        kinds = json.loads((HERE / "node.json").read_text())["kinds"]
+        heron = next(cell for cell in kinds["cell"] if cell["name"] == GROWN_CELL)
+        left = {
+            **heron,
+            "key": f"cell:{GROWN_CELL}@kestrel",
+            "kind": "cell",
+            "heard": heard,
+            "machine": "kestrel",
+        }
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T07:00:00Z"}])
+        page.wait_for_timeout(REDRAWN_MS)
+        expect(body, "the map drew the copy started earlier").to_contain_text("network, on osprey")
+        expect(hub, "a copy started earlier took the branch").to_have_attribute(
+            "data-branch-of", GROWN_FROM
+        )
+        the_map_counts(page, COUNTED, "a cell two machines list was counted twice")
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T09:00:00Z"}])
+        expect(body, "the map never drew the copy started latest").to_contain_text(
+            "network, on kestrel", timeout=PACE_MS
+        )
+        expect(body, "a copy the map doesn't draw named the starter").not_to_contain_text(
+            f"by {GROWN_BY_TITLE}"
+        )
+        expect(hub, "a copy the map doesn't draw kept the branch").not_to_have_attribute(
+            "data-branch-of", re.compile(".")
+        )
+        mycelium_node.tell("cell", gone=[left["key"]])
+        expect(hub, "the branch never came back with the copy that names it").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
         )
         # Once the record stops naming its starter, the branch goes, and so
         # does the cell's word of who started it.
