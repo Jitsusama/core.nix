@@ -432,8 +432,8 @@ impl Odb {
     }
 
     fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
-        // What a store's indexes refuse stands only once every other place
-        // the object may lie has been read.
+        // What a store's indexes or loose objects refuse stands only once
+        // every other place the object may lie has been read.
         let mut refused = None;
         for store in 0..self.stores.len() {
             if let Some((pack, offset)) = self.stores[store].locate(oid, &mut refused) {
@@ -442,8 +442,12 @@ impl Odb {
             }
         }
         for store in &self.stores {
-            if let Some(object) = store.loose(oid)? {
-                return Ok(Some(object));
+            match store.loose(oid) {
+                Ok(Some(object)) => return Ok(Some(object)),
+                Ok(None) => {}
+                Err(error) => {
+                    refused.get_or_insert(error);
+                }
             }
         }
         refused.map_or(Ok(None), Err)
