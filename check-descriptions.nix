@@ -2417,8 +2417,9 @@
     map drawing again when the first balance or feeding ends, who started each cell from its
     own record on any machine, else its forage, none where neither says and none for a cell
     started by itself or by nobody, a cell two machines list kept once as the copy started
-    latest with either copy's networks, its drawing, reach and starter all read from that copy
-    in either order, a cell with no name the map can't draw found unreachable rather than lost,
+    latest with either copy's networks, its drawing, reach and starter all read from that copy,
+    reach judging it by both copies' networks in either order, a cell with no name the map
+    can't draw found unreachable and said as words, with its machine, rather than lost,
     a network the node sets within none growing out of the one whose cells started more of its
     cells than any other, a tie going by name, where the node sets a network standing, no start
     from inside it counting, of two that started each other's cells the stronger the trunk and
