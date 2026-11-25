@@ -1939,6 +1939,7 @@ impl Relay {
     /// says when it's retired, counting it as one taking requests.
     async fn connect(&self, named: Named) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
+        let looked_up = AtomicBool::new(false);
         let opening = async {
             let on_the_way = |why: io::Error| {
                 let unreachable = if why
@@ -1953,7 +1954,7 @@ impl Relay {
                 };
                 (why, unreachable)
             };
-            let tcp = reach(&self.origin.host, self.origin.port, within)
+            let tcp = reach(&self.origin.host, self.origin.port, within, &looked_up)
                 .await
                 .map_err(on_the_way)?;
             let name = ServerName::try_from(self.origin.host.clone())
@@ -2004,14 +2005,7 @@ impl Relay {
                 );
                 return Err(unreachable);
             }
-            Err(_) => {
-                eprintln!(
-                    "model-relay: {} wasn't made within {} ms",
-                    named.tried(),
-                    within.as_millis()
-                );
-                return Err(Unreachable::Late);
-            }
+            Err(_) => return Err(unmade(named, within, &looked_up)),
         };
         self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
@@ -2171,6 +2165,27 @@ fn with_causes(why: &dyn std::error::Error) -> String {
     said
 }
 
+/// What `named`, not made `within` its time, is said as. A lookup that
+/// hangs rather than fails is the name's doing too, so one that hadn't
+/// resolved by then is said as that, and lateness only once it had.
+fn unmade(named: Named, within: Duration, looked_up: &AtomicBool) -> Unreachable {
+    if looked_up.load(Ordering::Relaxed) {
+        eprintln!(
+            "model-relay: {} wasn't made within {} ms",
+            named.tried(),
+            within.as_millis()
+        );
+        Unreachable::Late
+    } else {
+        eprintln!(
+            "model-relay: {} wasn't made within {} ms, before its origin's name resolved",
+            named.tried(),
+            within.as_millis()
+        );
+        Unreachable::Unnamed
+    }
+}
+
 /// A name that couldn't be looked up, and why, if the lookup said.
 #[derive(Debug)]
 struct Unnamed {
@@ -2198,8 +2213,13 @@ impl std::error::Error for Unnamed {
 }
 
 /// A TCP connection to `host`'s `port`, from the first address the name
-/// resolves to that answers.
-async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream> {
+/// resolves to that answers, marking `looked_up` once the name has resolved.
+async fn reach(
+    host: &str,
+    port: u16,
+    within: Duration,
+    looked_up: &AtomicBool,
+) -> io::Result<TcpStream> {
     let unnamed = |why| {
         io::Error::other(Unnamed {
             host: host.to_owned(),
@@ -2213,6 +2233,7 @@ async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream>
     if addresses.is_empty() {
         return Err(unnamed(None));
     }
+    looked_up.store(true, Ordering::Relaxed);
     let tcp = reach_any(&addresses, within).await?;
     fit(&tcp)?;
     Ok(tcp)
@@ -2898,9 +2919,14 @@ mod tests {
             .expect("a port");
         let port = origin.local_addr().expect("its address").port();
 
-        let tcp = reach("127.0.0.1", port, Duration::from_secs(2))
-            .await
-            .expect("a connection");
+        let tcp = reach(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(2),
+            &AtomicBool::new(false),
+        )
+        .await
+        .expect("a connection");
 
         assert_eq!(
             socket2::SockRef::from(&tcp)
