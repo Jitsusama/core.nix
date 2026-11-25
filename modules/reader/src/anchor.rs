@@ -86,9 +86,9 @@ fn alike(one: &str, other: &str) -> usize {
 type BlocksSaid = (Vec<(usize, String)>, Vec<(usize, String)>);
 
 /// A page set again, as a mark, the cursor's line and a jump's place are
-/// moved across it: whether the file was `edited`, where its blocks started
-/// `before` when it was set at another width or edited (none otherwise)
-/// and start `after`, the lines it was set from (`was`) and is set from now
+/// moved across it: whether the file was `edited`, whether it was set at
+/// another width (`reflowed`), where its blocks started `before` and start
+/// `after`, the lines it was set from (`was`) and is set from now
 /// (`now`, and their tops and baselines, `ends`), and the most a point goes:
 /// the new page's height, past which no line stands. A jump's place, a
 /// view's top, may land past the most the view goes, which `leap` holds.
@@ -96,7 +96,8 @@ type BlocksSaid = (Vec<(usize, String)>, Vec<(usize, String)>);
 /// empty to start), however many marks and jumps move.
 pub struct Moving<'a> {
     pub edited: bool,
-    pub before: Option<&'a [(usize, f64)]>,
+    pub reflowed: bool,
+    pub before: &'a [(usize, f64)],
     pub after: &'a [(usize, f64)],
     pub was: &'a [Line],
     pub now: &'a [Line],
@@ -123,11 +124,15 @@ impl Moving<'_> {
         };
         words
             .or_else(|| {
-                let before = self.before?;
+                // At the same width unedited, every block stands where it
+                // stood, so nothing moves by its block.
+                if !(self.reflowed || self.edited) {
+                    return None;
+                }
                 let line = moves::line_topped(self.was, pt);
-                place::moved_into(before, self.after, line, self.ends, |block| {
+                place::moved_into(self.before, self.after, line, self.ends, |block| {
                     if self.edited {
-                        self.block_now(before, block).unwrap_or(block)
+                        self.block_now(self.before, block).unwrap_or(block)
                     } else {
                         block
                     }
@@ -146,8 +151,11 @@ impl Moving<'_> {
     /// blocks' saying the same, above and below it, moved. Where those two
     /// disagree, the edit added or took a block between them, so it's the
     /// block between them saying most of what it said, opening or ending
-    /// alike; the one above's count where none does, and the one there is
-    /// where only one is. None where no block says what it did.
+    /// alike. Where none does, it's the only block between them if there's
+    /// one, else the one above's count, unless that falls outside them and
+    /// the one below's doesn't: a count outside them names a block that
+    /// says what another did. The one there is where only one is. None
+    /// where no block says what it did.
     fn block_now(&self, before: &[(usize, f64)], block: usize) -> Option<usize> {
         let (was, now) = self
             .said
@@ -180,14 +188,22 @@ impl Moving<'_> {
         match (above, below) {
             (Some((up, by_up)), Some((down, by_down))) if by_up != by_down => {
                 let words = &was[at].1;
+                let within = |b: usize| b > up && b < down;
+                let between: Vec<&(usize, String)> =
+                    now.iter().filter(|(b, _)| within(*b)).collect();
+                let otherwise = match between.as_slice() {
+                    [only] => only.0,
+                    _ if !within(by_up) && within(by_down) => by_down,
+                    _ => by_up,
+                };
                 Some(
-                    now.iter()
-                        .filter(|(b, _)| *b > up && *b < down)
+                    between
+                        .iter()
                         .map(|(b, w)| (*b, alike(words, w)))
                         .filter(|(_, much)| *much > 0)
                         .rev()
                         .max_by_key(|(_, much)| *much)
-                        .map_or(by_up, |(b, _)| b),
+                        .map_or(otherwise, |(b, _)| b),
                 )
             }
             (Some((_, by)), _) | (None, Some((_, by))) => Some(by),
@@ -249,10 +265,12 @@ mod tests {
     }
 
     /// Where `pt` goes across a page set again, each line its own block
-    /// unless told: `before`'s blocks at another width, or none.
+    /// unless told: whether it was `edited`, whether it was set at another
+    /// width (`reflowed`), and where its blocks started `before`.
     fn moving(
         edited: bool,
-        before: Option<&[(usize, f64)]>,
+        reflowed: bool,
+        before: &[(usize, f64)],
         after: &[(usize, f64)],
         was: &[Line],
         now: &[Line],
@@ -261,6 +279,7 @@ mod tests {
         let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
         Moving {
             edited,
+            reflowed,
             before,
             after,
             was,
@@ -315,7 +334,7 @@ mod tests {
         let before = [(0, 0.0), (1, 25.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
         assert_eq!(
-            moving(true, Some(&before), &after, &old, &new, 30.0),
+            moving(true, true, &before, &after, &old, &new, 30.0),
             50.0,
             "edited, it goes with \"two\""
         );
@@ -331,7 +350,7 @@ mod tests {
         let new = [line(40.0, "a b c d"), line(90.0, "c d")];
         let before = [(0, 0.0), (1, 25.0), (2, 65.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
-        assert_eq!(moving(false, Some(&before), &after, &old, &new, 50.0), 30.0);
+        assert_eq!(moving(false, true, &before, &after, &old, &new, 50.0), 30.0);
     }
 
     #[test]
@@ -348,7 +367,7 @@ mod tests {
         ];
         let before = [(0, 0.0), (1, 30.0), (2, 80.0)];
         let after = [(0, 0.0), (1, 30.0), (2, 50.0), (3, 120.0)];
-        assert_eq!(moving(true, Some(&before), &after, &old, &new, 60.0), 80.0);
+        assert_eq!(moving(true, true, &before, &after, &old, &new, 60.0), 80.0);
     }
 
     #[test]
@@ -369,7 +388,7 @@ mod tests {
         ];
         let before = [(0, 0.0), (1, 30.0), (2, 80.0)];
         let after = [(0, 0.0), (1, 30.0), (2, 50.0), (3, 120.0)];
-        assert_eq!(moving(true, Some(&before), &after, &old, &new, 60.0), 80.0);
+        assert_eq!(moving(true, false, &before, &after, &old, &new, 60.0), 80.0);
     }
 
     #[test]
@@ -380,7 +399,7 @@ mod tests {
         let new = [line(20.0, "it."), line(40.0, "x y")];
         let before = [(0, 0.0), (1, 25.0), (2, 45.0)];
         let after = [(0, 0.0), (1, 25.0)];
-        assert_eq!(moving(true, Some(&before), &after, &old, &new, 50.0), 50.0);
+        assert_eq!(moving(true, false, &before, &after, &old, &new, 50.0), 50.0);
         // The view, reading on, goes to the one there is.
         assert_eq!(anchored(&old, &new, 50.0, false, 500.0), 10.0);
     }
@@ -399,7 +418,7 @@ mod tests {
         let before = [(0, 0.0), (1, 30.0), (2, 80.0)];
         let after = [(0, 0.0), (1, 30.0), (2, 100.0)];
         assert_eq!(
-            moving(true, Some(&before), &after, &old, &new, 60.0),
+            moving(true, true, &before, &after, &old, &new, 60.0),
             80.0,
             "it lands on \"gamma delta\", not where \"delta\" stood"
         );
@@ -420,7 +439,7 @@ mod tests {
         ];
         let before = [(0, 0.0), (1, 25.0), (2, 45.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0), (3, 65.0)];
-        assert_eq!(moving(true, Some(&before), &after, &old, &new, 30.0), 50.0);
+        assert_eq!(moving(true, false, &before, &after, &old, &new, 30.0), 50.0);
     }
 
     #[test]
@@ -435,7 +454,7 @@ mod tests {
         ];
         let before = [(0, 0.0), (1, 25.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
-        assert_eq!(moving(true, Some(&before), &after, &old, &new, 10.0), 30.0);
+        assert_eq!(moving(true, false, &before, &after, &old, &new, 10.0), 30.0);
     }
 
     #[test]
@@ -452,14 +471,41 @@ mod tests {
         ];
         let before = [(0, 0.0), (1, 25.0), (2, 45.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0), (3, 65.0)];
-        assert_eq!(moving(true, Some(&before), &after, &old, &new, 50.0), 70.0);
+        assert_eq!(moving(true, false, &before, &after, &old, &new, 50.0), 70.0);
+    }
+
+    #[test]
+    fn a_mark_on_a_renamed_heading_under_a_cut_block_goes_into_the_one_between() {
+        // "ddd" cut and the marked heading "Install" renamed "Setup", at
+        // the same width: no line says "Install" now, so the mark goes by
+        // its block. "aaa" above says it stays third, "bbb" below that it's
+        // second. Nothing between them opens or ends as "Install" did, but
+        // one block is there, so the mark goes into it, not onto "bbb",
+        // which says what another block did.
+        let old = [
+            line(20.0, "aaa"),
+            line(40.0, "ddd"),
+            line(60.0, "Install"),
+            line(80.0, "bbb"),
+        ];
+        let new = [line(20.0, "aaa"), line(40.0, "Setup"), line(60.0, "bbb")];
+        let before = [(0, 0.0), (1, 25.0), (2, 45.0), (3, 65.0)];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        assert_eq!(
+            moving(true, false, &before, &after, &old, &new, 50.0),
+            30.0,
+            "the mark landed off \"Setup\""
+        );
     }
 
     #[test]
     fn a_page_set_again_at_its_width_unedited_moves_nothing() {
         let lines = [line(20.0, "one"), line(40.0, "two")];
         let starts = [(0, 0.0), (1, 25.0)];
-        assert_eq!(moving(false, None, &starts, &lines, &lines, 33.0), 33.0);
+        assert_eq!(
+            moving(false, false, &starts, &starts, &lines, &lines, 33.0),
+            33.0
+        );
     }
 
     #[test]

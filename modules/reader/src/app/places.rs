@@ -239,14 +239,20 @@ impl App {
         let reflowed = incoming.opens.is_none()
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
         let edited = incoming.edited && incoming.opens.is_none();
-        let before = (reflowed || edited).then(|| place::starts(&self.painter.page().frame));
+        let again = incoming.opens.is_none() && (reflowed || edited || !self.landed.is_empty());
+        let before = if again {
+            place::starts(&self.painter.page().frame)
+        } else {
+            Vec::new()
+        };
         self.painter.take(incoming.page, incoming.version);
-        if incoming.opens.is_none() && (reflowed || edited || !self.landed.is_empty()) {
+        if again {
             let after = place::starts(&self.painter.page().frame);
             let ends: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
             let moving = anchor::Moving {
                 edited,
-                before: before.as_deref(),
+                reflowed,
+                before: &before,
                 after: &after,
                 was: self.words.as_deref().unwrap_or(&[]),
                 now: &incoming.lines,
@@ -562,11 +568,13 @@ mod tests {
         // jump's too, and one on another file stays where it was.
         let was = [line(20.0, "one"), line(40.0, "two")];
         let now = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
+        let before = [(0, 0.0), (1, 25.0)];
         let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
         let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
         let moving = anchor::Moving {
             edited: true,
-            before: None,
+            reflowed: false,
+            before: &before,
             after: &after,
             was: &was,
             now: &now,
