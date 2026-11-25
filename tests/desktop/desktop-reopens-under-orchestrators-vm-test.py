@@ -1269,8 +1269,8 @@ def asked_from_a_link(desktop: Desktop, link: str) -> None:
     desktop.launcher_until(lambda shown: shown["mode"] == "insert")
     machine.send_chars(link)
     machine.send_key("ret")
-    # Return empties the field once it's taken the words, and then he leaves.
-    desktop.launcher_until(lambda shown: shown["typed"] == "")
+    # Return keeps the words, taken, and says the start under them, and then he leaves.
+    desktop.launcher_until(lambda shown: (shown.get("start") or {}).get("says", "") != "")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_until(lambda shown: shown["open"] is False)
 
