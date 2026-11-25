@@ -49,12 +49,23 @@ pub struct Routes {
     /// begun somewhere its folder doesn't say is still never written to.
     #[serde(default)]
     pub never: Vec<String>,
+    /// Cells whose work the ledgers' keeper leaves to them: of a pain sent
+    /// to one, the keeper is told with its next turn, wanting no answer,
+    /// rather than asked, since its owner answers it.
+    #[serde(default)]
+    pub told: Vec<String>,
 }
 
 impl Routes {
     /// Whether `address` is one nothing is ever sent to, in any case.
     pub fn refuses(&self, address: &str) -> bool {
         self.never.iter().any(|n| n.eq_ignore_ascii_case(address))
+    }
+
+    /// Whether the keeper is only told of a pain sent to `address`, in
+    /// any case.
+    pub fn only_tells(&self, address: &str) -> bool {
+        self.told.iter().any(|n| n.eq_ignore_ascii_case(address))
     }
 
     /// Why routes.json can't be used, when it's there but can't be read.
@@ -277,16 +288,30 @@ fn line(n: usize, pain: &Heard, to: &str, cells: &BTreeMap<String, Cell>, offset
 /// The note the ledgers' keeper is sent of new pains, so it can carry them
 /// into asks or misses: the worst first, at most `NOTED_AT_MOST` of them.
 /// One sent to its owner says so; one heard hours after he said it went to
-/// no one else, since its owner has long moved on.
-pub fn ledger_note(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) -> String {
+/// no one else, since its owner has long moved on. One `asked` wants the
+/// keeper's answer; one told of pains its list leaves to their owners
+/// says there's nothing to answer.
+pub fn ledger_note(
+    pains: &[&Heard],
+    cells: &BTreeMap<String, Cell>,
+    offset_s: i64,
+    asked: bool,
+) -> String {
     let count = pains.len();
     let mut ranked = pains.to_vec();
     ranked.sort_by_key(|pain| (std::cmp::Reverse(pain.hits), pain.at));
-    let mut said = format!(
-        "{count} new {} heard from Joel, {FOR_THE_KEEPER} where they belong; each sent to \
-         its owner says so:",
-        if count == 1 { "pain" } else { "pains" }
-    );
+    let noun = if count == 1 { "pain" } else { "pains" };
+    let mut said = if asked {
+        format!(
+            "{count} new {noun} heard from Joel, {FOR_THE_KEEPER} where they belong; each sent \
+             to its owner says so:"
+        )
+    } else {
+        format!(
+            "{count} new {noun} heard from Joel, each sent to an owner whose work your list \
+             leaves to it, so nothing to answer; {FOR_THE_KEEPER} only if one is his ask:"
+        )
+    };
     for (n, pain) in ranked.iter().take(NOTED_AT_MOST).enumerate() {
         let to = pain
             .to
@@ -345,6 +370,7 @@ mod tests {
             fallback: Some("ORCH01".into()),
             ledgers: Some("ORCH01".into()),
             never: vec!["VOID01".into()],
+            told: Vec::new(),
         }
     }
 
@@ -481,10 +507,15 @@ mod tests {
         let cells = cells(SESSIONS);
         let a = pain("s-live", "e1", "the bar is tight", 1);
         let b = pain("s-idle", "e2", "no window opened", 2);
-        let note = ledger_note(&[&a, &b], &cells, 0);
+        let note = ledger_note(&[&a, &b], &cells, 0, true);
         assert!(note.contains("2 new pains"), "{note}");
         assert!(note.contains("\"the bar is tight\""), "{note}");
         assert!(note.contains("GHI789"), "{note}");
         assert!(note.contains("asks or misses"), "{note}");
+        let told = ledger_note(&[&a], &cells, 0, false);
+        assert!(
+            told.contains("nothing to answer") && told.contains(FOR_THE_KEEPER),
+            "a note told, not asked, says so and is still read as the keeper's: {told}"
+        );
     }
 }

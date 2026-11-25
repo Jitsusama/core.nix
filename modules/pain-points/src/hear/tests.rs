@@ -401,6 +401,40 @@ fn a_first_run_sends_each_new_pain_to_its_owner_once() {
 }
 
 #[test]
+fn the_keeper_is_told_not_asked_of_a_pain_sent_to_a_cell_its_list_leaves_to_it() {
+    let place = Place::new("told");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"ORCH01","never":["NEVER1"],
+            "told":["abc123"]}"#,
+    )
+    .expect("routes written");
+    a_day(&place);
+    let mut sent: Vec<(String, String)> = Vec::new();
+    let hour = hear(&place.ears(), CELLS, &mut |to, text| {
+        sent.push((to.into(), text.into()));
+        true
+    })
+    .expect("a run");
+    assert!(
+        sent.iter().any(|(to, _)| to == "ABC123"),
+        "its owner is still asked: {sent:?}"
+    );
+    assert!(
+        !sent
+            .iter()
+            .any(|(to, text)| to == "ORCH01" && text.contains(route::FOR_THE_KEEPER)),
+        "the keeper was asked of a pain its list leaves to its owner: {sent:?}"
+    );
+    let (keeper, note) = hour.told.expect("the keeper is told");
+    assert_eq!(keeper, "ORCH01", "told to someone but the keeper");
+    assert!(
+        note.contains("nothing to answer") && note.contains("sent to ABC123"),
+        "the told note doesn't say it wants nothing, or which pain: {note}"
+    );
+}
+
+#[test]
 fn a_later_run_sends_only_what_is_new() {
     let place = Place::new("later");
     place.routes();

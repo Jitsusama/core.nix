@@ -23,6 +23,9 @@
 //! It writes hour.json each run, for cadence's hourly card: the pains
 //! heard and routed in the last hour, those still open however old, the
 //! one he hit most, and the turns that stalled him.
+//!
+//! Long because a run's sends, to owners and to the ledgers' keeper,
+//! each keep the heard state before the next, and they share it here.
 
 mod counted;
 pub mod heard;
@@ -141,6 +144,11 @@ pub struct Hour {
     /// to ask of it can't be read: said, though it fails no run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unclosed: Option<String>,
+    /// The keeper, and its note of pains sent to cells its list leaves
+    /// to them, for the run's caller to tell it once the run is done;
+    /// never written, as the note is said once.
+    #[serde(skip)]
+    pub told: Option<(String, String)>,
 }
 
 /// Hears what's new since the last run, sends each new pain to its owner
@@ -209,24 +217,32 @@ pub fn listen(
     // trouble, rather than holding every later run behind this one.
     let cells =
         output_within(Command::new(&mycelium).arg("sessions"), SEND_AT_MOST).unwrap_or_default();
-    let from = Routes::read(&ears.state).from;
-    let hour = hear(&ears, &cells, &mut |to, text| {
-        let Some(from) = &from else { return false };
+    let routes = Routes::read(&ears.state);
+    let say = |intent: &str, to: &str, text: &str| {
+        let Some(from) = &routes.from else {
+            return false;
+        };
         // A node that never answers would hold every later run behind this
         // one, so a send that hangs is stopped and tried again next run.
         output_within(
             Command::new(&mycelium)
-                .args([
-                    // A question, as a finding is read only on a cell's
-                    // next turn and wants nothing back, and each owner is
-                    // asked to say when its fix lands.
-                    "send", "--from", from, "--intent", "question", "--text", text,
-                ])
+                .args(["send", "--from", from, "--intent", intent, "--text", text])
                 .arg(format!("peer.{}", to.to_lowercase())),
             SEND_AT_MOST,
         )
         .is_some_and(|answer| node_took(&answer))
-    })?;
+    };
+    // A question, as a finding is read only on a cell's next turn and
+    // wants nothing back, and each owner is asked to say when its fix
+    // lands.
+    let hour = hear(&ears, &cells, &mut |to, text| say("question", to, text))?;
+    // The keeper is told, not asked, of pains its list leaves to their
+    // owners: an fyi is read with its next turn and wants no answer.
+    if let Some((keeper, note)) = &hour.told
+        && !routes.refuses(keeper)
+    {
+        say("fyi", keeper, note);
+    }
     drop(lock);
     Ok((said(&hour), !hour.troubles.is_empty()))
 }
@@ -403,7 +419,7 @@ pub fn hear(
         went
     };
     let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut guarded, &heard_at);
-    note_for_keeper(
+    let told = note_for_keeper(
         ears,
         &routes,
         &cells,
@@ -427,6 +443,7 @@ pub fn hear(
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
+    hour.told = told;
     let (waiting, given_up) = unsent(&kept, ears.at);
     hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
     hour.troubles = troubles(
@@ -644,9 +661,10 @@ fn route_waiting(
     owned
 }
 
-/// Sends the ledgers' keeper the pains just sent and those heard too late
-/// for their owners, and marks the late ones as gone to the keeper once
-/// the note went.
+/// Asks the ledgers' keeper of the pains just sent and those heard too
+/// late for their owners, and marks the late ones as gone to the keeper
+/// once the note went. Of those sent to cells its list leaves to them,
+/// it gives back the keeper and a note to tell it, wanting no answer.
 fn note_for_keeper(
     ears: &Ears,
     routes: &Routes,
@@ -655,10 +673,8 @@ fn note_for_keeper(
     owned: &[String],
     send: &mut dyn FnMut(&str, &str) -> bool,
     heard_at: &Path,
-) {
-    let Some(keeper) = routes.ledgers.as_ref().filter(|_| routes.sends()) else {
-        return;
-    };
+) -> Option<(String, String)> {
+    let keeper = routes.ledgers.as_ref().filter(|_| routes.sends())?;
     let late: Vec<usize> = (0..kept.len())
         .filter(|n| {
             let pain = &kept[*n];
@@ -675,7 +691,7 @@ fn note_for_keeper(
                 && pain.at < ears.at - FRESH_MS
         })
         .collect();
-    let noted: Vec<&Heard> = kept
+    let (told, noted): (Vec<(usize, &Heard)>, Vec<(usize, &Heard)>) = kept
         .iter()
         .enumerate()
         .filter(|(n, h)| {
@@ -685,16 +701,30 @@ fn note_for_keeper(
                     .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
             (owned.contains(&h.key) && !stalled::is(h) && !to_keeper) || late.contains(n)
         })
-        .map(|(_, h)| h)
-        .collect();
+        // A late one went to no owner, so the keeper is asked of it,
+        // whoever's cell it was heard in.
+        .partition(|(n, h)| {
+            !late.contains(n) && h.to.as_deref().is_some_and(|to| routes.only_tells(to))
+        });
+    let told: Vec<&Heard> = told.into_iter().map(|(_, h)| h).collect();
+    let noted: Vec<&Heard> = noted.into_iter().map(|(_, h)| h).collect();
+    let told = (!told.is_empty()).then(|| {
+        (
+            keeper.clone(),
+            route::ledger_note(&told, cells, ears.offset_s, false),
+        )
+    });
     if noted.is_empty() {
-        return;
+        return told;
     }
     // The note of pains already sent is said once: a keeper that misses it
     // still has each from its owner's side, and heard.jsonl. Late ones
     // wait for the next run until the note goes.
     // A late pain has its keeper's own tries, after any its owner had.
-    let went = send(keeper, &route::ledger_note(&noted, cells, ears.offset_s));
+    let went = send(
+        keeper,
+        &route::ledger_note(&noted, cells, ears.offset_s, true),
+    );
     for n in late {
         if went {
             kept[n].to = Some(keeper.clone());
@@ -704,6 +734,7 @@ fn note_for_keeper(
         }
     }
     let _ = keep(heard_at, kept);
+    told
 }
 
 /// Each session log, by its file's name, written since `since`.
