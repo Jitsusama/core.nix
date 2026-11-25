@@ -1044,16 +1044,17 @@ ShellRoot {
             if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
                 Timekeeping.reading === null, read)))
                 return;
-            // Stepped out and back near the end of its time, with no answer
-            // after: a reader that takes the connection and says nothing,
-            // which only the timer the watch change set lets go. Read 1.8 s
-            // into a 2 s minute, it goes in what's left, well before a
-            // fresh minute from the step back would let it.
+            // Stepped out fresh, then back once the wall clock says 1.8 s of
+            // a 2 s minute has gone, as after a suspend the step out's timer
+            // slept through, with no answer after: a reader that takes the
+            // connection and says nothing, which only the timer the step
+            // back sets lets go. It goes in what's left, well before the
+            // step out's timer or a fresh minute from the step back would.
             Timekeeping.keptFor = 2000;
             Timekeeping.watching = 1;
             answerTime();
-            Timekeeping.heardAt = Date.now() - 1800;
             Timekeeping.watching = 0;
+            Timekeeping.heardAt = Date.now() - 1800;
             Timekeeping.watching = 1;
             if (!tried(() => expect("watched again within its time, it's still read",
                 Timekeeping.reading !== null, "null")))
@@ -1064,7 +1065,11 @@ ShellRoot {
             if (Timekeeping.lettingGo() && since < 3000)
                 return;
             if (!tried(() => expect("watched again, a reader quiet since has its reading let go",
-                Timekeeping.reading === null && since < 1000, `${since} ms ${read}`)))
+                Timekeeping.reading === null, read)))
+                return;
+            if (!tried(() => expect(
+                "and it goes in what's left by the wall clock, not a minute from either step",
+                since < 1000, `${since} ms`)))
                 return;
             waiting = "";
             Timekeeping.watching = 0;
