@@ -2,9 +2,11 @@
 //! whole, and the lines of one commit's runs found by its bytes before any
 //! is parsed.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use super::say_in;
 
@@ -16,19 +18,28 @@ pub(super) struct Lines<F> {
     line: Vec<u8>,
     keep: F,
     root: PathBuf,
+    failed: bool,
 }
 
 impl<F: FnMut(&[u8]) -> bool> Lines<F> {
     /// The journal in the state folder `root`. One that can't be opened,
-    /// but for one not yet written, is said in net.log, as a read that
-    /// fails part way is.
+    /// but for one not yet written, is said in net.log and counts as
+    /// failed, as a read that fails part way does.
     pub(super) fn open(root: &Path, keep: F) -> Self {
         let path = root.join("results.jsonl");
+        let mut failed = false;
         let reader = match fs::File::open(&path) {
             Ok(file) => Some(BufReader::new(file)),
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => {
-                say_in(root, &format!("couldn't open {}: {error}", path.display()));
+                failed = true;
+                say_unrepeated(
+                    root,
+                    &format!(
+                        "couldn't open {}, so the net reads it as holding no run: {error}",
+                        path.display()
+                    ),
+                );
                 None
             }
         };
@@ -37,7 +48,18 @@ impl<F: FnMut(&[u8]) -> bool> Lines<F> {
             line: Vec::new(),
             keep,
             root: root.to_owned(),
+            failed,
         }
+    }
+
+    /// Whether the journal couldn't be opened, or a read of it failed, so
+    /// the lines given were fewer than it holds. A caller then answers as
+    /// though it held none, as the journal read whole did: a prefix could
+    /// keep a commit's failure and drop the pass after it, and blame a
+    /// merge for a test that passed, where no runs at all leaves it
+    /// unknown.
+    pub(super) const fn failed(&self) -> bool {
+        self.failed
     }
 }
 
@@ -46,9 +68,7 @@ impl<F: FnMut(&[u8]) -> bool> Iterator for Lines<F> {
 
     /// The next line taken. A read that fails ends the lines for good,
     /// rather than failing again on each call, as a read that consumed
-    /// nothing would. The caller then has only the runs before it, which
-    /// can only undercount them, so it's said in net.log for whoever reads
-    /// what the net decided from it.
+    /// nothing would.
     fn next(&mut self) -> Option<String> {
         let reader = self.reader.as_mut()?;
         loop {
@@ -60,11 +80,12 @@ impl<F: FnMut(&[u8]) -> bool> Iterator for Lines<F> {
                 }
                 Ok(_) => {}
                 Err(error) => {
-                    say_in(
+                    self.failed = true;
+                    say_unrepeated(
                         &self.root,
                         &format!(
-                            "reading {} stopped part way, so what was asked of it has \
-                             only the runs before: {error}",
+                            "reading {} stopped part way, so the net reads it as holding \
+                             no run: {error}",
                             self.root.join("results.jsonl").display()
                         ),
                     );
@@ -74,6 +95,25 @@ impl<F: FnMut(&[u8]) -> bool> Iterator for Lines<F> {
         }
         self.reader = None;
         None
+    }
+}
+
+/// The last fault with each state folder's journal said in its net.log by
+/// this process.
+static LAST_SAID: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
+
+/// Say `what` in the net.log under `root` unless it was the last fault
+/// said there. A journal that stays unreadable is asked of on every query,
+/// and net.log is never trimmed; its time is also the hang guard's sign
+/// that the watch lives, which a line per query would keep fresh for a
+/// watch that's stuck.
+fn say_unrepeated(root: &Path, what: &str) {
+    let mut said = LAST_SAID
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if said.get(root).map(String::as_str) != Some(what) {
+        say_in(root, what);
+        said.insert(root.to_owned(), what.to_owned());
     }
 }
 

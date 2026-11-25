@@ -322,7 +322,9 @@ impl State {
 
     /// Each run of `check` at `commit` so far, oldest first.
     pub fn runs(&self, commit: &str, check: &str) -> Vec<Ran> {
-        runs_in(self.results_naming(commit), commit, check)
+        let mut lines = self.results_naming(commit);
+        let runs = runs_in(lines.by_ref(), commit, check);
+        if lines.failed() { Vec::new() } else { runs }
     }
 
     /// The results journal's lines, read one at a time rather than whole.
@@ -352,14 +354,17 @@ impl State {
     /// The logs of `check`'s runs at `commit` that failed but counted as
     /// passed, since main's list as it was then excused what failed.
     pub fn excused_logs(&self, commit: &str, check: &str) -> Vec<PathBuf> {
-        self.results_naming(commit)
+        let mut lines = self.results_naming(commit);
+        let logs = lines
+            .by_ref()
             .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
             .filter(|line| line["commit"] == commit && line["check"] == check)
             .filter(|line| {
                 line["passed"] == true && line["code"].as_i64().is_some_and(|code| code != 0)
             })
             .filter_map(|line| line["log"].as_str().map(PathBuf::from))
-            .collect()
+            .collect();
+        if lines.failed() { Vec::new() } else { logs }
     }
 
     pub fn record(
@@ -391,7 +396,9 @@ impl State {
     pub fn lasted(&self) -> HashMap<String, u64> {
         // A failure may end early, an excused one too, and a stall at its
         // limit, so only a run that passed says how long a check takes.
-        self.results()
+        let mut lines = self.results();
+        let lasted = lines
+            .by_ref()
             .filter_map(|line| serde_json::from_str::<Value>(&line).ok())
             .filter(|line| line["passed"] == true && line["code"] == 0)
             .filter_map(|line| {
@@ -400,7 +407,12 @@ impl State {
                     line["seconds"].as_u64()?,
                 ))
             })
-            .collect()
+            .collect();
+        if lines.failed() {
+            HashMap::new()
+        } else {
+            lasted
+        }
     }
 
     /// The hold a broken merge put on switching, if one stands.

@@ -344,10 +344,13 @@ fn a_commit_not_written_as_its_bytes_is_still_found() {
         vec![Ran::Passed],
         "a commit JSON writes escaped was passed over by its bytes"
     );
+    state
+        .record("", "vm-a", Ran::Passed, Some(0), &log, 0)
+        .unwrap();
     assert_eq!(
         state.runs("", "vm-a"),
-        vec![],
-        "an empty commit found a run, or the read of it failed"
+        vec![Ran::Passed],
+        "an empty commit's run was passed over, so not every line was parsed"
     );
     assert_eq!(
         state.excused_logs("", "vm-a"),
@@ -356,12 +359,67 @@ fn a_commit_not_written_as_its_bytes_is_still_found() {
     );
 }
 
+// The bytes looked for are a commit's own only when JSON writes it as
+// them; for any other, every line is a candidate.
+#[test]
+fn only_a_commit_written_as_its_bytes_is_looked_for_by_them() {
+    use super::journal::sought;
+    assert_eq!(
+        sought("ab12"),
+        Some(b"ab12".to_vec()),
+        "a hex commit wasn't looked for by its bytes"
+    );
+    for written_otherwise in ["", "a\"b", "a\\b", "a\nb", "a\u{1}b"] {
+        assert_eq!(
+            sought(written_otherwise),
+            None,
+            "{written_otherwise:?} was looked for by bytes the journal doesn't hold"
+        );
+    }
+}
+
+// The prefilter passes over a line that doesn't hold the commit's bytes,
+// which is what keeps a query from parsing the whole journal.
+#[test]
+fn a_line_without_the_commits_bytes_is_passed_over() {
+    use super::journal::names;
+    let line = br#"{"commit":"bbbb","check":"vm-a"}"#;
+    assert!(
+        !names(line, Some(b"aaaa")),
+        "a line of another commit was taken"
+    );
+    assert!(
+        names(line, Some(b"bbbb")),
+        "the commit's own line was passed over"
+    );
+    assert!(
+        names(line, None),
+        "a line was passed over when any could be of it"
+    );
+}
+
 // A journal whose every read fails, as a folder's does, ends its lines at
-// once rather than failing again on each, and says so in net.log.
+// once, counts as failed and is said once in net.log, however often it's
+// asked of.
 #[test]
 fn a_journal_that_cant_be_read_ends_and_is_said() {
     let state = state("unreadable");
     fs::create_dir(state.root.join("results.jsonl")).expect("the folder in its place");
+    let mut lines = super::journal::Lines::open(&state.root, |_: &[u8]| true);
+    assert_eq!(
+        lines.next(),
+        None,
+        "a line came of a journal that can't be read"
+    );
+    assert_eq!(
+        lines.next(),
+        None,
+        "a second read came of a journal that ended"
+    );
+    assert!(
+        lines.failed(),
+        "a journal that can't be read didn't count as failed"
+    );
     assert_eq!(
         state.runs("aaaa", "vm-a"),
         vec![],
@@ -374,8 +432,8 @@ fn a_journal_that_cant_be_read_ends_and_is_said() {
     let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
     assert_eq!(
         log.matches("stopped part way").count(),
-        2,
-        "each failed read wasn't said once in net.log: {log:?}"
+        1,
+        "a fault that lasted wasn't said once in net.log: {log:?}"
     );
 }
 
