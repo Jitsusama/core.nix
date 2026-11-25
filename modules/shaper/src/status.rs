@@ -691,8 +691,9 @@ mod tests {
             follows: Some("enp0\u{1b}[2J\u{7}s13f0".to_owned()),
             ..held()
         };
-        // A why long enough to wrap at 60, so it hangs under its first
-        // line there and fits whole at 200.
+        // A why long enough to wrap at 60 and at the 80 that 200 is held
+        // to, so it hangs under its first line in both, and is one line
+        // only into a pipe.
         if let Some(heard) = link.heard.as_mut() {
             heard.why = heard
                 .why
