@@ -443,7 +443,9 @@ in
         # first, for a checkout stock git refuses to open. The account's
         # mycelium, last, says how crowded each realm's machines are, where
         # its sessions run and how its cells stand, and holds the map's
-        # check, mycelium-map-check.
+        # check, mycelium-map-check. nix-store lists the closure of the
+        # build each service's unit names, to say whether the service runs
+        # it; without it every service would read as unread.
         Environment = [
           "PATH=${
             lib.makeBinPath (
@@ -451,6 +453,7 @@ in
               ++ [
                 pkgs.git
                 pkgs.systemd
+                (if config.nix.package != null then config.nix.package else pkgs.nix)
               ]
             )
           }${lib.optionalString (realms != [ ]) ":${config.home.profileDirectory}/bin"}"
