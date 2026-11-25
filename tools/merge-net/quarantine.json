@@ -157,5 +157,17 @@
       "test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew"
     ],
     "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
+    "at": 1795566013,
+    "commit": "943f05c672ef627c18bc8304fe8703bd8f5d9d77",
+    "due": "2026-11-27",
+    "owner_pr": 6365,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 943f05c672ef",
+    "subtests": [
+      "test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count"
+    ],
+    "test": "vm-desktop-launcher-reads-mail"
   }
 ]
