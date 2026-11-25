@@ -174,10 +174,12 @@ fi
 
 # udev's record of each node as the add left it, so a replay read under the
 # old rules says so rather than passing for one that worked.
-# A node udev couldn't say of may be the Brio still kept, so the run never
-# says it gave the Brio back while one is left unread.
+# A node udev couldn't say of, holds no record of or hasn't finished adding
+# may be the Brio still kept, so the run never says it gave the Brio back
+# while one is left so, beside the warning that says which.
 given=yes
-if [ "${#unread[@]}" -gt 0 ]; then
+if [ "${#unread[@]}" -gt 0 ] || [ "${#unrecorded[@]}" -gt 0 ] ||
+  [ "${#pending[@]}" -gt 0 ]; then
   given=no
 fi
 for node in "${nodes[@]}"; do

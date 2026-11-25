@@ -5334,8 +5334,8 @@
     record or can't be read, naming the way out of each, adds the Brio back when its
     unit's timeout ends the run, says a Brio unplugged midway is the seat's once plugged in, skips
     a node unplugged as it's read, says it gave the Brio back only when udev's record of every node
-    shows it tagged for the seat and unmarked and no camera was left unread, and that the seat has
-    it only when udev recorded
+    shows it tagged for the seat and unmarked and no camera was left unread, unrecorded or still
+    being added, and that the seat has it only when udev recorded
     every camera, warning with the way out, named for its nodes, otherwise, waits out adds the boot
     still has queued rather than calling them lost, points at udevadm's own words, which it keeps,
     for an add it refused, and warns nothing, udevadm included, on a machine with no camera, a boot

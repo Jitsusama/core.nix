@@ -244,6 +244,15 @@ refuse said "No MX Brio is held"
 refuse said "Gave the seat back"
 replayed $'remove video1\nadd video1'
 
+# One udev holds no record of may be the Brio's other node too, so the
+# run replays the node it can read and never says it gave the Brio back.
+machine "$held" "$given"
+printf 'DEVNAME=/dev/video0\nSUBSYSTEM=video4linux\n' >"$work/root/facts/video0"
+give_back "a Brio node udev holds no record of beside one it can read"
+expect warned "udev holds no record of the cameras at $work/root/dev/video0,"
+refuse said "Gave the seat back"
+replayed $'remove video1\nadd video1'
+
 # One unplugged as its path is read is skipped like one gone before.
 machine "$held" "$given"
 mkdir "$work/root/paths-vanish"

@@ -44,8 +44,8 @@ AGAIN = 2
 # whole seconds, so a wait it says can run past its bound by as much, and the journal stamps
 # each line as it reads it, which a busy builder can put off a little more.
 LOOKING = 4
-# How far short of a wait the journal's clock may read it: the journal stamps each line as it
-# reads it, a few milliseconds late, so a wait of 90 s by the relay's clock read 89.997.
+# How far short of a wait the journal's clock may read it: the relay counts its wait in whole
+# seconds, so one it calls 90 s may have run as little as 89, and a correct relay read 89.997.
 ROUNDING = 1
 # How long after its client starts the relay may count it: the client opens the loopback and
 # asks for its first picture before the loopback tells the relay it's there.

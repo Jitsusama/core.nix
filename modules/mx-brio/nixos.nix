@@ -165,7 +165,8 @@ in
       environment = {
         GST_PLUGIN_PATH = plugins;
         # GStreamer's errors, so an input the relay can't make says why in
-        # its journal rather than leaving a client the placeholder.
+        # its journal rather than leaving a client the placeholder: the
+        # relay says so with GST_ERROR, which level 1 keeps.
         GST_DEBUG = "1";
         GST_DEBUG_NO_COLOR = "1";
       };
