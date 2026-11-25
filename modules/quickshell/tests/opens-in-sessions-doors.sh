@@ -34,6 +34,7 @@ for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" \
     > "$stand_ins/$program"
   if [ "$program" != qs ]; then
+    # shellcheck disable=SC2016 # The stand-in it writes expands it, when run.
     printf '[ -z "${OPENS_IN_SESSIONS_ASKED+x}" ] || echo "%s inherited" >> "%s/inherited"\n' \
       "$program" "$work" >> "$stand_ins/$program"
   fi
