@@ -4,13 +4,12 @@
 // it, so Presented.js stays one file biome can hold to its length.
 .pragma library
 
-// The kinds of key whose rest is an id of the launcher's own, which says nothing a person or
-// another program wrote, so it's said whole: a collection's is the name its place has in the Nix
-// config.
+// The kinds of key the launcher gives its own rows, whose rest, where it has an id's shape
+// (ownId), says nothing a person or another program wrote, so it's said whole: a collection's is
+// the name its place has in the Nix config.
 const keysOwn = ["place:", "category:", "collection:"];
 
-// How many letters of such a key are said with reports off, since its kind alone vouches for
-// it, and a daemon's row may be keyed so as well.
+// How many letters of such a key are said with reports off, so even an id can't run a line on.
 const ownLength = 64;
 // What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
 // or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
