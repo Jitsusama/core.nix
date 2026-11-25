@@ -92,6 +92,14 @@ TWIN_NETWORKS = 200
 TWIN_RECEPTORS = 4
 # How long a twin of ten thousand cells may take to read and draw.
 TWIN_MS = 60_000
+# How long the twin may take to stand drawn once opened, and to answer a key, and the longest
+# the page may be held by one task meanwhile, in milliseconds. In the build's sandbox it stood
+# drawn at 2.2 s, answered Return in 210 ms (its longest task 157 ms), j and Return in 113
+# and . in 105, so each is about two and a half times what was measured: a regression of that
+# size is one a reader feels, and the sandbox's own spread stays well inside it.
+TWIN_DRAWN_MS = 6000
+TWIN_KEY_MS = 500
+TWIN_TASK_MS = 400
 # A crowd of networks, past the seven names a screen holds, around one cell
 # that needs him, which must take a name before any of them.
 CROWD_NETWORKS = 20
@@ -1980,7 +1988,10 @@ def test_the_map_answers_its_keys_at_ten_thousand(browser: Browser, twin_served:
         )
         title = page.locator("#panel-title")
         now = answered_in(page, ".", lambda: expect(title, ". opened no Now").to_have_text("Now"))
-        pytest.fail(f"drawn at {drawn} ms; Return {first}; j Return {step}; . {now}")
+        assert drawn <= TWIN_DRAWN_MS, f"ten thousand cells stood drawn only at {drawn} ms"
+        for keys, answered in (("Return", first), ("j and Return", step), (".", now)):
+            assert answered["took"] <= TWIN_KEY_MS, f"{keys} was answered in {answered}"
+            assert answered["longest"] <= TWIN_TASK_MS, f"{keys} held the page: {answered}"
     finally:
         opened.close()
 
