@@ -887,11 +887,16 @@ Provider {
 
         // Said by why it held, in words of its own (Sessions' unhosted),
         // plainly where it tells of a viewer opening or viewed, the alert
-        // kept for a press that didn't view (SessionRow.viewedWhy).
+        // kept for a press that didn't view (SessionRow.viewedWhy). A
+        // viewer opening or viewed, or opened beside a stray window holding
+        // its name ("unowned"), went, so it's told without opening the
+        // launcher over the window Joel went to.
         function onUnhosted(session, why) {
-            if (SessionRow.viewedWhy(why))
+            const viewed = SessionRow.viewedWhy(why);
+            if (viewed || why === "unowned")
                 provider.launcher?.tellOnOpen([[provider.footName(session),
-                    provider.elsewhere(why, session), Theme.text]]);
+                    provider.elsewhere(why, session),
+                    viewed ? Theme.text : Theme.alert]]);
             else
                 provider.refusedGoing(session, why);
         }
