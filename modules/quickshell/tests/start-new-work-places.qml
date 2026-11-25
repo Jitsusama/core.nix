@@ -71,12 +71,17 @@ QtObject {
         Expect.same("and as its own where a row under it is listed first",
             Wheres.startAt(Wheres.wheres(reefQuest.slice(1).concat([system]), [unchecked]),
                 system.folder, "made"), system.folder);
-        // Listed around it but not at it: the folder holding it, one under it, one
-        // sharing its last parts, and one starting as it was made.
+        // Listed around it but not at it, none starting as it was made: the folder
+        // holding it, one under it, one sharing its last parts, one ending in its whole
+        // folder, one its folder ends in, one named as it was made, and a zone last.
         const around = Wheres.wheres([system,
             { folder: unchecked.folder + "/deep", name: "~/big/reef/deep" },
-            { folder: "/home/j/big2/src/areas/system/reef", name: "~/big2/reef" }],
-            [Object.assign({}, pond, { name: "//made/start" })]);
+            { folder: "/home/j/big2/src/areas/system/reef", name: "~/big2/reef" },
+            { folder: `/mnt${unchecked.folder}`, name: "/mnt/reef" },
+            { folder: "/areas/system/reef", name: "/areas/reef" },
+            { folder: "/home/j/big/src/areas/system/lake", name: "//made/start" }], [pond]);
+        Expect.same("none near it starts as it was made",
+            around.filter(one => one.start === "//made/start"), []);
         Expect.same("and as made where its folder is no longer listed, whatever is near it",
             Wheres.startAt(around, unchecked.folder, "//made/start"), "//made/start");
         Expect.same("and its own folder's start where another row starts as it was made",
