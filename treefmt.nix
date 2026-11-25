@@ -181,14 +181,17 @@ in
   # repository's (modules/treefmt/treefmt.nix), but for these.
   settings.formatter.qt-javascript-lint = {
     # The launcher is being redesigned, its matcher with it, which comes
-    # under biome as it's rewritten. Chrome's extension isn't QML's.
+    # under biome as it's rewritten. Chrome's extension isn't QML's, nor is
+    # the script the local sites' pages run before they're drawn.
     excludes = [
       "modules/quickshell/Fuzzy.js"
       "modules/chrome/open-tabs/extension/*.js"
+      "modules/local-sites/kit/early.js"
     ];
   };
 
-  # Chrome's open-tabs extension, read by biome as the browser runs it.
+  # Chrome's open-tabs extension, and the local sites' early script, read by
+  # biome as the browser runs them.
   settings.formatter.browser-javascript-lint = {
     command = pkgs.lib.getExe pkgs.biome;
     options = [
@@ -197,7 +200,10 @@ in
       "--max-diagnostics=none"
       "--config-path=biome.jsonc"
     ];
-    includes = [ "modules/chrome/open-tabs/extension/*.js" ];
+    includes = [
+      "modules/chrome/open-tabs/extension/*.js"
+      "modules/local-sites/kit/early.js"
+    ];
   };
 
   # Each local site's page, its markup and the script in its head, read by
