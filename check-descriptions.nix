@@ -3429,6 +3429,12 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
+  pi-hosted-reads-a-projects-copy = ''
+    pi built with the host's patches, applied exactly, reads a trusted project's settings,
+    extensions, system prompt and MCP servers from the folder the host names in place of the
+    project's .pi, tells a session's extensions which folder that is, and reads the project's .pi
+    again once it is named back or none is named
+  '';
   pi-hosted-names-handlers-that-hold = ''
     pi built with the host's patches, applied exactly, writes one line to stderr for each
     extension whose handlers for one session event, or resources_discover, took 250 ms or

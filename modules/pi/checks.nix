@@ -379,6 +379,15 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi reads a project's settings, extensions, system prompt and MCP
+  # servers from the folder the host names in place of its .pi, a copy no
+  # session can write, and from its .pi again once named back.
+  pi-hosted-reads-a-projects-copy = pkgs.runCommandLocal "pi-hosted-reads-a-projects-copy" { } ''
+    HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+      ${./tests/pi-hosted-reads-a-projects-copy.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+    touch $out
+  '';
+
   # A hosted pi says on stderr each extension whose handlers for one session
   # event, or resources_discover, took 250 ms or more, so a slow open names
   # the extension it waited on.
