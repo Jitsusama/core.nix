@@ -200,9 +200,10 @@ fn a_source_signed_out_is_never_waited_on_and_one_started_again_is() {
         },
     );
     book.take("vault", Heard::SignedOut);
-    assert!(
-        book.ready("person:ada@example.com"),
-        "Ada still waited on Vault, which had signed out"
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        Vec::<&str>::new(),
+        "Ada still waited, though Slack had answered and Vault had signed out"
     );
     assert_eq!(book.standings()["vault"].word(), "signed-out");
     assert_eq!(
@@ -210,9 +211,10 @@ fn a_source_signed_out_is_never_waited_on_and_one_started_again_is() {
         "starting"
     );
     book.restarted("slack");
-    assert!(
-        !book.ready("person:ada@example.com"),
-        "Ada was ready though Slack had started again and not yet answered"
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["slack"],
+        "Ada wasn't waiting on Slack alone, though it had started again and not yet answered"
     );
     assert_eq!(book.standings()["slack"].word(), "answering");
 }
@@ -262,7 +264,14 @@ fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
     book.restarted("tuple");
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
-        ["tuple"]
+        ["tuple"],
+        "Ada wasn't waiting on Tuple alone once it started again"
+    );
+    book.take("tuple", Heard::Roster);
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        Vec::<&str>::new(),
+        "Ada still waited once Tuple said again it's a roster"
     );
 }
 
