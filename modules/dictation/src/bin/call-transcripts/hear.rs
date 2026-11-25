@@ -782,7 +782,7 @@ fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&
     let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
-    let unheard: Option<String> = None;
+    let unheard = writing.unheard.map(Unheard::note);
     let notes: Vec<&str> = [unheard.as_deref(), note].into_iter().flatten().collect();
     let notes = (!notes.is_empty()).then(|| notes.join("\n\n"));
     markdown_unechoed(&heard, me, them, notes.as_deref(), guesses)

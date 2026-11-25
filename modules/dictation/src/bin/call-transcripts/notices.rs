@@ -86,7 +86,9 @@ pub fn written_down(title: &str) -> Notice {
 /// (the spec's, and the notices daemon's body.rs): an error's `<` or `&`
 /// is shown, never read as a tag or an entity.
 fn plain(why: &str) -> String {
-    why.to_owned()
+    why.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// The notice when a call couldn't be heard at all.
