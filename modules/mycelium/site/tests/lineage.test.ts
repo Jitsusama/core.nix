@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { grownOf, type Network, type Started } from "../lineage.ts";
+import { grownOf, isLaterCopy, type Network, oneCopyEach, type Started } from "../lineage.ts";
 import { nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-19T01:00:00Z");
@@ -91,6 +91,86 @@ it("a cell two machines list while it moves names the starter of the copy starte
     [{ cell: "HERON1", by: "SKIFF1" }],
     "the copy told first should not win over the one started latest",
   );
+});
+
+it("of two copies of a cell started alike, or both silent on it, the first told stands", () => {
+  const at = { since: "2026-11-19T00:00:00Z" };
+  const first = record("HERON1", "osprey", {
+    ...at,
+    key: "cell:HERON1@osprey",
+    started_by: "GULL01",
+  });
+  const second = record("HERON1", "kestrel", { ...at, started_by: "SKIFF1" });
+  assert.deepEqual(nowOf(told(undefined, [first, second]), AT).started, [
+    { cell: "HERON1", by: "GULL01" },
+  ]);
+  const { since: _first, ...unsaidFirst } = first;
+  const { since: _second, ...unsaidSecond } = second;
+  assert.deepEqual(nowOf(told(undefined, [unsaidFirst, unsaidSecond]), AT).started, [
+    { cell: "HERON1", by: "GULL01" },
+  ]);
+});
+
+it("a copy said to have started stands over one that doesn't say, whichever is told first", () => {
+  const unsaid = record("HERON1", "osprey", { key: "cell:HERON1@osprey", started_by: "GULL01" });
+  const said = record("HERON1", "kestrel", {
+    since: "2026-11-19T00:00:00Z",
+    started_by: "SKIFF1",
+  });
+  for (const order of [
+    [unsaid, said],
+    [said, unsaid],
+  ]) {
+    assert.deepEqual(nowOf(told(undefined, order), AT).started, [{ cell: "HERON1", by: "SKIFF1" }]);
+  }
+});
+
+it("a record the map doesn't draw as a cell names no starter for one it does", () => {
+  const drawn = record("HERON1", "osprey", {
+    since: "2026-11-19T00:00:00Z",
+    started_by: "SKIFF1",
+  });
+  const undrawn = record("HERON1", "kestrel", {
+    key: "cell:HERON1@kestrel",
+    type: "machine",
+    since: "2099-01-01T00:00:00Z",
+    started_by: "GULL01",
+  });
+  assert.deepEqual(nowOf(told(undefined, [drawn, undrawn]), AT).started, [
+    { cell: "HERON1", by: "SKIFF1" },
+  ]);
+});
+
+it("a copy stands over another only when started strictly later, a start as no words none", () => {
+  const early = { since: "2026-11-19T00:00:00Z" };
+  const late = { since: "2026-11-19T00:30:00Z" };
+  assert.equal(isLaterCopy(late, early), true);
+  assert.equal(isLaterCopy(early, late), false);
+  assert.equal(isLaterCopy(early, { ...early }), false, "a tie should keep the copy held");
+  assert.equal(isLaterCopy(early, {}), true);
+  assert.equal(isLaterCopy({}, early), false);
+  assert.equal(isLaterCopy({ since: 1e15 }, early), false, "a start as a number reads as none");
+});
+
+it("each cell is kept once, as its copy that stands, with the networks either copy names", () => {
+  const stale = { name: "HERON1", machine: "osprey", since: "2026-11-19T00:00:00Z" };
+  const moved = { name: "HERON1", machine: "kestrel", since: "2026-11-19T00:30:00Z" };
+  const alone = { name: "SKIFF1", networks: ["repo.harbour"] };
+  const kept = oneCopyEach([
+    { ...stale, networks: ["orchestration.heron1", "repo.harbour"] },
+    alone,
+    { ...moved, networks: ["orchestration.heron1", "repo.skiff"] },
+    { machine: "kestrel" },
+  ]);
+  assert.deepEqual(kept, [
+    { ...moved, networks: ["orchestration.heron1", "repo.skiff", "repo.harbour"] },
+    alone,
+  ]);
+  const [tied] = oneCopyEach([
+    { ...stale, networks: [] },
+    { ...stale, machine: "kestrel", networks: [] },
+  ]);
+  assert.equal(tied?.machine, "osprey", "of two copies started alike, the first told stands");
 });
 
 it("a record naming itself, a blank or nobody, with no forage served, names nobody", () => {

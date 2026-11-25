@@ -13,6 +13,8 @@
 // root element as `data-reach` once it has drawn each reading, for the map's
 // build test and `mycelium-map-check` to read. Otherwise it does nothing.
 
+import { oneCopyEach } from "./lineage.ts";
+
 /** Why a cell fails: drawn alone, in an unnamed network, or held nowhere. */
 type Why = "alone" | "unnamed network" | "unreachable";
 
@@ -43,6 +45,7 @@ type Cell = {
   readonly name: string;
   readonly type?: string;
   readonly networks?: readonly string[];
+  readonly since?: unknown;
 };
 
 /** A reading as site.ts hands it to the drawing. */
@@ -153,8 +156,9 @@ function reachOf(reading: Reading, model: Model): Reach {
       .map((network) => network.name),
   );
   // A cell moving between machines can come from both for a while; the
-  // drawing holds it once, under its one address, so it's judged once.
-  const cells = [...new Map(reading.cells.map((cell) => [cell.name, cell])).values()];
+  // drawing holds it once, under its one address, so it's judged once, by
+  // the copy the drawing keeps.
+  const cells = oneCopyEach(reading.cells);
   const failures: Failure[] = [];
   for (const cell of cells) {
     const drawn = model.byAddress.get(cell.name);
