@@ -5,11 +5,12 @@
 //! folders with no reason, its lines of code repeated from elsewhere, the
 //! tests its merge net keeps in quarantine, the points its daemons wait
 //! on to agree and the lines of its VM tests (measure.rs says how each is
-//! counted); the lints its configs turn off (lints.rs), its files nothing
-//! reaches (reached.rs) and its folders that don't say what they hold
-//! (notes.rs), as the quality standard has them; its Terraform's files
-//! not as `tofu fmt` writes them, what tflint finds, what trivy finds
-//! insecure (terraform.rs) and what `tofu validate` refuses or warns
+//! counted, attributes.rs how a Rust line turns a lint off); the lints its
+//! configs turn off (lints.rs), its files nothing reaches (reached.rs)
+//! and its folders that don't say what they hold (notes.rs), as the
+//! quality standard has them; its Terraform's files not as `tofu fmt`
+//! writes them, what tflint finds, what trivy finds insecure
+//! (terraform.rs) and what `tofu validate` refuses or warns
 //! of (`terraform_validate.rs`), what of it says nothing of what it is
 //! (`terraform_docs.rs`) and what of it nothing tests
 //! (`terraform_tests.rs`); and how long the changes it merged in the last
@@ -49,6 +50,7 @@
 //! it's found, so the list only shrinks (tree.rs). The same rule then
 //! counts each hour and holds each change.
 
+mod attributes;
 mod git;
 mod hour;
 mod lints;
