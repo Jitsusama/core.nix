@@ -115,6 +115,13 @@
     src = ../..;
   };
 
+  # commands-agree reads a command's own code, without its tests, which may
+  # spell what they expect, and a file's name says nothing either way: a
+  # module named `x_tests` may be real code, and one named `golden` read by
+  # tests alone. So the reader tells them apart as rustc finds modules, and
+  # this holds it to a planted crate's.
+  rust-tests-are-read-as-declared = pkgs.callPackage ./rust-tests-are-read-as-declared.nix { };
+
   # A ruff rule switched off for some files, once nothing there breaks it,
   # only waves through the next finding unseen, so each per-file exception
   # in ruff.toml has to hide one. Every exception hid one once its five

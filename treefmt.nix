@@ -163,7 +163,8 @@ in
   # them in beside them. And what the sites' VM tests share, which each
   # imports as its driver's plugin, and what the desktop test's areas share,
   # with how they wait on what's reported, which those in its launcher and
-  # looks folders import from the folder above.
+  # looks folders import from the folder above. And the rules' reader of
+  # Rust, which commands-agree imports from beside it.
   # Each is named alone, so an edit to a file beside them rebuilds no mypy.
   jitsusama.mypy.paths = [
     ./modules/local-sites/tests
@@ -174,6 +175,7 @@ in
     ./tests/desktop/heard.py
     ./tests/repository/glossary.py
     ./tests/repository/names.py
+    ./tests/rules/rust_code.py
     ./tests/vm/sites/sites_session.py
   ];
 

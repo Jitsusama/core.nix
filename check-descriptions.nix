@@ -1267,6 +1267,10 @@
     every Cargo.lock names each dependency its crates' manifests take, and none they dropped, as
     cargo locks them
   '';
+  rust-tests-are-read-as-declared = ''
+    the reader commands-agree takes a command's code through tells what only a crate's tests read
+    from its own code as rustc finds modules, not by their names, in a planted crate
+  '';
   every-ruff-exception-hides-a-finding = ''
     every per-file exception in ruff.toml hides a finding of its rule that ruff would raise without
     it

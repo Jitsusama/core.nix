@@ -35,9 +35,17 @@
 }:
 let
   runs = lib.mapAttrs (program: package: lib.getExe' package program) commands;
+  # The rule and the reader of Rust it imports from beside it.
+  rule = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./commands-agree.py
+      ./rust_code.py
+    ];
+  };
 in
 runCommandLocal name { } ''
-  ${lib.getExe python3} ${./commands-agree.py} ${src} \
+  ${lib.getExe python3} ${rule}/commands-agree.py ${src} \
     ${writeText "runs.json" (builtins.toJSON runs)} \
     ${writeText "waiting.json" (builtins.toJSON waiting)} \
     ${writeText "views.json" (builtins.toJSON views)}
