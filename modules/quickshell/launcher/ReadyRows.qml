@@ -372,7 +372,7 @@ Scope {
         // What was found was found among the rows before, so it's asked
         // again of these, unless none of them moved (Found.reranks).
         if (found.words !== null && Found.reranks(before, keys, said.concat(dropped)))
-            ended();
+            letFoundGo();
         heard(said, dropped);
         aheadSoon();
     }
@@ -499,13 +499,18 @@ Scope {
     // What the daemon last found for what was typed, as it ranks it (ready-rows.md's search):
     // the words it answered, the keys of the rows it found, best first, and the letters of each
     // one's name to bring forward. Each key's words are asked at once, never waiting on the
-    // answer before, and only an answer to what's typed now is taken, so a key costs no round
-    // trip behind another. Its words are null until an answer comes, and again once the rows
-    // change. The rows it found that the watch never served come with it, each made as the
-    // place makes a row (`foundMade`) and let go with the answer.
+    // answer before, so a key costs no round trip behind another; `search` gives only an answer
+    // to what's typed now, though one to words typed over is held, as Emoji shows what it found
+    // while what's typed on from them is asked. Its words are null until an answer comes, and
+    // again once the rows change or the search ends. The rows it found that the watch never
+    // served come with it, each made as the place makes a row (`foundMade`) and let go with the
+    // answer.
     property var found: Found.foundOf(null, null)
     readonly property var foundMade: ({})
     property string asking: ""
+    // How many times the search has ended, so an answer asked before it
+    // last did is let go.
+    property int searchesEnded: 0
     // Whether the daemon said it can't search, so a place that can matches
     // its rows itself, as it did before, said once in the journal. It's
     // asked again a minute on, as a daemon an old shell asked while a
@@ -528,23 +533,38 @@ Scope {
         if (asking !== words && asks && link) {
             asking = words;
             const ask = { ask: "search", place: ready.place, words: words };
+            const ending = searchesEnded;
             link.find(most > 0 ? Object.assign(ask, { most: most }) : ask,
-                answer => ready.answered(words, answer));
+                answer => ready.answered(words, answer, ending));
         }
         return null;
     }
 
     // The search over, as the launcher closing ends it, so what it found
-    // is let go.
+    // is let go, and so is an answer still to come: taken once the
+    // launcher had shut, it stood at the next opening for what's typed on
+    // from its words, Emoji making as many as a hundred rows of it. What's
+    // typed next is asked anew.
     function ended() {
+        letFoundGo();
+        asking = "";
+        searchesEnded += 1;
+    }
+
+    // What was found let go, as rows moving under it ask it again; an
+    // answer still to come is taken all the same.
+    function letFoundGo() {
         found = Found.foundOf(null, null);
         for (const key of Object.keys(foundMade))
             delete foundMade[key];
     }
 
-    // An answer taken, unless it's to words typed over since. One that
-    // didn't come, the daemon gone, is asked again with the next key.
-    function answered(words, answer) {
+    // An answer taken, unless it was asked before the search last ended,
+    // though it's to words typed over since. One that didn't come, the
+    // daemon gone, is asked again with the next key.
+    function answered(words, answer, ending) {
+        if (ending !== searchesEnded)
+            return;
         if (asking === words)
             asking = "";
         if (answer === null)
@@ -559,7 +579,7 @@ Scope {
             return;
         }
         searchless = false;
-        ended();
+        letFoundGo();
         found = Found.foundOf(words, answer);
         searched(words);
     }

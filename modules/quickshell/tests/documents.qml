@@ -15,8 +15,9 @@
 // own while Documents holds none, and only that row is made again as
 // Documents' change. What's typed inside a step is asked of its daemon
 // within it, and its answer's rows held beside the watch's, the same key
-// the same row, and one not answered is said as none. It exits 0 once
-// every case
+// the same row, and one not answered is said as none. A search's answer
+// to words typed over is held, and one asked before the search ended is
+// let go, what's typed after asked anew. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -264,6 +265,39 @@ ShellRoot {
                 error: { code: "unknown-ask", message: "no" } });
             Expect.expect("one refused is none", borrower.typedIn(move, "soon") === null, "");
             Expect.expect("and its rows let go", borrower.rows(time).length === 0, "");
+            // A search's answer to words typed over is held, as Emoji and
+            // Code show it while what's typed on is asked; one asked
+            // before the search ended, as the launcher shutting ends it,
+            // is let go, or it stood at the next opening for what's typed
+            // on from it. What's typed after is asked anew. Each is
+            // answered as the daemon would, through what the link awaits,
+            // so what search() kept when it asked is what's weighed.
+            const link = borrower.link;
+            link.wire = { write: line => {}, flush: () => {} };
+            const asked = words => {
+                borrower.search(words);
+                const id = `find-${link.asked}`;
+                return () => link.awaited[id]({ id, words, keys: ["row:calendar:own"] });
+            };
+            const typedOver = asked("pla");
+            const late = asked("plan");
+            typedOver();
+            Expect.expect("a search's answer to words typed over is held, still asking",
+                borrower.found.words === "pla" && borrower.asking === "plan",
+                JSON.stringify([borrower.found.words, borrower.asking]));
+            borrower.ended();
+            const searching = link.asked;
+            const anew = asked("plan");
+            Expect.expect("ended, what's typed after is asked anew",
+                link.asked === searching + 1, link.asked - searching);
+            late();
+            Expect.expect("and an answer asked before it ended is let go",
+                borrower.found.words === null, borrower.found.words);
+            anew();
+            Expect.expect("while the one asked after is taken",
+                borrower.found.words === "plan", borrower.found.words);
+            borrower.ended();
+            link.wire = null;
             standIn.open = false;
             const closed = documents.tally.rows;
             documents.served.turned();
