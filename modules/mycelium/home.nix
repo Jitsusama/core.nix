@@ -573,6 +573,9 @@ in
         joins, for whatever starts one, such as the launcher. Each realm's
         node tells only its own. It is declared with the rest, so a machine
         declaring nothing says none, and whatever starts a session picks.
+        Held fenced or strict, on Linux or on a Mac declaring
+        `declares.piFencesItself`, it starts outside the fence's launcher,
+        so it must fence its own commands, as pi does.
       '';
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
@@ -598,8 +601,10 @@ in
         strict, on Linux and on a Mac, whose strict reads the home folder
         but what it hides, where Linux's reads only what it lists. A held
         fenced or strict start goes after them too, except, on Linux and on a
-        Mac declaring `declares.piFencesItself`, the realm's `agents` program or
-        pi, told its fence, fenced as it fences itself. Null refuses what goes after.
+        Mac declaring `declares.piFencesItself`, the realm's agent program,
+        as `agents` names it or else pi, told its fence, fenced as it
+        fences itself. Null refuses every agent's run and each held start
+        that would go after them; the agent program held alone still starts.
       '';
     };
   }

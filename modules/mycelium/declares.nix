@@ -154,18 +154,18 @@ rec {
         description = ''
           The fences an agent session runs in here, by kind, unfenced (none),
           fenced (fence) or strictly fenced (strict), each with the doors it
-          opens, so an orchestrator's carry never lands in a weaker kind or
-          behind a door it lacked. The kinds aren't the same on each system:
-          a Mac's strict reads the home folder but what pi's fence hides,
-          where Linux's reads only what it lists, and it writes the account's
-          temporary folder, yet both say strict. So a carry from Linux to a
+          opens, so an orchestrator's carry never lands in a weaker kind, as
+          each machine names it, or behind a door it lacked. The kinds aren't
+          the same on each system: a Mac's strict reads the home folder but
+          what pi's fence hides, where Linux's reads only what it lists, and
+          it writes the account's temporary folder, yet both say strict. So a carry from Linux to a
           Mac lands looser in what its commands may read and write. Where
           the realm's agent program is held alone, on Linux and on a
           Mac declaring piFencesItself, the kind fences only the commands
           it runs, as it fences them itself, while its own reads, writes
           and calls stand outside it. So a carry from a Mac that doesn't
           declare it, to Linux or to a Mac that does, lands looser for the
-          agent itself.
+          agent itself, which the carry's judge, reading kinds, can't see.
         '';
       };
     };
