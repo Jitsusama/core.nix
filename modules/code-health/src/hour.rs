@@ -37,6 +37,11 @@ pub const UNREAD_COMMENTS: &str = "unread-comments";
 /// is set for them.
 const HELD_TO_NONE: [&str; 2] = [STRAY_OWNERS, UNREAD_COMMENTS];
 
+/// The measures whose files say how code-health read them, not what their
+/// folders hold, so no folder's owner is given them: each goes whole to
+/// the measure's owner.
+const READ_BY_CODE_HEALTH: [&str; 1] = [UNREAD_COMMENTS];
+
 /// What a repository's machine judges it by: a target for some of its
 /// measures, who owns each, by measure or for the whole repository, and
 /// who owns each folder, by its path from the repository's top.
@@ -80,6 +85,7 @@ pub fn hour(
     days: &[Value],
 ) -> Value {
     let unjudged = Judged::default();
+    let no_folders = BTreeMap::new();
     let mut measures = Vec::new();
     let mut worst: Option<(f64, usize)> = None;
     for (repo, read) in figures {
@@ -117,7 +123,12 @@ pub fn hour(
                 said["set"] = json!(set);
             }
             if let (Some(counted), Some(gained)) = (counted, &gained) {
-                said["by_owner"] = json!(by_owner(counted, gained, &judged.folders, owner));
+                let folders = if READ_BY_CODE_HEALTH.contains(measure) {
+                    &no_folders
+                } else {
+                    &judged.folders
+                };
+                said["by_owner"] = json!(by_owner(counted, gained, folders, owner));
             }
             measures.push(said);
         }
@@ -541,6 +552,41 @@ mod tests {
                 "me": ["modules/netting.rs:3", "c.sh:4"],
             }),
             "a gained entry wasn't given to its deepest folder's owner, or the measure's"
+        );
+    }
+
+    #[test]
+    fn what_code_health_couldnt_read_goes_whole_to_its_measures_owner() {
+        let read = figures(&[
+            ("core", UNREAD_COMMENTS, 2.0),
+            ("core", "suppressions", 1.0),
+        ]);
+        let named = BTreeMap::from([(
+            "core".to_owned(),
+            BTreeMap::from([
+                (
+                    UNREAD_COMMENTS,
+                    vec!["modules/net/a.sh".to_owned(), "c.sh".to_owned()],
+                ),
+                ("suppressions", vec!["modules/net/b.rs:1".to_owned()]),
+            ]),
+        )]);
+        let mut core = judged(&[], Some("me"));
+        core.owners = BTreeMap::from([(UNREAD_COMMENTS.to_owned(), "keeper".to_owned())]);
+        core.folders = BTreeMap::from([("modules/net".to_owned(), "net".to_owned())]);
+        let judged = BTreeMap::from([("core".to_owned(), core)]);
+        let earlier = json!({"core": {UNREAD_COMMENTS: {}, "suppressions": {}}});
+        let hour = hour("now", &read, &named, &judged, None, Some(&earlier), &[]);
+        assert_eq!(
+            (
+                &measure(&hour, "core", UNREAD_COMMENTS)["by_owner"],
+                &measure(&hour, "core", "suppressions")["by_owner"],
+            ),
+            (
+                &json!({"keeper": ["modules/net/a.sh", "c.sh"]}),
+                &json!({"net": ["modules/net/b.rs:1"]}),
+            ),
+            "what code-health couldn't read went to a folder's owner, or another measure didn't"
         );
     }
 

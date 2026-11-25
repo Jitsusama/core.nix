@@ -153,6 +153,39 @@
         ]
       );
 
+  # With no keeper named, code-health is handed no owner for what its own
+  # reader couldn't read, so those files go to each repository's owner;
+  # and the measure the module routes is the one code-health counts them
+  # under, so renaming it in either alone is caught.
+  code-health-routes-unread-comments-as-it-counts-them =
+    let
+      home = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.code-health
+            {
+              jitsusama.code-health.repos.some = {
+                checkout = "/home/someone/src/some";
+                owner = "someone";
+              };
+            }
+          ];
+        }
+      ]);
+      started = pkgs.lib.concatStringsSep " " (
+        pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
+      );
+      counted = ''pub const UNREAD_COMMENTS: &str = "unread-comments";'';
+      routed = "{ unread-comments = cfg.owner; }";
+    in
+    holds "code-health-routes-unread-comments-as-it-counts-them"
+      "code-health is handed an owner for unread files with no keeper, or routes another name than it counts."
+      (
+        !pkgs.lib.hasInfix "unread-comments" started
+        && pkgs.lib.hasInfix counted (builtins.readFile ./src/hour.rs)
+        && pkgs.lib.hasInfix routed (builtins.readFile ./home.nix)
+      );
+
   # clippy finds nothing in code-health, its tests included.
   code-health-passes-clippy = passesClippy "code-health-passes-clippy" (
     pkgs.callPackage ./package.nix { }
