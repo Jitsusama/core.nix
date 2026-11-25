@@ -80,6 +80,7 @@ mod building;
 mod carry;
 mod checks;
 mod command;
+mod ending;
 mod evaluating;
 mod first;
 mod gathered;
@@ -102,7 +103,8 @@ use std::thread;
 
 use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
-use evaluating::{derivations, evaluated, names, pure};
+use ending::{Built, CUT_SHORT, Compared, broke};
+use evaluating::{busiest_system, derivations, evaluated, names};
 use quarantine::Held;
 use runs::Run;
 use terminal_kit::layout::{self, Align, Room};
@@ -253,11 +255,6 @@ fn main() -> ExitCode {
     })
 }
 
-/// A run that couldn't go on, as it said why.
-fn broke(why: String) -> Failure {
-    Failure::new(Exit::Failed, why)
-}
-
 /// Name the checks the working tree's change touches, and build them if asked.
 fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
     let root = run("git", &["rev-parse", "--show-toplevel"]).map_err(broke)?;
@@ -331,27 +328,7 @@ fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
-    match compared.map_err(broke)? {
-        Compared::Passed => Ok(()),
-        Compared::Broken => Err(Failure::new(
-            Exit::Failed,
-            "a check the change touched no longer evaluates",
-        )),
-        Compared::Failed => Err(Failure::new(
-            Exit::Failed,
-            "a check the change touched failed",
-        )),
-    }
-}
-
-/// How a comparison ended.
-enum Compared {
-    /// Every check it named evaluates, and each built passed.
-    Passed,
-    /// A check no longer evaluates, so nothing was built.
-    Broken,
-    /// A check it built failed.
-    Failed,
+    compared.map_err(broke)?.ending()
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
@@ -370,36 +347,6 @@ fn keep_head(url: &str, clone: &Path, head: &str) -> Result<bool, String> {
         Some(_) => return Err("the far side's run failed".to_owned()),
         None => false,
     })
-}
-
-/// The system whose checks are the most, `checks::busiest` says why. Only
-/// the names are counted, which took 1.1 s and 158 MB for core's 580 checks
-/// on 30 October, against 4.8 GB for evaluating them. They're counted
-/// through the flake's own `checks`, as the rest is evaluated, since
-/// `builtins.getFlake` on a flake not yet locked needs `--impure`.
-fn busiest_system(flake: &str) -> Result<String, String> {
-    let here = this_system();
-    let checks = format!("{flake}#checks");
-    let counting = "builtins.mapAttrs (_: checks: builtins.length (builtins.attrNames checks))";
-    let counted = run(
-        "nix",
-        &pure(&["eval", "--json", &checks, "--apply", counting]),
-    )?;
-    let counts = serde_json::from_str(&counted)
-        .map_err(|error| format!("reading how many checks each system has: {error}"))?;
-    Ok(checks::busiest(&counts, &here))
-}
-
-/// The Nix system this program was built for, which is this machine's:
-/// read without asking Nix, whose evaluation of `builtins.currentSystem`
-/// waited 30 minutes at the jobs door on 10 November before a run it began
-/// could be sent anywhere.
-fn this_system() -> String {
-    let os = match std::env::consts::OS {
-        "macos" => "darwin",
-        os => os,
-    };
-    format!("{}-{os}", std::env::consts::ARCH)
 }
 
 /// The run sent to another machine by `nix-offload there --changed`, its
@@ -500,8 +447,11 @@ fn elsewhere(
             eprintln!("changed-checks: no builder took the run");
             None
         }
-        Some(code) => Some(u8::try_from(code).unwrap_or(1)),
-        None => Some(1),
+        // A nix-offload a signal ended, or one ending past a byte, ran
+        // nothing to its end that it said, so the run is cut short, never
+        // the whole failure 1 says (round 6's F3).
+        Some(code) => Some(u8::try_from(code).unwrap_or(CUT_SHORT)),
+        None => Some(CUT_SHORT),
     })
 }
 
@@ -619,13 +569,13 @@ fn compare(
             noted.lent(build.sent.bytes);
         }
     }
-    Ok(if !whole {
-        Compared::Broken
-    } else if build.as_ref().is_none_or(|build| build.sent.passed) {
-        Compared::Passed
-    } else {
-        Compared::Failed
-    })
+    Ok(Compared::of(
+        whole,
+        build.as_ref().map(|build| Built {
+            passed: build.sent.passed,
+            whole: build.sent.whole,
+        }),
+    ))
 }
 
 /// Evaluate the tree's ordinary checks, giving the base's derivation to

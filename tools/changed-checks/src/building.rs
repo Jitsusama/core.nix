@@ -70,6 +70,7 @@ pub fn built(
         .partition(|name| quarantine::find(held, name).is_some());
     let mut sent = Sent {
         passed: true,
+        whole: true,
         there: false,
         bytes: None,
         failed: BTreeSet::new(),
@@ -98,6 +99,7 @@ pub fn built(
                 sent.passed = false;
             }
         }
+        sent.whole &= alone.whole;
         sent.there |= alone.there;
         // Each build there sent its own, so the run sent them all.
         sent.bytes = match (sent.bytes, alone.bytes) {
@@ -149,6 +151,7 @@ pub fn build(
         .map_err(|error| format!("running nix: {error}"))?;
     Ok(Sent {
         passed: built.success(),
+        whole: there::ran_whole(built),
         there: false,
         bytes: None,
         failed,

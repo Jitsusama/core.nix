@@ -63,9 +63,14 @@ pub fn help() -> Help {
         .fold(help, |help, (name, words)| help.option(name, words))
         .exit(
             Exit::Failed,
-            "a check it touched failed, or no longer evaluates",
+            "every build ran to its end, and a check it touched failed",
         )
         .exit(Exit::Usage, "asked wrongly, or the base shares no history")
+        .exit(Exit::BadInput, "a check it touched no longer evaluates")
+        .exit(
+            Exit::Bug,
+            "a build was cut short, or the run couldn't go on",
+        )
         .exit(
             Exit::TryAgain,
             "nowhere took the run, so nothing ran; ask again later",

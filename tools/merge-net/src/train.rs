@@ -35,10 +35,15 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A candidate that fails splits: the train takes the first half of its
-//! riders to board, and halves again while they fail, so the riders that
-//! broke nothing land together and the one that breaks it is found alone,
-//! five riders in five runs at most (`Splitting`). A train red for more
+//! A red says nothing of its riders when its gate ran whole and every
+//! check it broke either fails alike at the base the candidate was cut
+//! on, or passes when run again alone at the candidate: the candidate
+//! lands, and its line in `train/landed.jsonl` names those checks
+//! (`excused.rs`). Any other candidate that fails splits: the train
+//! takes the first half of its riders to board, and halves again while
+//! they fail, so the riders that broke nothing land together and the
+//! one that breaks it is found alone, five riders in five runs at most
+//! (`Splitting`). A train red for more
 //! than its riders gives up, and every rider runs again alone. A candidate
 //! no builder or evaluator took says nothing of its riders, unless its
 //! words name a failed check: the train cuts again a minute on, keeping
@@ -51,6 +56,7 @@
 //! boarded, is kept a line each in `train/landed.jsonl`, so a day's rides
 //! can be counted against the runs again they saved.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -63,6 +69,7 @@ use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
+mod excused;
 mod gated;
 mod hub;
 mod installed;
@@ -70,10 +77,10 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
-use gated::{Gated, gated, words_of};
+use gated::{Gated, gate};
 use hub::GitHub;
 pub use installed::install;
-use installed::{build, hand_over, handed, newer};
+use installed::{build, go_on_as_installed, handed};
 use landed::{Left, boarded_at, keep_landed, keep_left};
 use landing::{Landing, land};
 use pulls::aboard;
@@ -476,19 +483,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             println!("merge-net: no one waits on the train");
             return Ok(ExitCode::SUCCESS);
         }
-        // A ride started before a switch went on as the build from before
-        // it: on 18 November one pushed #5426, #5460 and #5321 to main
-        // itself, under Joel's key, after the switch that made the train
-        // merge through GitHub. Between candidates it goes on as the build
-        // installed instead; when that build won't run, it goes on as it
-        // is rather than leave its riders waiting on an asker.
-        if let Some(newer) = newer(&root, std::env::current_exe(), handed().as_deref()) {
-            println!(
-                "merge-net: another merge-net is installed, so the train goes on as {}",
-                newer.display()
-            );
-            println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
-        }
+        go_on_as_installed(&root);
         let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
         mergings.truncate(splitting.take());
         if mergings.is_empty() {
@@ -519,24 +514,17 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        match gate(&checkout, &log) {
-            Gated::Passed => splitting.taken(),
-            Gated::Red => {
-                splitting.taken();
-                way(&root, &Ended::Otherwise);
-                red(&root, &candidate, &log, &done.merged, &mut splitting);
-                continue;
-            }
-            Gated::Unsent => {
-                // The train stays in its ride rather than waiting for a
-                // ready, since a rider is told it needn't ask again.
-                let now = crate::state::now();
-                if unsent(&root, &candidate, &log, &done.merged, &mut splitting, now) {
-                    std::thread::sleep(UNTAKEN_PAUSE);
-                }
-                continue;
-            }
-        }
+        let ride = excused::Red {
+            root: &root,
+            slug: &slug,
+            checkout: &checkout,
+            base: &base,
+            candidate: &candidate,
+            log: &log,
+        };
+        let Some(excused) = gated_ride(&ride, &done.merged, &mut splitting) else {
+            continue;
+        };
         let hub = GitHub { slug: slug.clone() };
         let landing = land(
             &checkout,
@@ -547,20 +535,83 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             &mergings,
             &done.merged,
         );
-        after_landing(&root, landing, &done.merged, began, &mut splitting);
+        let run = Run {
+            heads: &done.merged,
+            began,
+            excused: &excused,
+        };
+        after_landing(&root, landing, &run, &mut splitting);
     }
 }
 
-/// After `landing` the `merged` riders of a run begun at `began`: those
-/// that landed alight and are kept, the rest fall saying why, and the
-/// right of way and `splitting` go on from there.
-fn after_landing(
-    root: &Path,
-    landing: Landing,
+/// Gate the candidate `ride` names, which merged `merged`: the checks
+/// that failed in it but excused its red when it may land, none (the
+/// train going round again) when its riders fell, no builder took it
+/// or it couldn't start.
+fn gated_ride(
+    ride: &excused::Red,
     merged: &[String],
-    began: u64,
     splitting: &mut Splitting,
-) {
+) -> Option<Vec<String>> {
+    let (root, candidate, log) = (ride.root, ride.candidate, ride.log);
+    match gate(ride.checkout, log) {
+        Gated::Passed => {
+            splitting.taken();
+            Some(Vec::new())
+        }
+        Gated::Red { whole } => {
+            splitting.taken();
+            match excused::excuse_of(ride, whole) {
+                Ok(checks) => Some(checks),
+                Err(unexcused) => {
+                    way(root, &Ended::Otherwise);
+                    let failed = Failed {
+                        candidate,
+                        log,
+                        unexcused: Some(&unexcused),
+                    };
+                    red(root, &failed, merged, splitting);
+                    None
+                }
+            }
+        }
+        Gated::Unsent => {
+            // The train stays in its ride rather than waiting for a
+            // ready, since a rider is told it needn't ask again.
+            let now = crate::state::now();
+            if unsent(root, candidate, log, merged, splitting, now) {
+                std::thread::sleep(UNTAKEN_PAUSE);
+            }
+            None
+        }
+        Gated::Unstarted(why) => {
+            // A full disk or a missing nix-offload is the machine's, not
+            // a builder's, so no rider falls for it: the net's log says
+            // why, and the train tries again after a pause.
+            crate::state::State::at(root.to_path_buf()).say(&format!(
+                "the gate of the candidate {} couldn't start, as {why}, so it's tried again",
+                short(candidate)
+            ));
+            std::thread::sleep(UNTAKEN_PAUSE);
+            None
+        }
+    }
+}
+
+/// A candidate's run: the riders it merged, when it began, and the checks
+/// that failed in it but excused its red, failing at main alike or
+/// passing run again.
+struct Run<'a> {
+    heads: &'a [String],
+    began: u64,
+    excused: &'a [String],
+}
+
+/// After `landing` the riders of `run`: those that landed alight and are
+/// kept, the rest fall saying why, and the right of way and `splitting`
+/// go on from there.
+fn after_landing(root: &Path, landing: Landing, run: &Run, splitting: &mut Splitting) {
+    let merged = run.heads;
     let falls = |why: &str| {
         for head in merged {
             let _ = fall(root, head, why);
@@ -574,7 +625,7 @@ fn after_landing(
             for head in merged {
                 alight(root, head);
             }
-            keep_landed(root, &landed, merged, &boarded, crate::state::now() - began);
+            keep_landed(root, &landed, merged, &boarded, run);
             println!("merge-net: the train landed {} on main", short(&landed));
             let left = !riders(root).is_empty();
             way(root, &Ended::Landed { left });
@@ -595,7 +646,7 @@ fn after_landing(
             for head in &kept {
                 alight(root, head);
             }
-            keep_landed(root, &landed, &kept, &boarded, crate::state::now() - began);
+            keep_landed(root, &landed, &kept, &boarded, run);
             let (before, stay) = match kept.len() {
                 1 => ("the rider before it".to_owned(), "stays"),
                 riders => (format!("the {riders} riders before it"), "stay"),
@@ -698,10 +749,20 @@ fn unsent(
     false
 }
 
-/// After the candidate `candidate` of `merged` riders failed, its words in
-/// `log`: the next takes fewer riders, or the rider that rode it alone
-/// falls, or every rider does, as `splitting` says.
-fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &mut Splitting) {
+/// A candidate that failed: its commit, where its words are, and why its
+/// red wasn't excused as main's own, when it was asked.
+struct Failed<'a> {
+    candidate: &'a str,
+    log: &'a Path,
+    unexcused: Option<&'a str>,
+}
+
+/// After the candidate `failed` of `merged` riders failed: the next takes
+/// fewer riders, or the rider that rode it alone falls, or every rider
+/// does, as `splitting` says, told why its red wasn't excused, since
+/// while main is red a rider's fall otherwise reads as its own bug.
+fn red(root: &Path, failed: &Failed, merged: &[String], splitting: &mut Splitting) {
+    let (candidate, log) = (failed.candidate, failed.log);
     let (falling, why) = match splitting.red(merged.len()) {
         After::Falls => (merged.to_vec(), "the candidate it rode alone"),
         After::AllFall => (
@@ -727,31 +788,16 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
         falling.len()
     );
     for head in &falling {
-        let said = format!(
+        let mut said = format!(
             "{why}, {}, failed changed-checks; its words are in {}",
             short(candidate),
             log.display()
         );
+        if let Some(unexcused) = failed.unexcused {
+            let _ = write!(said, "; it wasn't excused as main's own, as {unexcused}");
+        }
         let _ = fall(root, head, &said);
     }
-}
-
-/// Run the gate in `checkout`, its words going to `log`: how it ended.
-fn gate(checkout: &Path, log: &Path) -> Gated {
-    let Ok(words) = fs::File::create(log) else {
-        return Gated::Red;
-    };
-    let Ok(errors) = words.try_clone() else {
-        return Gated::Red;
-    };
-    let ran = Command::new("nix-offload")
-        .args(["there", "--lent-only", "--changed"])
-        .current_dir(checkout)
-        .env_remove("SSH_AUTH_SOCK")
-        .stdout(words)
-        .stderr(errors)
-        .status();
-    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
 }
 
 /// `owner/name` of the repository at `url`.

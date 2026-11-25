@@ -66,6 +66,24 @@ pub(super) fn handed() -> Option<PathBuf> {
     std::env::var_os(HANDED_OVER).map(PathBuf::from)
 }
 
+/// Go on as the build installed under `root`, when it is a newer one.
+///
+/// A ride started before a switch went on as the build from before it:
+/// on 18 November one pushed #5426, #5460 and #5321 to main itself,
+/// under Joel's key, after the switch that made the train merge through
+/// GitHub. Between candidates it goes on as the build installed instead;
+/// when that build won't run, it goes on as it is rather than leave its
+/// riders waiting on an asker.
+pub(super) fn go_on_as_installed(root: &Path) {
+    if let Some(newer) = newer(root, std::env::current_exe(), handed().as_deref()) {
+        println!(
+            "merge-net: another merge-net is installed, so the train goes on as {}",
+            newer.display()
+        );
+        println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
+    }
+}
+
 /// Go on riding as the build at `newer`, in this process and so this
 /// unit: the riders and the right of way are on disk, but the search a
 /// split was in starts afresh. Only says why, when it couldn't.

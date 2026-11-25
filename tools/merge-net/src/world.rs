@@ -32,6 +32,10 @@ use crate::watch::{
 /// VM tests stay bulk, behind sessions', as `there_args` says.
 const FIRST: &str = "--first";
 
+/// What changed-checks ends with when a check the change touched no
+/// longer evaluates, its `Exit::BadInput`.
+const EVALUATION_BROKE: i32 = 65;
+
 /// Where the quarantine list is in the repository.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
 
@@ -497,6 +501,24 @@ impl Real {
             .map_err(|error| format!("running changed-checks: {error}"))?;
         if untaken(checked.code()) {
             return Err(format!("{UNCHECKED}, {}", log.display()));
+        }
+        // Only a whole failure, 1, names all its run broke, so only it is
+        // excused for failing at the base too: a run cut short (70) or
+        // broken (65) may have left a check it broke unbuilt (round 6's F20).
+        // A run cut short, by a lost builder or a signal, said nothing of
+        // the change, so it reads as unchecked and is tried again next
+        // round; a check that no longer evaluates won't mend by itself.
+        match checked.code() {
+            Some(0 | 1) => {}
+            Some(EVALUATION_BROKE) => {
+                return Err(format!(
+                    "a check it touched no longer evaluates, {}",
+                    log.display()
+                ));
+            }
+            _ => {
+                return Err(format!("{UNCHECKED} to their end, {}", log.display()));
+            }
         }
         if !checked.success() {
             let failed = unbuilt(lines_of(&log));
@@ -1094,6 +1116,33 @@ pub fn mac_args(base: &str) -> Vec<String> {
         .chain(["--system", crate::macs::SYSTEM])
         .map(str::to_owned)
         .collect()
+}
+
+/// How `nix-offload` run in `folder` with `args`, building at `commit`
+/// into `log`, ended, held to the watch's own clock: none when it couldn't
+/// be started, ran past `LONGEST` or `SILENT`, or `dropped` said to let it
+/// go, which stops it with its process group, as `ended` says. A `--run`
+/// runs in a checkout of `folder`'s commit.
+pub fn bounded(
+    folder: &Path,
+    args: &[String],
+    commit: &str,
+    log: &Path,
+    dropped: &dyn Fn() -> bool,
+) -> Option<i32> {
+    let output = file(log).ok()?;
+    let mut clock = Clock::new(log, Instant::now());
+    let child = Command::new("nix-offload")
+        .args(args)
+        .current_dir(folder)
+        .env_remove("SSH_AUTH_SOCK")
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(output.try_clone().ok()?)
+        .stderr(output)
+        .spawn()
+        .ok()?;
+    ended(child, &mut clock, commit, log, dropped)
 }
 
 /// How `child`, building at `commit` into `log`, ended; none when it was

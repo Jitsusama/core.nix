@@ -1,6 +1,7 @@
 //! What the train does, case by case, the git cases against repositories
 //! of their own.
 
+use super::installed::newer;
 use super::*;
 
 /// A state folder of the test's own.
@@ -139,72 +140,6 @@ fn rider(head: &str, at: u64) -> Rider {
 }
 
 #[test]
-fn a_gate_no_builder_took_says_nothing_of_its_riders() {
-    assert_eq!(gated(Some(0), ""), Gated::Passed, "a gate that passed");
-    assert_eq!(gated(Some(1), ""), Gated::Red, "a check that failed");
-    assert_eq!(gated(None, ""), Gated::Red, "a gate a signal ended");
-    let lost = "error: failed to start SSH master connection to 'nix-offload-more'\n";
-    for code in [75, 69] {
-        assert_eq!(
-            gated(Some(code), lost),
-            Gated::Unsent,
-            "nix-offload's {code} says no builder took it, not that a rider broke it"
-        );
-    }
-}
-
-/// nix-offload ends with the first part that failed, and a VM part no
-/// builder took comes first: a rider that broke another part's check
-/// still reads 75 or 69.
-#[test]
-fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
-    for words in [
-        "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder failed with \
-         exit code 1.\n",
-        "\u{2715} a check the change touched failed\n",
-    ] {
-        for code in [75, 69] {
-            assert_eq!(
-                gated(Some(code), words),
-                Gated::Red,
-                "a check that failed read as untaken with {code}: {words}"
-            );
-        }
-    }
-}
-
-/// A builder's words can hold any byte, and nix-offload sets aside a
-/// replay onto a newer main that failed, running the change again on its
-/// own base: the gate is read by what its last run said.
-#[test]
-fn a_gate_is_read_by_what_its_last_run_said() {
-    let root = root("words");
-    fs::create_dir_all(&root).unwrap();
-    let log = root.join("candidate.log");
-    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
-                  failed with exit code 1.\n";
-    let mut odd = b"a builder said \xff\n".to_vec();
-    odd.extend_from_slice(failed.as_bytes());
-    fs::write(&log, odd).unwrap();
-    assert_eq!(
-        gated(Some(75), &words_of(&log)),
-        Gated::Red,
-        "a failed check beside a byte that isn't UTF-8 read as untaken"
-    );
-    let replayed = format!(
-        "{failed}nix-offload: 1234567 over main failed, so the change runs again on its \
-         own base\nnix-offload: no builder took it\n"
-    );
-    fs::write(&log, replayed).unwrap();
-    assert_eq!(
-        gated(Some(75), &words_of(&log)),
-        Gated::Unsent,
-        "a replay nix-offload set aside made an untaken run read as red"
-    );
-    fs::remove_dir_all(&root).unwrap();
-}
-
-#[test]
 fn riders_are_read_back_in_the_order_they_boarded() {
     let root = root("order");
     board(&root, &rider("b2", 20)).unwrap();
@@ -260,13 +195,28 @@ fn a_train_that_gives_up_makes_every_rider_fall_saying_why() {
     }
     let mut splitting = Splitting::default();
     let log = Path::new("/state/train/c.log");
-    red(&root, "c1", log, &["a1".to_owned()], &mut splitting);
+    let unexcused = Failed {
+        candidate: "c1",
+        log,
+        unexcused: Some("cat passed at its base"),
+    };
+    red(&root, &unexcused, &["a1".to_owned()], &mut splitting);
     assert_eq!(
         riders(&root).len(),
         2,
         "the first rider to fail alone didn't fall by itself"
     );
-    red(&root, "c2", log, &["b2".to_owned()], &mut splitting);
+    let told = fell(&root, "a1").unwrap_or_default();
+    assert!(
+        told.contains("wasn't excused as main's own, as cat passed at its base"),
+        "a rider whose red wasn't excused wasn't told why: {told}"
+    );
+    let failed = Failed {
+        candidate: "c2",
+        log,
+        unexcused: None,
+    };
+    red(&root, &failed, &["b2".to_owned()], &mut splitting);
     assert!(
         riders(&root).is_empty(),
         "riders still rode a train that gave up"
@@ -292,7 +242,7 @@ fn a_partial_landing_keeps_the_landed_drops_the_refused_and_seats_the_rest() {
         refused: "b2".to_owned(),
         why: "GitHub refused #2: it is a draft".to_owned(),
     };
-    after_landing(&root, landing, &merged, 0, &mut Splitting::default());
+    after_landing(&root, landing, &run(&merged), &mut Splitting::default());
     assert_eq!(
         riders(&root),
         vec![rider("c3", 30)],
@@ -360,8 +310,7 @@ fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
     after_landing(
         &root,
         Landing::Landed("m1".to_owned()),
-        &merged,
-        0,
+        &run(&merged),
         &mut Splitting::default(),
     );
     let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap();
@@ -372,6 +321,43 @@ fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
         "the boarding times weren't kept in the heads' order: {line}"
     );
     assert!(riders(&root).is_empty(), "the landed riders stayed aboard");
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// A run of `heads` begun at the epoch, its red excused by nothing.
+fn run(heads: &[String]) -> Run<'_> {
+    Run {
+        heads,
+        began: 0,
+        excused: &[],
+    }
+}
+
+#[test]
+fn a_landing_keeps_the_checks_that_failed_at_mains_own_commit_too() {
+    let root = root("excused-landing");
+    board(&root, &rider("a1", 10)).unwrap();
+    let merged: Vec<String> = ["a1"].map(str::to_owned).into();
+    let excused: Vec<String> = ["cat-on-niri"].map(str::to_owned).into();
+    let ran = Run {
+        heads: &merged,
+        began: 0,
+        excused: &excused,
+    };
+    after_landing(
+        &root,
+        Landing::Landed("m1".to_owned()),
+        &ran,
+        &mut Splitting::default(),
+    );
+    let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap_or_default();
+    let line: Value = serde_json::from_str(kept.trim()).unwrap_or_default();
+    assert_eq!(
+        line["excused"],
+        json!(["cat-on-niri"]),
+        "a landing whose red main's own commit excused didn't say which checks: {kept}"
+    );
+    assert!(riders(&root).is_empty(), "the excused rider didn't alight");
     fs::remove_dir_all(&root).unwrap();
 }
 
@@ -386,7 +372,7 @@ fn a_first_rider_github_refuses_falls_alone() {
         refused: "a1".to_owned(),
         why: "GitHub refused #1: it is a draft".to_owned(),
     };
-    after_landing(&root, landing, &merged, 0, &mut Splitting::default());
+    after_landing(&root, landing, &run(&merged), &mut Splitting::default());
     assert_eq!(
         riders(&root),
         vec![rider("b2", 20)],
@@ -417,14 +403,14 @@ fn a_refused_first_rider_keeps_the_search_and_a_second_in_a_row_empties_the_trai
         why: format!("GitHub refused {refused}: 403"),
     };
     let riding: Vec<String> = ["a1", "b2"].map(str::to_owned).into();
-    after_landing(&root, turned("a1"), &riding, 0, &mut splitting);
+    after_landing(&root, turned("a1"), &run(&riding), &mut splitting);
     assert_eq!(
         splitting.take(),
         1,
         "the search forgot the red lies among the three riders after the refused one"
     );
     let riding: Vec<String> = ["b2"].map(str::to_owned).into();
-    after_landing(&root, turned("b2"), &riding, 0, &mut splitting);
+    after_landing(&root, turned("b2"), &run(&riding), &mut splitting);
     let why = fell(&root, "b2").unwrap_or_default();
     assert!(
         why.contains("refused the train's first rider before"),

@@ -191,6 +191,7 @@ mod testing;
 mod there;
 mod vet;
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read};
 use std::os::unix::process::CommandExt;
@@ -248,6 +249,14 @@ const MORE_DIR: &str = "/run/nix-offload-more";
 /// names another, as tests do.
 fn more_dir() -> PathBuf {
     env::var_os("NIX_OFFLOAD_MORE_DIR").map_or_else(|| PathBuf::from(MORE_DIR), PathBuf::from)
+}
+
+/// Remove the bundle `source` sent, if it sent one, once the run is done
+/// with it; one already gone needs nothing more.
+fn forget_bundle(source: &there::Source) {
+    if let there::Source::Bundled { bundle, .. } = source {
+        let _ = fs::remove_file(bundle);
+    }
 }
 
 /// Where a `there` keeps what it sends while it runs: the runtime
@@ -456,6 +465,8 @@ fn main() -> ExitCode {
     // SAFETY: nothing has started a thread yet, and no dependency starts
     // one before `main`.
     unsafe { asking::never_ask() };
+    // SAFETY: as above, nothing has started a thread yet.
+    unsafe { ended::marked::take() };
     // Read lossily only to see whether help is asked: a word that isn't
     // text reaches the kit whole, which refuses it as asked wrongly (64)
     // where `env::args` would panic.
@@ -695,7 +706,7 @@ fn marked(arguments: &[String]) -> Option<Failure> {
     if asked_lent {
         again.env(there::LENT_ONLY.0, there::LENT_ONLY.1);
     }
-    let again = again.exec();
+    let again = ended::marked::handed_on(&mut again).exec();
     Some(Failure::new(Exit::Bug, "couldn't start there again marked").because(again.to_string()))
 }
 
@@ -1902,15 +1913,7 @@ fn changed_there(
     } else {
         (source, None)
     };
-    let bundle = match &source {
-        there::Source::Bundled { bundle, .. } => Some(bundle.clone()),
-        there::Source::Pushed { .. } => None,
-    };
-    let forget = || {
-        if let Some(bundle) = &bundle {
-            let _ = fs::remove_file(bundle);
-        }
-    };
+    let forget = || forget_bundle(&source);
     // The same run at a commit where it passed passes again, so it's said
     // again rather than evaluated and built anew (`passed.rs`).
     let passed = passed::Passed::here(&state());
@@ -1983,8 +1986,23 @@ fn changed_there(
         drop(going);
         return changed_there(given, waiting, false);
     }
-    ended::status(finished.status, || {
-        "the changed checks didn't pass, as the lines above say".to_owned()
+    // Said of the run as it ends, never of a part: a run named on one
+    // builder and built on another (`built_named`) is never whole.
+    if finished.whole {
+        eprintln!("{}", ended::marked::signed(RAN_WHOLE));
+    }
+    let code = finished.ends();
+    // The ending's own words go unsaid once the lines above said a
+    // failure, so a red turned cut short says why here (round 8's F18).
+    if code != finished.status {
+        eprintln!("nix-offload: a check failed, but not every part of the run ran to its end");
+    }
+    ended::status(code, || {
+        if finished.cut {
+            "the changed checks didn't pass, and not every part ran to its end".to_owned()
+        } else {
+            "the changed checks didn't pass, as the lines above say".to_owned()
+        }
     })
 }
 
@@ -2251,7 +2269,9 @@ fn runs_again(replayed: Option<&str>, status: i32) -> bool {
         return false;
     };
     if status != 0 && status != there::BUSY {
-        eprintln!("nix-offload: {replayed} failed, so the change runs again on its own base");
+        let again =
+            format!("nix-offload: {replayed} failed, so the change runs again on its own base");
+        eprintln!("{}", ended::marked::signed(&again));
         return true;
     }
     eprintln!("nix-offload: what passed is {replayed}, and its pass is kept under that");
@@ -2376,18 +2396,76 @@ fn kept_passing(
     }
 }
 
-/// How a `there --changed` run ended: its status, and what changed-checks
-/// printed, where it was read.
+/// How a `there --changed` run ended: its status, what changed-checks
+/// printed, where it was read, whether a lent builder said every part of
+/// it ran to its end, so that its words name every check it broke, and
+/// whether a part is known cut short. The two differ: a run built on the
+/// evaluator or a machine nearby is never whole, for nothing signs it,
+/// yet a failure there ran to its end and ends 1 (round 8's F18).
 struct Finished {
     status: i32,
     printed: Option<String>,
+    whole: bool,
+    cut: bool,
 }
 
 impl Finished {
     fn of(status: i32, printed: Option<String>) -> Self {
-        Self { status, printed }
+        Self {
+            status,
+            printed,
+            whole: false,
+            cut: false,
+        }
+    }
+
+    /// The same run, whole as `whole` says, and cut short where not.
+    fn wholly(mut self, whole: bool) -> Self {
+        self.whole = whole;
+        self.cut = !whole;
+        self
+    }
+
+    /// The same run, with a part that never ran.
+    fn cut_short(mut self) -> Self {
+        self.whole = false;
+        self.cut = true;
+        self
+    }
+
+    /// The status the run ends with: a failure with a part cut short
+    /// ends as a cut run does (`ended::of_a_run`).
+    fn ends(&self) -> i32 {
+        ended::of_a_run(self.status, !self.cut)
     }
 }
+
+/// What nix-offload says once a `there --changed` run on a lent builder
+/// ends with every part of it run to its end. merge-net's train
+/// (`tools/merge-net/src/train/gated.rs`) reads a red as naming all it
+/// broke only beside this line, signed with the mark it gave the run
+/// (`marked`), so a run cut short, or one that no longer says it, lets
+/// no red be excused.
+const RAN_WHOLE: &str = "nix-offload: every part of the run ran to its end";
+
+/// Whether a part of a run that ended `status` ran to its end of itself:
+/// it passed, or failed as nix or changed-checks fails a build that ran,
+/// 1 or nix's 100 to 104. changed-checks ends 1 for nothing else, and a
+/// check that no longer evaluates, an error part way or a panic each end
+/// otherwise (round 5). Every other status is cut short, a list of the
+/// ways not kept (round 4, 23 November): ssh losing its builder, a turn
+/// away, a run kept here or no builder taking it, a signal as 128 and
+/// more, and changed-checks' 69 for a build of its own that a signal or
+/// a lost builder ended, which it would otherwise read as a failure.
+fn ran_to_its_end(status: i32) -> bool {
+    matches!(status, 0 | 1 | NIX_FAILED_FIRST..=NIX_FAILED_LAST)
+}
+
+/// The statuses `nix build` ends a failed build with, `--keep-going`'s
+/// among them: 100, and 101 to 104 for a timeout, a hash or a check that
+/// differed, alone or together.
+const NIX_FAILED_FIRST: i32 = 100;
+const NIX_FAILED_LAST: i32 = 104;
 
 /// What a `there --changed` run sends wherever it goes: the tree's
 /// source, the checks `told` passed at its commit already, the tree's
@@ -2473,7 +2551,7 @@ impl Sent<'_> {
             let sending = self.sending(arguments);
             match there::teed_on(&lent, &sending, self.scratch, "ssh") {
                 Ok((ran, printed)) if ran.status != there::UNREACHED => {
-                    Some(Finished::of(ran.status, Some(printed)))
+                    Some(Finished::of(ran.status, Some(printed)).wholly(ran_to_its_end(ran.status)))
                 }
                 _ => {
                     eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
@@ -2935,23 +3013,25 @@ impl Apart<'_> {
                 Ok(testing) => Some(testing),
                 Err(error) => {
                     eprintln!("nix-offload: couldn't send the VM tests on: {error}");
-                    return Some(Finished::of(1, None));
+                    return Some(Finished::of(1, None).cut_short());
                 }
             }
         };
         let mut rest = arguments.to_vec();
         rest.push("--no-vm".to_owned());
         let built = self.run(&rest);
-        let vm_tested = testing.map(|testing| tested(testing, vm.len()));
+        let cut = Cell::new(!ran_to_its_end(built));
+        let vm_tested = testing.map(|testing| tested(testing, vm.len(), &cut));
         let alone = changed::built_alone(&held, &mut |names| {
             let building =
                 changed::hearing(&mut changed::building(self.sent.folder, self.system, names));
             building.map_or_else(
                 |error| {
                     eprintln!("nix-offload: couldn't send {} on: {error}", names.join(" "));
+                    cut.set(true);
                     (1, BTreeSet::new())
                 },
-                |(testing, failed)| (tested(testing, names.len()), failed),
+                |(testing, failed)| (tested(testing, names.len(), &cut), failed),
             )
         });
         // The first that failed says how the whole did.
@@ -2959,7 +3039,7 @@ impl Apart<'_> {
             .into_iter()
             .find(|status| *status != 0)
             .unwrap_or(0);
-        Some(Finished::of(status, Some(printed)))
+        Some(Finished::of(status, Some(printed)).wholly(!cut.get()))
     }
 
     /// changed-checks run on the lent builder with `arguments`, its status.
@@ -3014,17 +3094,29 @@ fn evaluated_ended(code: Option<i32>, named: usize) -> i32 {
 }
 
 /// How the `there` sending `named` VM tests on did, once it ends: never
-/// `NOT_TAKEN`, which would have changed-checks run it all here.
-fn tested(mut testing: Child, named: usize) -> i32 {
+/// `NOT_TAKEN`, which would have changed-checks run it all here. One that
+/// didn't run to its end, a signal's among them, sets `cut`.
+fn tested(mut testing: Child, named: usize, cut: &Cell<bool>) -> i32 {
     match testing.wait().ok().and_then(|status| status.code()) {
         Some(there::UNSENT) => {
             eprintln!(
                 "nix-offload: {named} VM tests were named, but no builder took their build, \
                  so they weren't built"
             );
+            cut.set(true);
             i32::from(changed::UNBUILT)
         }
-        code => code.unwrap_or(1),
+        Some(code) => {
+            if !ran_to_its_end(code) {
+                cut.set(true);
+            }
+            code
+        }
+        None => {
+            eprintln!("nix-offload: the build of {named} VM tests was cut short");
+            cut.set(true);
+            1
+        }
     }
 }
 
@@ -4485,6 +4577,104 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn a_red_ends_cut_short_only_when_a_part_of_it_was() {
+        // Built on the evaluator or nearby: unsigned, yet it ran.
+        assert_eq!(Finished::of(1, None).ends(), 1);
+        assert_eq!(Finished::of(1, None).wholly(true).ends(), 1);
+        assert_eq!(Finished::of(1, None).wholly(false).ends(), ended::CUT_SHORT);
+        assert_eq!(Finished::of(1, None).cut_short().ends(), ended::CUT_SHORT);
+        assert!(
+            !Finished::of(1, None).cut_short().whole,
+            "a run cut short isn't whole"
+        );
+        assert_eq!(Finished::of(0, None).cut_short().ends(), 0);
+    }
+
+    #[test]
+    fn a_part_ran_to_its_end_only_when_a_builder_took_it_and_kept_it() {
+        for status in [0, 1, 100, 101, 104] {
+            assert!(
+                ran_to_its_end(status),
+                "a part that ended {status} read as cut short"
+            );
+        }
+        // A signal (137, 130), a broken program (70), a status nothing
+        // names (2, 105) and changed-checks' own cut (69) are cut too.
+        for status in [
+            there::UNREACHED,
+            there::BUSY,
+            there::STAYS,
+            there::UNSENT,
+            i32::from(changed::UNBUILT),
+            137,
+            130,
+            70,
+            2,
+            105,
+        ] {
+            assert!(
+                !ran_to_its_end(status),
+                "a part that ended {status} read as whole"
+            );
+        }
+    }
+
+    #[test]
+    fn vm_tests_cut_short_or_untaken_leave_their_run_cut() {
+        let _unstopped = unstopped();
+        let ended = |script: &str| {
+            let cut = Cell::new(false);
+            let testing = Command::new("sh")
+                .args(["-c", script])
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("sh didn't start");
+            (tested(testing, 2, &cut), cut.get())
+        };
+        assert_eq!(
+            ended("exit 0"),
+            (0, false),
+            "VM tests that passed cut their run"
+        );
+        assert_eq!(
+            ended("exit 1"),
+            (1, false),
+            "VM tests that failed cut their run"
+        );
+        assert_eq!(
+            ended("exit 75"),
+            (i32::from(changed::UNBUILT), true),
+            "VM tests no builder took left their run whole"
+        );
+        assert_eq!(
+            ended("exit 64"),
+            (there::STAYS, true),
+            "VM tests kept here left their run whole"
+        );
+        assert_eq!(
+            ended("exit 255"),
+            (there::UNREACHED, true),
+            "VM tests whose builder ssh lost left their run whole"
+        );
+        assert_eq!(
+            ended("kill -9 $$"),
+            (1, true),
+            "VM tests a signal ended left their run whole"
+        );
+    }
+
+    #[test]
+    fn a_whole_run_says_so_in_the_line_merge_net_reads() {
+        // tools/merge-net/src/train/gated.rs reads a red as whole only
+        // beside this line, word for word; rewording it here stops every
+        // excuse until gated.rs reads the new words.
+        assert_eq!(
+            RAN_WHOLE, "nix-offload: every part of the run ran to its end",
+            "the line merge-net's train reads changed"
+        );
     }
 
     #[test]
