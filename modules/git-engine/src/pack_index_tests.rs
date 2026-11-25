@@ -303,19 +303,34 @@ fn a_multi_pack_index_naming_a_file_outside_the_pack_folder_is_refused() {
 
 #[test]
 fn pack_names_past_one_read_are_read_whole_across_its_edge() {
-    // Fifty bytes a name, so 100 of them take 5000 bytes, past one read,
-    // and one name lies across its edge.
-    let owned: Vec<String> = (0..100).map(|at| format!("pack-{at:040}.idx")).collect();
-    let packs: Vec<&str> = owned.iter().map(String::as_str).collect();
-    assert!(
-        owned.iter().map(|name| name.len() as u64 + 1).sum::<u64>() > NAMES_READ,
-        "the names fit in one read, so its edge goes untried"
-    );
-    let midx = opened("many-packs", &midx(&packs, 100, None), Midx::open).expect("it opens");
-    assert_eq!(
-        midx.packs, owned,
-        "a name across a read's edge was read wrong"
-    );
+    // A hundred names of 50 bytes each, NUL and all, take 5000, past one
+    // read, with a name lying across its edge; at 64 bytes each, a NUL
+    // ends the first read exactly.
+    for (digits, across, edge) in [(40, true, "a name across"), (54, false, "a NUL ending")] {
+        let owned: Vec<String> = (0..100)
+            .map(|at| format!("pack-{at:0digits$}.idx"))
+            .collect();
+        let ends: Vec<u64> = owned
+            .iter()
+            .scan(0, |end, name| {
+                *end += name.len() as u64 + 1;
+                Some(*end)
+            })
+            .collect();
+        let lies_there = if across {
+            ends.windows(2)
+                .any(|pair| pair[0] < NAMES_READ && pair[1] > NAMES_READ)
+        } else {
+            ends.contains(&NAMES_READ)
+        };
+        assert!(lies_there, "no {edge} a read's edge, so it goes untried");
+        let packs: Vec<&str> = owned.iter().map(String::as_str).collect();
+        let midx = opened("many-packs", &midx(&packs, 100, None), Midx::open).expect("it opens");
+        assert_eq!(
+            midx.packs, owned,
+            "the names were read wrong with {edge} a read's edge"
+        );
+    }
 }
 
 #[test]

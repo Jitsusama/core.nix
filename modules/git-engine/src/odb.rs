@@ -172,10 +172,21 @@ impl Store {
     /// returned, the first kept standing, for the caller to let stand only
     /// once no other store, nor the loose objects, holds the object: a
     /// broken entry neither hides an object nor passes for a missing one.
-    fn locate(&self, oid: &Oid, refused: &mut Option<io::Error>) -> Option<(usize, u64)> {
+    /// The packs in `bad` held a copy that wouldn't unpack, and are passed
+    /// over as git passes over a copy it has marked bad.
+    fn locate(
+        &self,
+        oid: &Oid,
+        bad: &[usize],
+        refused: &mut Option<io::Error>,
+    ) -> Option<(usize, u64)> {
         if let Some(midx) = &self.midx {
             let found = match midx.locate(oid) {
-                Ok(Some((pack, offset))) if pack < self.midx_packs => Some((pack, offset)),
+                // The multi-pack-index names one copy of each object, so
+                // past a bad one only the packs it doesn't cover are read.
+                Ok(Some((pack, offset))) if pack < self.midx_packs => {
+                    (!bad.contains(&pack)).then_some((pack, offset))
+                }
                 Ok(None) => None,
                 // The entry names a pack it doesn't cover, so the packs it
                 // does are read; should none hold the object, that stands.
@@ -183,11 +194,11 @@ impl Store {
                     refused.get_or_insert_with(|| {
                         invalid("multi-pack-index names a pack past those it covers")
                     });
-                    self.in_covered(oid)
+                    self.in_covered(oid, bad)
                 }
                 Err(error) => {
                     refused.get_or_insert(error);
-                    self.in_covered(oid)
+                    self.in_covered(oid, bad)
                 }
             };
             if found.is_some() {
@@ -195,6 +206,9 @@ impl Store {
             }
         }
         for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
+            if bad.contains(&at) {
+                continue;
+            }
             match pack.index.as_ref().map(|index| index.offset(oid)) {
                 Some(Ok(Some(offset))) => return Some((at, offset)),
                 Some(Err(error)) => {
@@ -212,8 +226,8 @@ impl Store {
     /// none hold the object, so one that won't open or read is passed over
     /// rather than hiding the packs after it. A pack keeps its place
     /// whether or not its index opens, since the multi-pack-index numbers
-    /// them.
-    fn in_covered(&self, oid: &Oid) -> Option<(usize, u64)> {
+    /// them. The packs in `bad` are passed over, as `locate` says.
+    fn in_covered(&self, oid: &Oid, bad: &[usize]) -> Option<(usize, u64)> {
         let indexes = self.covered.get_or_init(|| {
             let pack_dir = self.dir.join("pack");
             self.midx
@@ -223,6 +237,9 @@ impl Store {
                 .collect()
         });
         indexes.iter().enumerate().find_map(|(at, index)| {
+            if bad.contains(&at) {
+                return None;
+            }
             let offset = index.as_ref()?.offset(oid).ok()??;
             Some((at, offset))
         })
@@ -361,6 +378,8 @@ pub struct Odb {
     /// they hold.
     trees: HashMap<Oid, Vec<u8>>,
     tree_bytes: usize,
+    /// The bases being read for the deltas above them, by name.
+    resolving: Vec<Oid>,
 }
 
 /// How many bytes of trees are kept before starting again.
@@ -405,6 +424,7 @@ impl Odb {
             bases: HashMap::new(),
             trees: HashMap::new(),
             tree_bytes: 0,
+            resolving: Vec::new(),
         }
     }
 
@@ -433,15 +453,20 @@ impl Odb {
 
     fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
         // What a store's indexes, packs or loose objects refuse stands only
-        // once every other place the object may lie has been read. A store
-        // whose copy won't unpack isn't asked for another of its own.
+        // once every other place the object may lie has been read. A copy
+        // that won't unpack is passed over and its store asked again, as
+        // git marks the copy bad and looks again, so a sound copy in another
+        // of its packs is read. Each asking passes over one more pack, so
+        // the asking ends.
         let mut refused = None;
         for store in 0..self.stores.len() {
-            if let Some((pack, offset)) = self.stores[store].locate(oid, &mut refused) {
+            let mut bad = Vec::new();
+            while let Some((pack, offset)) = self.stores[store].locate(oid, &bad, &mut refused) {
                 match self.unpack(store, pack, offset, 0) {
                     Ok((kind, data)) => return Ok(Some(Object { kind, data })),
                     Err(error) => {
                         refused.get_or_insert(error);
+                        bad.push(pack);
                     }
                 }
             }
@@ -513,9 +538,16 @@ impl Odb {
                     Oid::from_slice(head.get(at..at + 20).ok_or_else(|| invalid("delta base"))?)
                         .ok_or_else(|| invalid("delta base"))?;
                 let delta = inflate_at(file, offset + at as u64 + 20, size)?;
-                let base = self
-                    .read(&base_oid)?
-                    .ok_or_else(|| invalid("delta base missing"))?;
+                // A delta whose base is, at last, itself would read it
+                // again with no end, so a base already being read for a
+                // delta above it is refused.
+                if self.resolving.contains(&base_oid) {
+                    return Err(invalid("delta base cycle"));
+                }
+                self.resolving.push(base_oid);
+                let base = self.read(&base_oid);
+                self.resolving.pop();
+                let base = base?.ok_or_else(|| invalid("delta base missing"))?;
                 (base.kind, apply_delta(&base.data, &delta)?)
             }
             code => {

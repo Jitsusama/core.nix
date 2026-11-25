@@ -39,7 +39,7 @@ fn a_multi_pack_index_refused_leaves_each_pack_found_through_its_own_index() {
         "a multi-pack-index past its end was used"
     );
     assert_eq!(
-        store.locate(&Oid(names[0]), &mut None),
+        store.locate(&Oid(names[0]), &[], &mut None),
         Some((0, offsets(&names)[0])),
         "the pack's own index wasn't read in the refused index's place"
     );
@@ -62,10 +62,24 @@ fn objects_over(midx: Vec<u8>, packs: Vec<(&str, Vec<u8>)>) -> PathBuf {
     objects
 }
 
+/// Folders a test made, removed once it ends, whether its asserts held or
+/// not, so a failing run leaves none in the temp folder.
+struct Removed(Vec<PathBuf>);
+
+impl Drop for Removed {
+    fn drop(&mut self) {
+        for folder in &self.0 {
+            // Panicking here while a failed assert unwinds would abort the
+            // run, so a folder that won't go is left.
+            std::fs::remove_dir_all(folder).ok();
+        }
+    }
+}
+
 /// Where `oid` lies in `store`, and what it kept as refused.
 fn located(store: &Store, oid: [u8; 20]) -> (Option<(usize, u64)>, Option<String>) {
     let mut refused = None;
-    let found = store.locate(&Oid(oid), &mut refused);
+    let found = store.locate(&Oid(oid), &[], &mut refused);
     (found, refused.map(|error| error.to_string()))
 }
 
@@ -79,7 +93,7 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
     // hold one, so the last name's, its second, lies past its chunk.
     let short = moved(whole.clone(), 4, whole.len() as u64 - 28);
     let objects = objects_over(short.clone(), vec![("pack-a", version_2(&names))]);
-    let mut folders = vec![objects.clone()];
+    let mut folders = Removed(vec![objects.clone()]);
     let store = Store::open(&objects);
     assert!(store.midx.is_some(), "a short LOFF was refused at open");
     assert_eq!(
@@ -107,7 +121,7 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
     // With the pack's own index not holding it either, the refusal is
     // kept for the caller rather than passing for a missing object.
     let lacking = objects_over(short.clone(), vec![("pack-a", version_2(&names[..last]))]);
-    folders.push(lacking.clone());
+    folders.0.push(lacking.clone());
     assert_eq!(
         located(&Store::open(&lacking), names[last]),
         (
@@ -123,7 +137,7 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
     let mut broken = version_2(&names);
     broken.truncate(8 + 1024);
     let objects = objects_over(two, vec![("pack-a", broken), ("pack-b", version_2(&names))]);
-    folders.push(objects.clone());
+    folders.0.push(objects.clone());
     let (found, refused) = located(&Store::open(&objects), names[last]);
     assert_eq!(
         found,
@@ -141,7 +155,7 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
     // it, for the caller to let stand only should no other place hold it.
     let past = midx(&["pack-a.idx", "pack-b.idx"], 1, None);
     let objects = objects_over(past.clone(), vec![("pack-a", version_2(&names))]);
-    folders.push(objects.clone());
+    folders.0.push(objects.clone());
     let store = Store::open(&objects);
     assert_eq!(store.midx_packs, 1, "the index's count wasn't kept");
     assert_eq!(
@@ -153,7 +167,7 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
         "a name in a pack past the index's count wasn't read from its packs' indexes"
     );
     let lacking = objects_over(past, vec![("pack-a", version_2(&names[..1]))]);
-    folders.push(lacking.clone());
+    folders.0.push(lacking.clone());
     assert_eq!(
         located(&Store::open(&lacking), names[1]),
         (
@@ -162,9 +176,6 @@ fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes(
         ),
         "a pack past the index's count left no refusal where nothing held the name"
     );
-    for folder in folders {
-        std::fs::remove_dir_all(folder).expect("the temp folder gives its folder back");
-    }
 }
 
 #[test]
@@ -259,7 +270,7 @@ fn the_first_refusal_kept_is_the_one_that_stands() {
     .into_iter()
     .map(|(store, name, what)| {
         let mut refused = Some(invalid("an earlier store's"));
-        store.locate(&Oid(name), &mut refused);
+        store.locate(&Oid(name), &[], &mut refused);
         (refused.map(|error| error.to_string()), what)
     })
     .collect();
@@ -456,6 +467,113 @@ fn a_packed_copy_that_wont_unpack_is_kept_as_refused_and_the_places_after_it_rea
     );
 }
 
+/// What `objects` reads for `oid`, its data or its refusal.
+fn read_from(objects: &std::path::Path, oid: [u8; 20]) -> Result<Option<Vec<u8>>, String> {
+    Odb::open(objects)
+        .read(&Oid(oid))
+        .map(|object| object.map(|object| object.data))
+        .map_err(|error| error.to_string())
+}
+
+#[test]
+fn a_packed_copy_that_wont_unpack_leaves_a_sound_copy_in_another_pack_read() {
+    use crate::pack_index::tests::{midx, sorted, version_2};
+    let names = sorted();
+    // Both packs' indexes say names[1] lies first among three, but
+    // pack-a, read first, ends at its header, and pack-b holds it sound:
+    // with no multi-pack-index, and with one naming pack-a's copy alone.
+    let packs = || {
+        vec![
+            ("pack-a", version_2(&names[1..4])),
+            ("pack-b", version_2(&names[1..4])),
+        ]
+    };
+    let folders = Removed(vec![
+        objects_over(Vec::new(), packs()),
+        objects_over(midx(&["pack-a.idx"], 1, None), packs()),
+    ]);
+    for (objects, covered) in folders.0.iter().zip([false, true]) {
+        std::fs::write(objects.join("pack/pack-b.pack"), one_blob_pack(b"hi"))
+            .expect("the temp folder takes a file");
+        assert_eq!(
+            Store::open(objects).midx.is_some(),
+            covered,
+            "the multi-pack-index was read where it shouldn't be, or not where it should"
+        );
+        assert_eq!(
+            read_from(objects, names[1]),
+            Ok(Some(b"hi".to_vec())),
+            "a copy that won't unpack hid a sound one in another pack (covered: {covered})"
+        );
+    }
+}
+
+#[test]
+fn a_refusal_kept_before_a_copy_that_wont_unpack_is_the_one_that_stands() {
+    use crate::pack_index::tests::{midx, moved, sorted, version_2};
+    let names = sorted();
+    let last = names.len() - 1;
+    let whole = midx(&["pack-a.idx"], 1, None);
+    // Its large offsets cut short, so the last name is read from pack-a's
+    // own index, which says it lies in a pack that ends at its header.
+    let short = moved(whole.clone(), 4, whole.len() as u64 - 28);
+    let folders = Removed(vec![objects_over(
+        short,
+        vec![("pack-a", version_2(&names))],
+    )]);
+    assert_eq!(
+        read_from(&folders.0[0], names[last]),
+        Err("multi-pack-index large offset past its chunk".into()),
+        "a copy that wouldn't unpack stood in the index's refusal's place"
+    );
+}
+
+#[test]
+fn a_delta_whose_base_is_at_last_itself_is_refused() {
+    use crate::pack_index::tests::{sorted, version_2};
+    let names = sorted();
+    // An index of four names says the first two lie at 12 and 112.
+    let index = version_2(&names[1..5]);
+    // names[1] a delta over itself, and over names[2] whose base is
+    // names[1]: a cycle of one, and of two, which only a base remembered
+    // past the one just read finds.
+    for (bases, what) in [
+        (vec![names[1]], "itself"),
+        (vec![names[2], names[1]], "another delta over it"),
+    ] {
+        let mut pack = b"PACK".to_vec();
+        pack.extend(2u32.to_be_bytes());
+        pack.extend(
+            u32::try_from(bases.len())
+                .expect("two entries")
+                .to_be_bytes(),
+        );
+        for (at, base) in bases.iter().enumerate() {
+            pack.resize(12 + 100 * at, 0);
+            // A delta naming its base, type 7, of 4 bytes, over a base of
+            // one byte to a result of one: insert "x".
+            pack.push(0x70 | 4);
+            pack.extend(base);
+            pack.extend(miniz_oxide::deflate::compress_to_vec_zlib(
+                &[1, 1, 1, b'x'],
+                1,
+            ));
+        }
+        pack.extend([0; 20]);
+        let folders = Removed(vec![objects_over(
+            Vec::new(),
+            vec![("pack-a", index.clone())],
+        )]);
+        std::fs::write(folders.0[0].join("pack/pack-a.pack"), pack)
+            .expect("the temp folder takes a file");
+        assert_eq!(
+            read_from(&folders.0[0], names[1]),
+            Err("delta base cycle".into()),
+            "a delta whose base is, at last, {what} wasn't refused"
+        );
+    }
+}
+
 #[test]
 fn an_index_refusal_kept_before_a_loose_one_is_the_one_that_stands() {
     use crate::pack_index::tests::{midx, moved, sorted, version_2};
@@ -496,7 +614,7 @@ fn a_pack_index_that_wont_read_is_kept_as_refused_and_the_packs_after_it_read() 
         std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
     }
     let mut refused = None;
-    let found = Store::open(&objects).locate(&Oid(names[0]), &mut refused);
+    let found = Store::open(&objects).locate(&Oid(names[0]), &[], &mut refused);
     std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
     // Packs are read in name order, so pack-a's index is read first.
     assert_eq!(
