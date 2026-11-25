@@ -7,8 +7,10 @@
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
 use daemon_serve::serve::Own;
 use serde_json::{Value, json};
@@ -24,16 +26,42 @@ pub(super) struct Doing {
     pub(super) room: PathBuf,
 }
 
+/// One of Tuple's commands running for an act: its words, which act it
+/// was asked for, and when.
+pub(super) struct Asked {
+    words: Vec<String>,
+    id: u64,
+    at: Instant,
+}
+
+/// Counts the acts asked, so each command running is told from one asked
+/// again after it.
+static ASKED: AtomicU64 = AtomicU64::new(0);
+
+/// Takes a command off those running once its thread is done with it,
+/// however that thread ends, so an act is never held by a command gone.
+struct Running {
+    shared: Shared,
+    id: u64,
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        lock(&self.shared).acting.retain(|one| one.id != self.id);
+    }
+}
+
 /// How the call stood as an act was asked: whether one was held, which,
 /// by when it connected, and how often the stream had said Joel's camera
-/// turned. An act done is how Joel stands ahead of the stream only while
-/// the call still stands so, since one done late may otherwise mark off a
-/// camera turned on again by hand, or land on another call.
+/// or mute turned. An act done is how Joel stands ahead of the stream only
+/// while the call still stands so, since one done late may otherwise mark
+/// off a camera turned on again by hand, mute him after he unmuted, or
+/// land on another call.
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Turn {
     calling: bool,
     since: Option<i64>,
-    camera: u64,
+    joel: u64,
 }
 
 impl Turn {
@@ -41,7 +69,7 @@ impl Turn {
         Turn {
             calling: daemon.held.live.is_some(),
             since: daemon.held.live.as_ref().and_then(|live| live.since),
-            camera: daemon.camera_turns,
+            joel: daemon.joel_turns,
         }
     }
 }
@@ -78,11 +106,17 @@ pub(super) fn acts(shared: &Shared, doing: Doing) -> Own {
 /// to the journal.
 const ANSWERS_WITHIN: Duration = Duration::from_secs(5);
 
+/// How long a command still running holds its act. One asked again within
+/// it waits on the first; past it, the first is let run on and the act
+/// asked afresh, so a command stuck on a Tuple since restarted leaves Joel
+/// asking again within a minute, and a Tuple that never answers holds a
+/// command a minute for each act, however often he asks.
+const HELD_FOR: Duration = Duration::from_secs(60);
+
 /// Does one of the call's acts through Tuple's command, answering once
 /// it's done, or once `ANSWERS_WITHIN` has passed without it. One asked
-/// again while Tuple's command for it still runs is answered at once
-/// rather than run twice, so a Tuple that never answers holds one command
-/// for each act, however often Joel asks.
+/// again while Tuple's command for it still runs, within `HELD_FOR`, is
+/// answered at once rather than run twice.
 fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     let arguments: Vec<&str> = match asked {
         Act::Join { link } if link.is_empty() => return refused("that isn't a call's link"),
@@ -98,39 +132,54 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     };
     let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
     let command = arguments.join(" ");
+    let id = ASKED.fetch_add(1, Ordering::Relaxed);
     let turn = {
         let mut daemon = lock(shared);
-        if daemon.acting.contains(&arguments) {
+        let held = daemon
+            .acting
+            .iter()
+            .any(|one| one.words == arguments && one.at.elapsed() < HELD_FOR);
+        if held {
             eprintln!("<4>tuple {command} was asked again before Tuple answered the last");
             return unanswered("Tuple hasn't answered the last time it was asked");
         }
-        daemon.acting.push(arguments.clone());
+        daemon.acting.push(Asked {
+            words: arguments.clone(),
+            id,
+            at: Instant::now(),
+        });
         Turn::of(&daemon)
     };
+    let running = Running {
+        shared: Arc::clone(shared),
+        id,
+    };
     let (answer, answered) = mpsc::channel();
-    let shared = Arc::clone(shared);
     let tuple = doing.tuple.clone();
     let acted = asked.clone();
     let late = command.clone();
     std::thread::spawn(move || {
-        let said = run(&shared, &tuple, &arguments, &acted, turn);
-        lock(&shared).acting.retain(|one| *one != arguments);
+        let said = run(&running.shared, &tuple, &arguments, &acted, turn);
+        drop(running);
         // Nobody hears it once the ask was answered as unanswered, so
         // it's journaled instead, Tuple's reason for a refusal with it.
         if let Err(unheard) = answer.send(said) {
             eprintln!("<5>tuple {late} answered late: {}", unheard.0);
         }
     });
+    let ended = || refused("tuple's command ended unanswered");
     if *asked == Act::Share {
-        return answered
-            .recv()
-            .unwrap_or_else(|_| refused("tuple's command went unanswered"));
+        return answered.recv().unwrap_or_else(|_| ended());
     }
-    answered.recv_timeout(ANSWERS_WITHIN).unwrap_or_else(|_| {
-        let within = ANSWERS_WITHIN.as_secs();
-        eprintln!("<4>tuple {command} hasn't answered in {within} seconds");
-        unanswered(&format!("Tuple hasn't answered in {within} seconds"))
-    })
+    match answered.recv_timeout(ANSWERS_WITHIN) {
+        Ok(said) => said,
+        Err(RecvTimeoutError::Disconnected) => ended(),
+        Err(RecvTimeoutError::Timeout) => {
+            let within = ANSWERS_WITHIN.as_secs();
+            eprintln!("<4>tuple {command} hasn't answered in {within} seconds");
+            unanswered(&format!("Tuple hasn't answered in {within} seconds"))
+        }
+    }
 }
 
 /// Runs Tuple's command for an act, and answers how it ended.

@@ -49,8 +49,6 @@ use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-
-use acts::{Doing, acts};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
@@ -73,6 +71,8 @@ const DOMAIN: Domain = Domain {
 };
 use tuple_call::recent::Recent;
 use tuple_call::stream::{self, Line, Live};
+
+use acts::{Asked, Doing, acts};
 
 /// What follows the tuple command for its stream.
 const STATE: [&str; 5] = ["--format", "json", "state", "follow", "--raw"];
@@ -126,13 +126,14 @@ struct Daemon {
     following: Option<Child>,
     /// Whether the stream followed was cut short to be followed afresh.
     cut: bool,
-    /// Joel's camera as Tuple's stream last said it, apart from the
-    /// record, which a stop marks off ahead of the stream, and how often
-    /// the stream has said it turned.
+    /// Joel's camera and mute as Tuple's stream last said them, apart
+    /// from the record, which an act sets ahead of the stream, and how
+    /// often the stream has said either turned.
     camera_said: bool,
-    camera_turns: u64,
-    /// Tuple's commands for the acts running now, each by its words.
-    acting: Vec<Vec<String>>,
+    muted_said: bool,
+    joel_turns: u64,
+    /// Tuple's commands for the acts running now.
+    acting: Vec<Asked>,
 }
 
 /// Everything the threads share: the call, woken as it changes, and
@@ -212,7 +213,8 @@ fn serve_calls(socket: &Path, tuple: &str) -> Result<(), Failure> {
             following: None,
             cut: false,
             camera_said: false,
-            camera_turns: 0,
+            muted_said: false,
+            joel_turns: 0,
             acting: Vec::new(),
         }),
         moved: Condvar::new(),
@@ -340,6 +342,7 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
             };
             let mut daemon = lock(shared);
             daemon.held.follow(None, now());
+            says_joel(&mut daemon, None);
             stand(shared, &mut daemon, standing);
             changed(shared, &mut daemon);
             wait = if began.elapsed() >= FOLLOWED_FOR {
@@ -350,6 +353,7 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
         } else {
             let mut daemon = lock(shared);
             daemon.held.follow(None, now());
+            says_joel(&mut daemon, None);
             stand(shared, &mut daemon, Standing::Starting);
             changed(shared, &mut daemon);
             wait = LOOKS_AGAIN;
@@ -366,17 +370,24 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
 /// says it. Whether Tuple's Linux build says so at all is yet to be
 /// seen (package.nix), and the launcher's camera row turns to Stop only
 /// if it does, so a call's journal answers it with no camera opened to
-/// find out. It keeps what the stream last said apart from the record,
-/// which a stop marks off ahead of the stream, so the stream's own off is
-/// journaled too, and counts each turn; a call ending says nothing of the
-/// camera, though it counts as one where the camera was on.
-fn says_camera(daemon: &mut Daemon, call: Option<&Live>) {
+/// find out. It keeps what the stream last said of his camera and his
+/// mute apart from the record, which an act sets ahead of the stream, so
+/// the stream's own off is journaled too, and counts each turn of either,
+/// which an act done late is weighed by (acts.rs); a call ending, or the
+/// stream, says nothing of the camera, though it counts as a turn where
+/// the camera was on or he was muted.
+fn says_joel(daemon: &mut Daemon, call: Option<&Live>) {
+    let muted = call.is_some_and(|live| live.joel.muted);
+    if muted != daemon.muted_said {
+        daemon.muted_said = muted;
+        daemon.joel_turns += 1;
+    }
     let on = call.is_some_and(|live| live.joel.camera);
     if on == daemon.camera_said {
         return;
     }
     daemon.camera_said = on;
-    daemon.camera_turns += 1;
+    daemon.joel_turns += 1;
     if call.is_some() {
         let how = if on { "on" } else { "off" };
         eprintln!("<6>Tuple says Joel's camera is {how} in the call");
@@ -424,7 +435,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 daemon.held.contacts = contacts;
                 daemon.held.personal = room;
                 if let Some(call) = call {
-                    says_camera(&mut daemon, call.as_ref());
+                    says_joel(&mut daemon, call.as_ref());
                     daemon.held.follow(call, now());
                 }
                 let standing = if signed_in {
@@ -439,7 +450,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
-                says_camera(&mut daemon, call.as_ref());
+                says_joel(&mut daemon, call.as_ref());
                 daemon.held.follow(call, now());
                 changed(shared, &mut daemon);
             }
