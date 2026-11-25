@@ -215,15 +215,13 @@ pub fn listen(
             .and_then(crate::offset_of)
             .unwrap_or(0),
     };
-    // A node that never answers leaves the run with no cells, said as a
-    // trouble, rather than holding every later run behind this one.
-    let cells =
-        output_within(Command::new(&mycelium).arg("sessions"), SEND_AT_MOST).unwrap_or_default();
     // A node that never answers would hold every later run behind this
-    // one, so a send that hangs is stopped, and the run's sends after it
-    // wait for the next run, their tries kept.
+    // one, so an ask that hangs is stopped, and the run's sends after it
+    // wait for the next run, their tries kept; one that never names its
+    // sessions leaves the run with no cells, said as a trouble.
     let from = Routes::read(&ears.state).from;
     let mut node = Node::new(mycelium, from, begun, SEND_AT_MOST);
+    let cells = node.sessions();
     let hour = hear_putting(&ears, &cells, &mut |to, text, put| node.send(to, text, put))?;
     drop(lock);
     // Held sends are no trouble, as a node slow in a switch holds them,

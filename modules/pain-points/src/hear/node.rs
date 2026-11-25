@@ -57,6 +57,21 @@ impl Node {
         }
     }
 
+    /// The sessions the node knows of, as it prints them, or none when it
+    /// printed nothing within its limit; one that ran past it is stalled,
+    /// as a node serving while a switch holds the disk has been, so the
+    /// run's sends wait for the next run.
+    pub fn sessions(&mut self) -> String {
+        let mut asking = Command::new(&self.mycelium);
+        asking.arg("sessions");
+        answer_within(&mut asking, self.limit)
+            .unwrap_or_else(|Late| {
+                self.silent = true;
+                None
+            })
+            .unwrap_or_default()
+    }
+
     /// Sends `text` to `to`: an owner is asked, as it must say when its fix
     /// lands; the keeper is told, with an fyi, of what its list leaves to
     /// their owners, so it needn't answer.

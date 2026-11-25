@@ -50,6 +50,22 @@ fn a_node_that_stops_answering_is_asked_once_and_the_rest_wait() {
 }
 
 #[test]
+fn a_node_that_never_names_its_sessions_holds_the_run_s_sends() {
+    let place = Place::new("stalled-sessions");
+    let (mycelium, asked) = node_doing(&place, "sleep 30");
+    let limit = Duration::from_millis(200);
+    let mut node = Node::new(mycelium, Some("EAR001".into()), Instant::now(), limit);
+    assert_eq!(node.sessions(), "", "a stalled node names no sessions");
+    let sent = node.send("ABC123", "a finding", Put::Asked);
+    assert_eq!(sent, Sent::Held, "a send after it waits for the next run");
+    assert_eq!(
+        sends_asked(&asked),
+        1,
+        "the node was asked only for sessions"
+    );
+}
+
+#[test]
 fn a_send_that_could_not_end_by_the_sends_end_waits_untried() {
     let place = Place::new("late-send");
     let (mycelium, asked) = node_doing(&place, r#"echo '{"Ok":{"Sent":1}}'"#);
