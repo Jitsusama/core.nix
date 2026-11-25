@@ -32,6 +32,22 @@ state=$5
 floor=$6
 hold=$7
 
+# A step that fails past here, as a write on a full disk, ends the job
+# with what Nix reads emptied in place but for a comment saying so, said
+# once, rather than with the last offer standing: emptying a file in place
+# takes no room.
+failed() {
+  local status=$? when
+  [ "${status}" -ne 0 ] || return 0
+  if grep -qv '^#' "${offered}" 2>/dev/null; then
+    echo "# withheld by linux-builder-room: it failed, ending ${status}" >"${offered}" ||
+      true
+    when=$(date -u +%Y-%m-%dT%H:%M:%SZ) || when=""
+    echo "${when} room: the builder isn't offered: it failed, ending ${status}" >&2 || true
+  fi
+}
+trap failed EXIT
+
 now=${EPOCHSECONDS}
 # Either read failing is a room not read, said below, rather than an end
 # that leaves the last offer standing.
@@ -41,8 +57,9 @@ swapouts=$("${vm_stat}" 2>/dev/null | sed -n 's/^Swapouts:[[:space:]]*\([0-9]*\)
 number='^[0-9]+$'
 
 # When the Mac was last short of room, and the swap-outs it had then. A
-# first look, or a record that isn't two numbers, counts as short, so the
-# hold runs before the builder is offered.
+# first look, a record that isn't two numbers or one from later than now,
+# as after the clock was set back, counts as short, so the hold runs
+# before the builder is offered.
 pressed=""
 seen=""
 if [ -r "${state}/pressed" ] && [ -r "${state}/swapouts" ]; then
@@ -50,11 +67,18 @@ if [ -r "${state}/pressed" ] && [ -r "${state}/swapouts" ]; then
   seen=$(<"${state}/swapouts")
 fi
 why=""
-if ! [[ ${free} =~ ${number} && ${swapouts} =~ ${number} ]]; then
-  why="it couldn't read the Mac's room (free ${free:-nothing}, swap-outs ${swapouts:-nothing})"
+# What couldn't be read is named, never what it printed instead, which
+# would go into the file Nix reads.
+unread=""
+[[ ${free} =~ ${number} ]] || unread="its share of memory free"
+[[ ${swapouts} =~ ${number} ]] || unread="${unread:+${unread} and }its swap-outs"
+if [ -n "${unread}" ]; then
+  why="it couldn't read the Mac's room: ${unread}"
   swapouts=${seen}
 elif ! [[ ${pressed} =~ ${number} && ${seen} =~ ${number} ]]; then
   why="it had no record of the Mac's room yet"
+elif [ "${pressed}" -gt "${now}" ]; then
+  why="its record of the Mac's room is from later than now"
 elif [ "${free}" -lt "${floor}" ]; then
   why="${free}% free, under ${floor}%"
 elif [ "${swapouts}" -lt "${seen}" ]; then

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The test of room.sh, which offers the Linux builder to the Mac's Nix only
 # while the Mac has room: under the floor, swapping, unread or with its own
-# record gone it holds no builder at once, and gives the line back only
-# after the hold, at its edge; each change is said once. sysctl and vm_stat
+# record gone or from later than now it holds no builder at once, and
+# gives the line back only after the hold, at its edge; a step that fails
+# leaves no builder offered; each change is said once, with when. sysctl and vm_stat
 # are stand-ins that print what the test sets, sysctl only for the figure
 # room.sh must ask for, and either may fail. Time passing is the job's own
 # record of when the Mac was last short of room, set back.
@@ -45,7 +46,8 @@ look() {
   offer=something-else
   if cmp -s "${offered}" "${PWD}/line"; then
     offer=offered
-  elif [[ -e ${offered} ]] && ! grep -qv '^# withheld by linux-builder-room: ' "${offered}"; then
+  elif [[ -s ${offered} ]] &&
+    ! grep -qv '^# withheld by linux-builder-room: ..*$' "${offered}"; then
     offer=withheld
   fi
 }
@@ -62,6 +64,8 @@ holds() {
   [[ ${offer} == "$1" ]] || fail "$3"
   # shellcheck disable=SC2053 # $2 is a pattern, matched as one.
   [[ ${said} == $2 ]] || fail "$3, or didn't say so as it should"
+  [[ -z ${said} || ${said} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\ room:\  ]] ||
+    fail "$3, or said it without when"
   [[ ${ended} == 0 ]] || fail "$3, ending ${ended}"
 }
 
@@ -92,9 +96,11 @@ holds withheld "*isn't offered: 5 pages swapped out" \
 pressed_ago 30
 look 50 105
 holds withheld "" "a Mac that swapped out 30 s ago was offered before the hold"
-pressed_ago 599
+# 595 s rather than 599 s, since the test and room.sh each read the clock
+# and a second may tick between; 600 s offering above holds the edge.
+pressed_ago 595
 look 50 105
-holds withheld "" "a Mac short of room 599 s ago was offered before the 600 s hold"
+holds withheld "" "a Mac short of room 595 s ago was offered before the 600 s hold"
 
 pressed_ago 601
 look 50 105
@@ -108,7 +114,7 @@ look 50 3
 holds offered "*offered again*" \
   "a Mac quiet for the hold after its count started again wasn't offered"
 look fails 3
-holds withheld "*isn't offered: it couldn't read the Mac's room (free nothing, swap-outs 3)" \
+holds withheld "*isn't offered: it couldn't read the Mac's room: its share of memory free" \
   "a sysctl that failed left the builder offered"
 pressed_ago 601
 look fails 3
@@ -118,7 +124,7 @@ pressed_ago 601
 look 50 3
 holds offered "*offered again*" "a Mac quiet for the hold after an unread room wasn't offered"
 look 50 fails
-holds withheld "*isn't offered: it couldn't read the Mac's room (free 50, swap-outs nothing)" \
+holds withheld "*isn't offered: it couldn't read the Mac's room: its swap-outs" \
   "a vm_stat that failed left the builder offered"
 
 pressed_ago 601
@@ -127,6 +133,30 @@ look 50 3
 look 50 3
 holds withheld "*isn't offered: it had no record of the Mac's room yet" \
   "an emptied record of when the Mac was short skipped the hold"
+
+pressed_ago 601
+look 50 3
+pressed_ago -3600
+look 50 3
+holds withheld "*isn't offered: its record of the Mac's room is from later than now" \
+  "a record from an hour ahead kept the builder offered"
+
+# A record it can't write, as on a full disk, ends the job with no builder
+# offered. Root writes anywhere, so the test needs an account that can't.
+pressed_ago 601
+look 50 3
+holds offered "*offered again*" "the builder wasn't offered before a write failed"
+chmod 555 "${state}"
+if : 2>/dev/null >"${state}/probe"; then
+  echo "room-test: a folder can still be written after chmod 555, as root can," \
+    "so this tests nothing" >&2
+  exit 1
+fi
+look 50 3
+chmod 755 "${state}"
+failing="isn't offered: it failed, ending ${ended}"
+[[ ${offer} == withheld && ${ended} != 0 && ${said} == *"${failing}" ]] ||
+  fail "a record it couldn't write left the builder offered"
 
 pressed_ago 601
 look 50 3

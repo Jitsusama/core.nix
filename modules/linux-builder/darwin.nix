@@ -525,7 +525,7 @@ in
         (toString cfg.room.floor)
         (toString cfg.room.hold)
       ];
-      # sed, cmp, date and what bash needs, from macOS itself, where only
+      # sed, grep, cp, mv, date and what bash needs, from macOS itself, where only
       # root can write, since the job runs as root.
       EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
       StartInterval = 15;
