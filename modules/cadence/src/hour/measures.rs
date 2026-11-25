@@ -44,7 +44,7 @@ pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
 pub use misses::{
     BLIND, FINDINGS, HELD, SAID_NONE, UNREAD, UNRUN, UNSEEN, UNTESTED, checked_beside, findings,
-    forget_said_none, held, held_for_good, held_unseen, hosts_started, ledger, said, said_none,
+    forget_unfixed, held, held_for_good, held_unseen, hosts_started, ledger, said, said_none,
     untested,
 };
 pub use pains::{keeper, pains};

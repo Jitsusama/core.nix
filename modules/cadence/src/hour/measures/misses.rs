@@ -343,21 +343,47 @@ fn no_miss(miss: &Value) -> bool {
     said && miss["none_at_ms"].is_i64()
 }
 
+/// Whether pain-points closed `miss` on a commit it found in the core this
+/// machine switched to, so its fix runs here.
+fn closed(miss: &Value) -> bool {
+    miss["heard_by"] == PAIN_POINTS && miss["closed_by"].is_string()
+}
+
+/// Whether `miss` leaves the open misses unfixed: one its owner said was
+/// none, which wasn't, and one the keeper carried into the asks, which
+/// tracks its fix from then, unless pain-points closed it on its fix too.
+/// The open misses and the misses forgotten untold both read it, so a miss
+/// never leaves the one without the other.
+fn left_unfixed(miss: &Value) -> bool {
+    no_miss(miss) || (miss["carried"].as_bool() == Some(true) && !closed(miss))
+}
+
 /// Takes from `open`, last hour's open misses as the card listed them,
-/// each miss in `text` its owner said was none, so the hour closes it
-/// without telling Joel it's fixed: it wasn't, and nothing catches it.
-/// Each is known by its words and its owner, so another owner's miss in
-/// the same words stays.
-pub fn forget_said_none(text: &str, open: &mut Vec<String>) {
-    let none: Vec<String> = lines(text)
-        .filter(no_miss)
+/// each miss that left them unfixed by `text`, so the hour closes it
+/// without telling Joel it's fixed. At 21:10 on 24 November the card told
+/// him his process path stuck in the footer was fixed as it was carried,
+/// with its fix days off. The card tells a miss fixed by its words alone,
+/// so a line goes when some miss in its words left unfixed and the ledger
+/// holds none in its words and owner still to close, as one carried to a
+/// new owner since; another owner's miss in the same words stays.
+pub fn forget_unfixed(text: &str, open: &mut Vec<String>) {
+    let (unfixed, to_close): (Vec<Value>, Vec<Value>) = lines(text).partition(left_unfixed);
+    let words: Vec<&str> = unfixed.iter().map(named_as).collect();
+    let still: Vec<(&str, String)> = to_close
+        .iter()
         .map(|miss| {
             let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
-            format!("{} · {owner}", named_as(&miss))
+            (named_as(miss), owner)
         })
         .collect();
-    let said_none = |line: &String| none.iter().any(|said| line.starts_with(said.as_str()));
-    open.retain(|line| !said_none(line));
+    let forgotten = |line: &String| {
+        // A line is its words, then its owner, then any note, which opens
+        // with a comma, as the open misses write each.
+        let (what, rest) = line.rsplit_once(" · ").unwrap_or((line.as_str(), ""));
+        let owner = rest.split(',').next().unwrap_or_default();
+        words.contains(&what) && !still.iter().any(|(w, o)| *w == what && o == owner)
+    };
+    open.retain(|line| !forgotten(line));
 }
 
 /// The misses in `text` their owners said in the day before `now` were
@@ -499,8 +525,7 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
     // commit it found in the core this machine switched to, so its fix
     // runs here, whatever change its check names.
     let open: Vec<(String, String, String)> = lines(text)
-        .filter(|miss| miss["carried"].as_bool() != Some(true) && !no_miss(miss))
-        .filter(|miss| !(miss["heard_by"] == PAIN_POINTS && miss["closed_by"].is_string()))
+        .filter(|miss| !left_unfixed(miss) && !closed(miss))
         .filter_map(|miss| {
             let changes = changes(&miss);
             let elsewhere = miss["machine"].as_str().filter(|machine| {
@@ -727,6 +752,7 @@ mod tests {
             serde_json::json!({"at": AT, "words": "long ago", "owner": "XY9H5C",
                 "none": "no pain", "none_at_ms": (now - DAY - 1) * 1000}),
             serde_json::json!({"at": AT, "words": "still open", "owner": "ABC123"}),
+            serde_json::json!({"at": AT, "words": "it's fine", "owner": "ABC123"}),
         ]
         .iter()
         .map(ToString::to_string)
@@ -753,12 +779,60 @@ mod tests {
             "it's fine · ABC123".to_owned(),
             "still open · ABC123".to_owned(),
         ];
-        forget_said_none(&text, &mut open);
+        forget_unfixed(&text, &mut open);
         assert_eq!(
             open,
             ["it's fine · ABC123", "still open · ABC123"],
             "a miss said none was kept open, so it would be told fixed, or another owner's \
-             in the same words was forgotten"
+             still open in the same words was forgotten"
+        );
+    }
+
+    #[test]
+    fn a_miss_carried_into_the_asks_is_never_told_fixed() {
+        let text = [
+            // Carried to a new owner since the card listed it under WCJQSG.
+            serde_json::json!({"at": AT, "words": "process path stuck", "owner": "FCKPWX",
+                "carried": true}),
+            serde_json::json!({"at": AT, "words": "process path stuck", "owner": "ABC123"}),
+            // Carried with no owner, or by an owner whose name begins another's.
+            serde_json::json!({"at": AT, "words": "no owner", "owner": "", "carried": true}),
+            serde_json::json!({"at": AT, "words": "no owner", "owner": "ABC123",
+                "check": "core #1"}),
+            serde_json::json!({"at": AT, "words": "fixed", "owner": "ABC", "carried": true}),
+            serde_json::json!({"at": AT, "words": "fixed", "owner": "ABC123",
+                "check": "core #1"}),
+            serde_json::json!({"at": AT, "words": "held", "owner": "XYZ", "carried": true}),
+            serde_json::json!({"at": AT, "words": "held", "owner": "ABC123"}),
+            // Not carried, or carried and closed on its fix as well.
+            serde_json::json!({"at": AT, "words": "kept", "owner": "ABC123",
+                "carried": false}),
+            serde_json::json!({"at": AT, "words": "said", "owner": "ABC123",
+                "carried": "yes"}),
+            serde_json::json!({"at": AT, "words": "closed", "owner": "ABC123",
+                "carried": true, "heard_by": PAIN_POINTS, "closed_by": "abc"}),
+        ]
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let stays = [
+            "process path stuck · ABC123",
+            "no owner · ABC123",
+            "fixed · ABC123",
+            "held · ABC123, though its check core #1 merged, but",
+            "kept · ABC123",
+            "said · ABC123",
+            "closed · ABC123",
+        ];
+        let mut open = vec!["process path stuck · WCJQSG".to_owned()];
+        open.extend(stays.map(str::to_owned));
+        forget_unfixed(&text, &mut open);
+        assert_eq!(
+            open, stays,
+            "a miss carried into the asks was kept open, so it would be told fixed, or \
+             another owner's in the same words was forgotten, or one not carried, or \
+             closed on its fix, was"
         );
     }
 
