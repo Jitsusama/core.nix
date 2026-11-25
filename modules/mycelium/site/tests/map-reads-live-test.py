@@ -934,6 +934,49 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     )
 
 
+# The map's width and the drawer's, in pixels: a fit is made for the map's width less the
+# drawer's while the drawer is open, and for the whole of it while shut.
+WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientRect().width,
+  document.getElementById("panel").offsetWidth]"""
+
+
+def fitted_about(view: tuple[float, float, float], wide: float) -> float:
+    """Say which point of the map a view `wide` pixels across fits in its middle (viewOf)."""
+    tx, _, k = view
+    return (wide / 2 - tx) / k
+
+
+def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    shut = settled(page, "0 didn't fit the whole map")
+    whole, drawer = page.evaluate(WIDTHS)
+    middle = fitted_about(shut, whole)
+    # Opening Now opens the drawer, and a view following the whole map fits it again clear of
+    # it, about the same middle; a gutter kept while shut would put that middle a half a
+    # drawer off, and a glide stopped part way would leave it somewhere between.
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    opened = settled(page, "the map never stood still once Now opened")
+    clear = max(whole - drawer, whole / 2)
+    assert fitted_about(opened, clear) == pytest.approx(middle, abs=1), (
+        f"shut, the map was fitted about {middle} across {whole} px, and open about "
+        f"{fitted_about(opened, clear)} across the {clear} px the drawer leaves"
+    )
+    assert opened[2] <= shut[2], f"the map grew from {shut} as the drawer took room: {opened}"
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't close Now").to_have_attribute(
+        "aria-expanded", "false"
+    )
+    assert settled(page, "the map never stood still once Now shut") == pytest.approx(
+        shut, abs=0.05
+    ), "shutting the drawer didn't fit the map across the whole width again"
+
+
 # Node.json's cells that need the reader, as Now lists them: the one asking
 # something, then the one stuck. Node.json lists them in that order too, so
 # waits.test.ts is what proves the order; this proves the page follows it.
