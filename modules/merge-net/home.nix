@@ -57,7 +57,15 @@ in
     };
     Service = {
       ExecStart = "${lib.getExe net} watch --follow ${config.home.profileDirectory}/bin/merge-net";
-      Environment = [ "PATH=${path}" ];
+      # Two malloc arenas rather than glibc's eight a core: the watch's
+      # threads come and go, each taking an arena of its own, and on
+      # 25 November it held 73 of 64 MB after five hours, 7.2 GB, 5 GB of
+      # it in swap. Paging that in and out was 97% of what its cgroup
+      # wrote, 14 MB/s at its worst, beside a browser that froze for 11 s.
+      Environment = [
+        "PATH=${path}"
+        "MALLOC_ARENA_MAX=2"
+      ];
       Restart = "always";
       RestartSec = 60;
       # Below what Joel uses, as the timed work it is: its evaluations ran
