@@ -53,7 +53,13 @@ let
   # leaves the daemon no key, said once until the reason changes, and
   # ends nothing, a switch included, its cleanup too (round 3's F10,
   # round 4's F14), which takes away any run's leftover name too (round
-  # 5's F9). Each run copies through a name of its own, so two runs
+  # 5's F9). A key another account owns, may read or write, or may read,
+  # write or take by an access list, is refused saying, after what it
+  # costs, to make it anew on both machines, since that account may
+  # know it and a new owner or mode leaves it known; one other accounts
+  # may only run, or reach by lesser rights, is refused without it (keys
+  # said plainly round 1's F2, F3, F10 and F14). Each run copies through
+  # a name of its own, so two runs
   # can't move the same file (round 4's F21), though a failing run may
   # take away the copy one beside it just made, or a slower one put back
   # a key just swapped; the watch job runs again each minute too, so
@@ -78,7 +84,9 @@ let
     houseReportKey=${lib.escapeShellArg keyFile}
     houseReportCopy=${copy}
     houseReportWhy=
-    houseReportLeaked="make it anew on both machines, since a new mode leaves what leaked good"
+    houseReportDo=
+    houseReportKnown="; make it anew here and on the shaped machine, as another account may know it"
+    houseReportKnowing='^ *[0-9]+: .* allow (.*,)?(read|write|append|writesecurity|chown)(,|$)'
     /usr/bin/install -d -o root -g wheel -m 0755 ${copied} \
       || houseReportWhy="has nowhere to be copied to"
     houseReportFolder=$(cd -P "$(/usr/bin/dirname "$houseReportKey")" 2>/dev/null && pwd -P) \
@@ -104,10 +112,18 @@ let
       houseReportWhy="isn't there as a file"
     elif [ "$(/usr/bin/stat -f %u "$houseReportRead")" != 0 ]; then
       houseReportWhy="isn't root's"
-    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +077)" ]; then
-      houseReportWhy="may be read by an account other than root's: $houseReportLeaked"
+      houseReportDo=$houseReportKnown
+    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +066)" ]; then
+      houseReportWhy="may be read or written by an account other than root's"
+      houseReportDo=$houseReportKnown
+    elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +011)" ]; then
+      houseReportWhy="may be run by an account other than root's"
+    elif /bin/ls -le "$houseReportRead" \
+      | /usr/bin/grep -qE "$houseReportKnowing"; then
+      houseReportWhy="has an access list letting another account read, write or take it"
+      houseReportDo=$houseReportKnown
     elif /bin/ls -le "$houseReportRead" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then
-      houseReportWhy="has an access list letting another account in: $houseReportLeaked"
+      houseReportWhy="has an access list letting another account in"
     elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportRead" "$houseReportNew" \
       || ! /bin/mv -f "$houseReportNew" "$houseReportCopy"; then
       houseReportWhy="couldn't be copied for nobody"
@@ -117,6 +133,7 @@ let
     if [ -n "$houseReportWhy" ]; then
       /bin/rm -f "$houseReportCopy" "$houseReportCopy".* 2>/dev/null || :
       houseReportWhy="house-report: $houseReportKey $houseReportWhy, so the daemon has no key"
+      houseReportWhy="$houseReportWhy$houseReportDo"
       if [ -n "''${houseReportAtSwitch:-}" ]; then
         echo "$houseReportWhy" >&2
         /bin/rm -f "$houseReportSaid" 2>/dev/null || :

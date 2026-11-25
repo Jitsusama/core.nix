@@ -77,11 +77,17 @@ let
   # Every folder above the key is tested before the chain that copies
   # it, and the copy is that chain's last branch, so a refusal stops it.
   walked = placed "while [ -z \"$houseReportWhy\" ] && [ \"$houseReportFolder\" != / ]; do";
-  # What the two refusals of a key another account could read say to do,
-  # making it anew rather than giving it a new mode.
-  leaked =
-    "houseReportLeaked=\"make it anew on both machines, "
-    + "since a new mode leaves what leaked good\"";
+  # What the refusals of a key another account may know say to do,
+  # making it anew rather than giving it a new owner or mode, and the
+  # access list's rights that let an account know it.
+  known =
+    "houseReportKnown=\"; make it anew here and on the shaped machine, "
+    + "as another account may know it\"";
+  knowing =
+    let
+      rights = "(read|write|append|writesecurity|chown)";
+    in
+    "houseReportKnowing='^ *[0-9]+: .* allow (.*,)?${rights}(,|$)'";
   chained = lib.concatStringsSep "\n" [
     "if [ -n \"$houseReportWhy\" ]; then"
     "  :"
@@ -91,13 +97,21 @@ let
     "  houseReportWhy=\"isn't there as a file\""
     "elif [ \"$(/usr/bin/stat -f %u \"$houseReportRead\")\" != 0 ]; then"
     "  houseReportWhy=\"isn't root's\""
-    "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +077)\" ]; then"
-    # A key another account could read is said to need making anew, since
-    # a new mode would leave the leaked bytes good (keys said plainly
-    # round 1's F6); `leaked` pins the words.
-    "  houseReportWhy=\"may be read by an account other than root's: $houseReportLeaked\""
+    # A key another account may know is said to need making anew, since
+    # a new owner or mode would leave it known (made anew round 3's F6;
+    # keys said plainly round 1's F3 and F14); `known` pins the words.
+    "  houseReportDo=$houseReportKnown"
+    "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +066)\" ]; then"
+    "  houseReportWhy=\"may be read or written by an account other than root's\""
+    "  houseReportDo=$houseReportKnown"
+    "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +011)\" ]; then"
+    "  houseReportWhy=\"may be run by an account other than root's\""
+    "elif /bin/ls -le \"$houseReportRead\" \\"
+    "  | /usr/bin/grep -qE \"$houseReportKnowing\"; then"
+    "  houseReportWhy=\"has an access list letting another account read, write or take it\""
+    "  houseReportDo=$houseReportKnown"
     "elif /bin/ls -le \"$houseReportRead\" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then"
-    "  houseReportWhy=\"has an access list letting another account in: $houseReportLeaked\""
+    "  houseReportWhy=\"has an access list letting another account in\""
     (
       "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportRead\" "
       + "\"$houseReportNew\" \\"
@@ -115,6 +129,7 @@ let
     "if [ -n \"$houseReportWhy\" ]; then"
     "  /bin/rm -f \"$houseReportCopy\" \"$houseReportCopy\".* 2>/dev/null || :"
     "  houseReportWhy=\"${noKey}\""
+    "  houseReportWhy=\"$houseReportWhy$houseReportDo\""
     "  if [ -n \"\${houseReportAtSwitch:-}\" ]; then"
     "    echo \"$houseReportWhy\" >&2"
     "    /bin/rm -f \"$houseReportSaid\" 2>/dev/null || :"
@@ -161,9 +176,9 @@ let
   copied = "/var/db/house-report/house.key";
   watching = keyedMac.launchd.daemons.house-report-key.serviceConfig or { };
   watched = lib.last (watching.ProgramArguments or [ "" ]);
-  # Whether `text` names the job's `said` only where the switch sets it
-  # and the job forgets and reads it.
-  saysSaidOnce =
+  # Whether `text` names the job's `said` only where `refusing` does:
+  # where the switch sets it and the job forgets and reads it.
+  namesSaidOnlyInRefusing =
     text:
     times "houseReportSaid" text == 5
     && times "houseReportSaid=" text == 1
@@ -238,7 +253,9 @@ in
   # by mode or access list, reading it in its real folder as a plain
   # file root's alone, the copy the last branch of the chain that
   # refuses, through a name of the run's own, and changes no file's
-  # owner or mode. The build refuses a key outside root's own trees, or
+  # owner or mode. A key another account owns, may read or write, or may
+  # reach so by an access list, is refused saying to make it anew on both
+  # machines. The build refuses a key outside root's own trees, or
   # spelled through dots.
   house-report-hands-a-mac-its-key-safely =
     holds "house-report-hands-a-mac-its-key-safely"
@@ -251,7 +268,8 @@ in
           + "outside the chain that refuses a link, a key not root's alone and a folder "
           + "another account may write or take, reads it by its spelling rather than its "
           + "real folder, or hands a file over otherwise than by one install into a name of "
-          + "its own, or lets a key another account could read be taken for a new mode."
+          + "its own, or refuses a key another account may know without saying, last and "
+          + "once, to make it anew on both machines."
       )
       (
         macMisread == [ ]
@@ -259,7 +277,18 @@ in
         && lib.hasInfix "houseReportKey=/etc/house.key" keyedPrepared
         && lib.hasInfix chained keyedPrepared
         && walked < placed chained
-        && lib.hasInfix leaked keyedPrepared
+        # The advice is set once, in the job's own text, before the
+        # chain, and only the three refusals of a key another account
+        # may know take it, each once, after what the refusal costs
+        # (keys said plainly round 1's F1, F2, F5, F6, F13 and F19).
+        && lib.hasInfix known watched
+        && lib.hasInfix knowing watched
+        && placed known < placed chained
+        && placed knowing < placed chained
+        && placed "houseReportDo=\n" < placed chained
+        && times "houseReportKnown" keyedPrepared == 4
+        && times "houseReportKnowing" keyedPrepared == 2
+        && times "houseReportDo" keyedPrepared == 5
         && lib.hasInfix "&& pwd -P)" keyedPrepared
         && walksWhole
         && lib.hasInfix readInRealFolder keyedPrepared
@@ -314,13 +343,11 @@ in
         && !lib.hasInfix "houseReportAtSwitch=" watched
         && lib.hasInfix refusing watched
         # Nothing else reads or writes `said`, under its name, braced or
-        # not, or spelled as its path, in the job or anywhere else the
-        # switch runs (made anew round 1's F5; round 2's F2, F4, F5, F7
-        # and F10; keys said plainly round 1's F3).
-        && lib.all saysSaidOnce [
-          watched
-          keyedPrepared
-        ]
+        # not, or spelled as its path, in the job or anywhere else in the
+        # switch's preActivation, which holds the job's text (made anew
+        # round 1's F5; round 2's F2, F4, F5, F7 and F10; round 3's F3;
+        # keys said plainly round 1's F4, F8 and F9).
+        && namesSaidOnlyInRefusing keyedPrepared
         && watching.UserName or null == null
         && watching.RunAtLoad or null == true
         && watching.StartInterval or null == 60

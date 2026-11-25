@@ -1858,9 +1858,10 @@
     or an access list, each tested whole within the walk, reading it in that real folder, set once,
     as a plain file root's and read by no other account, through a name of each run's own, its text
     naming no chown or chmod and no install or mv but its own, however spelled; a key another
-    account could read is said to need making anew on both machines, not a new mode; and the build
-    refuses a Mac's key outside /etc, /private/etc or /var/root, or spelled through or ending in
-    dots
+    account owns, may read or write, or may read, write or take by an access list, is said, last
+    and once, to need making anew on both machines, not a new owner or mode, and one other accounts
+    may only run or reach by lesser rights isn't; and the build refuses a Mac's key outside /etc,
+    /private/etc or /var/root, or spelled through or ending in dots
   '';
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started

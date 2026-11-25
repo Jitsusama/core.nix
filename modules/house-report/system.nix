@@ -62,7 +62,7 @@ in
     # The advice on making and replacing the key answers house keys round
     # 2's F5 and F7 and made anew round 1's F2, F9 and F11 and round 2's
     # F1 and F9; the rounds are cited here rather than in the docs it
-    # renders (keys said plainly round 1's F2).
+    # renders (made anew round 3's F2).
     keyFile = lib.mkOption {
       type = lib.types.nullOr (
         lib.types.pathWith {
