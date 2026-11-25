@@ -1593,12 +1593,14 @@ Scope {
     // takes Return only with the caret at the words' end, where he's read to (Prompt.qml's
     // linked), and the act starts only on his own Return (Sprouting.fromJoel), so no walk or
     // second link can start it. Like talkTo, it does nothing over a launcher in use, not even
-    // forget how his last start went. Says what it did as JSON, as talkTo does.
-    function newWork(words, from) {
+    // forget how his last start went. Says what it did as JSON, as talkTo does. `on` says where
+    // the page would start it, "cloud" or a machine by its name, which the act's name says and
+    // its Return asks; left out, the node places it as any start.
+    function newWork(words, from, on) {
         if (inUse())
             return inUseSaid;
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
-        const offer = agents ? agents.newWorkFor(words, from) : null;
+        const offer = agents ? agents.newWorkFor(words, from, on ?? "") : null;
         // A link names the session it's from, so with reports off its address is counted, as
         // talkTo's is (Presented.whenceShown).
         const whence = Presented.whenceShown(offer?.from?.address, Options.reports);
@@ -8912,7 +8914,15 @@ Scope {
         // field, "words:" before them, and "from:" before the session it
         // came from, as a sprout link asks (root's newWork).
         function newWork(words: string, from: string): string {
-            return JSON.stringify(root.newWork(words, from));
+            return JSON.stringify(root.newWork(words, from, ""));
+        }
+
+        // newWork, for a link that says where its work starts, "on:"
+        // before "cloud" or a machine's name. A function of its own, so a
+        // link with no `on` keeps calling newWork with two arguments, as
+        // qs refuses a call whose count isn't the one declared.
+        function newWorkOn(words: string, from: string, on: string): string {
+            return JSON.stringify(root.newWork(words, from, on));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,

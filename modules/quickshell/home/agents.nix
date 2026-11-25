@@ -34,6 +34,7 @@
   "launcher/Sprouting.js"
   "launcher/StartSaid.js"
   "launcher/Wheres.js"
+  "launcher/Cloud.js"
   "launcher/StartsStopped.js"
   "launcher/TalkAnswers.js"
 ]

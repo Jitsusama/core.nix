@@ -45,6 +45,7 @@ import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
 import "CarryBack.js" as CarryBack
+import "Cloud.js" as Cloud
 import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
@@ -1777,6 +1778,7 @@ Provider {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
+            .concat(provider.cloudOffers.length > 0 ? [inTheCloud()] : [])
             .concat(startWheres().map(one => newWorkAct("in", one.folder,
                 Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name),
                 one.start)));
@@ -1796,16 +1798,49 @@ Provider {
         });
     }
 
-    // One of Start New Work's acts: `id` link or in, at `folder` where one
-    // is given, as `name`, sprouting in `start`, the folder unless said.
+    // In the Cloud, Start New Work's row for work on a machine that costs
+    // money, which the node picks (Cloud.js), listed only while the node's
+    // providers say they could make one (askOffers): a step in to the same
+    // places as the In rows, those another machine knows by name, each
+    // started by that name. Its drawer says the cheapest machine's price
+    // by the hour, where a provider gives one.
+    function inTheCloud() {
+        const words = Words.of("agents:start-new-work:cloud");
+        const cheapest = Cloud.cheapest(provider.cloudOffers);
+        const tells = words.tells ?? {};
+        const body = cheapest === null ? tells.holding ?? ""
+            : String(tells.costs ?? "").replace("{hourly}", () => cheapest.hourly)
+                .replace("{currency}", () => cheapest.currency);
+        return thingRow({
+            key: "agents:start-new-work:cloud",
+            name: Words.name("agents:start-new-work:cloud"),
+            thing: true,
+            drawer: () => ({
+                eyebrow: (Words.field.drawer ?? {}).place ?? "",
+                title: Words.name("agents:start-new-work:cloud"),
+                body: body
+            }),
+            glyph: Theme.glyph.elsewhere,
+            hue: "action"
+        }, () => Cloud.wheres(startWheres(), startPlaces).map(one => newWorkAct("cloud",
+            one.folder, Words.name("verb:agents:start-new-work:cloud")
+                .replace("{folder}", () => one.name), one.start)));
+    }
+
+    // One of Start New Work's acts: `id` link, in or cloud, at `folder` where
+    // one is given, as `name`, sprouting in `start`, the folder unless said,
+    // and `on` where it starts elsewhere: "cloud", or a machine by its name
+    // (Cloud.ask). In the Cloud's acts start in the cloud, each at a place's
+    // name, read again at Return as an In act's start is.
     // Keyed by its folder, never its start, so a list of places landing
     // while Joel is on a row that changes how it starts (a quest's folder
     // found to be a zone) leaves him on the same row, not a dimmed one. Its
     // start is read again at Return, so a field entered before the list
     // landed starts as the row now says.
-    function newWorkAct(id, folder, name, start) {
+    function newWorkAct(id, folder, name, start, on) {
         const key = folder === "" ? `verb:agents:start-new-work:${id}`
             : `verb:agents:start-new-work:${id}:${folder}`;
+        const elsewhere = id === "cloud" ? "cloud" : String(on ?? "");
         return thing({
             key: key,
             verb: Words.verb(`verb:agents:start-new-work:${id}`),
@@ -1830,7 +1865,8 @@ Provider {
             taken: () => provider.underWay(key),
             since: () => provider.underWay(key) ? provider.sproutSince : 0,
             given: said => provider.sprout(key, said, start === undefined ? folder
-                : Wheres.startAt(startWheres(), folder, start))
+                : Wheres.startAt(id === "cloud" ? Cloud.wheres(startWheres(), startPlaces)
+                    : startWheres(), folder, start), elsewhere)
         });
     }
 
@@ -1840,14 +1876,26 @@ Provider {
     // session it came from by its quest's name where one here has that
     // address (Sprouting.offered); or null where it offers no plain words.
     // Its act starts nothing until Joel's own Return (sprout's fromJoel).
-    function newWorkFor(words, from) {
+    // `on` says where the link's page would start it: "" where it's left to
+    // the node, "cloud", or a machine by its name, which its act's name says.
+    function newWorkFor(words, from, on) {
         const offer = Sprouting.offered(words, from, address => {
             const session = heldAt(address);
             return session === null ? null : Sessions.named(session).title;
         });
         if (offer === null)
             return null;
-        const act = newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"));
+        const said = sproutWords();
+        const where = Cloud.onOf(on);
+        const elsewhere = where === null ? "" : where.needs !== undefined ? "cloud"
+            : where.on ?? "";
+        const suffix = elsewhere === "" ? "" : elsewhere === "cloud" ? said.inTheCloud ?? ""
+            : String(said.onMachine ?? "").replace("{machine}", () => elsewhere);
+        const link = Words.name("verb:agents:start-new-work:link");
+        // A misshaped `on` still fills the field, so Joel sees what the page
+        // offered, but its Return is refused (Cloud.ask refuses "-").
+        const act = newWorkAct("link", "", suffix === "" ? link : `${link}, ${suffix}`,
+            undefined, where === null ? "-" : elsewhere);
         // Fresh words, so how the last start ended is no longer theirs to show,
         // unless one is still starting.
         if (sprouting !== act.key)
@@ -1888,7 +1936,10 @@ Provider {
         sproutMarked = Object.assign({}, sproutMarked,
             { [key]: text ? mark ?? "failed" : "" });
     }
-    function sprout(key, said, folder) {
+    // `on` is "" for work started here, or where it starts elsewhere:
+    // "cloud", or a machine by its name (Cloud.ask).
+    function sprout(key, said, folder, on) {
+        const elsewhere = String(on ?? "");
         const words = Words.of("agents:start-new-work").said ?? {};
         // Asked from outside, or with no launcher to say whose Return it
         // was, it starts nothing (Sprouting.fromJoel).
@@ -1916,9 +1967,12 @@ Provider {
                 + `asked at ${StartSaid.clock(again)}`);
             return;
         }
-        const ask = Sprouting.ask(said, folder);
+        const ask = elsewhere === "" ? Sprouting.ask(said, folder)
+            : Cloud.ask(said, folder, elsewhere);
         if (ask === null) {
-            const why = Sprouting.refused(said, folder, words);
+            const why = elsewhere === "" || Sprouting.ask(said, "") === null
+                ? Sprouting.refused(said, elsewhere === "" ? folder : "", words)
+                : Cloud.refused(folder, words);
             sproutSays(key, why);
             sproutReaches({ started: false, why: why });
             return;
@@ -1935,7 +1989,11 @@ Provider {
             if (sprouts === sprout)
                 sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
         });
-        sproutSays(key, words.starting, "running");
+        sproutSays(key, elsewhere === "" ? words.starting : elsewhere === "cloud"
+            ? words.startingCloud : String(words.startingOn ?? "")
+                .replace("{machine}", () => elsewhere), "running");
+        // Work elsewhere may wait on a machine being made (Cloud.PATIENCE_MS).
+        sproutPatience.interval = elsewhere === "" ? Sprouting.PATIENCE_MS : Cloud.PATIENCE_MS;
         sproutPatience.restart();
         const token = Sprouting.token(Date.now(), Math.random());
         sproutTokens[token] = "asking";
@@ -2180,6 +2238,39 @@ Provider {
                 console.info(`launcher: no places to start in: ${heard.journal}`);
         });
     }
+    // What the node's providers say they could make, as the agents daemon's
+    // offers.rs last heard it (Cloud.heard), so In the Cloud is listed only
+    // where a machine can be had. A provider's program runs for each ask,
+    // for up to half a minute, so it's asked at an opening only once the
+    // last answer is ten minutes old (Cloud.stale), one ask out at a time;
+    // where it can't say, the last offers stay, why journalled once as each
+    // new why comes. New offers, or none where there were some, draw
+    // Start New Work's rows again.
+    property var cloudOffers: []
+    property real cloudOffersAt: 0
+    property string cloudUnoffered: ""
+    property bool cloudAsking: false
+    function askOffers() {
+        const daemon = rowsKind ?? null;
+        if (daemon === null || provider.cloudAsking
+                || !Cloud.stale(provider.cloudOffersAt, Date.now()))
+            return;
+        provider.cloudAsking = true;
+        daemon.ask({ ask: "offers" }, answer => {
+            provider.cloudAsking = false;
+            const heard = Cloud.heard(provider.cloudUnoffered, answer);
+            if (heard.offers !== null) {
+                provider.cloudOffersAt = Date.now();
+                if (Wheres.differs(provider.cloudOffers, heard.offers)) {
+                    provider.cloudOffers = heard.offers;
+                    provider.changed();
+                }
+            }
+            provider.cloudUnoffered = heard.unoffered;
+            if (heard.journal !== null)
+                console.info(`launcher: the cloud offers nothing known: ${heard.journal}`);
+        });
+    }
     // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
     // node's places, a big repository's zones among them.
     function startWheres() {
@@ -2418,8 +2509,10 @@ Provider {
         function onOpenChanged() {
             provider.wrapAhead();
             provider.wrapForTyping();
-            if (provider.launcher.open)
+            if (provider.launcher.open) {
                 provider.askPlaces();
+                provider.askOffers();
+            }
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";

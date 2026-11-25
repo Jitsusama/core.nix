@@ -4463,6 +4463,12 @@
     gives a row picked before the places land the start it says once they have, found by its own
     folder alone, else the start it was made with
   '';
+  start-new-work-goes-to-the-cloud = ''
+    Start New Work offers In the Cloud only once the node's providers say they could make a
+    machine, its price the cheapest in one currency; lists only the places another machine knows
+    by name, a zone's path or a checkout's last step, each once; and asks a sprout that needs the
+    cloud, or names a machine by one plain word, refusing a place or a machine it couldn't say
+  '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
     and Let Them Start asks only on Joel's own Return, never a walk from outside or with no
