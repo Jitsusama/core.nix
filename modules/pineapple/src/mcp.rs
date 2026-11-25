@@ -52,8 +52,9 @@ const FAILING: u16 = 400;
 const SERVER_FAILING: u16 = 500;
 
 /// HTTP's word for a caller that has asked too often, and for a server
-/// that can't take a request now, each passing and each sure to have
-/// done nothing.
+/// that can't take a request now, each passing. The first is sure to have
+/// done nothing; the second only before a tool is asked, as a proxy may
+/// say it of a call it passed on before the connection behind it went.
 const TOO_MANY: u16 = 429;
 const UNAVAILABLE: u16 = 503;
 
@@ -190,8 +191,19 @@ impl Gateway {
         let mut refused = false;
         let mut forgotten = false;
         loop {
-            // Nothing fails opening a session after the tool was asked.
+            // Nothing fails opening a session after the tool was asked, so a
+            // gateway unreached or failing its opening asked nothing. A
+            // failing that names a sign-in refused is still said as one, so
+            // the reader tells Joel of the sign-in, and an answer that isn't
+            // JSON-RPC as one that can't be read.
             let opened = self.open().map_err(|called| match called {
+                Called::Failed(why)
+                    if !why
+                        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                        .any(crate::deaf::refuses_the_sign_in) =>
+                {
+                    Called::NotReached(why)
+                }
                 Called::Unreachable(why) => Called::NotReached(why),
                 called => called,
             })?;
@@ -325,10 +337,11 @@ impl Gateway {
                 Called::Unreachable(format!("couldn't read the gateway's answer: {error}"))
             })?;
             // A gateway that's down or busy passes, whatever its page holds,
-            // as a spent rate does in deaf.rs; one saying it took nothing
-            // did nothing.
+            // as a spent rate does in deaf.rs. One saying it took nothing
+            // did nothing, as does one saying it can't take a session's
+            // opening; one saying so of a tool's call may have passed it on.
             let why = format!("the gateway answered {status}");
-            if status == TOO_MANY || status == UNAVAILABLE {
+            if status == TOO_MANY || (status == UNAVAILABLE && method != "tools/call") {
                 return Err(Called::NotReached(why));
             }
             if status >= SERVER_FAILING {

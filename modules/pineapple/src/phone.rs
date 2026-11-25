@@ -213,23 +213,24 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> {
     let ask = |gateway: &mut Gateway, alert| {
         let said = unmentioned(&text(alert));
-        gateway
-            .call(TO_SELF, &json!({ "message": &said }))
-            .map(|_| said)
+        let called = gateway.call(TO_SELF, &json!({ "message": &said }));
+        (said, called)
     };
-    let sent = match ask(gateway, alert) {
-        Err(Called::Failed(why)) if spent(&why) => Err(Called::NotReached(why)),
-        Err(Called::Failed(_)) if !alert.words.is_empty() => {
+    let (said, sent) = match ask(gateway, alert) {
+        (said, Err(Called::Failed(why))) if spent(&why, &said) => {
+            (said, Err(Called::NotReached(why)))
+        }
+        (_, Err(Called::Failed(_))) if !alert.words.is_empty() => {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
                 ..alert
             };
             ask(gateway, plain)
         }
-        sent => sent,
+        asked => asked,
     };
-    sent.map_err(|called| match called {
-        Called::Failed(why) if spent(&why) => Missed::NotSent(why),
+    sent.map(|_| said.clone()).map_err(|called| match called {
+        Called::Failed(why) if spent(&why, &said) => Missed::NotSent(why),
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
             Missed::Unsure(why)
         }
@@ -239,10 +240,24 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
     })
 }
 
-/// Whether a tool's failing says Slack's rate was spent, which did nothing.
-fn spent(why: &str) -> bool {
-    let why = why.to_ascii_lowercase();
-    why.contains("ratelimited") || why.contains("rate limit")
+/// Whether a tool's failing says Slack's rate was spent, which did nothing:
+/// either of Slack's words for it, `ratelimited` and `rate_limited`, or
+/// HTTP's or a person's. Each line of what was `sent` is taken out first,
+/// as a failing may quote what it refused, so nobody can hold an alert
+/// back by saying "rate limit" in words the gateway won't take.
+fn spent(why: &str, sent: &str) -> bool {
+    let mut why = why.to_ascii_lowercase();
+    for line in sent
+        .to_ascii_lowercase()
+        .lines()
+        .filter(|line| !line.is_empty())
+    {
+        why = why.replace(line, "");
+    }
+    why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(|word| word == "ratelimited" || word == "rate_limited")
+        || why.contains("rate limit")
+        || why.contains("too many requests")
 }
 
 /// The words that mention everyone said so they don't, as the gateway
@@ -422,9 +437,31 @@ mod tests {
 
     #[test]
     fn only_a_rate_spent_is_said_as_spent() {
-        assert!(spent("Slack said: ratelimited"), "Slack's own word");
-        assert!(spent("Rate limit exceeded"), "in other words");
-        assert!(!spent("Slack said: not_allowed"), "a refusal is no rate");
+        assert!(spent("Slack said: ratelimited", ""), "Slack's own word");
+        assert!(spent("Slack said: rate_limited", ""), "Slack's other word");
+        assert!(spent("Rate limit exceeded", ""), "in other words");
+        assert!(spent("429 Too Many Requests", ""), "in HTTP's");
+        assert!(
+            !spent("Slack said: not_allowed", ""),
+            "a refusal is no rate"
+        );
+        let sent = text(Alert {
+            title: "Someone stopped your agents",
+            words: "we hit the rate limit",
+            link: "l",
+        });
+        assert!(
+            !spent(&format!("refused: {sent}"), &sent),
+            "a refusal quoting what was sent is no rate"
+        );
+        assert!(
+            !spent("refused: Said: \"we hit the rate limit\"", &sent),
+            "nor one quoting a line of it"
+        );
+        assert!(
+            spent(&format!("{sent}: ratelimited"), &sent),
+            "a rate spent quoting what was sent is still one"
+        );
     }
 
     #[test]
