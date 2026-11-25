@@ -19,7 +19,8 @@ onLinux {
   desk-facts-read-the-desk =
     pkgs.runCommandCC "desk-facts-read-the-desk" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
-        rustc --edition 2024 --test -D warnings -o tests ${./facts.rs}
+        rustc --edition 2024 --test -D warnings -o tests \
+          ${import ./source.nix { inherit (pkgs) lib; }}/facts.rs
         ./tests
         touch $out
       '';

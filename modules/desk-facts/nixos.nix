@@ -13,7 +13,7 @@
 # the machine, keeps them as JSON in $XDG_RUNTIME_DIR/desk, one file a kind,
 # rewriting a file only when a uevent, a sound device opening or closing, a
 # jack, a camera's holders changing or a monitor's facts being kept alters
-# what it says; facts.rs says how. The Pebble X Plus's lighting it reads
+# what it says; facts.rs and the files beside it say how. The Pebble X Plus's lighting it reads
 # from what pebble-lights writes (../creative-pebble-x-plus), who streams
 # from /run/camera-holders (../usb-camera-holders), and which loopback
 # camera is which, and its sensor, from v4l2loopback's holders, where that
@@ -41,7 +41,8 @@ let
   # The standard library alone, so it builds with rustc and no crates.
   facts = pkgs.runCommandCC "desk-facts" { nativeBuildInputs = [ pkgs.rustc ]; } ''
     mkdir -p $out/bin
-    rustc --edition 2024 -C opt-level=3 -D warnings -o $out/bin/desk-facts ${./facts.rs}
+    rustc --edition 2024 -C opt-level=3 -D warnings -o $out/bin/desk-facts \
+      ${import ./source.nix { inherit lib; }}/facts.rs
   '';
 in
 {
