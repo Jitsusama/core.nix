@@ -134,7 +134,7 @@ def test_the_forage_page_draws_every_cell_live(forage_page: Page) -> None:
     says_it_stands(forage_page, "live")
     every_cell_drawn(forage_page)
     expect(forage_page.locator("#headline"), "the headline didn't count the cells").to_have_text(
-        "4 cells, 1 without purpose."
+        "4 cells here at work on a quest, 1 without purpose."
     )
     expect(forage_page.locator("#substrate"), "the page didn't say where they stand").to_have_text(
         "kestrel"
@@ -404,7 +404,7 @@ def test_a_purpose_written_and_cells_gone_are_followed(
     # A change carries only what moved, as the node sends it.
     mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": WRITTEN}])
     expect(headline, "a purpose written wasn't followed").to_have_text(
-        "4 cells, each with its purpose.", timeout=PACE_MS
+        "4 cells here at work on a quest, each with its purpose.", timeout=PACE_MS
     )
     expect(cell(forage_page, "OSPREY"), "OSPREY's purpose wasn't drawn as words").to_contain_text(
         WRITTEN
@@ -417,7 +417,7 @@ def test_a_purpose_written_and_cells_gone_are_followed(
         0, timeout=PACE_MS
     )
     expect(headline, "the count didn't follow the cell going").to_have_text(
-        "3 cells, each with its purpose."
+        "3 cells here at work on a quest, each with its purpose."
     )
     # Once every cell has gone, the floor holds the crest again rather than cells gone.
     mycelium_node.tell("forage", gone=["forage:KESTRL", "forage:SKIFFS", "forage:OSPREY"])

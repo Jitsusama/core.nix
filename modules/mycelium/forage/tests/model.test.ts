@@ -183,20 +183,21 @@ it("what can't be read is said, and the rest still drawn", () => {
   assert.deepEqual(unread, ["forage:NONAME named no cell", "1 of KESTRL's documents had no id"]);
 });
 
-it("the headline says how many cells, and how many have no purpose written", () => {
+it("the headline says how many cells here work on a quest, and how many have no purpose", () => {
   const { forages } = foragesOf(told([forage("KESTRL"), forage("OSPREY", { purpose: "" })]));
   assert.deepEqual(headline(forages), {
     cells: 2,
     without: 1,
-    lead: "2 cells,",
+    lead: "2 cells here at work on a quest,",
     turn: "1 without purpose.",
   });
+  assert.equal(headline(forages.slice(0, 1)).lead, "One cell here at work on a quest,");
   assert.equal(headline(forages.slice(0, 1)).turn, "with its purpose.");
   assert.equal(headline(forages.slice(1)).turn, "without purpose.");
   assert.deepEqual(headline([]), {
     cells: 0,
     without: 0,
-    lead: "No cells",
+    lead: "No cells here",
     turn: "at work on a quest.",
   });
 });
@@ -207,7 +208,10 @@ it("the headline sets a count's thousands apart", () => {
   );
   const { forages } = foragesOf(told(cells));
   const said = headline(forages);
-  assert.equal(`${said.lead} ${said.turn}`, "3,000 cells, 1,200 without purpose.");
+  assert.equal(
+    `${said.lead} ${said.turn}`,
+    "3,000 cells here at work on a quest, 1,200 without purpose.",
+  );
 });
 
 it("the lede names the cells with no purpose, then the plan furthest from done", () => {
