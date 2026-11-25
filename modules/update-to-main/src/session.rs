@@ -166,8 +166,8 @@ fn kept(path: &Path, most: u64) -> Option<String> {
 /// lines of its own, a job that didn't end above all, is told with the
 /// last lines the job had said by then, the newest nearest what it waited
 /// on; or that it had written nothing, which points to a prompt rather
-/// than Nix; or, when neither of its files is there, that it may never
-/// have started. On 24 November three that waited an hour each left only
+/// than Nix; or, when neither of its files is there, that it left none,
+/// which a job that never started leaves too. On 24 November three that waited an hour each left only
 /// "didn't end", and whether they waited on a prompt or on Nix couldn't be
 /// read afterwards. A failure with lines of its own, as launchctl's
 /// refusal to start the job, keeps them.
@@ -187,10 +187,7 @@ fn said_by(
         Err(failure) if failure.lines.is_empty() => {
             let lines = last(&said);
             let why = if out.is_none() && err.is_none() {
-                format!(
-                    "{}, the job having left no files, so it may never have started",
-                    failure.why
-                )
+                format!("{}, the job having left no output or errors", failure.why)
             } else if lines.is_empty() {
                 format!("{}, the job having written nothing", failure.why)
             } else {
@@ -505,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn a_job_that_didnt_end_having_left_no_files_may_never_have_started() {
+    fn a_job_that_didnt_end_having_left_no_files_says_so() {
         let folder = tempfile::tempdir().unwrap();
         let (out, err) = (
             kept(&folder.path().join(OUT), KEPT),
@@ -519,12 +516,12 @@ mod tests {
         );
         assert_eq!(
             told.unwrap_err().why,
-            "didn't end, the job having left no files, so it may never have started"
+            "didn't end, the job having left no output or errors"
         );
     }
 
     #[test]
-    fn a_job_whose_status_cant_be_read_is_told_with_what_it_said() {
+    fn a_job_whose_status_isnt_a_number_is_told_with_what_it_said() {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join(STATUS), "x\n").unwrap();
         let ended = wait(folder.path(), "fetching", WITHIN);
@@ -535,6 +532,22 @@ mod tests {
                 "fetching in the login session ended saying \"x\\n\"",
                 lines(&["said"])
             )
+        );
+    }
+
+    #[test]
+    fn a_jobs_status_is_read_only_to_its_last_bytes() {
+        let folder = tempfile::tempdir().unwrap();
+        let kept = usize::try_from(STATUS_KEPT).unwrap();
+        fs::write(folder.path().join(STATUS), "y".repeat(kept + 1)).unwrap();
+        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
+        assert_eq!(
+            told.why,
+            format!(
+                "fetching in the login session ended saying {:?}",
+                "y".repeat(kept)
+            ),
+            "a status was read past its last {kept} bytes"
         );
     }
 
@@ -639,7 +652,8 @@ mod tests {
         let elsewhere = folder.path().join("elsewhere");
         fs::write(&elsewhere, "0\n").unwrap();
         std::os::unix::fs::symlink(&elsewhere, folder.path().join(STATUS)).unwrap();
-        let told = wait(folder.path(), "fetching", WITHIN).unwrap_err();
+        // No wait, so a refusal taken as not yet there fails at once.
+        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
         assert!(
             told.why
                 .starts_with("fetching in the login session left its status unread:"),
@@ -655,7 +669,7 @@ mod tests {
         // SAFETY: `path` is a C string this frame owns.
         let made = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
         assert_eq!(made, 0, "no pipe made");
-        let told = wait(folder.path(), "fetching", WITHIN).unwrap_err();
+        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
         assert_eq!(
             told.why,
             "fetching in the login session left its status unread: it isn't a plain file"
