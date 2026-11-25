@@ -373,11 +373,44 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
 # the focus the secret copy's phase needs.
 WALLS_HOLD = "WALLS HOLD: "
 FOCUSED = "FOCUSED: "
+READ = "READ: "
 # Where the script's words are kept as it runs, so a run cut off at the
 # timeout still says which phases held: Joel's runtime folder, his alone.
 X11_SAID = "$XDG_RUNTIME_DIR/x11-fence-said"
 # The script bounds its waits to about two minutes; this leaves it room.
-X11_ENDING = timedelta(minutes=3)
+X11_ENDING = timedelta(minutes=4)
+# Where the script stops at a step of the satellite's, by the line that
+# step says once it holds and the failure it ends with where it doesn't.
+# Those are the focus subtest's to fail while the satellite's stall is
+# quarantined, and every other failure is the fence subtest's.
+SATELLITE_STEPS = (
+    (FOCUSED, "FAIL: niri focused no X11 window"),
+    (READ, "FAIL: Joel's own X11 client didn't read his copy"),
+)
+
+
+def fence_failure(said: str) -> str | None:
+    """Say how the fence's walls weren't shown to hold in what the script said, or None.
+
+    The walls are tried before the satellite's steps and again after both, so a run that
+    stopped at one of those steps, by that step's own failure, proves the walls it reached.
+    The failure is found by its words, not where it falls, so lines another program wrote
+    can't stand in for it; the script's end is the line written after it ended.
+    """
+    lines = said.rstrip().splitlines()
+    if not any(line.startswith(WALLS_HOLD) for line in lines):
+        return "the fence's walls weren't shown to hold"
+    ended = lines[-1]
+    if ended == "ended 0":
+        return None
+    failures = [line for line in lines if line.startswith("FAIL: ")]
+    for mark, failure in SATELLITE_STEPS:
+        if not any(line.startswith(mark) for line in lines):
+            stopped = (
+                ended == "ended 1" and failures[-1:] != [] and failures[-1].startswith(failure)
+            )
+            return None if stopped else "the walls held, then the script failed otherwise"
+    return "the fence let X11 through"
 
 
 def said_line(said: str, mark: str) -> bool:
@@ -402,12 +435,16 @@ def x11_fence_said(desktop: Desktop) -> str:
         # has it.
         # Its waits run on the guest's clock, so they're stretched by the
         # host's busyness as as_account stretches the wait for its end.
+        # The one pace, read once, stretches both, so the script's waits
+        # always end inside the time given for its end.
         pace = math.ceil(vm_helpers.pace(vm_helpers.busyness()))
-        return desktop.as_account(
-            f"X11_PACE={pace} pi-fence-keeps-x11-from-secrets > {X11_SAID} 2>&1;"
-            f" echo ended $? >> {X11_SAID};"
-            f" cat {X11_SAID}",
-            timeout=X11_ENDING,
+        return desktop.machine.succeed(
+            desktop.in_session(
+                f"X11_PACE={pace} pi-fence-keeps-x11-from-secrets > {X11_SAID} 2>&1;"
+                f" echo ended $? >> {X11_SAID};"
+                f" cat {X11_SAID}"
+            ),
+            timeout=X11_ENDING * pace,
         )
     except Exception as error:  # noqa: BLE001 # Said by the subtests that read it.
         so_far = desktop.diagnosis(f"cat {X11_SAID} 2>&1 || true")
@@ -425,10 +462,10 @@ def test_an_x11_window_of_joels_takes_the_focus(desktop: Desktop) -> None:
         f"the walls weren't shown to hold, so the focus went untried: {said}"
     )
     assert said_line(said, FOCUSED), f"no X11 window was seen to take the focus: {said}"
-    # The secret copy's phase follows the focus, so it's this subtest's
-    # too, and listed while the satellite's stall is: a run where focus
-    # came and the copy's phase failed on the fence fails the next one as
-    # well, so the quarantine excuses only a run whose focus never came.
+    assert said_line(said, READ), f"Joel's own X11 client didn't read his copy: {said}"
+    # The secret copy's walls follow, so it's this subtest's too: a run
+    # whose walls failed there fails the next one as well, so the
+    # quarantine excuses only a run stopped at one of the satellite's steps.
     assert said.rstrip().endswith("ended 0"), f"the secret copy's phase didn't end clean: {said}"
 
 
@@ -437,22 +474,10 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
     said = x11_fence_said(desktop)
     # The walls are tried before any window takes the focus, so this
     # proves them in every run, and fails in every run they let X through.
-    assert said_line(said, WALLS_HOLD), f"the fence's walls weren't shown to hold: {said}"
-    if said_line(said, FOCUSED):
-        # Past the focus, the walls are tried again with a secret copy on
-        # the clipboard, and any failure there is this one's to say.
-        assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
-    else:
-        # The focus is the quarantined subtest's to fail, so this one
-        # takes only that ending as the script's own, never another.
-        # Refusing a connection owes nothing to what the clipboard holds,
-        # so the walls above are proven with or without the copy.
-        # Padded, so a script that said too little fails the checks below.
-        failed, ended = ["", "", *said.rstrip().splitlines()][-2:]
-        assert failed.startswith("FAIL: niri focused no X11 window"), (
-            f"the walls held, then the script failed on something other than the focus: {said}"
-        )
-        assert ended == "ended 1", f"the script ended otherwise than its failure: {said}"
+    # Refusing a connection owes nothing to what the clipboard holds, so
+    # the walls are proven with or without the copy.
+    failure = fence_failure(said)
+    assert failure is None, f"{failure}: {said}"
 
 
 # A binding that throws or assigns the wrong type only warns, and
