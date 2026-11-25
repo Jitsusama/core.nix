@@ -59,7 +59,7 @@ use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure};
 
 use tuple_call::Held;
-use tuple_call::ask::{self, Act, refused};
+use tuple_call::ask::{self, Act, refused, unanswered};
 
 /// The daemon as its clients know it: Tuple's, keeping the one call.
 const DOMAIN: Domain = Domain {
@@ -638,8 +638,14 @@ fn acts(shared: &Shared, doing: Doing) -> Own {
     Box::new(move |said| ask::act(said).map(|asked| act(&shared, &doing, &asked)))
 }
 
+/// How long an act waits on Tuple's command before answering that it
+/// hasn't answered, so a command that never ends still has its ask told.
+/// Five seconds is far past what Tuple's app takes to answer its command;
+/// the command runs on, and what it does once it ends still counts.
+const ANSWERS_WITHIN: Duration = Duration::from_secs(5);
+
 /// Does one of the call's acts through Tuple's command, answering once
-/// it's done.
+/// it's done, or once `ANSWERS_WITHIN` has passed without it.
 fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     let arguments: Vec<&str> = match asked {
         Act::Join { link } if link.is_empty() => return refused("that isn't a call's link"),
@@ -653,8 +659,28 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
         Act::Accept => vec!["call", "accept"],
         Act::Open => return open(shared, doing),
     };
-    let output = Command::new(&doing.tuple)
-        .args(&arguments)
+    let arguments: Vec<String> = arguments.into_iter().map(str::to_owned).collect();
+    let (answer, answered) = mpsc::channel();
+    let shared = Arc::clone(shared);
+    let tuple = doing.tuple.clone();
+    let asked = asked.clone();
+    std::thread::spawn(move || {
+        // Nobody hears it once the ask was answered as unanswered, which
+        // is why a send that fails is let go.
+        let _ = answer.send(run(&shared, &tuple, &arguments, &asked));
+    });
+    answered.recv_timeout(ANSWERS_WITHIN).unwrap_or_else(|_| {
+        unanswered(&format!(
+            "Tuple hasn't answered in {} seconds",
+            ANSWERS_WITHIN.as_secs()
+        ))
+    })
+}
+
+/// Runs Tuple's command for an act, and answers how it ended.
+fn run(shared: &Shared, tuple: &str, arguments: &[String], asked: &Act) -> Value {
+    let output = Command::new(tuple)
+        .args(arguments)
         .stdin(Stdio::null())
         .output();
     match output {

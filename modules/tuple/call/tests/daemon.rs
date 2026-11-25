@@ -21,8 +21,9 @@ use serde_json::{Value, json};
 /// Tuple's command, in the shell the tests run in: `state follow` says
 /// each line of `stream` in its folder as it's written there, until the
 /// file `ends` appears or the folder goes; any other command is written to `asked`, a line
-/// each, `new` printing the room's link, and `call accept` failing as
-/// Tuple does with nothing ringing.
+/// each, `new` printing the room's link, `call accept` failing as Tuple
+/// does with nothing ringing, and `webcam stop` stalling while the file
+/// `stalls` is there.
 const TUPLE: &str = r#"
 here=$(dirname "$0")
 if [ "$3 $4" = "state follow" ]; then
@@ -44,6 +45,8 @@ echo "$*" >> "$here/asked"
 case "$*" in
   new) echo "Joining https://tuple.app/c/joels-room"; sleep 5 ;;
   "call accept") echo "no call is ringing" >&2; exit 1 ;;
+  # A second past the daemon's five, as a Tuple that answers late would.
+  "webcam stop") if [ -e "$here/stalls" ]; then sleep 6; fi ;;
 esac
 "#;
 
@@ -520,6 +523,33 @@ fn a_camera_stopped_is_off_ahead_of_tuples_stream() {
         .ask(&json!({"id": "off", "ask": "camera", "on": false}));
     assert_eq!(said["done"], true, "the camera's stop: {said}");
     watching.until("Joel's camera stayed on once its stop was done", |record| {
+        record["camera"] == false
+    });
+}
+
+#[test]
+fn a_camera_stop_tuple_is_slow_to_answer_is_told_and_still_counts() {
+    let running = Running::start("stalled", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    let filming = CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    );
+    running.streams(&filming);
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    std::fs::write(running.path("bin/stalls"), "").unwrap();
+    let said = running
+        .client()
+        .ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    assert_eq!(
+        said["error"]["code"], "unanswered",
+        "a stop Tuple hadn't answered wasn't told so: {said}"
+    );
+    watching.until("a stop Tuple did late didn't count", |record| {
         record["camera"] == false
     });
 }
