@@ -58,6 +58,24 @@ const TOO_MANY: u16 = 429;
 /// sign-in wherever it pointed.
 const REDIRECTS: std::ops::Range<u16> = 300..400;
 
+/// Whether `error` came before any connection was made, so nothing was
+/// asked: no host by that name, or none of its addresses taking one, as
+/// ureq's own connector says each.
+#[must_use]
+pub fn never_connected(error: &ureq::Error) -> bool {
+    match error {
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::ConnectionRefused
+                | std::io::ErrorKind::HostUnreachable
+                | std::io::ErrorKind::NetworkUnreachable
+                | std::io::ErrorKind::AddrNotAvailable
+        ),
+        _ => false,
+    }
+}
+
 /// Whether `status` refuses the sign-in given: a 401 or 403, or a
 /// redirect, which is a gateway sending its caller off to sign in again.
 fn refuses(status: u16) -> bool {
@@ -72,8 +90,11 @@ pub enum Called {
     NoSignIn(SignIn),
     /// The gateway refused the sign-in given, twice.
     Refused,
-    /// The gateway couldn't be reached, or its answer couldn't be read
-    /// to its end.
+    /// No connection to the gateway could be made, so nothing it was
+    /// asked was done.
+    NotReached(String),
+    /// The gateway couldn't be reached once asked, or its answer couldn't
+    /// be read to its end, so what it was asked may have been done.
     Unreachable(String),
     /// The gateway answered what isn't JSON-RPC, a cause that lasts.
     Unreadable(String),
@@ -278,9 +299,14 @@ impl Gateway {
         if let Some(session) = &self.session {
             post = post.header(SESSION, session);
         }
-        let mut answer = post
-            .send_json(&request)
-            .map_err(|error| Called::Unreachable(format!("couldn't reach the gateway: {error}")))?;
+        let mut answer = post.send_json(&request).map_err(|error| {
+            let why = format!("couldn't reach the gateway: {error}");
+            if never_connected(&error) {
+                Called::NotReached(why)
+            } else {
+                Called::Unreachable(why)
+            }
+        })?;
         let status = answer.status().as_u16();
         let session = answer
             .headers()

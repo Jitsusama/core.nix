@@ -7,16 +7,21 @@
 //! his own IM: [`OwnIm`] is the one thing [`tell`] sends to, and nothing
 //! makes one but [`own_im`], which asks Slack for the IM with Joel alone
 //! and has Slack's conversations.info say it's an IM and his before it's
-//! trusted, so no caller can name a channel. It says only the alert's fixed form,
-//! [`text`]: who stopped what, the words said, and where. And it sends
-//! from the safe word's own reader, never from an agent or a tool.
+//! trusted, so no caller can name a channel. A reader over a tool gateway
+//! sends by [`tell_self`], through the gateway's one tool that sends a
+//! message from Joel to himself and can name nobody else. Either says only
+//! the alert's fixed form, [`text`]: who stopped what, the words said, and
+//! where. And it sends from the safe word's own reader, never from an
+//! agent or a tool.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 use ureq::Agent;
+
+use crate::mcp::{Called, Gateway, never_connected};
 
 /// How long Slack has to answer before it's given up on.
 const PATIENCE: Duration = Duration::from_secs(10);
@@ -166,10 +171,7 @@ pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Resul
         .map_err(|error| {
             let why = format!("couldn't reach Slack: {error}");
             // Only a connection never made is sure not to have posted.
-            if matches!(
-                error,
-                ureq::Error::HostNotFound | ureq::Error::ConnectionFailed
-            ) {
+            if never_connected(&error) {
                 Missed::NotSent(why)
             } else {
                 Missed::Unsure(why)
@@ -181,6 +183,66 @@ pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Resul
         .read_json()
         .map_err(|error| Missed::Unsure(format!("Slack answered {status}: {error}")))?;
     refused(&took).map_err(|why| Missed::NotSent(format!("Slack answered {status}: {why}")))
+}
+
+/// The gateway's tool that sends a message from Joel to himself, which
+/// takes the message alone and can't be given anyone else to send to.
+const TO_SELF: &str = "slack_send_message_to_self";
+
+/// What's said in place of the words when the gateway won't take them.
+const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
+
+/// Sends one alert to Joel from himself through `gateway`. It refuses a
+/// mention, so `@here`, `@channel` and `@everyone` in what others wrote
+/// are said as `(at)here` and so on; any other refusal of what they wrote
+/// is met by sending it once more with the words left to the link, so
+/// the title and where still reach his phone.
+///
+/// # Errors
+///
+/// Why it didn't go, and whether it may have all the same.
+pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<(), Missed> {
+    let send = |gateway: &mut Gateway, alert| {
+        let message = json!({ "message": unmentioned(&text(alert)) });
+        gateway.call(TO_SELF, &message).map(|_| ())
+    };
+    let sent = match send(gateway, alert) {
+        Err(Called::Failed(_)) if !alert.words.is_empty() => {
+            let plain = Alert {
+                words: WORDS_NOT_TAKEN,
+                ..alert
+            };
+            send(gateway, plain)
+        }
+        sent => sent,
+    };
+    sent.map_err(|called| match called {
+        Called::Unreachable(why) | Called::Unreadable(why) => Missed::Unsure(why),
+        Called::NotReached(why) | Called::Failed(why) => Missed::NotSent(why),
+        Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
+        Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
+    })
+}
+
+/// The words that mention everyone said so they don't, as the gateway
+/// refuses to send a mention: `@` before `here`, `channel` or `everyone`,
+/// in any case, is said as `(at)`.
+fn unmentioned(text: &str) -> String {
+    let mut said = String::with_capacity(text.len());
+    for (at, character) in text.char_indices() {
+        let everyone = || {
+            let rest = text[at + character.len_utf8()..].to_ascii_lowercase();
+            ["here", "channel", "everyone"]
+                .iter()
+                .any(|word| rest.starts_with(word))
+        };
+        if character == '@' && everyone() {
+            said.push_str("(at)");
+        } else {
+            said.push(character);
+        }
+    }
+    said
 }
 
 fn agent() -> Agent {
@@ -313,6 +375,20 @@ mod tests {
              &lt;@U0OTHER001&gt;\"\n\
              Where: https://example.slack.com/archives/C1/p1?thread_ts=1&amp;cid=C1",
             "a masked link, a mention and <!here> come out escaped"
+        );
+    }
+
+    #[test]
+    fn a_mention_of_everyone_is_said_so_the_gateway_takes_it() {
+        assert_eq!(
+            unmentioned("pineapple override @here and @Channel, @everyone; mail joel@example.com"),
+            "pineapple override (at)here and (at)Channel, (at)everyone; mail joel@example.com",
+            "each mention of everyone, in any case, and nothing else"
+        );
+        assert_eq!(
+            unmentioned("ends with @"),
+            "ends with @",
+            "an @ at the end is left"
         );
     }
 

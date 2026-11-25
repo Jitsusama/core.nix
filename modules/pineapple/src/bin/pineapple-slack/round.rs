@@ -379,7 +379,9 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str,
 
 /// Say a reply the rules let through, and whether it counts as said: in
 /// shadow each does, said or not, so the rules are tried as they will be;
-/// out of it, only one Slack took.
+/// out of it, only one Slack took. With no sign-in of Slack's own, as a
+/// reader over a gateway has, none is said, since the gateway sends to
+/// Joel alone.
 fn answer(
     reader: &Reader,
     account: Option<&Account>,
@@ -391,7 +393,10 @@ fn answer(
         return true;
     }
     let Some(account) = account else {
-        eprintln!("<3>no sign-in to say a reply with: {}", message.link);
+        eprintln!(
+            "<5>a reply isn't said, as the gateway sends to Joel alone: {}",
+            message.link
+        );
         return false;
     };
     let Some(post) = post else {

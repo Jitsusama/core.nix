@@ -1,16 +1,22 @@
 //! Joel's phone, told each alert the launcher's daemon writes down, in its
 //! one form, in his own note-to-self IM in Slack and nowhere else
-//! (src/phone.rs), once each, kept in phoned.jsonl. Only the reader over
-//! Slack's own API tells it, as only that one holds a sign-in that writes.
+//! (src/phone.rs), once each, kept in phoned.jsonl: by the reader over
+//! Slack's own API in the IM it finds for him alone, or by the reader over
+//! a tool gateway through its one tool that sends to Joel himself.
 
 use std::path::Path;
 
+use pineapple::mcp::Gateway;
 use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
 use pineapple::record;
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 
 use crate::{LOOK_BACK, MILLIS, millis};
+
+/// What phoned.jsonl names as where an alert went through a gateway: his
+/// own IM, which the gateway finds and never names.
+const TO_SELF: &str = "self";
 
 /// Where Joel's phone is told: his own IM, once it's found.
 pub struct Phone {
@@ -28,13 +34,7 @@ pub struct Phone {
 /// last ten minutes and his phone wasn't told yet. One Slack didn't take
 /// is tried again next round, until it's ten minutes old.
 pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
-    let phoned = state.join("phoned.jsonl");
-    let told = done(&lines(&phoned));
-    let since = millis().saturating_sub(LOOK_BACK * MILLIS);
-    let new: Vec<Value> = lines(&state.join("would-tell.jsonl"))
-        .into_iter()
-        .filter(|line| line["at"].as_u64().unwrap_or(0) >= since && !told.contains(&told_as(line)))
-        .collect();
+    let new = untold(state);
     if phone.own.is_none() && (!phone.looked || !new.is_empty()) {
         phone.looked = true;
         match phone::own_im(&phone.origin, slack, account) {
@@ -45,9 +45,50 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
             Err(why) => eprintln!("<4>Joel's own IM wasn't found, so his phone isn't told: {why}"),
         }
     }
-    if new.is_empty() {
-        return;
-    }
+    let Phone {
+        origin,
+        own,
+        shadow,
+        ..
+    } = &*phone;
+    let im = own.as_ref().map(OwnIm::id);
+    tell_each(*shadow, state, new, im, |alert| {
+        own.as_ref()
+            .map(|own| phone::tell(origin, account, own, alert))
+    });
+}
+
+/// Tells Joel's phone, as [`tell`] does out of shadow, through `gateway`,
+/// whose tool sends to him alone, so no IM is looked for. A reader over a
+/// gateway in shadow tells no phone, so never calls it.
+pub fn tell_through(gateway: &mut Gateway, state: &Path) {
+    tell_each(false, state, untold(state), Some(TO_SELF), |alert| {
+        Some(phone::tell_self(gateway, alert))
+    });
+}
+
+/// The alerts the launcher's daemon wrote down in the last ten minutes
+/// that Joel's phone wasn't told yet.
+fn untold(state: &Path) -> Vec<Value> {
+    let told = done(&lines(&state.join("phoned.jsonl")));
+    let since = millis().saturating_sub(LOOK_BACK * MILLIS);
+    lines(&state.join("would-tell.jsonl"))
+        .into_iter()
+        .filter(|line| line["at"].as_u64().unwrap_or(0) >= since && !told.contains(&told_as(line)))
+        .collect()
+}
+
+/// Tells each of `new` by `send`, which says nothing where there's
+/// nowhere yet to send, and keeps a line in phoned.jsonl for each told,
+/// written down in shadow, or that may have gone, as `im` names where.
+fn tell_each(
+    shadow: bool,
+    state: &Path,
+    new: Vec<Value>,
+    im: Option<&str>,
+    mut send: impl FnMut(Alert) -> Option<Result<(), Missed>>,
+) {
+    let phoned = state.join("phoned.jsonl");
     for line in new {
         let field = |name: &str| line[name].as_str().unwrap_or_default().to_owned();
         let (title, words, link) = (field("title"), field("words"), field("link"));
@@ -56,27 +97,26 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
             words: &words,
             link: &link,
         };
-        let shadow = phone.shadow || line["shadow"] != false;
-        let sent = match (&phone.own, shadow) {
-            (_, true) => {
-                eprintln!("<5>Joel's phone, in shadow: {link}");
-                json!(false)
-            }
-            (Some(own), false) => match phone::tell(&phone.origin, account, own, alert) {
-                Ok(()) => {
+        let shadow = shadow || line["shadow"] != false;
+        let sent = if shadow {
+            eprintln!("<5>Joel's phone, in shadow: {link}");
+            json!(false)
+        } else {
+            match send(alert) {
+                Some(Ok(())) => {
                     eprintln!("<5>Joel's phone was told: {link}");
                     json!(true)
                 }
-                Err(Missed::NotSent(why)) => {
-                    eprintln!("<3>Slack didn't take Joel's phone alert: {why}");
+                Some(Err(Missed::NotSent(why))) => {
+                    eprintln!("<3>Joel's phone alert didn't go, so it's tried again: {why}");
                     continue;
                 }
-                Err(Missed::Unsure(why)) => {
+                Some(Err(Missed::Unsure(why))) => {
                     eprintln!("<4>Joel's phone alert may have gone: {why}");
                     json!(UNSURE)
                 }
-            },
-            (None, false) => continue,
+                None => continue,
+            }
         };
         let one = json!({
             "at": millis(),
@@ -84,7 +124,7 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
             "saying": line["saying"],
             "shadow": shadow,
             "sent": sent,
-            "im": phone.own.as_ref().map(OwnIm::id),
+            "im": im,
             "text": phone::text(alert),
         });
         if let Err(error) = record::append(&phoned, &one) {

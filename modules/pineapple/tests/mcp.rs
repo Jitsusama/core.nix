@@ -662,7 +662,7 @@ fn a_gateway_passing_on_slacks_refusal_counts_as_refused() {
 }
 
 #[test]
-fn a_gateway_not_there_is_unreachable() {
+fn a_gateway_not_there_is_not_reached() {
     let dir = scratch("unreachable");
     let port = TcpListener::bind("127.0.0.1:0")
         .and_then(|listener| listener.local_addr())
@@ -671,9 +671,9 @@ fn a_gateway_not_there_is_unreachable() {
     assert!(
         matches!(
             gateway.call("slack_who_am_i", &json!({})),
-            Err(Called::Unreachable(_))
+            Err(Called::NotReached(_))
         ),
-        "a gateway nobody answers for is said as unreachable"
+        "a gateway nobody answers for is said as not reached, so nothing it was asked was done"
     );
     let _ = fs::remove_dir_all(&dir);
 }

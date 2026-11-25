@@ -4,8 +4,9 @@
 //! many rounds find it, in a folder of its own; the gateway is asked only
 //! to read, both searches in their detailed form; Slack's own API is never
 //! asked, nor Joel's phone told; a gateway that can't be signed in to
-//! writes its row of what waits in its own folder; and the reader refuses
-//! to go live over one.
+//! writes its row of what waits in its own folder; and the reader needs
+//! both the gateway and its sign-in. Live, it takes the live reader's
+//! place (gateway/live.rs).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -24,6 +25,7 @@ use super::{
 };
 
 mod cut;
+mod live;
 mod pages;
 mod unread;
 
@@ -717,18 +719,8 @@ fn ran(args: &[&str]) -> (Option<i32>, String) {
 }
 
 #[test]
-fn a_reader_over_a_gateway_is_never_live_and_needs_its_sign_in() {
+fn a_reader_over_a_gateway_needs_its_sign_in() {
     let url = "http://127.0.0.1:9/mcp";
-    let (code, said) = ran(&["--live", "--gateway", url, "--gateway-sign-in", "x"]);
-    assert_eq!(
-        code,
-        Some(64),
-        "live over a gateway is asked wrongly: {said}"
-    );
-    assert!(
-        said.contains("--live isn't taken with --gateway"),
-        "it says why: {said}"
-    );
     for half in [["--gateway", url], ["--gateway-sign-in", "x"]] {
         let (code, said) = ran(&half);
         assert_eq!(code, Some(64), "{half:?} alone is asked wrongly: {said}");
