@@ -176,7 +176,8 @@ impl Store {
                      [ -e \"$p/lingers\" ] || rm -r \"$p\"\n\
                    done ;;\n\
                  'store gc') shift 2; echo \"gc $* {policy}\" >> {log} ;;\n\
-                 'config show') [ \"$3\" = min-free ] || exit 9; cat {min_free} ;;\n\
+                 'config show') [ \"$3\" = min-free ] || exit 9\n\
+                   echo asked >> {min_free}-asked; cat {min_free} ;;\n\
                  *) exit 9 ;;\n\
                  esac\n",
                 log = log.display(),
@@ -2401,6 +2402,52 @@ fn the_stores_filesystem_counts_to_the_floor_nix_says_it_keeps() {
             .iter()
             .all(|filesystem| filesystem["nix_floor"].is_null()),
         "a min-free of nothing is a floor: {unfloored:?}"
+    );
+}
+
+/// Each read of `min-free` can hold a step for its 30 s timeout, so a
+/// Nix that keeps failing to say is asked again in five minutes, then
+/// ten, rather than every five; and one that answers is read hourly.
+#[test]
+fn a_failing_min_free_read_is_asked_less_and_less() {
+    let store = Store::new();
+    let asked = || {
+        fs::read_to_string(store.root.join("min-free-asked"))
+            .unwrap_or_default()
+            .lines()
+            .count()
+    };
+    let mut guard = store.guard(user_config(&store, "0%"));
+    let start = tick();
+    let mut step_at = |seconds: f64| {
+        let at = Tick {
+            wall: start.wall + seconds,
+            monotonic: start.monotonic + seconds,
+            ..start.clone()
+        };
+        guard.step(&at, &CALM).unwrap();
+    };
+    // No min-free file, so every read fails.
+    step_at(0.0);
+    assert_eq!(asked(), 1, "read on the first step");
+    step_at(299.0);
+    assert_eq!(asked(), 1, "asked again before five minutes passed");
+    step_at(301.0);
+    assert_eq!(asked(), 2, "not asked again after five minutes");
+    step_at(301.0 + 599.0);
+    assert_eq!(
+        asked(),
+        2,
+        "a second failure asked again within ten minutes"
+    );
+    fs::write(store.root.join("min-free"), "1\n").unwrap();
+    step_at(301.0 + 601.0);
+    assert_eq!(asked(), 3, "not asked again after ten minutes");
+    step_at(301.0 + 601.0 + 3599.0);
+    assert_eq!(
+        asked(),
+        3,
+        "a read that answered was asked again within the hour"
     );
 }
 
