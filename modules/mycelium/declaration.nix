@@ -10,7 +10,8 @@ let
   # unfenced takes none, as no agent asks as unfenced. A held start an agent
   # asks for as fenced or strict goes through it too, except pi or the
   # realm's agent program (`agents`), which the node starts told the fence
-  # to keep instead: on Linux, and on a Mac declaring `piFencesItself`.
+  # to keep instead, so only what that program fences itself is fenced: on
+  # Linux, and on a Mac declaring `piFencesItself`.
   # Doors accepted for other machines are said only once some machine is
   # named, as an empty allowance means what none does.
   fenced = lib.mapAttrs (
