@@ -386,6 +386,7 @@ in
     ../keys/home.nix
     ../quickshell/providers.nix
     ../quickshell/recents.nix
+    ../subvolumes/home.nix
   ];
 
   options.jitsusama.chrome.vimium = lib.mkOption {
@@ -439,6 +440,16 @@ in
         Unit = "chrome-maps-in-memory.service";
       };
       Install.WantedBy = [ "paths.target" ];
+    };
+
+    # Chrome's SQLite and LevelDB commits each wait on a write and fsync,
+    # which in the home's own tree wait their turn behind every agent's. The
+    # profile's links into memory are made after the move, so the session
+    # waits on it through them, once: its copy took 25 s under agents' load,
+    # and a minute and a half is all a login gives it.
+    jitsusama.subvolumes.folders.".config/google-chrome" = {
+      before = [ "chrome-maps-in-memory.service" ];
+      seconds = 90;
     };
 
     jitsusama.keys.chrome = keys;
