@@ -105,52 +105,149 @@ onLinux {
           && pkgs.lib.hasInfix bin (builtins.unsafeDiscardStringContext entry)
         ) environment
       );
-  # A switch leaves each run a cadence timer starts be, the tick, day,
-  # review and hour and any added, since waiting on its start would outlast
-  # home-manager's patience under load and send the whole switch back;
-  # each timer starts the new unit next, so a changed unit reaches the next
-  # run, not one under way. With no switch to end one, each has a timeout
-  # that ends a hang: none, zero or infinity switches it off. The runs are
-  # found by their timers, whatever their Type, and the four known ones
-  # must each be among them. The check reads the units as declared; that
+  # A switch leaves each cadence run an installed timer starts be, the
+  # tick, day, review and hour and any added, since waiting on its start
+  # would outlast home-manager's patience under load and send the whole
+  # switch back; each timer starts the new unit next, so a changed unit
+  # reaches the next run, not one under way. With no switch to end one,
+  # each is a oneshot, whose start timeout bounds the whole run, and has
+  # one that ends a hang: none, zero or infinity, in any spelling, ends
+  # nothing. The four known runs must each be among those found. Stand-in
+  # units, each wrong one way, must each be refused, so a check that
+  # stopped refusing fails too. It reads the units as declared; that
   # sd-switch keeps an old run it is told to rests on sd-switch.
   cadence-outlasts-a-switch =
     let
-      user = exampleLaptop.config.home-manager.users.joel.systemd.user;
-      cadences = lib.filterAttrs (name: _: name == "cadence" || lib.hasPrefix "cadence-" name);
-      started = lib.unique (
-        lib.mapAttrsToList (
-          name: timer: lib.removeSuffix ".service" (timer.Timer.Unit or "${name}.service")
-        ) (cadences user.timers)
-      );
       known = [
         "cadence"
         "cadence-day"
         "cadence-review"
         "cadence-hour"
       ];
-      timeout = service: toString (service.Service.TimeoutStartSec or "");
-      wrong =
-        name:
+      # A timeout ends a hang when it is a whole number or a span with a
+      # digit other than zero, and isn't infinity.
+      ends =
+        value:
+        (builtins.isInt value && value > 0)
+        || (
+          builtins.isString value
+          && builtins.match ".*[1-9].*" value != null
+          && !lib.hasInfix "infinity" value
+        );
+      problemsOf =
+        user:
         let
-          service = user.services.${name};
+          startedBy = name: t: lib.removeSuffix ".service" (t.Timer.Unit or "${name}.service");
+          installed = lib.filterAttrs (_: t: (t.Install.WantedBy or [ ]) != [ ]) user.timers;
+          started = lib.filter (name: name == "cadence" || lib.hasPrefix "cadence-" name) (
+            lib.unique (lib.mapAttrsToList startedBy installed)
+          );
+          wrong =
+            name:
+            let
+              service = user.services.${name};
+              timeout = service.Service.TimeoutStartSec or service.Service.TimeoutSec or null;
+            in
+            if !user.services ? ${name} then
+              [ "${name} has a timer but no unit" ]
+            else
+              lib.optional (
+                (service.Unit.X-SwitchMethod or null) != "keep-old"
+              ) "a switch restarts ${name} and waits on it"
+              ++ lib.optional (
+                (service.Service.Type or null) != "oneshot"
+              ) "${name} isn't a oneshot, so no start timeout ends its hang"
+              ++ lib.optional (!ends timeout) "${name} has no timeout to end a hang";
         in
-        if !user.services ? ${name} then
-          [ "${name} has a timer but no unit" ]
-        else
-          lib.optional (
-            (service.Unit.X-SwitchMethod or null) != "keep-old"
-          ) "a switch restarts ${name} and waits on it"
-          ++ lib.optional (lib.elem (timeout service) [
-            ""
-            "0"
-            "0s"
-            "infinity"
-          ]) "${name} has no timeout to end a hang";
-      unstarted = lib.subtractLists started known;
-      problems =
         lib.concatMap wrong started
-        ++ map (name: "no timer starts ${name}, so it went unchecked") unstarted;
+        ++ map (name: "no installed timer starts ${name}, so it went unchecked") (
+          lib.subtractLists started known
+        );
+      run = timeout: {
+        Unit.X-SwitchMethod = "keep-old";
+        Service = {
+          Type = "oneshot";
+          TimeoutStartSec = timeout;
+        };
+      };
+      timer = {
+        Install.WantedBy = [ "timers.target" ];
+      };
+      timers = lib.genAttrs known (_: timer);
+      services = lib.genAttrs known (_: run "1h");
+      # Each stand-in, wrong one way, and words its refusal must hold.
+      refused = {
+        "a timeout of infinity" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "infinity";
+            };
+          };
+          says = "cadence-day has no timeout";
+        };
+        "a zero timeout spelled 0min" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "0min";
+            };
+          };
+          says = "cadence-day has no timeout";
+        };
+        "a run a switch restarts" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-hour = lib.removeAttrs (run "1h") [ "Unit" ];
+            };
+          };
+          says = "a switch restarts cadence-hour";
+        };
+        "a run that isn't a oneshot" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = lib.recursiveUpdate (run "1h") { Service.Type = "simple"; };
+            };
+          };
+          says = "cadence isn't a oneshot";
+        };
+        "a timer with no unit" = {
+          user = {
+            inherit services;
+            timers = timers // {
+              cadence-new = timer;
+            };
+          };
+          says = "cadence-new has a timer but no unit";
+        };
+        "a known run no timer starts" = {
+          user = {
+            inherit services;
+            timers = lib.removeAttrs timers [ "cadence-review" ];
+          };
+          says = "no installed timer starts cadence-review";
+        };
+        "a timer named otherwise starting a wrong run" = {
+          user = {
+            timers = timers // {
+              tick.Timer.Unit = "cadence-extra.service";
+              tick.Install = timer.Install;
+            };
+            services = services // {
+              cadence-extra = run "0";
+            };
+          };
+          says = "cadence-extra has no timeout";
+        };
+      };
+      unrefused = lib.attrNames (
+        lib.filterAttrs (_: case: !lib.any (lib.hasInfix case.says) (problemsOf case.user)) refused
+      );
+      problems =
+        problemsOf exampleLaptop.config.home-manager.users.joel.systemd.user
+        ++ map (name: "the check no longer refuses ${name}") unrefused;
     in
     holds "cadence-outlasts-a-switch" (lib.concatStringsSep "; " problems) (problems == [ ]);
   # cadence's budget measures match spend-watch's findings by keys copied

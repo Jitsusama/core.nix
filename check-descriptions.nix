@@ -601,11 +601,11 @@
     half-hour timeout, so a throttled hour can't hold back the next
   '';
   cadence-outlasts-a-switch = ''
-    a switch is told to leave each run a cadence timer starts be rather than restarting it and
-    waiting on its start, which under load outlasts home-manager's wait and sends the whole switch
-    back, and each has a timeout, not none, zero or infinity, to end a hang now that no switch
-    does; the tick, day, review and hour must each be among the runs found, and a failure names
-    each run and what it lacks
+    a switch is told to leave each cadence run an installed timer starts be rather than restarting
+    it and waiting on its start, which under load outlasts home-manager's wait and sends the whole
+    switch back, and each is a oneshot with a start timeout that ends a hang now that no switch
+    does; the tick, day, review and hour must each be among the runs found, a failure names each
+    run and what it lacks, and stand-in units each wrong one way must each be refused
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
