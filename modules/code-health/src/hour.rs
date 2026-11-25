@@ -28,6 +28,20 @@ const SWINGING: [&str; 3] = ["edit-to-merge", "files-per-change", "shared-files"
 /// is always a mistake, so it's held to none where no target is set.
 pub const STRAY_OWNERS: &str = "stray-owners";
 
+/// The files whose comments the stale reader couldn't know, which only
+/// its own misreading leaves, so it's held to none where no target is set
+/// and goes to who keeps code-health where a machine names one.
+pub const UNREAD_COMMENTS: &str = "unread-comments";
+
+/// The measures that are always a mistake, held to none unless a target
+/// is set for them.
+const HELD_TO_NONE: [&str; 2] = [STRAY_OWNERS, UNREAD_COMMENTS];
+
+/// The measures whose files say how code-health read them, not what their
+/// folders hold, so no folder's owner is given them: each goes whole to
+/// the measure's owner.
+const READ_BY_CODE_HEALTH: [&str; 1] = [UNREAD_COMMENTS];
+
 /// What a repository's machine judges it by: a target for some of its
 /// measures, who owns each, by measure or for the whole repository, and
 /// who owns each folder, by its path from the repository's top.
@@ -49,8 +63,9 @@ pub struct Judged {
 /// a measure's names rather than the first the day's record keeps. Lines
 /// move as files change, so a file is held against itself whole. Every
 /// entry of those files goes to who owns it, in `by_owner`: the owner of
-/// its deepest folder the repository's `folders` name, else the measure's;
-/// with no counts the day before, there's no `by_owner`.
+/// its deepest folder the repository's `folders` name, else the measure's,
+/// though what code-health couldn't read goes whole to the measure's; with
+/// no counts the day before, there's no `by_owner`.
 ///
 /// A target ratchets down to the lowest figure `days`, the newest day
 /// records, held two in a row, so a gain is kept rather than lost back to
@@ -71,6 +86,7 @@ pub fn hour(
     days: &[Value],
 ) -> Value {
     let unjudged = Judged::default();
+    let no_folders = BTreeMap::new();
     let mut measures = Vec::new();
     let mut worst: Option<(f64, usize)> = None;
     for (repo, read) in figures {
@@ -80,7 +96,7 @@ pub fn hour(
                 .targets
                 .get(*measure)
                 .copied()
-                .or_else(|| (*measure == STRAY_OWNERS).then_some(0.0));
+                .or_else(|| HELD_TO_NONE.contains(measure).then_some(0.0));
             let lowest = held(days, repo, measure).filter(|_| !SWINGING.contains(measure));
             let target = set.map(|set| lowest.map_or(set, |lowest| set.min(lowest)));
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
@@ -108,7 +124,12 @@ pub fn hour(
                 said["set"] = json!(set);
             }
             if let (Some(counted), Some(gained)) = (counted, &gained) {
-                said["by_owner"] = json!(by_owner(counted, gained, &judged.folders, owner));
+                let folders = if READ_BY_CODE_HEALTH.contains(measure) {
+                    &no_folders
+                } else {
+                    &judged.folders
+                };
+                said["by_owner"] = json!(by_owner(counted, gained, folders, owner));
             }
             measures.push(said);
         }
@@ -393,10 +414,11 @@ mod tests {
     }
 
     #[test]
-    fn a_stray_owner_is_held_to_none_unless_a_target_is_set() {
+    fn a_stray_owner_or_unread_file_is_held_to_none_unless_a_target_is_set() {
         let read = figures(&[
             ("core", STRAY_OWNERS, 1.0),
             ("pi", STRAY_OWNERS, 0.0),
+            ("pi", UNREAD_COMMENTS, 0.0),
             ("set", STRAY_OWNERS, 1.0),
         ]);
         let judged = BTreeMap::from([("set".to_owned(), judged(&[(STRAY_OWNERS, 2.0)], None))]);
@@ -407,6 +429,11 @@ mod tests {
             targets,
             [&json!(0.0), &json!(0.0), &json!(2.0)],
             "a stray owner wasn't held to none, or a target set for it was lost"
+        );
+        assert_eq!(
+            measure(&hour, "pi", UNREAD_COMMENTS)["target"],
+            json!(0.0),
+            "a file whose comments couldn't be read wasn't held to none"
         );
         assert_eq!(
             (&hour["worst"]["repo"], &hour["worst"]["measure"]),
@@ -526,6 +553,68 @@ mod tests {
                 "me": ["modules/netting.rs:3", "c.sh:4"],
             }),
             "a gained entry wasn't given to its deepest folder's owner, or the measure's"
+        );
+    }
+
+    #[test]
+    fn what_code_health_couldnt_read_goes_whole_to_its_measures_owner() {
+        let read = figures(&[
+            ("core", UNREAD_COMMENTS, 2.0),
+            ("core", "suppressions", 1.0),
+            ("pi", UNREAD_COMMENTS, 1.0),
+        ]);
+        let named = BTreeMap::from([
+            (
+                "core".to_owned(),
+                BTreeMap::from([
+                    (
+                        UNREAD_COMMENTS,
+                        vec!["modules/net/a.sh".to_owned(), "c.sh".to_owned()],
+                    ),
+                    ("suppressions", vec!["modules/net/b.rs:1".to_owned()]),
+                ]),
+            ),
+            (
+                "pi".to_owned(),
+                BTreeMap::from([(UNREAD_COMMENTS, vec!["modules/net/d.sh".to_owned()])]),
+            ),
+        ]);
+        let net = BTreeMap::from([("modules/net".to_owned(), "net".to_owned())]);
+        let mut core = judged(&[], Some("me"));
+        core.owners = BTreeMap::from([(UNREAD_COMMENTS.to_owned(), "keeper".to_owned())]);
+        core.folders = net.clone();
+        // With no keeper named, the repository's owner takes them.
+        let mut pi = judged(&[], Some("me"));
+        pi.folders = net;
+        let judged = BTreeMap::from([("core".to_owned(), core), ("pi".to_owned(), pi)]);
+        let earlier = json!({
+            "core": {UNREAD_COMMENTS: {}, "suppressions": {}},
+            "pi": {UNREAD_COMMENTS: {}},
+        });
+        let hour = hour("now", &read, &named, &judged, None, Some(&earlier), &[]);
+        assert_eq!(
+            (
+                &measure(&hour, "core", UNREAD_COMMENTS)["by_owner"],
+                &measure(&hour, "core", "suppressions")["by_owner"],
+                &measure(&hour, "pi", UNREAD_COMMENTS)["by_owner"],
+            ),
+            (
+                &json!({"keeper": ["modules/net/a.sh", "c.sh"]}),
+                &json!({"net": ["modules/net/b.rs:1"]}),
+                &json!({"me": ["modules/net/d.sh"]}),
+            ),
+            "what code-health couldn't read went to a folder's owner, or another measure didn't"
+        );
+    }
+
+    #[test]
+    fn unread_files_are_counted_under_the_name_the_module_routes() {
+        // home.nix hands the keeper as `<repo>/unread-comments=<keeper>`,
+        // which code-health-reads-hourly-against-targets shows; a rename
+        // here alone would leave the keeper told of nothing.
+        assert_eq!(
+            UNREAD_COMMENTS, "unread-comments",
+            "unread files are counted under another name than home.nix routes to the keeper"
         );
     }
 

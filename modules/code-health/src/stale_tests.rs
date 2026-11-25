@@ -724,6 +724,26 @@ fn a_reading_naming_new_lines_is_read_again_until_it_reads_whole() {
 }
 
 #[test]
+fn a_reading_naming_some_lines_named_before_and_some_new_is_read_again() {
+    let mut asked = Vec::new();
+    let lines = settled(|unopened| {
+        let mut seen: Vec<usize> = unopened.iter().copied().collect();
+        seen.sort_unstable();
+        asked.push(seen);
+        match asked.len() {
+            1 => Err(vec![3]),
+            2 => Err(vec![3, 7]),
+            _ => Ok(vec![(1, "# read")]),
+        }
+    });
+    assert_eq!(
+        (lines, asked),
+        (Some(vec![(1, "# read")]), vec![vec![], vec![3], vec![3, 7]]),
+        "a reading naming a new line beside an old one wasn't read again with both unopened"
+    );
+}
+
+#[test]
 fn a_reading_naming_only_lines_named_before_leaves_the_comments_unknown() {
     let mut readings = 0;
     let lines = settled(|_| {

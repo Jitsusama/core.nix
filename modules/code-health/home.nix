@@ -13,7 +13,8 @@
 # owner a repository's `targets`, `owner` and `owners` give it, and the
 # figure the hour before, with the first files counted, those of a file
 # holding more than the day before's counts by file first, and each of
-# those files' entries by the owner `folders` gives its folder;
+# those files' entries by the owner `folders` gives its folder, but for
+# the files code-health couldn't read, which go to the measure's owner;
 # `cadence hour` reads it at ten past. A read takes about half a minute,
 # so hourly costs little. It runs before `cadence day`, which holds each
 # figure against the days before it, so a repository getting messier is
@@ -39,6 +40,9 @@ let
         "${name}/${measure}=${toString value}"
       ]) values
     );
+  # The files code-health's own reader couldn't read are its keeper's to
+  # mend, wherever they lie, unless a repository names another for them.
+  kept = lib.optionalAttrs (cfg.owner != null) { unread-comments = cfg.owner; };
   judged = lib.concatLists (
     lib.mapAttrsToList (
       name: repo:
@@ -47,7 +51,7 @@ let
         "--owner"
         "${name}=${repo.owner}"
       ]
-      ++ byMeasure "--owner" name repo.owners
+      ++ byMeasure "--owner" name (kept // repo.owners)
       ++ lib.concatLists (
         lib.mapAttrsToList (folder: owner: [
           "--owner"
@@ -112,13 +116,24 @@ in
             example = {
               "modules/net" = "someone";
             };
-            description = "Who owns what the hour names in a folder, by its path from the repository's top, the deepest first, ahead of the measure's owner.";
+            description = "Who owns what the hour names in a folder, by its path from the repository's top, the deepest first, ahead of the measure's owner; never the files code-health couldn't read.";
           };
         };
       }
     );
     default = { };
     description = "The repositories read each hour, by the name cadence says them by.";
+  };
+
+  options.jitsusama.code-health.owner = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    description = ''
+      Who keeps code-health itself: told, in every repository, of the files
+      whose comments its stale reader couldn't read, which only its own
+      misreading leaves, ahead of the repository's owner, unless the
+      repository's owners name another for unread-comments.
+    '';
   };
 
   options.jitsusama.code-health.path = lib.mkOption {

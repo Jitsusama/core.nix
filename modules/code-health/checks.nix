@@ -92,7 +92,9 @@
       (handed "some=apps/web" && handed "some=infra/web" && handed "one=apps/one");
   # cadence's hourly read holds each measure against the target and owner
   # a machine sets, so code-health reads each hour and is handed both: a
-  # repository's owner, a measure's own owner, and each target.
+  # repository's owner, a measure's own owner, and each target; and what
+  # its own reader couldn't read goes to who keeps code-health, unless a
+  # repository names another for it.
   code-health-reads-hourly-against-targets =
     let
       home = account (bareNixos [
@@ -100,11 +102,16 @@
           home-manager.sharedModules = [
             self.homeModules.code-health
             {
+              jitsusama.code-health.owner = "keeper";
               jitsusama.code-health.repos.some = {
                 checkout = "/home/someone/src/some";
                 targets.long-files = 3;
                 owner = "someone";
                 owners.suppressions = "another";
+              };
+              jitsusama.code-health.repos.one = {
+                checkout = "/home/someone/src/one";
+                owners.unread-comments = "another";
               };
             }
           ];
@@ -132,7 +139,45 @@
           "--owner"
           "some/suppressions=another"
         ]
+        && handed [
+          "--owner"
+          "some/unread-comments=keeper"
+        ]
+        && handed [
+          "--owner"
+          "one/unread-comments=another"
+        ]
+        && !handed [
+          "--owner"
+          "one/unread-comments=keeper"
+        ]
       );
+
+  # With no keeper named, code-health is handed no owner for what its own
+  # reader couldn't read, so it gives those files to whom it would give
+  # any measure's, which hour.rs's tests show.
+  code-health-names-no-keeper-unless-told =
+    let
+      home = account (bareNixos [
+        {
+          home-manager.sharedModules = [
+            self.homeModules.code-health
+            {
+              jitsusama.code-health.repos.some = {
+                checkout = "/home/someone/src/some";
+                owner = "someone";
+              };
+            }
+          ];
+        }
+      ]);
+      started = pkgs.lib.concatStringsSep " " (
+        pkgs.lib.toList home.systemd.user.services.code-health.Service.ExecStart
+      );
+    in
+    holds "code-health-names-no-keeper-unless-told"
+      "code-health is handed an owner for unread files with no keeper named."
+      (!pkgs.lib.hasInfix "unread-comments" started);
 
   # clippy finds nothing in code-health, its tests included.
   code-health-passes-clippy = passesClippy "code-health-passes-clippy" (
