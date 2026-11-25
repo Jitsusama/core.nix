@@ -384,7 +384,7 @@ ShellRoot {
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
             + `, answered ${JSON.stringify(root.answered)}`
-            + `, letting go ${lettingGo.state} ${root.letGo} ${root.letGoGiven}`
+            + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
             + ` awaiting ${Object.keys(lettingGo.awaited).length}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
@@ -419,7 +419,13 @@ ShellRoot {
             run: () => {
                 peopleRunning.running = true;
             },
+            // The let-go link shares this daemon's socket through a symlink
+            // and may connect only on its tries, the last of its first three
+            // 14 s in, so it's waited for here, as long as a restart's, rather
+            // than inside the let-go step's ten seconds.
+            polls: 400,
             holds: () => people.state === "answering" && "slack" in people.sources
+                && lettingGo.wire !== null
         },
         {
             what: "a watch narrowed to those listed holds them alone",
@@ -503,7 +509,7 @@ ShellRoot {
             // which drops its binding. This step only lets it go: what its
             // going said, and at what level, checks/shell.nix reads from the
             // log. It comes before the daemon stops, while the link holds
-            // the connection it made in the first steps: after the restart,
+            // the connection the daemon's start waited for: after the restart,
             // when it connects again rests on its watch of a symlinked
             // socket or on its tries, which no step waits on. It asks for
             // Grace, whom the step before held as a step-in, since a get is

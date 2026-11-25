@@ -422,7 +422,7 @@
         exit 1
       fi
       if ! grep -E 'INFO.*letting-go: let its connection go with 1 ask unanswered' log; then
-        echo 'a connection the shell let go was not said as information' >&2
+        echo 'no INFO line says letting-go let its connection go with 1 ask unanswered' >&2
         exit 1
       fi
       if grep -F 'letting-go: the connection went' log; then
