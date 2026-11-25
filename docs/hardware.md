@@ -588,8 +588,9 @@ for its service to start it afresh if that brings none in another 90 s,
 the wait a fresh setup gets, so a camera dead mid-call ends it in about
 100 s, and one that fails before its first frame in about 180 s; or if its
 loop stays blocked for 90 s. Each says so in the relay's
-log. A setup past 90 s would still never give a frame. No check drives these waits
-yet: they rest on reading the patch. The first wait is that long because
+log. A setup past 90 s would still never give a frame. The check
+vm-the-relay-waits-out-a-frameless-camera drives the 90 s and 10 s waits, and
+the end once a first frame never comes. The first wait is that long because
 the first frame can come 40 s after the start even once the loop is free:
 on 23 November, under load, the HAL waited that long for its capture
 buffers while the kernel compacted memory to give them out. A 10 s wait

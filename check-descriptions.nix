@@ -5323,21 +5323,22 @@
     by any of udev's assignments or taking the Brio's seat tag off as the sharing's rule does, as a
     search with each pattern shown to find its line says, and starts at every boot, and at a
     switch bringing it in, the give-back of a Brio a relay held, so the seat opens the Brio itself
-    while its relay gives no picture
+    while no role takes its relay in
   '';
   the-mx-brio-give-back-never-fails = ''
     the MX Brio's give-back, run under set -e against a stand-in udevadm, replays both of the
     Brio's nodes and never another camera a relay holds, even of its maker or model number, never
-    triggers with no device, bounds each wait on udev to a second or more and to fit twice, and
-    every wait together once, within its unit's limit, ends well when udev refuses a replay, never
-    settles, hasn't handled the arrival yet, loses the Brio's record or can't be read, adds the
-    Brio back when its unit's timeout ends the run, says a Brio unplugged midway is the seat's once
-    plugged in, says it gave the Brio back only when udev's record of every node shows it tagged
-    for the seat and unmarked, and that the seat has it only when udev recorded every camera,
-    warning with the way out, named for its nodes, otherwise, waits out adds the boot still has
-    queued rather than calling them lost, points at udevadm's own words for an add it refused,
-    and warns nothing, udevadm included, on a machine with no camera, a boot whose adds came late
-    or a run that went right
+    triggers with no device, bounds each wait on udev to a second or more and to fit three times,
+    and every wait together once, within its unit's limit, ends well when udev refuses a replay,
+    queues part of a refused add, never settles, hasn't handled the arrival yet, loses the Brio's
+    record or can't be read, naming the restart that looks again, adds the Brio back when its
+    unit's timeout ends the run, says a Brio unplugged midway is the seat's once plugged in, skips
+    a node unplugged as it's read, says it gave the Brio back only when udev's record of every node
+    shows it tagged for the seat and unmarked, and that the seat has it only when udev recorded
+    every camera, warning with the way out, named for its nodes, otherwise, waits out adds the boot
+    still has queued rather than calling them lost, points at udevadm's own words, which it keeps,
+    for an add it refused, and warns nothing, udevadm included, on a machine with no camera, a boot
+    whose adds came late or a run that went right
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
@@ -6740,6 +6741,11 @@
     the sleep, a power off stops it after a service that stops late, a machine reset while frozen
     in a sleep leaves its boot said asleep, and a machine killed as a reset
     kills it leaves its boot said cut short, its last second read kept
+  '';
+  vm-the-relay-waits-out-a-frameless-camera = ''
+    the shared cameras' relay, read by a client, makes a camera that never frames again after
+    90 s and ends 90 s later, saying so each time, and makes one whose frames stop again after
+    10 s, each time it stops, never ending it
   '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the
