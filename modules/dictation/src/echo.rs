@@ -480,6 +480,35 @@ mod tests {
     }
 
     #[test]
+    fn their_echo_misheard_far_below_what_they_said_is_cut() {
+        // Each side's model hears the echo its own way, so his words for
+        // it may spell none of theirs; far quieter than they said them,
+        // as echo comes back 15 to 35 dB down, they're still theirs.
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let own = "Fine by me, I'll book the room for us.";
+        let mut mine = at_level(timed(own, 1_000), -20.0);
+        mine.extend(at_level(timed("Bunch had moon in Tuesday", 5_050), -42.0));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            [own],
+            "their echo, misheard and far quieter than they said it, wasn't cut"
+        );
+    }
+
+    #[test]
+    fn joel_talking_over_them_near_their_level_is_his_own() {
+        // His own voice in his microphone is near theirs in theirs, so
+        // words of his said over them stay his, however they're spelled.
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let own = "Hang on, Friday suits me better.";
+        assert_eq!(
+            cut_from(&[theirs], &[at_level(timed(own, 5_100), -26.0)]),
+            [own],
+            "Joel talking over them was cut as their echo"
+        );
+    }
+
+    #[test]
     fn a_word_only_joels_microphone_heard_doesnt_break_their_echo() {
         // Echo comes in quiet over his room, so his side may hear a word
         // in it theirs didn't: their "noon" must still be cut after it.
