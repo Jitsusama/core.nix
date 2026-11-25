@@ -568,7 +568,11 @@ Scope {
         ignoreUnknownSignals: true
 
         function onTold(answer) {
-            if (answer?.id !== "hello" || ready.lost === null)
+            if (answer?.id !== "hello")
+                return;
+            if (ready.typedLost !== null)
+                ready.typedReask();
+            if (ready.lost === null)
                 return;
             const was = ready.lost;
             ready.lost = null;
@@ -665,18 +669,26 @@ Scope {
     readonly property var typedHeld: ({})
     property string typedAsking: ""
     property double typedAt: 0
+    // What was typed inside a row when the daemon couldn't answer, as `{ within, words }`,
+    // asked again once it says hello, as the search is (`lost`), or null: its words are
+    // never asked again by a refresh, so the place said it can't answer till the next key.
+    // Kept only while the rows are drawn and those words are what's typed. Lost again once
+    // asked again (`typedReasked`), it's left for the next key, as the search is.
+    property var typedLost: null
+    property string typedReasked: ""
 
     // The rows made of `words` typed inside `within`'s row, or null where it
     // can't answer; its last answer there stays till the next (`searched`).
     function typedIn(within, words) {
         const asked = `${within}\n${words}`;
+        if (typedLost !== null && `${typedLost.within}\n${typedLost.words}` !== asked)
+            typedLost = null;
+        if (typedReasked !== asked)
+            typedReasked = "";
         if (typedAsking !== asked && !(typing.within === within && typing.words === words)) {
             if (!link)
                 return null;
-            typedAsking = asked;
-            typedAt = Date.now();
-            link.find({ ask: "search", place: ready.place, words: words, within: within },
-                answer => ready.typedAnswered(within, words, answer));
+            typedAsk(within, words);
         }
         if (typing.within !== within)
             return [];
@@ -684,12 +696,40 @@ Scope {
             : typing.keys.map(key => rowAt(key)).filter(row => row !== null);
     }
 
-    // An answer taken, and how long it took, unless typed over since.
+    function typedAsk(within, words) {
+        typedAsking = `${within}\n${words}`;
+        typedAt = Date.now();
+        link.find({ ask: "search", place: ready.place, words: words, within: within },
+            answer => ready.typedAnswered(within, words, answer));
+    }
+
+    // What was typed inside a row as the daemon went, asked once more as it comes back, if
+    // it's still what's typed.
+    function typedReask() {
+        const was = typedLost;
+        typedLost = null;
+        if (!link || typing.within !== was.within || typing.words !== was.words)
+            return;
+        typedReasked = `${was.within}\n${was.words}`;
+        typedAsk(was.within, was.words);
+    }
+
+    // An answer taken, and how long it took, unless typed over since. One that didn't come,
+    // the daemon gone, is asked again once it's back (`typedLost`), while the rows are drawn,
+    // and only once (`typedReasked`).
     function typedAnswered(within, words, answer) {
-        if (typedAsking !== `${within}\n${words}`)
+        const asked = `${within}\n${words}`;
+        if (typedAsking !== asked)
             return;
         typedAsking = "";
         const typed = Presented.typedInSaid(words, within, Options.reports);
+        if (answer === null && drawn && typedReasked !== asked)
+            typedLost = { within, words };
+        else if (answer === null && drawn)
+            console.warn(`launcher: ${place}'s ${typed} went unanswered again once asked `
+                + "again, left for the next key");
+        else if (answer !== null && typedReasked === asked)
+            typedReasked = "";
         console.info(`launcher: ${place} answered ${typed} `
             + `${Date.now() - typedAt} ms after its key`);
         const refused = answer === null || !!answer.error;
@@ -711,6 +751,8 @@ Scope {
     function typedAgain() {
         typing = { within: "", words: null, keys: [], refused: typing.refused };
         typedAsking = "";
+        typedLost = null;
+        typedReasked = "";
     }
 
     // The rows an answer found, in its order, each as the place made it.
@@ -1473,6 +1515,8 @@ Scope {
         lost = null;
         reasked = "";
         lostTwice = "";
+        typedLost = null;
+        typedReasked = "";
     }
 
     // The rows whose words the clock has moved on since they were made,

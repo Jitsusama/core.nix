@@ -451,6 +451,77 @@ ShellRoot {
                 borrower.drawn = false;
                 borrower.drawn = true;
             });
+            // What's typed inside a row, lost as the daemon goes, is asked again once it says
+            // hello, as the search is, since no refresh asks words already answered, even with
+            // nothing: an Emoji group said it couldn't answer till the next key. Lost again once
+            // asked again, it's left for the next key; typed again, it's asked again once more.
+            borrower.ended();
+            link.wire = null;
+            const typedState = () => JSON.stringify([borrower.typedLost, borrower.typedReasked,
+                borrower.typedAsking, borrower.typing.words, borrower.typing.refused]);
+            const typedLost = words => borrower.typedLost?.within === move
+                && borrower.typedLost?.words === words;
+            Expect.expect("what's typed in a row, lost, says it can't answer",
+                borrower.typedIn(move, "thu 3") === null && typedLost("thu 3"), typedState());
+            link.wire = { write: line => {}, flush: () => {} };
+            const typedGreeted = link.asked;
+            Expect.expect("and isn't asked again by a refresh",
+                borrower.typedIn(move, "thu 3") === null && link.asked === typedGreeted,
+                link.asked - typedGreeted);
+            hello();
+            Expect.expect("but once the daemon says hello",
+                link.asked === typedGreeted + 1 && borrower.typedAsking === `${move}\nthu 3`,
+                typedState());
+            const typedAgainAsk = `find-${link.asked}`;
+            link.awaited[typedAgainAsk](Object.assign(answer("thu 3"), { id: typedAgainAsk }));
+            Expect.expect("its answer taken, what's typed is the daemon's rows",
+                borrower.typedIn(move, "thu 3")?.map(made => made.name).join(", ") === "Thursday"
+                    && borrower.typedReasked === "", typedState());
+            link.wire = null;
+            borrower.typedIn(move, "thu 4");
+            link.wire = { write: line => {}, flush: () => {} };
+            hello();
+            link.gone();
+            link.wire = { write: line => {}, flush: () => {} };
+            const typedRestarted = link.asked;
+            hello();
+            Expect.expect("lost again once asked again, it isn't asked a third time",
+                link.asked === typedRestarted && borrower.typedLost === null, typedState());
+            Expect.expect("nor by a refresh of what's typed",
+                borrower.typedIn(move, "thu 4") === null && link.asked === typedRestarted,
+                link.asked - typedRestarted);
+            link.wire = null;
+            borrower.typedIn(move, "thu");
+            borrower.typedIn(move, "thu 4");
+            link.wire = { write: line => {}, flush: () => {} };
+            const typedRetyped = link.asked;
+            hello();
+            Expect.expect("while typed again, it's asked again once more",
+                link.asked === typedRetyped + 1 && borrower.typedAsking === `${move}\nthu 4`,
+                typedState());
+            const typedUnasked = (what, set) => {
+                link.wire = null;
+                set();
+                link.wire = { write: line => {}, flush: () => {} };
+                const before = link.asked;
+                hello();
+                Expect.expect(what, link.asked === before && borrower.typedLost === null,
+                    typedState());
+            };
+            typedUnasked("one typed over since isn't asked again", () => {
+                borrower.typedIn(move, "fri");
+                borrower.typedAsking = `${move}\nfri 2`;
+                borrower.typedIn(move, "fri 2");
+            });
+            typedUnasked("one whose search ended isn't asked again", () => {
+                borrower.typedIn(move, "sat");
+                borrower.ended();
+            });
+            typedUnasked("one whose rows went undrawn isn't asked again", () => {
+                borrower.typedIn(move, "sun");
+                borrower.drawn = false;
+            });
+            typedUnasked("nor one lost while they're undrawn", () => borrower.typedIn(move, "mon"));
             borrower.ended();
             borrower.drawn = false;
             link.wire = null;
