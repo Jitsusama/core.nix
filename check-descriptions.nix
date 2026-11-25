@@ -1222,11 +1222,13 @@
   '';
   elsewhere-reads-what-a-machine-declares = ''
     the machines and kinds of job a machine repository declares reach elsewhere's settings in the
-    words it reads, an account declaring none has it on its path and sends nothing, and a scratch
-    that isn't one hidden folder's name fails the build
+    words it reads, an account declaring none has it on its path and sends nothing, the ledgers it
+    reads are where mycelium keeps the realm's, a realm apart in a folder of its name, and a
+    scratch that isn't one hidden folder's name fails the build
   '';
   elsewhere-goes-where-mycelium-places-it = ''
-    elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, and when
+    elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, preferring
+    each machine it may send to that already holds some of the job's quest, and when
     mycelium places it on a machine it may send to, sends only its tracked files, never a hidden
     file, key or excluded path, those under a folder a share keeps home included, through the
     quest's handover and runs it by mycelium run, never ssh or rsync, started in the quest's
