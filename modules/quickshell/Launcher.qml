@@ -103,6 +103,7 @@ import "launcher/RowsPlace.js" as RowsPlace
 import "launcher/Reached.js" as Reached
 import "launcher/Headings.js" as Headings
 import "launcher/Most.js" as Most
+import "launcher/StartSaid.js" as StartSaid
 
 Scope {
     id: root
@@ -5722,6 +5723,11 @@ Scope {
     // held last, when its row hands what's typed to `given`.
     readonly property var asking: held.length > 0 && held[held.length - 1].row.given
         ? held[held.length - 1].row : null
+    // An ask for words of some length, Start New Work's, which writes them on lines of
+    // their own under the path, kept from the moment it opens, rather than on the path's
+    // line (Joel, 2026-11-25: "i have no room to type once i choose a folder";
+    // "growing as i type would look like shit").
+    readonly property bool composing: asking !== null && asking.composes === true
 
     // An ask whose words go to an agent, Talk to It and its kin, shows the talk under the
     // field where the rows go, as Super+S's line does (TalkSpoken.qml), from what its place
@@ -5789,7 +5795,12 @@ Scope {
         offerHeld = null;
         prompt.endWaits = false;
         asking.given(words);
-        prompt.text = "";
+        // Words that start work stay where he wrote them, muted while it starts
+        // (Prompt's taken), so the screen shows his Return took and what it took,
+        // and a second Return of them is told it started rather than lost (Joel,
+        // 2026-11-25 14:33: "no confirmation that it took my enter").
+        if (!composing)
+            prompt.text = "";
         searchNow();
         wordsGiven = { from: pressed, framing: false };
     }
@@ -10020,6 +10031,24 @@ Scope {
     // the hairline, the rows' bands, the hairline and the status line, now
     // its Title is the line's size (VKCF3Z, 2026-11-06).
     readonly property real headTall: rowTall
+    // What words composed under the path take of the rows' room (Prompt's composes).
+    readonly property real composedTall: composing ? prompt.wrapsTall : 0
+    // How a composed ask's start stands, said under its words: what its act's state
+    // says, the mark it wears, and when it began, so the wait is counted out loud.
+    readonly property string startSays: composing && typeof asking.state === "function"
+        ? asking.state() : ""
+    readonly property string startMark: startSays !== "" && typeof asking.mark === "function"
+        ? asking.mark() : ""
+    readonly property real startSince: startSays !== "" && typeof asking.since === "function"
+        ? asking.since() : 0
+    property real startNow: Date.now()
+    Timer {
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        running: root.open && root.startSince > 0
+        onTriggered: root.startNow = Date.now()
+    }
     // A heading's line, the row's face at the note's size (Choice.qml's
     // heading).
     readonly property real headingTall: Math.ceil(headingFace.height)
@@ -10237,6 +10266,9 @@ Scope {
                 drawn: card.height - listBox.height
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
+            // How a start stands under the words that began it, and how long it's waited.
+            start: { says: root.startSays, mark: root.startMark,
+                waited: StartSaid.waited(root.startSince, root.startNow) },
             // Whether Space ? lists the keys in the drawer, and whether
             // there's a place used last for Tab to go back to.
             listing: root.listing,
@@ -14127,7 +14159,9 @@ Scope {
                 // hairline, its line centred there by eye.
                 Item {
                     width: parent.width
-                    height: root.headTall
+                    // Words of some length take their lines under the path, which the
+                    // rows give up (listBox), so the frame keeps its height.
+                    height: root.headTall + root.composedTall
                     opacity: root.wordsShown
 
                     Prompt {
@@ -14176,6 +14210,13 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
+                        // Start New Work's words on lines of their own under the path, the
+                        // path's line keeping its band, and muted once given while it starts.
+                        wraps: root.composing
+                        composes: root.composing
+                        lineTall: root.headTall
+                        taken: root.composing && typeof root.asking.taken === "function"
+                            && root.asking.taken() === true
                         // The line stands on the rows' columns: a held
                         // thing's glyph, or the padlock, over their glyphs,
                         // where the find's / and the : line's : take its
@@ -14726,12 +14767,75 @@ Scope {
                         height: root.over !== null
                             ? Math.min(commandRows.count, 10) * root.rowTall
                             : root.talkAsked ? Math.min(root.tall, talksShown.tall)
-                            : root.tall
+                            : root.tall - root.composedTall
                         opacity: root.wordsShown
                         // It cuts the rows at its edges rather than the list
                         // at its own, so a row's ground reaches out over the
                         // gutter to the frame.
                         clip: true
+
+                        // How a start stands, on the first row's band under the words that
+                        // began it: its mark where a row's glyph stands, what it says where a
+                        // row's name does, and how long it has waited at the far end, as a
+                        // row's figure, so Return is seen to take, once, and the wait to
+                        // run rather than hang (Joel, 2026-11-25 14:33: "no confirmation
+                        // that it took my enter, no feedback at all").
+                        Item {
+                            objectName: "startSays"
+                            width: parent.width
+                            height: root.rowTall
+                            visible: root.startSays !== ""
+
+                            Text {
+                                x: card.inset
+                                anchors.baseline: startSaysText.baseline
+                                text: Theme.glyph[root.startMark] ?? ""
+                                color: root.startMark === "failed" ? Theme.alert
+                                    : root.startMark === "done" ? Theme.success : Theme.muted
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                            }
+
+                            Text {
+                                id: startSaysText
+                                x: card.inset + root.columns.text
+                                width: startWaited.x - x - Theme.space.rung.groups
+                                y: Bands.baseline(parent.height, startCaps.tightBoundingRect.height,
+                                    startSmalls.tightBoundingRect.height) - baselineOffset
+                                text: root.startSays
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: Theme.text
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.weight: Theme.level.figure.weight
+                                font.features: Theme.level.figure.features
+                            }
+
+                            Text {
+                                id: startWaited
+                                objectName: "startWaited"
+                                x: parent.width - card.inset - implicitWidth
+                                anchors.baseline: startSaysText.baseline
+                                text: StartSaid.waited(root.startSince, root.startNow)
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.features: Theme.level.figure.features
+                            }
+
+                            TextMetrics {
+                                id: startCaps
+                                text: "H"
+                                font: startSaysText.font
+                            }
+                            TextMetrics {
+                                id: startSmalls
+                                text: "x"
+                                font: startSaysText.font
+                            }
+                        }
 
                         // The command line's menu, while : is open: its lines
                         // are the list, in the rows' place, each a row as any
