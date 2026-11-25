@@ -8,94 +8,86 @@
   ...
 }:
 let
-  # The example laptop's account with `extra` added to it. The laptop
-  # imports every module Linux has, so its account has every timer core
-  # writes, the delivery cycle's among them.
+  # The example laptop's account with `extra` added to it, so a probe's
+  # timers sit beside every timer the laptop's modules write.
   account =
     extra:
     (exampleLaptop.extendModules { modules = [ { home-manager.users.joel = extra; } ]; })
     .config.home-manager.users.joel;
-  home = account { };
-  services = lib.unique (
-    map
-      (
-        name:
-        let
-          parts = lib.splitString "@" (lib.removeSuffix ".service" name);
-        in
-        if lib.length parts == 2 then "${lib.head parts}@" else lib.head parts
-      )
-      (
-        lib.filter (lib.hasSuffix ".service") (
-          lib.mapAttrsToList (name: timer: timer.Timer.Unit or "${name}.service") home.systemd.user.timers
-        )
-      )
-  );
-  method = home: name: (home.systemd.user.services.${name} or { }).Unit.X-SwitchMethod or null;
-  # A service may say its own X-SwitchMethod; one that says none is
-  # restarted by a switch, which waits on its run. home-manager gives
-  # every service the key, null until something sets it.
-  unsaid = lib.filter (name: method home name == null) services;
-  cadenceKeeps = method home "cadence" == "keep-old";
+  service = home: name: home.systemd.user.services.${name} or { };
+  method = home: name: (service home name).Unit.X-SwitchMethod or null;
+  bound = home: name: (service home name).Service.TimeoutStartSec or null;
+  true' = "/run/current-system/sw/bin/true";
 
-  # home.nix's assertion as an account with `extra` says it, or null.
+  # One account holding a probe of each kind of timed service:
+  # - bare-probe says nothing of its own, so it takes the defaults;
+  # - own-probe says its own switch method and bound, which must win;
+  # - unit-probe's timer names the service it runs, unit-probe-run;
+  # - probe@one runs an instance of the template probe@.
+  probes = account {
+    systemd.user.timers.bare-probe.Timer.OnCalendar = "daily";
+    systemd.user.services.bare-probe.Service.ExecStart = true';
+    systemd.user.timers.own-probe.Timer.OnCalendar = "daily";
+    systemd.user.services.own-probe = {
+      Unit.X-SwitchMethod = "restart";
+      Service = {
+        ExecStart = true';
+        TimeoutStartSec = "3h";
+      };
+    };
+    systemd.user.timers.unit-probe.Timer = {
+      OnCalendar = "daily";
+      Unit = "unit-probe-run.service";
+    };
+    systemd.user.services.unit-probe-run.Service.ExecStart = true';
+    systemd.user.timers."probe@one".Timer.OnCalendar = "daily";
+    systemd.user.services."probe@".Service.ExecStart = true';
+  };
+  keeps = {
+    "a timed service saying nothing keeps its run over a switch" =
+      method probes "bare-probe" == "keep-old";
+    "a timed run with no bound of its own ends after an hour" = bound probes "bare-probe" == "1h";
+    "a timed service's own switch method wins" = method probes "own-probe" == "restart";
+    "a timed service's own bound wins" = bound probes "own-probe" == "3h";
+    "a timer's Timer.Unit is the service it keeps" =
+      method probes "unit-probe-run" == "keep-old" && !(probes.systemd.user.services ? unit-probe);
+    "a template's instance keeps its run on the template" =
+      method probes "probe@" == "keep-old" && !(probes.systemd.user.services ? "probe@one");
+  };
+
+  # home.nix's assertion as an account says it, or null.
   refusal =
-    extra:
+    home:
     lib.findFirst (
       assertion: !assertion.assertion && lib.hasInfix "the switch's setting would hide" assertion.message
-    ) null (account extra).assertions;
-  # A timer whose service nothing writes.
+    ) null home.assertions;
+  # A timer whose service nothing writes, and the same timer with its
+  # service named as one the account doesn't write.
   stray = {
     systemd.user.timers.stray-probe.Timer.OnCalendar = "daily";
   };
-  strayRefused = refusal stray;
-  # The same timer, its service named as one the account doesn't write.
+  strayRefused = refusal (account stray);
   strayExcused = account (stray // { jitsusama.timedRuns.unwritten = [ "stray-probe" ]; });
-  # A timer running a template's instance, the template written.
-  instance = account {
-    systemd.user.timers."probe@one".Timer.OnCalendar = "daily";
-    systemd.user.services."probe@".Service.ExecStart = "/run/current-system/sw/bin/true";
-  };
-  bound = home: name: (home.systemd.user.services.${name} or { }).Service.TimeoutStartSec or null;
-  # A timer whose service the account writes, saying no bound of its own,
-  # and one whose service says its own.
-  written = account {
-    systemd.user.timers.bare-probe.Timer.OnCalendar = "daily";
-    systemd.user.services.bare-probe.Service.ExecStart = "/run/current-system/sw/bin/true";
-    systemd.user.timers.own-probe.Timer.OnCalendar = "daily";
-    systemd.user.services.own-probe.Service = {
-      ExecStart = "/run/current-system/sw/bin/true";
-      TimeoutStartSec = "3h";
-    };
-  };
-  holdsFor = {
-    "a timed run with no bound of its own ends after an hour" = bound written "bare-probe" == "1h";
-    "a timed service's own bound wins" = bound written "own-probe" == "3h";
+  writes = {
     "a timer whose service nothing writes is refused, by name" =
       strayRefused != null && lib.hasInfix "stray-probe" strayRefused.message;
     "a service named in jitsusama.timedRuns.unwritten is left out" =
-      refusal (stray // { jitsusama.timedRuns.unwritten = [ "stray-probe" ]; }) == null
-      && !(strayExcused.systemd.user.services ? stray-probe);
-    "a template's instance keeps its run on the template" =
-      method instance "probe@" == "keep-old" && !(instance.systemd.user.services ? "probe@one");
+      refusal strayExcused == null && !(strayExcused.systemd.user.services ? stray-probe);
   };
-  broken = lib.attrNames (lib.filterAttrs (_: held: !held) holdsFor);
+  broken = cases: lib.attrNames (lib.filterAttrs (_: held: !held) cases);
 in
 onLinux {
-  # Every timed service has a switch method, and the delivery cycle's,
-  # whose restart held a switch past its time, keeps its run.
+  # A timed service keeps its run over a switch and is bounded at an hour,
+  # unless it says its own, found by the service its timer names.
   a-switch-leaves-timed-runs-be =
     holds "a-switch-leaves-timed-runs-be"
-      "The delivery cycle's service keeps its run: ${lib.boolToString cadenceKeeps}. These timed services have no switch method, so a switch restarts them and waits on each run: ${
-        if unsaid == [ ] then "none" else lib.concatStringsSep ", " unsaid
-      }"
-      (cadenceKeeps && unsaid == [ ]);
+      "home.nix's switch setting doesn't hold: ${lib.concatStringsSep "; " (broken keeps)}"
+      (broken keeps == [ ]);
 
   # home.nix's assertion refuses a timer whose service the account doesn't
-  # write, lets a machine name such a service, and finds a template's
-  # instance on its template.
+  # write, and lets a machine name such a service.
   every-timer-runs-a-written-service =
     holds "every-timer-runs-a-written-service"
-      "home.nix's timers don't hold: ${lib.concatStringsSep "; " broken}"
-      (broken == [ ]);
+      "home.nix's timers don't hold: ${lib.concatStringsSep "; " (broken writes)}"
+      (broken writes == [ ]);
 }

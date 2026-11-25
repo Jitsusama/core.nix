@@ -3,7 +3,10 @@
 let
   cfg = config.jitsusama.timedRuns;
   # The unit file a service name is written as: a template's instance,
-  # such as backup@home, is written as its template, backup@.
+  # such as backup@home, is written as its template, backup@. An instance
+  # the account writes as a unit of its own is still read as its template:
+  # reading the account's services to tell would make their names depend
+  # on themselves, which Nix can't evaluate. No timer in core runs one.
   written =
     name:
     let
@@ -41,9 +44,10 @@ in
     default = [ ];
     description = ''
       Services a timer runs that the account doesn't write, such as a
-      package's own unit, by name without .service. The switch's setting
-      and the hour-long bound on a run leave them out, so neither hides the unit the
-      timer runs.
+      package's own unit, by name without .service, and a template's
+      instance by its template, such as backup@. The switch's setting and
+      the hour-long bound on a run leave them out, so neither hides the
+      unit the timer runs.
     '';
   };
 
@@ -55,11 +59,13 @@ in
     # A switch leaves a run a timer started be, and the timer's next run
     # takes the new unit. Restarting it instead stops a run part way and
     # makes the switch wait for a whole new one, and a run can take minutes
-    # on a busy machine: a switch that restarted the delivery cycle's
-    # five-minute run, under load, outlasted the five minutes the account's
-    # setup is given and went back to the system before it (2026-11-25). A
-    # service that must restart at a switch says so with its own
-    # X-SwitchMethod.
+    # on a busy machine: on 2026-11-25 a switch waiting on a restarted
+    # timed run outlasted the five minutes the account's setup is given and
+    # went back to the system before it. The delivery cycle's services now
+    # say keep-old themselves; this gives every other timed service the
+    # same. A service that must restart at a switch says so with its own
+    # X-SwitchMethod, and one saying X-RestartIfChanged = false already
+    # means the same as keep-old.
     #
     # A switch no longer ends a run that hangs, and a timer starts no run
     # while its last is still going, so each timed run is given an hour to

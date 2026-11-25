@@ -286,9 +286,10 @@
     with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
   '';
   a-switch-leaves-timed-runs-be = ''
-    on the example laptop, which has every timer core writes, each timed service has a switch
-    method, keep-old unless it sets its own, and the delivery cycle's is keep-old, which sd-switch
-    reads as leaving a run be
+    a timed service saying nothing of its own keeps its run over a switch, which sd-switch reads
+    as keep-old, and its run ends after an hour; one saying its own switch method or bound keeps
+    it, and a timer naming its service, or running a template's instance, sets them on that
+    service
   '';
   a-talk-answers-what-its-session-asks = ''
     Talk to It on a session asking shows what it asks whole with what it takes; words answer it
@@ -1466,9 +1467,9 @@
     or pytest's or QML's skips, but those still waiting to run where they can
   '';
   every-timer-runs-a-written-service = ''
-    home.nix's assertion refuses a timer whose service the account doesn't write, by name, leaves
-    out a service a machine names in jitsusama.timedRuns.unwritten, and finds a template's
-    instance on its template, so a switch's setting is never a unit of its own
+    home.nix's assertion refuses a timer whose service the account doesn't write, by name, and
+    leaves out a service a machine names in jitsusama.timedRuns.unwritten, so a switch's setting
+    is never a unit of its own
   '';
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count
