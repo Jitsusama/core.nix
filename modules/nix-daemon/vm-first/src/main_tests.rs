@@ -478,10 +478,27 @@ fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let deeper = first_process(&root);
     procs(&deep, "");
     let none = first_process(&root);
+    // A file system listing by its own hash, as ext4 and ZFS do, could put
+    // `c` first by chance; among 32 siblings, chance picks the one sorting
+    // first in one listing of 32.
+    for sibling in 0..32 {
+        let cgroup = root.join(format!("w{sibling:02}"));
+        fs::create_dir(&cgroup).expect("the temp folder takes a folder");
+        procs(&cgroup, &format!("{}\n", 100 + sibling));
+    }
+    let widest = first_process(&root);
     fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(
-        (own, sorted, nearest, next, deeper, none),
-        (Some(10), Some(30), Some(35), Some(40), Some(50), None),
+        (own, sorted, nearest, next, deeper, none, widest),
+        (
+            Some(10),
+            Some(30),
+            Some(35),
+            Some(40),
+            Some(50),
+            None,
+            Some(100)
+        ),
         "a build's first process wasn't its own, else the nearest under it, by name"
     );
 }
