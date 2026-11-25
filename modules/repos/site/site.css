@@ -121,20 +121,6 @@ code,
   font-style: normal;
 }
 
-/* A repository's name and each count are said whole, never broken at a dash or a space, and
-   underlined by a hairline until pointed at, since each leads to its place. */
-.page-head .lede a {
-  color: inherit;
-  white-space: nowrap;
-  text-decoration: underline 1px;
-  text-decoration-color: var(--rule);
-  text-underline-offset: 0.12em;
-}
-
-.page-head .lede a:hover {
-  text-decoration-color: currentColor;
-}
-
 .page-head .keys kbd {
   cursor: pointer;
 }
@@ -191,6 +177,21 @@ code,
 .places .n {
   font-size: var(--step-small);
   color: var(--muted);
+}
+
+/* A repository's name and each count in the lede are said whole, never broken at a dash or a
+   space, and underlined by a hairline until pointed at, since each leads to its place. They
+   come after the place switches' links, which are less specific, so each rule reads in order. */
+.page-head .lede a {
+  color: inherit;
+  white-space: nowrap;
+  text-decoration: underline 1px;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.12em;
+}
+
+.page-head .lede a:hover {
+  text-decoration-color: currentColor;
 }
 
 .find {
