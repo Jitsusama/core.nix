@@ -527,18 +527,26 @@ in
             '';
           };
           conversationHeapGrowingPercent = lib.mkOption {
-            type = lib.types.nullOr (lib.types.ints.between 1 300);
+            type = lib.types.nullOr (lib.types.ints.between 1 100);
             default = null;
             description = ''
               How far each conversation's own process lets its heap grow past
               what it held live after a full collection before it collects in
-              full again, in percent, as node's --heap-growing-percent. Unset,
-              V8 picks the factor itself, and with a heap limit of 2048 MB or
-              more, as conversationHeapMb's default is, it lets the heap reach
-              up to four times what is live while collections keep up, and
-              carries that growth as resident memory between collections. A lower
+              full again, in percent, as node's --heap-growing-percent: V8 then
+              sets each limit at one plus the percent over a hundred times what
+              is live, in place of the factor it would pick. Unset, with a heap
+              limit of 2048 MB or more, as conversationHeapMb's default is, V8
+              lets the heap reach up to four times what is live while
+              collections keep up, and carries that growth as resident memory
+              between collections, but grows by a tenth after a collection that
+              gives memory back. Set, the percent stands in for both. A lower
               percent collects more often, keeping less resident for more
-              collection time. Its hosts keep V8's own growth.
+              collection time; it stops at 100, since more would grow past V8's
+              own choice more often. It reaches only conversations in a unit of
+              their own, on Linux: hosts, and a Mac's pi, keep V8's own growth.
+              A node that doesn't know the flag refuses it as a bad option, so
+              each of the realm's conversations would end as it starts until
+              the percent is unset.
             '';
           };
           asyncContextFrame = lib.mkOption {
@@ -697,7 +705,7 @@ in
         assertion = given == [ ];
         message = "jitsusama.pi.hosts.${realm}.environment gives ${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make the host's node run code nobody gave it. NODE_OPTIONS does so through --require or --import, or by opening the host's inspector with --inspect; NODE_PATH through a module a require finds there; NODE_COMPILE_CACHE through compiled code node reads back from its folder; LD_PRELOAD, LD_AUDIT and LD_LIBRARY_PATH through a library the loader loads; and OPENSSL_CONF and OPENSSL_MODULES through a module OpenSSL loads. ${
           if one then "Drop it." else "Drop each one."
-        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
+        } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame; a conversation's own node takes its heap and its growth too, set with conversationHeapMb and conversationHeapGrowingPercent. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
 

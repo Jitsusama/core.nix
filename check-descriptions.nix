@@ -3604,11 +3604,16 @@
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';
-  pi-conversations-cap-heap-growth = ''
+  pi-conversations-set-heap-growth = ''
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
     attended and background, as V8's --heap-growing-percent after their heap and before the
     harness's program, while its hosts and every process of a realm that names none keep V8's
-    own growth, and a cap of 0 or 301 percent is refused
+    own growth, and 1 and 100 percent are taken while 0 and 101 are refused
+  '';
+  pi-conversations-take-heap-growth = ''
+    node 22, which pi is built with, started with the word a realm's conversation is given for a
+    growth of 30 percent, sets every heap limit it traces at 1.3 times what is live, while the
+    same program without it sets another factor of its own
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
@@ -3655,8 +3660,8 @@
     LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which their unit
     clears so none opens the host's inspector or runs code as the host, fails evaluation naming
     the realm and only the ones it gave, joined as written and spoken of as it or each, then
-    names each of the eight again where it says how they load code, and that a command needing
-    one sets it itself, rather than having them dropped unseen, while a variable that loads nothing passes beside them unnamed
+    names each of the eight again where it says how they load code, the options a conversation's
+    own node takes instead, and that a command needing one sets it itself, rather than having them dropped unseen, while a variable that loads nothing passes beside them unnamed
   '';
   pi-rings-low = ''
     the account's ding rings loud for seconds, as the harness's done chime plays it, and the

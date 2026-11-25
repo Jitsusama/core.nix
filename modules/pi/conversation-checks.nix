@@ -12,6 +12,33 @@
   proofOf,
   self,
 }:
+let
+  # The units of a Linux machine whose account names these pi hosts, each
+  # host given an empty pi and node.
+  growingServicesOf =
+    hosts:
+    let
+      pi = "${pkgs.emptyDirectory}/pi";
+      node = "${pkgs.emptyDirectory}/node";
+      proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
+    in
+    (account (bareNixos [
+      self.nixosModules.workstation
+      {
+        home-manager.users.someone.jitsusama.pi.hosts = lib.mapAttrs (
+          _: percent:
+          {
+            inherit pi node proof;
+          }
+          // lib.optionalAttrs (percent != null) {
+            conversationHeapGrowingPercent = percent;
+          }
+        ) hosts;
+      }
+    ])).systemd.user.services;
+  # The command a unit starts with, or nothing where there's no such unit.
+  startOf = services: unit: lib.head (lib.toList (services.${unit}.Service.ExecStart or ""));
+in
 {
   # Each realm-kind host gets a template its conversations' own processes
   # start from, which its host's code names: run by the host's program as a
@@ -212,58 +239,43 @@
         && lib.filter (lib.hasPrefix "pi-conversation-") (lib.attrNames mac) == [ ]
       );
 
-  # A realm may cap how far each of its conversations' heaps grows past what
+  # A realm may set how far each of its conversations' heaps grows past what
   # it holds live before V8 collects it in full. Its hosts, and every process
-  # of a realm that names no cap, keep V8's own growth, and a cap outside 1
-  # to 300 percent is refused.
-  pi-conversations-cap-heap-growth =
+  # of a realm that names no percent, keep V8's own growth, and a percent
+  # outside 1 to 100 is refused, while both ends are taken.
+  pi-conversations-set-heap-growth =
     let
-      pi = "${pkgs.emptyDirectory}/pi";
-      node = "${pkgs.emptyDirectory}/node";
-      proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
-      servicesOf =
-        hosts:
-        (account (bareNixos [
-          self.nixosModules.workstation
-          { home-manager.users.someone.jitsusama.pi = { inherit hosts; }; }
-        ])).systemd.user.services;
-      services = servicesOf {
-        capped = {
-          inherit pi node proof;
-          conversationHeapGrowingPercent = 30;
-        };
-        plain = { inherit pi node proof; };
+      services = growingServicesOf {
+        set = 30;
+        plain = null;
       };
-      startOf = unit: lib.head (lib.toList (services.${unit}.Service.ExecStart or ""));
-      capped =
+      set =
         kind:
         let
-          start = startOf "pi-conversation-capped-${kind}@";
+          start = startOf services "pi-conversation-set-${kind}@";
         in
         lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
         && lib.hasSuffix "/scripts/pi-host.ts --child" start;
-      grows = unit: services ? ${unit} && !(lib.hasInfix "--heap-growing-percent" (startOf unit));
-      refused =
+      grows =
+        unit: services ? ${unit} && !(lib.hasInfix "--heap-growing-percent" (startOf services unit));
+      # Whether a realm naming this percent evaluates its conversation's
+      # command, which is taken when it holds the percent's word.
+      taken =
         percent:
-        !(builtins.tryEval (
-          builtins.deepSeq
-            (servicesOf {
-              wrong = {
-                inherit pi node proof;
-                conversationHeapGrowingPercent = percent;
-              };
-            })."pi-conversation-wrong-attended@".Service.ExecStart
-            true
-        )).success;
+        let
+          start = startOf (growingServicesOf { one = percent; }) "pi-conversation-one-attended@";
+          tried = builtins.tryEval (builtins.deepSeq start start);
+        in
+        tried.success && lib.hasInfix " '--heap-growing-percent=${toString percent}' /" tried.value;
     in
-    holds "pi-conversations-cap-heap-growth"
-      "A realm's cap on its conversations' heap growth doesn't reach their own processes as V8's growing percent, before the harness's program, or it reaches its hosts or a realm that names none, or a cap outside 1 to 300 percent is taken."
+    holds "pi-conversations-set-heap-growth"
+      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, or it reaches its hosts or a realm that names none, or 1 or 100 percent is refused, or 0 or 101 is taken."
       (
         lib.all
           (
             kind:
-            capped kind
-            && grows "pi-host-capped-${kind}"
+            set kind
+            && grows "pi-host-set-${kind}"
             && grows "pi-conversation-plain-${kind}@"
             && grows "pi-host-plain-${kind}"
           )
@@ -271,7 +283,26 @@
             "attended"
             "background"
           ]
-        && refused 0
-        && refused 301
+        && taken 1
+        && taken 100
+        && !(taken 0)
+        && !(taken 101)
       );
+
+  # The word a realm's conversation is given for a growth of 30 percent, run
+  # on node 22 as pi is built with: V8 sets each heap limit at 1.3 times
+  # what is live, in place of a factor of its own.
+  pi-conversations-take-heap-growth =
+    let
+      start = startOf (growingServicesOf { one = 30; }) "pi-conversation-one-attended@";
+      # The one word between the heap and the program, or none.
+      words = builtins.match ".* '--max-old-space-size=4096' '([^']*)' /.*" (
+        builtins.unsafeDiscardStringContext start
+      );
+      word = if words == null then "" else lib.head words;
+    in
+    pkgs.runCommandLocal "pi-conversations-take-heap-growth" { } ''
+      ${lib.getExe pkgs.nodejs_22} ${./tests/pi-conversations-take-heap-growth.mjs} ${lib.getExe pkgs.nodejs_22} ${lib.escapeShellArg word} 1.3
+      touch $out
+    '';
 }
