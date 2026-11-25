@@ -13,7 +13,11 @@
 //! focused window instead, since every kitty window shares the one kitty
 //! process, which lives in the agents' slice itself: refused when an agent
 //! runs in it, when a multiplexer stands in front, past which kitty can't
-//! see, and when kitty can't say.
+//! see, and when kitty can't say. This is no full guard: an agent set on
+//! hiding can start a window through niri, or into a slice or scope of its
+//! choosing, that nothing here ties to it (ISXEG8's R-type-password-spawned).
+//! The fence that keeps niri's socket and the user bus from agents closes
+//! that; until it lands, Joel still has to choose the window and press Return.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
