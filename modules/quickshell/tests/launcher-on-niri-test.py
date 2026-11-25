@@ -2694,7 +2694,7 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
 
 
 def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
-    """Super+E lists Unicode's groups, and the clipboard's history finds what's typed there.
+    """Super+E lists Unicode's groups, making a row only for an emoji it shows.
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
@@ -2751,10 +2751,14 @@ def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
 
     Each letter asks the history again (launcher/Emoji.qml's search), so the rows a word's first
     letter found must give way to the word's own. It stands apart from the rows case above so
-    a quarantine of it excuses only this search, not the bounds on what Emoji makes.
+    a quarantine of it excuses only this search, not the bounds on what Emoji makes. Its groups
+    are listed before a letter is typed, as the rows case waits on them, since they come from
+    the history's first answer: run alone, a word typed before it is a search of a history not
+    yet heard from.
     """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
     # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
     # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
     try:
