@@ -853,7 +853,7 @@
   '';
   code-health-names-no-keeper-unless-told = ''
     code-health is handed no owner for the files its own reader couldn't read until a machine names
-    who keeps it
+    who keeps it or a repository names their owner, while the repository's own owner is still handed
   '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests
