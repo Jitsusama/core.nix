@@ -56,6 +56,7 @@ import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
 import "StartsStopped.js" as StartsStopped
+import "TalkAnswers.js" as TalkAnswers
 import "TalkTo.js" as TalkTo
 import "Wanted.js" as Wanted
 
@@ -1172,6 +1173,93 @@ Provider {
         };
     }
 
+    // Joel's answers to what each session asks, given in its Talk, by its address in capitals,
+    // newest first (TalkAnswers.js's said), so the Talk shows each as sent, then answered.
+    property var answeredTo: ({})
+    // What each session's Talk last drew it asking that his words answer, by its address in
+    // capitals, null where it asked nothing he can answer: his Return answers what he was
+    // shown, not what's held by the time he presses it. Changed in place, so drawing it
+    // notifies nothing.
+    readonly property var answersShown: ({})
+
+    // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
+    // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
+    function answersOf(session) {
+        const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
+        return { want: wantOf(session.address), asking };
+    }
+
+    // What a Talk to `session` shows before its talks: what it asks in full while it asks, first
+    // so it has the first exchange's eight lines (TalkSpoken.qml), then Joel's answers to it,
+    // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
+    // feedback at all"), each in TalkLine.js's exchange shape.
+    function answerTalks(session) {
+        // A want that comes while the Talk is open draws it again (wantOf reads the held rows).
+        void rowsKind?.revision;
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const stages = Words.of("orchestrators:talk").said ?? {};
+        const words = Object.assign({}, said, { sent: stages.sent ?? "",
+            unsent: stages.failed ?? "" });
+        const days = { yesterday: String((Words.of("agents:line").said ?? {}).yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        const dayOf = since => When.day(since, Date.now(), days);
+        const working = stateOf(session) === "working";
+        const now = answersOf(session);
+        const asked = TalkAnswers.question(now, session.title, words, dayOf);
+        const answers = TalkAnswers.asked(now.want, now.asking);
+        answersShown[to] = answers;
+        // While it asks, only answers to what it asks show; asking what he can't answer here,
+        // none do.
+        const want = now.asking ? answers?.want ?? null : "";
+        return (asked === null ? [] : [asked]).concat(TalkAnswers
+            .standing(answeredTo[to] ?? [], want, Date.now())
+            .map(one => TalkAnswers.shown(one, working, words, dayOf)));
+    }
+
+    // Joel's `text` to `session`, which asks `answers`, answering it: shown sent at once, then
+    // answered once the node has put it in the session's inbox, or why not (answerWant), naming
+    // the want he was shown so a newer ask is never answered by it. His words stay kept under
+    // its address, as a talk's do until delivered (Drafts.qml), so the field gives them back
+    // where they never went while their ask stands, the foot saying why. Words naming none of
+    // the choices it takes only are let go, the foot saying what it takes, so they're never
+    // given back to answer a later ask.
+    function answerIn(session, text, answers) {
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const answer = TalkAnswers.answerOf(text, answers);
+        if (answer === null) {
+            told = TalkAnswers.filled(said.takesOnly ?? "", {
+                choices: answers.choices.map(one => String(one.label ?? one.value))
+                    .join(" \u00b7 ") });
+            launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            // A walk from a terminal is told so, as nothing went (Launcher.qml's walkedRun).
+            launcher?.walkRefused?.(told);
+            return;
+        }
+        const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
+        const keep = changed => {
+            answeredTo = Object.assign({}, answeredTo,
+                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
+        };
+        keep(one);
+        told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
+            { name: session.title });
+        const fields = Object.assign({ want: answers.want }, answer.value !== undefined
+            ? { value: answer.value } : { other: answer.other });
+        answerWant(session.address, fields, (put, why) => {
+            keep(TalkAnswers.put(one, put, why));
+            // His words stay only for the ask they were meant for: once it asks something else,
+            // given back they'd answer the new ask with words for the old one, so they show
+            // only as not delivered, and the foot says why.
+            const now = answersOf(sessionAt(session.address) ?? session);
+            if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
+                launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            if (!put && (why ?? "") !== "")
+                told = why;
+        });
+    }
+
     // Who hears a line said from anywhere (TalkLine.qml), `{ to, name }`: the one standing at
     // Agents' top, the void, which passes it to whoever owns it (QCXZEB, 2026-11-13
     // [ae5dfdb6]); null while none stands there.
@@ -1479,18 +1567,44 @@ Provider {
         const steered = what => () => provider.actOn(current(), what);
         const talked = () => {
             const talk = provider.talking(session.address, session.title);
+            const talkWords = Words.of("verb:agent:talk");
+            // While it asks Joel something, Return answers it, as its inbox goes unread until
+            // its ask ends, and the Talk shows what it asks first (answerTalks).
+            const asks = () => {
+                const now = provider.answersOf(current());
+                return TalkAnswers.asked(now.want, now.asking);
+            };
+            const draft = String(session.address).toUpperCase();
             return act("talk", {
-                ask: Words.of("verb:agent:talk").ask ?? "",
+                ask: asks() !== null ? talkWords.said?.answerAsk ?? "" : talkWords.ask ?? "",
                 chip: session.title,
                 // Kept by whom it goes to until its talk is delivered.
-                draft: String(session.address).toUpperCase(),
+                draft,
                 state: () => provider.told,
-                talks: talk.talks,
+                talks: () => provider.answerTalks(current()).concat(talk.talks()),
                 heard: talk.heard,
                 given: words => {
                     const text = words.trim();
                     if (text === "")
                         return;
+                    // What the Talk showed it asking when he pressed Return, while that Talk is
+                    // the one held; a walk from a terminal, which draws none, answers what it
+                    // asks now.
+                    const held = provider.launcher?.asking?.draft === draft
+                        && draft in provider.answersShown;
+                    const answers = held ? provider.answersShown[draft] : asks();
+                    // An answer goes as Joel's, so only his own Return gives one: a walk from
+                    // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
+                    if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
+                        provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",
+                            { name: session.title });
+                        provider.launcher?.walkRefused?.(provider.told);
+                        return;
+                    }
+                    if (answers !== null) {
+                        provider.answerIn(current(), text, answers);
+                        return;
+                    }
                     provider.actOn(session, "talk", { text });
                     talk.said(text);
                     provider.told = (Words.of("orchestrators").said ?? {}).sent
@@ -2401,7 +2515,8 @@ Provider {
             then(Sessions.steered(address, null));
             return;
         }
-        rowsKind.ask(said, reply => then(Sessions.steered(address, reply)));
+        rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
+            String(reply?.error?.message ?? "")));
     }
 
     property string fedBack: ""

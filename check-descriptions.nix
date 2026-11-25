@@ -285,6 +285,13 @@
     a stick given Apple's restore image lays it last, as a partition of its own named for its zip,
     with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
   '';
+  a-talk-answers-what-its-session-asks = ''
+    Talk to It on a session asking shows what it asks whole with what it takes; words answer it
+    by a choice's label, else its value, or as its own words where it takes them, and read sent,
+    then answered or working, or not delivered and why, kept newest first, only those to what it
+    asks while it asks, with any not delivered in the last quarter hour, and all of that quarter
+    hour once it asks nothing; one asking what Talk can't answer shows only those not delivered
+  '';
   a-talks-words-outlive-the-shell = ''
     what's typed to talk to a session is kept by its address with its caret for a week and read
     back as a shell starts; words sent are kept until their talk is delivered or replied to, and
